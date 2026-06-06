@@ -44,6 +44,9 @@ interface BaselineEntry {
   input_sketches?: unknown[]
   result: Record<string, unknown>
   bodies: Record<string, BaselineBody>
+  // Real-doc anchors (4b.5) are a best-effort signal: warn on divergence, never
+  // hard-fail. They surface remaining TS-kernel gaps without blocking the gate.
+  soft?: boolean
 }
 
 interface BaselineBody {
@@ -342,11 +345,14 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
         ]
 
         if (allIssues.length > 0) {
-          // Hard-fail by default: this is the enforced parity gate. Set
-          // PARITY_SOFT=1 to downgrade to a warn-only inventory for local triage.
+          // Hard-fail by default: this is the enforced parity gate. A per-entry
+          // `soft` flag (real-doc anchors, 4b.5) or PARITY_SOFT=1 downgrades to a
+          // warn-only inventory -- a best-effort signal that never blocks the gate.
           const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
-          if (import.meta.env.PARITY_SOFT === '1') {
-            console.warn(`[parity] ${entry.label}: SOFT ${msg}`)
+          const soft = import.meta.env.PARITY_SOFT === '1' || entry.soft === true
+          if (soft) {
+            const tag = entry.soft ? 'REAL-SOFT' : 'SOFT'
+            console.warn(`[parity] ${entry.label}: ${tag} ${msg}`)
             expect(allIssues.length, `SOFT: ${msg}`).toBeGreaterThan(-1)
           } else {
             expect(allIssues.length, msg).toBe(0)

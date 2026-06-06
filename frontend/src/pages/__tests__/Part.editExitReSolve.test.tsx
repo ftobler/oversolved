@@ -191,6 +191,9 @@ describe('edit exit reSolve', () => {
     // pre-populated cache key would match.
     const editBtns = screen.getAllByTitle('Edit fillet')
     await act(async () => { fireEvent.click(editBtns[0]) })
+    // Wait for the enter-edit reSolve to flush so the exit-edit reSolve
+    // does not cancel it with a stale requestId check.
+    await new Promise(r => setTimeout(r, 100))
     await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
 
     await new Promise(r => setTimeout(r, 50))

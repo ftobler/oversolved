@@ -31,6 +31,7 @@ for _p in (_TESTS_DIR, _REPO_ROOT):
 
 from wasm_harness.run_kernel import run_specs  # noqa: E402
 from wasm_harness.corpus import parametric_fixtures  # noqa: E402
+from wasm_harness.real_docs import real_doc_fixtures  # noqa: E402
 from solver_helpers import (  # noqa: E402
     rect_sketch_spec,
     extrude_spec,
@@ -365,10 +366,17 @@ def _make_fixtures() -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    # Curated hand anchors (kept verbatim) + the parametric corpus (4b.4).
-    fixtures = _make_fixtures() + parametric_fixtures()
+    # Curated hand anchors (verbatim) + parametric corpus (4b.4) + real docs (4b.5).
+    fixtures = _make_fixtures() + parametric_fixtures() + real_doc_fixtures()
     print(f"Running {len(fixtures)} fixtures through Python kernel...", file=sys.stderr)
     results = run_specs(fixtures)
+
+    # Thread the per-fixture soft flag into the baseline (run_specs drops extra
+    # keys); the harness downgrades soft entries to warn-not-fail.
+    soft_labels = {fx["label"] for fx in fixtures if fx.get("soft")}
+    for r in results:
+        if r["label"] in soft_labels:
+            r["soft"] = True
 
     ok_count = sum(1 for r in results if r["ok"])
     err_count = len(results) - ok_count

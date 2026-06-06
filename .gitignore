@@ -45,3 +45,5 @@ oversolved/exports/*
 instance/
 
 *.log
+# Real-doc parity anchors (4b.5): gitignored, best-effort/skip-on-failure
+oversolved_corpus/

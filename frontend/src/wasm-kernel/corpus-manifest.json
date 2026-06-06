@@ -1,7 +1,7 @@
 {
   "summary": {
-    "total": 42,
-    "ok": 42,
+    "total": 56,
+    "ok": 56,
     "by_tier": {
       "anchor": 20,
       "dimension_angle": 3,
@@ -9,6 +9,7 @@
       "dimension_radius": 3,
       "edge_query": 4,
       "plane_query": 3,
+      "real_doc": 14,
       "slash_point": 3
     }
   },
@@ -56,6 +57,22 @@
     ],
     "plane/anchor": [
       "plane_offset_10"
+    ],
+    "real/real_doc": [
+      "real_angular_Clone",
+      "real_angular",
+      "real_cylinder_Clone_Clone",
+      "real_cylinder_Clone",
+      "real_cylinder",
+      "real_dimensions",
+      "real_melted",
+      "real_querytest",
+      "real_querytest2",
+      "real_querytest3",
+      "real_split",
+      "real_star",
+      "real_two_objects_1",
+      "real_two_objects_2"
     ],
     "revolve/anchor": [
       "revolve_360deg"
@@ -254,6 +271,76 @@
     "plane_offset_10": {
       "feature_kind": "plane",
       "query_tier": "anchor",
+      "ok": true
+    },
+    "real_angular": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_angular_Clone": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_cylinder": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_cylinder_Clone": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_cylinder_Clone_Clone": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_dimensions": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_melted": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_querytest": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_querytest2": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_querytest3": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_split": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_star": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_two_objects_1": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
+      "ok": true
+    },
+    "real_two_objects_2": {
+      "feature_kind": "real",
+      "query_tier": "real_doc",
       "ok": true
     },
     "rect_sketch_10x10": {
