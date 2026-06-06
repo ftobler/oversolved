@@ -75,6 +75,32 @@ describe('partDocToSketches', () => {
     expect(skipped.map((s) => s.featureId).sort()).toEqual(['proj', 'sugar'])
   })
 
+  it('resolves @builtin_origin to external_xy:[0,0]', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'c1', kind: 'circle' }],
+        initial: { c1: [0, 0, 5] },
+        constraints: [
+          { id: 'c_coincident', kind: 'coincident', a: '$c1center', b: '@builtin_origin' },
+          { id: 'c_diameter', kind: 'diameter', target: '$c1', value: 10 },
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches).toHaveLength(1)
+    const c = sketches[0].sketch.constraints
+    expect(c).toHaveLength(2)
+    expect(c[0]).toMatchObject({
+      kind: 'coincident',
+      a: { entity: 'c1', point: 'center' },
+      b: { external_xy: [0, 0] },
+    })
+    expect(c[1]).toMatchObject({ kind: 'diameter', target: { entity: 'c1' }, value: 10 })
+  })
+
   it('ignores non-sketch features', () => {
     const features: PartFeature[] = [
       { id: 'ex1', kind: 'extrude', extrude: undefined } as unknown as PartFeature,

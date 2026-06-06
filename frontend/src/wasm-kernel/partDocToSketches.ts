@@ -37,15 +37,17 @@ const KNOWN_POINTS = ['start', 'end', 'center', 'xy'] as const
 const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
 
 /**
- * Resolve a constraint ref against the sketch's local entity ids. Accepts both
- * the live `$entityId[point]` query-string form and the already-resolved
- * `{entity, point}` dict form (the regression-baseline / non-$ref docs carry the
- * latter). The dict form is passed through after validating the entity is local.
+ * Resolve a constraint ref against the sketch's local entity ids. Accepts
+ * the live `$entityId[point]` query-string form, the already-resolved
+ * `{entity, point}` dict form, and `@builtin_origin` (the origin-point
+ * query that every sketch needs for coincident-to-origin constraints --
+ * maps to `{external_xy:[0,0]}` which the Rust solver's coincident handler
+ * accepts natively).
  */
 function resolveLocal(
   q: unknown,
   entityIds: Set<string>,
-): { entity: string; point?: string } | null {
+): { entity: string; point?: string } | { external_xy: [number, number] } | null {
   if (q && typeof q === 'object') {
     const obj = q as { entity?: unknown; point?: unknown }
     if (typeof obj.entity === 'string' && entityIds.has(obj.entity)) {
@@ -55,15 +57,18 @@ function resolveLocal(
     }
     return null
   }
-  if (typeof q !== 'string' || !q.startsWith('$')) return null
-  const local = q.slice(1)
-  for (const pt of KNOWN_POINTS) {
-    if (local.length > pt.length && local.endsWith(pt)) {
-      const eid = local.slice(0, -pt.length)
-      if (entityIds.has(eid)) return { entity: eid, point: pt }
+  if (typeof q === 'string') {
+    if (q === '@builtin_origin') return { external_xy: [0, 0] }
+    if (!q.startsWith('$')) return null
+    const local = q.slice(1)
+    for (const pt of KNOWN_POINTS) {
+      if (local.length > pt.length && local.endsWith(pt)) {
+        const eid = local.slice(0, -pt.length)
+        if (entityIds.has(eid)) return { entity: eid, point: pt }
+      }
     }
+    if (entityIds.has(local)) return { entity: local }
   }
-  if (entityIds.has(local)) return { entity: local }
   return null
 }
 

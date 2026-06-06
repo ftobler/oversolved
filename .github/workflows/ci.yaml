@@ -153,3 +153,38 @@ jobs:
           wasm-pack build --target web --out-dir pkg --release
           wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
+
+  # Full-document parity gate (WASM migration phase 4b). Runs the TS kernel
+  # (OCC.js + Rust sketch solver) against the Python regression baseline and
+  # hard-fails on any divergence. This is the enforced "old kernel == new kernel"
+  # proof required before phase 4d (kill daemon). Heavy: OCC.js ~66 MB download
+  # + WASM compile.
+  parity:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build WASM solver (nodejs for vitest)
+        run: wasm-pack build --target nodejs --out-dir pkg-node --release
+        working-directory: sketch-solver
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: npm install
+        run: npm install
+        working-directory: frontend
+
+      - name: Install OCC.js (opt-in, not a package.json dep)
+        run: npm run occ:install
+        working-directory: frontend
+
+      - name: Parity gate (hard-fail)
+        run: npx vitest run --config vitest.parity.config.ts
+        working-directory: frontend
