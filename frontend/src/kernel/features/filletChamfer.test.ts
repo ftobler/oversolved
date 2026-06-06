@@ -8,6 +8,7 @@ import { Repository } from '../query'
 import { solveFillet, solveChamfer, resolveFilletEdges } from './filletChamfer'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
+import type { OccHandle } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
 
@@ -75,7 +76,7 @@ describe('resolveFilletEdges guard', () => {
       id: 'b1',
       created_by: 'f1',
       modified_by: [],
-      shape: 'handle_42', // non-null to exercise the edgeQueries.length === 0 branch
+      shape: 1 as OccHandle, // non-null to exercise the edgeQueries.length === 0 branch
       sketch_id: 'sk',
       brep_diff: null,
       profile_queries: [],
