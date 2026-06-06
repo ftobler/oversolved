@@ -170,7 +170,7 @@ function _dedupeRepo(repo: Repository): void {
   }
 }
 
-function _repoFromSnapshot(repoSnapshot: Record<string, unknown>): Repository {
+export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Repository {
   const repo = new Repository()
   if (repoSnapshot.elements || repoSnapshot.ancestral) {
     repo.elements = new Map(Object.entries(repoSnapshot.elements as Record<string, unknown>))
@@ -533,7 +533,7 @@ function _snapshotWithBrepGeometry(
   checkpoint: FeatureCheckpoint,
   bodiesOut: Record<string, Record<string, unknown>>,
 ): Record<string, unknown> {
-  const repo = _repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
+  const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
   for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
     const bodyOut = bodiesOut[bodyId] ?? {}
     const mesh = bodyOut['mesh'] as TessMesh | undefined
@@ -608,7 +608,7 @@ export function build(
     const lastCleanFid = String(features[firstDirty - 1].id ?? '')
     const checkpoint = options.prevState.checkpoints[lastCleanFid]
     if (checkpoint) {
-      Object.assign(globalRepo, _repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>))
+      Object.assign(globalRepo, repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>))
       Object.assign(bodyStore, _snapshotBodies(checkpoint.body_store_snapshot))
       for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
         result[fid] = options.prevState.checkpoints[fid].result

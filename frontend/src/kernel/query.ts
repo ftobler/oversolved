@@ -14,7 +14,13 @@ import {
   pickBest,
 } from "./queryHeuristics"
 import type { HeuristicConfig } from "./queryHeuristics"
-import { BUILTIN_PLANES } from "./solverConstants"
+import {
+  BUILTIN_PLANES,
+  FRONT_PLANE,
+  isPlaneType,
+  isPointType,
+  resolveBarePlaneId,
+} from "./solverConstants"
 
 export class AmbiguousQueryError extends Error {}
 
@@ -351,13 +357,8 @@ export class Repository {
     this.pruneGeomHash()
   }
 
-  private featureIdxOfElement(eid: string): number | null {
-    const el = this.elements.get(eid)
-    if (!isDict(el)) return null
-    const owner = (el["created_by"] as string) || (el["sketch_id"] as string)
-    if (!owner) return null
-    const idx = this.featureIndex.get(owner)
-    return idx === undefined ? null : idx
+  featureIdxOfElement(eid: string): number | null {
+    return featureIdxOfElement(this, eid)
   }
 
   private orderFilter(currentFeatureId: string | null): (eids: string[]) => string[] {
@@ -572,6 +573,17 @@ export class Repository {
   }
 }
 
+/** Return the build-order index of the element's owning feature.
+ *  Returns null for built-in geometry with no owning feature. */
+export function featureIdxOfElement(repo: Repository, eid: string): number | null {
+  const el = repo.elements.get(eid)
+  if (!isDict(el)) return null
+  const owner = (el["created_by"] as string) || (el["sketch_id"] as string)
+  if (!owner) return null
+  const idx = repo.featureIndex.get(owner)
+  return idx === undefined ? null : idx
+}
+
 /** Create and populate the global repository with built-in planes and origin. */
 export function initGlobalRepo(): Repository {
   const repo = new Repository()
@@ -670,4 +682,68 @@ export function resolveQuery(
     for (const eid of entry.eids) allScores.push([repo.elements.get(eid) ?? null, overlap])
   }
   return pickBest(allScores, cfg)
+}
+
+// ─── Plane/point helpers (port of solver_plane) ───
+
+interface PlaneLike {
+  origin: number[]
+  x_axis: number[]
+  y_axis: number[]
+  normal: number[]
+}
+
+/** Query-result -> 3D point (mirrors `_get_point_3d`). */
+export function getPoint3d(ref: Record<string, unknown>, globalRepo: Repository): number[] {
+  if ("external_xy" in ref) {
+    const xy = ref["external_xy"] as number[]
+    const sketchId = ref["sketch_id"] as string | undefined
+    if (sketchId) {
+      const pt = globalRepo.elements.get("_pt_" + sketchId) as PlaneLike | undefined
+      if (pt) {
+        return [
+          pt.origin[0] + xy[0] * pt.x_axis[0] + xy[1] * pt.y_axis[0],
+          pt.origin[1] + xy[0] * pt.x_axis[1] + xy[1] * pt.y_axis[1],
+          pt.origin[2] + xy[0] * pt.x_axis[2] + xy[1] * pt.y_axis[2],
+        ]
+      }
+    }
+    return [xy[0], xy[1], 0.0]
+  }
+  if (ref["type"] === "vertex" && "origin" in ref) return ref["origin"] as number[]
+  if ("origin" in ref && !("normal" in ref)) return ref["origin"] as number[]
+  if ("origin" in ref && "normal" in ref) throw new Error("reference is a plane, not a point")
+  throw new Error("point reference has no coordinates")
+}
+
+/** Resolve a plane query string (e.g. "$f1", "@builtin_plane_right", "Front")
+ *  to a plane dict. Falls back to FRONT_PLANE on unresolvable input. */
+export function resolvePlaneEarly(
+  planeQuery: string | null,
+  globalRepo: Repository | null,
+): Record<string, unknown> {
+  if (!planeQuery) throw new Error("sketch has no plane assignment")
+
+  const bareName = resolveBarePlaneId(planeQuery)
+  if (bareName) return BUILTIN_PLANES[bareName] as Record<string, unknown>
+
+  if (planeQuery.startsWith("@")) {
+    const builtin = BUILTIN_PLANES[planeQuery.slice(1)]
+    if (builtin) return builtin as Record<string, unknown>
+    if (globalRepo !== null) {
+      const p = globalRepo.elements.get(planeQuery.slice(1))
+      if (isDict(p) && isPlaneType(p)) return p
+    }
+    return FRONT_PLANE as Record<string, unknown>
+  }
+
+  if (planeQuery.startsWith("$") && globalRepo !== null) {
+    const p = globalRepo.elements.get(planeQuery.slice(1))
+    if (isDict(p)) {
+      if (isPlaneType(p)) return p
+    }
+    return FRONT_PLANE as Record<string, unknown>
+  }
+
+  return FRONT_PLANE as Record<string, unknown>
 }

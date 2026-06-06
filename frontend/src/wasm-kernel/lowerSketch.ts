@@ -123,6 +123,10 @@ export function lowerSketch(sk: SketchInput): LowerResult {
     const refs: FlatConstraint['refs'] = []
     for (const [key, role] of REF_KEYS) {
       const val = c[key]
+      if (typeof val === 'string' && val === '@builtin_origin') {
+        refs.push({ role, ref: { kind: 'external', x: 0, y: 0 } })
+        continue
+      }
       if (isRefDict(val)) refs.push({ role, ref: lowerRef(val) })
     }
     const out: FlatConstraint = { kind, refs }

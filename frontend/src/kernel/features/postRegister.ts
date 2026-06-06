@@ -142,7 +142,7 @@ export function postRegister(
  * keyed by the bare `@feature_id` tag (topology) or whose payload carries
  * `sketch_id == feature_id` (entity params), then the direct slash elements.
  */
-function clearFeatureGeometryRegistrations(globalRepo: Repository, featureId: string): void {
+export function clearFeatureGeometryRegistrations(globalRepo: Repository, featureId: string): void {
   const featureTag = ref(featureId)
   const eidsToRemove = new Set<string>()
   const keysToRemove: string[] = []

@@ -47,3 +47,28 @@ export const BUILTIN_PLANE_RESULTS: Record<string, Record<string, unknown>> = Ob
     return [name, { status: "ok", plane: rest }]
   }),
 )
+
+// ─── Plane/point type helpers (port of solver_constants + solver_plane) ───
+
+export const PLANE_TYPES = new Set(["plane", "face", "flatface"])
+export const POINT_TYPES = new Set(["point", "vertex"])
+
+export const FRONT_PLANE = BUILTIN_PLANES["builtin_plane_front"]
+
+const BARE_ID_MAP: Record<string, string> = {
+  Top: "builtin_plane_top",
+  Front: "builtin_plane_front",
+  Right: "builtin_plane_right",
+}
+
+export function isPlaneType(obj: Record<string, unknown>): boolean {
+  return PLANE_TYPES.has(obj["type"] as string)
+}
+
+export function isPointType(obj: Record<string, unknown>): boolean {
+  return POINT_TYPES.has(obj["type"] as string)
+}
+
+export function resolveBarePlaneId(name: string): string | null {
+  return BARE_ID_MAP[name] ?? null
+}
