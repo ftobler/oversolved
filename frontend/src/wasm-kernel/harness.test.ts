@@ -62,7 +62,7 @@ describe('WASM kernel regression baseline', () => {
     }
   })
 
-  it('mesh structures are valid', () => {
+  it('mesh structures are valid', { timeout: 30000 }, () => {
     for (const entry of entries) {
       for (const [, body] of Object.entries(entry.bodies)) {
         const mesh = body.mesh

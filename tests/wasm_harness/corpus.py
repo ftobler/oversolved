@@ -91,7 +91,7 @@ def _dim_line_len(length: float) -> dict:
 def _dim_circle_dia(diameter: float) -> dict:
     sk = make_sketch("sk1", entities=[{"id": "c1", "kind": "circle"}], initial={"c1": [0, 0, diameter / 2.0]}, constraints=[
         {"id": "c_fix", "kind": "fixed", "target": {"entity": "c1", "point": "center"}, "x": 0, "y": 0},
-        {"id": "c_dia", "kind": "diameter", "target": "$c1", "value": diameter, "pos": [0, 0]},
+        {"id": "c_dia", "kind": "diameter", "target": {"entity": "c1"}, "value": diameter, "pos": [0, 0]},
     ])
     return make_doc(sk)
 

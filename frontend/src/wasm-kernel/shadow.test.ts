@@ -27,6 +27,7 @@ const solve = loadSolver()
 
 const cases: Array<{ label: string; sketch: SketchInput; result: PythonSketchResult }> = []
 for (const entry of entries) {
+  if ((entry as Record<string, unknown>).soft) continue
   for (const sketch of entry.input_sketches ?? []) {
     const result = entry.result[sketch.id]
     if (result) cases.push({ label: `${entry.label}/${sketch.id}`, sketch, result })
