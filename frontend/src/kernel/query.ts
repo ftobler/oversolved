@@ -276,7 +276,8 @@ interface AncestralEntry {
   eids: string[]
 }
 
-function canonical(ids: Iterable<string>): string {
+/** Canonical frozenset key: dedup + sort + join (value-equal across permutations). */
+export function canonical(ids: Iterable<string>): string {
   return [...new Set(ids)].sort().join(" ")
 }
 

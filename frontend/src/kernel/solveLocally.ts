@@ -9,7 +9,7 @@
  */
 
 import { build, type BuildDeps, type BuildResponse } from './builder'
-import { Repository } from './query'
+import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver } from './features/sketch'
 import { postRegister } from './features/postRegister'
@@ -103,7 +103,10 @@ export async function solveLocally(
       // features resolve the profile; the builder handles brep ancestry
       // separately after tessellation.
       postRegister,
-      initGlobalRepo: () => new Repository(),
+      // Seed builtin planes/origin so queries like `@builtin_plane_right`
+      // (mirror plane resolution) resolve as repo elements, mirroring Python's
+      // _init_global_repo.
+      initGlobalRepo,
       tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
     }
 

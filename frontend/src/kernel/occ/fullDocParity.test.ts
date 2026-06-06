@@ -20,7 +20,7 @@ import { HandleTable } from './handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from './tessellation'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { build, type BuildDeps } from '../builder'
-import { Repository } from '../query'
+import { initGlobalRepo } from '../query'
 import { createFeatureSolver, unportedKinds } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
@@ -328,7 +328,7 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
         const deps: BuildDeps = {
           trySolveFeature: createFeatureSolver(occMod, scope, table),
           postRegister,
-          initGlobalRepo: () => new Repository(),
+          initGlobalRepo,
           tessellateBodies: (bodyStore) => tessellateBodies(occMod, table, bodyStore),
         }
 
