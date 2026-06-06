@@ -14,7 +14,7 @@ import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
 import type { GeometryHeader } from '@/utils/geometryUnpack'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
-import { isDocFullyPorted } from '@/kernel/builder'
+import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
 import { solveLocally } from '@/kernel/solveLocally'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
@@ -324,7 +324,7 @@ export function useSolver(
         }
         console.log('[useSolver] local solve returned null, falling back to Python WebSocket')
       } else {
-        console.log('[useSolver] doc not fully ported, using Python WebSocket')
+        console.log('[useSolver] doc not fully ported, unported kinds:', [...unportedKinds(solveFeatures)])
       }
 
       if (uuid && opts?.bypassCache) {
