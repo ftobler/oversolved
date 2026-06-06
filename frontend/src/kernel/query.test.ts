@@ -21,7 +21,19 @@ import {
   bodyIdOf,
   getPoint3d,
   resolvePlaneEarly,
+  buildQuery,
+  tagSet,
+  resolveQuery,
 } from "./query"
+import type { QueryNode } from "./query"
+import {
+  Outcome,
+  DEFAULT_HEURISTIC_CONFIG,
+  scoreOverlap,
+  pickBest,
+  weightFor,
+} from "./queryHeuristics"
+import type { HeuristicConfig } from "./queryHeuristics"
 import { isPlaneType, isPointType } from "./solverConstants"
 import { postRegister, clearFeatureGeometryRegistrations } from "./features/postRegister"
 import { repoFromSnapshot } from "./builder"
@@ -1135,6 +1147,97 @@ describe("resolvePlaneEarly", () => {
 // ─── B-rep vertex / face integration (ported from test_query_standardization.py,
 //      requires OCC build pipeline — skipped in this suite) ───
 
+describe("makeAncestryQuery construction details", () => {
+  it("produces wire format with type restriction suffix", () => {
+    const ids = ["@sketchA/lineX", "@sketchA/lineY"]
+    const q = makeAncestryQuery(ids, "face")
+    expect(q.startsWith("?")).toBe(true)
+    expect(q.endsWith(":face")).toBe(true)
+  })
+
+  it("preserves caller-determined sort order", () => {
+    const q_ab = makeAncestryQuery(["@a", "@b"], "face")
+    const q_ba = makeAncestryQuery(["@b", "@a"], "face")
+    expect(q_ab).not.toBe(q_ba)
+    const ids = ["@b", "@a"]
+    const q_sorted = makeAncestryQuery([...ids].sort(), "face")
+    const q_sorted2 = makeAncestryQuery([...ids].sort(), "face")
+    expect(q_sorted).toBe(q_sorted2)
+  })
+
+  it("supports nested ancestry query strings", () => {
+    const inner = makeAncestryQuery(["AAAAAAAAAAAA", "BBBBBBBBBBBB"])
+    const outer = makeAncestryQuery([inner, "AAAAAAAAAAAA"])
+    const [ids] = parseAncestry(outer)
+    expect(ids[0]).toBe(inner)
+    expect(ids[1]).toBe("AAAAAAAAAAAA")
+  })
+})
+
+describe("parseAncestry edge cases", () => {
+  it("ignores extra characters beyond parsed length", () => {
+    const [ids, typ] = parseAncestry("?3;abcdef")
+    expect(ids).toEqual(["abc"])
+    expect(typ).toBeNull()
+  })
+})
+
+describe("query ambiguity — partial resolve", () => {
+  it("partial match ambiguous when query matches multiple entries", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@A", "@B"], { type: "pt", x: 1.0, y: 0.0 })
+    repo.registerAncestor(["@A", "@B", "@C"], { type: "pt", x: -1.0, y: 0.0 })
+    const q = makeAncestryQuery(["@A", "@B"])
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
+
+  it("ambiguous partial match disambiguated by type restriction", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@A", "@B"], { type: "pt" })
+    repo.registerAncestor(["@A", "@C"], { type: "line" })
+    const q = makeAncestryQuery(["@A", "@B"], "pt")
+    expect(repo.query(q)).not.toBeNull()
+  })
+})
+
+describe("parseQuery validation", () => {
+  it("rejects absolute format with too many path parts", () => {
+    expect(() => parseQuery("@a/b/c/d")).toThrow("Unrecognized absolute query")
+  })
+})
+
+describe("empty query handling", () => {
+  it("empty string query returns null", () => {
+    const repo = new Repository()
+    expect(repo.query("")).toBeNull()
+  })
+})
+
+describe("typed query object dispatch", () => {
+  it("repo.query accepts LocalQuery via local() helper", () => {
+    const repo = new Repository()
+    const obj = { v: 1 }
+    repo.register("AAAAAAAAAAAAAAAAAAe1", obj)
+    expect(repo.query(local("e1"), "AAAAAAAAAAAAAAAAAA")).toBe(obj)
+  })
+
+  it("repo.query accepts AbsoluteQuery via absolute() helper", () => {
+    const repo = new Repository()
+    const obj = { v: 2 }
+    repo.register("AAAAAAAAAAAAAAAAAA/BBBBBBBBBBBB", obj)
+    expect(repo.query(absolute("AAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBB"))).toBe(obj)
+  })
+
+  it("repo.query accepts AncestryQuery via ancestry() helper", () => {
+    const repo = new Repository()
+    const obj = { type: "pt" }
+    const ids = ["@a", "@b"]
+    repo.registerAncestor(ids, obj)
+    const aq = ancestry(ids, "pt")
+    expect(repo.query(aq)).toBe(obj)
+  })
+})
+
 describe("B-rep vertex and face integration", () => {
   it.skip("vertex registered in repo after build", () => {
     // Requires build() with OCC.js — covered by builder.test.ts
@@ -1150,5 +1253,404 @@ describe("B-rep vertex and face integration", () => {
 
   it.skip("plane on face mode from brep face", () => {
     // Requires build() with OCC.js + on_face plane mode
+  })
+})
+
+// ─── QueryNode / buildQuery / tagSet ───
+
+describe("QueryNode / buildQuery / tagSet", () => {
+  it("buildQuery composes parent chain", () => {
+    const parentMap: Record<string, string[]> = {
+      edge0: ["extrude1"],
+      extrude1: ["face_area1"],
+      face_area1: ["sketch1/line1", "sketch1/line2", "sketch1/arc1"],
+      "sketch1/line1": ["plane_front"],
+      "sketch1/line2": ["plane_front"],
+      "sketch1/arc1": ["plane_front"],
+    }
+
+    const node = buildQuery("edge0", parentMap)
+    expect(node).not.toBeNull()
+    expect(node.id).toBe(ref("edge0"))
+
+    expect(node.parents.length).toBe(1)
+    const extrudeNode = node.parents[0]
+    expect(extrudeNode.id).toBe(ref("extrude1"))
+
+    expect(extrudeNode.parents.length).toBe(1)
+    const faceNode = extrudeNode.parents[0]
+    expect(faceNode.id).toBe(ref("face_area1"))
+
+    expect(faceNode.parents.length).toBe(3)
+    const entityIds = new Set(faceNode.parents.map(p => p.id))
+    expect(entityIds).toEqual(new Set([ref("sketch1/line1"), ref("sketch1/line2"), ref("sketch1/arc1")]))
+
+    for (const entityNode of faceNode.parents) {
+      expect(entityNode.parents.length).toBe(1)
+      expect(entityNode.parents[0].id).toBe(ref("plane_front"))
+    }
+
+    for (const entityNode of faceNode.parents) {
+      expect(entityNode.parents[0].parents.length).toBe(0)
+    }
+
+    const tags = tagSet(node)
+    expect(tags.has(ref("edge0"))).toBe(true)
+    expect(tags.has(ref("extrude1"))).toBe(true)
+    expect(tags.has(ref("sketch1/line1"))).toBe(true)
+    expect(tags.has(ref("plane_front"))).toBe(true)
+  })
+
+  it("buildQuery preserves @ prefix", () => {
+    const parentMap: Record<string, string[]> = { el: ["@already_prefixed"] }
+    const node = buildQuery("el", parentMap)
+    expect(node.parents.length).toBe(1)
+    expect(node.parents[0].id).toBe("@already_prefixed")
+  })
+
+  it("tagSet empty terminal node", () => {
+    const node: QueryNode = { id: ref("solo"), parents: [], leafGeom: null }
+    expect(tagSet(node)).toEqual(new Set([ref("solo")]))
+  })
+
+  it("tagSet derives flat set", () => {
+    const grandparentNode: QueryNode = { id: ref("grandparent"), parents: [], leafGeom: null }
+    const node: QueryNode = {
+      id: ref("root"),
+      parents: [
+        { id: ref("parent_a"), parents: [grandparentNode], leafGeom: null },
+        { id: ref("parent_b"), parents: [grandparentNode], leafGeom: null },
+      ],
+      leafGeom: null,
+    }
+    expect(tagSet(node)).toEqual(
+      new Set([ref("root"), ref("parent_a"), ref("parent_b"), ref("grandparent")]),
+    )
+  })
+
+  it("leafGeom is preserved but not in tagSet", () => {
+    const node: QueryNode = {
+      id: ref("edge"),
+      parents: [],
+      leafGeom: { normal: [0, 0, 1], area: 5.0 },
+    }
+    expect(node.leafGeom).toEqual({ normal: [0, 0, 1], area: 5.0 })
+    expect(tagSet(node)).toEqual(new Set([ref("edge")]))
+  })
+})
+
+// ─── resolveQuery ───
+
+describe("resolveQuery", () => {
+  it("branches and reconverges", () => {
+    const repo = new Repository()
+
+    repo.registerAncestor(
+      [ref("sketch1/line1"), ref("sketch1/line2"), ref("plane_front")],
+      { type: "test_a", value: 1 },
+    )
+    repo.registerAncestor(
+      [ref("sketch1/line1"), ref("sketch1/line3"), ref("plane_front")],
+      { type: "test_b", value: 2 },
+    )
+
+    const node: QueryNode = {
+      id: ref("face_area"),
+      parents: [
+        {
+          id: ref("sketch1/line1"),
+          parents: [{ id: ref("plane_front"), parents: [], leafGeom: null }],
+          leafGeom: null,
+        },
+        {
+          id: ref("sketch1/line2"),
+          parents: [{ id: ref("plane_front"), parents: [], leafGeom: null }],
+          leafGeom: null,
+        },
+      ],
+      leafGeom: null,
+    }
+
+    const [outcome, result] = resolveQuery(node, repo)
+    expect(outcome).toBe(Outcome.RESOLVED)
+    expect(result).not.toBeNull()
+    expect((result as Record<string, unknown>).value).toBe(1)
+
+    const nodeAmbiguous: QueryNode = {
+      id: ref("face_area"),
+      parents: [
+        {
+          id: ref("sketch1/line1"),
+          parents: [{ id: ref("plane_front"), parents: [], leafGeom: null }],
+          leafGeom: null,
+        },
+      ],
+      leafGeom: null,
+    }
+    const [outcome2] = resolveQuery(nodeAmbiguous, repo)
+    expect(outcome2).toBe(Outcome.AMBIGUOUS)
+
+    const nodeWinner: QueryNode = {
+      id: ref("face_area"),
+      parents: [
+        {
+          id: ref("sketch1/line1"),
+          parents: [{ id: ref("plane_front"), parents: [], leafGeom: null }],
+          leafGeom: null,
+        },
+        {
+          id: ref("sketch1/line2"),
+          parents: [{ id: ref("plane_front"), parents: [], leafGeom: null }],
+          leafGeom: null,
+        },
+      ],
+      leafGeom: null,
+    }
+    const [outcome3, result3] = resolveQuery(nodeWinner, repo)
+    expect(outcome3).toBe(Outcome.RESOLVED)
+    expect((result3 as Record<string, unknown>).value).toBe(1)
+
+    const nodeUnrelated: QueryNode = {
+      id: ref("face_other"),
+      parents: [{ id: ref("sketch99/article99"), parents: [], leafGeom: null }],
+      leafGeom: null,
+    }
+    const [outcome4] = resolveQuery(nodeUnrelated, repo)
+    expect(outcome4).toBe(Outcome.UNRESOLVED)
+  })
+
+  it("partial branch resolves with 2/3 overlap", () => {
+    const repo = new Repository()
+    const oldAncestors = [ref("sk1/line_a"), ref("sk1/line_b"), ref("sk1/line_c")]
+    repo.registerAncestor(oldAncestors, { type: "flatface", area: 12.0 })
+
+    const node: QueryNode = {
+      id: ref("surface_area"),
+      parents: [
+        { id: ref("sk1/line_a"), parents: [], leafGeom: null },
+        { id: ref("sk1/line_b"), parents: [], leafGeom: null },
+        { id: ref("sk1/arc_new"), parents: [], leafGeom: null },
+      ],
+      leafGeom: null,
+    }
+
+    const [outcome, result] = resolveQuery(node, repo)
+    expect(outcome).toBe(Outcome.RESOLVED)
+    expect((result as Record<string, unknown>).area).toBe(12.0)
+
+    const nodeLow: QueryNode = {
+      id: ref("surface_area"),
+      parents: [
+        { id: ref("sk1/line_a"), parents: [], leafGeom: null },
+        { id: ref("sk1/other_x"), parents: [], leafGeom: null },
+        { id: ref("sk1/other_y"), parents: [], leafGeom: null },
+      ],
+      leafGeom: null,
+    }
+    const [outcome2] = resolveQuery(nodeLow, repo)
+    expect(outcome2).toBe(Outcome.UNRESOLVED)
+  })
+
+  it("heuristic config is tweakable", () => {
+    const repo = new Repository()
+    const ancestors = [ref("sk/edge_a"), ref("sk/edge_b"), ref("sk/edge_c")]
+    repo.registerAncestor(ancestors, { type: "straightedge", length: 10.0 })
+
+    const node: QueryNode = {
+      id: ref("surface"),
+      parents: [
+        { id: ref("sk/edge_a"), parents: [], leafGeom: null },
+        { id: ref("sk/other1"), parents: [], leafGeom: null },
+        { id: ref("sk/other2"), parents: [], leafGeom: null },
+      ],
+      leafGeom: null,
+    }
+
+    const strict: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, overlapThreshold: 0.6 }
+    const [outcomeStrict] = resolveQuery(node, repo, strict)
+    expect(outcomeStrict).toBe(Outcome.UNRESOLVED)
+
+    const loose: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, overlapThreshold: 0.2 }
+    const [outcomeLoose, result] = resolveQuery(node, repo, loose)
+    expect(outcomeLoose).toBe(Outcome.RESOLVED)
+    expect((result as Record<string, unknown>).length).toBe(10.0)
+  })
+
+  it("ambiguity margin forces ambiguous", () => {
+    const repo = new Repository()
+    const cfg: HeuristicConfig = {
+      ...DEFAULT_HEURISTIC_CONFIG,
+      overlapThreshold: 0.3,
+      ambiguityMargin: 0.3,
+    }
+
+    repo.registerAncestor([ref("sk/edge_a"), ref("sk/edge_b")], { type: "straightedge", id: "A" })
+    repo.registerAncestor([ref("sk/edge_a"), ref("sk/edge_c")], { type: "straightedge", id: "B" })
+
+    const node: QueryNode = {
+      id: ref("surface"),
+      parents: [
+        { id: ref("sk/edge_a"), parents: [], leafGeom: null },
+        { id: ref("sk/edge_z"), parents: [], leafGeom: null },
+      ],
+      leafGeom: null,
+    }
+
+    const [outcome] = resolveQuery(node, repo, cfg)
+    expect(outcome).toBe(Outcome.AMBIGUOUS)
+  })
+
+  it("geom-hash-only resolves when no lineage", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      [ref("gface_abc123")],
+      { type: "face", area: 42.0 },
+      "gface_abc123",
+    )
+
+    const node: QueryNode = { id: ref("gface_abc123"), parents: [], leafGeom: null }
+    const [outcome, result] = resolveQuery(node, repo)
+    expect(outcome).toBe(Outcome.RESOLVED)
+    expect((result as Record<string, unknown>).area).toBe(42.0)
+  })
+
+  it("resolveQuery no tag set returns UNRESOLVED", () => {
+    const repo = new Repository()
+    const node: QueryNode = { id: "", parents: [], leafGeom: null }
+    const [outcome, result] = resolveQuery(node, repo)
+    expect(outcome).toBe(Outcome.UNRESOLVED)
+    expect(result).toBeNull()
+  })
+})
+
+// ─── HeuristicConfig / scoreOverlap / pickBest ───
+
+describe("HeuristicConfig defaults", () => {
+  it("defaults are sensible", () => {
+    const cfg = DEFAULT_HEURISTIC_CONFIG
+    expect(cfg.overlapThreshold).toBe(0.5)
+    expect(cfg.ambiguityMargin).toBe(0.0)
+    expect(cfg.geometryLeafTolerance).toBe(0.01)
+    expect(cfg.kindWeights).toEqual({})
+    expect(weightFor(cfg, "any")).toBe(1.0)
+    expect(weightFor(cfg, "edge")).toBe(1.0)
+  })
+})
+
+describe("scoreOverlap", () => {
+  it("edge cases and exact matches", () => {
+    expect(scoreOverlap(new Set(), new Set())).toBe(0.0)
+    expect(scoreOverlap(new Set(["a"]), new Set())).toBe(0.0)
+    expect(scoreOverlap(new Set(["a", "b"]), new Set(["a", "b"]))).toBe(1.0)
+    expect(scoreOverlap(new Set(["a", "b"]), new Set(["b", "c"]))).toBe(0.5)
+    expect(scoreOverlap(new Set(["a", "b", "c"]), new Set(["a"]))).toBeCloseTo(1.0 / 3.0)
+  })
+})
+
+describe("pickBest", () => {
+  it("single candidate returns RESOLVED", () => {
+    const cfg = DEFAULT_HEURISTIC_CONFIG
+    const [outcome, winner] = pickBest([["item", 0.8]], cfg)
+    expect(outcome).toBe(Outcome.RESOLVED)
+    expect(winner).toBe("item")
+  })
+
+  it("clear winner beats runner-up by > margin", () => {
+    const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.2 }
+    const [outcome, winner] = pickBest(
+      [["A", 0.9], ["B", 0.5]],
+      cfg,
+    )
+    expect(outcome).toBe(Outcome.RESOLVED)
+    expect(winner).toBe("A")
+  })
+
+  it("ambiguous within margin", () => {
+    const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.3 }
+    const [outcome, winner] = pickBest(
+      [["A", 0.8], ["B", 0.7]],
+      cfg,
+    )
+    expect(outcome).toBe(Outcome.AMBIGUOUS)
+    expect(winner).toBeNull()
+  })
+
+  it("empty returns UNRESOLVED", () => {
+    const [outcome, winner] = pickBest([], DEFAULT_HEURISTIC_CONFIG)
+    expect(outcome).toBe(Outcome.UNRESOLVED)
+    expect(winner).toBeNull()
+  })
+})
+
+// ─── queryAll ───
+
+describe("queryAll", () => {
+  it("returns empty for non-ancestry query", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface" })
+    expect(repo.queryAll("@feat1")).toEqual([])
+    expect(repo.queryAll("")).toEqual([])
+  })
+
+  it("finds by feature root", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface", idx: 0 })
+    repo.registerAncestor(["@feat1face1", "@feat1"], { type: "flatface", idx: 1 })
+    repo.registerAncestor(["@feat2face0", "@feat2"], { type: "flatface", idx: 99 })
+
+    const results = repo.queryAll(makeAncestryQuery(["@feat1"], "flatface"))
+    expect(results.length).toBe(2)
+    for (const r of results) {
+      expect((r as Record<string, unknown>).type).toBe("flatface")
+    }
+    expect(new Set(results.map(r => (r as Record<string, unknown>).idx))).toEqual(new Set([0, 1]))
+  })
+
+  it("type filters correctly", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface" })
+    repo.registerAncestor(["@feat1edge0", "@feat1"], { type: "straightedge" })
+
+    expect(repo.queryAll(makeAncestryQuery(["@feat1"], "flatface")).length).toBe(1)
+    expect(repo.queryAll(makeAncestryQuery(["@feat1"], "straightedge")).length).toBe(1)
+  })
+
+  it("without type restriction returns all", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface" })
+    repo.registerAncestor(["@feat1edge0", "@feat1"], { type: "straightedge" })
+    expect(repo.queryAll(makeAncestryQuery(["@feat1"])).length).toBe(2)
+  })
+
+  it("does not bleed across features", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface" })
+    repo.registerAncestor(["@feat2face0", "@feat2"], { type: "flatface" })
+
+    expect(repo.queryAll(makeAncestryQuery(["@feat1"], "flatface")).length).toBe(1)
+    expect(repo.queryAll(makeAncestryQuery(["@feat2"], "flatface")).length).toBe(1)
+    expect(repo.queryAll(makeAncestryQuery(["@feat3"], "flatface"))).toEqual([])
+  })
+
+  it("resolves with extended ancestor set", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface", x: 1 })
+
+    const result = repo.query(makeAncestryQuery(["@feat1face0", "@feat1"], "flatface"))
+    expect(result).not.toBeNull()
+    expect((result as Record<string, unknown>).x).toBe(1)
+  })
+
+  it("finds registered solid and face", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@ex1"], { type: "solid", created_by: "ex1" })
+    repo.registerAncestor(["@ex1face0", "@ex1"], { type: "flatface" })
+
+    const solid = repo.query(makeAncestryQuery(["@ex1"], "solid"))
+    expect(solid).not.toBeNull()
+    expect((solid as Record<string, unknown>).type).toBe("solid")
+
+    const face = repo.query(makeAncestryQuery(["@ex1face0", "@ex1"], "flatface"))
+    expect(face).not.toBeNull()
   })
 })

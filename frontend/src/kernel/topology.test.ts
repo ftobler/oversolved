@@ -51,3 +51,396 @@ describe("detectTopology parity with Python", () => {
     })
   }
 })
+
+// ─── Helpers ───
+
+const lineGeom = (x1: number, y1: number, x2: number, y2: number) => ({
+  start: [x1, y1],
+  end: [x2, y2],
+})
+
+const circleGeom = (cx: number, cy: number, r: number) => ({
+  center: [cx, cy],
+  radius: r,
+})
+
+const arcGeom = (cx: number, cy: number, r: number, aStartDeg: number, aEndDeg: number) => {
+  const a0 = (aStartDeg * Math.PI) / 180
+  const a1 = (aEndDeg * Math.PI) / 180
+  return {
+    center: [cx, cy],
+    radius: r,
+    angle_start: aStartDeg,
+    angle_end: aEndDeg,
+    start: [cx + r * Math.cos(a0), cy + r * Math.sin(a0)],
+    end: [cx + r * Math.cos(a1), cy + r * Math.sin(a1)],
+  }
+}
+
+const rectGeom = (x0: number, y0: number, x1: number, y1: number) => ({
+  bottom: lineGeom(x0, y0, x1, y0),
+  right: lineGeom(x1, y0, x1, y1),
+  top: lineGeom(x1, y1, x0, y1),
+  left: lineGeom(x0, y1, x0, y0),
+})
+
+const ns = (result: ReturnType<typeof detectTopology>) => result.surfaces.length
+const ni = (result: ReturnType<typeof detectTopology>) =>
+  Object.keys(result.intersection_points).length
+
+const COORD_TOL = 1e-6
+
+// ─── Surface counts ───
+
+describe("detectTopology surface counts", () => {
+  it("triangle → 1 surface, 0 intersections", () => {
+    const r = detectTopology({
+      a: lineGeom(0, 0, 2, 0),
+      b: lineGeom(2, 0, 1, 2),
+      c: lineGeom(1, 2, 0, 0),
+    })
+    expect(ns(r)).toBe(1)
+    expect(ni(r)).toBe(0)
+  })
+
+  it("rectangle → 1 surface, 0 intersections", () => {
+    const r = detectTopology(rectGeom(0, 0, 2, 2))
+    expect(ns(r)).toBe(1)
+    expect(ni(r)).toBe(0)
+  })
+
+  it("standalone circle → 1 surface", () => {
+    const r = detectTopology({ c: circleGeom(1, 1, 1) })
+    expect(ns(r)).toBe(1)
+    expect(ni(r)).toBe(0)
+  })
+
+  it("rectangle with diagonal → 2 surfaces", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 2, 2),
+      diag: lineGeom(0, 0, 2, 2),
+    })
+    expect(ns(r)).toBe(2)
+    expect(ni(r)).toBe(0)
+  })
+
+  it("rectangle with horizontal midline → 2 surfaces, 2 intersections", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 4, 4),
+      mid: lineGeom(-1, 2, 5, 2),
+    })
+    expect(ns(r)).toBe(2)
+    expect(ni(r)).toBe(2)
+  })
+
+  it("rectangle with vertical midline → 2 surfaces, 2 intersections", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 4, 4),
+      mid: lineGeom(2, -1, 2, 5),
+    })
+    expect(ns(r)).toBe(2)
+    expect(ni(r)).toBe(2)
+  })
+
+  it("rectangle with non-corner diagonal → 2 surfaces", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 4, 4),
+      slash: lineGeom(0, 2, 2, 4),
+    })
+    expect(ns(r)).toBe(2)
+  })
+
+  it("circle cut by diameter chord → 2 surfaces", () => {
+    const r = detectTopology({
+      c: circleGeom(0, 0, 1),
+      chord: lineGeom(-1, 0, 1, 0),
+    })
+    expect(ns(r)).toBe(2)
+  })
+
+  it("circle cut by off-center chord → 2 surfaces, 2 intersections", () => {
+    const r = detectTopology({
+      c: circleGeom(0, 0, 1),
+      chord: lineGeom(-1, 0.5, 1, 0.5),
+    })
+    expect(ns(r)).toBe(2)
+    expect(ni(r)).toBe(2)
+  })
+
+  it("two overlapping circles → 3 surfaces, 2 intersections", () => {
+    const r = detectTopology({
+      c1: circleGeom(-0.5, 0, 1),
+      c2: circleGeom(0.5, 0, 1),
+    })
+    expect(ns(r)).toBe(3)
+    expect(ni(r)).toBe(2)
+  })
+
+  it("semicircle arc + diameter → 1 surface", () => {
+    const r = detectTopology({
+      semi: arcGeom(0, 0, 1, 0, 180),
+      diam: lineGeom(-1, 0, 1, 0),
+    })
+    expect(ns(r)).toBe(1)
+    expect(ni(r)).toBe(0)
+  })
+
+  it("3/4 arc + chord → 1 surface", () => {
+    const r = detectTopology({
+      a: arcGeom(0, 0, 1, 0, 270),
+      ch: lineGeom(0, -1, 1, 0),
+    })
+    expect(ns(r)).toBe(1)
+  })
+
+  it("single line → 0 surfaces", () => {
+    const r = detectTopology({ l: lineGeom(0, 0, 1, 1) })
+    expect(ns(r)).toBe(0)
+  })
+
+  it("two non-intersecting lines → 0 surfaces", () => {
+    const r = detectTopology({
+      a: lineGeom(0, 0, 1, 0),
+      b: lineGeom(0, 1, 1, 1),
+    })
+    expect(ns(r)).toBe(0)
+  })
+
+  it("two separate rectangles → 2 surfaces", () => {
+    const r = detectTopology({
+      b1: lineGeom(0, 0, 2, 0),
+      r1: lineGeom(2, 0, 2, 2),
+      t1: lineGeom(2, 2, 0, 2),
+      l1: lineGeom(0, 2, 0, 0),
+      b2: lineGeom(4, 0, 6, 0),
+      r2: lineGeom(6, 0, 6, 2),
+      t2: lineGeom(6, 2, 4, 2),
+      l2: lineGeom(4, 2, 4, 0),
+    })
+    expect(ns(r)).toBe(2)
+    expect(ni(r)).toBe(0)
+  })
+
+  it("rectangle with two parallel splits → 3 surfaces, 4 intersections", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 6, 4),
+      s1: lineGeom(2, -1, 2, 5),
+      s2: lineGeom(4, -1, 4, 5),
+    })
+    expect(ns(r)).toBe(3)
+    expect(ni(r)).toBe(4)
+  })
+
+  it("rectangle with cross → 4 surfaces, 5 intersections", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 4, 4),
+      h: lineGeom(-1, 2, 5, 2),
+      v: lineGeom(2, -1, 2, 5),
+    })
+    expect(ns(r)).toBe(4)
+    expect(ni(r)).toBe(5)
+  })
+
+  it("CW arc face (180°→0°) → 1 surface", () => {
+    const r = detectTopology({
+      semi: arcGeom(0, 0, 1, 180, 0),
+      chord: lineGeom(1, 0, -1, 0),
+    })
+    expect(ns(r)).toBe(1)
+  })
+})
+
+// ─── Query strings ───
+
+describe("detectTopology query strings", () => {
+  it("triangle surface has query", () => {
+    const r = detectTopology(
+      { a: lineGeom(0, 0, 2, 0), b: lineGeom(2, 0, 1, 2), c: lineGeom(1, 2, 0, 0) },
+      "sketch1",
+    )
+    const q = r.surfaces[0].query as string
+    expect(q.startsWith("?")).toBe(true)
+    expect(q.endsWith(":flatface")).toBe(true)
+    expect(q).toContain("@sketch1/a")
+    expect(q).toContain("@sketch1/b")
+    expect(q).toContain("@sketch1/c")
+  })
+
+  it("triangle surface query is deterministic", () => {
+    const geom = { a: lineGeom(0, 0, 2, 0), b: lineGeom(2, 0, 1, 2), c: lineGeom(1, 2, 0, 0) }
+    const r1 = detectTopology(geom, "sketch1")
+    const r2 = detectTopology(geom, "sketch1")
+    expect(r1.surfaces[0].query).toBe(r2.surfaces[0].query)
+  })
+
+  it("different geometries produce different queries", () => {
+    const rectG = {
+      bottom: lineGeom(0, 0, 2, 0),
+      right: lineGeom(2, 0, 2, 2),
+      top: lineGeom(2, 2, 0, 2),
+      left: lineGeom(0, 2, 0, 0),
+    }
+    const rRect = detectTopology(rectG, "sk")
+    const rectQuery = rRect.surfaces[0].query as string
+
+    const diagG = { ...rectG, diag: lineGeom(0, 0, 2, 2) }
+    const rDiag = detectTopology(diagG, "sk")
+    expect(rDiag.surfaces.length).toBe(2)
+    const q0 = rDiag.surfaces[0].query as string
+    const q1 = rDiag.surfaces[1].query as string
+    expect(q0).not.toBe(q1)
+    expect(q0).not.toBe(rectQuery)
+    expect(q1).not.toBe(rectQuery)
+  })
+})
+
+// ─── Construction lines ───
+
+describe("detectTopology construction lines", () => {
+  it("construction lines are ignored", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 2, 2),
+      diag: { ...lineGeom(0, 0, 2, 2), construction: true },
+    })
+    expect(ns(r)).toBe(1)
+  })
+
+  it("only construction lines → 0 surfaces", () => {
+    const r = detectTopology({
+      a: { ...lineGeom(0, 0, 2, 0), construction: true },
+      b: { ...lineGeom(2, 0, 1, 2), construction: true },
+      c: { ...lineGeom(1, 2, 0, 0), construction: true },
+    })
+    expect(ns(r)).toBe(0)
+  })
+
+  it("construction line does not split surface", () => {
+    const r = detectTopology({
+      ...rectGeom(0, 0, 4, 4),
+      h: { ...lineGeom(-1, 2, 5, 2), construction: true },
+    })
+    expect(ns(r)).toBe(1)
+  })
+})
+
+// ─── Wrapping arcs ───
+
+describe("detectTopology wrapping arcs", () => {
+  it("wrapping arc half-disk (270°→90° through 0°) → 1 surface", () => {
+    const r = 1.0
+    const rTopo = detectTopology({
+      a: arcGeom(0, 0, r, 270, 90),
+      l: lineGeom(0, -r, 0, r),
+    })
+    expect(ns(rTopo)).toBe(1)
+  })
+
+  it("wrapping arc three-quarter (270°→180° through 0°) → 1 surface", () => {
+    const r = 1.0
+    const rTopo = detectTopology({
+      a: arcGeom(0, 0, r, 270, 180),
+      l: lineGeom(0, -r, -r, 0),
+    })
+    expect(ns(rTopo)).toBe(1)
+  })
+
+  it("equal belt (stadium) → 1 surface", () => {
+    const r = 1.0
+    const d = 4.0
+    const rTopo = detectTopology({
+      arc_l: arcGeom(-d / 2, 0, r, 90, 270),
+      arc_r: arcGeom(d / 2, 0, r, 270, 90),
+      top: lineGeom(-d / 2, r, d / 2, r),
+      bot: lineGeom(d / 2, -r, -d / 2, -r),
+    })
+    expect(ns(rTopo)).toBe(1)
+  })
+
+  it("unequal belt → 1 surface", () => {
+    const r1 = 1.0
+    const r2 = 2.0
+    const d = 6.0
+    const rTopo = detectTopology({
+      arc_l: arcGeom(-d / 2, 0, r1, 90, 270),
+      arc_r: arcGeom(d / 2, 0, r2, 270, 90),
+      top: lineGeom(-d / 2, r1, d / 2, r2),
+      bot: lineGeom(d / 2, -r2, -d / 2, -r1),
+    })
+    expect(ns(rTopo)).toBe(1)
+  })
+})
+
+// ─── Boundary edge vertex references ───
+
+describe("detectTopology boundary edges", () => {
+  it("boundary edges have vertex references", () => {
+    const r = detectTopology({
+      a: lineGeom(0, 0, 2, 0),
+      b: lineGeom(2, 0, 1, 2),
+      c: lineGeom(1, 2, 0, 0),
+    })
+    expect(ns(r)).toBe(1)
+    const { vertices } = r
+    const surface = r.surfaces[0]
+    const boundary = surface.boundary as Record<string, unknown>[]
+    for (const edge of boundary) {
+      expect(edge).toHaveProperty("start_vertex")
+      expect(edge).toHaveProperty("end_vertex")
+      const sv = edge.start_vertex as string
+      const ev = edge.end_vertex as string
+      expect(sv === null || sv in vertices).toBe(true)
+      expect(ev === null || ev in vertices).toBe(true)
+      if (edge.kind === "line") {
+        expect(sv).not.toBeNull()
+        expect(ev).not.toBeNull()
+      }
+    }
+  })
+
+  it("boundary edge vertex coords match edge coords", () => {
+    const r = detectTopology(rectGeom(0, 0, 4, 4))
+    expect(ns(r)).toBe(1)
+    const { vertices } = r
+    const surface = r.surfaces[0]
+    const boundary = surface.boundary as Record<string, unknown>[]
+    for (const edge of boundary) {
+      if (edge.kind !== "line") continue
+      const sv = vertices[edge.start_vertex as string]
+      const ev = vertices[edge.end_vertex as string]
+      expect(Math.abs(sv.x - (edge.start as number[])[0])).toBeLessThan(COORD_TOL)
+      expect(Math.abs(sv.y - (edge.start as number[])[1])).toBeLessThan(COORD_TOL)
+      expect(Math.abs(ev.x - (edge.end as number[])[0])).toBeLessThan(COORD_TOL)
+      expect(Math.abs(ev.y - (edge.end as number[])[1])).toBeLessThan(COORD_TOL)
+    }
+  })
+})
+
+// ─── Degenerate and touching geometry ───
+
+describe("detectTopology degenerate geometry", () => {
+  it("two touching rectangles → 2 surfaces", () => {
+    const r = detectTopology({
+      bot: lineGeom(-25, -10.0000000001, 25, -10.0000000001),
+      rig: lineGeom(25, -10, 25, 9.9999999999),
+      top: lineGeom(25, 9.9999999999, -25, 9.9999999998),
+      lef: lineGeom(-25, 9.9999999998, -25, -10.0000000001),
+      t_bot: lineGeom(-22.3419399725, 9.9999999998, -12.6978362039, 9.9999999998),
+      t_rig: lineGeom(-12.6978362039, 9.9999999998, -12.6978362039, 32.1068859586),
+      t_top: lineGeom(-12.6978362039, 32.1068859586, -22.3419399725, 32.1068859586),
+      t_lef: lineGeom(-22.3419399725, 32.1068859586, -22.3419399725, 9.9999999998),
+    })
+    expect(r.surfaces.length).toBe(2)
+    expect(r.surfaces.some((sfc) => (sfc.boundary as unknown[]).length === 4)).toBe(true)
+  })
+
+  it("topology with degenerate zero-length line still finds surface", () => {
+    const r = detectTopology({
+      e1: { kind: "line", construction: false, ...lineGeom(0.0, 0.0, 1.0, 0.0) },
+      e2: { kind: "line", construction: false, ...lineGeom(1.0, 0.0, 1.0, 1.0) },
+      e3: { kind: "line", construction: false, ...lineGeom(1.0, 1.0, 0.0, 1.0) },
+      e4: { kind: "line", construction: false, ...lineGeom(0.0, 1.0, 0.0, 0.0) },
+      e5: { kind: "line", construction: false, ...lineGeom(0.5, 0.5, 0.5, 0.5) },
+    })
+    expect(ns(r)).toBe(1)
+  })
+})
