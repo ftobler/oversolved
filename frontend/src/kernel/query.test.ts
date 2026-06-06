@@ -524,6 +524,103 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(resultB).not.toBeNull()
     expect((resultB as Payload)["face_index"]).toBe(1)
   })
+
+  /** Edge hashes populate byGeomHash, not ancestral keys.
+   *  Ported from Python's test_edge_registration_has_hash_tag. */
+  it("edge geom hash populates byGeomHash not ancestral", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@body1/edge0", "@ex1", "@body1"],
+      { type: "straightedge", body_id: "body1", created_by: "ex1", edge_index: 0 },
+      "gedge_xyz",
+    )
+
+    expect(repo.byGeomHash.has("gedge_xyz")).toBe(true)
+    expect(repo.byGeomHash.get("gedge_xyz")!.length).toBe(1)
+
+    for (const entry of repo.ancestral.values()) {
+      for (const tag of entry.set) {
+        expect(isGeomHashId(tag)).toBe(false)
+      }
+    }
+  })
+
+  /** Vertex hashes populate byGeomHash, not ancestral keys.
+   *  Ported from Python's test_vetex_registration_has_gvertex_tag. */
+  it("vertex geom hash populates byGeomHash not ancestral", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@body1/vertex0", "@ex1", "@body1"],
+      { type: "vertex", body_id: "body1", created_by: "ex1", vertex_index: 0 },
+      "gvertex_def",
+    )
+
+    expect(repo.byGeomHash.has("gvertex_def")).toBe(true)
+    expect(repo.byGeomHash.get("gvertex_def")!.length).toBe(1)
+
+    for (const entry of repo.ancestral.values()) {
+      for (const tag of entry.set) {
+        expect(isGeomHashId(tag)).toBe(false)
+      }
+    }
+  })
+})
+
+/** Face registrations have >=3 structural tags (positional /face tag, feature ref, body ref).
+ *  The geom hash lives in by_geom_hash, not in the ancestral key itself.
+ *  Ported from Python's test_face_registration_has_4_tags. */
+describe("face registration structural tags", () => {
+  it("face registration key has at least 3 structural tags", () => {
+    const repo = new Repository()
+
+    // Register faces with the standard 3-tag pattern + optional profile tokens
+    repo.registerAncestor(
+      ["@body1/face0", "@ex1", "@body1"],
+      makeFacePayload("body1", "ex1", 0),
+    )
+    repo.registerAncestor(
+      ["@body1/face1", "@ex1", "@body1", "@sk1/profileA"],
+      makeFacePayload("body1", "ex1", 1),
+    )
+    repo.registerAncestor(
+      ["@body2/face0", "@ex2", "@body2"],
+      makeFacePayload("body2", "ex2", 0),
+    )
+
+    // Filter to face registrations — keys whose set contains a /face positional tag
+    let foundFace = false
+    for (const entry of repo.ancestral.values()) {
+      const hasFaceTag = [...entry.set].some(
+        (tag) =>
+          typeof tag === "string" && tag.includes("/face") && tag.startsWith("@"),
+      )
+      if (hasFaceTag) {
+        foundFace = true
+        // At minimum: @body_id/faceN, @feature_id, @body_id (+ optional profile tokens)
+        expect(entry.set.size).toBeGreaterThanOrEqual(3)
+      }
+    }
+    expect(foundFace).toBe(true)
+  })
+
+  /** No geom_hash tag appears in the ancestral key Set of any face registration.
+   *  This is a structural invariant: hashes live in byGeomHash only. */
+  it("no geom_hash tag in face registration ancestral key", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@body1/face0", "@ex1", "@body1"],
+      makeFacePayload("body1", "ex1", 0),
+      "gface_abc",
+    )
+
+    for (const entry of repo.ancestral.values()) {
+      for (const tag of entry.set) {
+        expect(isGeomHashId(tag)).toBe(false)
+      }
+    }
+
+    expect(repo.byGeomHash.has("gface_abc")).toBe(true)
+  })
 })
 
 /** Tests for the geometric-classifier predicate functions mirroring

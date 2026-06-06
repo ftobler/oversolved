@@ -5,7 +5,8 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { solveFillet, solveChamfer } from './filletChamfer'
+import { solveFillet, solveChamfer, resolveFilletEdges } from './filletChamfer'
+import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -62,5 +63,29 @@ describe('solveChamfer guard paths', () => {
     expect(() =>
       solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: [], distance: 2 } }, repo, oneBody()),
     ).toThrow(/requires at least one edge/)
+  })
+})
+
+/** resolveFilletEdges must return [] when edgeQueries is empty. */
+describe('resolveFilletEdges guard', () => {
+  const scopeNull = null as unknown as DisposeScope
+
+  it('returns empty array when edgeQueries is empty (body with valid shape)', () => {
+    const body: Body = {
+      id: 'b1',
+      created_by: 'f1',
+      modified_by: [],
+      shape: 'handle_42', // non-null to exercise the edgeQueries.length === 0 branch
+      sketch_id: 'sk',
+      brep_diff: null,
+      profile_queries: [],
+      face_lineage: {},
+      edge_lineage: {},
+    }
+    expect(resolveFilletEdges(oc, scopeNull, table, body, [])).toEqual([])
+  })
+
+  it('returns empty array when edgeQueries is empty (body with null shape)', () => {
+    expect(resolveFilletEdges(oc, scopeNull, table, oneBody().body_b, [])).toEqual([])
   })
 })

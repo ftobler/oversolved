@@ -21,7 +21,7 @@ import { makeBox, faceCentroid, faceNormal } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
 import { faceGeometryHash } from '../geomHash'
 import { Repository } from '../query'
-import { solveFillet, solveChamfer } from './filletChamfer'
+import { solveFillet, solveChamfer, resolveFilletEdges } from './filletChamfer'
 import type { Body } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
 
@@ -107,6 +107,25 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect(result.status).toBe('ok')
       expect(bodyStore.body_b.modified_by).toEqual(['cha1'])
       expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))).toBeCloseTo(980, 1)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  /**
+   * Edges collected by resolveFilletEdges must not include duplicates.
+   *
+   * A 10x10x10 box has 12 unique edges. The IsSame-based dedup in
+   * buildEdgeIndex and resolveEdgesWithIndex must yield exactly 12.
+   */
+  it('resolveFilletEdges returns exactly 12 unique edges for a box (IsSame dedup)', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBody(scope, table)
+      const allEdgeQueries = Array.from({ length: 24 }, (_, i) => `?body_b:edge:${i}`)
+      const edges = resolveFilletEdges(occ, scope, table, bodyStore.body_b, allEdgeQueries)
+      expect(edges.length).toBe(12)
     } finally {
       scope.dispose()
     }
