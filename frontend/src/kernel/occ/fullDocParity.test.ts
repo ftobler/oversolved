@@ -243,7 +243,7 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
           // Soft-fail: print issues but don't block progress.
           // To make this test hard-fail, set PARITY_HARD_FAIL=1 env var.
           const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
-          if (process.env.PARITY_HARD_FAIL === '1') {
+          if (import.meta.env.PARITY_HARD_FAIL === '1') {
             expect(allIssues.length, msg).toBe(0)
           } else {
             console.warn(`[parity] ${entry.label}: ${msg}`)
