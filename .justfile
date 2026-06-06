@@ -52,6 +52,13 @@ frontend-test:
 frontend-build:
     npm run build
 
+# Full-document WASM parity gate (TS kernel vs Python baseline). Slow, needs
+# OCC.js provisioned, hard-fails on any divergence. Kept out of `just frontend`.
+[working-directory: "frontend"]
+parity:
+    npm run occ:install
+    npm run test:parity
+
 
 runf:
     just run_front

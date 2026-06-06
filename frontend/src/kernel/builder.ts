@@ -9,6 +9,7 @@ import { sha256Hex } from './sha256'
 import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'
 import { faceGeometryHash, faceNormalHash, edgeGeometryHash, vertexGeometryHash, isGeomKeyedLineage } from './geomHash'
 import { faceTokens, edgeLineageTokens } from './faceQuery'
+import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { normalToFrame } from './types3d'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import type { TessMesh } from './occ/tessellation'
@@ -695,6 +696,10 @@ export function build(
         : deps.tessellateBodies(pickCheckpoint.body_store_snapshot, null)
     }
   }
+
+  // Builtin planes are always addressable in the result (port of builder.py's
+  // final `result.update(_BUILTIN_PLANE_RESULTS)`).
+  Object.assign(result, BUILTIN_PLANE_RESULTS)
 
   const response: BuildResponse = {
     solve_ms: buildMs,

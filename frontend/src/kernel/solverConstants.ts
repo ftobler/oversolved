@@ -35,3 +35,15 @@ export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
     type: "plane",
   },
 }
+
+/**
+ * Builtin planes as feature-result entries (port of `_BUILTIN_PLANE_RESULTS`).
+ * `build()` merges these into the result dict so a doc's planes are addressable,
+ * mirroring `builder.py`. The `type` key is dropped, matching Python.
+ */
+export const BUILTIN_PLANE_RESULTS: Record<string, Record<string, unknown>> = Object.fromEntries(
+  Object.entries(BUILTIN_PLANES).map(([name, plane]) => {
+    const { type: _type, ...rest } = plane as Record<string, unknown>
+    return [name, { status: "ok", plane: rest }]
+  }),
+)

@@ -18,9 +18,10 @@ import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { HandleTable } from './handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from './tessellation'
+import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { build, type BuildDeps } from '../builder'
 import { Repository } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
+import { createFeatureSolver, unportedKinds } from '../solverRegistry'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { OccModule } from './occTypes'
@@ -82,16 +83,23 @@ function diffResult(
     const pyVal = pyResult[key] as Record<string, unknown> | undefined
     if (!tsVal || !pyVal) continue
 
-    // Compare status
+    // Compare status. On a TS exception, surface the error so the gate says
+    // *why* a feature failed, not just that it did.
     if (tsVal.status !== pyVal.status) {
-      issues.push(`${label}/result/${key}/status: TS=${tsVal.status} Python=${pyVal.status}`)
+      const detail = tsVal.status === 'exception' ? ` (${String(tsVal.exception)})` : ''
+      issues.push(`${label}/result/${key}/status: TS=${tsVal.status} Python=${pyVal.status}${detail}`)
     }
 
-    // Compare geometry (for sketch features)
+    // Compare geometry (for sketch features). Gauge-free: underconstrained
+    // entities live on a shared solution manifold where the Rust LM and scipy
+    // legitimately differ, so only compare geometry where Python marks the
+    // entity determinate (the same rule shadowCompare applies).
     const tsGeom = tsVal.geometry as Record<string, number[]> | undefined
     const pyGeom = pyVal.geometry as Record<string, number[]> | undefined
+    const pyGeomFeat = pyVal.features as Record<string, { status: string }> | undefined
     if (tsGeom && pyGeom) {
       for (const [eid, pyParams] of Object.entries(pyGeom)) {
+        if (pyGeomFeat?.[eid]?.status !== 'fully_constrained') continue
         const tsParams = tsGeom[eid]
         if (!tsParams) {
           issues.push(`${label}/result/${key}/geometry/${eid}: missing in TS`)
@@ -133,6 +141,12 @@ function diffResult(
   return issues
 }
 
+function sortedVerts(v: number[][]): number[][] {
+  return [...v].sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
+}
+
+const VERT_TOL = 1e-4
+
 function diffBodies(
   tsBodies: Record<string, Record<string, unknown>>,
   pyBodies: Record<string, BaselineBody>,
@@ -147,20 +161,66 @@ function diffBodies(
       continue
     }
 
+    // Lineage identity.
+    if ((tsBody.created_by ?? '') !== pyBody.created_by) {
+      issues.push(`${label}/bodies/${bid}/created_by: TS=${tsBody.created_by} Python=${pyBody.created_by}`)
+    }
+    const tsMod = sortHashes((tsBody.modified_by as string[]) ?? [])
+    const pyMod = sortHashes(pyBody.modified_by ?? [])
+    if (JSON.stringify(tsMod) !== JSON.stringify(pyMod)) {
+      issues.push(`${label}/bodies/${bid}/modified_by: TS=[${tsMod}] Python=[${pyMod}]`)
+    }
+
+    // mesh_error presence parity (a silent unit-cube fallback must not pass).
+    const tsErr = tsBody.mesh_error != null
+    const pyErr = pyBody.mesh_error != null
+    if (tsErr !== pyErr) {
+      issues.push(`${label}/bodies/${bid}/mesh_error: TS=${tsErr} Python=${pyErr}`)
+    }
+
+    // Structural counts.
+    if (typeof tsBody.face_count === 'number' && tsBody.face_count !== pyBody.face_count) {
+      issues.push(`${label}/bodies/${bid}/face_count: TS=${tsBody.face_count} Python=${pyBody.face_count}`)
+    }
+    if (typeof tsBody.edge_count === 'number' && tsBody.edge_count !== pyBody.edge_count) {
+      issues.push(`${label}/bodies/${bid}/edge_count: TS=${tsBody.edge_count} Python=${pyBody.edge_count}`)
+    }
+
+    // Vertex multiset within tolerance (count is a fast pre-filter).
     const tsMesh = tsBody.mesh as { vertices?: number[][] } | undefined
     if (tsMesh?.vertices && pyBody.mesh.vertices) {
-      const tsVertCount = tsMesh.vertices.length
-      const pyVertCount = pyBody.mesh.vertices.length
-      if (tsVertCount !== pyVertCount) {
-        issues.push(`${label}/bodies/${bid}/vertices: TS=${tsVertCount} Python=${pyVertCount}`)
+      const tsV = tsMesh.vertices
+      const pyV = pyBody.mesh.vertices
+      if (tsV.length !== pyV.length) {
+        issues.push(`${label}/bodies/${bid}/vertices: count TS=${tsV.length} Python=${pyV.length}`)
+      } else {
+        const a = sortedVerts(tsV)
+        const b = sortedVerts(pyV)
+        let maxd = 0
+        for (let i = 0; i < a.length; i++) {
+          maxd = Math.max(
+            maxd,
+            Math.abs(a[i][0] - b[i][0]),
+            Math.abs(a[i][1] - b[i][1]),
+            Math.abs(a[i][2] - b[i][2]),
+          )
+        }
+        if (maxd > VERT_TOL) {
+          issues.push(`${label}/bodies/${bid}/vertices: max delta ${maxd.toFixed(5)} > ${VERT_TOL}`)
+        }
       }
     }
 
-    if (pyBody.face_hashes) {
-      const tsHashes = sortHashes((tsBody.face_hashes as string[]) ?? [])
-      const pyHashes = sortHashes(pyBody.face_hashes)
+    // Geometry-hash set equality. Curved faces/edges can diverge within
+    // tessellation tolerance (accepted, see 2b notes); the soft-mode inventory
+    // surfaces those so the hard-fail policy can be scoped.
+    for (const field of ['face_hashes', 'edge_hashes'] as const) {
+      const tsHashes = sortHashes((tsBody[field] as string[]) ?? [])
+      const pyHashes = sortHashes((pyBody[field] as string[]) ?? [])
       if (JSON.stringify(tsHashes) !== JSON.stringify(pyHashes)) {
-        issues.push(`${label}/bodies/${bid}/face_hashes: mismatch`)
+        issues.push(
+          `${label}/bodies/${bid}/${field}: mismatch (TS=${tsHashes.length} Python=${pyHashes.length})`,
+        )
       }
     }
   }
@@ -187,7 +247,26 @@ function tessellateBodies(
       })
       const edges = solidToEdges(ocMod, table, body.shape)
       const vertices = solidToVertices(ocMod, table, body.shape)
-      out[bodyId] = { mesh, edges, vertices, face_hashes: (mesh.face_data ?? []).map(() => '') }
+      // Mirror run_kernel.py: face_hashes from face_data (centroid+normal),
+      // edge_hashes from the edge dicts, both string-sorted.
+      const faceHashes = (mesh.face_data ?? [])
+        .map((fd) => faceGeometryHash(fd.centroid, fd.normal))
+        .sort()
+      const edgeHashes = edges
+        .map((ed) => edgeGeometryHash(ed as unknown as Record<string, unknown>))
+        .sort()
+      out[bodyId] = {
+        id: body.id,
+        created_by: body.created_by || '',
+        modified_by: body.modified_by ?? [],
+        mesh,
+        edges,
+        vertices,
+        face_count: (mesh.face_data ?? []).length,
+        edge_count: edges.length,
+        face_hashes: faceHashes,
+        edge_hashes: edgeHashes,
+      }
     } catch {
       // non-fatal
     }
@@ -219,6 +298,16 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
         return
       }
 
+      // Mirror the live router: a doc with any unported kind is sent to Python
+      // (isDocFullyPorted === false), so the TS kernel never sees it. Don't fail
+      // it here -- that would test a path production never takes.
+      const features = (spec.features as Array<{ kind?: unknown }>) ?? []
+      const unported = unportedKinds(features)
+      if (unported.size > 0) {
+        console.warn(`[parity] ${entry.label}: skipped (unported kinds: ${[...unported].join(', ')})`)
+        return
+      }
+
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
 
@@ -240,14 +329,14 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
         ]
 
         if (allIssues.length > 0) {
-          // Soft-fail: print issues but don't block progress.
-          // To make this test hard-fail, set PARITY_HARD_FAIL=1 env var.
+          // Hard-fail by default: this is the enforced parity gate. Set
+          // PARITY_SOFT=1 to downgrade to a warn-only inventory for local triage.
           const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
-          if (import.meta.env.PARITY_HARD_FAIL === '1') {
-            expect(allIssues.length, msg).toBe(0)
+          if (import.meta.env.PARITY_SOFT === '1') {
+            console.warn(`[parity] ${entry.label}: SOFT ${msg}`)
+            expect(allIssues.length, `SOFT: ${msg}`).toBeGreaterThan(-1)
           } else {
-            console.warn(`[parity] ${entry.label}: ${msg}`)
-            expect(allIssues.length, `SOFT-FAIL: ${msg}`).toBeGreaterThan(-1)
+            expect(allIssues.length, msg).toBe(0)
           }
         }
       } finally {

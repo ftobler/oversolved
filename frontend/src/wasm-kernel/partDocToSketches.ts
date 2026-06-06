@@ -36,12 +36,26 @@ export interface ExtractResult {
 const KNOWN_POINTS = ['start', 'end', 'center', 'xy'] as const
 const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
 
-/** Resolve a `$entityId[point]` query against the sketch's local entity ids. */
+/**
+ * Resolve a constraint ref against the sketch's local entity ids. Accepts both
+ * the live `$entityId[point]` query-string form and the already-resolved
+ * `{entity, point}` dict form (the regression-baseline / non-$ref docs carry the
+ * latter). The dict form is passed through after validating the entity is local.
+ */
 function resolveLocal(
-  q: string | undefined,
+  q: unknown,
   entityIds: Set<string>,
 ): { entity: string; point?: string } | null {
-  if (!q || !q.startsWith('$')) return null
+  if (q && typeof q === 'object') {
+    const obj = q as { entity?: unknown; point?: unknown }
+    if (typeof obj.entity === 'string' && entityIds.has(obj.entity)) {
+      return typeof obj.point === 'string'
+        ? { entity: obj.entity, point: obj.point }
+        : { entity: obj.entity }
+    }
+    return null
+  }
+  if (typeof q !== 'string' || !q.startsWith('$')) return null
   const local = q.slice(1)
   for (const pt of KNOWN_POINTS) {
     if (local.length > pt.length && local.endsWith(pt)) {
