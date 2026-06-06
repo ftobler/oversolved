@@ -12,6 +12,7 @@ import { build, type BuildDeps, type BuildResponse } from './builder'
 import { Repository } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver } from './features/sketch'
+import { postRegister } from './features/postRegister'
 import { loadOccWeb } from './occ/loadOccWeb'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
@@ -98,10 +99,10 @@ export async function solveLocally(
   try {
     const deps: BuildDeps = {
       trySolveFeature: createFeatureSolver(oc, scope, table),
-      postRegister: () => {
-        // no-op: the builder handles brep ancestry registration in
-        // _snapshotWithBrepGeometry after tessellation.
-      },
+      // Registers solved sketch plane/topology (_pt_/_topo_) so downstream
+      // features resolve the profile; the builder handles brep ancestry
+      // separately after tessellation.
+      postRegister,
       initGlobalRepo: () => new Repository(),
       tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
     }

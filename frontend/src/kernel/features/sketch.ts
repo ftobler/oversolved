@@ -22,8 +22,11 @@ import type { PartFeature } from '@/types/cad'
 import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
-import { lowerSketch } from '@/wasm-kernel/lowerSketch'
+import { lowerSketch, ORIGIN_ID } from '@/wasm-kernel/lowerSketch'
 import { encodeInput, decodeOutput, STATUS_NAME } from '@/wasm-kernel/codec'
+import { detectTopology } from '../topology'
+import { frameToPlaneTransform, type Frame3D } from '../types3d'
+import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm } from '@/wasm-kernel/solverWasm'
 import type { SolveBytes } from '@/wasm-kernel/shadowCompare'
 
@@ -94,23 +97,34 @@ export function solveSketch(
   const out = decodeOutput(solverBytes(encodeInput(input)))
   const status = STATUS_NAME[out.overallStatus]
 
-  // Reconstruct per-entity geometry and status maps.
+  // Reconstruct per-entity geometry and status maps, plus rich geometry for
+  // topology detection (port of _geometry_from_array).
   const geometry: Record<string, number[]> = {}
   const features: Record<string, { status: string }> = {}
+  const richGeom: Record<string, Record<string, unknown>> = {}
   for (let i = 0; i < layout.length; i++) {
     const ent = layout[i]
     const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
+    if (ent.id === ORIGIN_ID) continue
     if (Math.abs(params[0]) > 1e-12 || params.length > 1) {
       geometry[ent.id] = [...params]
     }
-    const entStatus = STATUS_NAME[out.entityStatus[i]]
-    features[ent.id] = { status: entStatus }
+    features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
+    richGeom[ent.id] = enrichSketchEntity(ent.kind, params)
   }
+
+  // Topology + plane transform: what postRegister registers as _topo_/_pt_ so
+  // downstream features can resolve this sketch's profile.
+  const topology = detectTopology(richGeom, featureId)
+  const plane = resolveSketchPlane((feature.plane as string | undefined) ?? null, _globalRepo)
+  const plane_transform = frameToPlaneTransform(plane as Frame3D)
 
   return {
     status,
     geometry,
     features,
+    topology,
+    plane_transform,
     solve_ms: 0,
   }
 }

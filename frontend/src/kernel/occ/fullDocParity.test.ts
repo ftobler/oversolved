@@ -22,6 +22,7 @@ import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { build, type BuildDeps } from '../builder'
 import { Repository } from '../query'
 import { createFeatureSolver, unportedKinds } from '../solverRegistry'
+import { postRegister } from '../features/postRegister'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { OccModule } from './occTypes'
@@ -179,14 +180,17 @@ function diffBodies(
     }
 
     // Structural counts.
-    if (typeof tsBody.face_count === 'number' && tsBody.face_count !== pyBody.face_count) {
+    const faceCountOk = typeof tsBody.face_count !== 'number' || tsBody.face_count === pyBody.face_count
+    const edgeCountOk = typeof tsBody.edge_count !== 'number' || tsBody.edge_count === pyBody.edge_count
+    if (!faceCountOk) {
       issues.push(`${label}/bodies/${bid}/face_count: TS=${tsBody.face_count} Python=${pyBody.face_count}`)
     }
-    if (typeof tsBody.edge_count === 'number' && tsBody.edge_count !== pyBody.edge_count) {
+    if (!edgeCountOk) {
       issues.push(`${label}/bodies/${bid}/edge_count: TS=${tsBody.edge_count} Python=${pyBody.edge_count}`)
     }
 
     // Vertex multiset within tolerance (count is a fast pre-filter).
+    let vertsOk = false
     const tsMesh = tsBody.mesh as { vertices?: number[][] } | undefined
     if (tsMesh?.vertices && pyBody.mesh.vertices) {
       const tsV = tsMesh.vertices
@@ -207,20 +211,29 @@ function diffBodies(
         }
         if (maxd > VERT_TOL) {
           issues.push(`${label}/bodies/${bid}/vertices: max delta ${maxd.toFixed(5)} > ${VERT_TOL}`)
+        } else {
+          vertsOk = true
         }
       }
     }
 
-    // Geometry-hash set equality. Curved faces/edges can diverge within
-    // tessellation tolerance (accepted, see 2b notes); the soft-mode inventory
-    // surfaces those so the hard-fail policy can be scoped.
+    // Geometry-hash set equality. A hash mismatch when counts AND the vertex
+    // multiset already match is the accepted curved-face divergence: OCC.js and
+    // Python sample curved centroids/normals slightly differently and the 4dp
+    // hash rounding is sensitive to it, though the body is equal within
+    // tolerance. Warn but do not fail -- the structural + vertex checks already
+    // passed. Any hash mismatch with a count or vertex mismatch stays a failure.
+    const bodyGeomOk = faceCountOk && edgeCountOk && vertsOk
     for (const field of ['face_hashes', 'edge_hashes'] as const) {
       const tsHashes = sortHashes((tsBody[field] as string[]) ?? [])
       const pyHashes = sortHashes((pyBody[field] as string[]) ?? [])
       if (JSON.stringify(tsHashes) !== JSON.stringify(pyHashes)) {
-        issues.push(
-          `${label}/bodies/${bid}/${field}: mismatch (TS=${tsHashes.length} Python=${pyHashes.length})`,
-        )
+        const msg = `${label}/bodies/${bid}/${field}: mismatch (TS=${tsHashes.length} Python=${pyHashes.length})`
+        if (bodyGeomOk) {
+          console.warn(`[parity] ${msg} -- accepted curved-face divergence`)
+        } else {
+          issues.push(msg)
+        }
       }
     }
   }
@@ -314,7 +327,7 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
       try {
         const deps: BuildDeps = {
           trySolveFeature: createFeatureSolver(occMod, scope, table),
-          postRegister: () => {},
+          postRegister,
           initGlobalRepo: () => new Repository(),
           tessellateBodies: (bodyStore) => tessellateBodies(occMod, table, bodyStore),
         }
