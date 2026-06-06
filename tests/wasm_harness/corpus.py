@@ -163,6 +163,7 @@ def parametric_fixtures() -> list[dict[str, Any]]:
 
 # ─── New families ────────────────────────────────────────────────────────
 
+
 def _origin_circle(diameter: float) -> dict:
     """Circle centred at the origin via coincident-with-@builtin_origin + diameter
     (the pattern gap #1 was about)."""
@@ -174,13 +175,15 @@ def _origin_circle(diameter: float) -> dict:
     ])
     return make_doc(sk)
 
+
 def _extrude_then_fillet() -> dict:
     """Box + fillet on edge 0 (multi-feature chain)."""
     sk = rect_sketch_spec(w=10, h=10, sketch_id="sk1")
     ex = extrude_spec("sk1", "ex1", distance=5)
     fillet = {"id": "fillet1", "kind": "fillet",
-               "edges": ["?body_ex1:edge:0"], "radius": 1.5}
+              "edges": ["?body_ex1:edge:0"], "radius": 1.5}
     return make_doc(sk, ex, fillet)
+
 
 def _extrude_then_cut() -> dict:
     """Two overlapping boxes, second subtracts from first."""
@@ -190,17 +193,19 @@ def _extrude_then_cut() -> dict:
     ex2 = {**extrude_spec("sk2", "ex2", distance=8), "operation": "cut"}
     return make_doc(sk1, ex1, sk2, ex2)
 
+
 def _revolve_then_hole() -> dict:
     """Revolved rectangle makes a cylinder, then drill a hole."""
     sk = rect_sketch_spec(w=4, h=6, sketch_id="sk1")
     rev = {"id": "rev1", "kind": "revolve",
            "revolve": {"sketch": "@sk1", "angle": 360, "axis_origin": [0, 6, 0],
-                        "axis_direction": [0, 1, 0], "operation": "new"}}
+                       "axis_direction": [0, 1, 0], "operation": "new"}}
     pt_sk = point_sketch_spec([(0, 0)], sketch_id="pt_sk")
     hole = {"id": "hole1", "kind": "hole",
             "hole": {"sketch": "@pt_sk", "diameter": 2, "depth": 10,
                      "depth_mode": "blind", "direction": "normal", "target": "@rev1"}}
     return make_doc(sk, rev, pt_sk, hole)
+
 
 def _sweep_along_z() -> dict:
     """Sweep a 3x3 profile along a vertical Z line spine."""
@@ -208,12 +213,13 @@ def _sweep_along_z() -> dict:
     spine_sk = make_sketch("spine", plane="@builtin_plane_front",
                            entities=[{"id": "s1", "kind": "line"}],
                            initial={"s1": [0, 0, 0, 10]}, constraints=[
-        {"id": "c_fix", "kind": "fixed", "target": {"entity": "s1", "point": "start"}, "x": 0, "y": 0},
-        {"id": "c_v", "kind": "vertical", "target": {"entity": "s1"}},
-    ])
+                               {"id": "c_fix", "kind": "fixed", "target": {"entity": "s1", "point": "start"}, "x": 0, "y": 0},
+                               {"id": "c_v", "kind": "vertical", "target": {"entity": "s1"}},
+                           ])
     sweep = {"id": "sw1", "kind": "sweep",
              "sweep": {"profile": "@prof", "path": "$spine.s1", "operation": "new"}}
     return make_doc(prof_sk, spine_sk, sweep)
+
 
 def _transform_translate() -> dict:
     """Translate a box by [4, 2, 0]."""
@@ -224,6 +230,7 @@ def _transform_translate() -> dict:
                         "translation": [4, 2, 0], "rotation_angle": 0, "scale": 1}}
     return make_doc(sk, ex, tr)
 
+
 def _circular_array_3() -> dict:
     """Circular array of a small box: 3 copies around Z."""
     sk = rect_sketch_spec(w=2, h=2, sketch_id="sk1")
@@ -233,6 +240,7 @@ def _circular_array_3() -> dict:
                               "operation": "add", "axis_origin": [0, 0, 0],
                               "axis_direction": [0, 0, 1]}}
     return make_doc(sk, ex, arr)
+
 
 def _boolean_intersect() -> dict:
     """Union two boxes then intersect."""
