@@ -14,8 +14,12 @@ import { sha256Hex } from "./sha256"
  * realistic CAD coordinate (true decimal ties at the 4th place are not
  * representable as doubles, so Python's round-half-even vs toFixed's
  * round-half-up never diverge). We then strip trailing zeros to match Python's
- * shortest-repr, keeping one fractional digit, and preserve negative zero
- * (Python str(-0.0) == "-0.0"; JS toFixed drops the sign of literal -0).
+ * shortest-repr, keeping one fractional digit.
+ *
+ * Negative zero is normalized to "0.0" (mirrors Python `_r4str`): a geometry hash
+ * must not distinguish +0 from -0, since OCC builds disagree on the sign of a
+ * mathematically-zero coordinate (OCC.js emits a -0.0 arc x_axis component where
+ * OCP emits +0.0), which would otherwise flip the 4dp hash across kernels.
  *
  * Exponential form (|v| >= 1e21 in JS, >= 1e16 in Python) is out of range for
  * CAD millimetre coordinates and intentionally not reconciled here.
@@ -23,11 +27,11 @@ import { sha256Hex } from "./sha256"
 export function pyRound4Str(v: number): string {
   if (Number.isNaN(v)) return "nan"
   if (!Number.isFinite(v)) return v > 0 ? "inf" : "-inf"
-  if (Object.is(v, -0)) return "-0.0"
   let s = v.toFixed(4)
   s = s.replace(/(\.\d*?)0+$/, "$1")
   if (s.endsWith(".")) s += "0"
   if (!s.includes(".")) s += ".0"
+  if (s === "-0.0") s = "0.0"  // normalize negative zero (matches Python _r4str)
   return s
 }
 

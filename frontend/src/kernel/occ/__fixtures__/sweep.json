@@ -101,13 +101,13 @@
         "gface_6a22a201a9dc1b6d": [
           "@sk1/s2"
         ],
-        "gface_d789a5b7282d5a9d": [
+        "gface_1f8f4968301d9d31": [
           "@sk1/s3"
         ],
-        "gface_5790a46814480a1e": [
+        "gface_434d9ed26058cff2": [
           "@sk1/s4"
         ],
-        "gface_89757cc02fcc3ba0": [],
+        "gface_3bec25f8e0d4fd55": [],
         "gface_602aaef615240c52": []
       },
       "edge_lineage": {
@@ -267,25 +267,25 @@
         "gface_276c7c90065aff4f": [
           "@sk2/s2"
         ],
-        "gface_5639f263708a405f": [
+        "gface_b2885f75ea40edd1": [
           "@sk2/s3"
         ],
-        "gface_01cd1c4c5a3cff2a": [
+        "gface_b0f6e20ad3607383": [
           "@sk2/s4"
         ],
         "gface_42f72e69c2a06d1a": [
           "@sk2/s1"
         ],
-        "gface_647f644d27e193b2": [
+        "gface_ac79140376da59ac": [
           "@sk2/s2"
         ],
-        "gface_3d0145cf649724b6": [
+        "gface_030b668092998cba": [
           "@sk2/s3"
         ],
-        "gface_23a0b5c75aab0ec1": [
+        "gface_e7a342dce6027aef": [
           "@sk2/s4"
         ],
-        "gface_89757cc02fcc3ba0": [],
+        "gface_3bec25f8e0d4fd55": [],
         "gface_36243002d2969ba9": []
       },
       "edge_lineage": {
@@ -460,30 +460,30 @@
       "flat": false,
       "volume": 251.32741228718345,
       "face_lineage": {
-        "gface_3ae0ed7ebe659e1a": [
+        "gface_f5e9613e5f6f2e81": [
           "@sk3/s1"
         ],
-        "gface_9c2f5e3666002d44": [
+        "gface_60830c0807c804bb": [
           "@sk3/s2"
         ],
-        "gface_ec3ac4189a9f77db": [
+        "gface_7c766c722fe3aa23": [
           "@sk3/s3"
         ],
-        "gface_cf86c19e056bcd05": [
+        "gface_6b146274c61d7fb7": [
           "@sk3/s4"
         ],
-        "gface_89757cc02fcc3ba0": [],
-        "gface_aa97ad813b0d3990": []
+        "gface_3bec25f8e0d4fd55": [],
+        "gface_0468e0d25902d56a": []
       },
       "edge_lineage": {
-        "gedge_ce4448b99f129162": [
+        "gedge_f57578ac015d976b": [
           "@sk3/s1",
           "@sk3/s4"
         ],
         "gedge_bbaabd94960f2b89": [
           "@sk3/s1"
         ],
-        "gedge_31636d6b45b4f06d": [
+        "gedge_3c2918c9ecd5d14c": [
           "@sk3/s1",
           "@sk3/s2"
         ],
@@ -493,7 +493,7 @@
         "gedge_c6f928a71e61cf12": [
           "@sk3/s2"
         ],
-        "gedge_bd101afaa94b20c5": [
+        "gedge_30ce836b5cc679ad": [
           "@sk3/s2",
           "@sk3/s3"
         ],
@@ -503,7 +503,7 @@
         "gedge_c43f48ce2beab96e": [
           "@sk3/s3"
         ],
-        "gedge_2dc27df21ca33c89": [
+        "gedge_a9cd3b38fd56efae": [
           "@sk3/s3",
           "@sk3/s4"
         ],

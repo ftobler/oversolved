@@ -31,7 +31,7 @@ describe("pyRound4Str matches CPython str(round(v, 4))", () => {
     [5.0, "5.0"],
     [-1.0, "-1.0"],
     [0.0, "0.0"],
-    [-0.0, "-0.0"],
+    [-0.0, "0.0"],
     [0.12345, "0.1235"],
     [0.123449999, "0.1234"],
     [2.675, "2.675"],
@@ -91,21 +91,24 @@ describe("geometry classifiers match Python", () => {
   }
 })
 
-// JSON cannot carry negative zero (the bundler's JSON loader folds -0.0 to 0),
-// so the -0 -> "-0.0" path is gated against hardcoded Python references here.
-describe("negative-zero parity (Python str(-0.0) == '-0.0')", () => {
+// JSON cannot carry negative zero (the bundler's JSON loader folds -0.0 to 0), so
+// the -0 path is gated against hardcoded Python references here. A geometry hash
+// must treat -0 == +0 (OCC builds disagree on the sign of a zero coordinate), so
+// these inputs hash identically to their +0 counterparts. References regenerated
+// from the updated Python geom_hash (`_r4str` normalizes -0.0 to "0.0").
+describe("negative-zero normalization parity (Python _r4str(-0.0) == '0.0')", () => {
   it("face", () => {
     expect(faceGeometryHash([-0, 0.00004, 0.00006], [-0.00006, 1.0000000001, 0.0])).toBe(
-      "gface_8184560a28c2480f",
+      "gface_eb4440e4bb1f8812",
     )
   })
   it("vertex", () => {
-    expect(vertexGeometryHash([-0, 1.5, -0])).toBe("gvertex_536bafde7ea2b0b9")
+    expect(vertexGeometryHash([-0, 1.5, -0])).toBe("gvertex_20cd7b4277207ef7")
   })
   it("edge line", () => {
     expect(
       edgeGeometryHash({ kind: "line", start: [-0, 2.25, -7.125], end: [3.33333, 4.44444, 5.55555] }),
-    ).toBe("gedge_38cf3eef30784d47")
+    ).toBe("gedge_abf4d63065263756")
   })
 })
 

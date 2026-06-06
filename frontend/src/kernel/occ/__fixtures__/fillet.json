@@ -11,19 +11,19 @@
       "value": 2.0,
       "target_edge_hash": "gedge_0013dd02e80bd620",
       "face_lineage_in": {
-        "gface_74c4233398de69cd": [
+        "gface_c53343a91482f5dd": [
           "@face_0"
         ],
-        "gface_9d9c8f2a6abfdb9e": [
+        "gface_39173176c4ee38f9": [
           "@face_1"
         ],
-        "gface_5c9d5d36c1e0b2bd": [
+        "gface_04c86b07d3ad74a6": [
           "@face_2"
         ],
-        "gface_5e6ec6bc4d7483cf": [
+        "gface_04a653034a9c5079": [
           "@face_3"
         ],
-        "gface_82cd586681a86232": [
+        "gface_1d01db5eadca7654": [
           "@face_4"
         ],
         "gface_1d1621f08bf26afa": [
@@ -70,16 +70,16 @@
       },
       "volume": 991.4159265358978,
       "face_lineage_out": {
-        "gface_e2defc44d1b8a501": [
+        "gface_31ac9f2c9268e003": [
           "@face_0"
         ],
-        "gface_80f49fc076d5f3ee": [
+        "gface_9d83ef6ec9911c20": [
           "@face_1"
         ],
-        "gface_77c0a05705ea1a8d": [
+        "gface_dd1bbf810bc36131": [
           "@face_2"
         ],
-        "gface_5e6ec6bc4d7483cf": [
+        "gface_04a653034a9c5079": [
           "@face_3"
         ],
         "gface_da48d931c2a5665b": [
@@ -88,12 +88,12 @@
         "gface_1d1621f08bf26afa": [
           "@face_5"
         ],
-        "gface_671d3b34ce3d9b6a": [
+        "gface_4b4d32463f9e5595": [
           "@edge_8"
         ]
       },
       "edge_lineage_out": {
-        "gedge_c018db3f0e86d66f": [
+        "gedge_3309d352c1ef70e2": [
           "@edge_8"
         ],
         "gedge_84082540f6f780a6": [
@@ -105,16 +105,16 @@
         "gedge_3d2eba9e29907318": [
           "@face_1"
         ],
-        "gedge_76e0e8a50979c1c7": [
+        "gedge_d7bfb24c0b7cd5e8": [
           "@edge_8"
         ],
         "gedge_5370a6f56cefa2c3": [
           "@face_5"
         ],
-        "gedge_88aa579443b4e67b": [
+        "gedge_6bbe7463fce74beb": [
           "@edge_8"
         ],
-        "gedge_92cb7792c0e05417": [
+        "gedge_d535653277d10bc7": [
           "@edge_8",
           "@face_1"
         ],
@@ -159,19 +159,19 @@
       "value": 2.0,
       "target_edge_hash": "gedge_0013dd02e80bd620",
       "face_lineage_in": {
-        "gface_74c4233398de69cd": [
+        "gface_c53343a91482f5dd": [
           "@face_0"
         ],
-        "gface_9d9c8f2a6abfdb9e": [
+        "gface_39173176c4ee38f9": [
           "@face_1"
         ],
-        "gface_5c9d5d36c1e0b2bd": [
+        "gface_04c86b07d3ad74a6": [
           "@face_2"
         ],
-        "gface_5e6ec6bc4d7483cf": [
+        "gface_04a653034a9c5079": [
           "@face_3"
         ],
-        "gface_82cd586681a86232": [
+        "gface_1d01db5eadca7654": [
           "@face_4"
         ],
         "gface_1d1621f08bf26afa": [
@@ -218,16 +218,16 @@
       },
       "volume": 979.9999999999999,
       "face_lineage_out": {
-        "gface_3b703bd608ca1c9f": [
+        "gface_eabbf97a614e79a6": [
           "@face_0"
         ],
-        "gface_8353bca680dfea7d": [
+        "gface_72e1bdba63478919": [
           "@face_1"
         ],
-        "gface_77c0a05705ea1a8d": [
+        "gface_dd1bbf810bc36131": [
           "@face_2"
         ],
-        "gface_5e6ec6bc4d7483cf": [
+        "gface_04a653034a9c5079": [
           "@face_3"
         ],
         "gface_da48d931c2a5665b": [
@@ -236,7 +236,7 @@
         "gface_1d1621f08bf26afa": [
           "@face_5"
         ],
-        "gface_7172228fbc17b4d2": [
+        "gface_311fefc21b6b561a": [
           "@edge_8"
         ]
       },
@@ -253,7 +253,7 @@
         "gedge_5370a6f56cefa2c3": [
           "@face_5"
         ],
-        "gedge_4eaf6e114b9779f7": [
+        "gedge_6fb43deda8eb4f10": [
           "@face_1"
         ],
         "gedge_a7c7c564fc2b9c29": [

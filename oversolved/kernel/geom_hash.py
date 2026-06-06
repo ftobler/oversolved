@@ -33,6 +33,22 @@ def is_geom_keyed_lineage(lineage: dict | None, prefix: str) -> bool:
     return next(iter(lineage)).startswith(prefix)
 
 
+def _r4str(v: float) -> str:
+    """``str(round(v, 4))`` with negative zero normalized to ``"0.0"``.
+
+    A geometry hash must not distinguish +0.0 from -0.0: they are the same point,
+    but OCC builds disagree on the sign of a mathematically-zero coordinate (e.g.
+    OCC.js emits a -0.0 arc x_axis component where OCP emits +0.0), which would
+    otherwise flip the 4dp hash and break cross-kernel edge/face identity. Only an
+    exact zero is touched; a small nonzero value that rounds to e.g. -0.0001 keeps
+    its sign.
+    """
+    r = round(v, 4)
+    if r == 0:
+        r = abs(r)  # -0.0 -> 0.0 (abs of int 0 stays int 0, matching prior output)
+    return str(r)
+
+
 def _arc_angle_deg(edge: dict, start: bool) -> float:
     """Return arc angle in degrees, normalizing from radians if needed."""
     deg_key = "angle_start_deg" if start else "angle_end_deg"
@@ -55,8 +71,8 @@ def face_geometry_hash(centroid: list[float], normal: list[float]) -> str:
     face. Centroid and normal are tessellation-stable and already discriminate
     the faces that the resolver must tell apart.
     """
-    parts = [str(round(v, 4)) for v in centroid]
-    parts.extend(str(round(v, 4)) for v in normal)
+    parts = [_r4str(v) for v in centroid]
+    parts.extend(_r4str(v) for v in normal)
     digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
     return "gface_" + digest
 
@@ -71,7 +87,7 @@ def face_normal_hash(normal: list[float]) -> str:
     already-ancestry-matched candidate set, so it can never pick a face from an
     unrelated lineage.
     """
-    parts = [str(round(v, 4)) for v in normal]
+    parts = [_r4str(v) for v in normal]
     digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
     return "gnormal_" + digest
 
@@ -85,11 +101,11 @@ def _curve_data_items(curve_data: dict) -> list[str]:
         if isinstance(val, list):
             for element in val:
                 if isinstance(element, list):
-                    items.extend(str(round(x, 4)) for x in element)
+                    items.extend(_r4str(x) for x in element)
                 else:
-                    items.append(str(round(element, 4)))
+                    items.append(_r4str(element))
         elif isinstance(val, (int, float)):
-            items.append(str(round(val, 4)))
+            items.append(_r4str(val))
         else:
             items.append(str(val))
     return items
@@ -107,37 +123,37 @@ def edge_geometry_hash(edge: dict) -> str:
     items = [kind]
     if kind == "line":
         start, end = edge["start"], edge["end"]
-        items.extend(str(round(v, 4)) for pt in (start, end) for v in pt)
+        items.extend(_r4str(v) for pt in (start, end) for v in pt)
     elif kind in ("circle", "arc"):
         if kind == "arc":
             if "center" not in edge or "radius" not in edge:
                 missing = [k for k in ("center", "radius") if k not in edge]
                 logger.warning("arc edge missing %s, cannot hash: %s", missing, edge)
                 raise ValueError(f"arc edge missing geometry fields: {missing}")
-        items.append(str(round(edge.get("radius", 0), 4)))
-        items.extend(str(round(v, 4)) for v in edge.get("center", [0, 0, 0]))
+        items.append(_r4str(edge.get("radius", 0)))
+        items.extend(_r4str(v) for v in edge.get("center", [0, 0, 0]))
         if kind == "arc":
-            items.append(str(round(_arc_angle_deg(edge, start=True), 4)))
-            items.append(str(round(_arc_angle_deg(edge, start=False), 4)))
+            items.append(_r4str(_arc_angle_deg(edge, start=True)))
+            items.append(_r4str(_arc_angle_deg(edge, start=False)))
             # Orientation pins which half of the circle the arc covers. OCC may
             # split a full circle into two arcs with identical center/radius and
             # angle span [0, pi] that differ only in axis/x_axis direction;
             # without these, the two halves collide to the same hash.
-            items.extend(str(round(v, 4)) for v in edge.get("axis", [0, 0, 1]))
-            items.extend(str(round(v, 4)) for v in edge.get("x_axis", [1, 0, 0]))
+            items.extend(_r4str(v) for v in edge.get("axis", [0, 0, 1]))
+            items.extend(_r4str(v) for v in edge.get("x_axis", [1, 0, 0]))
     else:
         curve_data = edge.get("curve_data")
         if curve_data:
             items.extend(_curve_data_items(curve_data))
         else:
-            items.extend(str(round(v, 4)) for pt in edge.get("points", [[0, 0, 0]]) for v in pt)
+            items.extend(_r4str(v) for pt in edge.get("points", [[0, 0, 0]]) for v in pt)
     digest = hashlib.sha256("|".join(items).encode()).hexdigest()[:16]
     return "gedge_" + digest
 
 
 def vertex_geometry_hash(pt: list[float]) -> str:
     """Return 'gvertex_<hash>'."""
-    digest = hashlib.sha256("|".join(str(round(v, 4)) for v in pt).encode()).hexdigest()[:16]
+    digest = hashlib.sha256("|".join(_r4str(v) for v in pt).encode()).hexdigest()[:16]
     return "gvertex_" + digest
 
 
