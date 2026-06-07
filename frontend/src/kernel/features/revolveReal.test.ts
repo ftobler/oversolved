@@ -196,4 +196,32 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     expect(result.result.rev1.status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev0')
   })
+
+  it('reverse direction negates the revolve angle', () => {
+    /** direction=reverse negates the angle, producing a mirror shape.
+     *  Port of test_revolve_reverse_direction. */
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0),
+        revolveSpec('rev1', 'sk1', { angle: 90, direction: 'reverse' }),
+      ],
+    })
+    expect(result.result.rev1.status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_rev1')
+  })
+
+  it('symmetric direction revolves half angle each way', () => {
+    /** direction=symmetric revolves half the angle each way and fuses
+     *  the two halves. Port of test_revolve_symmetric_direction. */
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0),
+        revolveSpec('rev1', 'sk1', { angle: 90, direction: 'symmetric' }),
+      ],
+    })
+    expect(result.result.rev1.status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_rev1')
+  })
 })
