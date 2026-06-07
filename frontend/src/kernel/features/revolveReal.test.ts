@@ -13,7 +13,7 @@ import { HandleTable } from '../occ/handleTable'
 import { solidToMesh } from '../occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo } from '../query'
+import { initGlobalRepo, makeAncestryQuery } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
@@ -274,5 +274,33 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     expect(result.bodies).toHaveProperty('body_rev1')
     const mesh = body(result, 'body_rev1').mesh as { vertices?: number[][] } | undefined
     expect(mesh?.vertices?.length).toBeGreaterThan(0)
+  })
+
+  it('revolve from sketch surface query (circle profile)', () => {
+    /** A circle sketch revolved around Y-axis, referenced via an ancestry
+     *  surface query (?@sk1/c1surface:0@sk1:flatface) instead of a plain
+     *  sketch ref ($sk1). Port of test_revolve_from_sketch_surface_query. */
+    const surfaceQuery = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'c1', kind: 'circle' }],
+          initial: { c1: [2, 0, 0.5] },
+          constraints: [
+            { id: 'co1', kind: 'coincident',
+              a: '$sk1c1center', b: '@builtin_origin' },
+            { id: 'd1', kind: 'diameter',
+              target: '$sk1c1', value: 1 },
+          ],
+        },
+        { id: 'rev1', kind: 'revolve', sketch: surfaceQuery, angle: 360,
+          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+      ],
+    })
+    expect(res(result, 'sk1').status).not.toBe('exception')
+    expect(res(result, 'rev1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_rev1')
   })
 })
