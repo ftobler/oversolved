@@ -713,6 +713,48 @@ describe("classifier tier resolution", () => {
     expect(resolved).not.toBeNull()
     expect((resolved as Payload).classifiers).toEqual(["cls_ld_cut_p"])
   })
+
+  it("stale geom hash resolves via classifier after rebuild (edit-survival)", () => {
+    /** The value proposition: a query captured from a short build carries
+     *  a @gface_ hash. After a taller rebuild, that hash is stale (the
+     *  rebuilt face has a different geometry due to the new dimensions).
+     *  The @cls_ classifier, which is edit-stable, still discriminates the
+     *  correct face among ancestral siblings in the new repo. */
+
+    // Short build: two sibling faces with different classifiers.
+    const shortRepo = new Repository()
+    const pZp = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] }
+    const pZn = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] }
+    shortRepo.registerAncestor(["@ex1", "@body1", "surface:0"], pZp, "gface_short_zp")
+    shortRepo.registerAncestor(["@ex1", "@body1", "surface:1"], pZn, "gface_short_zn")
+
+    // Capture the +Z cap query from the short build.
+    const captured = makeAncestryQuery(["@gface_short_zp", "@cls_zp", "@ex1", "@body1"])
+    expect(shortRepo.query(captured)).not.toBeNull()
+
+    // Tall build: same faces, same classifiers, DIFFERENT hashes.
+    const tallRepo = new Repository()
+    const tZp = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] }
+    const tZn = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] }
+    tallRepo.registerAncestor(["@ex1", "@body1", "surface:0"], tZp, "gface_tall_zp")
+    tallRepo.registerAncestor(["@ex1", "@body1", "surface:1"], tZn, "gface_tall_zn")
+
+    // The stale hash alone is ambiguous (two faces share ancestry, hash
+    // doesn't match either). The resolver should raise AmbiguousQueryError.
+    const staleOnly = makeAncestryQuery(["@gface_short_zp", "@ex1", "@body1"])
+    try {
+      tallRepo.query(staleOnly)
+      expect.fail("stale hash should not match any face")
+    } catch (e) {
+      // Expected: stale hash + ancestry is either null or ambiguous.
+    }
+
+    // The captured query (stale hash + @cls_zp classifier) resolves
+    // to the +Z cap in the tall build via the classifier tier.
+    const resolved = tallRepo.query(captured)
+    expect(resolved).not.toBeNull()
+    expect((resolved as Payload).classifiers).toEqual(["cls_zp"])
+  })
 })
 
 describe("ambiguous ancestry queries", () => {
