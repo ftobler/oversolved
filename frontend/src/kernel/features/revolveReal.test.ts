@@ -224,4 +224,31 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     expect(result.result.rev1.status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
+
+  it('revolve cylinder spans expected bbox dimensions', () => {
+    /** Rectangle [1,0]-[3,1] revolved 360° around Y axis spans x/z
+     *  roughly [-3,3] and y [0,1]. Port of test_revolve_bbox_cylinder. */
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0),
+        revolveSpec('rev1', 'sk1', { angle: 360 }),
+      ],
+    })
+    expect(result.result.rev1.status).toBe('ok')
+    const mesh = result.bodies.body_rev1.mesh as { vertices?: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh?.vertices) {
+      let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity
+      for (const [x, y, z] of mesh.vertices) {
+        xMin = Math.min(xMin, x); xMax = Math.max(xMax, x)
+        yMin = Math.min(yMin, y); yMax = Math.max(yMax, y)
+        zMin = Math.min(zMin, z); zMax = Math.max(zMax, z)
+      }
+      // Cylinder of radius 3 (max x/z span from origin to [3,0/1])
+      expect(xMax).toBeGreaterThan(2.5); expect(xMin).toBeLessThan(-2.5)
+      expect(zMax).toBeGreaterThan(2.5); expect(zMin).toBeLessThan(-2.5)
+      expect(yMax).toBeCloseTo(1, 0); expect(yMin).toBeCloseTo(0, 0)
+    }
+  })
 })
