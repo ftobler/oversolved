@@ -678,6 +678,41 @@ describe("classifier tier resolution", () => {
     const cls = (result as Payload).classifiers as string[]
     expect(cls).toEqual(["cls_xp", "cls_yp"])
   })
+
+  it("split surfaces resolve by line-division classifier without index", () => {
+    /** Two half-disks share ancestry {circ, cut}. Stripped of the positional
+     *  surface:N index, they resolve only via the stable line-division classifier
+     *  token ("cls_ld_<eid>_p" / "cls_ld_<eid>_n"). Dropping the classifier too
+     *  produces an ancestral tie -> AmbiguousQueryError. */
+    const repo = new Repository()
+    const payloadP = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_ld_cut_p"] }
+    const payloadN = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_ld_cut_n"] }
+
+    // Register two surfaces with surface:N index for disambiguation.
+    const anc0 = ["@sk1/circ", "@sk1/cut", "surface:0", "@ex1", "@body1"]
+    const anc1 = ["@sk1/circ", "@sk1/cut", "surface:1", "@ex1", "@body1"]
+    repo.registerAncestor(anc0, payloadP, "gface_aaa")
+    repo.registerAncestor(anc1, payloadN, "gface_bbb")
+
+    // With surface:N -> resolves (the positional index disambiguates).
+    const qIndexed = makeAncestryQuery(["@sk1/circ", "@sk1/cut", "surface:0", "@ex1", "@body1"])
+    expect(repo.query(qIndexed)).not.toBeNull()
+
+    // Without index + without classifier -> ambiguous (ancestral tie).
+    const qBare = makeAncestryQuery(["@sk1/circ", "@sk1/cut", "@ex1", "@body1"])
+    try {
+      repo.query(qBare)
+      expect.fail("Should have raised AmbiguousQueryError for tied ancestors")
+    } catch (e) {
+      expect(e instanceof AmbiguousQueryError).toBe(true)
+    }
+
+    // With line-division classifier -> resolves via classifier tier.
+    const qCls = makeAncestryQuery(["@sk1/circ", "@sk1/cut", "@cls_ld_cut_p", "@ex1", "@body1"])
+    const resolved = repo.query(qCls)
+    expect(resolved).not.toBeNull()
+    expect((resolved as Payload).classifiers).toEqual(["cls_ld_cut_p"])
+  })
 })
 
 describe("ambiguous ancestry queries", () => {

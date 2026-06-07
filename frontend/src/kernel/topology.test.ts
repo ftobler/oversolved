@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import fixture from "./occ/__fixtures__/topology.json"
-import { detectTopology } from "./topology"
+import { collinearOverlap, detectTopology } from "./topology"
 
 // Structure and identity-bearing query strings must match Python exactly;
 // coordinates are compared within a tight tolerance to absorb cross-language
@@ -454,6 +454,34 @@ describe("detectTopology boundary edges", () => {
   })
 })
 
+// ─── collinearOverlap degenerate segments ───
+
+describe("collinearOverlap degenerate segments", () => {
+  it("zero-length segment A returns empty", () => {
+    const result = collinearOverlap(
+      { start: [1.0, 0.0], end: [1.0, 0.0] },
+      { start: [0.0, 0.0], end: [2.0, 0.0] },
+    )
+    expect(result).toEqual([])
+  })
+
+  it("zero-length segment B returns empty", () => {
+    const result = collinearOverlap(
+      { start: [0.0, 0.0], end: [2.0, 0.0] },
+      { start: [1.0, 0.0], end: [1.0, 0.0] },
+    )
+    expect(result).toEqual([])
+  })
+
+  it("normal overlapping segments return overlap points", () => {
+    const result = collinearOverlap(
+      { start: [0.0, 0.0], end: [2.0, 0.0] },
+      { start: [1.0, 0.0], end: [3.0, 0.0] },
+    )
+    expect(result.length).toBeGreaterThan(0)
+  })
+})
+
 // ─── Degenerate and touching geometry ───
 
 describe("detectTopology degenerate geometry", () => {
@@ -488,5 +516,67 @@ describe("detectTopology degenerate geometry", () => {
       e5: { kind: "line", construction: false, ...lineGeom(0.5, 0.5, 0.5, 0.5) },
     })
     expect(ns(r)).toBe(1)
+  })
+})
+
+// ─── Phase 2 line-division classifiers (ported from test_classifier_resolution.py) ───
+
+describe("line-division classifiers", () => {
+  it("split circle gets line-division classifiers per half", () => {
+    /** A circle bisected by a line produces two half-disks, each carrying a
+     *  line-division classifier token ("cls_ld_<eid>_p" / "cls_ld_<eid>_n"). */
+    const r = detectTopology({
+      circ: { kind: "circle", center: [0, 0], radius: 10.0 },
+      cut: { kind: "line", start: [-10, 0], end: [10, 0] },
+    }, "sk1")
+    expect(r.surfaces.length).toBe(2)
+    const cls = r.surfaces.map((s) => [...(s.classifiers ?? [])].sort()).sort()
+    expect(cls).toEqual([["cls_ld_cut_n"], ["cls_ld_cut_p"]])
+  })
+
+  it("single region sketch has no classifiers (no churn)", () => {
+    /** A sketch with one closed loop per ancestral group has no sibling surfaces
+     *  to disambiguate, so it stays untouched — zero classifier tokens emitted. */
+    const r = detectTopology({
+      circ: { kind: "circle", center: [0, 0], radius: 5.0 },
+    }, "sk1")
+    expect(r.surfaces.length).toBe(1)
+    expect(r.surfaces[0].classifiers ?? []).toEqual([])
+    expect(r.surfaces[0].query).not.toContain("@cls_")
+  })
+
+  it("four quadrant split produces four distinct classifier pairs", () => {
+    /** Two perpendicular cuts through a circle produce four quadrants, each
+     *  identified by a unique pair of line-division tokens (one per cut line). */
+    const r = detectTopology({
+      circ: { kind: "circle", center: [0, 0], radius: 10.0 },
+      h: { kind: "line", start: [-10, 0], end: [10, 0] },
+      v: { kind: "line", start: [0, -10], end: [0, 10] },
+    }, "sk1")
+    const quads = r.surfaces.filter((s) => (s.classifiers ?? []).length > 0)
+    expect(quads.length).toBe(4)
+    const tokenSets = new Set(quads.map((s) => JSON.stringify([...(s.classifiers ?? [])].sort())))
+    expect(tokenSets.size).toBe(4)  // all four quadrants distinct
+  })
+
+  it("concentric circles have disjoint lineage (no classifier needed)", () => {
+    /** A disk and the ring around it do NOT share ancestry: each region is
+     *  identified by its own bounding circle. No classifier is emitted and
+     *  the two surfaces resolve by distinct circle lineage alone. */
+    const r = detectTopology({
+      outer: { kind: "circle", center: [0, 0], radius: 10.0 },
+      inner: { kind: "circle", center: [0, 0], radius: 4.0 },
+    }, "sk1")
+    expect(r.surfaces.length).toBe(2)
+    for (const s of r.surfaces) {
+      expect(s.classifiers ?? []).toEqual([])
+      expect(s.query).not.toContain("@cls_")
+    }
+    // Ancestry is disjoint: each surface query references a different bounding
+    // circle entity (@sk1/inner for the disk, @sk1/outer for the ring).
+    // Surfaces are sorted by radius (smallest first).
+    expect(r.surfaces[0].query).toContain("@sk1/inner")
+    expect(r.surfaces[1].query).toContain("@sk1/outer")
+    expect(r.surfaces[0].query).not.toEqual(r.surfaces[1].query)
   })
 })
