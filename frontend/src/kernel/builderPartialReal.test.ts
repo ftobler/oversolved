@@ -164,4 +164,73 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(planeTransform).toBeDefined()
     expect(Math.abs((planeTransform!.origin![2]) - 5)).toBeLessThan(0.1)
   })
+
+  it('body addition in dirty range succeeds', () => {
+    /** Insert a new sketch between sk1 and ex1; ex1 is re-solved but still ok.
+     *  Port of test_body_addition_in_dirty_range. */
+    const sk1 = rectSketch('sk1', 5, 3)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const spec = { features: [sk1, ex1] }
+    const r1 = h.run(spec)
+
+    const newSk = rectSketch('sk_insert', 3, 2)
+    const spec2 = { features: [sk1, newSk, ex1] }
+    const r2 = h.run(spec2, { prevState: r1._build_state })
+
+    expect(h.res(r2, 'ex1').status).toBe('ok')
+  })
+
+  it('partial rebuild preserves shape identity', () => {
+    /** After partial rebuild, unchanged feature's body.shape is the same handle.
+     *  Port of test_partial_rebuild_preserves_shape_identity. */
+    const sk1 = rectSketch('sk1', 5, 3)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const spec = { features: [sk1, ex1] }
+    const r1 = h.run(spec)
+    const shape1 = r1._build_state!.checkpoints['ex1'].body_store_snapshot['body_ex1'].shape
+
+    const sk2 = rectSketch('sk2', 2, 2)
+    const spec2 = { features: [sk1, ex1, sk2] }
+    const r2 = h.run(spec2, { prevState: r1._build_state })
+    const shape2 = r2._build_state!.checkpoints['ex1'].body_store_snapshot['body_ex1'].shape
+
+    expect(shape1).toBe(shape2)
+  })
+
+  it('inserting a feature mid-stack triggers rebuild of later features', () => {
+    /** [sk1, ex1] → [sk1, sk2, ex1, ex2]: sk1 reused, all later rebuilt.
+     *  Port of test_partial_rebuild_add_sketch_mid_stack. */
+    const sk1 = rectSketch('sk1', 10, 10)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const r1 = h.run({ features: [sk1, ex1] })
+
+    const faceQueries = (h.body(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    expect(faceQueries.length).toBeGreaterThan(0)
+
+    const sk2 = { ...rectSketch('sk2', 4, 4, { plane: faceQueries[0] }), constraints: [] }
+    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2 })
+    const r2 = h.run({ features: [sk1, ex1, sk2, ex2] }, { prevState: r1._build_state })
+
+    expect(h.res(r2, 'sk1').status).not.toBe('exception')
+    expect(h.res(r2, 'ex1').status).toBe('ok')
+    expect(h.res(r2, 'sk2').status).not.toBe('exception')
+    expect(h.res(r2, 'ex2').status).toBe('ok')
+  })
+
+  it('reusing state does not duplicate brep face ancestry', () => {
+    /** Rebuilding from the same cached state twice must not duplicate face
+     *  ancestry entries. Port of
+     *  test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry. */
+    const spec = { features: [rectSketch('sk1', 10, 10), extrudeSpec('sk1', 'ex1', { distance: 5 })] }
+    const r1 = h.run(spec)
+    const r2 = h.run(spec, { prevState: r1._build_state })
+    const r3 = h.run(spec, { prevState: r2._build_state })
+
+    const ckp = r3._build_state!.checkpoints['ex1']
+    const snapshot = ckp.repo_snapshot as Record<string, unknown>
+    const ancestral = snapshot.ancestral as Record<string, { set: string[]; eids: string[] }>
+    const matchingKeys = Object.entries(ancestral).filter(([k]) => k.includes('@body_ex1/face0'))
+    expect(matchingKeys.length).toBe(1)
+    expect(matchingKeys[0][1].eids.length).toBe(1)
+  })
 })
