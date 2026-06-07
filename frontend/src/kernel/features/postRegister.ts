@@ -57,8 +57,10 @@ function isDict(v: unknown): v is Dict {
 /**
  * Resolve a sketch's plane query to a plane frame (port of
  * `_resolve_sketch_plane`). Handles builtin planes (`builtin_plane_*`, bare
- * `Front`/`Top`/`Right`) and plane features already registered as `_pt_<id>`;
- * falls back to the front plane.
+ * `Front`/`Top`/`Right`), plane features already registered as `_pt_<id>`,
+ * and ancestry queries (`?...:flatface`) resolved through the repository
+ * (face elements carry `origin`/`normal`/`x_axis`/`y_axis`).
+ * Falls back to the front plane when nothing matches.
  */
 export function resolveSketchPlane(
   planeQuery: string | null | undefined,
@@ -66,6 +68,19 @@ export function resolveSketchPlane(
 ): PlaneLike {
   const front = planeLikeOf(BUILTIN_PLANES.builtin_plane_front)
   if (!planeQuery) return front
+
+  // Ancestry queries mirror Python's resolve_ref calling globalRepo.query().
+  if (planeQuery.startsWith('?')) {
+    const resolved = globalRepo.query(planeQuery, null) as Dict | null
+    if (resolved && isDict(resolved)) {
+      if (isPlaneLike(resolved)) return resolved
+      if (resolved.origin && resolved.normal) {
+        return planeLikeOf(resolved)
+      }
+    }
+    return front
+  }
+
   const bare = planeQuery.replace(/^[@$]/, '')
   if (BUILTIN_PLANES[bare]) return planeLikeOf(BUILTIN_PLANES[bare])
   if (BARE_PLANE[planeQuery]) return planeLikeOf(BUILTIN_PLANES[BARE_PLANE[planeQuery]])
