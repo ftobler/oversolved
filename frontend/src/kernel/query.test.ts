@@ -745,7 +745,7 @@ describe("classifier tier resolution", () => {
     try {
       tallRepo.query(staleOnly)
       expect.fail("stale hash should not match any face")
-    } catch (e) {
+    } catch {
       // Expected: stale hash + ancestry is either null or ambiguous.
     }
 

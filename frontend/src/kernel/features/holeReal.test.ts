@@ -154,7 +154,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape))).toBeLessThan(1000)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeLessThan(1000)
       } finally {
         scope.dispose()
       }
@@ -185,7 +185,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           hole: { sketch: '@sk', diameter: 4, depth: 2, target: 'body_t' },
         }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(r1.status).toBe('ok')
-        const volAfterShallow = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape))
+        const volAfterShallow = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
 
         // Edit hole to be deeper: body should re-drill with less volume.
         const r2 = solveHole(occ, scope, table, {
@@ -193,7 +193,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           hole: { sketch: '@sk', diameter: 4, depth: 8, target: 'body_t' },
         }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(r2.status).toBe('ok')
-        const volAfterDeep = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape))
+        const volAfterDeep = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         // Deeper hole removes more material.
         expect(volAfterDeep).toBeLessThan(volAfterShallow)
       } finally {

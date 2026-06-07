@@ -192,8 +192,8 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         expect(Object.keys(bodyStore).sort()).toEqual(['body_f', 'body_t'])
         // The new body is its own part (not merged into the target).
         expect(bodyStore.body_f.created_by).toBe('featF')
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_f.shape))).toBeCloseTo(125, 0)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape))).toBeCloseTo(1000, 0)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_f.shape!))).toBeCloseTo(125, 0)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(1000, 0)
       } finally {
         scope.dispose()
       }
@@ -232,7 +232,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         const storeKeys = Object.keys(bodyStore).sort()
         expect(storeKeys.length).toBeGreaterThanOrEqual(1)
         // Target body volume should be less than original 1000 (material was removed).
-        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape))
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         expect(targetVol).toBeLessThan(1000)
       } finally {
         scope.dispose()

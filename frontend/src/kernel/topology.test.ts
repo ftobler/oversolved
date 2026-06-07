@@ -530,7 +530,7 @@ describe("line-division classifiers", () => {
       cut: { kind: "line", start: [-10, 0], end: [10, 0] },
     }, "sk1")
     expect(r.surfaces.length).toBe(2)
-    const cls = r.surfaces.map((s) => [...(s.classifiers ?? [])].sort()).sort()
+    const cls = r.surfaces.map((s) => [...(s.classifiers as string[] ?? [])].sort()).sort()
     expect(cls).toEqual([["cls_ld_cut_n"], ["cls_ld_cut_p"]])
   })
 
@@ -541,7 +541,7 @@ describe("line-division classifiers", () => {
       circ: { kind: "circle", center: [0, 0], radius: 5.0 },
     }, "sk1")
     expect(r.surfaces.length).toBe(1)
-    expect(r.surfaces[0].classifiers ?? []).toEqual([])
+    expect(r.surfaces[0].classifiers as string[] ?? []).toEqual([])
     expect(r.surfaces[0].query).not.toContain("@cls_")
   })
 
@@ -553,9 +553,9 @@ describe("line-division classifiers", () => {
       h: { kind: "line", start: [-10, 0], end: [10, 0] },
       v: { kind: "line", start: [0, -10], end: [0, 10] },
     }, "sk1")
-    const quads = r.surfaces.filter((s) => (s.classifiers ?? []).length > 0)
+    const quads = r.surfaces.filter((s) => ((s.classifiers as string[]) ?? []).length > 0)
     expect(quads.length).toBe(4)
-    const tokenSets = new Set(quads.map((s) => JSON.stringify([...(s.classifiers ?? [])].sort())))
+    const tokenSets = new Set(quads.map((s) => JSON.stringify([...(s.classifiers as string[] ?? [])].sort())))
     expect(tokenSets.size).toBe(4)  // all four quadrants distinct
   })
 
@@ -569,7 +569,7 @@ describe("line-division classifiers", () => {
     }, "sk1")
     expect(r.surfaces.length).toBe(2)
     for (const s of r.surfaces) {
-      expect(s.classifiers ?? []).toEqual([])
+      expect(s.classifiers as string[] ?? []).toEqual([])
       expect(s.query).not.toContain("@cls_")
     }
     // Ancestry is disjoint: each surface query references a different bounding

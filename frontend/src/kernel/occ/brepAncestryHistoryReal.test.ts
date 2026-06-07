@@ -13,9 +13,9 @@ import { DisposeScope } from './disposeScope'
 import { HandleTable } from './handleTable'
 import { makeBox } from './primitives'
 import { booleanWithHistory } from './booleans'
-import { solidToMesh, solidToEdges, solidToVertices } from './tessellation'
+import { solidToMesh } from './tessellation'
 import { volumeOf } from './booleans'
-import type { OccModule, OccHandle } from './occTypes'
+import type { OccModule } from './occTypes'
 
 const oc = await loadOcc()
 
