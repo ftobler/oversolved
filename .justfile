@@ -73,12 +73,6 @@ runb:
 run_back:
     oversolved run_server --debug
 
-runs:
-    just run_solver
-
-run_solver:
-    oversolved-solver --debug
-
 
 # Build the Rust solver to WASM (web target for frontend + nodejs target for tests)
 wasm:
