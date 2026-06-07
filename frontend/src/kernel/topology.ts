@@ -143,7 +143,7 @@ function cc(
   ])
 }
 
-function collinearOverlap(ea: Geom, eb: Geom): [number, number, Pt][] {
+export function collinearOverlap(ea: Geom, eb: Geom): [number, number, Pt][] {
   const p1 = ea["start"] as Pt
   const p2 = ea["end"] as Pt
   const q1 = eb["start"] as Pt
