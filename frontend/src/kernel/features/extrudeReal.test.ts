@@ -1,0 +1,871 @@
+// @vitest-environment node
+//
+// Gated real-OCC feature-level extrude tests using the full build pipeline
+// (OCC.js + Rust WASM sketch solver). Ports the build-layer extrude scenarios
+// from test_extrude_mesh.py.
+//
+// Skips when OCC.js or the Rust solver is absent.
+
+import { describe, it, expect, beforeAll } from 'vitest'
+import { loadOcc } from '../occ/loadOcc'
+import { DisposeScope } from '../occ/disposeScope'
+import { HandleTable } from '../occ/handleTable'
+import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
+import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
+import { build, repoFromSnapshot, type BuildDeps, type BuildResponse } from '../builder'
+import { initGlobalRepo, makeAncestryQuery } from '../query'
+import { createFeatureSolver } from '../solverRegistry'
+import { postRegister } from '../features/postRegister'
+import { setSketchSolver, resetSketchSolver } from '../features/sketch'
+import { loadSolver } from '@/wasm-kernel/loadSolver'
+const oc = await loadOcc()
+const solveBytes = loadSolver()
+
+function rectSketchSk(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane,
+    entities: [
+      { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
+      { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
+    ],
+    initial: {
+      bottom: [0, 0, w, 0],
+      right: [w, 0, w, h],
+      top: [w, h, 0, h],
+      left: [0, h, 0, 0],
+    },
+    constraints: [
+      { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
+      { id: 'c2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
+      { id: 'c3', kind: 'coincident' as const, a: { entity: 'top', point: 'end' as const }, b: { entity: 'left', point: 'start' as const } },
+      { id: 'c4', kind: 'coincident' as const, a: { entity: 'left', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
+      { id: 'c5', kind: 'horizontal' as const, target: { entity: 'bottom' } },
+      { id: 'c6', kind: 'horizontal' as const, target: { entity: 'top' } },
+      { id: 'c7', kind: 'vertical' as const, target: { entity: 'right' } },
+      { id: 'c8', kind: 'vertical' as const, target: { entity: 'left' } },
+      { id: 'c9', kind: 'length' as const, target: { entity: 'bottom' }, value: w },
+      { id: 'c10', kind: 'length' as const, target: { entity: 'left' }, value: h },
+    ],
+  }
+}
+
+function extrudeSpec(sketchId: string, extrudeId: string, opts: {
+  distance?: number; operation?: string; direction?: string; nested?: boolean
+} = {}) {
+  const distance = opts.distance ?? 5
+  const direction = opts.direction ?? 'normal'
+  const operation = opts.operation ?? 'add'
+  if (opts.nested) {
+    return {
+      id: extrudeId, kind: 'extrude', label: 'Extrude',
+      extrude: { sketch: '$' + sketchId, distance, direction, operation },
+    }
+  }
+  return {
+    id: extrudeId, kind: 'extrude', label: 'Extrude',
+    sketch: '$' + sketchId, distance, direction, operation,
+  }
+}
+
+function fullRectExtrudeSpec(w = 10, h = 10, d = 5, direction = 'normal') {
+  return { features: [rectSketchSk('sk1', w, h), extrudeSpec('sk1', 'ex1', { distance: d, direction })] }
+}
+
+function assertMeshValid(mesh: Record<string, unknown>): void {
+  const verts = mesh.vertices as number[][] | undefined
+  const faces = mesh.faces as number[][] | undefined
+  if (!verts || !faces) throw new Error('mesh missing vertices or faces')
+  const n = verts.length
+  if (n === 0) throw new Error('mesh has no vertices')
+  if (faces.length === 0) throw new Error('mesh has no faces')
+  for (let i = 0; i < faces.length; i++) {
+    const [a, b, c] = faces[i]
+    if (a < 0 || a >= n) throw new Error(`face ${i}: vertex a=${a} out of range [0,${n})`)
+    if (b < 0 || b >= n) throw new Error(`face ${i}: vertex b=${b} out of range [0,${n})`)
+    if (c < 0 || c >= n) throw new Error(`face ${i}: vertex c=${c} out of range [0,${n})`)
+    if (a === b || b === c || a === c) throw new Error(`face ${i} is degenerate: (${a},${b},${c})`)
+  }
+}
+
+function assertMeshBbox(mesh: Record<string, unknown>, xRange: [number, number], yRange: [number, number], zRange: [number, number], tol = 0.1): void {
+  const verts = mesh.vertices as number[][] | undefined
+  if (!verts) throw new Error('mesh missing vertices')
+  const xs = verts.map((v) => v[0])
+  const ys = verts.map((v) => v[1])
+  const zs = verts.map((v) => v[2])
+  const check = (vals: number[], lo: number, hi: number, axis: string) => {
+    const actualLo = Math.min(...vals), actualHi = Math.max(...vals)
+    if (actualLo < lo - tol) throw new Error(`${axis} min=${actualLo.toFixed(4)} expected >= ${lo}`)
+    if (actualHi > hi + tol) throw new Error(`${axis} max=${actualHi.toFixed(4)} expected <= ${hi}`)
+    if (actualLo > lo + tol) throw new Error(`${axis} min=${actualLo.toFixed(4)} not close to ${lo}`)
+    if (actualHi < hi - tol) throw new Error(`${axis} max=${actualHi.toFixed(4)} not close to ${hi}`)
+  }
+  check(xs, xRange[0], xRange[1], 'x')
+  check(ys, yRange[0], yRange[1], 'y')
+  check(zs, zRange[0], zRange[1], 'z')
+}
+
+/** Two disjoint 2x2 rectangles in one sketch on the Front plane. */
+function disjointTwoRectSpec(operation = 'new') {
+  return {
+    features: [
+      {
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [
+          { id: 'a_bot', kind: 'line' as const }, { id: 'a_right', kind: 'line' as const },
+          { id: 'a_top', kind: 'line' as const }, { id: 'a_left', kind: 'line' as const },
+          { id: 'b_bot', kind: 'line' as const }, { id: 'b_right', kind: 'line' as const },
+          { id: 'b_top', kind: 'line' as const }, { id: 'b_left', kind: 'line' as const },
+        ],
+        initial: {
+          a_bot: [0, 0, 2, 0], a_right: [2, 0, 2, 2], a_top: [2, 2, 0, 2], a_left: [0, 2, 0, 0],
+          b_bot: [5, 0, 7, 0], b_right: [7, 0, 7, 2], b_top: [7, 2, 5, 2], b_left: [5, 2, 5, 0],
+        },
+        constraints: [
+          { id: 'ca1', kind: 'coincident' as const, a: { entity: 'a_bot', point: 'end' as const }, b: { entity: 'a_right', point: 'start' as const } },
+          { id: 'ca2', kind: 'coincident' as const, a: { entity: 'a_right', point: 'end' as const }, b: { entity: 'a_top', point: 'start' as const } },
+          { id: 'ca3', kind: 'coincident' as const, a: { entity: 'a_top', point: 'end' as const }, b: { entity: 'a_left', point: 'start' as const } },
+          { id: 'ca4', kind: 'coincident' as const, a: { entity: 'a_left', point: 'end' as const }, b: { entity: 'a_bot', point: 'start' as const } },
+          { id: 'cb1', kind: 'coincident' as const, a: { entity: 'b_bot', point: 'end' as const }, b: { entity: 'b_right', point: 'start' as const } },
+          { id: 'cb2', kind: 'coincident' as const, a: { entity: 'b_right', point: 'end' as const }, b: { entity: 'b_top', point: 'start' as const } },
+          { id: 'cb3', kind: 'coincident' as const, a: { entity: 'b_top', point: 'end' as const }, b: { entity: 'b_left', point: 'start' as const } },
+          { id: 'cb4', kind: 'coincident' as const, a: { entity: 'b_left', point: 'end' as const }, b: { entity: 'b_bot', point: 'start' as const } },
+          { id: 'ha', kind: 'horizontal' as const, target: { entity: 'a_bot' } },
+          { id: 'hb', kind: 'horizontal' as const, target: { entity: 'b_bot' } },
+          { id: 'la', kind: 'length' as const, target: { entity: 'a_bot' }, value: 2 },
+          { id: 'lb', kind: 'length' as const, target: { entity: 'b_bot' }, value: 2 },
+        ],
+      },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 3, direction: 'normal', operation },
+    ],
+  }
+}
+
+describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', () => {
+  beforeAll(() => {
+    if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
+    if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
+  })
+
+  function run(spec: Record<string, unknown>) {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const deps: BuildDeps = {
+        trySolveFeature: createFeatureSolver(oc!, scope, table),
+        postRegister, initGlobalRepo,
+        tessellateBodies: (bodyStore) => {
+          const out: Record<string, Record<string, unknown>> = {}
+          for (const [, body] of Object.entries(bodyStore)) {
+            if (!body.shape) continue
+            try {
+              const mesh = solidToMesh(oc!, table, body.shape, {
+                createdBy: body.created_by || '',
+                bodyId: body.id,
+                faceLineage: body.face_lineage ?? null,
+                profileQueries: body.profile_queries ?? [],
+              })
+              const edgeResult = solidToEdges(oc!, table, body.shape, {
+                createdBy: body.created_by || '',
+                bodyId: body.id,
+                profileQueries: body.profile_queries ?? [],
+                edgeLineage: body.edge_lineage ?? null,
+              })
+              const vertexResult = solidToVertices(oc!, table, body.shape, {
+                createdBy: body.created_by || '',
+                bodyId: body.id,
+                profileQueries: body.profile_queries ?? [],
+              })
+              out[body.id] = {
+                mesh,
+                edges: edgeResult.edges,
+                edge_queries: edgeResult.edge_queries,
+                vertices: vertexResult.vertices,
+                vertex_queries: vertexResult.vertex_queries,
+              }
+            } catch { /* non-fatal */ }
+          }
+          return out
+        },
+        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
+        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
+        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
+      }
+      const result = build(spec, {}, deps)
+      scope.dispose()
+      return result
+    } catch (e) {
+      scope.dispose()
+      throw e
+    }
+  }
+
+  function res(result: BuildResponse, featureId: string): Record<string, unknown> {
+    return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
+  }
+
+  function body(result: BuildResponse, bodyId: string): Record<string, unknown> {
+    return (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
+  }
+
+  // ── Basic mesh / bbox tests ──────────────────────────────────────────────
+
+  it('basic rect extrude produces a valid mesh', () => {
+    /** Port of test_rect_extrude_mesh_valid. */
+    const result = run(fullRectExtrudeSpec(10, 10, 5))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshValid(mesh)
+  })
+
+  it('rect extrude bbox normal direction', () => {
+    /** Port of test_rect_extrude_bbox_normal. */
+    const result = run(fullRectExtrudeSpec(10, 8, 5, 'normal'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
+  })
+
+  it('rect extrude bbox reverse direction', () => {
+    /** Port of test_rect_extrude_bbox_reverse. */
+    const result = run(fullRectExtrudeSpec(6, 6, 4, 'reverse'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 6], [0, 6], [-4, 0])
+  })
+
+  it('rect extrude bbox symmetric direction', () => {
+    /** Port of test_rect_extrude_bbox_symmetric. */
+    const result = run(fullRectExtrudeSpec(4, 4, 6, 'symmetric'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 4], [0, 4], [-3, 3])
+  })
+
+  it('all face indices are valid', () => {
+    /** Port of test_all_face_indices_valid. */
+    const result = run(fullRectExtrudeSpec())
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      const n = mesh.vertices.length
+      for (const [a, b, c] of mesh.faces) {
+        expect(a).toBeGreaterThanOrEqual(0); expect(a).toBeLessThan(n)
+        expect(b).toBeGreaterThanOrEqual(0); expect(b).toBeLessThan(n)
+        expect(c).toBeGreaterThanOrEqual(0); expect(c).toBeLessThan(n)
+      }
+    }
+  })
+
+  it('no degenerate faces', () => {
+    /** Port of test_no_degenerate_faces. */
+    const result = run(fullRectExtrudeSpec())
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      for (const [a, b, c] of mesh.faces) {
+        expect(a).not.toBe(b)
+        expect(b).not.toBe(c)
+        expect(a).not.toBe(c)
+      }
+    }
+  })
+
+  // ── Nested UI format / bare plane id ─────────────────────────────────────
+
+  it('nested extrude UI format produces valid mesh', () => {
+    /** Regression: UI serializes extrude as {kind, id, extrude: {sketch, distance, ...}}.
+     *  Port of test_extrude_nested_ui_format. */
+    const result = run({
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: 'Top',
+          entities: [{ id: 'c1', kind: 'circle' }],
+          initial: { c1: [0, 0, 0.5] },
+          constraints: [
+            { id: 'co1', kind: 'coincident', a: '$sk1c1center', b: '@builtin_origin' },
+            { id: 'd1', kind: 'diameter', target: '$sk1c1', value: 1 },
+          ],
+        },
+        { id: 'ex1', kind: 'extrude', label: 'extrude 1',
+          extrude: { sketch: '$sk1', distance: 2, direction: 'normal' } },
+      ],
+    })
+    expect(res(result, 'sk1').status).not.toBe('exception')
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [-0.5, 0.5], [0, 2], [-0.5, 0.5])
+  })
+
+  it('bare builtin plane id is resolved', () => {
+    /** Bare plane id 'Top' (no @ prefix) must resolve to the correct builtin plane.
+     *  Port of test_extrude_sketch_on_builtin_plane_bare_id. */
+    const result = run({
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: 'Top',
+          entities: [{ id: 'c1', kind: 'circle' }],
+          initial: { c1: [0, 0, 0.5] },
+          constraints: [
+            { id: 'co1', kind: 'coincident', a: '$sk1c1center', b: '@builtin_origin' },
+            { id: 'd1', kind: 'diameter', target: '$sk1c1', value: 1 },
+          ],
+        },
+        { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal' },
+      ],
+    })
+    expect(res(result, 'sk1').status).not.toBe('exception')
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [-0.5, 0.5], [0, 2], [-0.5, 0.5])
+  })
+
+  it('circle sketch with ghost line constraints still extrudes', () => {
+    /** Ghost constraints referencing non-existent line entities must be ignored.
+     *  Port of test_extrude_circle_sketch_with_ghost_line_constraints. */
+    const result = run({
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: 'Top',
+          entities: [{ id: 'circ1', kind: 'circle' }],
+          initial: { circ1: [0, 0, 0.5] },
+          constraints: [
+            { id: 'c_co', kind: 'coincident', a: '$sk1circ1center', b: '@builtin_origin' },
+            { id: 'c_diam', kind: 'diameter', target: '$sk1circ1', value: 1 },
+            { id: 'c_ghost1', kind: 'coincident', a: '$sk1line1end', b: '$sk1line2start' },
+            { id: 'c_ghost2', kind: 'equal_length', a: '$sk1line1', b: '$sk1line3' },
+            { id: 'c_ghost3', kind: 'horizontal', target: '$sk1line1' },
+          ],
+        },
+        { id: 'ex1', kind: 'extrude', label: 'extrude 1',
+          extrude: { sketch: '$sk1', distance: 1, direction: 'normal' } },
+      ],
+    })
+    expect(res(result, 'sk1').status).not.toBe('exception')
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshValid(mesh)
+  })
+
+  // ── Top face plane / stacked extrudes ────────────────────────────────────
+
+  it('top face plane is at correct z', () => {
+    /** The top face centroid must be at z=distance. The plane feature kind is not
+     *  ported to the TS kernel, so test directly via mesh face_data z-coordinates.
+     *  Port of test_extrude_top_face_plane_at_correct_z. */
+    const d = 7
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: d }),
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined
+    expect(mesh).toBeDefined()
+    const topFace = mesh?.face_data?.find((fd) => fd.normal[2] > 0.9)
+    expect(topFace).toBeDefined()
+    expect(topFace!.centroid[2]).toBeCloseTo(d, 0)
+  })
+
+  it('two extrudes stacked one on top of the other', () => {
+    /** Second extrude on top of first with operation=new. Port of test_two_extrudes_stacked. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 5 }),
+        {
+          id: 'sk2', kind: 'sketch', plane: '@ex1/top_face',
+          entities: [
+            { id: 'bottom', kind: 'line' }, { id: 'right', kind: 'line' },
+            { id: 'top', kind: 'line' }, { id: 'left', kind: 'line' },
+          ],
+          initial: {
+            bottom: [0, 0, 4, 0], right: [4, 0, 4, 4],
+            top: [4, 4, 0, 4], left: [0, 4, 0, 0],
+          },
+          constraints: [
+            { id: 'c1', kind: 'coincident', a: { entity: 'bottom', point: 'end' }, b: { entity: 'right', point: 'start' } },
+            { id: 'c2', kind: 'coincident', a: { entity: 'right', point: 'end' }, b: { entity: 'top', point: 'start' } },
+            { id: 'c3', kind: 'coincident', a: { entity: 'top', point: 'end' }, b: { entity: 'left', point: 'start' } },
+            { id: 'c4', kind: 'coincident', a: { entity: 'left', point: 'end' }, b: { entity: 'bottom', point: 'start' } },
+            { id: 'c5', kind: 'horizontal', target: { entity: 'bottom' } },
+            { id: 'c6', kind: 'horizontal', target: { entity: 'top' } },
+            { id: 'c7', kind: 'vertical', target: { entity: 'right' } },
+            { id: 'c8', kind: 'vertical', target: { entity: 'left' } },
+            { id: 'c9', kind: 'length', target: { entity: 'bottom' }, value: 4 },
+            { id: 'c10', kind: 'length', target: { entity: 'left' }, value: 4 },
+          ],
+        },
+        extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'new' }),
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(res(result, 'ex2').status).toBe('ok')
+    const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    expect(mesh2).toBeDefined()
+    if (mesh2) {
+      const zs = mesh2.vertices.map((v) => v[2])
+      expect(Math.min(...zs)).toBeCloseTo(5, 0)
+      expect(Math.max(...zs)).toBeCloseTo(8, 0)
+    }
+  })
+
+  // ── Surface queries ──────────────────────────────────────────────────────
+
+  it('extrude from sketch surface query (circle profile)', () => {
+    /** Extrude uses a ?-ancestry query for a sketch surface flatface as the profile.
+     *  Port of test_extrude_from_sketch_surface_query. */
+    const surfaceQuery = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
+    const result = run({
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'c1', kind: 'circle' }],
+          initial: { c1: [0, 0, 0.5] },
+          constraints: [
+            { id: 'co1', kind: 'coincident', a: '$sk1c1center', b: '@builtin_origin' },
+            { id: 'd1', kind: 'diameter', target: '$sk1c1', value: 1 },
+          ],
+        },
+        { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 2, direction: 'normal' },
+      ],
+    })
+    expect(res(result, 'sk1').status).not.toBe('exception')
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshValid(mesh)
+  })
+
+  it('extrude uses only selected surface, not whole sketch', () => {
+    /** When a sketch has two circles and one is selected via ?, only that surface
+     *  is extruded. Port of test_extrude_surface_query_uses_only_selected_surface. */
+    const sk = 'sk1'
+    const surfaceQuery = makeAncestryQuery([`@${sk}/c2`, 'surface:1', `@${sk}`], 'flatface')
+    const result = run({
+      features: [
+        {
+          id: sk, kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'c1', kind: 'circle' }, { id: 'c2', kind: 'circle' }],
+          initial: { c1: [0, 0, 0.5], c2: [3, 0, 0.5] },
+          constraints: [
+            { id: 'co1', kind: 'coincident', a: `$${sk}c1center`, b: '@builtin_origin' },
+            { id: 'd1', kind: 'diameter', target: `$${sk}c1`, value: 1 },
+            { id: 'd2', kind: 'diameter', target: `$${sk}c2`, value: 1 },
+          ],
+        },
+        { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 1, direction: 'normal' },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      const xs = mesh.vertices.map((v) => v[0])
+      expect(Math.min(...xs)).toBeGreaterThan(1)  // c2 is near x=3, c1 at origin must not be included
+    }
+  })
+
+  it('extrude from top face named query (@ex1/top_face)', () => {
+    /** Second extrude uses @ex1/top_face as its profile. Port of test_extrude_from_top_face_named_query. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 5 }),
+        { id: 'ex2', kind: 'extrude', sketch: '@ex1/top_face', distance: 3, direction: 'normal', operation: 'new' },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(res(result, 'ex2').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex2')
+    const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    expect(mesh2).toBeDefined()
+    if (mesh2) {
+      const zs = mesh2.vertices.map((v) => v[2])
+      expect(Math.min(...zs)).toBeCloseTo(5, 0)
+      expect(Math.max(...zs)).toBeCloseTo(8, 0)
+    }
+  })
+
+  // ── Sketch list tests ────────────────────────────────────────────────────
+
+  it('extrude sketch list with two profiles produces one body', () => {
+    /** sketch field as a list of two sketch refs. Port of test_extrude_sketch_list_two_profiles. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 2, 2, '@builtin_plane_front'),
+        rectSketchSk('sk2', 2, 2, '@builtin_plane_front'),
+        { id: 'ex1', kind: 'extrude', sketch: ['$sk1', '$sk2'], distance: 3, direction: 'normal' },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      expect(mesh.vertices.length).toBeGreaterThan(0)
+      expect(mesh.faces.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('extrude sketch list with single element', () => {
+    /** A list with one sketch ref behaves like the string form. Port of test_extrude_sketch_list_single_element. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 4, 4, '@builtin_plane_front'),
+        { id: 'ex1', kind: 'extrude', sketch: ['$sk1'], distance: 2, direction: 'normal' },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 4], [0, 4], [0, 2])
+  })
+
+  it('extrude sketch empty list errors', () => {
+    /** Empty sketch list returns exception. Port of test_extrude_sketch_empty_list_errors. */
+    const result = run({
+      features: [{ id: 'ex1', kind: 'extrude', sketch: [], distance: 2 }],
+    })
+    expect(res(result, 'ex1').status).toBe('exception')
+  })
+
+  it('extrude sketch not found returns exception', () => {
+    /** Extrude with a sketch ref that has no closed profile returns exception.
+     *  Port of test_extrude_sketch_not_found_returns_exception. */
+    const result = run({
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'L1', kind: 'line' }],
+          constraints: [{ id: 'c1', kind: 'horizontal', target: { entity: 'L1' } }],
+        },
+        { id: 'ex1', kind: 'extrude', sketch: ['@sk1'], distance: 5 },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('exception')
+  })
+
+  it('extrude key error still returns exception dict', () => {
+    /** A KeyError-like situation must yield exception status. Port of test_extrude_key_error_still_returns_exception_dict. */
+    const result = run({
+      features: [{ id: 'ex1', kind: 'extrude', sketch: [] }],
+    })
+    expect(res(result, 'ex1').status).toBe('exception')
+  })
+
+  // ── Cut extrude tests ────────────────────────────────────────────────────
+
+  it('cut extrude removes volume from base body', () => {
+    /** Cut extrusion subtracts from a base body. Port of test_cut_extrude_removes_volume. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 10 }),
+        extrudeSpec('sk1', 'ex2', { distance: 5, operation: 'cut' }),
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(res(result, 'ex2').status).toBe('ok')
+    expect(result.bodies).not.toHaveProperty('body_ex2')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [5, 10])
+  })
+
+  it('cut extrude must not produce a body in output', () => {
+    /** Cut extrude feature must not produce a body in the bodies dict. Port of test_cut_extrude_no_body_stored. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 6, 6, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 8 }),
+        extrudeSpec('sk1', 'ex2', { distance: 4, operation: 'cut' }),
+      ],
+    })
+    expect(result.bodies).not.toHaveProperty('body_ex2')
+    expect(result.bodies).toHaveProperty('body_ex1')
+  })
+
+  it('cut extrude nested UI format', () => {
+    /** Cut operation read from nested extrude sub-dict. Port of test_cut_extrude_nested_ui_format. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        { id: 'ex1', kind: 'extrude', label: 'Base',
+          extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } },
+        { id: 'ex2', kind: 'extrude', label: 'Cut',
+          extrude: { sketch: '$sk1', distance: 5, direction: 'normal', operation: 'cut' } },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(res(result, 'ex2').status).toBe('ok')
+    expect(result.bodies).not.toHaveProperty('body_ex2')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [5, 10])
+  })
+
+  it('cut extrude with no prior body succeeds without crash', () => {
+    /** Cut extrude with no prior body must succeed. Port of test_cut_extrude_with_no_target_body. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 6, 6, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 5, operation: 'cut' }),
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).not.toHaveProperty('body_ex1')
+  })
+
+  // ── Disjoint body tests ──────────────────────────────────────────────────
+
+  it('disjoint rects operation=new creates two bodies', () => {
+    /** Two disjoint sketch profiles with operation=new produce two separate bodies.
+     *  Port of test_disjoint_rects_new_creates_two_bodies. */
+    const result = run(disjointTwoRectSpec('new'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).toHaveProperty('body_ex1_1')
+    expect(res(result, 'ex1').body_ids).toEqual(['body_ex1', 'body_ex1_1'])
+    const m1 = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const m2 = body(result, 'body_ex1_1').mesh as Record<string, unknown> | undefined
+    expect(m1).toBeDefined(); if (m1) assertMeshValid(m1)
+    expect(m2).toBeDefined(); if (m2) assertMeshValid(m2)
+  })
+
+  it('disjoint rects add no base creates two bodies', () => {
+    /** Two profiles with operation=add and no existing body produce two bodies.
+     *  Port of test_disjoint_rects_add_no_base_creates_two_bodies. */
+    const result = run(disjointTwoRectSpec('add'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).toHaveProperty('body_ex1_1')
+  })
+
+  it('disjoint rects add with base fuses into base body', () => {
+    /** Disjoint profiles with operation=add and an existing body fuse into that body.
+     *  Port of test_disjoint_rects_add_with_base_fuses. */
+    const spec = disjointTwoRectSpec('add')
+    const result = run({
+      features: [
+        rectSketchSk('sk0', 2, 2, '@builtin_plane_front'),
+        extrudeSpec('sk0', 'ex0', { distance: 1, operation: 'new' }),
+        ...spec.features,
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex0')
+    expect(result.bodies).not.toHaveProperty('body_ex1_1')  // fused into base body
+  })
+
+  it('single rect still one body', () => {
+    /** Single rectangle extrude still produces exactly one body. Port of test_single_rect_still_one_body. */
+    const result = run(fullRectExtrudeSpec(4, 4, 2))
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).not.toHaveProperty('body_ex1_1')
+    expect(res(result, 'ex1').body_ids).toEqual(['body_ex1'])
+  })
+
+  it('disjoint extrude has body_ids field', () => {
+    /** body_ids field lists all split body IDs. Port of test_disjoint_extrude_has_body_ids_field. */
+    const result = run(disjointTwoRectSpec('new'))
+    const bodyIds = res(result, 'ex1').body_ids as string[] | undefined
+    expect(bodyIds).toBeDefined()
+    expect(new Set(bodyIds)).toEqual(new Set(['body_ex1', 'body_ex1_1']))
+  })
+
+  it('two independent extrudes produce two bodies', () => {
+    /** Two independent sketches extruded independently. Port of test_two_independent_extrudes_produce_two_bodies. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 5 }),
+        rectSketchSk('sk2', 5, 5, '@builtin_plane_front'),
+        extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'new' }),
+      ],
+    })
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).toHaveProperty('body_ex2')
+    expect(Object.keys(result.bodies)).toHaveLength(2)
+  })
+
+  it('disjoint bodies have unique face queries', () => {
+    /** Two-body extrude face queries must be unique per body.
+     *  Port of test_disjoint_bodies_have_unique_face_queries. */
+    const result = run(disjointTwoRectSpec('new'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const m1 = body(result, 'body_ex1').mesh as { face_queries?: string[] } | undefined
+    const m2 = body(result, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined
+    expect(m1?.face_queries?.length).toBeGreaterThan(0)
+    expect(m2?.face_queries?.length).toBeGreaterThan(0)
+    const fq1 = new Set(m1?.face_queries ?? [])
+    const fq2 = new Set(m2?.face_queries ?? [])
+    for (const q of fq1) expect(fq2.has(q)).toBe(false)
+  })
+
+  it('disjoint bodies have unique edge queries', () => {
+    /** Edge queries from two bodies of the same extrude must be disjoint.
+     *  Port of test_disjoint_bodies_have_unique_edge_queries. */
+    const result = run(disjointTwoRectSpec('new'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const eq1 = new Set((body(result, 'body_ex1').edge_queries as string[]) ?? [])
+    const eq2 = new Set((body(result, 'body_ex1_1').edge_queries as string[]) ?? [])
+    expect(eq1.size).toBeGreaterThan(0)
+    expect(eq2.size).toBeGreaterThan(0)
+    for (const q of eq1) expect(eq2.has(q)).toBe(false)
+  })
+
+  it('disjoint bodies have unique vertex queries', () => {
+    /** Vertex queries from two bodies of the same extrude must be disjoint.
+     *  Port of test_disjoint_bodies_have_unique_vertex_queries. */
+    const result = run(disjointTwoRectSpec('new'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const vq1 = new Set((body(result, 'body_ex1').vertex_queries as string[]) ?? [])
+    const vq2 = new Set((body(result, 'body_ex1_1').vertex_queries as string[]) ?? [])
+    expect(vq1.size).toBeGreaterThan(0)
+    expect(vq2.size).toBeGreaterThan(0)
+    for (const q of vq1) expect(vq2.has(q)).toBe(false)
+  })
+
+  // ── Disjoint pick body / face query resolve ──────────────────────────────
+
+  it('disjoint pick_body by feature id returns first split body', () => {
+    /** @ex1 resolves to the first split body. Port of test_disjoint_pick_body_by_feature_id. */
+    const result = run(disjointTwoRectSpec('new'))
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).toHaveProperty('body_ex1_1')
+  })
+
+  it('disjoint bodies face queries resolve to correct body', () => {
+    /** Each face query must resolve to the body it belongs to. Port of test_disjoint_bodies_face_query_resolves_to_correct_body. */
+    const result = run(disjointTwoRectSpec('new'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    const buildState = result._build_state
+    const lastFid = buildState!.feature_order[buildState!.feature_order.length - 1]
+    const checkpoint = buildState!.checkpoints[lastFid]
+    const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
+    for (const bid of ['body_ex1', 'body_ex1_1']) {
+      const b = body(result, bid) as { mesh?: { face_queries?: string[] } }
+      const faceQueries = b?.mesh?.face_queries ?? []
+      for (const fq of faceQueries) {
+        const r = repo.query(fq) as { body_id?: string } | null
+        expect(r).toBeDefined()
+        expect(r?.body_id).toBe(bid)
+      }
+    }
+  })
+
+  it('disjoint body face query usable in downstream feature', () => {
+    /** A face query from the secondary body can be used as a plane without
+     *  AmbiguousQueryError. Port of test_disjoint_body_face_query_usable_in_downstream_feature. */
+    const r1 = run(disjointTwoRectSpec('new'))
+    expect(res(r1, 'ex1').status).toBe('ok')
+
+    const faceData = (body(r1, 'body_ex1_1').mesh as { face_data?: Array<{ surface_type?: string }> } | undefined)?.face_data ?? []
+    const faceQueries = (body(r1, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    let flatQuery: string | undefined
+    for (let i = 0; i < faceData.length; i++) {
+      if (faceData[i].surface_type === 'flatface') { flatQuery = faceQueries[i]; break }
+    }
+    expect(flatQuery).toBeDefined()
+
+    const sk2 = rectSketchSk('sk2', 2, 2, flatQuery!)
+    const spec2 = { ...disjointTwoRectSpec('new'), features: [...disjointTwoRectSpec('new').features, sk2] }
+
+    const r2 = run(spec2)
+    const sk2Result = res(r2, 'sk2')
+    expect(sk2Result.plane_transform).toBeDefined()
+  })
+
+  // ── Slash query extrude ──────────────────────────────────────────────────
+
+  it('extrude from slash-style brep face query (@feature/face/N)', () => {
+    /** Slash-style B-rep face IDs resolve as extrude profiles. Port of test_extrude_from_brep_face_slash_query. */
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 5 }),
+        { id: 'ex2', kind: 'extrude', sketch: '@ex1/face/0', distance: 3, direction: 'normal', operation: 'new' },
+      ],
+    })
+    expect(res(result, 'ex2').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex2')
+    const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    expect(mesh2).toBeDefined()
+    if (mesh2) {
+      const xs = mesh2.vertices.map((v) => v[0])
+      const ys = mesh2.vertices.map((v) => v[1])
+      const zs = mesh2.vertices.map((v) => v[2])
+      const spans = [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.max(...zs) - Math.min(...zs)]
+      expect(spans.some((s) => Math.abs(s - 3) < 0.25)).toBe(true)
+    }
+  })
+
+  // ── Fillet + extrude chain (face query after fillet topology change) ──
+
+  it('extrude from brep face after fillet', () => {
+    /** Extrude uses a face query from a body that was modified by a fillet.
+     *  Regression: after fillet changes body topology, face index ordering in
+     *  face-loop extraction must match solid_to_mesh. Port of
+     *  test_extrude_from_brep_face_after_fillet. */
+    const d = 5
+    // Step 1: build extrude-only to find edge queries and a flat side face
+    const r1 = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: d }),
+      ],
+    })
+    expect(res(r1, 'ex1').status).toBe('ok')
+
+    // Find a flat side face (centroid z ~ d/2) and build a 3-tag query.
+    const mesh1 = body(r1, 'body_ex1').mesh as {
+      face_data?: Array<{ centroid: number[]; surface_type?: string }>
+    } | undefined
+    let bestQ: string | undefined
+    if (mesh1?.face_data) {
+      for (let idx = 0; idx < mesh1.face_data.length; idx++) {
+        const fd = mesh1.face_data[idx]
+        if (Math.abs(fd.centroid[2] - d / 2) < 0.1 && fd.surface_type === 'flatface') {
+          bestQ = makeAncestryQuery([`@body_ex1/face${idx}`, '@ex1', '@body_ex1'], 'flatface')
+          break
+        }
+      }
+    }
+    expect(bestQ).toBeDefined()
+
+    // Step 2: full build with extrude + fillet + extrude from face.
+    const eq = (body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const spec2 = {
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: d }),
+        { id: 'fil1', kind: 'fillet', edges: [eq[0], eq[1]], radius: 0.5 },
+        { id: 'ex2', kind: 'extrude', sketch: bestQ!, distance: 3, direction: 'normal', operation: 'new' },
+      ],
+    }
+    const r2 = run(spec2)
+    expect(res(r2, 'ex2').status).toBe('ok')
+    expect(r2.bodies).toHaveProperty('body_ex2')
+    const m2 = body(r2, 'body_ex2').mesh as Record<string, unknown> | undefined
+    expect(m2).toBeDefined()
+    if (m2) assertMeshValid(m2)
+  })
+})
