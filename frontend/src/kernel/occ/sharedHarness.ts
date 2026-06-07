@@ -21,6 +21,8 @@ import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
+import { copyShape } from '../occ/transforms'
+import type { OccShape } from '../occ/occTypes'
 
 export class SharedHarness {
   readonly oc: OccModule
@@ -73,6 +75,9 @@ export class SharedHarness {
         brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(this.oc, scope, b),
         brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(this.oc, scope, b),
         brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(this.oc, scope, b),
+        retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
+        copyBodyShape: (h) => this.table.register(copyShape(this.oc, scope, this.table.get<OccShape>(h))),
+        releaseCheckpoint: (fid) => this.table.releaseOwner('cp:' + fid),
       }
       return build(spec, {
         prevState: opts?.prevState ?? null,

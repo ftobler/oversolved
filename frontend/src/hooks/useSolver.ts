@@ -300,8 +300,10 @@ export function useSolver(
       // Skip local solve when there are no features (empty doc or preview-only).
       if (solveFeatures.length > 0 && isDocFullyPorted(solveFeatures)) {
         console.log('[useSolver] doc is fully ported, attempting local solve')
+        // prevState is intentionally omitted: solveLocally owns the cross-solve
+        // checkpoint cache (persistent HandleTable + last BuildState, keyed by
+        // doc id) so incremental rebuild reuses the clean prefix.
         const local = await solveLocally(solvePayload, {
-          prevState: null,
           pickBoundary: pickBoundary ?? null,
           rollbackPosition: adjustedRollback,
           validate: opts?.validate,

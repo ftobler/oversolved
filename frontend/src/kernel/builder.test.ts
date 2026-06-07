@@ -77,13 +77,23 @@ describe('findFirstDirty', () => {
     expect(findFirstDirty([{ id: 'a', kind: 'sketch' }, { id: 'b', kind: 'sketch' }], prev)).toBe(2)
   })
 
-  it('ignores keys outside FEATURE_CMP_KEYS', () => {
+  it('dirties on any geometry-affecting param change', () => {
     const prev: BuildState = {
       feature_order: ['a'],
-      checkpoints: { a: checkpoint({ id: 'a', kind: 'sketch', extrude: { distance: 5 } }) },
+      checkpoints: { a: checkpoint({ id: 'a', kind: 'extrude', distance: 5 }) },
     }
-    // extrude is not in COMMON_FEATURE_KEYS, so changes to it don't dirty.
-    expect(findFirstDirty([{ id: 'a', kind: 'sketch', extrude: { distance: 10 } }], prev)).toBe(1)
+    // Every non-volatile key participates: a distance edit must invalidate.
+    // (Under the old placeholder whitelist this silently served stale geometry.)
+    expect(findFirstDirty([{ id: 'a', kind: 'extrude', distance: 10 }], prev)).toBe(0)
+  })
+
+  it('ignores volatile transient keys (drag_anchor)', () => {
+    const prev: BuildState = {
+      feature_order: ['a'],
+      checkpoints: { a: checkpoint({ id: 'a', kind: 'extrude', distance: 5 }) },
+    }
+    // drag_anchor is attached per drag-tick and must never dirty the cache.
+    expect(findFirstDirty([{ id: 'a', kind: 'extrude', distance: 5, drag_anchor: 'e1' }], prev)).toBe(1)
   })
 })
 

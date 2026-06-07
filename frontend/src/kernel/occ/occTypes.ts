@@ -468,6 +468,9 @@ export interface OccModule extends OccSpikeModule {
   gp_Trsf_1: new () => OccTrsf
   /** BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape. */
   BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
+  /** BRepBuilderAPI_Copy(shape, copyGeom, copyMesh): independent deep copy of a
+   *  shape (the defensive copy used to isolate checkpoint snapshots). */
+  BRepBuilderAPI_Copy_2: new (shape: OccShape, copyGeom: boolean, copyMesh: boolean) => OccCopyBuilder
 
   // --- 2f: import_step (STEP read + write) --------------------------------
   /** Emscripten in-memory filesystem (write the STEP bytes here, then ReadFile). */
@@ -510,6 +513,10 @@ export interface OccTrsf extends OccDisposable {
 
 export interface OccTransformBuilder extends OccDisposable {
   Build(): void
+  Shape(): OccShape
+}
+
+export interface OccCopyBuilder extends OccDisposable {
   Shape(): OccShape
 }
 

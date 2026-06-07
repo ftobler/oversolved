@@ -62,6 +62,21 @@ export interface BuildDeps {
   /** Compute vertex geometry hashes for purely-new vertices (endpoints of new
    *  edges minus endpoints of inherited edges). Same contract. */
   brepDiffNewVertexHashes?: (body: Body) => Set<string>
+  /** Retain a checkpoint's live shape under an owner tag so a later feature in
+   *  the same build that consumes/frees that shape cannot strand the snapshot,
+   *  and the shape survives into the next build for incremental restore. A pure
+   *  refcount bump -- it never touches the OCC shape, so it cannot disturb a
+   *  downstream maker operating on the same handle (copying it here does). */
+  retainCheckpointShape?: (shape: NonNullable<Body['shape']>, owner: string) => void
+  /** Defensive copy of a (pristine, prev-build) checkpoint shape into a fresh
+   *  handle, used only when restoring the clean prefix: the rebuilt tail may
+   *  consume/free it, so it must be independent of the retained checkpoint copy
+   *  that future rebuilds restore from again. Mirrors builder.py `_copy_shape`.
+   *  When omitted (pure non-OCC tests) the handle is aliased. */
+  copyBodyShape?: (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
+  /** Evict every shape held by a checkpoint, by owner tag (``releaseOwner``).
+   *  Called for prev-state checkpoints that a new build discards. */
+  releaseCheckpoint?: (fid: string) => void
 }
 
 export interface BuildOptions {
@@ -88,20 +103,22 @@ export interface RebuildValidation {
 
 // ── Feature key union for dirty detection ──────────────────────────────────
 
-const COMMON_FEATURE_KEYS = new Set([
-  'id', 'kind',
-  'plane', 'entities', 'constraints', 'initial',
-  'definition',
-  'hide', 'label', 'suppressed', 'file_id',
+// Keys that are NOT part of a feature's geometric identity: transient hints
+// attached to the solve payload that must never participate in dirty detection.
+// Everything else on a feature is compared, so any geometry-affecting param
+// edit (distance, radius, operation, axis, ...) invalidates the checkpoint.
+// A blacklist is chosen deliberately over a whitelist: a missed param here only
+// costs a redundant rebuild, whereas a missed param in a whitelist would silently
+// serve STALE geometry. ``drag_anchor`` is attached per-drag-tick in useSolver and
+// is documented as never belonging to the cache key.
+const VOLATILE_FEATURE_KEYS = new Set([
+  'drag_anchor',
 ])
-
-// Placeholder; will grow as leaf features are ported.
-const FEATURE_CMP_KEYS = COMMON_FEATURE_KEYS
 
 function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const k of FEATURE_CMP_KEYS) {
-    if (k in spec) out[k] = spec[k]
+  for (const k of Object.keys(spec)) {
+    if (!VOLATILE_FEATURE_KEYS.has(k)) out[k] = spec[k]
   }
   return out
 }
@@ -120,8 +137,8 @@ export function findFirstDirty(
     if (i >= prevOrder.length || prevOrder[i] !== fid) return i
     const prevCheckpoint = prevState.checkpoints[fid]
     if (!prevCheckpoint) return i
-    if (JSON.stringify(_normalizeSpec(prevCheckpoint.spec as Record<string, unknown>))
-        !== JSON.stringify(_normalizeSpec(feature))) {
+    if (_stableJson(_normalizeSpec(prevCheckpoint.spec as Record<string, unknown>))
+        !== _stableJson(_normalizeSpec(feature))) {
       return i
     }
   }
@@ -130,12 +147,17 @@ export function findFirstDirty(
 
 // ── Shape / body snapshot helpers ───────────────────────────────────────────
 
-function _copyBody(body: Body): Body {
+// ``mapShape``, when provided, transforms the body's shape handle for the
+// snapshot: retain-in-place at checkpoint time, defensive-copy at restore time.
+// Without it the handle is aliased (non-OCC tests).
+type ShapeMapper = (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
+
+function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
   return {
     id: body.id,
     created_by: body.created_by,
     modified_by: [...body.modified_by],
-    shape: body.shape,
+    shape: (body.shape != null && mapShape) ? mapShape(body.shape) : body.shape,
     sketch_id: body.sketch_id,
     brep_diff: body.brep_diff,
     profile_queries: [...body.profile_queries],
@@ -156,8 +178,13 @@ function _snapshotRepo(repo: Repository): Record<string, unknown> {
   }
 }
 
-function _snapshotBodies(bodyStore: Record<string, Body>): Record<string, Body> {
-  return Object.fromEntries(Object.entries(bodyStore).map(([k, v]) => [k, _copyBody(v)]))
+function _snapshotBodies(
+  bodyStore: Record<string, Body>,
+  mapShape?: ShapeMapper,
+): Record<string, Body> {
+  return Object.fromEntries(
+    Object.entries(bodyStore).map(([k, v]) => [k, _copyBody(v, mapShape)]),
+  )
 }
 
 function _dedupeRepo(repo: Repository): void {
@@ -605,6 +632,18 @@ export function build(
 
   const firstDirty = findFirstDirty(features, options.prevState)
 
+  // Evict the prev-state checkpoints this build discards: everything from the
+  // first dirty feature onward (the clean prefix, indices < firstDirty, is
+  // reused by identity below and keeps its retained shapes). Deleted features
+  // sit at or past firstDirty in the prev order, so they are covered too. Each
+  // checkpoint owns its shapes exclusively (defensive copies), so releasing by
+  // owner frees exactly that checkpoint's copies.
+  if (options.prevState && deps.releaseCheckpoint) {
+    for (const fid of options.prevState.feature_order.slice(firstDirty)) {
+      deps.releaseCheckpoint(fid)
+    }
+  }
+
   const globalRepo = deps.initGlobalRepo()
   const bodyStore: Record<string, Body> = {}
   const result: Record<string, unknown> = {}
@@ -630,7 +669,10 @@ export function build(
     const checkpoint = options.prevState.checkpoints[lastCleanFid]
     if (checkpoint) {
       Object.assign(globalRepo, repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>))
-      Object.assign(bodyStore, _snapshotBodies(checkpoint.body_store_snapshot))
+      // Copy the checkpoint's retained shapes into the live store: the rebuilt
+      // tail may consume/free these, so they must be independent of the pristine
+      // checkpoint shapes that future rebuilds restore from again.
+      Object.assign(bodyStore, _snapshotBodies(checkpoint.body_store_snapshot, deps.copyBodyShape))
       for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
         result[fid] = options.prevState.checkpoints[fid].result
         newCheckpoints[fid] = options.prevState.checkpoints[fid]
@@ -656,21 +698,44 @@ export function build(
   // data at checkpoint time means the post-loop assembly never tessellates a
   // dead handle. Mirrors Python builder.py `_shape_tess_cache`.
   const shapeTessCache = new Map<OccHandle, Record<string, unknown>>()
-  const captureSnapshotMeshes = (snapshot: Record<string, Body>): void => {
-    for (const body of Object.values(snapshot)) {
-      if (body.shape != null && !shapeTessCache.has(body.shape)) {
-        const entry = deps.tessellateBodies({ [body.id]: body }, null)[body.id]
+  // Tessellate by the LIVE handle (which persists across checkpoints for an
+  // unchanged body, so each unique shape meshes at most once), then alias the
+  // frozen mesh onto the checkpoint's independent copy handle. Keying off the
+  // copy directly would re-mesh every checkpoint's copy even when the geometry
+  // never changed -- a full-rebuild tessellation blowup.
+  const captureSnapshotMeshes = (
+    live: Record<string, Body>,
+    snapshot: Record<string, Body>,
+  ): void => {
+    for (const [bid, body] of Object.entries(live)) {
+      if (body.shape == null) continue
+      if (!shapeTessCache.has(body.shape)) {
+        const entry = deps.tessellateBodies({ [bid]: body }, null)[bid]
         if (entry) shapeTessCache.set(body.shape, entry)
       }
+      const copyHandle = snapshot[bid]?.shape
+      const mesh = shapeTessCache.get(body.shape)
+      if (copyHandle != null && copyHandle !== body.shape && mesh) {
+        shapeTessCache.set(copyHandle, mesh)
+      }
     }
+  }
+
+  // Snapshot mapper: retain the live shape under the checkpoint's owner so it
+  // survives a downstream consume/free and into the next build, without copying
+  // it (copying a shape a later feature then operates on corrupts that result).
+  const retainForCheckpoint = (fid: string): ShapeMapper | undefined => {
+    if (!deps.retainCheckpointShape) return undefined
+    const retain = deps.retainCheckpointShape
+    return (shape) => { retain(shape, 'cp:' + fid); return shape }
   }
 
   for (const feature of features.slice(firstDirty)) {
     const fid = String(feature.id ?? '')
 
     if (feature.suppressed) {
-      const cpSnapshot = _snapshotBodies(bodyStore)
-      captureSnapshotMeshes(cpSnapshot)
+      const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
+      captureSnapshotMeshes(bodyStore, cpSnapshot)
       newCheckpoints[fid] = {
         spec: { ...feature },
         result: { status: 'suppressed' },
@@ -710,8 +775,8 @@ export function build(
       }
     }
 
-    const cpSnapshot = _snapshotBodies(bodyStore)
-    captureSnapshotMeshes(cpSnapshot)
+    const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
+    captureSnapshotMeshes(bodyStore, cpSnapshot)
     newCheckpoints[fid] = {
       spec: JSON.parse(JSON.stringify(feature)),
       result: JSON.parse(JSON.stringify(result[fid])),

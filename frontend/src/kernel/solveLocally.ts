@@ -18,20 +18,54 @@ import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from './occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
-import type { OccModule } from './occ/occTypes'
-import type { Body } from './types3d'
+import { copyShape } from './occ/transforms'
+import type { OccModule, OccShape } from './occ/occTypes'
+import type { Body, BuildState } from './types3d'
 
 let occModule: OccModule | null = null
 let occLoading: Promise<OccModule | null> | null = null
+
+// ─── cross-solve checkpoint cache ───
+// The checkpoint cache is not a side table: it IS the OCC handles in this
+// HandleTable plus the BuildState that points at them. The table must outlive a
+// single solve so the clean-prefix bodies' OCC shapes survive into the next
+// build() (mirroring the SharedHarness pattern proven by meshCacheReal.test).
+// A fresh table per solve (the old behaviour) left every prior handle dangling,
+// so findFirstDirty could never reuse a checkpoint and every edit rebuilt the
+// whole stack. Keyed by doc id; switching documents discards the old table.
+let persistentTable: HandleTable | null = null
+let lastBuildState: BuildState | null = null
+let lastDocId: string | null = null
+
+/** Drop the cross-solve cache (handles + state). Called on doc switch. */
+function resetLocalSolveCache(): void {
+  persistentTable?.disposeAll()
+  persistentTable = null
+  lastBuildState = null
+  lastDocId = null
+}
+
+// Test seam: loadOccWeb hard-skips under vitest (web-only loader), so a test
+// injects the node MEMFS-backed module here to drive the real production entry.
+let occLoaderOverride: (() => Promise<OccModule | null>) | null = null
+
+/** @internal test-only: inject an OCC loader and reset all cached state. */
+export function setSolveLocalsForTest(
+  loader: (() => Promise<OccModule | null>) | null,
+): void {
+  occLoaderOverride = loader
+  occModule = null
+  occLoading = null
+  resetLocalSolveCache()
+}
 
 /** Load (or return the already-loaded) OCC module. */
 async function ensureOcc(): Promise<OccModule | null> {
   if (occModule) return occModule
   if (!occLoading) {
-    console.log('[solveLocally] calling loadOccWeb()')
-    occLoading = loadOccWeb().then((m) => {
+    const loader = occLoaderOverride ?? loadOccWeb
+    occLoading = loader().then((m) => {
       occModule = m
-      console.log('[solveLocally] loadOccWeb resolved:', m ? 'module OK' : 'null')
       return m
     })
   }
@@ -109,8 +143,19 @@ export async function solveLocally(
   // features will throw and the builder catches them).
   void initSketchSolver()
 
+  // A document switch invalidates every cached checkpoint handle: drop them
+  // before solving the new doc so its handles do not pile up behind the old.
+  const docId = typeof spec.id === 'string' ? spec.id : null
+  if (docId !== lastDocId) {
+    resetLocalSolveCache()
+    lastDocId = docId
+  }
+
   const scope = new DisposeScope()
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = (persistentTable ??= new HandleTable({ finalizerGuard: false }))
+  // Caller override (tests) wins; otherwise feed the prior solve's state so the
+  // builder restores the clean prefix and rebuilds only the dirty tail.
+  const prevState = options.prevState !== undefined ? options.prevState : lastBuildState
 
   try {
     const deps: BuildDeps = {
@@ -127,21 +172,31 @@ export async function solveLocally(
       brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(oc, scope, body),
       brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(oc, scope, body),
       brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),
+      // Cross-solve checkpoint cache: retain each checkpoint's shape so it
+      // survives a downstream consume/free and into the next build; copy it on
+      // restore so the rebuilt tail consumes an independent shape; evict a
+      // discarded checkpoint's retained shapes by owner.
+      retainCheckpointShape: (h, owner) => table.retain(h, owner),
+      copyBodyShape: (h) => table.register(copyShape(oc, scope, table.get<OccShape>(h))),
+      releaseCheckpoint: (fid) => table.releaseOwner('cp:' + fid),
     }
 
     const specForBuild = options.validate
       ? { ...spec, _validate: true }
       : spec
 
-    return build(specForBuild, {
-      prevState: options.prevState ?? null,
+    const response = build(specForBuild, {
+      prevState,
       pickBoundary: options.pickBoundary ?? null,
       rollbackPosition: options.rollbackPosition ?? null,
     }, deps)
+    // Remember the state (and the live handles it points at) for the next solve.
+    lastBuildState = response._build_state
+    return response
   } finally {
+    // Only the transient scope is dropped. The HandleTable persists across
+    // builds: build()'s per-checkpoint retain/releaseOwner manages its handles,
+    // and the clean-prefix shapes must stay live for the next incremental solve.
     scope.dispose()
-    // HandleTable lives across builds; checkpoint eviction releases handles.
-    // For now every solve creates a fresh table — acceptable until the Worker
-    // holds the long-lived table across solves.
   }
 }
