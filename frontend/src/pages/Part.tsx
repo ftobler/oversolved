@@ -11,7 +11,6 @@ import RightClickMenu from '@/components/RightClickMenu'
 import type { ContextMenuItem } from '@/components/RightClickMenu'
 import { Sidebar } from '@/components/Sidebar'
 import FooterMeasurementDisplay from '@/components/FooterMeasurementDisplay'
-import WsStatusIndicator from '@/components/WsStatusIndicator'
 import { useSyncPartEditorStore } from '@/hooks/useSyncPartEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
@@ -727,7 +726,6 @@ export default function Part() {
 
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
-        <WsStatusIndicator />
         <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         <div className="debug-buttons">
           {user?.is_admin && (
