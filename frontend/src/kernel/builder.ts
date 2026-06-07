@@ -13,6 +13,7 @@ import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { normalToFrame } from './types3d'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import type { TessMesh } from './occ/tessellation'
+import type { OccHandle } from './occ/handleTable'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -627,15 +628,34 @@ export function build(
   // the post-loop tessellation, so each unique body shape meshes at most once.
   const tessCache: Record<number, Record<string, unknown>> = {}
 
+  // Checkpoint body meshes, keyed by the body's shape OccHandle and captured in
+  // the loop below while the shape is still alive. A downstream feature can
+  // release/replace a body's shape handle (e.g. fillet calls `table.release` on
+  // the pre-fillet solid at filletChamfer.ts), which would leave an earlier
+  // checkpoint's snapshot pointing at a freed handle. Freezing the mesh as plain
+  // data at checkpoint time means the post-loop assembly never tessellates a
+  // dead handle. Mirrors Python builder.py `_shape_tess_cache`.
+  const shapeTessCache = new Map<OccHandle, Record<string, unknown>>()
+  const captureSnapshotMeshes = (snapshot: Record<string, Body>): void => {
+    for (const body of Object.values(snapshot)) {
+      if (body.shape != null && !shapeTessCache.has(body.shape)) {
+        const entry = deps.tessellateBodies({ [body.id]: body }, null)[body.id]
+        if (entry) shapeTessCache.set(body.shape, entry)
+      }
+    }
+  }
+
   for (const feature of features.slice(firstDirty)) {
     const fid = String(feature.id ?? '')
 
     if (feature.suppressed) {
+      const cpSnapshot = _snapshotBodies(bodyStore)
+      captureSnapshotMeshes(cpSnapshot)
       newCheckpoints[fid] = {
         spec: { ...feature },
         result: { status: 'suppressed' },
         repo_snapshot: _snapshotRepo(globalRepo),
-        body_store_snapshot: _snapshotBodies(bodyStore),
+        body_store_snapshot: cpSnapshot,
         bodies_snapshot: {},
       }
       result[fid] = { status: 'suppressed' }
@@ -670,11 +690,13 @@ export function build(
       }
     }
 
+    const cpSnapshot = _snapshotBodies(bodyStore)
+    captureSnapshotMeshes(cpSnapshot)
     newCheckpoints[fid] = {
       spec: JSON.parse(JSON.stringify(feature)),
       result: JSON.parse(JSON.stringify(result[fid])),
       repo_snapshot: _snapshotRepo(globalRepo),
-      body_store_snapshot: _snapshotBodies(bodyStore),
+      body_store_snapshot: cpSnapshot,
       bodies_snapshot: {},
     }
   }
@@ -692,13 +714,27 @@ export function build(
     }
   }
 
+  // Seed the final (live) body meshes too, so the last checkpoint's pick_bodies
+  // reuse the same tessellation as `bodies` rather than re-meshing.
+  for (const [bid, body] of Object.entries(bodyStore)) {
+    if (body.shape != null && bodiesOut[bid] && !shapeTessCache.has(body.shape)) {
+      shapeTessCache.set(body.shape, bodiesOut[bid])
+    }
+  }
+  // Assemble each dirty checkpoint's bodies_snapshot from the meshes captured in
+  // the loop while shapes were alive. Never tessellate here: a downstream
+  // feature may already have freed the handle this snapshot references.
+  const tessellateCheckpointBody = (body: Body): Record<string, unknown> => {
+    if (body.shape == null) return {}
+    return shapeTessCache.get(body.shape) ?? {}
+  }
+
   for (const fid of Object.keys(newCheckpoints)) {
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]
     const cpBodies = Object.fromEntries(
-      Object.entries(checkpoint.body_store_snapshot).map(([bid, _body]) => {
-        // In a full port, tessellation cache lookup goes here.
-        return [bid, {}]
+      Object.entries(checkpoint.body_store_snapshot).map(([bid, body]) => {
+        return [bid, tessellateCheckpointBody(body)]
       })
     )
     newCheckpoints[fid] = {

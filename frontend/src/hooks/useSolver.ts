@@ -313,7 +313,13 @@ export function useSolver(
           const endTime = performance.now()
           const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
           if (local._validation) setValidation(local._validation)
-          applySolveResult(d, local as unknown as BuildResponse, solveTimeMs)
+          // applyBuildResponse sets bodies (the preview/result state) and, when
+          // a pick_boundary was requested, pick_bodies (the "before" state). The
+          // TS kernel now tessellates the pick checkpoint's bodies, so pick_bodies
+          // carry real mesh/edge geometry to pick against while editing.
+          applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs)
+          // Reject any stale WS geometry frames that arrive after a local solve.
+          lastValidMsgIdRef.current = -1
           void maybeRunShadow(d.features, local.result)
           if (!firstSolveDone.current && onFirstSolve) {
             firstSolveDone.current = true

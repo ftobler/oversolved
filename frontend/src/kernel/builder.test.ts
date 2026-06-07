@@ -206,6 +206,45 @@ describe('build with mock solvers', () => {
     expect(r.pick_bodies).toBeDefined()
   })
 
+  it('pick_bodies carry real tessellated meshes from the checkpoint', () => {
+    // Port of Python _shape_tess_cache / _checkpoint_bodies_out behaviour: a
+    // body that exists at the pick checkpoint must come back with real
+    // mesh/edge geometry (collision for picking), not an empty placeholder.
+    let created = false
+    const deps = makeDeps({
+      trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
+        if (!created) {
+          bodyStore['body_a'] = {
+            id: 'body_a',
+            created_by: 'f1',
+            modified_by: [],
+            shape: 7 as unknown as Body['shape'],
+            sketch_id: '',
+            brep_diff: null,
+            profile_queries: [],
+            face_lineage: {},
+            edge_lineage: {},
+          }
+          created = true
+        }
+        return { status: 'ok' }
+      },
+      tessellateBodies: (store) => Object.fromEntries(
+        Object.keys(store).map((bid) => [bid, { mesh: { face_data: [] }, edges: [], vertices: [] }]),
+      ),
+    })
+    const r = build(
+      { features: [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'fillet' }] },
+      { pickBoundary: 1 },
+      deps,
+    )
+    const pick = r.pick_bodies as Record<string, { mesh?: unknown }> | undefined
+    expect(pick?.body_a?.mesh).toBeDefined()
+    // The checkpoint snapshot itself carries the real mesh, not `{}`.
+    const cp = r._build_state.checkpoints.f1
+    expect((cp.bodies_snapshot as Record<string, { mesh?: unknown }>).body_a.mesh).toBeDefined()
+  })
+
   it('calls deps.tessellateBodies with the body store', () => {
     let calledWith: unknown = null
     const deps = makeDeps({
