@@ -70,11 +70,6 @@ class TestBlueprintRegistration:
         rules = [rule.rule for rule in app.url_map.iter_rules()]
         assert "/api/documents/<doc_id>/rebuild-stats" in rules
 
-    def test_solver_websocket_route_registered(self, app):
-        """WebSocket solver route exists."""
-        rules = [rule.rule for rule in app.url_map.iter_rules()]
-        assert "/api/solver-ws" in rules
-
     def test_upload_export_routes_registered(self, app):
         """Upload and export blueprint routes exist."""
         rules = [rule.rule for rule in app.url_map.iter_rules()]

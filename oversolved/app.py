@@ -14,8 +14,6 @@ from oversolved.blueprints.documents import documents_bp
 from oversolved.blueprints.upload_export import upload_export_bp
 from oversolved.blueprints.admin import admin_bp
 from oversolved.blueprints.docs import docs_bp
-from flask_sock import Sock
-from oversolved.blueprints.solver_ws import register_solver_ws
 from oversolved.migrations import discover_and_register
 
 logger = logging.getLogger(__name__)
@@ -129,10 +127,6 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(upload_export_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(docs_bp)
-
-    # Register WebSocket solver
-    sock = Sock(app)
-    register_solver_ws(sock)
 
     # ── JSON error handlers ────────────────────────────────────────────────────
 

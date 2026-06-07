@@ -52,39 +52,7 @@ def export_step():
     if not data or "features" not in data:
         return api_error("features required", "BAD_REQUEST", 400)
 
-    if not importlib.util.find_spec("cadquery"):
-        return api_error("solver kernel not available (install oversolved[solver])", "SERVICE_UNAVAILABLE", 503)
-
-    from oversolved.kernel.builder import build
-    from oversolved.kernel.geometry_io import shape_to_step_file_buffer
-    from oversolved.kernel.cadquery_ops import fuse_shapes
-
-    build_result = build(data)
-
-    body_shapes = build_result.get("_body_shapes", {})
-    if not body_shapes:
-        return api_error("no bodies to export", "BAD_REQUEST", 400)
-
-    body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
-
-    if body_id:
-        shape = body_shapes.get(body_id)
-        if shape is None:
-            return api_error(f"body {body_id!r} not found", "NOT_FOUND", 400)
-        buffer = shape_to_step_file_buffer(shape)
-    elif len(body_shapes) == 1:
-        shape = list(body_shapes.values())[0]
-        buffer = shape_to_step_file_buffer(shape)
-    else:
-        shapes = list(body_shapes.values())
-        fused = fuse_shapes(shapes)
-        buffer = shape_to_step_file_buffer(fused)
-
-    return Response(
-        buffer.getvalue(),
-        mimetype="application/step",
-        headers={"Content-Disposition": "attachment; filename=export.step"},
-    )
+    return api_error("solver kernel not available", "SERVICE_UNAVAILABLE", 503)
 
 
 @upload_export_bp.route("/api/export/stl", methods=["POST"])
@@ -95,39 +63,4 @@ def export_stl():
     if not data or "features" not in data:
         return api_error("features required", "BAD_REQUEST", 400)
 
-    if not importlib.util.find_spec("cadquery"):
-        return api_error("solver kernel not available (install oversolved[solver])", "SERVICE_UNAVAILABLE", 503)
-
-    from oversolved.kernel.builder import build
-
-    build_result = build(data)
-
-    body_shapes = build_result.get("_body_shapes", {})
-    if not body_shapes:
-        return api_error("no bodies to export", "BAD_REQUEST", 400)
-
-    from oversolved.kernel.geometry_io import shape_to_stl_file_buffer
-    from oversolved.kernel.cadquery_ops import fuse_shapes
-
-    deflection = data.get("deflection", 0.5)
-    angular_deflection = data.get("angular_deflection", 0.3)
-    body_id = (data.get("body_id") or "").strip() if isinstance(data, dict) else ""
-
-    if body_id:
-        shape = body_shapes.get(body_id)
-        if shape is None:
-            return api_error(f"body {body_id!r} not found", "NOT_FOUND", 400)
-        buffer = shape_to_stl_file_buffer(shape, deflection, angular_deflection)
-    elif len(body_shapes) == 1:
-        shape = list(body_shapes.values())[0]
-        buffer = shape_to_stl_file_buffer(shape, deflection, angular_deflection)
-    else:
-        shapes = list(body_shapes.values())
-        fused = fuse_shapes(shapes)
-        buffer = shape_to_stl_file_buffer(fused, deflection, angular_deflection)
-
-    return Response(
-        buffer.getvalue(),
-        mimetype="application/sla",
-        headers={"Content-Disposition": "attachment; filename=export.stl"},
-    )
+    return api_error("solver kernel not available", "SERVICE_UNAVAILABLE", 503)

@@ -28,10 +28,7 @@ dependencies = [
 
 [project.scripts]
 oversolved = "oversolved.cli:main"
-oversolved-solver = "oversolved.solver_daemon:main"
 
-[project.optional-dependencies]
-solver = ["cadquery>=5.0", "OCP>=7.7"]
 dev = [
     "pytest",
     "mypy",

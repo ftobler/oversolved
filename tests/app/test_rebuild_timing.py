@@ -3,7 +3,6 @@
 import json
 import pytest
 from oversolved.db import PostgreSQLConnection, Database
-from solver_helpers import extrude_spec, rect_sketch_spec
 
 
 def _get_db(app):
@@ -45,12 +44,6 @@ def authed_client(app):
 
 class TestRebuildTimeTracking:
     def test_track_rebuild_time(self, authed_client):
-        pytest.importorskip("OCP.gp")
-        from oversolved.kernel.builder import build
-
-        sk1 = rect_sketch_spec(w=10.0, h=10.0, sketch_id="sk1")
-        ex1 = extrude_spec("sk1", "ex1", distance=5.0)
-
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "RebuildTest"}),
@@ -58,14 +51,11 @@ class TestRebuildTimeTracking:
         )
         doc_id = json.loads(create_resp.data)["uuid"]
 
-        r1 = build({"features": [sk1, ex1]})
-        assert "solve_ms" in r1
-
         db = _get_db(authed_client.application)
         db.execute(
             """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
                VALUES (?, ?, ?)""",
-            (doc_id, round(r1["solve_ms"]), 2),
+            (doc_id, 123, 2),
         )
         db.commit()
 
@@ -73,9 +63,9 @@ class TestRebuildTimeTracking:
         assert stats_resp.status_code == 200
         stats = json.loads(stats_resp.data)
         assert stats["rebuild_count"] == 1
-        assert stats["last_duration_ms"] == round(r1["solve_ms"])
-        assert stats["average_ms"] == round(r1["solve_ms"])
-        assert stats["median_ms"] == round(r1["solve_ms"])
+        assert stats["last_duration_ms"] == 123
+        assert stats["average_ms"] == 123.0
+        assert stats["median_ms"] == 123.0
 
     def test_rebuild_stats_endpoint_empty(self, authed_client):
         create_resp = authed_client.post(
@@ -117,7 +107,6 @@ class TestRebuildTimeTracking:
         assert len(stats["history"]) == 20
 
     def test_rebuild_stats_trend_faster(self, authed_client):
-        pytest.importorskip("OCP.gp")
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "TrendFaster"}),
@@ -140,7 +129,6 @@ class TestRebuildTimeTracking:
         assert stats["trend"] == "faster"
 
     def test_rebuild_stats_trend_slower(self, authed_client):
-        pytest.importorskip("OCP.gp")
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "TrendSlower"}),
@@ -163,7 +151,6 @@ class TestRebuildTimeTracking:
         assert stats["trend"] == "slower"
 
     def test_rebuild_stats_trend_stable(self, authed_client):
-        pytest.importorskip("OCP.gp")
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "TrendStable"}),
@@ -186,7 +173,6 @@ class TestRebuildTimeTracking:
         assert stats["trend"] == "stable"
 
     def test_rebuild_stats_access_control(self, authed_client, client):
-        pytest.importorskip("OCP.gp")
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "AccessControl"}),
@@ -276,7 +262,6 @@ class TestRebuildTimeTracking:
         assert isinstance(stats["median_ms"], float)
 
     def test_stat_calculations_correct(self, authed_client):
-        pytest.importorskip("OCP.gp")
         create_resp = authed_client.post(
             "/api/documents",
             data=json.dumps({"name": "Calculations"}),
