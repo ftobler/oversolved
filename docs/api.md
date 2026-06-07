@@ -57,15 +57,11 @@ All require auth.
 - `GET /api/users/me/preferences` — get prefs (e.g. `document_sort`)
 - `PUT /api/users/me/preferences` — update prefs
 
-## Solver (WebSocket)
+## Solver
 
-`WS /api/solver-ws` — connect with `?token=<session_token>` or cookie. Rate limit 10 auth failures/min/IP.
-
-Text JSON messages from client, text JSON + binary geometry frames from server.
-
-Client messages: `solve` (with features + options), `clear_cache`, `ping`.
-
-Each `solve` produces: (1) JSON `solve_result` with per-feature status, (2) binary frame with geometry data.
+The CAD solver runs entirely in the browser via OCC.js (OpenCascade WASM) and
+a Rust constraint solver compiled to WASM.
+The backend does not participate in solver computation.
 
 ## Import / Export
 
