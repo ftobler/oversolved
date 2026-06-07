@@ -41,7 +41,7 @@ function rectSketch(sketchId: string, w: number, h: number, opts?: { plane?: str
   }
 }
 
-function extrudeSpec(sketchId: string, extrudeId: string, opts?: { distance?: number; operation?: string }) {
+function extrudeSpec(sketchId: string, extrudeId: string, opts?: { distance?: number; operation?: string }): Record<string, unknown> {
   return {
     id: extrudeId, kind: 'extrude', sketch: '$' + sketchId,
     distance: opts?.distance ?? 5, direction: 'normal',

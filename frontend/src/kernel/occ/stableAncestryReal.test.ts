@@ -53,7 +53,7 @@ function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_pl
   }
 }
 
-function fullRectExtrudeSpec(w = 10, h = 10, d = 5) {
+function fullRectExtrudeSpec(w = 10, h = 10, d = 5): { features: Array<Record<string, unknown>> } {
   return { features: [rectSketch('sk1', w, h), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: d, direction: 'normal', operation: 'new' }] }
 }
 
