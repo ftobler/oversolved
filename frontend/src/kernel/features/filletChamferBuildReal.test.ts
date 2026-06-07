@@ -229,8 +229,8 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
     expect(qB).toContain('@body_exB')
 
-    const staleQ = qB.replace('@body_exB', '@body_exA')
-    spec.features.push({ id: 'fil', kind: 'fillet', edges: [staleQ], radius: 1 })
+    const staleQ = qB.replace('@body_exB', '@body_exA');
+    (spec.features as Array<Record<string, unknown>>).push({ id: 'fil', kind: 'fillet', edges: [staleQ], radius: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'fil').status).toBe('ok')
     expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_exB'])
@@ -254,5 +254,31 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const rDelB = h.run({ features: [skA, exA as Record<string, unknown>, filB as Record<string, unknown>] })
     expect(h.res(rDelB, 'filB').status).toBe('exception')
     expect(h.res(rDelB, 'exA').status).toBe('ok')
+  })
+
+  it('fillet all edges missing is hard exception', () => {
+    /** If no edges resolve, the fillet hard-fails with 'no edges resolved'.
+     *  Port of test_fillet_all_edges_missing_is_hard_exception. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    spec.features.push({ id: 'fil', kind: 'fillet', edges: ['?body_nonexistent:edge:0'], radius: 1 })
+    const r = h.run(spec)
+    expect(h.res(r, 'fil').status).toBe('exception')
+    expect(String(h.res(r, 'fil').exception ?? '')).toContain('no edges resolved')
+  })
+
+  it('fillet fails on stale gedge hash', () => {
+    /** A hash-only query with a bogus @gedge_ hash must not silently
+     *  fillet the wrong edge via body-scoped fallback. Port of
+     *  test_fillet_fails_on_stale_gedge_hash. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    const r0 = h.run(spec)
+    const q = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
+    expect(q.startsWith('?')).toBe(true)
+
+    // Build a stale query with a bogus gedge hash.
+    const staleQ = q.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
+    spec.features.push({ id: 'fil', kind: 'fillet', edges: [staleQ], radius: 0.5 })
+    const r = h.run(spec)
+    expect(h.res(r, 'fil').status).toBe('exception')
   })
 })

@@ -298,4 +298,33 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(h.res(r2, 'ex1').status).toBe('ok')
     expect(r2._build_state!.feature_order).toEqual(['sk1', 'sk2', 'ex1'])
   })
+
+  it('fillet before its extrude must fail', () => {
+    /** A fillet placed before its body's extrude must hard-fail.
+     *  Port of test_fillet_before_its_extrude_must_fail. */
+    const sk = rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' })
+    const r0 = h.run({ features: [sk, extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
+    const q = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const r = h.run({ features: [sk, { id: 'filB', kind: 'fillet', edges: [q], radius: 1 }, extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
+    expect(h.res(r, 'filB').status).toBe('exception')
+  })
+
+  it('delete sketch cascades to extrude and fillet', () => {
+    /** Deleting a sketch must fail its own extrude+fillet while independent
+     *  features continue to work. Port of test_delete_sketch_cascades_to_extrude_and_fillet. */
+    const skA = rectSketch('skA', 10, 10, { plane: '@builtin_plane_top' })
+    const skB = { ...rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' }),
+      initial: { bottom: [30, 0, 40, 0], right: [40, 0, 40, 10], top: [40, 10, 30, 10], left: [30, 10, 30, 0] },
+      constraints: rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' }).constraints }
+
+    const r0 = h.run({ features: [skA, skB, extrudeSpec('skA', 'exA', { distance: 5, operation: 'new' }), extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
+    const qA = (h.body(r0, 'body_exA').edge_queries as string[])[0]
+    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+
+    // Delete skB: exB can't resolve $skB -> exception, filB can't resolve
+    const rDelB = h.run({ features: [skA, extrudeSpec('skA', 'exA', { distance: 5, operation: 'new' }), extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' }), { id: 'filA', kind: 'fillet', edges: [qA], radius: 1 }, { id: 'filB', kind: 'fillet', edges: [qB], radius: 1 }] })
+    expect(h.res(rDelB, 'exA').status).toBe('ok')
+    expect(h.res(rDelB, 'exB').status).toBe('exception')
+    expect(h.res(rDelB, 'filA').status).toBe('ok')
+  })
 })
