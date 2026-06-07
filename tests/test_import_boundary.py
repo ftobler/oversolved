@@ -5,21 +5,17 @@ import pathlib
 
 
 def test_webapp_no_cadquery_at_module_level():
-    """Scan oversolved/ (excluding kernel/) for OCP/cadquery imports at module level.
+    """Scan oversolved/ for OCP/cadquery imports at module level.
 
-    The kernel/ directory is exempt because it is only loaded by the solver
-    daemon subprocess which always has cadquery installed.  Files outside
-    kernel/ (blueprints, app.py, cli.py, etc.) must not import OCP or
-    cadquery at module scope — they may only import them inside function
-    bodies (runtime).
+    The CAD solver now runs entirely in the browser (WASM kernel); the Python
+    kernel/daemon was removed in phase 4d. Nothing in the Flask package may
+    import OCP or cadquery at module scope — and in practice nothing should
+    import them at all, since the backend no longer does CAD work.
     """
     root = pathlib.Path(__file__).parent.parent / "oversolved"
-    excluded = {"kernel"}
     errors = []
     for pyfile in sorted(root.rglob("*.py")):
         rel = pyfile.relative_to(root)
-        if any(p.name in excluded for p in rel.parents):
-            continue
         with open(pyfile) as f:
             tree = ast.parse(f.read())
         for node in ast.walk(tree):
