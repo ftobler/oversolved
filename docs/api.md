@@ -17,15 +17,7 @@ oversolved/
 │   ├── upload_export.py    # Import/export endpoints
 │   ├── admin.py            # Admin endpoints
 │   ├── docs.py             # Documentation serving
-│   └── solver_ws.py        # WebSocket solver endpoint
-└── kernel/                 # CAD solver engine (no Flask dependency)
-    ├── solver.py           # Main solver orchestrator
-    ├── builder.py          # AST-based document builder
-    ├── geometry.py         # Mesh tessellation (solid_to_mesh)
-    ├── cadquery_ops.py     # CadQuery wrapper operations
-    ├── topology.py         # B-rep topology helpers
-    ├── query.py            # Feature/entity query resolution
-    └── types3d.py          # Core data types
+└── (CAD solver runs in browser via OCC.js + Rust WASM)
 ```
 
 ## Authentication
