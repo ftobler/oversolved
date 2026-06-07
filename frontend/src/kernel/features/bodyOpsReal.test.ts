@@ -225,7 +225,9 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           profileQueries: [], faceLineage: {},
         })
         expect(result.status).toBe('ok')
-        // The cut may produce 1 or 2 bodies depending on whether the tool fully bisects.
+        // Result should carry body_ids listing all bodies in the store after the cut.
+        expect(Array.isArray(result.body_ids)).toBe(true)
+        expect((result.body_ids as string[]).length).toBeGreaterThanOrEqual(1)
         // At minimum, the target body is modified.
         const storeKeys = Object.keys(bodyStore).sort()
         expect(storeKeys.length).toBeGreaterThanOrEqual(1)
