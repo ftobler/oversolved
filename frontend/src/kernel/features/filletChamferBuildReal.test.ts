@@ -281,4 +281,33 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r = h.run(spec)
     expect(h.res(r, 'fil').status).toBe('exception')
   })
+
+  it('fillet populates brepDiff on the modified body', () => {
+    /** After fillet, the body checkpoint must carry a non-null brep_diff.
+     *  Port of brep diff feature coverage expectation. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
+    const r = h.run(spec)
+    expect(h.res(r, 'fillet1').status).toBe('ok')
+    const ckp = r._build_state!.checkpoints['fillet1']
+    const body = ckp.body_store_snapshot['body_ex1']
+    expect(body).toBeDefined()
+    expect(body.brep_diff).not.toBeNull()
+    expect((body.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
+  })
+
+  it('chamfer populates brepDiff on the modified body', () => {
+    /** After chamfer, the body checkpoint must carry a non-null brep_diff. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 1 })
+    const r = h.run(spec)
+    expect(h.res(r, 'chamfer1').status).toBe('ok')
+    const ckp = r._build_state!.checkpoints['chamfer1']
+    const body = ckp.body_store_snapshot['body_ex1']
+    expect(body).toBeDefined()
+    expect(body.brep_diff).not.toBeNull()
+    expect((body.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
+  })
 })
