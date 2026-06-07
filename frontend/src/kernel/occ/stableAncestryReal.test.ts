@@ -81,4 +81,18 @@ describe.skipIf(!oc)('stable ancestry hash stability', () => {
       scope.dispose()
     }
   })
+
+  it('box has 6 distinct face hashes (one per side)', () => {
+    /** A 10x10x10 box should produce exactly 6 faces, each with a unique
+     *  geometry hash (centroid + normal differs per face). */
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(occ, scope, 10, 10, 10)
+      const hashes = tessellateFaces(box)
+      expect(hashes.length).toBe(6)
+      expect(new Set(hashes).size).toBe(6)
+    } finally {
+      scope.dispose()
+    }
+  })
 })
