@@ -99,8 +99,8 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     const table = new HandleTable({ finalizerGuard: false })
     const h = buildFixture(occ, table, fx)
     const mesh = solidToMesh(occ, table, h)
-    const edges = solidToEdges(occ, table, h)
-    const vertices = solidToVertices(occ, table, h)
+    const edges = solidToEdges(occ, table, h).edges
+    const vertices = solidToVertices(occ, table, h).vertices
     table.release(h)
     table.assertNoLeaks()
     return { ts: { mesh, edges, vertices }, fx }

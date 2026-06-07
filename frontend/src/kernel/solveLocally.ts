@@ -56,9 +56,24 @@ function tessellateBodies(
         faceLineage: body.face_lineage ?? null,
         profileQueries: body.profile_queries ?? [],
       })
-      const edges = solidToEdges(oc, table, body.shape)
-      const vertices = solidToVertices(oc, table, body.shape)
-      out[bodyId] = { mesh, edges, vertices }
+      const edgeResult = solidToEdges(oc, table, body.shape, {
+        createdBy: body.created_by || '',
+        bodyId: body.id,
+        profileQueries: body.profile_queries ?? [],
+        edgeLineage: body.edge_lineage ?? null,
+      })
+      const vertexResult = solidToVertices(oc, table, body.shape, {
+        createdBy: body.created_by || '',
+        bodyId: body.id,
+        profileQueries: body.profile_queries ?? [],
+      })
+      out[bodyId] = {
+        mesh,
+        edges: edgeResult.edges,
+        edge_queries: edgeResult.edge_queries,
+        vertices: vertexResult.vertices,
+        vertex_queries: vertexResult.vertex_queries,
+      }
     } catch {
       // Non-fatal: a body that fails to tessellate still has valid topology.
     }

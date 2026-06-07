@@ -30,8 +30,9 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
-import { geometryClassifiers, isGeomKeyedLineage } from '../geomHash'
-import { buildFaceQuery, faceTokens } from '../faceQuery'
+import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash, vertexGeometryHash } from '../geomHash'
+import { buildFaceQuery, faceTokens, edgeLineageTokens } from '../faceQuery'
+import { ref, makeAncestryQuery } from '../query'
 import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
@@ -242,32 +243,143 @@ export function compareEdgeSortKeys(a: EdgeSortKey, b: EdgeSortKey): number {
   return a.length - b.length
 }
 
+export interface SolidEdgesOptions {
+  createdBy?: string
+  bodyId?: string
+  profileQueries?: string[] | null
+  edgeLineage?: Record<string, string[]> | null
+}
+
+export interface SolidEdgesResult {
+  edges: EdgeData[]
+  edge_queries: string[]
+}
+
+export interface SolidVerticesOptions {
+  createdBy?: string
+  bodyId?: string
+  profileQueries?: string[] | null
+}
+
+export interface SolidVerticesResult {
+  vertices: Vec3[]
+  vertex_queries: string[]
+}
+
+/** AABB center + half-extents from a point cloud; degrades to zero-extent. */
+function bodyFrameFromPoints(points: Vec3[]): { center: Vec3; half: Vec3 } {
+  if (points.length === 0) return { center: [0, 0, 0], half: [0, 0, 0] }
+  const min: Vec3 = [Infinity, Infinity, Infinity]
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const p of points) {
+    for (let i = 0; i < 3; i++) {
+      if (p[i] < min[i]) min[i] = p[i]
+      if (p[i] > max[i]) max[i] = p[i]
+    }
+  }
+  return {
+    center: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
+    half: [(max[0] - min[0]) / 2, (max[1] - min[1]) / 2, (max[2] - min[2]) / 2],
+  }
+}
+
+/** One point standing in for an edge when classifying its position (port of
+ * `_edge_representative_point`): line midpoint, circle/arc center, spline middle. */
+function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
+  if (ed.kind === 'line') {
+    return [(ed.start[0] + ed.end[0]) / 2, (ed.start[1] + ed.end[1]) / 2, (ed.start[2] + ed.end[2]) / 2]
+  }
+  if (ed.kind === 'spline') {
+    const pts = ed.points
+    if (pts && pts.length) {
+      const m = pts[Math.floor(pts.length / 2)]
+      return [m[0], m[1], m[2]]
+    }
+    return null
+  }
+  return [ed.center[0], ed.center[1], ed.center[2]]
+}
+
 /**
- * Unique edge geometry of a solid, sorted into deterministic indices (mirrors
- * `solid_to_edges`, geometry half). `edge_queries` are deferred to 2c.
+ * Unique edge geometry of a solid, sorted into deterministic indices, plus the
+ * per-edge ancestry `edge_queries` (port of `solid_to_edges`). Queries are
+ * emitted only when `createdBy` is set; the geom-hash token they carry is what
+ * the fillet/chamfer resolver matches a picked edge against.
  */
-export function solidToEdges(oc: OccModule, table: HandleTable, handle: OccHandle): EdgeData[] {
+export function solidToEdges(
+  oc: OccModule,
+  table: HandleTable,
+  handle: OccHandle,
+  opts: SolidEdgesOptions = {},
+): SolidEdgesResult {
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
     const raw = readSolidEdges(oc, scope, solid)
     raw.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))
-    return raw.map((r) => r.ed)
+    const edges = raw.map((r) => r.ed)
+    const edge_queries: string[] = []
+    const { createdBy, bodyId } = opts
+    if (createdBy) {
+      const { center, half } = bodyFrameFromPoints(readSolidVertices(oc, scope, solid))
+      // With a geom-keyed edge lineage map the body-wide profile blob is
+      // suppressed so per-edge tokens are not shadowed (mirrors Python).
+      const fallbackPq = isGeomKeyedLineage(opts.edgeLineage, 'gedge_') ? null : (opts.profileQueries ?? null)
+      for (const ed of edges) {
+        const pt = edgeRepresentativePoint(ed)
+        const classifiers = pt ? geometryClassifiers(pt, center, half) : []
+        const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
+        const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
+        if (bodyId) {
+          const ids = [ref(geomHash), ref(createdBy), ref(bodyId)]
+          const eTokens = edgeLineageTokens(ed as unknown as Record<string, unknown>, opts.edgeLineage ?? null)
+          if (eTokens.length) ids.push(...eTokens)
+          else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)
+          if (classifiers.length) ids.push(...classifiers.map(ref))
+          edge_queries.push(makeAncestryQuery(ids, edgeType))
+        } else {
+          const ids = [ref(geomHash), ref(createdBy)]
+          if (classifiers.length) ids.push(...classifiers.map(ref))
+          edge_queries.push(makeAncestryQuery(ids, edgeType))
+        }
+      }
+    }
+    return { edges, edge_queries }
   } finally {
     scope.dispose()
   }
 }
 
 /**
- * Unique B-rep vertices of a solid (mirrors `solid_to_vertices`, geometry half).
- * Python does not sort vertices, so the order follows OCC iteration; callers
- * that need parity should compare as a set. `vertex_queries` are deferred to 2c.
+ * Unique B-rep vertices of a solid plus per-vertex ancestry `vertex_queries`
+ * (port of `solid_to_vertices`). Python does not sort vertices, so the order
+ * follows OCC iteration; callers that need geometry parity compare as a set.
  */
-export function solidToVertices(oc: OccModule, table: HandleTable, handle: OccHandle): Vec3[] {
+export function solidToVertices(
+  oc: OccModule,
+  table: HandleTable,
+  handle: OccHandle,
+  opts: SolidVerticesOptions = {},
+): SolidVerticesResult {
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
-    return readSolidVertices(oc, scope, solid)
+    const vertices = readSolidVertices(oc, scope, solid)
+    const vertex_queries: string[] = []
+    const { createdBy, bodyId } = opts
+    if (createdBy) {
+      for (const v of vertices) {
+        const geomHash = vertexGeometryHash(v)
+        if (bodyId) {
+          const ids = [ref(geomHash), ref(createdBy), ref(bodyId)]
+          if (opts.profileQueries && opts.profileQueries.length) ids.push(...opts.profileQueries)
+          vertex_queries.push(makeAncestryQuery(ids, 'vertex'))
+        } else {
+          vertex_queries.push(makeAncestryQuery([ref(geomHash), ref(createdBy)], 'vertex'))
+        }
+      }
+    }
+    return { vertices, vertex_queries }
   } finally {
     scope.dispose()
   }

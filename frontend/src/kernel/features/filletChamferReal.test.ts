@@ -22,6 +22,7 @@ import { volumeOf } from '../occ/booleans'
 import { faceGeometryHash } from '../geomHash'
 import { Repository } from '../query'
 import { solveFillet, solveChamfer, resolveFilletEdges } from './filletChamfer'
+import { solidToEdges } from '../occ/tessellation'
 import type { Body } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
 
@@ -118,6 +119,44 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
    * A 10x10x10 box has 12 unique edges. The IsSame-based dedup in
    * buildEdgeIndex and resolveEdgesWithIndex must yield exactly 12.
    */
+  /**
+   * The edge selection contract: an `edge_query` produced by `solidToEdges`
+   * (what a pick body ships and the viewport stores when the user clicks an
+   * edge) must resolve back to exactly that edge through the fillet resolver.
+   * This is what makes edge picking work on locally-solved bodies; the queries
+   * carry classifiers so resolution goes through the geom-hash fallback tier.
+   */
+  it('solidToEdges queries resolve back through resolveFilletEdges (pick round-trip)', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBody(scope, table)
+      const body = bodyStore.body_b
+      const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
+        createdBy: body.created_by,
+        bodyId: body.id,
+        profileQueries: body.profile_queries,
+        edgeLineage: body.edge_lineage,
+      })
+      expect(edges.length).toBe(12)
+      expect(edge_queries.length).toBe(12)
+      // Every emitted query resolves to a single edge.
+      for (const q of edge_queries) {
+        const resolved = resolveFilletEdges(occ, scope, table, body, [q])
+        expect(resolved.length).toBe(1)
+      }
+      // And a single picked edge actually fillets the body.
+      const result = solveFillet(
+        occ, scope, table,
+        { id: 'fil1', fillet: { edges: [edge_queries[0]], radius: 2 } },
+        new Repository(), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('resolveFilletEdges returns exactly 12 unique edges for a box (IsSame dedup)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })

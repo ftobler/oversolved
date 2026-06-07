@@ -261,8 +261,8 @@ function tessellateBodies(
         faceLineage: body.face_lineage ?? null,
         profileQueries: body.profile_queries ?? [],
       })
-      const edges = solidToEdges(ocMod, table, body.shape)
-      const vertices = solidToVertices(ocMod, table, body.shape)
+      const edges = solidToEdges(ocMod, table, body.shape).edges
+      const vertices = solidToVertices(ocMod, table, body.shape).vertices
       // Mirror run_kernel.py: face_hashes from face_data (centroid+normal),
       // edge_hashes from the edge dicts, both string-sorted.
       const faceHashes = (mesh.face_data ?? [])
