@@ -135,20 +135,15 @@ export default function Part() {
     ? activePickField.featureId
     : null
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
-  const partLabels = useMemo(() => {
+  const { partLabels, partColors } = useMemo(() => {
     const labels: Record<string, string> = {}
-    for (const [bodyId, style] of Object.entries(partStyle)) {
-      if (style.name?.trim()) labels[bodyId] = style.name.trim()
-    }
-    return labels
-  }, [partStyle])
-  const partColors = useMemo(() => {
     const colors: Record<string, string> = {}
     for (const [bodyId, style] of Object.entries(partStyle)) {
+      if (style.name?.trim()) labels[bodyId] = style.name.trim()
       const normalized = normalizeHexColor(style.color)
       if (normalized) colors[bodyId] = normalized
     }
-    return colors
+    return { partLabels: labels, partColors: colors }
   }, [partStyle])
 
 
@@ -413,27 +408,20 @@ export default function Part() {
 
   useEffect(() => {
     setSketchCallback('onMutation', handleMutation)
-    return () => setSketchCallback('onMutation', null)
-  }, [handleMutation])
-
-  useEffect(() => {
     setSketchCallback('onRebuild', handleRebuild)
-    return () => setSketchCallback('onRebuild', null)
-  }, [handleRebuild])
-
-  useEffect(() => {
     setSketchCallback('onExitSketch', handleExitSketch)
-    return () => setSketchCallback('onExitSketch', null)
-  }, [handleExitSketch])
-
-  useEffect(() => {
     // Used by finalizeDimensionPlacement to pre-fill the value-edit dialog
     // with the current natural measurement.
     setSketchCallback('getSketch', (featureId: string) => {
       return solveResults?.[featureId]?.solved ?? null
     })
-    return () => setSketchCallback('getSketch', null)
-  }, [solveResults])
+    return () => {
+      setSketchCallback('onMutation', null)
+      setSketchCallback('onRebuild', null)
+      setSketchCallback('onExitSketch', null)
+      setSketchCallback('getSketch', null)
+    }
+  }, [handleMutation, handleRebuild, handleExitSketch, solveResults])
 
   useEffect(() => {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)
@@ -530,6 +518,8 @@ export default function Part() {
     handleMutation({ type: 'rename_part', bodyId, name: trimmed })
   }, [handleMutation])
 
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+
   const handleBodyColor = useCallback((bodyId: string, color: string) => {
     const normalized = normalizeHexColor(color)
     if (!normalized) return
@@ -537,23 +527,19 @@ export default function Part() {
   }, [handleMutation])
 
   const handleBodyTransparency = useCallback((bodyId: string, transparency: number) => {
-    const clamped = Math.max(0, Math.min(1, transparency))
-    handleMutation({ type: 'set_part_transparency', bodyId, transparency: clamped })
+    handleMutation({ type: 'set_part_transparency', bodyId, transparency: clamp01(transparency) })
   }, [handleMutation])
 
   const handleBodyMetalness = useCallback((bodyId: string, metalness: number) => {
-    const clamped = Math.max(0, Math.min(1, metalness))
-    handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamped })
+    handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamp01(metalness) })
   }, [handleMutation])
 
   const handleBodyRoughness = useCallback((bodyId: string, roughness: number) => {
-    const clamped = Math.max(0, Math.min(1, roughness))
-    handleMutation({ type: 'set_part_roughness', bodyId, roughness: clamped })
+    handleMutation({ type: 'set_part_roughness', bodyId, roughness: clamp01(roughness) })
   }, [handleMutation])
 
   const handleBodyTransmission = useCallback((bodyId: string, transmission: number) => {
-    const clamped = Math.max(0, Math.min(1, transmission))
-    handleMutation({ type: 'set_part_transmission', bodyId, transmission: clamped })
+    handleMutation({ type: 'set_part_transmission', bodyId, transmission: clamp01(transmission) })
   }, [handleMutation])
 
   const handleColorCancel = useCallback(() => {
