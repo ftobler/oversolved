@@ -251,4 +251,51 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(result.ex2).toBeUndefined()
     expect(r._build_state!.feature_order).toEqual(['sk1', 'ex1', 'sk2', 'ex2'])
   })
+
+  it('feature reorder triggers rebuild of all changed features', () => {
+    /** [sk1, ex1, sk2] → [sk1, sk2, ex1]: all after index 0 rebuilt.
+     *  Port of test_partial_rebuild_feature_reordered. */
+    const sk1 = rectSketch('sk1', 10, 10)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const sk2 = rectSketch('sk2', 3, 3, { plane: '@builtin_plane_right' })
+    const spec = { features: [sk1, ex1, sk2] }
+    const r1 = h.run(spec)
+    expect(h.res(r1, 'sk1').status).not.toBe('exception')
+
+    // Reorder: [sk1, sk2, ex1]
+    const r2 = h.run({ features: [sk1, sk2, ex1] }, { prevState: r1._build_state })
+    expect(h.res(r2, 'ex1').status).toBe('ok')
+    expect(r2._build_state!.feature_order).toEqual(['sk1', 'sk2', 'ex1'])
+  })
+
+  it('feature deletion triggers rebuild of later features', () => {
+    /** [sk1, ex1, sk2] → [sk1, ex1]: sk2 removed, ex1 checkpoint reused.
+     *  Port of test_partial_rebuild_feature_deleted. */
+    const sk1 = rectSketch('sk1', 10, 10)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const sk2 = rectSketch('sk2', 3, 3, { plane: '@builtin_plane_right' })
+    const spec = { features: [sk1, ex1, sk2] }
+    const r1 = h.run(spec)
+
+    // Delete sk2: [sk1, ex1]
+    const r2 = h.run({ features: [sk1, ex1] }, { prevState: r1._build_state })
+    expect(h.res(r2, 'ex1').status).toBe('ok')
+    expect(r2._build_state!.feature_order).toEqual(['sk1', 'ex1'])
+    expect(Object.keys(r2._build_state!.checkpoints)).toEqual(['sk1', 'ex1'])
+  })
+
+  it('feature insertion triggers rebuild of later features', () => {
+    /** [sk1, ex1] → [sk1, sk2, ex1]: sk2 inserted, sk1 reused, ex1 rebuilt.
+     *  Port of test_partial_rebuild_feature_inserted. */
+    const sk1 = rectSketch('sk1', 10, 10)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const spec = { features: [sk1, ex1] }
+    const r1 = h.run(spec)
+
+    // Insert sk2 between sk1 and ex1
+    const sk2 = rectSketch('sk2', 3, 3, { plane: '@builtin_plane_right' })
+    const r2 = h.run({ features: [sk1, sk2, ex1] }, { prevState: r1._build_state })
+    expect(h.res(r2, 'ex1').status).toBe('ok')
+    expect(r2._build_state!.feature_order).toEqual(['sk1', 'sk2', 'ex1'])
+  })
 })

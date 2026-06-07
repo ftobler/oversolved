@@ -163,4 +163,96 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect([('ok'), ('partial')]).toContain(h.res(r, 'fil').status)
     expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_ex1'])
   })
+
+  it('fillet then chamfer on same body', () => {
+    /** Sequential fillet+chamfer on the same extruded box. Edge indices shift
+     *  after fillet; use legacy index-form queries to reference surviving edges.
+     *  Port of test_fillet_then_chamfer. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    spec.features.push({ id: 'fillet1', kind: 'fillet', edges: ['?body_ex1:edge:0'], radius: 1 })
+    spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: ['?body_ex1:edge:4'], distance: 0.5 })
+    const r = h.run(spec)
+    expect(h.res(r, 'fillet1').status).toBe('ok')
+    expect(h.res(r, 'chamfer1').status).toBe('ok')
+    expect(h.body(r, 'body_ex1').mesh).toBeDefined()
+  })
+
+  it('fillet respects edge list — single edge < all edges vertex count', () => {
+    /** Single-edge fillet produces fewer vertices than an all-12-edge fillet.
+     *  Port of test_fillet_respects_edge_list. */
+    const r1 = h.run(fullRectExtrudeSpec(10, 10, 5))
+    const eq = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const spec1 = fullRectExtrudeSpec(10, 10, 5)
+    spec1.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
+    const vr1 = h.run(spec1)
+    const verts1 = ((h.body(vr1, 'body_ex1').mesh as { vertices?: unknown[][] })?.vertices?.length) ?? 0
+
+    const specAll = fullRectExtrudeSpec(10, 10, 5)
+    const rAll = h.run(specAll)
+    const eqAll = (h.body(rAll, 'body_ex1').edge_queries as string[]) ?? []
+    specAll.features.push({ id: 'fillet1', kind: 'fillet', edges: eqAll.slice(0, 12), radius: 1 })
+    const vrAll = h.run(specAll)
+    const vertsAll = ((h.body(vrAll, 'body_ex1').mesh as { vertices?: unknown[][] })?.vertices?.length) ?? 0
+
+    expect(verts1).toBeLessThan(vertsAll)
+  })
+
+  it('multiple sequential fillet features', () => {
+    /** Two fillet features in sequence on the same body. Port of
+     *  test_multiple_fillet_features. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    const r0 = h.run(spec)
+    const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
+    const r1 = h.run(spec)
+    expect(h.res(r1, 'fillet1').status).toBe('ok')
+
+    // Edge indices change after fillet1; get fresh queries from the filleted body.
+    const eqAfter = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    expect(eqAfter.length).toBeGreaterThan(0)
+    spec.features.push({ id: 'fillet2', kind: 'fillet', edges: [eqAfter[0]], radius: 0.5 })
+    const r2 = h.run(spec)
+    expect(h.res(r2, 'fillet2').status).toBe('ok')
+  })
+
+  it('fillet stale body token follows geometry', () => {
+    /** A stale @body token must not misroute the fillet — geometry wins.
+     *  Port of test_fillet_follows_geometry_when_body_token_stale. */
+    // Two disjoint boxes
+    const spec = { features: [
+      { ...rectSketch('skA', 10, 10, '@builtin_plane_top'), initial: { bottom: [0, 0, 10, 0], right: [10, 0, 10, 10], top: [10, 10, 0, 10], left: [0, 10, 0, 0] }, constraints: rectSketch('skA', 10, 10, '@builtin_plane_top').constraints },
+      { id: 'exA', kind: 'extrude', sketch: '$skA', distance: 5, direction: 'normal', operation: 'new' },
+      { ...rectSketch('skB', 10, 10, '@builtin_plane_top'), initial: { bottom: [30, 0, 40, 0], right: [40, 0, 40, 10], top: [40, 10, 30, 10], left: [30, 10, 30, 0] }, constraints: rectSketch('skB', 10, 10, '@builtin_plane_top').constraints },
+      { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 5, direction: 'normal', operation: 'new' },
+    ]}
+    const r0 = h.run(spec)
+    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    expect(qB).toContain('@body_exB')
+
+    const staleQ = qB.replace('@body_exB', '@body_exA')
+    spec.features.push({ id: 'fil', kind: 'fillet', edges: [staleQ], radius: 1 })
+    const r = h.run(spec)
+    expect(h.res(r, 'fil').status).toBe('ok')
+    expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_exB'])
+  })
+
+  it('fillet asymmetry delete — unrelated body delete keeps fillet ok', () => {
+    /** Deleting an unrelated body must not break a fillet. Port of
+     *  test_fillet_asymmetry_delete_upstream_extrude. */
+    // Build two independent boxes, then add fillet on second
+    const skB = { ...rectSketch('skB', 10, 10, '@builtin_plane_top'), initial: { bottom: [30, 0, 40, 0], right: [40, 0, 40, 10], top: [40, 10, 30, 10], left: [30, 10, 30, 0] }, constraints: rectSketch('skB', 10, 10, '@builtin_plane_top').constraints }
+    const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 5, direction: 'normal', operation: 'new' }
+    const filB = { id: 'filB', kind: 'fillet', edges: ['?body_exB:edge:0'], radius: 1 }
+
+    // Delete exA (unrelated): filB still succeeds.
+    const rDelA = h.run({ features: [skB, exB as Record<string, unknown>, filB as Record<string, unknown>] })
+    expect(h.res(rDelA, 'filB').status).toBe('ok')
+
+    // Delete exB (its own body): filB fails, but exA is ok.
+    const skA = { ...rectSketch('skA', 10, 10, '@builtin_plane_top'), initial: { bottom: [0, 0, 10, 0], right: [10, 0, 10, 10], top: [10, 10, 0, 10], left: [0, 10, 0, 0] }, constraints: rectSketch('skA', 10, 10, '@builtin_plane_top').constraints }
+    const exA = { id: 'exA', kind: 'extrude', sketch: '$skA', distance: 5, direction: 'normal', operation: 'new' }
+    const rDelB = h.run({ features: [skA, exA as Record<string, unknown>, filB as Record<string, unknown>] })
+    expect(h.res(rDelB, 'filB').status).toBe('exception')
+    expect(h.res(rDelB, 'exA').status).toBe('ok')
+  })
 })
