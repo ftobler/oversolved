@@ -17,6 +17,7 @@ import { loadOccWeb } from './occ/loadOccWeb'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from './occ/tessellation'
+import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
 import type { OccModule } from './occ/occTypes'
 import type { Body } from './types3d'
 
@@ -123,6 +124,9 @@ export async function solveLocally(
       // _init_global_repo.
       initGlobalRepo,
       tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
+      brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(oc, scope, body),
+      brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(oc, scope, body),
+      brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),
     }
 
     const specForBuild = options.validate

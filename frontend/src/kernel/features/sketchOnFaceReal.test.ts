@@ -13,6 +13,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
+import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { build, type BuildDeps, type BuildResponse } from '../builder'
 import { initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
@@ -156,6 +157,9 @@ function makeDeps(occ: OccModule, scope: DisposeScope, table: HandleTable): Buil
     postRegister,
     initGlobalRepo,
     tessellateBodies: (bodyStore) => tessellateBodies(occ, table, bodyStore),
+    brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(occ, scope, body),
+    brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(occ, scope, body),
+    brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(occ, scope, body),
   }
 }
 

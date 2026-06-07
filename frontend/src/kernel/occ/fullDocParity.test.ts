@@ -18,6 +18,7 @@ import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { HandleTable } from './handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from './tessellation'
+import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './brepDiffHash'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { build, type BuildDeps } from '../builder'
 import { initGlobalRepo } from '../query'
@@ -333,6 +334,9 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
           postRegister,
           initGlobalRepo,
           tessellateBodies: (bodyStore) => tessellateBodies(occMod, table, bodyStore),
+          brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(occMod, scope, body),
+          brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(occMod, scope, body),
+          brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(occMod, scope, body),
         }
 
         const tsResponse = build(spec, { prevState: null }, deps)

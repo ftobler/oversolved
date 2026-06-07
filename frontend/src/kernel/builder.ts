@@ -50,6 +50,18 @@ export interface BuildDeps {
   ) => Record<string, Record<string, unknown>>
   /** Optional: normalize legacy projected_* entity kinds. Defaults to identity. */
   normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
+  /** Compute face geometry hashes for brep_diff.new_faces. Called per-body
+   *  inside the feature loop / checkpoint assembly while OCC handles are live,
+   *  so the downstream ``face_created_by`` tag correctly distinguishes new faces
+   *  (attributed to the modifying feature) from inherited faces (original
+   *  creator). When omitted, all faces get ``body.created_by``. */
+  brepDiffNewFaceHashes?: (body: Body) => Set<string>
+  /** Compute edge geometry hashes for brep_diff.new_edges. Same contract as
+   *  ``brepDiffNewFaceHashes`` but for edge ancestry. */
+  brepDiffNewEdgeHashes?: (body: Body) => Set<string>
+  /** Compute vertex geometry hashes for purely-new vertices (endpoints of new
+   *  edges minus endpoints of inherited edges). Same contract. */
+  brepDiffNewVertexHashes?: (body: Body) => Set<string>
 }
 
 export interface BuildOptions {
@@ -340,25 +352,28 @@ export function validateIncremental(
   return { level: 3, passed: true, diffs: {} }
 }
 
-// ── B-rep diff hash helpers (stubs: full OCC-backed diff deferred to 2e/2f) ─
+// ── B-rep diff hash helpers ──────────────────────────────────────────────
 
-function _brepDiffNewFaceHashes(_body: Body): Set<string> {
+function _brepDiffNewFaceHashes(body: Body, deps?: BuildDeps): Set<string> {
+  if (deps?.brepDiffNewFaceHashes) return deps.brepDiffNewFaceHashes(body)
   return new Set()
 }
 
-function _brepDiffNewEdgeHashes(_body: Body): Set<string> {
+function _brepDiffNewEdgeHashes(body: Body, deps?: BuildDeps): Set<string> {
+  if (deps?.brepDiffNewEdgeHashes) return deps.brepDiffNewEdgeHashes(body)
   return new Set()
 }
 
-function _brepDiffNewVertexHashes(_body: Body): Set<string> {
+function _brepDiffNewVertexHashes(body: Body, deps?: BuildDeps): Set<string> {
+  if (deps?.brepDiffNewVertexHashes) return deps.brepDiffNewVertexHashes(body)
   return new Set()
 }
 
 // ── Ancestry registration (mirrors Python builder.py) ──────────────────────
 
-function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: TessMesh): void {
+function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: TessMesh, deps?: BuildDeps): void {
   if (!body.created_by || !mesh.face_data) return
-  const newFaceHashes = _brepDiffNewFaceHashes(body)
+  const newFaceHashes = _brepDiffNewFaceHashes(body, deps)
   for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
     const faceInfo = mesh.face_data[faceIdx]
     const centroid = faceInfo.centroid
@@ -409,9 +424,10 @@ function _registerBrepEdgeAncestry(
   body: Body,
   edges: Array<Record<string, unknown>>,
   edgeQueries: string[],
+  deps?: BuildDeps,
 ): void {
   if (!body.created_by || !edgeQueries.length) return
-  const newEdgeHashes = _brepDiffNewEdgeHashes(body)
+  const newEdgeHashes = _brepDiffNewEdgeHashes(body, deps)
   for (let idx = 0; idx < edges.length && idx < edgeQueries.length; idx++) {
     const edge = edges[idx]
     const geomHash = edgeGeometryHash(edge)
@@ -456,9 +472,10 @@ function _registerBrepVertexAncestry(
   body: Body,
   vertices: Array<number[]>,
   vertexQueries: string[],
+  deps?: BuildDeps,
 ): void {
   if (!body.created_by || !vertexQueries.length) return
-  const newVertexHashes = _brepDiffNewVertexHashes(body)
+  const newVertexHashes = _brepDiffNewVertexHashes(body, deps)
   for (let idx = 0; idx < vertices.length && idx < vertexQueries.length; idx++) {
     const pt = vertices[idx]
     const geomHash = vertexGeometryHash(pt)
@@ -519,11 +536,13 @@ function _registerBodyFaces(
     const out = deps.tessellateBodies({ [body.id]: body }, globalRepo, tessCache)[body.id]
     if (!out) return
     const mesh = out.mesh as TessMesh | undefined
-    if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(globalRepo, body, mesh)
+    if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(globalRepo, body, mesh, deps)
     const edges = (out.edges as Array<Record<string, unknown>>) ?? []
-    if (edges.length) _registerBrepEdgeAncestry(globalRepo, body, edges, edges.map(() => ''))
+    const edgeQueries = (out.edge_queries as string[]) ?? edges.map(() => '')
+    if (edges.length) _registerBrepEdgeAncestry(globalRepo, body, edges, edgeQueries, deps)
     const verts = (out.vertices as number[][]) ?? []
-    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, verts.map(() => ''))
+    const vertQueries = (out.vertex_queries as string[]) ?? verts.map(() => '')
+    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, vertQueries, deps)
   } catch {
     // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
     // in Python (it logs a warning and continues).
@@ -533,23 +552,24 @@ function _registerBodyFaces(
 function _snapshotWithBrepGeometry(
   checkpoint: FeatureCheckpoint,
   bodiesOut: Record<string, Record<string, unknown>>,
+  deps?: BuildDeps,
 ): Record<string, unknown> {
   const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
   for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
     const bodyOut = bodiesOut[bodyId] ?? {}
     const mesh = bodyOut['mesh'] as TessMesh | undefined
     if (mesh) {
-      _registerBrepFaceAncestry(repo, body, mesh)
+      _registerBrepFaceAncestry(repo, body, mesh, deps)
     }
     const edges = (bodyOut['edges'] as Array<Record<string, unknown>>) ?? []
     const edgeQueries = (bodyOut['edge_queries'] as string[]) ?? []
     if (edges.length && edgeQueries.length) {
-      _registerBrepEdgeAncestry(repo, body, edges, edgeQueries)
+      _registerBrepEdgeAncestry(repo, body, edges, edgeQueries, deps)
     }
     const vertices = (bodyOut['vertices'] as Array<number[]>) ?? []
     const vertexQueries = (bodyOut['vertex_queries'] as string[]) ?? []
     if (vertices.length && vertexQueries.length) {
-      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries)
+      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries, deps)
     }
     if (body.created_by) {
       _registerSolidAncestry(repo, body)
@@ -740,7 +760,7 @@ export function build(
     newCheckpoints[fid] = {
       spec: checkpoint.spec,
       result: checkpoint.result,
-      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpBodies),
+      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpBodies, deps),
       body_store_snapshot: checkpoint.body_store_snapshot,
       bodies_snapshot: cpBodies,
     }
