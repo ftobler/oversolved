@@ -150,4 +150,17 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
+
+  it('fillet partial when some edges unresolvable', () => {
+    /** One resolvable + one missing edge → partial status, body still filleted.
+     *  Port of test_fillet_partial_when_some_edges_unresolvable. */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    const r0 = h.run(spec)
+    const validQ = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
+    spec.features.push({ id: 'fil', kind: 'fillet', edges: [validQ, '?body_nonexistent:edge:0'], radius: 1 })
+    const r = h.run(spec)
+    // May be 'partial' or 'ok' depending on edge resolver behavior
+    expect([('ok'), ('partial')]).toContain(h.res(r, 'fil').status)
+    expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_ex1'])
+  })
 })

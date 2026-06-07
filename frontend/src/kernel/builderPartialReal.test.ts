@@ -233,4 +233,22 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(matchingKeys.length).toBe(1)
     expect(matchingKeys[0][1].eids.length).toBe(1)
   })
+
+  it('rollback mid-stack only solves active features', () => {
+    /** rollbackPosition=2 on a 4-feature stack only solves the first two.
+     *  Port of test_rollback_mid_stack_only_solves_active_features. */
+    const spec = { features: [
+      rectSketch('sk1', 5, 3),
+      extrudeSpec('sk1', 'ex1', { distance: 5 }),
+      rectSketch('sk2', 2, 2),
+      extrudeSpec('sk2', 'ex2', { distance: 3 }),
+    ]}
+    const r = h.run(spec, { rollbackPosition: 2 })
+    const result = r.result as Record<string, Record<string, unknown>>
+    expect(result.sk1).toBeDefined()
+    expect(result.ex1).toBeDefined()
+    expect(result.sk2).toBeUndefined()
+    expect(result.ex2).toBeUndefined()
+    expect(r._build_state!.feature_order).toEqual(['sk1', 'ex1', 'sk2', 'ex2'])
+  })
 })
