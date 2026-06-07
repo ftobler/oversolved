@@ -475,6 +475,7 @@ export interface OccModule extends OccSpikeModule {
     writeFile(path: string, data: Uint8Array | string): void
     unlink(path: string): void
     readFile(path: string, opts: { encoding: string }): string
+    readFile(path: string): Uint8Array
   }
   STEPControl_Reader_1: new () => OccStepReader
   /** STEPControl_Writer: serialise a shape to the emscripten FS. */
@@ -482,6 +483,8 @@ export interface OccModule extends OccSpikeModule {
   STEPControl_StepModelType: {
     STEPControl_AsIs: OccEnumValue
   }
+  /** StlAPI_Writer: serialise a shape to an STL file on the emscripten FS. */
+  StlAPI_Writer: new () => OccStlWriter
   IFSelect_ReturnStatus: {
     IFSelect_RetDone: OccEnumValue
   }
@@ -521,4 +524,9 @@ export interface OccStepReader extends OccDisposable {
 export interface OccStepWriter extends OccDisposable {
   Transfer(shape: OccShape, mode: OccEnumValue, compound: boolean): OccEnumValue
   Write(path: string): OccEnumValue
+}
+
+/** StlAPI_Writer: serialise a shape to an STL file on the emscripten FS. */
+export interface OccStlWriter extends OccDisposable {
+  Write(shape: OccShape, path: string): boolean
 }

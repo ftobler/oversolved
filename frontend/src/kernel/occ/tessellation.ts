@@ -67,7 +67,7 @@ export interface RawFaceGeom {
 }
 
 /** Mirror of `_sort_shape_faces`: tessellate + classify every face (unsorted). */
-function readShapeFaces(
+export function readShapeFaces(
   oc: OccModule,
   scope: DisposeScope,
   solid: OccShape,
