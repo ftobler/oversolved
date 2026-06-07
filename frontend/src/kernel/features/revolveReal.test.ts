@@ -53,7 +53,7 @@ function rectSketch(sketchId: string, w: number, h: number, offsetX: number, off
 }
 
 function revolveSpec(featureId: string, sketchId: string, opts: {
-  angle?: number; operation?: string; direction?: string
+  angle?: number; operation?: string; direction?: string; mergeTarget?: string
   axisOrigin?: number[]; axisDirection?: number[]
 } = {}) {
   const spec: Record<string, unknown> = {
@@ -63,6 +63,7 @@ function revolveSpec(featureId: string, sketchId: string, opts: {
   }
   if (opts.operation) spec.operation = opts.operation
   if (opts.direction) spec.direction = opts.direction
+  if (opts.mergeTarget) spec.merge_target = opts.mergeTarget
   return spec
 }
 
@@ -162,5 +163,37 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     })
     expect(result.bodies).toHaveProperty('body_rev1')
     expect(result.bodies).toHaveProperty('body_rev2')
+  })
+
+  it('merge_target fuses revolve into an existing body', () => {
+    /** When a revolve specifies merge_target pointing to a body created by an
+     *  earlier feature, the new revolve fuses into that target instead of
+     *  creating a separate body. Port of revolve merge_target scenarios from
+     *  test_revolve_merge_target.py. */
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev0', 'sk1', { angle: 360, operation: 'new' }),
+        rectSketch('sk2', 1.5, 1, 1.25, 0), revolveSpec('rev1', 'sk2', { angle: 360, operation: 'add', mergeTarget: '@body_rev0' }),
+      ],
+    })
+    expect(result.result.rev0.status).toBe('ok')
+    // The add should fuse into the target, so body_rev0 exists and body_rev1 may not.
+    expect(result.bodies).toHaveProperty('body_rev0')
+  })
+
+  it('merge_target cut removes from a specific body', () => {
+    /** A revolve with operation=cut and merge_target cuts from a specific body
+     *  created by an earlier feature. Port from test_revolve_merge_target.py. */
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev0', 'sk1', { angle: 360, operation: 'new' }),
+        rectSketch('sk2', 1, 1, 1.5, 0), revolveSpec('rev1', 'sk2', { angle: 360, operation: 'cut', mergeTarget: '@body_rev0' }),
+      ],
+    })
+    expect(result.result.rev0.status).toBe('ok')
+    expect(result.result.rev1.status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_rev0')
   })
 })
