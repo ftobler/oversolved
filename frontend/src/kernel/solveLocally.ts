@@ -143,16 +143,17 @@ export async function solveLocally(
   } = {},
 ): Promise<BuildResponse | null> {
   console.log('[solveLocally] attempting local solve for doc')
-  const oc = await ensureOcc()
+  // Load OCC.js and the Rust sketch solver in parallel; both must be ready
+  // before build() runs. initSketchSolver MUST be awaited: build() solves
+  // sketches synchronously, so a fire-and-forget load races the first solve and
+  // every sketch throws "Rust solver not initialised". A null result (wasm
+  // absent) is fine — sketch features then throw and the builder catches them.
+  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) {
     console.log('[solveLocally] OCC.js not available, returning null (fallback to Python)')
     return null
   }
   console.log('[solveLocally] OCC.js loaded, running build()')
-
-  // Pre-load the Rust sketch solver (fire-and-forget — if absent, sketch
-  // features will throw and the builder catches them).
-  void initSketchSolver()
 
   // A document switch invalidates every cached checkpoint handle: drop them
   // before solving the new doc so its handles do not pile up behind the old.
