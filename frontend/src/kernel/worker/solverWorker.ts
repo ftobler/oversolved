@@ -17,7 +17,7 @@
 
 import { solveLocally, setOccLoader } from '../solveLocally'
 import { loadOccWorker } from '../occ/loadOccWorker'
-import type { SolveRequest, SolveResponse } from './solverProtocol'
+import type { SolveRequest, SolveResponse, SolvePayload } from './solverProtocol'
 
 /** The engine signature [[handleSolveRequest]] depends on (production: solveLocally). */
 type SolveEngine = typeof solveLocally
@@ -33,18 +33,97 @@ export async function handleSolveRequest(
       return { id: req.id, ok: true, payload: null }
     }
     // Strip the Worker-only handle state; it stays here as the checkpoint cache.
-    const { _build_state, ...payload } = response
+    const { _build_state, ...rest } = response
     void _build_state
+    const payload: SolvePayload = {
+      ...rest,
+      bodies: packBodies(rest.bodies),
+      ...(rest.pick_bodies ? { pick_bodies: packBodies(rest.pick_bodies) } : {}),
+    }
     return { id: req.id, ok: true, payload }
   } catch (e) {
     return { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }
 
+// ─── mesh transfer ───
+// The kernel emits each body mesh as nested tuple arrays (`[x,y,z][]` verts,
+// `[a,b,c][]` triangles). Across postMessage those structured-clone into a deep
+// copy of thousands of tiny arrays. Convert the two heavy arrays to flat typed
+// arrays so the clone is one contiguous buffer that we then *transfer*
+// (zero-copy); the main-thread `bodyGeometry` zero-copy branch consumes them
+// straight as GPU buffers, skipping its tuple validate-and-rebuild loop.
+//
+// Non-mutating by construction: the builder shares each mesh object with its
+// cross-solve tess cache + checkpoint snapshots, so we shallow-clone the body
+// and mesh and build *fresh* typed arrays. The cached tuple meshes are never
+// touched, and only the throwaway wire buffers are neutered by the transfer.
+
+function flattenVerts(verts: [number, number, number][]): Float32Array {
+  const out = new Float32Array(verts.length * 3)
+  for (let i = 0; i < verts.length; i++) {
+    const v = verts[i]
+    out[i * 3] = v[0]; out[i * 3 + 1] = v[1]; out[i * 3 + 2] = v[2]
+  }
+  return out
+}
+
+function flattenFaces(faces: [number, number, number][]): Uint32Array {
+  const out = new Uint32Array(faces.length * 3)
+  for (let i = 0; i < faces.length; i++) {
+    const f = faces[i]
+    out[i * 3] = f[0]; out[i * 3 + 1] = f[1]; out[i * 3 + 2] = f[2]
+  }
+  return out
+}
+
+function packBody(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw
+  const body = raw as Record<string, unknown>
+  const mesh = body.mesh as Record<string, unknown> | undefined
+  if (!mesh) return raw
+  const { vertices, faces } = mesh
+  // Only the kernel's tuple form needs packing; anything else passes through.
+  if (!Array.isArray(vertices) || !Array.isArray(faces)) return raw
+  return {
+    ...body,
+    mesh: {
+      ...mesh,
+      vertices: flattenVerts(vertices as [number, number, number][]),
+      faces: flattenFaces(faces as [number, number, number][]),
+    },
+  }
+}
+
+function packBodies(bodies: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [bid, body] of Object.entries(bodies)) out[bid] = packBody(body)
+  return out
+}
+
+function pushBodyBuffers(bodies: Record<string, unknown> | undefined, out: Transferable[]): void {
+  if (!bodies) return
+  for (const body of Object.values(bodies)) {
+    const mesh = (body as { mesh?: Record<string, unknown> })?.mesh
+    if (!mesh) continue
+    if (mesh.vertices instanceof Float32Array) out.push(mesh.vertices.buffer)
+    if (mesh.faces instanceof Uint32Array) out.push(mesh.faces.buffer)
+  }
+}
+
+/** The transferable ArrayBuffers in a packed response (for postMessage's transfer arg). */
+export function collectTransferables(res: SolveResponse): Transferable[] {
+  if (!res.ok || !res.payload) return []
+  const out: Transferable[] = []
+  pushBodyBuffers(res.payload.bodies, out)
+  pushBodyBuffers(res.payload.pick_bodies, out)
+  return out
+}
+
 // --- Worker bootstrap (skipped on the main thread / in tests) -------------
 
 interface WorkerCtx {
-  postMessage(message: SolveResponse): void
+  postMessage(message: SolveResponse, transfer: Transferable[]): void
   onmessage: ((e: MessageEvent<SolveRequest>) => void) | null
 }
 
@@ -59,6 +138,8 @@ if (inWorker()) {
   setOccLoader(loadOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
   ctx.onmessage = (e) => {
-    void handleSolveRequest(e.data, solveLocally).then((res) => ctx.postMessage(res))
+    void handleSolveRequest(e.data, solveLocally).then((res) =>
+      ctx.postMessage(res, collectTransferables(res)),
+    )
   }
 }

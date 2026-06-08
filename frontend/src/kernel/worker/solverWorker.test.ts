@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { handleSolveRequest } from './solverWorker'
+import { handleSolveRequest, collectTransferables } from './solverWorker'
 import type { SolveRequest } from './solverProtocol'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
@@ -63,5 +63,55 @@ describe('handleSolveRequest', () => {
       throw 'plain string'
     })
     expect(res).toEqual({ id: 7, ok: false, error: 'plain string' })
+  })
+})
+
+describe('mesh transfer packing', () => {
+  // A mesh that shares its arrays with the engine's tess cache; packing must
+  // not mutate it.
+  const cachedMesh = {
+    vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+    faces: [[0, 1, 2]],
+    triangle_to_face: [0],
+  }
+  function meshResponse(): BuildResponse {
+    return {
+      solve_ms: 1,
+      result: {},
+      bodies: { b1: { id: 'b1', mesh: cachedMesh, edges: [], vertices: [] } },
+      pick_bodies: { p1: { id: 'p1', mesh: { vertices: [[2, 2, 2]], faces: [[0, 0, 0]] } } },
+      _build_state: DUMMY_STATE,
+    }
+  }
+
+  it('converts tuple verts/faces to flat typed arrays without touching the source mesh', async () => {
+    const res = await handleSolveRequest(REQ, async () => meshResponse())
+    expect(res.ok).toBe(true)
+    const mesh = res.ok && (res.payload!.bodies.b1 as { mesh: { vertices: unknown; faces: unknown } }).mesh
+    expect(mesh).toBeTruthy()
+    if (!mesh) return
+    expect(mesh.vertices).toBeInstanceOf(Float32Array)
+    expect(mesh.faces).toBeInstanceOf(Uint32Array)
+    expect(Array.from(mesh.vertices as Float32Array)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    expect(Array.from(mesh.faces as Uint32Array)).toEqual([0, 1, 2])
+    // The engine's cached mesh is untouched (still tuples) -- no cache corruption.
+    expect(cachedMesh.vertices).toEqual([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+    expect(Array.isArray(cachedMesh.vertices)).toBe(true)
+  })
+
+  it('collects the verts/faces buffers of bodies and pick_bodies for transfer', async () => {
+    const res = await handleSolveRequest(REQ, async () => meshResponse())
+    const transfer = collectTransferables(res)
+    // 2 buffers per mesh (verts + faces) x (1 body + 1 pick body) = 4.
+    expect(transfer).toHaveLength(4)
+    expect(transfer.every((b) => b instanceof ArrayBuffer)).toBe(true)
+  })
+
+  it('passes through a body with no mesh and collects nothing', async () => {
+    const res = await handleSolveRequest(REQ, async () => ({
+      solve_ms: 0, result: {}, bodies: { b1: { id: 'b1' } }, _build_state: DUMMY_STATE,
+    }))
+    expect(res.ok && res.payload!.bodies.b1).toEqual({ id: 'b1' })
+    expect(collectTransferables(res)).toHaveLength(0)
   })
 })
