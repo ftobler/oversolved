@@ -1,58 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-const { mockSolver } = vi.hoisted(() => ({
-  mockSolver: {
-    solve: vi.fn(),
-    disconnect: vi.fn(),
-    onGeometryUpdate: vi.fn().mockReturnValue(vi.fn()),
-  },
-}))
+const { mockSolveLocally } = vi.hoisted(() => ({ mockSolveLocally: vi.fn() }))
 
-const { mockCache } = vi.hoisted(() => ({
-  mockCache: {
-    getCachedBuildResponse: vi.fn(),
-    cacheBuildResponse: vi.fn(),
-    cacheGeometry: vi.fn(),
-  },
-}))
-
-const { mockInvalidateDocCache } = vi.hoisted(() => ({
-  mockInvalidateDocCache: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('@/hooks/solverWs', () => ({ solverWs: mockSolver }))
-vi.mock('@/hooks/useGeometryCache', () => ({
-  useGeometryCache: vi.fn(() => mockCache),
-}))
+vi.mock('@/kernel/solveLocally', () => ({ solveLocally: mockSolveLocally }))
 vi.mock('@/utils/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
-vi.mock('@/utils/geometryUnpack', () => ({
-  unpackBodies: vi.fn().mockReturnValue({}),
-  unpackPickBodies: vi.fn().mockReturnValue({}),
-}))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },
-}))
-vi.mock('@/utils/buildCache', () => ({
-  invalidateDocCache: mockInvalidateDocCache,
 }))
 
 import { useSolver } from '@/hooks/useSolver'
 import type { PartDoc } from '@/types/cad'
 
+// A doc with one ported feature so reSolve routes through the local kernel.
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [], ...overrides }
+  return { oversolved: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
 }
 
-describe('useSolver cache-race guards', () => {
+describe('useSolver solve-race guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCache.getCachedBuildResponse.mockResolvedValue(null)
-    mockCache.cacheBuildResponse.mockResolvedValue(undefined)
   })
 
-  it('stale resolve after WebSocket response is discarded', async () => {
-    // A starts (requestId=1), B starts (requestId=2). A's WS response
+  it('stale resolve after a newer solve response is discarded', async () => {
+    // A starts (requestId=1), B starts (requestId=2). A's response
     // arrives after B started. A must be discarded via isStale() guard.
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
@@ -65,7 +36,7 @@ describe('useSolver cache-race guards', () => {
 
     let resolveA!: (v: unknown) => void
     let resolveB!: (v: unknown) => void
-    mockSolver.solve
+    mockSolveLocally
       .mockReturnValueOnce(new Promise(r => { resolveA = r }))
       .mockReturnValueOnce(new Promise(r => { resolveB = r }))
 
@@ -102,8 +73,8 @@ describe('useSolver cache-race guards', () => {
   })
 
   it('solve B that completes before A does not get overwritten', async () => {
-    // Regression: after cacheBuildResponse, B completes but A was still
-    // in-flight. The guard after cacheBuildResponse must prevent A from
+    // Regression: after the first solve completes, B completes but A was still
+    // in-flight. The isStale guard must prevent A from
     // overwriting B's result when A's WS response arrives.
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
@@ -115,7 +86,7 @@ describe('useSolver cache-race guards', () => {
     )
 
     let resolveA!: (v: unknown) => void
-    mockSolver.solve
+    mockSolveLocally
       .mockReturnValueOnce(new Promise(r => { resolveA = r }))  // A in-flight
       .mockResolvedValue({  // B completes fast
         solve_ms: 0,

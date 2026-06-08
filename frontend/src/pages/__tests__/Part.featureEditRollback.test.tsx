@@ -18,12 +18,8 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 
-vi.mock('../../hooks/solverWs', () => ({
-  solverWs: {
-    solve: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-    disconnect: vi.fn(),
-    onGeometryUpdate: vi.fn().mockReturnValue(() => {}),
-  },
+vi.mock('@/kernel/solveLocally', () => ({
+  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
 }))
 
 vi.mock('../../components/Viewport', () => ({

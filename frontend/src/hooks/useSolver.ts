@@ -1,17 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation } from '@/types/cad'
-import { solverWs } from '@/hooks/solverWs'
 import { useSolverStore } from '@/stores/solverStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
-import { useGeometryCache } from '@/hooks/useGeometryCache'
-import { invalidateDocCache } from '@/utils/buildCache'
 import { maybeRunShadow } from '@/wasm-kernel/shadowMode'
 import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
-import { unpackBodies, unpackPickBodies } from '@/utils/geometryUnpack'
-import type { GeometryHeader } from '@/utils/geometryUnpack'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
@@ -82,16 +77,8 @@ export function useSolver(
   const [solveResult, setSolveRawResult] = useState<string>('')
   const [validation, setValidation] = useState<RebuildValidation | null>(null)
   const firstSolveDone = useRef(false)
-  // Internal "last sent" tracking. Updated only inside reSolve / applyGeometryUpdate
-  // so the async geometry-update handler can write to the right cache key.
-  // Never settable from outside the hook — store is the source of truth.
-  const lastSentRollbackRef = useRef<number | null>(null)
-  const lastSentPickBoundaryRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
-  const lastValidMsgIdRef = useRef<number | null>(null)
   const cancelledRef = useRef(false)
-
-  const { getCachedBuildResponse, cacheBuildResponse, cacheGeometry } = useGeometryCache(uuid)
 
   const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     const result = data.result as Record<string, {
@@ -200,38 +187,6 @@ export function useSolver(
     }
   }, [setCodeText, modeRef, docRef, setDoc])
 
-  const applyGeometryUpdate = useCallback((msgId: number, header: GeometryHeader, buffer: ArrayBuffer, jsonHeaderLen: number) => {
-    try {
-      if (lastValidMsgIdRef.current !== null && msgId !== lastValidMsgIdRef.current) {
-        return
-      }
-      const unpacked = unpackBodies(header, buffer, jsonHeaderLen)
-      const d = docRef.current
-      if (d) {
-        const withStyle = structuredClone(d)
-        reconcilePartStyle(withStyle, unpacked)
-        docRef.current = withStyle
-        if (uuid) {
-          const rollback = lastSentRollbackRef.current ?? (withStyle.features?.length ?? 0)
-          const pickBoundary = lastSentPickBoundaryRef.current
-          cacheGeometry(withStyle, rollback, pickBoundary, { header, buffer, jsonHeaderLen })
-        }
-      }
-      setBodies(unpacked)
-      if (header.pick_bodies && Object.keys(header.pick_bodies).length > 0) {
-        setPickBodies(unpackPickBodies(header, buffer, jsonHeaderLen))
-      } else {
-        setPickBodies({})
-      }
-    } catch (e) {
-      console.error('[usePartDoc] Error applying geometry update:', e)
-    }
-  }, [uuid, docRef, cacheGeometry])
-
-  useEffect(() => {
-    return solverWs.onGeometryUpdate(applyGeometryUpdate)
-  }, [applyGeometryUpdate])
-
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     applySolveResult(d, data, solveTimeMs)
     if (data.bodies) {
@@ -249,7 +204,6 @@ export function useSolver(
     setSolving(true)
     setSolveTime(null)
     const startTime = performance.now()
-    console.log('[useSolver] reSolve called, features:', (d.features ?? []).map((f: { kind?: string }) => f.kind))
 
     const currentRequestId = ++requestIdRef.current
     const isStale = () => currentRequestId !== requestIdRef.current
@@ -295,142 +249,77 @@ export function useSolver(
         solvePayload._validate = true
       }
 
-      // Phase 4a live routing: for fully-ported docs, try the TS/WASM kernel
-      // first. Falls back to Python WebSocket when OCC.js is unavailable.
-      // Skip local solve when there are no features (empty doc or preview-only).
-      if (solveFeatures.length > 0 && isDocFullyPorted(solveFeatures)) {
-        console.log('[useSolver] doc is fully ported, attempting local solve')
-        // prevState is intentionally omitted: solveLocally owns the cross-solve
-        // checkpoint cache (persistent HandleTable + last BuildState, keyed by
-        // doc id) so incremental rebuild reuses the clean prefix.
-        const local = await solveLocally(solvePayload, {
-          pickBoundary: pickBoundary ?? null,
-          rollbackPosition: adjustedRollback,
-          validate: opts?.validate,
-        })
-        if (local) {
-          if (isStale()) return
-          lastSentRollbackRef.current = effectiveRollback
-          lastSentPickBoundaryRef.current = pickBoundary
-          const endTime = performance.now()
-          const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
-          if (local._validation) setValidation(local._validation)
-          // applyBuildResponse sets bodies (the preview/result state) and, when
-          // a pick_boundary was requested, pick_bodies (the "before" state). The
-          // TS kernel now tessellates the pick checkpoint's bodies, so pick_bodies
-          // carry real mesh/edge geometry to pick against while editing.
-          applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs)
-          // Reject any stale WS geometry frames that arrive after a local solve.
-          lastValidMsgIdRef.current = -1
-          void maybeRunShadow(d.features, local.result)
-          if (!firstSolveDone.current && onFirstSolve) {
-            firstSolveDone.current = true
-            setTimeout(onFirstSolve, 0)
-          }
-          if (!cancelledRef.current) setSolving(false)
-          return
-        }
-        console.log('[useSolver] local solve returned null, falling back to Python WebSocket')
-      } else {
-        console.log('[useSolver] doc not fully ported, unported kinds:', [...unportedKinds(solveFeatures)])
-      }
-
-      if (uuid && opts?.bypassCache) {
-        await invalidateDocCache(uuid)
-      }
-      if (uuid && !opts?.bypassCache) {
-        const cached = await getCachedBuildResponse(d, effectiveRollback, pickBoundary)
-        if (cached && cached.isFresh) {
-          if (isStale()) {
-            return
-          }
-          lastSentRollbackRef.current = effectiveRollback
-          lastSentPickBoundaryRef.current = pickBoundary
-          applyBuildResponse(d, cached.entry.buildResponse)
-          if (cached.entry.geometry) {
-            const { header, buffer, jsonHeaderLen } = cached.entry.geometry
-            lastValidMsgIdRef.current = header.msgId
-            applyGeometryUpdate(header.msgId, header, buffer, jsonHeaderLen)
-          }
-          if (!cancelledRef.current) setSolving(false)
-          if (!firstSolveDone.current && onFirstSolve) {
-            firstSolveDone.current = true
-            setTimeout(onFirstSolve, 0)
-          }
-          return
-        }
-      }
-
-      if (isStale()) {
-        return
-      }
-
-      const response = await solverWs.solve(solvePayload) as Record<string, unknown>
-
-      if (isStale()) {
-        return
-      }
-
-      // Defense-in-depth: even though solverWs routes by msgId, verify the backend
-      // echoed our request_version. Drop responses with a stale or missing version.
-      const respVersion = response.request_version
-      if (typeof respVersion === 'number' && respVersion < requestIdRef.current) {
-        return
-      }
-      lastSentRollbackRef.current = effectiveRollback
-      lastSentPickBoundaryRef.current = pickBoundary
-      if (response.msgId != null) {
-        lastValidMsgIdRef.current = response.msgId as number
-      }
-
-      const endTime = performance.now()
-      const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
-
-      if (response.ok === false) {
-        setSolveError(String(response.error))
-        setSolveRawResult(String(response.error))
-      } else {
-        const buildResponse = response as unknown as BuildResponse
-        if (buildResponse.validation !== undefined) {
-          setValidation(buildResponse.validation)
-        } else if (opts?.validate) {
-          // Validation was requested but the server did not echo one back.
-          setValidation(null)
-        }
-        if (uuid) {
-          // Don't update cache if validation failed structurally -- the bad
-          // state stays available for debugging until the user retries.
-          const v = buildResponse.validation
-          const okToCache = !v || v.passed || v.fp_only === true
-          if (okToCache) {
-            await cacheBuildResponse(d, effectiveRollback, pickBoundary, buildResponse)
-          }
-          if (isStale()) return
-        }
-        applySolveResult(d, buildResponse, solveTimeMs)
-        // Phase 1 WASM shadow mode (always-on): solve sketches with the Rust
-        // kernel in parallel and log any disagreement. Fire-and-forget; a
-        // missing wasm build only skips silently.
-        void maybeRunShadow(d.features, buildResponse.result)
+      // Empty doc or preview-only (rollback at 0): nothing to solve. Clear the
+      // result/body state so the viewport empties.
+      if (solveFeatures.length === 0) {
+        if (isStale()) return
+        setSolveResults({})
+        setBodies({})
+        setPickBodies({})
+        setSolveError(null)
         if (!firstSolveDone.current && onFirstSolve) {
           firstSolveDone.current = true
           setTimeout(onFirstSolve, 0)
         }
+        if (!cancelledRef.current) setSolving(false)
+        return
       }
-    } catch (e) {
-      const msg = String(e)
-      if (!msg.includes('WebSocket closed')) {
+
+      // The browser TS/WASM kernel is the only solver. A doc with an unported
+      // feature kind cannot be solved locally; surface that instead of failing
+      // silently (the Python WebSocket fallback was removed with the daemon).
+      if (!isDocFullyPorted(solveFeatures)) {
+        const missing = [...unportedKinds(solveFeatures)].join(', ')
+        const msg = `Cannot solve: unported feature kinds: ${missing}`
         setSolveError(msg)
         setSolveRawResult(msg)
+        if (!cancelledRef.current) setSolving(false)
+        return
       }
+
+      // solveLocally owns the cross-solve checkpoint cache (persistent
+      // HandleTable + last BuildState, keyed by doc id) so incremental rebuild
+      // reuses the clean prefix; prevState is intentionally omitted here.
+      const local = await solveLocally(solvePayload, {
+        pickBoundary: pickBoundary ?? null,
+        rollbackPosition: adjustedRollback,
+        validate: opts?.validate,
+      })
+      if (!local) {
+        const msg = 'Local solver unavailable (OCC.js failed to load)'
+        setSolveError(msg)
+        setSolveRawResult(msg)
+        if (!cancelledRef.current) setSolving(false)
+        return
+      }
+      if (isStale()) return
+      const endTime = performance.now()
+      const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
+      if (local._validation) setValidation(local._validation)
+      // applyBuildResponse sets bodies (the preview/result state) and, when a
+      // pick_boundary was requested, pick_bodies (the "before" state). The TS
+      // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
+      // real mesh/edge geometry to pick against while editing.
+      applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs)
+      // Phase 1 WASM shadow mode (always-on): solve sketches with the Rust
+      // kernel in parallel and log any disagreement. Fire-and-forget; a missing
+      // wasm build only skips silently.
+      void maybeRunShadow(d.features, local.result)
+      if (!firstSolveDone.current && onFirstSolve) {
+        firstSolveDone.current = true
+        setTimeout(onFirstSolve, 0)
+      }
+      if (!cancelledRef.current) setSolving(false)
+    } catch (e) {
+      const msg = String(e)
+      setSolveError(msg)
+      setSolveRawResult(msg)
     } finally {
       if (isCurrent()) setSolving(false)
     }
-  }, [onFirstSolve, uuid, applyBuildResponse, applySolveResult, applyGeometryUpdate, getCachedBuildResponse, cacheBuildResponse])
+  }, [onFirstSolve, uuid, applyBuildResponse])
 
   const resetSolver = useCallback(() => {
-    lastSentRollbackRef.current = null
-    lastSentPickBoundaryRef.current = null
     firstSolveDone.current = false
   }, [])
 
@@ -441,7 +330,6 @@ export function useSolver(
 
   useEffect(() => {
     return () => {
-      solverWs.disconnect()
       useSolverStore.getState().setIsSolving(false)
     }
   }, [])

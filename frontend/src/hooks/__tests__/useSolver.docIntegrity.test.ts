@@ -1,24 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-const { mockSolver } = vi.hoisted(() => ({
-  mockSolver: { solve: vi.fn(), disconnect: vi.fn(), onGeometryUpdate: vi.fn().mockReturnValue(vi.fn()) },
-}))
-const { mockCache } = vi.hoisted(() => ({
-  mockCache: {
-    getCachedBuildResponse: vi.fn().mockResolvedValue(null),
-    cacheBuildResponse: vi.fn().mockResolvedValue(undefined),
-    cacheGeometry: vi.fn().mockResolvedValue(undefined),
-  },
-}))
+const { mockSolveLocally } = vi.hoisted(() => ({ mockSolveLocally: vi.fn() }))
 
-vi.mock('@/hooks/solverWs', () => ({ solverWs: mockSolver }))
-vi.mock('@/hooks/useGeometryCache', () => ({ useGeometryCache: vi.fn(() => mockCache) }))
+vi.mock('@/kernel/solveLocally', () => ({ solveLocally: mockSolveLocally }))
 vi.mock('@/utils/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
-vi.mock('@/utils/geometryUnpack', () => ({
-  unpackBodies: vi.fn().mockReturnValue({}),
-  unpackPickBodies: vi.fn().mockReturnValue({}),
-}))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },
 }))
@@ -37,13 +23,10 @@ function makeDoc(): PartDoc {
 describe('useSolver doc integrity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCache.getCachedBuildResponse.mockResolvedValue(null)
-    mockCache.cacheBuildResponse.mockResolvedValue(undefined)
-    mockCache.cacheGeometry.mockResolvedValue(undefined)
   })
 
   it('does not mutate the doc reference passed to reSolve', async () => {
-    mockSolver.solve.mockResolvedValue({
+    mockSolveLocally.mockResolvedValue({
       solve_ms: 0,
       result: { sk1: { geometry: { new_pt: [1, 2] } } },
       bodies: {} as Record<string, BodyResult>,

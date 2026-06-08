@@ -58,8 +58,8 @@ describe('test_soft_solve_is_frontend_only', () => {
     // Result is a plain synchronous object, not a Promise.
     expect(result).not.toBeInstanceOf(Promise)
 
-    // softSolve has no imports from solverWs or any network module;
-    // the module graph is verified to stay pure (no WebSocket calls).
+    // softSolve has no imports from any solver or network module;
+    // the module graph is verified to stay pure (synchronous, no I/O).
     expect(typeof result).toBe('object')
   })
 
