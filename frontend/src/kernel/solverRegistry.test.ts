@@ -15,9 +15,10 @@ import { Repository } from './query'
 // ── Ported-kind set completeness ─────────────────────────────────────────
 
 describe('PORTED_FEATURE_KINDS', () => {
-  it('contains all 14 leaf feature kinds (13 brep + sketch)', () => {
+  it('contains all 15 leaf feature kinds (13 brep + sketch + plane)', () => {
     const expected = [
       'sketch',
+      'plane',
       'extrude', 'revolve', 'sweep',
       'fillet', 'chamfer',
       'boolean', 'hole',
@@ -52,17 +53,17 @@ describe('isDocFullyPorted', () => {
     expect(isDocFullyPorted(features)).toBe(true)
   })
 
-  it('returns false when any kind is plane', () => {
+  it('returns true when a plane feature is present (now ported)', () => {
     const features = [
       { id: 'pl1', kind: 'plane' },
       { id: 'ex1', kind: 'extrude' },
     ]
-    expect(isDocFullyPorted(features)).toBe(false)
+    expect(isDocFullyPorted(features)).toBe(true)
   })
 
   it('returns false when any kind is outside the ported set', () => {
     const features = [
-      { id: 'pl1', kind: 'plane' },
+      { id: 'or1', kind: 'origin' },
       { id: 'ex1', kind: 'extrude' },
     ]
     expect(isDocFullyPorted(features)).toBe(false)
@@ -85,16 +86,16 @@ describe('isDocFullyPorted', () => {
 
   it('returns false for single unported kind in a mixed doc', () => {
     const allPorted = [
-      'sketch',
+      'sketch', 'plane',
       'extrude', 'revolve', 'sweep', 'fillet', 'chamfer',
       'boolean', 'hole', 'array', 'circular_array',
       'transform', 'mirror', 'delete_body', 'import_step',
     ]
-    const withPlane = [
+    const withOrigin = [
       ...allPorted.map((k, i) => ({ id: `f${i}`, kind: k })),
-      { id: 'pl1', kind: 'plane' },
+      { id: 'or1', kind: 'origin' },
     ]
-    expect(isDocFullyPorted(withPlane)).toBe(false)
+    expect(isDocFullyPorted(withOrigin)).toBe(false)
   })
 })
 
@@ -111,18 +112,18 @@ describe('unportedKinds', () => {
 
   it('returns the set of unported kinds', () => {
     const features = [
-      { id: 'pl1', kind: 'plane' },
+      { id: 'or1', kind: 'origin' },
       { id: 'ex1', kind: 'extrude' },
     ]
     const missing = unportedKinds(features)
-    expect(missing.has('plane')).toBe(true)
+    expect(missing.has('origin')).toBe(true)
     expect(missing.has('extrude')).toBe(false)
   })
 
   it('deduplicates repeated unported kinds', () => {
     const features = [
-      { id: 'pl1', kind: 'plane' },
-      { id: 'pl2', kind: 'plane' },
+      { id: 'or1', kind: 'origin' },
+      { id: 'or2', kind: 'origin' },
     ]
     expect(unportedKinds(features).size).toBe(1)
   })
@@ -141,8 +142,11 @@ describe('getSolver', () => {
     }
   })
 
+  it('returns a function for the plane kind (now ported)', () => {
+    expect(typeof getSolver('plane')).toBe('function')
+  })
+
   it('returns null for unknown kinds', () => {
-    expect(getSolver('plane')).toBeNull()
     expect(getSolver('origin')).toBeNull()
     expect(getSolver('nonexistent')).toBeNull()
   })
@@ -183,7 +187,7 @@ describe('createFeatureSolver', () => {
   it('returns exception for unported kind', () => {
     const solver = createFeatureSolver(fakeOc, scope, table)
     const result = solver(
-      { id: 'pl1', kind: 'plane' },
+      { id: 'or1', kind: 'origin' },
       new Repository(),
       {},
       {},

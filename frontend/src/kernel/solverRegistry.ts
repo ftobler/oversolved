@@ -3,8 +3,8 @@
  *
  * The router checks whether every feature kind in a document has a ported TS
  * solver. If yes, it dispatches locally through the TS kernel; if any unported
- * kind (e.g. `sketch`, `plane`) is present, the caller falls back to the Python
- * WebSocket. The router itself is the seam 2g flips default-on: there is no
+ * kind (e.g. `origin`) is present, the doc cannot be solved locally. The router
+ * itself is the seam 2g flips default-on: there is no
  * explicit feature flag; the gate is always active and only the kind-set
  * membership determines which path a doc takes.
  *
@@ -30,12 +30,14 @@ import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
+import { solvePlane } from './features/plane'
 
 // ── Ported kind set ──────────────────────────────────────────────────────
 
 /** Feature kinds that have a TS/WASM solver. */
 export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
   'sketch',
+  'plane',
   'extrude',
   'revolve',
   'sweep',
@@ -51,9 +53,8 @@ export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
   'import_step',
 ]))
 
-/** Kinds that the TS kernel cannot solve (planes, origin, etc.). */
+/** Kinds that the TS kernel cannot solve (origin, etc.). */
 export const UNPORTED_KINDS = new Set([
-  'plane',
   'origin',
 ])
 
@@ -101,6 +102,7 @@ const KIND_SOLVER: Record<string, LeafSolver> = {
   sketch: _s((_oc, _scope, _table, feature: Record<string, unknown>, globalRepo: Repository, bodyStore: Record<string, Body>) =>
     solveSketch(feature, globalRepo, bodyStore),
   ),
+  plane: _s(solvePlane),
   extrude: _s(solveExtrude),
   revolve: _s(solveRevolve),
   sweep: _s(solveSweep),
