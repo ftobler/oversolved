@@ -28,7 +28,7 @@ import { detectTopology } from '../topology'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm } from '@/wasm-kernel/solverWasm'
-import type { SolveBytes } from '@/wasm-kernel/shadowCompare'
+import type { SolveBytes } from '@/wasm-kernel/codec'
 
 type Dict = Record<string, unknown>
 

@@ -5,7 +5,7 @@ import { useSolverStore } from '@/stores/solverStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
-import { maybeRunShadow } from '@/wasm-kernel/shadowMode'
+
 import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
@@ -302,10 +302,6 @@ export function useSolver(
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
       applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs)
-      // Phase 1 WASM shadow mode (always-on): solve sketches with the Rust
-      // kernel in parallel and log any disagreement. Fire-and-forget; a missing
-      // wasm build only skips silently.
-      void maybeRunShadow(d.features, local.result)
       if (!firstSolveDone.current && onFirstSolve) {
         firstSolveDone.current = true
         setTimeout(onFirstSolve, 0)

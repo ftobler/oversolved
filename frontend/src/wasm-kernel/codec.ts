@@ -76,6 +76,9 @@ export interface FlatInput {
   options: { dragMode: boolean; dragAnchorId: number; skipStatusPass: boolean }
 }
 
+/** WASM solver function: flat typed-array in, flat typed-array out. */
+export type SolveBytes = (input: Uint8Array) => Uint8Array
+
 export interface SolverOutput {
   paramsSolved: number[]
   entityStatus: number[]

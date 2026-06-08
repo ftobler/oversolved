@@ -19,7 +19,7 @@
  * `/wasm/` path. See `shadowCompare.ts`.
  */
 
-import type { SolveBytes } from './shadowCompare'
+import type { SolveBytes } from './codec'
 
 interface WebModule {
   default: (input?: unknown) => Promise<unknown>
