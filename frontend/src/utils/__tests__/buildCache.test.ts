@@ -3,7 +3,6 @@ import {
   computeCacheKey,
   getCachedBuildResponse,
   cacheBuildResponse,
-  cacheGeometry,
   invalidateDocCache,
   invalidateAllCache,
   getAllCachedEntries,
@@ -233,60 +232,6 @@ describe('cacheBuildResponse / getCachedBuildResponse', () => {
       const r = await getCachedBuildResponse(`doc${i}`, emptyDoc, 1, null)
       expect(r).not.toBeNull()
     }
-  })
-})
-
-describe('cacheGeometry', () => {
-  it('attaches geometry to an existing cache entry', async () => {
-    await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
-    const geometry = { header: {} as never, buffer: new ArrayBuffer(8), jsonHeaderLen: 4 }
-    await cacheGeometry('doc1', emptyDoc, 1, null, geometry)
-    const cached = await getCachedBuildResponse('doc1', emptyDoc, 1, null)
-    expect(cached!.entry.geometry).toBeDefined()
-    expect(cached!.entry.geometry!.buffer.byteLength).toBe(8)
-  })
-
-  it('does nothing when no cache entry exists for the key', async () => {
-    const geometry = { header: {} as never, buffer: new ArrayBuffer(4), jsonHeaderLen: 2 }
-    await cacheGeometry('doc1', emptyDoc, 1, null, geometry)
-    const { getCache } = await import('@/utils/buildCache')
-    expect(getCache().size).toBe(0)
-  })
-
-  it('updates geometry on an existing entry', async () => {
-    await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
-    const g1 = { header: {} as never, buffer: new ArrayBuffer(8), jsonHeaderLen: 4 }
-    await cacheGeometry('doc1', emptyDoc, 1, null, g1)
-    const g2 = { header: {} as never, buffer: new ArrayBuffer(16), jsonHeaderLen: 8 }
-    await cacheGeometry('doc1', emptyDoc, 1, null, g2)
-    const cached = await getCachedBuildResponse('doc1', emptyDoc, 1, null)
-    expect(cached!.entry.geometry!.buffer.byteLength).toBe(16)
-  })
-
-  it('geometry survives stale marking', async () => {
-    await cacheBuildResponse('doc1', emptyDoc, 1, null, emptyResponse)
-    const geometry = { header: {} as never, buffer: new ArrayBuffer(8), jsonHeaderLen: 4 }
-    await cacheGeometry('doc1', emptyDoc, 1, null, geometry)
-    const key = await computeCacheKey('doc1', [], 1, null)
-    const { getCache } = await import('@/utils/buildCache')
-    const entry = getCache().get(key) as CacheEntry
-    entry.timestamp = Date.now() - 6 * 60 * 1000
-
-    const cached = await getCachedBuildResponse('doc1', emptyDoc, 1, null)
-    expect(cached).not.toBeNull()
-    expect(cached!.isFresh).toBe(false)
-    expect(cached!.entry.geometry).toBeDefined()
-  })
-
-  it('does not attach geometry to wrong entry when features differ', async () => {
-    const docA: PartDoc = { features: [{ id: 'a', kind: 'sketch' }] }
-    const docB: PartDoc = { features: [{ id: 'b', kind: 'sketch' }] }
-    await cacheBuildResponse('doc1', docA, 1, null, { solve_ms: 1, result: {}, bodies: {} })
-    const geometry = { header: {} as never, buffer: new ArrayBuffer(8), jsonHeaderLen: 4 }
-    await cacheGeometry('doc1', docB, 1, null, geometry)
-    const cachedA = await getCachedBuildResponse('doc1', docA, 1, null)
-    expect(cachedA).not.toBeNull()
-    expect(cachedA!.entry.geometry).toBeUndefined()
   })
 })
 

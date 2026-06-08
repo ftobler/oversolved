@@ -1,14 +1,7 @@
 import type { PartDoc, BuildResponse, PartFeature } from '@/types/cad'
-import type { GeometryHeader } from '@/utils/geometryUnpack'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const MAX_CACHE_SIZE = 100
-
-export interface CachedGeometry {
-  header: GeometryHeader
-  buffer: ArrayBuffer
-  jsonHeaderLen: number
-}
 
 export interface CacheEntry {
   cache_key: string
@@ -18,7 +11,6 @@ export interface CacheEntry {
   rollback_position: number
   pick_boundary: number | null
   buildResponse: BuildResponse
-  geometry?: CachedGeometry
 }
 
 const cache = new Map<string, CacheEntry>()
@@ -110,21 +102,6 @@ export async function cacheBuildResponse(
   if (cache.has(key)) cache.delete(key)
   cache.set(key, entry)
   evictIfOverMax()
-}
-
-export async function cacheGeometry(
-  docId: string,
-  doc: PartDoc,
-  rollbackPosition: number,
-  pickBoundary: number | null,
-  geometry: CachedGeometry,
-): Promise<void> {
-  const features = doc.features ?? []
-  const key = await computeCacheKey(docId, features, rollbackPosition, pickBoundary)
-  const entry = cache.get(key)
-  if (entry) {
-    entry.geometry = geometry
-  }
 }
 
 export async function invalidateDocCache(docId: string): Promise<void> {
