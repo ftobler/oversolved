@@ -6,11 +6,11 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
-import { solveLocally } from '@/kernel/solveLocally'
+import { solveViaWorker } from '@/kernel/worker/solverClient'
 import { invalidateAllCache } from '@/utils/buildCache'
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
+vi.mock('@/kernel/worker/solverClient', () => ({
+  solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
 }))
 
 vi.mock('../../components/Viewport', () => ({
@@ -57,7 +57,7 @@ describe('Part - eliminate redundant solves', () => {
   }
 
   function countSolveCalls(): number {
-    return (solveLocally as ReturnType<typeof vi.fn>).mock.calls.length
+    return (solveViaWorker as ReturnType<typeof vi.fn>).mock.calls.length
   }
 
   async function renderAndWaitForLoad() {
@@ -80,7 +80,7 @@ describe('Part - eliminate redundant solves', () => {
 
   it('adds extrude with exactly 1 solve', async () => {
     await renderAndWaitForLoad()
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Extrude (E)'))
@@ -92,7 +92,7 @@ describe('Part - eliminate redundant solves', () => {
 
   it('adds revolve with exactly 1 solve', async () => {
     await renderAndWaitForLoad()
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Revolve'))
@@ -104,7 +104,7 @@ describe('Part - eliminate redundant solves', () => {
 
   it('adds hole with exactly 1 solve', async () => {
     await renderAndWaitForLoad()
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Hole'))
@@ -116,7 +116,7 @@ describe('Part - eliminate redundant solves', () => {
 
   it('adds sketch with exactly 2 solves (add + auto-enter-edit preview)', async () => {
     await renderAndWaitForLoad()
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Sketch'))
@@ -132,7 +132,7 @@ describe('Part - eliminate redundant solves', () => {
 
   it('adds extrude then sketch with exactly 2 total solves', async () => {
     await renderAndWaitForLoad()
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Extrude (E)'))
@@ -150,7 +150,7 @@ describe('Part - eliminate redundant solves', () => {
 
   it('user rollback change triggers exactly 1 solve', async () => {
     await renderAndWaitForLoad()
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     fireEvent.click(screen.getByTitle('Add Extrude (E)'))
@@ -159,7 +159,7 @@ describe('Part - eliminate redundant solves', () => {
       expect(countSolveCalls()).toBe(1)
     })
 
-    vi.mocked(solveLocally).mockClear()
+    vi.mocked(solveViaWorker).mockClear()
 
     const rollbackBars = screen.getAllByTitle('Rollback')
     const lastBar = rollbackBars[rollbackBars.length - 1]

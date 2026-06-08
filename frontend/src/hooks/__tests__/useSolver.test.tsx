@@ -9,7 +9,7 @@ const { mockUnflattenGeometry } = vi.hoisted(() => ({
   mockUnflattenGeometry: vi.fn().mockReturnValue({}),
 }))
 
-vi.mock('@/kernel/solveLocally', () => ({ solveLocally: mockSolveLocally }))
+vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
 vi.mock('@/utils/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },

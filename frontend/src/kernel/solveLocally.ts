@@ -45,9 +45,20 @@ function resetLocalSolveCache(): void {
   lastDocId = null
 }
 
-// Test seam: loadOccWeb hard-skips under vitest (web-only loader), so a test
-// injects the node MEMFS-backed module here to drive the real production entry.
+// Loader seam. Default is loadOccWeb (main-thread DOM loader); the Worker
+// bootstrap installs the DOM-free loadOccWorker; tests inject the node
+// MEMFS-backed module to drive the real production entry off-thread.
 let occLoaderOverride: (() => Promise<OccModule | null>) | null = null
+
+/**
+ * Install the OCC loader. The Worker bootstrap calls this with the DOM-free
+ * worker loader; without it the main-thread loadOccWeb is used.
+ */
+export function setOccLoader(loader: () => Promise<OccModule | null>): void {
+  occLoaderOverride = loader
+  occModule = null
+  occLoading = null
+}
 
 /** @internal test-only: inject an OCC loader and reset all cached state. */
 export function setSolveLocalsForTest(

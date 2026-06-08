@@ -10,7 +10,7 @@ import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/partColors'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
-import { solveLocally } from '@/kernel/solveLocally'
+import { solveViaWorker } from '@/kernel/worker/solverClient'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 
@@ -277,10 +277,11 @@ export function useSolver(
         return
       }
 
-      // solveLocally owns the cross-solve checkpoint cache (persistent
+      // The solver Worker owns the cross-solve checkpoint cache (persistent
       // HandleTable + last BuildState, keyed by doc id) so incremental rebuild
-      // reuses the clean prefix; prevState is intentionally omitted here.
-      const local = await solveLocally(solvePayload, {
+      // reuses the clean prefix; the work runs off the main thread so a long
+      // solve never freezes the UI.
+      const local = await solveViaWorker(solvePayload, {
         pickBoundary: pickBoundary ?? null,
         rollbackPosition: adjustedRollback,
         validate: opts?.validate,
