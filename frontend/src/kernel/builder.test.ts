@@ -164,7 +164,7 @@ describe('build with mock solvers', () => {
     // sk1 should be identical from cache.
     expect(r2.result.sk1).toEqual(r1.result.sk1)
     // sk2 should have been re-solved.
-    expect(r2.result.sk2).toEqual({ status: 'ok', solved: 'sk2' })
+    expect(r2.result.sk2).toMatchObject({ status: 'ok', solved: 'sk2' })
   })
 
   it('calls postRegister for each non-suppressed feature', () => {
@@ -563,7 +563,9 @@ describe('feature insert / delete', () => {
     expect(r2.result.sk2).toMatchObject({ status: 'ok' })
     expect(r2.result.sk3).toMatchObject({ status: 'ok' })
     // sk3 geometry is unchanged because its spec didn't change (deep copy from re-solve)
-    expect(r2.result.sk3).toEqual(geomSk3Before)
+    const { solve_ms: _s1, ...geomSk3Expected } = geomSk3Before as Record<string, unknown>
+    const { solve_ms: _s2, ...geomSk3Actual } = r2.result.sk3 as Record<string, unknown>
+    expect(geomSk3Actual).toEqual(geomSk3Expected)
   })
 })
 

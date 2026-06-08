@@ -753,7 +753,9 @@ export function build(
 
     setCurrentFeatureId(fid)
     try {
+      const t0 = performance.now()
       const featureResult = deps.trySolveFeature(feature, globalRepo, bodyStore, featuresById)
+      featureResult.solve_ms = performance.now() - t0
       deps.postRegister(globalRepo, fid, feature, featureResult)
       result[fid] = featureResult
     } catch (e) {
