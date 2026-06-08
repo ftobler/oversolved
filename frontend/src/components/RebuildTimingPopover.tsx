@@ -7,6 +7,7 @@ interface RebuildTimingPopoverProps {
   onMouseEnter?: () => void
   onMouseLeave?: () => void
   validation?: RebuildValidation | null
+  style?: React.CSSProperties
 }
 
 function validationBadge(v: RebuildValidation) {
@@ -19,7 +20,7 @@ function validationBadge(v: RebuildValidation) {
   return { color: '#c62828', symbol: '✕', label: `L${v.level} structural mismatch`, kind: 'red' as const }
 }
 
-export function RebuildTimingPopover({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave, validation }: RebuildTimingPopoverProps) {
+export function RebuildTimingPopover({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave, validation, style }: RebuildTimingPopoverProps) {
   if (!isVisible) return null
 
   const formatMs = (ms: number) => {
@@ -38,7 +39,7 @@ export function RebuildTimingPopover({ featureTimings, features, isVisible, onMo
   const badge = validation ? validationBadge(validation) : null
 
   return (
-    <div className="rebuild-timing-popover" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <div className="rebuild-timing-popover" style={style} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="popover-header">
         <strong>Rebuild Times</strong>
         {badge && (
