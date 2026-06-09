@@ -40,6 +40,17 @@ class TestRateLimiter:
         limiter.clear("ip1")
         assert not limiter.is_exceeded("ip1")
 
+    def test_rate_limiter_reset_clears_all_keys(self):
+        limiter = RateLimiter(window_s=60, max_events=2)
+        for _ in range(2):
+            limiter.record("a")
+            limiter.record("b")
+        assert limiter.is_exceeded("a")
+        assert limiter.is_exceeded("b")
+        limiter.reset()
+        assert not limiter.is_exceeded("a")
+        assert not limiter.is_exceeded("b")
+
     def test_rate_limiter_concurrency(self):
         """100 threads racing on record must result in exactly 100 events."""
         limiter = RateLimiter(window_s=300, max_events=1000)

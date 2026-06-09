@@ -4,7 +4,7 @@ import json
 import pytest
 from oversolved.app import create_app
 from oversolved.blueprints.auth import (
-    _login_failures, _login_failures_lock,
+    _login_limiter,
     _LOGIN_RATE_LIMIT, _LOGIN_RATE_WINDOW,
 )
 
@@ -12,8 +12,7 @@ from oversolved.blueprints.auth import (
 @pytest.fixture(autouse=True)
 def clear_rate_limit_state():
     """Reset rate limit state before each test."""
-    with _login_failures_lock:
-        _login_failures.clear()
+    _login_limiter.reset()
     yield
 
 

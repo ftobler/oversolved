@@ -42,3 +42,8 @@ class RateLimiter:
         """Remove all recorded events for a key."""
         with self._lock:
             self._events.pop(key, None)
+
+    def reset(self) -> None:
+        """Remove all recorded events for every key."""
+        with self._lock:
+            self._events.clear()

@@ -31,10 +31,6 @@ _LOGIN_RATE_WINDOW = 60
 
 _login_limiter = RateLimiter(window_s=_LOGIN_RATE_WINDOW, max_events=_LOGIN_RATE_LIMIT)
 
-# Expose internals for tests that inspect state directly.
-_login_failures = _login_limiter._events
-_login_failures_lock = _login_limiter._lock
-
 
 def _login_rate_limit_exceeded(ip: str) -> bool:
     return _login_limiter.is_exceeded(ip)
