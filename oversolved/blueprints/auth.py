@@ -48,6 +48,19 @@ def _clear_login_failures(ip: str) -> None:
     _login_limiter.clear(ip)
 
 
+def _user_response(user: dict) -> dict:
+    """Public-facing user fields shared by the login and me responses."""
+    return {
+        "id": user["id"],
+        "username": user["username"],
+        "email": user.get("email") or "",
+        "must_change_password": user["must_change_password"],
+        "is_admin": user["is_admin"],
+        "is_active": user["is_active"],
+        "last_login_at": user.get("last_login_at"),
+    }
+
+
 @auth_bp.route("/login", methods=["POST"])
 def login():
     client_ip = request.remote_addr or "unknown"
@@ -80,21 +93,7 @@ def login():
         return api_error("Account is deactivated", "FORBIDDEN", 403)
     user_store.update(user["id"], last_login_at=datetime.now(timezone.utc).isoformat())
     token = SessionStore(db).create(user["id"])
-    response = make_response(
-        jsonify(
-            {
-                "user": {
-                    "id": user["id"],
-                    "username": user["username"],
-                    "email": user.get("email"),
-                    "must_change_password": user["must_change_password"],
-                    "is_admin": user["is_admin"],
-                    "is_active": user["is_active"],
-                    "last_login_at": user.get("last_login_at"),
-                }
-            }
-        )
-    )
+    response = make_response(jsonify({"user": _user_response(user)}))
     secure = current_app.config.get("SESSION_COOKIE_SECURE", False)
     response.set_cookie(
         "session_token",
@@ -130,16 +129,4 @@ def me():
     user = UserStore(db).find_by_id(session["user_id"])
     if user is None:
         return api_error("User not found", "USER_NOT_FOUND", 401)
-    return jsonify(
-        {
-            "user": {
-                "id": user["id"],
-                "username": user["username"],
-                "email": user.get("email") or "",
-                "must_change_password": user["must_change_password"],
-                "is_admin": user["is_admin"],
-                "is_active": user["is_active"],
-                "last_login_at": user.get("last_login_at"),
-            }
-        }
-    )
+    return jsonify({"user": _user_response(user)})
