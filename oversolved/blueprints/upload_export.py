@@ -1,9 +1,8 @@
 """File upload and STEP/STL export routes."""
 
-import importlib
 import os
 import uuid
-from flask import Blueprint, current_app, jsonify, request, Response
+from flask import Blueprint, current_app, jsonify, request
 from werkzeug.utils import secure_filename
 from oversolved.blueprints import require_auth, require_csrf, api_error
 
