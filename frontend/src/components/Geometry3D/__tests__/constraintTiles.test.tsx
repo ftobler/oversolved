@@ -13,7 +13,7 @@ vi.mock('@react-three/drei', () => ({
   ),
 }))
 
-vi.mock('@/components/sketch_helpers', async (importOriginal) => {
+vi.mock('@/components/sketch/sketch_helpers', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/sketch_helpers')>()
   return {
     ...actual,
@@ -24,7 +24,7 @@ vi.mock('@/components/sketch_helpers', async (importOriginal) => {
   }
 })
 
-vi.mock('@/components/sketch_dimensions', () => ({
+vi.mock('@/components/sketch/sketch_dimensions', () => ({
   LinearDimension: () => <div data-testid="linear-dim" />,
   RadiusDimension: () => <div data-testid="radius-dim" />,
   DiameterDimension: () => <div data-testid="diameter-dim" />,

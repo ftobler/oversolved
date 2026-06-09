@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildContextMenu } from '@/pages/buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
-import type { ContextMenuItem } from '@/components/RightClickMenu'
+import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import type { PartFeature } from '@/types/cad'
 
 function makeFeature(overrides: Partial<PartFeature> & { id: string; kind: string }): PartFeature {

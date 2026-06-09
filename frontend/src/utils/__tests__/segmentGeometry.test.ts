@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { segmentsAreParallel, PARALLEL_CROSS_EPS } from '@/utils/segmentGeometry'
+import { segmentsAreParallel, PARALLEL_CROSS_EPS } from '@/utils/geometry/segmentGeometry'
 
 describe('segmentsAreParallel', () => {
   it('true for collinear / same-direction segments', () => {

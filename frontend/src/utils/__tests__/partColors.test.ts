@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { blendWhite, normalizeHexColor } from '@/utils/partColors'
+import { blendWhite, normalizeHexColor } from '@/utils/core/partColors'
 
 describe('blendWhite', () => {
   it('returns the base color unchanged when factor is 0', () => {

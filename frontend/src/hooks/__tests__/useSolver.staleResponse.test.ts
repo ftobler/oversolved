@@ -17,7 +17,7 @@ import { renderHook, act } from '@testing-library/react'
 const { mockSolveLocally } = vi.hoisted(() => ({ mockSolveLocally: vi.fn() }))
 
 vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
-vi.mock('@/utils/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
+vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },
 }))

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveBodyPickRef, resolveBodyMergeRef, resolveAxisQuery } from '@/utils/resolveBodyPickRef'
+import { resolveBodyPickRef, resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 
 describe('resolveBodyPickRef', () => {
   it('converts body: prefix to @body_ ref', () => {

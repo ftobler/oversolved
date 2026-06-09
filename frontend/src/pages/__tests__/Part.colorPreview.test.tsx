@@ -92,19 +92,19 @@ vi.mock('../../components/Viewport', () => ({
 }))
 
 vi.mock('../../components/Toolbar/SketchToolbar', () => ({ default: () => null }))
-vi.mock('../../components/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
-vi.mock('../../components/FooterMeasurementDisplay', () => ({ default: () => null }))
-vi.mock('../../components/BugReporter', () => ({ BugReporter: () => null }))
-vi.mock('../../components/ExportDialog', () => ({ default: () => null }))
-vi.mock('../../components/ShareDialog', () => ({ default: () => null }))
-vi.mock('../../components/LoadingOverlay', () => ({ default: () => null }))
+vi.mock('../../components/layout/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
+vi.mock('../../components/layout/FooterMeasurementDisplay', () => ({ default: () => null }))
+vi.mock('../../components/dialogs/BugReporter', () => ({ BugReporter: () => null }))
+vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
+vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
+vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
 
 interface MenuItem {
   label: string
   onClick: () => void
 }
 
-vi.mock('../../components/RightClickMenu', () => ({
+vi.mock('../../components/dialogs/RightClickMenu', () => ({
   default: vi.fn(({ items }: { items: MenuItem[] }) => (
     <div data-testid="context-menu">
       {items.map((item: MenuItem, i: number) => (
@@ -116,7 +116,7 @@ vi.mock('../../components/RightClickMenu', () => ({
   )),
 }))
 
-vi.mock('../../components/Sidebar', async () => {
+vi.mock('../../components/layout/Sidebar', async () => {
   const { usePartEditorStore } = await import('@/stores/partEditorStore')
   const { usePartEditorCallbacks } = await import('@/contexts/PartEditorContext')
   return {

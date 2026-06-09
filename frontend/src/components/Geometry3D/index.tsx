@@ -21,7 +21,7 @@ import { TopologySurfaces, TopologyEdges } from '@/components/Geometry3D/Surface
 import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
 
 // Soft solve: frontend-only drag preview honoring coincidence constraints
-import { softSolve } from '@/utils/softSolve'
+import { softSolve } from '@/utils/geometry/softSolve'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'

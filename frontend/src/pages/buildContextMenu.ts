@@ -1,5 +1,5 @@
 import type { PartFeature } from '@/types/cad'
-import type { ContextMenuItem } from '@/components/RightClickMenu'
+import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'

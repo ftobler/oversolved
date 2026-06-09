@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { Sidebar } from '@/components/Sidebar'
+import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'

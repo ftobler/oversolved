@@ -1,5 +1,5 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
-import { selectionToQuery, parseSelectionId } from '@/utils/selectionId'
+import { selectionToQuery, parseSelectionId } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 
 export const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined

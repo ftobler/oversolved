@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { http } from '@/utils/httpClient'
+import { http } from '@/utils/core/httpClient'
 import '@/pages/UserProfile.css'
 
 export default function Backup() {

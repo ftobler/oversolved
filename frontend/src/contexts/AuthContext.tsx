@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { http } from '@/utils/httpClient'
+import { http } from '@/utils/core/httpClient'
 
 export interface User {
   id: number

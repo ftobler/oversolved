@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, PartFeature } from '@/types/cad'
-import { http } from '@/utils/httpClient'
+import { http } from '@/utils/core/httpClient'
 
 export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },

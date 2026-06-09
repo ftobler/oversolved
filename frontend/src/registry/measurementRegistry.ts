@@ -2,7 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { LineSegment, Arc, Circle, PointEntity, BodyResult, EdgeDataCircleArc } from '@/types/cad'
-import { parseTopoFallbackQuery } from '@/utils/selectionId'
+import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
 
 /**
  * Measurement Registry — defines measurement rules in order of specificity.

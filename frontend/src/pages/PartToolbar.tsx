@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import type { Mutation } from '@/types/cad'
 import { executeCommand } from '@/stores/commandRegistry'
-import { describeMutation } from '@/utils/mutationDescriptions'
+import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import AppHeader from '@/components/AppHeader'
+import AppHeader from '@/components/layout/AppHeader'
 
 type StackEntry = { mutation: Mutation }
 

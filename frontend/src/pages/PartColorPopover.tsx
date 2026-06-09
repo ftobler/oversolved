@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect } from 'react'
 import type { Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { normalizeHexColor } from '@/utils/partColors'
-import { PART_COLOR_PALETTE } from '@/utils/partColors'
+import { normalizeHexColor } from '@/utils/core/partColors'
+import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 
 interface PartColorPopoverProps {
   popover: { bodyId: string; position: [number, number]; session?: number } | null

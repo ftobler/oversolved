@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { resolveDimension, dimensionTargets } from '@/registry'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
-import { computeConstraintRender } from '@/utils/geometryMapping'
-import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/dimensionNaturalValue'
+import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
+import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/geometry/dimensionNaturalValue'
 import type {
   PartConstraint, PlaneTransform, Sketch,
 } from '@/types/cad'

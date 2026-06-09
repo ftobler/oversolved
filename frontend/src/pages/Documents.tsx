@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import AppHeader from '@/components/AppHeader'
-import Dialog from '@/components/Dialog'
-import ShareDialog from '@/components/ShareDialog'
+import AppHeader from '@/components/layout/AppHeader'
+import Dialog from '@/components/dialogs/Dialog'
+import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
-import { http, HttpError } from '@/utils/httpClient'
+import { http, HttpError } from '@/utils/core/httpClient'
 import '@/pages/Documents.css'
 
 interface DocumentMeta {

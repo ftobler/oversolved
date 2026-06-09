@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w } from '@/components/sketch_helpers'
+import { p2w } from '@/components/sketch/sketch_helpers'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.

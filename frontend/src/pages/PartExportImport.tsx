@@ -1,10 +1,10 @@
 import * as React from 'react'
-import ExportDialog from '@/components/ExportDialog'
-import ShareDialog from '@/components/ShareDialog'
-import type { ExportFormat } from '@/components/ExportDialog'
+import ExportDialog from '@/components/dialogs/ExportDialog'
+import ShareDialog from '@/components/dialogs/ShareDialog'
+import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
-import { http, HttpError } from '@/utils/httpClient'
+import { http, HttpError } from '@/utils/core/httpClient'
 
 interface PartExportImportProps {
   uuid: string

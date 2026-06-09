@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
-import { http, HttpError } from '@/utils/httpClient'
+import { http, HttpError } from '@/utils/core/httpClient'
 import '@/pages/UserProfile.css'
 
 export default function UserProfile() {

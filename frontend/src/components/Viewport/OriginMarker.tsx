@@ -5,7 +5,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, POINT_HIT_PIXELS, POINT_HIT_PIXELS_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { Dot } from '@/components/Geometry3D/VertexDots'
-import { p2w } from '@/components/sketch_helpers'
+import { p2w } from '@/components/sketch/sketch_helpers'
 import { useOriginMarkerIdRegistration } from '@/picking'
 
 export default function OriginMarker() {

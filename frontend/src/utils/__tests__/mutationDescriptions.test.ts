@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { describeMutation } from '@/utils/mutationDescriptions'
+import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { ALL_MUTATION_TYPES } from '@/hooks/__tests__/mutationDispatch.exhaustive.test'
 import type { Mutation } from '@/types/cad'
 

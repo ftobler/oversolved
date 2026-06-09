@@ -20,7 +20,7 @@ describe('SurfaceMesh inertness (post-sketchSurface layer)', () => {
   })
 
   it('sketch geometry renderOrder exceeds area mesh renderOrder while editing', async () => {
-    const { RENDER_ORDER_EDITING } = await import('@/utils/partColors')
+    const { RENDER_ORDER_EDITING } = await import('@/utils/core/partColors')
     const AREA_MESH_RENDER_ORDER = 0
     expect(RENDER_ORDER_EDITING).toBeGreaterThan(AREA_MESH_RENDER_ORDER)
   })

@@ -1,4 +1,4 @@
-import AppHeader from '@/components/AppHeader'
+import AppHeader from '@/components/layout/AppHeader'
 import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL, CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS, SNAP_RULES, SNAP_KINDS } from '@/registry'
 import { KEYMAP, CORE_KEYBINDINGS } from '@/stores/commandRegistry'
 import { SINGLE_ENTITY_RULES, MULTI_ENTITY_RULES } from '@/registry/measurementRegistry'

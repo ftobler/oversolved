@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import Dialog from '@/components/Dialog'
-import { http, HttpError } from '@/utils/httpClient'
+import Dialog from '@/components/dialogs/Dialog'
+import { http, HttpError } from '@/utils/core/httpClient'
 import '@/pages/AdminUsers.css'
 
 interface UserRecord {

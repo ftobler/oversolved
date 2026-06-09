@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { http, HttpError } from '@/utils/httpClient'
+import { http, HttpError } from '@/utils/core/httpClient'
 import '@/pages/AdminPeriodicTasks.css'
 
 interface PeriodicTask {

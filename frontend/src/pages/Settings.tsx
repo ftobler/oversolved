@@ -1,6 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import AppHeader from '@/components/AppHeader'
+import AppHeader from '@/components/layout/AppHeader'
 import '@/pages/Settings.css'
 
 export default function Settings() {

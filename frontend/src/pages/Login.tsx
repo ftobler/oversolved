@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import type { User } from '@/contexts/AuthContext'
-import { http, HttpError } from '@/utils/httpClient'
+import { http, HttpError } from '@/utils/core/httpClient'
 import '@/pages/Login.css'
 
 export default function Login() {

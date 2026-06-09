@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w } from '@/components/sketch_helpers'
+import { p2w } from '@/components/sketch/sketch_helpers'
 import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_SELECTED,
@@ -24,7 +24,7 @@ import {
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
-import { topoFallbackQuery } from '@/utils/selectionId'
+import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
 import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'

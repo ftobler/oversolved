@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
-import { sampleArcCCW } from '@/components/sketch_helpers'
+import { sampleArcCCW } from '@/components/sketch/sketch_helpers'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and

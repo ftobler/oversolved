@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { Sidebar } from '@/components/Sidebar'
+import { Sidebar } from '@/components/layout/Sidebar'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
 import type { PartFeature, BodyResult, Mesh3D } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'

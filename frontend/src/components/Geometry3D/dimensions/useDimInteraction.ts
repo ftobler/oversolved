@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
-import { COLOR_CONSTRAINT } from '@/components/sketch_helpers'
+import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import { useClickAfterDragSuppression } from '../useClickAfterDragSuppression'
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { queryLabel } from '@/utils/queryLabel'
+import { queryLabel } from '@/utils/query/queryLabel'
 import type { PartFeature } from '@/types/cad'
 
 const features: PartFeature[] = [

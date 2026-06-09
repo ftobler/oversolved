@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeConstraintRender } from '@/utils/geometryMapping'
+import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
 import type { Sketch, PartConstraint, DimLinearRender } from '@/types/cad'
 
 // Regression: an angle constraint between two parallel lines used to render

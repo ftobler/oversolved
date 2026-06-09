@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { makeDoc, makeSketch } from '@/utils/testFixture'
+import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 
 describe('parseable_fixture_builds_doc', () => {
   it('feature ID equals the parseable string', () => {

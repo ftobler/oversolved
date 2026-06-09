@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sel, selectionKey, parseSelectionId, selectionToQuery, emitAbsoluteSelectionQuery, parseTopoFallbackQuery, topoFallbackQuery } from '@/utils/selectionId'
+import { sel, selectionKey, parseSelectionId, selectionToQuery, emitAbsoluteSelectionQuery, parseTopoFallbackQuery, topoFallbackQuery } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 import type { LocalQuery, AbsoluteQuery } from '@/types/query'
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeNaturalDimensionValue } from '@/utils/dimensionNaturalValue'
+import { computeNaturalDimensionValue } from '@/utils/geometry/dimensionNaturalValue'
 import type { Sketch } from '@/types/cad'
 
 const FID = 'S1'

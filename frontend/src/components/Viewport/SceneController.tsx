@@ -4,7 +4,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { drawCubeGizmo, type Pv, type Hit } from '@/components/CubeGizmo.utils'
+import { drawCubeGizmo, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
 import { resetView, snapToDirection } from '@/components/Viewport/cameraController'
 
 const MOUSE_BUTTONS = {

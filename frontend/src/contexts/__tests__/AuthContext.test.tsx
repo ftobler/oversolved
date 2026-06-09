@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import type { User } from '@/contexts/AuthContext'
 
-vi.mock('@/utils/httpClient', () => ({
+vi.mock('@/utils/core/httpClient', () => ({
   http: {
     getJson: vi.fn(),
     postJson: vi.fn(),
@@ -21,7 +21,7 @@ vi.mock('@/utils/httpClient', () => ({
   },
 }))
 
-import { http } from '@/utils/httpClient'
+import { http } from '@/utils/core/httpClient'
 
 const testUser: User = {
   id: 1,

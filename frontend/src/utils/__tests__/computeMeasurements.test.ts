@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeMeasurements } from '@/utils/computeMeasurements'
+import { computeMeasurements } from '@/utils/geometry/computeMeasurements'
 import type { Sketch, BodyResult } from '@/types/cad'
 
 const sketch: Sketch = {

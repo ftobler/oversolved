@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { parseTarget } from '@/utils/yamlMutations'
-import { parseSelectionId } from '@/utils/selectionId'
+import { parseSelectionId } from '@/utils/query/selectionId'
 
 // ─── helpers ───
 

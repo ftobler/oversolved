@@ -10,13 +10,13 @@ const { mockUnflattenGeometry } = vi.hoisted(() => ({
 }))
 
 vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
-vi.mock('@/utils/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
+vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },
 }))
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
-import { PART_COLOR_PALETTE } from '@/utils/partColors'
+import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import type { PartDoc, BodyResult } from '@/types/cad'
 

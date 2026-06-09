@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { softSolve } from '@/utils/softSolve'
+import { softSolve } from '@/utils/geometry/softSolve'
 import type { Sketch, PartFeature } from '@/types/cad'
 import type { DragState, VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 

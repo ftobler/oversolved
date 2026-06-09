@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
 import SketchToolbar from '@/components/Toolbar/SketchToolbar'
-import LoadingOverlay from '@/components/LoadingOverlay'
+import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'

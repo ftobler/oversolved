@@ -11,7 +11,7 @@ vi.mock('@react-three/drei', () => ({
   Line: (props: Record<string, unknown>) => { MockLine(props); return null },
 }))
 
-vi.mock('@/components/sketch_dimensions', () => ({
+vi.mock('@/components/sketch/sketch_dimensions', () => ({
   DashedLine: (props: Record<string, unknown>) => { MockDashedLine(props); return null },
 }))
 
@@ -25,7 +25,7 @@ vi.mock('@/components/Geometry3D/VertexDots', () => ({
   ProjectedOriginPoint: () => null,
 }))
 
-vi.mock('@/components/sketch_helpers', () => ({
+vi.mock('@/components/sketch/sketch_helpers', () => ({
   sampleArc: () => [[0, 0, 0], [1, 0, 0]],
   sampleArcCCW: () => [[0, 0, 0], [1, 0, 0]],
   pointTo3D: (p: [number, number]) => [p[0], p[1], 0],

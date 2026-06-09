@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity } from '@/types/cad'
-import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds } from '@/components/sketch_helpers'
+import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds } from '@/components/sketch/sketch_helpers'
 import { LinearDimension } from './Linear'
 import { RadiusDimension, DiameterDimension } from './Radial'
 import { AngleDimension } from './Angle'

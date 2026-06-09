@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import SceneController from '@/components/Viewport/SceneController'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import type { Pv, Hit } from '@/components/CubeGizmo.utils'
+import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
 
 vi.mock('@react-three/fiber', () => ({
   useThree: vi.fn(),

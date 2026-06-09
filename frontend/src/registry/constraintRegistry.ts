@@ -1,8 +1,8 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import { parseSelectionId } from '@/utils/selectionId'
-import { segmentsAreParallel } from '@/utils/segmentGeometry'
+import { parseSelectionId } from '@/utils/query/selectionId'
+import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 
 // ─── Constraint Registry — single source of truth for all sketch constraints. ───
 //

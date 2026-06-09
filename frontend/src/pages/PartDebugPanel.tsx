@@ -1,9 +1,9 @@
 import * as React from 'react'
-import { BugReporter, type BugReportAttachments } from '@/components/BugReporter'
-import { describeMutation } from '@/utils/mutationDescriptions'
+import { BugReporter, type BugReportAttachments } from '@/components/dialogs/BugReporter'
+import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { http } from '@/utils/httpClient'
+import { http } from '@/utils/core/httpClient'
 import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
