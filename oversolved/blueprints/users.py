@@ -64,7 +64,7 @@ def get_preferences():
     if user is None:
         return api_error("User not found", "NOT_FOUND", 404)
     return jsonify({
-        "document_sort": user.get("document_sort_preference", "alphabetical")
+        "document_sort": user["document_sort_preference"]
     })
 
 
