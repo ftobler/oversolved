@@ -8,7 +8,7 @@ Flask-based REST + WebSocket API for the Oversolved CAD application.
 oversolved/
 ├── app.py                  # Flask application factory and config
 ├── db.py                   # Database abstraction layer + migrations
-├── run_server.py           # CLI entry point
+├── cli.py                  # Unified CLI entry point (run_server / db / run_tasks)
 ├── periodic_tasks.py       # Scheduled cleanup tasks
 ├── blueprints/
 │   ├── auth.py             # Authentication endpoints
