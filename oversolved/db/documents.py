@@ -159,33 +159,33 @@ class DocumentStore:
             cursor = self.db.execute("DELETE FROM documents WHERE uuid = ?", (uuid,))
             return cursor.rowcount > 0
 
-    def duplicate(self, uuid: str, new_name: str) -> str | None:
-        """Duplicate a document with a new name. Returns new UUID or None if source not found."""
+    def _copy_document(self, uuid: str, new_name: str, new_owner_id: int | None = None) -> str | None:
+        """Copy a document's content under a fresh uuid and name.
+
+        When new_owner_id is None the source's owner is kept (duplicate);
+        otherwise ownership is reassigned to new_owner_id (clone). Returns the
+        new UUID, or None if the source does not exist.
+        """
         doc = self.retrieve(uuid)
         if doc is None:
             return None
         new_uuid = uuid_mod.uuid4().hex
         now = datetime.now(timezone.utc).isoformat()
+        owner_id = doc["owner_id"] if new_owner_id is None else new_owner_id
         with self.db.transaction():
             self.db.execute(
                 "INSERT INTO documents (uuid, name, content, owner_id, preview_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (new_uuid, new_name, doc["content"], doc["owner_id"], doc["preview_image"], now, now),
+                (new_uuid, new_name, doc["content"], owner_id, doc["preview_image"], now, now),
             )
         return new_uuid
 
+    def duplicate(self, uuid: str, new_name: str) -> str | None:
+        """Duplicate a document with a new name. Returns new UUID or None if source not found."""
+        return self._copy_document(uuid, new_name)
+
     def clone_document(self, uuid: str, new_owner_id: int, new_name: str) -> str | None:
         """Clone a document with new owner. Returns new UUID or None if source not found."""
-        doc = self.retrieve(uuid)
-        if doc is None:
-            return None
-        new_uuid = uuid_mod.uuid4().hex
-        now = datetime.now(timezone.utc).isoformat()
-        with self.db.transaction():
-            self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, preview_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (new_uuid, new_name, doc["content"], new_owner_id, doc["preview_image"], now, now),
-            )
-        return new_uuid
+        return self._copy_document(uuid, new_name, new_owner_id)
 
     def share_document(self, uuid: str, shared_with_user_id: int, permission: str = "view") -> None:
         """Create or update a share for a document."""
