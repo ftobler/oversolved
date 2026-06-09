@@ -1,8 +1,15 @@
 """Periodic task framework for background maintenance jobs."""
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
 from croniter import croniter, CroniterBadCronError
+
+if TYPE_CHECKING:
+    from oversolved.db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -10,13 +17,13 @@ logger = logging.getLogger(__name__)
 class PeriodicTask:
     """Base class for periodic tasks."""
 
-    def __init__(self, name: str, task_key: str, schedule: str, description: str = ""):
+    def __init__(self, name: str, task_key: str, schedule: str, description: str = "") -> None:
         self.name = name
         self.task_key = task_key
         self.schedule = schedule  # Cron expression
         self.description = description
 
-    def run(self, db) -> dict:
+    def run(self, db: Database) -> dict:
         """Execute the task.
 
         Returns:
@@ -72,14 +79,14 @@ def is_task_due(last_run_at: str | None, cron_expr: str, now: datetime | None = 
 class TaskScheduler:
     """Manages periodic task registration and execution."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.tasks: dict[str, PeriodicTask] = {}
 
     def register_task(self, task: PeriodicTask) -> None:
         """Register a periodic task."""
         self.tasks[task.task_key] = task
 
-    def run_due_tasks(self, db) -> list[dict]:
+    def run_due_tasks(self, db: Database) -> list[dict]:
         """Run all tasks that are due. Returns list of result dicts."""
         from oversolved.db import PeriodicTaskStore
 
@@ -115,7 +122,7 @@ class TaskScheduler:
 
         return results
 
-    def force_run_task(self, task_key: str, db) -> dict:
+    def force_run_task(self, task_key: str, db: Database) -> dict:
         """Force execution of a task immediately."""
         from oversolved.db import PeriodicTaskStore
 
@@ -147,7 +154,7 @@ class TaskScheduler:
 class EmptyTrashTask(PeriodicTask):
     """Delete documents permanently if they have been in trash for 30+ days."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="Empty Trash",
             task_key="document.empty_trash",
@@ -155,7 +162,7 @@ class EmptyTrashTask(PeriodicTask):
             description="Permanently delete documents in trash for 30+ days"
         )
 
-    def run(self, db) -> dict:
+    def run(self, db: Database) -> dict:
         from oversolved.db import DocumentStore
 
         doc_store = DocumentStore(db)

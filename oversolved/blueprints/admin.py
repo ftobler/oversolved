@@ -8,10 +8,12 @@ import yaml
 import zipfile
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Any, Iterator
 from flask import Blueprint, jsonify, request, send_file
+from flask.typing import ResponseReturnValue
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
-from oversolved.db import DocumentStore, UserStore, PeriodicTaskStore
+from oversolved.db import Database, DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
 from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db, validate_password_strength, api_error
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 admin_bp = Blueprint("admin", __name__)
 
 
-def _format_history(history):
+def _format_history(history: list[dict]) -> str:
     """Format edit history list for bug report markdown."""
     if not history:
         return "*(no history)*"
@@ -38,7 +40,7 @@ def _format_history(history):
 @require_auth
 @require_csrf
 @require_admin
-def list_users():
+def list_users() -> ResponseReturnValue:
     users = UserStore(get_db()).list_all()
     return jsonify({"users": users})
 
@@ -47,7 +49,7 @@ def list_users():
 @require_auth
 @require_csrf
 @require_admin
-def create_user_admin():
+def create_user_admin() -> ResponseReturnValue:
     if not request.is_json:
         return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
@@ -84,7 +86,7 @@ def create_user_admin():
 @require_auth
 @require_csrf
 @require_admin
-def admin_update_user(user_id):
+def admin_update_user(user_id: int) -> ResponseReturnValue:
     if not request.is_json:
         return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
@@ -121,7 +123,7 @@ def admin_update_user(user_id):
 @require_auth
 @require_csrf
 @require_admin
-def admin_delete_user(user_id):
+def admin_delete_user(user_id: int) -> ResponseReturnValue:
     if user_id == g.current_user["id"]:
         return api_error("Cannot delete yourself", "FORBIDDEN", 403)
 
@@ -137,7 +139,7 @@ def admin_delete_user(user_id):
 @require_auth
 @require_csrf
 @require_admin
-def admin_reset_password(user_id):
+def admin_reset_password(user_id: int) -> ResponseReturnValue:
     if not request.is_json:
         return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
@@ -164,7 +166,7 @@ def admin_reset_password(user_id):
 @require_auth
 @require_csrf
 @require_admin
-def list_periodic_tasks():
+def list_periodic_tasks() -> ResponseReturnValue:
     task_store = PeriodicTaskStore(get_db())
     tasks = task_store.find_all()
     return jsonify({"tasks": tasks})
@@ -174,7 +176,7 @@ def list_periodic_tasks():
 @require_auth
 @require_csrf
 @require_admin
-def force_run_periodic_task(task_key):
+def force_run_periodic_task(task_key: str) -> ResponseReturnValue:
     from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
 
     db = get_db()
@@ -187,7 +189,7 @@ def force_run_periodic_task(task_key):
 # ── Admin Backup ───────────────────────────────────────────────────────────
 
 
-def _iter_documents_page(db, page_size=100):
+def _iter_documents_page(db: Database, page_size: int = 100) -> Iterator[Any]:
     """Yield documents in pages to avoid loading all into memory."""
     offset = 0
     while True:
@@ -209,10 +211,10 @@ def _iter_documents_page(db, page_size=100):
 @require_auth
 @require_csrf
 @require_admin
-def backup_all_documents():
+def backup_all_documents() -> ResponseReturnValue:
     db = get_db()
     user_store = UserStore(db)
-    file_counts = {}
+    file_counts: dict[tuple[str, str], int] = {}
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
     try:
         with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -255,7 +257,7 @@ def backup_all_documents():
 @require_auth
 @require_csrf
 @require_admin
-def import_backup():
+def import_backup() -> ResponseReturnValue:
     if "file" not in request.files:
         return api_error("No file provided", "BAD_REQUEST", 400)
 
@@ -360,7 +362,7 @@ def import_backup():
 @require_auth
 @require_csrf
 @require_admin
-def submit_bug_report():
+def submit_bug_report() -> ResponseReturnValue:
     content_type = request.content_type or ""
     if "application/json" not in content_type:
         return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
