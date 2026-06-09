@@ -14,7 +14,7 @@ vi.mock('@react-three/drei', () => ({
 }))
 
 vi.mock('@/components/sketch/sketch_helpers', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/sketch_helpers')>()
+  const actual = await importOriginal<typeof import('@/components/sketch/sketch_helpers')>()
   return {
     ...actual,
     getIconUrl: (kind: string) => {
