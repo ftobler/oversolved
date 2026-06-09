@@ -138,7 +138,7 @@ function tessellateBodies(
  * ``face_data``/``face_queries``) so the builder's registration path is
  * identical whether it is handed metadata or a full mesh.
  */
-function extractBrepMetadata(
+export function extractBrepMetadata(
   oc: OccModule,
   table: HandleTable,
   bodyStore: Record<string, Body>,

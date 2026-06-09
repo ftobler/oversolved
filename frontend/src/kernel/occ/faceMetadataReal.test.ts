@@ -14,7 +14,9 @@ import { HandleTable } from './handleTable'
 import { DisposeScope } from './disposeScope'
 import { buildBox, buildCylinder, buildExtrudedProfile } from './shapes'
 import { solidToMesh, readShapeFaceMetadata } from './tessellation'
-import type { OccModule } from './occTypes'
+import { makeBox } from './primitives'
+import { applyFilletWithDiff } from './edgeModifier'
+import type { OccModule, OccShape } from './occTypes'
 import type { OccHandle } from './handleTable'
 import type { Vec3 } from './primitives'
 
@@ -108,6 +110,41 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
       }
     } finally {
       for (const h of Object.values(cases)) table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  // Invariant guard (code review of b081b76): the metadata path keeps the same
+  // face count as the render mesh. assembleMesh DROPS zero-triangle faces and
+  // this path does not, so they agree only because every face triangulates;
+  // _snapshotWithBrepGeometry keys checkpoint eviction on the face index, so a
+  // divergence here would corrupt the checkpoint snapshot. A filleted box adds a
+  // curved face and small new edges -- the most likely place a degenerate face
+  // would surface.
+  it('keeps face count in sync with the render mesh, including a filleted box', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const scope = new DisposeScope()
+    let filleted: OccHandle | null = null
+    try {
+      const box = makeBox(occ, scope, 10, 10, 5)
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+      const edge = scope.track(occ.TopoDS.Edge_1(exp.Current())) as OccShape
+      const res = applyFilletWithDiff(occ, scope, box, 1, [edge])
+      expect(res.success).toBe(true)
+      filleted = table.register(res.shape)
+
+      const mesh = solidToMesh(occ, table, filleted)
+      const innerScope = new DisposeScope()
+      try {
+        const meta = readShapeFaceMetadata(occ, innerScope, table.get(filleted))
+        expect(meta.face_data.length).toBe(mesh.face_data.length)
+      } finally {
+        innerScope.dispose()
+      }
+    } finally {
+      scope.dispose()
+      if (filleted != null) table.release(filleted)
       table.assertNoLeaks()
     }
   })

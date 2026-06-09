@@ -20,6 +20,7 @@ import { initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
+import { extractBrepMetadata } from '../solveLocally'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { copyShape } from '../occ/transforms'
 import type { OccShape } from '../occ/occTypes'
@@ -72,6 +73,9 @@ export class SharedHarness {
           }
           return out
         },
+        // Wire the real production metadata extractor so the build-level tests
+        // exercise the mesh-free in-loop registration path (not the fallback).
+        extractBrepMetadata: (bodyStore) => extractBrepMetadata(this.oc, this.table, bodyStore),
         brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(this.oc, scope, b),
         brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(this.oc, scope, b),
         brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(this.oc, scope, b),

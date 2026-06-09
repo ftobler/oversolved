@@ -258,6 +258,15 @@ function classifyFace(
  * this in the feature loop, so the expensive triangulation happens once,
  * post-loop, for rendering only. `face_data.area` is 0 here (area needs the
  * triangles); registration never reads it.
+ *
+ * INVARIANT (guarded by faceMetadataReal.test): the face count here must equal
+ * `solidToMesh().face_data.length`. The render path's `assembleMesh` DROPS
+ * zero-triangle faces, this path does not; they stay in sync only because every
+ * B-rep face the system builds tessellates to >=1 triangle. The post-loop
+ * checkpoint registration (`_snapshotWithBrepGeometry`) re-registers off the
+ * render mesh and keys eviction on the face index, so a divergence here would
+ * shift those indices. If a zero-triangle face ever appears, register the
+ * checkpoint snapshot off this metadata too.
  */
 export function readShapeFaceMetadata(
   oc: OccModule,
