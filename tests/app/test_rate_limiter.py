@@ -1,9 +1,7 @@
 """Unit tests for RateLimiter."""
 
 import threading
-import time as time_mod
 
-import pytest
 from oversolved.rate_limit import RateLimiter
 
 

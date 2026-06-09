@@ -1,8 +1,6 @@
 """Tests for PostgreSQL connection pool integration."""
 
 import threading
-import os
-import pytest
 import psycopg2
 
 

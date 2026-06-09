@@ -1,7 +1,5 @@
 """Tests for OversolvedConfig dataclass."""
 
-import os
-import pytest
 from oversolved.config import OversolvedConfig
 
 

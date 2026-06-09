@@ -1,7 +1,7 @@
 """Tests for the unified DocumentStore listing query helper."""
 
 import pytest
-from oversolved.db import Database, SQLiteConnection, DocumentStore, UserStore
+from oversolved.db import Database, SQLiteConnection, DocumentStore
 
 
 def _make_db() -> Database:

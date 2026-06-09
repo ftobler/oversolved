@@ -1,6 +1,5 @@
 """Unit tests for UserStore row deduplication helpers."""
 
-import pytest
 from oversolved.db import Database, SQLiteConnection, UserStore
 from oversolved.db.users import _AUTH_COLUMNS, _FULL_COLUMNS, _row_to_user
 

@@ -5,7 +5,7 @@ import pytest
 import psycopg2
 from werkzeug.security import generate_password_hash
 from oversolved.app import create_app
-from oversolved.db import Database, PostgreSQLConnection, DocumentStore, UserStore
+from oversolved.db import Database, PostgreSQLConnection
 
 
 def _make_db(pg_dsn):

@@ -1,6 +1,5 @@
 """Unit tests for RebuildTimeStore."""
 
-import pytest
 from oversolved.db import Database, SQLiteConnection, RebuildTimeStore
 
 
