@@ -22,6 +22,7 @@ import {
   faceCentroid,
   faceNormal,
   faceSurfaceType,
+  readEdgeSamplePoints,
   readSolidEdges,
   readSolidVertices,
   tessellateFace,
@@ -153,22 +154,26 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
   return { vertices, faces, face_data: faceData, triangle_to_face: triangleToFace, face_queries: [], is_fallback: false }
 }
 
-function bodyFrameFromMesh(rawFaces: RawFaceGeom[]): { center: Vec3; half: Vec3 } {
-  if (!rawFaces.length) return { center: [0, 0, 0], half: [0, 0, 0] }
-  const min: Vec3 = [Infinity, Infinity, Infinity]
-  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
-  for (const face of rawFaces) {
-    for (const v of face.vertices) {
-      for (let i = 0; i < 3; i++) {
-        if (v[i] < min[i]) min[i] = v[i]
-        if (v[i] > max[i]) max[i] = v[i]
-      }
-    }
-  }
-  return {
-    center: [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0, (min[2] + max[2]) / 2.0],
-    half: [(max[0] - min[0]) / 2.0, (max[1] - min[1]) / 2.0, (max[2] - min[2]) / 2.0],
-  }
+// Edge samples per curved edge feeding the body AABB. Lines contribute only
+// their endpoints; 16 is ample to capture a circular edge's extent and is
+// validated against the mesh-AABB result on a cylinder (see tessellation tests).
+const SAMPLES_PER_EDGE = 16
+
+/**
+ * Edge-sampled B-rep bounding box: the AABB over the solid's vertices UNION
+ * samples along its edges (`readEdgeSamplePoints`). Mesh-free, so identification
+ * (`cls_*` classifiers on both faces and edges) can be computed without the
+ * render tessellation. Unifies the body frame that faces and edges classify
+ * against -- previously faces used the mesh-vertex box and edges used the
+ * vertex-only box, which disagreed on curved bodies. On a cylinder the circular
+ * edges sample the full diameter so this matches the old mesh box; it degrades
+ * only on edgeless bulging surfaces (a full sphere), absorbed by the classifier
+ * tolerance. `BRepBndLib` would be the one-line swap if that corner ever matters.
+ */
+export function bodyFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): { center: Vec3; half: Vec3 } {
+  const points = readSolidVertices(oc, scope, solid)
+  points.push(...readEdgeSamplePoints(oc, scope, solid, SAMPLES_PER_EDGE))
+  return bodyFrameFromPoints(points)
 }
 
 export interface SolidMeshOptions extends TessellateOptions {
@@ -197,24 +202,14 @@ export function solidToMesh(
   try {
     const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection)
     const mesh = assembleMesh(raw)
-    const { center, half } = bodyFrameFromMesh(raw)
-    const fallbackPq = isGeomKeyedLineage(opts.faceLineage, 'gface_') ? null : opts.profileQueries
+    const { center, half } = bodyFrame(oc, scope, solid)
     const faceQueries: string[] = []
     for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
       const fd = mesh.face_data[faceIdx]
-      const classifiers = geometryClassifiers(fd.centroid, center, half)
-      fd.classifiers = classifiers
-      const query = buildFaceQuery(
-        opts.createdBy,
-        opts.bodyId,
-        faceIdx,
-        fd.centroid,
-        fd.normal,
-        fd.surface_type,
-        fallbackPq,
-        faceTokens(fd.centroid, fd.normal, opts.faceLineage ?? null),
-        classifiers,
+      const { classifiers, query } = classifyFace(
+        faceIdx, fd.centroid, fd.normal, fd.surface_type, center, half, opts,
       )
+      fd.classifiers = classifiers
       if (query) faceQueries.push(query)
     }
     mesh.face_queries = faceQueries
@@ -222,6 +217,83 @@ export function solidToMesh(
   } finally {
     scope.dispose()
   }
+}
+
+// Spatial classifier + ancestry query for one face, given the body frame. The
+// single source of truth for both the render mesh (which adds triangles/area)
+// and `readShapeFaceMetadata` (which does not), so identification is computed
+// identically whether or not the face was triangulated.
+function classifyFace(
+  faceIdx: number,
+  centroid: Vec3,
+  normal: Vec3,
+  surfaceType: SurfaceType,
+  center: Vec3,
+  half: Vec3,
+  opts: SolidMeshOptions,
+): { classifiers: string[]; query: string | null } {
+  const classifiers = geometryClassifiers(centroid, center, half)
+  // A geom-keyed face lineage suppresses the body-wide profile blob so a single
+  // per-face token is not shadowed by a cap (mirrors the edge path / Python).
+  const fallbackPq = isGeomKeyedLineage(opts.faceLineage, 'gface_') ? null : opts.profileQueries
+  const query = buildFaceQuery(
+    opts.createdBy,
+    opts.bodyId,
+    faceIdx,
+    centroid,
+    normal,
+    surfaceType,
+    fallbackPq,
+    faceTokens(centroid, normal, opts.faceLineage ?? null),
+    classifiers,
+  )
+  return { classifiers, query }
+}
+
+/**
+ * Mesh-free face identification: per-face centroid/normal/surface_type +
+ * classifiers + ancestry `face_queries`, in the SAME flat-before-curved
+ * `(normal, centroid)` order the render mesh uses, with NO `tessellateFace`.
+ * This is the "eyes only" half -- the builder registers B-rep face ancestry from
+ * this in the feature loop, so the expensive triangulation happens once,
+ * post-loop, for rendering only. `face_data.area` is 0 here (area needs the
+ * triangles); registration never reads it.
+ */
+export function readShapeFaceMetadata(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  opts: SolidMeshOptions = {},
+): { face_data: FaceDatum[]; face_queries: string[] } {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  const faces: FaceSortItem[] = []
+  for (; exp.More(); exp.Next()) {
+    const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
+    faces.push({
+      centroid: faceCentroid(oc, scope, face),
+      normal: faceNormal(oc, scope, face),
+      surfaceType: faceSurfaceType(oc, scope, face),
+    })
+  }
+  faces.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
+  const { center, half } = bodyFrame(oc, scope, solid)
+  const face_data: FaceDatum[] = []
+  const face_queries: string[] = []
+  faces.forEach((face, faceIdx) => {
+    const { classifiers, query } = classifyFace(
+      faceIdx, face.centroid, face.normal, face.surfaceType, center, half, opts,
+    )
+    face_data.push({
+      centroid: face.centroid,
+      normal: face.normal,
+      area: 0,
+      surface_type: face.surfaceType,
+      classifiers,
+    })
+    if (query) face_queries.push(query)
+  })
+  return { face_data, face_queries }
 }
 
 /** Lexicographic comparator over heterogeneous edge sort keys (number|string). */
@@ -321,7 +393,7 @@ export function solidToEdges(
     const edge_queries: string[] = []
     const { createdBy, bodyId } = opts
     if (createdBy) {
-      const { center, half } = bodyFrameFromPoints(readSolidVertices(oc, scope, solid))
+      const { center, half } = bodyFrame(oc, scope, solid)
       // With a geom-keyed edge lineage map the body-wide profile blob is
       // suppressed so per-edge tokens are not shadowed (mirrors Python).
       const fallbackPq = isGeomKeyedLineage(opts.edgeLineage, 'gedge_') ? null : (opts.profileQueries ?? null)

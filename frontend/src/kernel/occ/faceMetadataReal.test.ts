@@ -1,0 +1,137 @@
+// @vitest-environment node
+//
+// "Tessellation for eyes only" -- the mesh-free face identification path.
+//
+// readShapeFaceMetadata must produce the same face identification (order,
+// classifiers, face_queries) as the render mesh, but WITHOUT triangulating.
+// These tests pin both halves: zero BRepMesh calls during metadata extraction,
+// and face_data/face_queries that match solidToMesh. Skips when opencascade.js
+// is absent (npm run occ:install).
+
+import { describe, it, expect, beforeAll } from 'vitest'
+import { loadOcc } from './loadOcc'
+import { HandleTable } from './handleTable'
+import { DisposeScope } from './disposeScope'
+import { buildBox, buildCylinder, buildExtrudedProfile } from './shapes'
+import { solidToMesh, readShapeFaceMetadata } from './tessellation'
+import type { OccModule } from './occTypes'
+import type { OccHandle } from './handleTable'
+import type { Vec3 } from './primitives'
+
+const oc = await loadOcc()
+
+/** Run `fn` with BRepMesh_IncrementalMesh_2 swapped for a call-counting
+ *  constructor, restoring it afterwards. Returns the number of triangulations. */
+function countMeshCalls(occ: OccModule, fn: () => void): number {
+  const ctor = occ.BRepMesh_IncrementalMesh_2
+  let calls = 0
+  ;(occ as unknown as Record<string, unknown>).BRepMesh_IncrementalMesh_2 = function (
+    this: unknown,
+    ...args: unknown[]
+  ) {
+    calls++
+    return Reflect.construct(ctor as unknown as new (...a: unknown[]) => object, args)
+  }
+  try {
+    fn()
+  } finally {
+    ;(occ as unknown as Record<string, unknown>).BRepMesh_IncrementalMesh_2 = ctor
+  }
+  return calls
+}
+
+describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable')
+    occ = oc
+  })
+
+  // spec 1: metadata extraction never triangulates (and solidToMesh does, as a
+  // control -- proving the counter actually observes BRepMesh).
+  it('triangulates zero faces for box and cylinder, unlike solidToMesh', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const box = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    const cyl = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 })
+    try {
+      for (const h of [box, cyl]) {
+        const metaCalls = countMeshCalls(occ, () => {
+          const scope = new DisposeScope()
+          try {
+            readShapeFaceMetadata(occ, scope, table.get(h))
+          } finally {
+            scope.dispose()
+          }
+        })
+        expect(metaCalls).toBe(0)
+        const meshCalls = countMeshCalls(occ, () => {
+          solidToMesh(occ, table, h)
+        })
+        expect(meshCalls).toBeGreaterThan(0)
+      }
+    } finally {
+      table.release(box)
+      table.release(cyl)
+      table.assertNoLeaks()
+    }
+  })
+
+  // spec 2: same flat-before-curved (normal, centroid) face order as the render
+  // mesh, so registration's face indices line up with the rendered body.
+  it('produces face geometry in the same order as solidToMesh', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const cases: Record<string, OccHandle> = {
+      box: buildBox(occ, table, { dx: 10, dy: 10, dz: 5 }),
+      cylinder: buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 }),
+      square: buildExtrudedProfile(occ, table, {
+        loop: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]] as Vec3[],
+        direction: [0, 0, 1],
+        distance: 5,
+      }),
+    }
+    try {
+      for (const [name, h] of Object.entries(cases)) {
+        const mesh = solidToMesh(occ, table, h)
+        const scope = new DisposeScope()
+        try {
+          const meta = readShapeFaceMetadata(occ, scope, table.get(h))
+          expect(meta.face_data.length, name).toBe(mesh.face_data.length)
+          meta.face_data.forEach((fd, i) => {
+            expect(fd.centroid, `${name} face ${i} centroid`).toEqual(mesh.face_data[i].centroid)
+            expect(fd.normal, `${name} face ${i} normal`).toEqual(mesh.face_data[i].normal)
+            expect(fd.surface_type, `${name} face ${i} type`).toBe(mesh.face_data[i].surface_type)
+            expect(fd.classifiers, `${name} face ${i} cls`).toEqual(mesh.face_data[i].classifiers)
+          })
+        } finally {
+          scope.dispose()
+        }
+      }
+    } finally {
+      for (const h of Object.values(cases)) table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  // spec 3: identical face_queries with and without the mesh, for an identified
+  // body. This is what a picked face resolves against, so it must not depend on
+  // triangulation.
+  it('emits face_queries identical to solidToMesh for an identified box', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    const opts = { createdBy: 'ex1', bodyId: 'body_ex1', profileQueries: ['@sk1/line1'] }
+    try {
+      const mesh = solidToMesh(occ, table, h, opts)
+      const scope = new DisposeScope()
+      try {
+        const meta = readShapeFaceMetadata(occ, scope, table.get(h), opts)
+        expect(meta.face_queries).toEqual(mesh.face_queries)
+        expect(meta.face_queries.length).toBe(6)
+      } finally {
+        scope.dispose()
+      }
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+})

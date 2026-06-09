@@ -16,7 +16,8 @@ import { postRegister } from './features/postRegister'
 import { loadOccWeb } from './occ/loadOccWeb'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices } from './occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, readShapeFaceMetadata } from './occ/tessellation'
+import type { TessMesh } from './occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
 import { copyShape } from './occ/transforms'
 import type { OccModule, OccShape } from './occ/occTypes'
@@ -128,6 +129,69 @@ function tessellateBodies(
 }
 
 /**
+ * Mesh-free B-rep identification for every body in the store: face
+ * centroid/normal/surface_type/classifiers + face/edge/vertex ancestry queries,
+ * with NO triangulation. Used as ``BuildDeps.extractBrepMetadata`` so the
+ * feature loop registers ancestry off the B-rep alone; the expensive
+ * ``solidToMesh`` runs once post-loop for rendering. The returned shape matches
+ * ``tessellateBodies`` (a ``mesh`` with empty geometry arrays but populated
+ * ``face_data``/``face_queries``) so the builder's registration path is
+ * identical whether it is handed metadata or a full mesh.
+ */
+function extractBrepMetadata(
+  oc: OccModule,
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const [bodyId, body] of Object.entries(bodyStore)) {
+    if (body.shape == null) continue
+    const scope = new DisposeScope()
+    try {
+      const solid = table.get<OccShape>(body.shape)
+      const { face_data, face_queries } = readShapeFaceMetadata(oc, scope, solid, {
+        createdBy: body.created_by || '',
+        bodyId: body.id,
+        faceLineage: body.face_lineage ?? null,
+        profileQueries: body.profile_queries ?? [],
+      })
+      const mesh: TessMesh = {
+        vertices: [],
+        faces: [],
+        face_data,
+        triangle_to_face: [],
+        face_queries,
+        is_fallback: false,
+      }
+      const edgeResult = solidToEdges(oc, table, body.shape, {
+        createdBy: body.created_by || '',
+        bodyId: body.id,
+        profileQueries: body.profile_queries ?? [],
+        edgeLineage: body.edge_lineage ?? null,
+      })
+      const vertexResult = solidToVertices(oc, table, body.shape, {
+        createdBy: body.created_by || '',
+        bodyId: body.id,
+        profileQueries: body.profile_queries ?? [],
+      })
+      out[bodyId] = {
+        mesh,
+        edges: edgeResult.edges,
+        edge_queries: edgeResult.edge_queries,
+        vertices: vertexResult.vertices,
+        vertex_queries: vertexResult.vertex_queries,
+      }
+    } catch {
+      // Non-fatal: a body whose B-rep cannot be read just lacks ancestry, as in
+      // the tessellation path.
+    } finally {
+      scope.dispose()
+    }
+  }
+  return out
+}
+
+/**
  * Solve a document locally through the TS/WASM kernel.
  *
  * Returns the ``BuildResponse`` on success, or ``null`` when OCC.js is not
@@ -181,6 +245,7 @@ export async function solveLocally(
       // _init_global_repo.
       initGlobalRepo,
       tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
+      extractBrepMetadata: (bodyStore, _repo) => extractBrepMetadata(oc, table, bodyStore),
       brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(oc, scope, body),
       brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(oc, scope, body),
       brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),

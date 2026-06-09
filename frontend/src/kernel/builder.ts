@@ -42,11 +42,20 @@ export interface BuildDeps {
   ) => void
   /** Create a fresh global repository. */
   initGlobalRepo: () => Repository
-  /** Tessellate all bodies in the store. */
+  /** Tessellate all bodies in the store (triangles for rendering). */
   tessellateBodies: (
     bodyStore: Record<string, Body>,
     repo: Repository | null,
-    tessCache?: Record<number, Record<string, unknown>>,
+  ) => Record<string, Record<string, unknown>>
+  /** Mesh-free B-rep identification (face_data/face_queries + edges/vertices and
+   *  their queries) used by the in-loop ancestry registration, so "tessellation
+   *  is for eyes only": the feature loop never triangulates to identify entities.
+   *  Returns the same shape as ``tessellateBodies`` (a ``mesh`` with empty
+   *  geometry arrays but populated ``face_data``). Optional -- when omitted (pure
+   *  non-OCC tests) registration falls back to ``tessellateBodies``. */
+  extractBrepMetadata?: (
+    bodyStore: Record<string, Body>,
+    repo: Repository | null,
   ) => Record<string, Record<string, unknown>>
   /** Optional: normalize legacy projected_* entity kinds. Defaults to identity. */
   normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
@@ -556,11 +565,13 @@ function _registerBodyFaces(
   globalRepo: Repository,
   body: Body,
   deps: BuildDeps,
-  tessCache: Record<number, Record<string, unknown>>,
 ): void {
   if (body.shape == null) return
   try {
-    const out = deps.tessellateBodies({ [body.id]: body }, globalRepo, tessCache)[body.id]
+    // Identify off the B-rep alone (no triangulation); fall back to the mesh
+    // path when no metadata extractor is wired (pure non-OCC tests).
+    const extract = deps.extractBrepMetadata ?? deps.tessellateBodies
+    const out = extract({ [body.id]: body }, globalRepo)[body.id]
     if (!out) return
     const mesh = out.mesh as TessMesh | undefined
     if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(globalRepo, body, mesh, deps)
@@ -686,10 +697,6 @@ export function build(
 
   const featuresById = Object.fromEntries(allFeatures.map((f) => [String(f.id ?? ''), f]))
 
-  // Per-build tessellation cache shared by the in-loop B-rep registration and
-  // the post-loop tessellation, so each unique body shape meshes at most once.
-  const tessCache: Record<number, Record<string, unknown>> = {}
-
   // Checkpoint body meshes, keyed by the body's shape OccHandle and captured in
   // the loop below while the shape is still alive. A downstream feature can
   // release/replace a body's shape handle (e.g. fillet calls `table.release` on
@@ -767,13 +774,13 @@ export function build(
 
     for (const [bodyId, body] of Object.entries(bodyStore)) {
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
-        _registerBodyFaces(globalRepo, body, deps, tessCache)
+        _registerBodyFaces(globalRepo, body, deps)
         _registerSolidAncestry(globalRepo, body)
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
       } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates.
-        _registerBodyFaces(globalRepo, body, deps, tessCache)
+        _registerBodyFaces(globalRepo, body, deps)
       }
     }
 
@@ -791,7 +798,7 @@ export function build(
   const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
   globalRepo.gc(activeFids)
 
-  const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo, tessCache)
+  const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo)
 
   // Rebuild checkpoints for dirty features.
   const cleanPrefixFids = new Set<string>()

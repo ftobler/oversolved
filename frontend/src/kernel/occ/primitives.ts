@@ -382,8 +382,10 @@ export function readSolidEdges(
  *
  * NOTE: the stock opencascade.js@1.1.1 build does not export `Bnd_Box` or
  * `BRepBndLib`; this function will throw until a custom build that includes
- * the `Bnd` module is used. Tessellation.ts currently falls back to a
- * mesh-vertex AABB (`bodyFrameFromMesh`) so this is not on the hot path.
+ * the `Bnd` module is used. The body AABB used for classification comes instead
+ * from `tessellation.ts`'s `bodyFrame` (vertices + edge samples, mesh-free), so
+ * this exact B-rep box is not on the hot path -- it would be the one-line swap
+ * if edgeless-surface accuracy ever becomes a requirement.
  */
 export function boundingBox(
   oc: OccModule,
@@ -416,6 +418,42 @@ export function readSolidVertices(oc: OccModule, scope: DisposeScope, solid: Occ
     uniq.push(v)
     const p = oc.BRep_Tool.Pnt(v)
     out.push([p.X(), p.Y(), p.Z()])
+  }
+  return out
+}
+
+/**
+ * Sample points along every edge of a solid, for a mesh-free bounding box.
+ * Straight edges contribute only their endpoints; curved edges are sampled at
+ * `samplesPerEdge` interior+boundary parameters via `BRepAdaptor_Curve.Value`
+ * (the same adaptor the spline arm of `edgeToGeom` already drives). This lets a
+ * cylinder's circular edges carry its full diameter into the AABB with no
+ * triangulation, so `cls_*` classification never depends on the render mesh.
+ */
+export function readEdgeSamplePoints(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  samplesPerEdge: number,
+): Vec3[] {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  const seen: OccSubShape[] = []
+  const out: Vec3[] = []
+  for (; exp.More(); exp.Next()) {
+    const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
+    if (seen.some((u) => u.IsSame(edge))) continue
+    seen.push(edge)
+    const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
+    const isLine = ad.GetType().value === oc.GeomAbs_CurveType.GeomAbs_Line.value
+    const u0 = ad.FirstParameter()
+    const u1 = ad.LastParameter()
+    const segments = isLine ? 1 : Math.max(1, samplesPerEdge)  // lines: endpoints only
+    for (let i = 0; i <= segments; i++) {
+      const u = u0 + ((u1 - u0) * i) / segments
+      const p = ad.Value(u)
+      out.push([p.X(), p.Y(), p.Z()])
+    }
   }
   return out
 }
