@@ -613,6 +613,7 @@ class TestUserStoreOAuth:
         store = UserStore(database)
         uid = store.create("testuser", "hash", email="testuser@local.oversolved")
         user = store.find_by_id(uid)
+        assert user is not None
         assert user["email"] == "testuser@local.oversolved"
         database.close()
 

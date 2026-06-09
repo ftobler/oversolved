@@ -116,6 +116,7 @@ def test_get_db_does_not_call_psycopg2_connect_per_request(pg_dsn, monkeypatch):
             app.do_teardown_appcontext()
 
     total_calls = len(connect_calls)
+    assert pool is not None
     pool.closeall()
 
     # Requests must not have caused additional psycopg2.connect calls

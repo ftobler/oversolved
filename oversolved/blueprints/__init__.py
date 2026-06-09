@@ -123,6 +123,8 @@ def require_doc_permission(
         @wraps(f)
         def decorated(*args, **kwargs):
             doc_uuid = kwargs.get(url_var)
+            if doc_uuid is None:
+                return api_error("Document not found", "NOT_FOUND", 404)
             db = get_db()
             doc_store = DocumentStore(db)
             doc = doc_store.retrieve(doc_uuid)
