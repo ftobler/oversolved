@@ -5,8 +5,7 @@ from typing import Literal
 from urllib.parse import urlparse
 from flask import g, jsonify, request, current_app
 from oversolved.db import (
-    Database, DatabaseConnection, SQLiteConnection,
-    PostgreSQLConnection, DocumentStore,
+    Database, PostgreSQLConnection, DocumentStore, create_database,
 )
 from oversolved.auth import authenticate_token, AuthOk
 
@@ -17,15 +16,8 @@ def api_error(message: str, code: str, status: int = 400):
 
 
 def _get_database(config):
-    """Create a database connection based on config."""
-    db_conn: DatabaseConnection
-    if config["type"] == "postgres":
-        db_conn = PostgreSQLConnection(config["dsn"])
-    elif config["type"] == "sqlite":
-        db_conn = SQLiteConnection(config["path"])
-    else:
-        raise ValueError(f"Unknown database type: {config['type']}")
-    return Database(db_conn)
+    """Create a database connection from the Flask app's db config dict."""
+    return create_database(config["type"], dsn=config.get("dsn"), path=config.get("path"))
 
 
 def get_db():

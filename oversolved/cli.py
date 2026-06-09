@@ -55,16 +55,11 @@ def _get_db_from_config(args: argparse.Namespace, init_db: bool = True):
         args: Parsed CLI arguments.
         init_db: If True (default), runs pending migrations on connect.
     """
-    from oversolved.db import Database, DatabaseConnection, SQLiteConnection, PostgreSQLConnection
+    from oversolved.db import create_database
 
     config = _validate_db_args(args)
+    db = create_database(config["DB_TYPE"], dsn=config.get("DB_DSN"), path=config.get("DB_PATH"))
 
-    conn: DatabaseConnection
-    if config["DB_TYPE"] == "postgres":
-        conn = PostgreSQLConnection(config["DB_DSN"])
-    elif config["DB_TYPE"] == "sqlite":
-        conn = SQLiteConnection(config["DB_PATH"])
-    db = Database(conn)
     from oversolved.migrations import discover_and_register
     discover_and_register(db)
     if init_db:
