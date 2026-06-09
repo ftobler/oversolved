@@ -1,8 +1,8 @@
 import type {
   Sketch, Constraints, Point,
   PartEntityDef, PartFeature, PartConstraint, ConstraintRender,
-  LineSegment, Circle, Arc, PointEntity,
-  ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity,
+  LineSegment, Circle, Arc, PointEntity, Ellipse,
+  ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse,
 } from '@/types/cad'
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
@@ -82,6 +82,15 @@ export function unflattenGeometry(
         ...(construction && { construction: true }),
         ...(projTag ?? {}),
       } as Arc | ProjectedArc
+    } else if (kind === 'ellipse') {
+      result[id] = {
+        center: [params[0] || 0, params[1] || 0],
+        a: params[2] || 0,
+        b: params[3] || 0,
+        theta: params[4] || 0,
+        ...(construction && { construction: true }),
+        ...(projTag ?? {}),
+      } as Ellipse | ProjectedEllipse
     } else if (kind === 'point') {
       result[id] = {
         x: params[0] || 0,
@@ -126,6 +135,8 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
     return pt === 'end' ? line.end : line.start
   } else if (kind === 'circle') {
     return (entity as Circle | ProjectedCircle).center
+  } else if (kind === 'ellipse') {
+    return [...(entity as Ellipse | ProjectedEllipse).center] as [number, number]
   } else {
     const p = entity as PointEntity | ProjectedPointEntity
     return [p.x, p.y]

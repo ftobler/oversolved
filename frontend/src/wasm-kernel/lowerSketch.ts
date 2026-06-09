@@ -23,12 +23,13 @@ import {
   Sel,
 } from './codec'
 
-const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2 }
+const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2, ellipse: 5 }
 const KIND_CODE: Record<string, number> = {
   line: Kind.Line,
   circle: Kind.Circle,
   arc: Kind.Arc,
   point: Kind.Point,
+  ellipse: Kind.Ellipse,
 }
 const SEL_CODE: Record<string, number> = {
   start: Sel.start,

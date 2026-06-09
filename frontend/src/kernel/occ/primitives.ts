@@ -344,6 +344,13 @@ export function edgeToGeom(
     }
   }
 
+  // Elliptical B-rep edges fall through to the spline sampling below. A
+  // first-class ellipse edge reader needs a matching `edgeGeometryHash` branch
+  // and a regenerated Python parity baseline, so it is deferred to the
+  // full-brep-projection feature. Reading them as `ellipse` here without the
+  // hash branch made every elliptical edge collide to one geom hash (and thus
+  // one selection id / query). See edgeGeomHashCoupling.test.ts.
+
   // Fallback: sample the curve into a polyline (matches the Python spline arm;
   // NURBS curve_data extraction is a geom_hash concern deferred to 2c).
   const N = 32

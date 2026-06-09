@@ -304,6 +304,13 @@ mod tests {
         }
     }
 
+    fn ellipse(off: usize) -> Entity {
+        Entity {
+            kind: Kind::Ellipse,
+            param_offset: off,
+        }
+    }
+
     fn c_target(kind: ConstraintKind, index: u32, point: PointSelector) -> Constraint {
         Constraint {
             kind_code: kind.to_u8(),
@@ -438,6 +445,67 @@ mod tests {
         let p = &out.params_solved;
         assert!((p[2] - p[4]).abs() < 1e-4, "x meet {} vs {}", p[2], p[4]);
         assert!((p[3] - p[5]).abs() < 1e-4, "y meet {} vs {}", p[3], p[5]);
+        assert!(out.diagnostics.residual_norm < 1e-4);
+    }
+
+    #[test]
+    fn point_on_fixed_ellipse_is_fully_constrained() {
+        // Ellipse [0,0,4,2,0] pinned whole; a point pinned in x at 3 and forced
+        // onto the ellipse by a point-on-ellipse coincident. The point's y is the
+        // only free DOF and the conic determines it -> fully constrained, and the
+        // point lands on the curve at y = sqrt(b^2 (1 - x^2/a^2)) = sqrt(1.75).
+        let fix_ellipse = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+        let on_ellipse = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: vec![
+                (RefRole::A, Ref::Entity { index: 1, point: PointSelector::Xy }),
+                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Absent }),
+            ],
+            ..Default::default()
+        };
+        let mut inp = input(
+            vec![ellipse(0), point(5)],
+            vec![0.0, 0.0, 4.0, 2.0, 0.0, 3.0, 1.0],
+            vec![fix_ellipse, on_ellipse],
+        );
+        inp.equality_pins = vec![EqualityPin { param_index: 5, target: 3.0 }];
+
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        let p = &out.params_solved;
+        assert!((p[5] - 3.0).abs() < 1e-4, "x pinned: {}", p[5]);
+        assert!((p[6] - 1.75_f32.sqrt()).abs() < 1e-3, "y on ellipse: {}", p[6]);
+        assert!(out.diagnostics.residual_norm < 1e-4);
+    }
+
+    #[test]
+    fn point_on_rotated_ellipse_lands_on_the_curve() {
+        // Ellipse [0,0,4,2,90] (major axis along +y after the 90deg rotation),
+        // pinned whole. A point pinned in x at 1 and forced onto the ellipse: the
+        // solved y must satisfy the conic in the rotated frame. With theta=90 the
+        // frame swaps axes, so the conic is x^2/b^2 + y^2/a^2 = 1 -> at x=1,
+        // y = a*sqrt(1 - x^2/b^2) = 4*sqrt(1 - 1/4) = 4*sqrt(3)/2 = 2*sqrt(3).
+        let fix_ellipse = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+        let on_ellipse = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: vec![
+                (RefRole::A, Ref::Entity { index: 1, point: PointSelector::Xy }),
+                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Absent }),
+            ],
+            ..Default::default()
+        };
+        let mut inp = input(
+            vec![ellipse(0), point(5)],
+            vec![0.0, 0.0, 4.0, 2.0, 90.0, 1.0, 1.0],
+            vec![fix_ellipse, on_ellipse],
+        );
+        inp.equality_pins = vec![EqualityPin { param_index: 5, target: 1.0 }];
+
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        let p = &out.params_solved;
+        assert!((p[5] - 1.0).abs() < 1e-4, "x pinned: {}", p[5]);
+        assert!((p[6] - 2.0 * 3.0_f32.sqrt()).abs() < 1e-3, "y on rotated ellipse: {}", p[6]);
         assert!(out.diagnostics.residual_norm < 1e-4);
     }
 

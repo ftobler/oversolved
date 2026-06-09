@@ -5,9 +5,11 @@ import {
   isProjectedLine,
   isProjectedCircle,
   isProjectedArc,
+  isProjectedEllipse,
   isProjectedPoint,
+  getEntityKind,
 } from '@/types/cad'
-import type { Entity, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, LineSegment } from '@/types/cad'
+import type { Entity, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, Ellipse, LineSegment } from '@/types/cad'
 
 describe('unflattenGeometry projected_line', () => {
   it('produces a projected line with correct start and end points', () => {
@@ -261,6 +263,76 @@ describe('unflattenGeometry non-projected entities are not marked projected', ()
       [{ id: 'c1', kind: 'circle' }]
     )
     expect(('projected' in sketch['c1']) ? (sketch['c1'] as unknown as { projected: unknown }).projected : undefined).toBeUndefined()
+  })
+})
+
+describe('unflattenGeometry ellipse', () => {
+  it('unflattens [cx, cy, a, b, theta_deg] into an Ellipse', () => {
+    const sketch = unflattenGeometry(
+      { 'e1': [1, 2, 4, 2, 30] },
+      [{ id: 'e1', kind: 'ellipse' }]
+    )
+    const e = sketch['e1'] as Ellipse
+    expect(getEntityKind(e)).toBe('ellipse')
+    expect(e.center).toEqual([1, 2])
+    expect(e.a).toBe(4)
+    expect(e.b).toBe(2)
+    expect(e.theta).toBe(30)
+    expect(isProjectedEntity(e)).toBe(false)
+  })
+
+  it('carries a source through as a projected ellipse', () => {
+    const sketch = unflattenGeometry(
+      { 'e1': [0, 0, 5, 3, 0] },
+      [{ id: 'e1', kind: 'ellipse', source: '@sketch0/ellipse1' }]
+    )
+    const e = sketch['e1']
+    expect(isProjectedEllipse(e)).toBe(true)
+    expect((e as ProjectedEllipse).source).toBe('@sketch0/ellipse1')
+    expect((e as ProjectedEllipse).a).toBe(5)
+  })
+
+  it('preserves construction flag', () => {
+    const sketch = unflattenGeometry(
+      { 'e1': [0, 0, 2, 1, 0] },
+      [{ id: 'e1', kind: 'ellipse', construction: true }]
+    )
+    expect((sketch['e1'] as Ellipse).construction).toBe(true)
+  })
+})
+
+describe('getEntityKind ellipse vs circle', () => {
+  it('classifies an ellipse (center + a) as ellipse, not circle', () => {
+    const el: Entity = { center: [0, 0], a: 4, b: 2, theta: 0 }
+    expect(getEntityKind(el)).toBe('ellipse')
+  })
+
+  it('still classifies a circle (center + radius) as circle', () => {
+    expect(getEntityKind(regularCircle as Entity)).toBe('circle')
+  })
+})
+
+describe('isProjectedEllipse', () => {
+  it('returns true for a projected ellipse', () => {
+    const e: Entity = { center: [0, 0], a: 4, b: 2, theta: 0, projected: true, source: '@sketch0/ellipse1' }
+    expect(isProjectedEllipse(e)).toBe(true)
+  })
+
+  it('returns false for a regular (non-projected) ellipse', () => {
+    const e: Entity = { center: [0, 0], a: 4, b: 2, theta: 0 }
+    expect(isProjectedEllipse(e)).toBe(false)
+  })
+
+  it('returns false for a projected circle (no a field)', () => {
+    const e: Entity = { center: [0, 0], radius: 2, projected: true, source: '@sketch0/circle1' }
+    expect(isProjectedEllipse(e)).toBe(false)
+  })
+})
+
+describe('isProjectedCircle excludes ellipses', () => {
+  it('returns false for a projected ellipse (has a, no radius)', () => {
+    const e: Entity = { center: [0, 0], a: 4, b: 2, theta: 0, projected: true, source: '@sketch0/ellipse1' }
+    expect(isProjectedCircle(e)).toBe(false)
   })
 })
 

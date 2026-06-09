@@ -1,8 +1,8 @@
 import { Line } from '@react-three/drei'
-import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
+import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
 import { DashedLine } from '@/components/sketch/sketch_dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
@@ -73,6 +73,20 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
     const pt = e as PointEntity
     if (!allFinite(pt.x, pt.y)) return null
     return <VertexDot x={pt.x} y={pt.y} px={5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="xy"  isEditing={isEditing} />
+  } else if ('a' in e) {
+    const el = e as Ellipse
+    if (!allFinite(el.center[0], el.center[1], el.a, el.b, el.theta)) return null
+    const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
+    return (
+      <>
+        <group>
+          {construction
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
+        </group>
+        <VertexDot x={el.center[0]} y={el.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center"  isEditing={isEditing} />
+      </>
+    )
   } else {
     const circ = e as Circle
     if (!allFinite(circ.center[0], circ.center[1], circ.radius)) return null
@@ -136,6 +150,10 @@ export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sk
           } else if ('start' in entity && 'end' in entity) {
             const line = entity as LineSegment
             const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
+          } else if ('center' in entity && 'a' in entity) {
+            const el = entity as Ellipse
+            const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
             return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
           } else if ('center' in entity) {
             const circ = entity as Circle

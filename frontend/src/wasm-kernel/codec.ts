@@ -6,7 +6,7 @@
  * Everything is little-endian. See codec.rs for the full layout documentation.
  */
 
-export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3 } as const
+export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4 } as const
 
 export const ConstraintKindCode: Record<string, number> = {
   horizontal: 0,

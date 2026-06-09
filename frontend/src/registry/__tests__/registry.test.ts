@@ -264,7 +264,19 @@ describe('entityRegistry', () => {
     expect(getDefaultParams('circle')).toEqual([0, 0, 0])
     expect(getDefaultParams('arc')).toEqual([0, 0, 0, 0, 0])
     expect(getDefaultParams('point')).toEqual([0, 0])
+    expect(getDefaultParams('ellipse')).toEqual([0, 0, 0, 0, 0])
     expect(getDefaultParams('unknown')).toEqual([])
+  })
+
+  it('registers the ellipse entity with 5 params and a center vertex', () => {
+    const el = ENTITY_BY_KIND.get('ellipse')
+    expect(el).toBeDefined()
+    expect(el!.paramCount).toBe(5)
+    expect(el!.activeTool).toBe('ellipse')
+    expect(el!.showInToolbar).toBe(true)
+    expect(el!.toolbarIcon).toBe('toolbar-ellipse')
+    expect(el!.vertices.map(v => v.key)).toEqual(['center'])
+    expect(VERTEX_INDICES['ellipse'].center).toEqual([0, 1])
   })
 
   it('every toolbar entity has toolbarIcon and activeTool', () => {

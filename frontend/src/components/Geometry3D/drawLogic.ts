@@ -6,7 +6,7 @@ import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { parseQuery } from '@/utils/query'
-import { circumcircle, arcAnglesFromRadiusPoint } from '@/components/Geometry3D/drawGeometry'
+import { circumcircle, arcAnglesFromRadiusPoint, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 
 export interface DrawSnapState {
   hoveredVertexId: string | null
@@ -137,6 +137,34 @@ export function computeDrawClick(
     } else {
       mutation = { type: 'add_entity', featureId, kind: 'circle',
         params: [pts[0][0], pts[0][1], r] }
+    }
+    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+  }
+
+  if (t === 'ellipse') {
+    if (pts.length === 0) {
+      const drawSnap = snap.hoveredVertexId
+        ? { vertexId: snap.hoveredVertexId }
+        : null
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+    }
+
+    // Second click sets the major axis: `a` is the cursor distance, the major
+    // axis points at the cursor (theta), and `b` falls back to the golden ratio.
+    const dx = px - pts[0][0]
+    const dy = py - pts[0][1]
+    const a = Math.hypot(dx, dy)
+    if (a <= 0) return nothing
+    const theta = Math.atan2(dy, dx) * (180 / Math.PI)
+    const b = a * ELLIPSE_MINOR_RATIO
+    const params = [pts[0][0], pts[0][1], a, b, theta]
+    let mutation: Mutation
+    if (snap.drawSnapVertexId) {
+      mutation = { type: 'add_entity_with_constraint', featureId, kind: 'ellipse',
+        params, vertexKey: 'center',
+        snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident' }
+    } else {
+      mutation = { type: 'add_entity', featureId, kind: 'ellipse', params }
     }
     return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
   }

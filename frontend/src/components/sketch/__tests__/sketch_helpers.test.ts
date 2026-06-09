@@ -1,0 +1,62 @@
+import { describe, it, expect } from 'vitest'
+import { sampleEllipse, getEntityBounds } from '@/components/sketch/sketch_helpers'
+import type { Ellipse } from '@/types/cad'
+
+describe('sampleEllipse', () => {
+  it('returns a closed polyline of steps+1 points', () => {
+    const pts = sampleEllipse(0, 0, 4, 2, 0, 16)
+    expect(pts).toHaveLength(17)
+    // closed: last == first
+    expect(pts[16][0]).toBeCloseTo(pts[0][0])
+    expect(pts[16][1]).toBeCloseTo(pts[0][1])
+    // all z = 0
+    expect(pts.every(p => p[2] === 0)).toBe(true)
+  })
+
+  it('axis-aligned ellipse hits its axis vertices', () => {
+    // theta=0, a=4, b=2: t=0 -> (4,0); quarter turn -> (0,2).
+    const pts = sampleEllipse(0, 0, 4, 2, 0, 4)
+    expect(pts[0][0]).toBeCloseTo(4)
+    expect(pts[0][1]).toBeCloseTo(0)
+    expect(pts[1][0]).toBeCloseTo(0)
+    expect(pts[1][1]).toBeCloseTo(2)
+  })
+
+  it('every sample lies on the axis-aligned ellipse', () => {
+    const a = 5, b = 3
+    const pts = sampleEllipse(1, 2, a, b, 0, 32)
+    for (const [x, y] of pts) {
+      const dx = x - 1, dy = y - 2
+      expect((dx * dx) / (a * a) + (dy * dy) / (b * b)).toBeCloseTo(1, 6)
+    }
+  })
+
+  it('rotation by 90deg swaps the major axis onto +y', () => {
+    // a=4 along +y after a 90deg rotation: t=0 maps to (0, 4).
+    const pts = sampleEllipse(0, 0, 4, 2, 90, 4)
+    expect(pts[0][0]).toBeCloseTo(0)
+    expect(pts[0][1]).toBeCloseTo(4)
+  })
+
+  it('returns [] for non-finite inputs', () => {
+    expect(sampleEllipse(NaN, 0, 4, 2, 0)).toEqual([])
+  })
+})
+
+describe('getEntityBounds for ellipse', () => {
+  it('axis-aligned ellipse bounds match semi-axes', () => {
+    const el: Ellipse = { center: [1, 2], a: 4, b: 2, theta: 0 }
+    const b = getEntityBounds(el)
+    expect(b.minX).toBeCloseTo(-3)
+    expect(b.maxX).toBeCloseTo(5)
+    expect(b.minY).toBeCloseTo(0)
+    expect(b.maxY).toBeCloseTo(4)
+  })
+
+  it('90deg-rotated ellipse swaps width and height extents', () => {
+    const el: Ellipse = { center: [0, 0], a: 4, b: 2, theta: 90 }
+    const bd = getEntityBounds(el)
+    expect(bd.maxX).toBeCloseTo(2)
+    expect(bd.maxY).toBeCloseTo(4)
+  })
+})

@@ -50,6 +50,11 @@ function allPoints(sketches: Sketch[], topology?: Topology): [number, number][] 
         pts.push(entity.center, entity.start, entity.end)
       } else if ('start' in entity) {
         pts.push(entity.start, entity.end)
+      } else if ('center' in entity && 'a' in entity) {
+        const th = entity.theta * (Math.PI / 180)
+        const hw = Math.hypot(entity.a * Math.cos(th), entity.b * Math.sin(th))
+        const hh = Math.hypot(entity.a * Math.sin(th), entity.b * Math.cos(th))
+        pts.push([entity.center[0] - hw, entity.center[1]], [entity.center[0] + hw, entity.center[1]], [entity.center[0], entity.center[1] - hh], [entity.center[0], entity.center[1] + hh])
       } else if ('center' in entity) {
         const { center, radius } = entity
         pts.push([center[0] - radius, center[1]], [center[0] + radius, center[1]], [center[0], center[1] - radius], [center[0], center[1] + radius])

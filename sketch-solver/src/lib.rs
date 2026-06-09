@@ -42,16 +42,21 @@ pub enum Kind {
     Circle,
     Arc,
     Point,
+    Ellipse,
 }
 
 impl Kind {
     /// Number of scalar params in the flat array (mirrors backend ENTITY_SIZES).
+    /// Ellipse is `[cx, cy, a, b, theta]` where `a >= b >= 0` are the semi-major
+    /// and semi-minor radii and `theta` is the major-axis rotation (degrees, to
+    /// match the arc-angle convention; the residuals convert to radians).
     pub fn param_count(self) -> usize {
         match self {
             Kind::Line => 4,
             Kind::Circle => 3,
             Kind::Arc => 5,
             Kind::Point => 2,
+            Kind::Ellipse => 5,
         }
     }
 
@@ -61,6 +66,7 @@ impl Kind {
             1 => Kind::Circle,
             2 => Kind::Arc,
             3 => Kind::Point,
+            4 => Kind::Ellipse,
             _ => return None,
         })
     }
@@ -71,6 +77,7 @@ impl Kind {
             Kind::Circle => 1,
             Kind::Arc => 2,
             Kind::Point => 3,
+            Kind::Ellipse => 4,
         }
     }
 }
@@ -185,6 +192,13 @@ mod tests {
         assert_eq!(Kind::Circle.param_count(), 3);
         assert_eq!(Kind::Arc.param_count(), 5);
         assert_eq!(Kind::Point.param_count(), 2);
+        assert_eq!(Kind::Ellipse.param_count(), 5);
+    }
+
+    #[test]
+    fn ellipse_kind_code_round_trips() {
+        assert_eq!(Kind::from_u8(4), Some(Kind::Ellipse));
+        assert_eq!(Kind::Ellipse.to_u8(), 4);
     }
 
     #[test]

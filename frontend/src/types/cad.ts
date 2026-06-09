@@ -2,7 +2,7 @@
 
 export type Point = [number, number]
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'point' | 'project' | 'drag' | 'mirror' | null
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'point' | 'project' | 'drag' | 'mirror' | null
 
 // Which geometric space the current selection lives in.
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
@@ -330,6 +330,14 @@ export interface PointEntity {
   projected?: boolean
 }
 
+export interface Ellipse {
+  center: Point
+  a: number       // semi-major radius
+  b: number       // semi-minor radius
+  theta: number   // major-axis rotation in degrees (matches the arc-angle convention)
+  construction?: boolean
+}
+
 // Projected entity variants — read-only reference geometry from another sketch
 export interface ProjectedLineSegment extends LineSegment {
   projected: true
@@ -351,13 +359,19 @@ export interface ProjectedPointEntity extends PointEntity {
   source: string
 }
 
+export interface ProjectedEllipse extends Ellipse {
+  projected: true
+  source: string
+}
+
 export type ProjectedEntity =
   | ProjectedLineSegment
   | ProjectedCircle
   | ProjectedArc
   | ProjectedPointEntity
+  | ProjectedEllipse
 
-export type Entity = LineSegment | Circle | Arc | PointEntity | ProjectedEntity
+export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | ProjectedEntity
 
 export function isProjectedEntity(e: Entity): e is ProjectedEntity {
   return 'projected' in e && (e as ProjectedEntity).projected === true
@@ -368,23 +382,28 @@ export function isProjectedLine(e: Entity): e is ProjectedLineSegment {
 }
 
 export function isProjectedCircle(e: Entity): e is ProjectedCircle {
-  return isProjectedEntity(e) && 'center' in e && !('angle_start' in e)
+  return isProjectedEntity(e) && 'center' in e && 'radius' in e && !('angle_start' in e)
 }
 
 export function isProjectedArc(e: Entity): e is ProjectedArc {
   return isProjectedEntity(e) && 'angle_start' in e
 }
 
+export function isProjectedEllipse(e: Entity): e is ProjectedEllipse {
+  return isProjectedEntity(e) && 'center' in e && 'a' in e
+}
+
 export function isProjectedPoint(e: Entity): e is ProjectedPointEntity {
   return isProjectedEntity(e) && 'x' in e
 }
 
-export type EntityKind = 'line' | 'arc' | 'circle' | 'point'
+export type EntityKind = 'line' | 'arc' | 'circle' | 'ellipse' | 'point'
 
 export function getEntityKind(entity: Entity): EntityKind {
   if ('start' in entity && 'end' in entity && 'radius' in entity) return 'arc'
   if ('start' in entity && 'end' in entity) return 'line'
   if ('center' in entity && 'radius' in entity) return 'circle'
+  if ('center' in entity && 'a' in entity) return 'ellipse'
   return 'point'
 }
 

@@ -120,6 +120,22 @@ export const ENTITIES: readonly EntityDef[] = [
     showInToolbar: true,
   },
   {
+    kind: 'ellipse',
+    label: 'Ellipse',
+    description: 'An ellipse defined by center, semi-major and semi-minor radii, and rotation.',
+    paramCount: 5,
+    defaultParams: [0, 0, 0, 0, 0],
+    vertices: [
+      { key: 'center', indices: [0, 1] },
+    ],
+    coordPairs: [[0, 1]],
+    activeTool: 'ellipse',
+    // No keyboard shortcut: 'e' is taken by the equal_length constraint and the
+    // add_extrude command, and there is no free mnemonic key. Toolbar only.
+    toolbarIcon: 'toolbar-ellipse',
+    showInToolbar: true,
+  },
+  {
     kind: 'point',
     label: 'Point',
     description: 'A free point in the sketch plane.',

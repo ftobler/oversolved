@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Entity, LineSegment, Circle, Arc, PointEntity, Point } from '@/types/cad'
+import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Point } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { RENDER_KIND_TO_ICON } from '@/registry'
 
@@ -84,6 +84,25 @@ export function sampleArcCCW(cx: number, cy: number, r: number, a0deg: number, a
   return pts
 }
 
+/** Sample an ellipse circumference into a closed 3D polyline.
+ *  Parametric form `(a cos t, b sin t)` rotated by `thetaDeg` and translated to
+ *  the center. The last point repeats the first so the polyline closes. */
+export function sampleEllipse(
+  cx: number, cy: number, a: number, b: number, thetaDeg: number, steps = 64,
+): [number, number, number][] {
+  if (!allFinite(cx, cy, a, b, thetaDeg)) return []
+  const th = thetaDeg * (Math.PI / 180)
+  const ct = Math.cos(th), st = Math.sin(th)
+  const pts: [number, number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * 2 * Math.PI
+    const ex = a * Math.cos(t)
+    const ey = b * Math.sin(t)
+    pts.push([cx + ex * ct - ey * st, cy + ex * st + ey * ct, 0])
+  }
+  return pts
+}
+
 export function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
   const kind = getEntityKind(entity)
   if (kind === 'arc') {
@@ -99,6 +118,13 @@ export function getEntityBounds(entity: Entity): { minX: number; maxX: number; m
   } else if (kind === 'circle') {
     const c = entity as Circle
     return { minX: c.center[0] - c.radius, maxX: c.center[0] + c.radius, minY: c.center[1] - c.radius, maxY: c.center[1] + c.radius }
+  } else if (kind === 'ellipse') {
+    const el = entity as Ellipse
+    const th = el.theta * (Math.PI / 180)
+    // Axis-aligned half-extents of a rotated ellipse.
+    const hw = Math.hypot(el.a * Math.cos(th), el.b * Math.sin(th))
+    const hh = Math.hypot(el.a * Math.sin(th), el.b * Math.cos(th))
+    return { minX: el.center[0] - hw, maxX: el.center[0] + hw, minY: el.center[1] - hh, maxY: el.center[1] + hh }
   } else {
     const p = entity as PointEntity
     return { minX: p.x, maxX: p.x, minY: p.y, maxY: p.y }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveSnapPoint, computeDrawClick } from '@/components/Geometry3D/drawLogic'
 import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
+import { computePreviewPts, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 
 const FEATURE = 'S1'
 let idCounter = 0
@@ -139,6 +140,98 @@ describe('computeDrawClick - circle tool', () => {
     const result = computeDrawClick('circle', [[5, 5]], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
     expect(result.clearTool).toBe(false)
+  })
+})
+
+describe('computeDrawClick - ellipse tool', () => {
+  it('first click records center, no mutations', () => {
+    const result = computeDrawClick('ellipse', [], [2, 2], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.nextDrawPoints).toEqual([[2, 2]])
+    expect(result.clearTool).toBe(false)
+  })
+
+  it('second click emits add_entity ellipse with a, b=a*0.618 and theta', () => {
+    // Center (0,0), cursor at (3,4): a = 5, theta = atan2(4,3) deg, b = a*0.618.
+    const result = computeDrawClick('ellipse', [[0, 0]], [3, 4], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_entity')
+    if (m.type === 'add_entity') {
+      expect(m.kind).toBe('ellipse')
+      expect(m.params[0]).toBeCloseTo(0)
+      expect(m.params[1]).toBeCloseTo(0)
+      expect(m.params[2]).toBeCloseTo(5)            // a = hypot(3,4)
+      expect(m.params[3]).toBeCloseTo(5 * ELLIPSE_MINOR_RATIO)    // b = a * golden ratio
+      expect(m.params[4]).toBeCloseTo(Math.atan2(4, 3) * (180 / Math.PI))  // theta deg
+    }
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('second click with zero major axis returns no mutation', () => {
+    const result = computeDrawClick('ellipse', [[5, 5]], [5, 5], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.clearTool).toBe(false)
+  })
+
+  it('snaps the center to a hovered vertex via add_entity_with_constraint', () => {
+    const snap = emptySnap()
+    snap.drawSnapVertexId = `vertex:${FEATURE}:V1:xy`
+    const result = computeDrawClick('ellipse', [[0, 0]], [4, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_entity_with_constraint')
+    if (m.type === 'add_entity_with_constraint') {
+      expect(m.kind).toBe('ellipse')
+      expect(m.vertexKey).toBe('center')
+      expect(m.constraintKind).toBe('coincident')
+    }
+  })
+})
+
+describe('computePreviewPts - ellipse tool', () => {
+  it('samples a closed ellipse polyline from center + cursor', () => {
+    const pts = computePreviewPts('ellipse', [[0, 0]], [4, 0])
+    expect(pts).not.toBeNull()
+    if (pts) {
+      // Closed polyline: first and last points coincide.
+      expect(pts[0][0]).toBeCloseTo(pts[pts.length - 1][0])
+      expect(pts[0][1]).toBeCloseTo(pts[pts.length - 1][1])
+      // theta = 0, a = 4 -> the major-axis vertex at t=0 is (4, 0).
+      expect(pts[0][0]).toBeCloseTo(4)
+      expect(pts[0][1]).toBeCloseTo(0)
+      // Every sample lies on the axis-aligned ellipse (x/4)^2 + (y/(4*0.618))^2 = 1.
+      const b = 4 * 0.618
+      for (const [x, y] of pts) {
+        expect((x * x) / 16 + (y * y) / (b * b)).toBeCloseTo(1, 4)
+      }
+    }
+  })
+
+  it('returns null before the center is placed', () => {
+    expect(computePreviewPts('ellipse', [], [4, 0])).toBeNull()
+  })
+
+  it('preview matches the geometry the second click commits', () => {
+    // The preview polyline must lie on the same ellipse the commit produces, so
+    // the two ELLIPSE_MINOR_RATIO uses can never silently diverge.
+    const center: [number, number] = [1, 2]
+    const cursor: [number, number] = [4, 6]  // dx=3, dy=4 -> a=5
+    const commit = computeDrawClick('ellipse', [center], cursor, emptySnap(), FEATURE, newId)
+    const m = commit.mutations[0]
+    expect(m.type).toBe('add_entity')
+    if (m.type !== 'add_entity') return
+    const [, , a, b] = m.params
+    const theta = (m.params[4] * Math.PI) / 180
+    const ct = Math.cos(theta), st = Math.sin(theta)
+    const pts = computePreviewPts('ellipse', [center], cursor)!
+    for (const [x, y] of pts) {
+      // Map into the ellipse frame; every preview point satisfies the conic.
+      const dx = x - center[0], dy = y - center[1]
+      const u = dx * ct + dy * st
+      const v = dy * ct - dx * st
+      expect((u * u) / (a * a) + (v * v) / (b * b)).toBeCloseTo(1, 4)
+    }
   })
 })
 

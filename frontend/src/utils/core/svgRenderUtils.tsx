@@ -1,4 +1,4 @@
-import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
+import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 const ICON_SIZE = 14
 
@@ -23,6 +23,12 @@ export function getEntityBounds(entity: Entity, px: (x: number, y: number) => [n
   } else if ('start' in entity) {
     const line = entity as LineSegment
     pts.push(line.start, line.end)
+  } else if ('center' in entity && 'a' in entity) {
+    const el = entity as unknown as Ellipse
+    const th = el.theta * (Math.PI / 180)
+    const hw = Math.hypot(el.a * Math.cos(th), el.b * Math.sin(th))
+    const hh = Math.hypot(el.a * Math.sin(th), el.b * Math.cos(th))
+    pts.push([el.center[0] - hw, el.center[1]], [el.center[0] + hw, el.center[1]], [el.center[0], el.center[1] - hh], [el.center[0], el.center[1] + hh])
   } else if ('center' in entity) {
     const circ = entity as Circle
     const { center, radius } = circ
@@ -96,6 +102,20 @@ export function renderSketch(
           <circle cx={px_} cy={py_} r={strokeWidth * 2.0} fill={color} strokeDasharray={dashArray} />
           <line x1={px_ - strokeWidth * 4} y1={py_} x2={px_ + strokeWidth * 4} y2={py_} stroke={color} strokeWidth={strokeWidth * 0.75} strokeDasharray={dashArray} />
           <line x1={px_} y1={py_ - strokeWidth * 4} x2={px_} y2={py_ + strokeWidth * 4} stroke={color} strokeWidth={strokeWidth * 0.75} strokeDasharray={dashArray} />
+        </g>
+      )
+    } else if ('center' in entity && 'a' in entity) {
+      const el = entity as unknown as Ellipse
+      const [cx, cy] = px(el.center[0], el.center[1])
+      const rx = el.a * pxScale
+      const ry = el.b * pxScale
+      // px() flips the y axis, so a sketch CCW rotation renders as a CW screen
+      // rotation -- negate theta for the SVG transform.
+      const dashArray = el.construction ? '4 2' : undefined
+      return (
+        <g key={id}>
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} transform={`rotate(${-el.theta} ${cx} ${cy})`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={dashArray} />
+          <circle cx={cx} cy={cy} r={strokeWidth} fill={color} opacity={0.5} />
         </g>
       )
     } else {

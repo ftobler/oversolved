@@ -23,6 +23,20 @@ type P2 = [f64; 2];
 
 const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 
+/// Point-on-ellipse conic residual. `ep` is the ellipse param block
+/// `[cx, cy, a, b, theta_deg]`; the result is 0 exactly on the curve, negative
+/// inside, positive outside. Mirrors the formula in `feature/ellipse-entity.md`.
+fn ellipse_point_residual(p: P2, ep: &[f64]) -> f64 {
+    let (cx, cy, a, b) = (ep[0], ep[1], ep[2], ep[3]);
+    let theta = ep[4] * DEG2RAD;
+    let (ct, st) = (theta.cos(), theta.sin());
+    let dx = p[0] - cx;
+    let dy = p[1] - cy;
+    let u = dx * ct + dy * st;
+    let v = dy * ct - dx * st;
+    u * u / (a * a) + v * v / (b * b) - 1.0
+}
+
 pub struct Problem<'a> {
     entities: &'a [Entity],
     /// Initial param vector (widened from the wire `f32`), the `x0` of the
@@ -137,6 +151,8 @@ impl<'a> Problem<'a> {
                         }
                     }
                     Kind::Point => [ep[0], ep[1]],
+                    // Ellipse resolves to its center, like a circle/arc center.
+                    Kind::Ellipse => [ep[0], ep[1]],
                 }
             }
         }
@@ -332,6 +348,13 @@ impl<'a> Problem<'a> {
             let ep_b = self.params(x, b_index.unwrap());
             let dist = ((pa[0] - ep_b[0]).powi(2) + (pa[1] - ep_b[1]).powi(2)).sqrt();
             r.push(dist - ep_b[2]);
+        } else if !b_external && !b_point_present && b_kind == Some(Kind::Ellipse) {
+            // Point-on-ellipse: the conic equation in the ellipse's local frame.
+            // ep_b = [cx, cy, a, b, theta_deg]; rotate the offset into the axis
+            // frame, then evaluate (u/a)^2 + (v/b)^2 - 1.
+            let pa = self.point(x, a_ref);
+            let ep_b = self.params(x, b_index.unwrap());
+            r.push(ellipse_point_residual(pa, ep_b));
         } else {
             let pa = self.point(x, a_ref);
             let pb = self.point(x, b_ref);
@@ -683,7 +706,10 @@ impl<'a> Problem<'a> {
                             vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
                         }
                     }
-                    Kind::Circle | Kind::Point => {
+                    // Circle/Point/Ellipse resolve to their first two params
+                    // (the center / xy), so the point Jacobian is the identity
+                    // on those two columns.
+                    Kind::Circle | Kind::Point | Kind::Ellipse => {
                         vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
                     }
                     Kind::Arc => {
@@ -953,7 +979,8 @@ impl<'a> Problem<'a> {
         let branch3 = !b_external
             && !b_point
             && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc));
-        !(branch1 || branch2 || branch3)
+        let branch4 = !b_external && !b_point && b_kind == Some(Kind::Ellipse);
+        !(branch1 || branch2 || branch3 || branch4)
     }
 
     fn jac_fixed(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
@@ -1087,6 +1114,74 @@ mod tests {
     }
 
     #[test]
+    fn point_on_ellipse_coincident_residual() {
+        // Axis-aligned ellipse: center (1,2), a=4, b=2, theta=0.
+        // The point (5,2) sits on the major-axis vertex -> residual 0.
+        // The point (1,4) sits on the minor-axis vertex -> residual 0.
+        // The center (1,2) is fully inside -> residual -1.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Ellipse, 2)],
+            vec![5.0, 2.0, 1.0, 2.0, 4.0, 2.0, 0.0],
+            vec![cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Absent)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!(r[0].abs() < 1e-12, "major vertex on ellipse: {}", r[0]);
+
+        // Move the point to the minor vertex (1,4): still on the curve.
+        let mut x = p.x0.clone();
+        x[0] = 1.0;
+        x[1] = 4.0;
+        let r = p.residuals(&x);
+        assert!(r[0].abs() < 1e-12, "minor vertex on ellipse: {}", r[0]);
+
+        // Move the point to the center: residual -1 (fully inside).
+        x[0] = 1.0;
+        x[1] = 2.0;
+        let r = p.residuals(&x);
+        assert!((r[0] + 1.0).abs() < 1e-12, "center inside: {}", r[0]);
+    }
+
+    #[test]
+    fn rotated_ellipse_point_residual() {
+        // Center (0,0), a=2, b=1, rotated 90deg: the major axis points along +y.
+        // So (0,2) is the major vertex and lands on the curve.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Ellipse, 2)],
+            vec![0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 90.0],
+            vec![cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Absent)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert!(r[0].abs() < 1e-12, "rotated major vertex: {}", r[0]);
+    }
+
+    #[test]
+    fn concentric_ellipse_and_circle_residual() {
+        // Ellipse center (1,2), circle center (4,6): concentric residual (-3,-4).
+        let inp = input(
+            vec![ent(Kind::Ellipse, 0), ent(Kind::Circle, 5)],
+            vec![1.0, 2.0, 3.0, 1.0, 0.0, 4.0, 6.0, 2.0],
+            vec![cons(
+                ConstraintKind::Concentric,
+                ab(e_ref(0, PointSelector::Absent), e_ref(1, PointSelector::Absent)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 2);
+        assert!((r[0] - (-3.0)).abs() < 1e-12);
+        assert!((r[1] - (-4.0)).abs() < 1e-12);
+    }
+
+    #[test]
     fn pinned_mask_and_equality_pins_add_rows() {
         let mut inp = input(vec![ent(Kind::Point, 0)], vec![3.0, 7.0], vec![]);
         inp.pinned_mask = vec![0b01]; // pin param 0 to its initial (3.0)
@@ -1140,6 +1235,7 @@ mod tests {
             ent(Kind::Arc, 11),   // 3  A1 [11..16]
             ent(Kind::Point, 16), // 4  P1 [16..18]
             ent(Kind::Point, 18), // 5  P2 [18..20]
+            ent(Kind::Ellipse, 20), // 6  E1 [20..25]
         ];
         let params = vec![
             0.0, 0.0, 3.0, 1.0, // L1
@@ -1148,6 +1244,7 @@ mod tests {
             1.0, 1.0, 2.0, 30.0, 120.0, // A1
             5.0, 6.0, // P1
             7.0, 2.0, // P2
+            2.5, 3.5, 4.0, 2.0, 25.0, // E1 (cx, cy, a, b, theta_deg)
         ];
 
         let constraints = vec![
@@ -1168,6 +1265,9 @@ mod tests {
             cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(1, Absent))]),
             cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(2, Absent))]),
             cons(ConstraintKind::Coincident, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
+            // point-on-ellipse (FD fallback branch) and concentric ellipse+circle
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(5, Xy)), (B, e_ref(6, Absent))]),
+            cons(ConstraintKind::Concentric, vec![(A, e_ref(6, Absent)), (B, e_ref(2, Absent))]),
             // direction-normalizing / atan2 fallbacks
             cons(ConstraintKind::Normal, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
             cons_v(ConstraintKind::Angle, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))], 30.0),

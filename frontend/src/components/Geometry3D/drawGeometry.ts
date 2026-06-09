@@ -2,7 +2,13 @@
 // This file must be importable in a plain vitest test without a DOM.
 import type { Sketch, Entity } from '@/types/cad'
 import { getEntityBounds } from '@/components/sketch/sketch_helpers'
-import { sampleArc, sampleArcCCW } from '@/components/sketch/sketch_helpers'
+import { sampleArc, sampleArcCCW, sampleEllipse } from '@/components/sketch/sketch_helpers'
+
+// Default semi-minor/semi-major ratio for the two-click ellipse draw (golden
+// ratio). The second click only fixes the major axis; b is seeded from a. This
+// is the single source of truth -- drawLogic imports it so the preview matches
+// the entity the second click commits.
+export const ELLIPSE_MINOR_RATIO = 0.618
 
 /** Compute circumcircle of 3 points. Returns null if points are collinear. */
 export function circumcircle(
@@ -53,6 +59,13 @@ export function computePreviewPts(
   if (tool === 'circle' && pts.length === 1 && h) {
     const r = Math.hypot(h[0] - pts[0][0], h[1] - pts[0][1])
     return sampleArc(pts[0][0], pts[0][1], r, 0, 0)
+  }
+  if (tool === 'ellipse' && pts.length === 1 && h) {
+    const dx = h[0] - pts[0][0]
+    const dy = h[1] - pts[0][1]
+    const a = Math.hypot(dx, dy)
+    const theta = Math.atan2(dy, dx) * (180 / Math.PI)
+    return sampleEllipse(pts[0][0], pts[0][1], a, a * ELLIPSE_MINOR_RATIO, theta)
   }
   if (tool === 'arc' && pts.length === 2 && h) {
     const cc = circumcircle(pts[0], pts[1], h)
