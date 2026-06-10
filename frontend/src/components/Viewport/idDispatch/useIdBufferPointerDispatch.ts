@@ -30,6 +30,24 @@ export function wasLastClickConsumedByIdDispatch(): boolean { return lastClickId
 
 export function wasLastClickStaleResolve(): boolean { return lastClickWasStale }
 
+/**
+ * Whether a click that fell through to the DrawPlane backplane should clear the
+ * normal selection. Mirrors the Canvas `onPointerMissed` guard so the two clear
+ * paths agree: sketch entities and vertices are visual-only (no R3F handlers),
+ * so their clicks reach the backplane. If the id-buffer dispatcher already
+ * consumed the click (it resolved an entity/vertex/etc.), clearing here would
+ * wipe the just-toggled element -- and selecting a second one would wipe the
+ * first, making multi-select (e.g. two vertices for a constraint) impossible.
+ * A stale resolve (id buffer mid-rebuild) is a transient transition, not empty
+ * space, so it must not clear either. The native click listener runs before
+ * R3F's synthesized click, so both flags are fresh by the time this is read.
+ */
+export function shouldClearSelectionOnBackplaneClick(): boolean {
+  if (wasLastClickConsumedByIdDispatch()) return false
+  if (wasLastClickStaleResolve()) return false
+  return true
+}
+
 interface DispatchParams {
   canvasRef?: RefObject<HTMLCanvasElement | null>
   glRef: RefObject<THREE.WebGLRenderer | null>

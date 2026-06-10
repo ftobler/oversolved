@@ -14,6 +14,7 @@ import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
+import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { findEdgeKindForQuery } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
 export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
@@ -130,7 +131,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     return (
       <mesh
         position={[0, 0, -1000]}
-        onClick={(e) => { e.stopPropagation(); clearNormalSelection() }}
+        onClick={(e) => { e.stopPropagation(); if (shouldClearSelectionOnBackplaneClick()) clearNormalSelection() }}
         onPointerOut={() => {}}
       >
         <planeGeometry args={[100000, 100000]} />
