@@ -1,8 +1,8 @@
 import { Line } from '@react-three/drei'
-import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse } from '@/types/cad'
+import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, sampleEllipse, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
 import { DashedLine } from '@/components/sketch/sketch_dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
@@ -91,6 +91,23 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
         ))}
       </>
     )
+  } else if ('p1' in e) {
+    const sp = e as Spline
+    if (!allFinite(sp.p1[0], sp.p1[1], sp.p2[0], sp.p2[1], sp.p3[0], sp.p3[1], sp.p4[0], sp.p4[1])) return null
+    const pts = sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
+    return (
+      <>
+        <group>
+          {construction
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
+        </group>
+        <VertexDot x={sp.p1[0]} y={sp.p1[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="start" isEditing={isEditing} />
+        <VertexDot x={sp.p2[0]} y={sp.p2[1]} px={3} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="c1"    isEditing={isEditing} />
+        <VertexDot x={sp.p3[0]} y={sp.p3[1]} px={3} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="c2"    isEditing={isEditing} />
+        <VertexDot x={sp.p4[0]} y={sp.p4[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="end"   isEditing={isEditing} />
+      </>
+    )
   } else {
     const circ = e as Circle
     if (!allFinite(circ.center[0], circ.center[1], circ.radius)) return null
@@ -158,6 +175,10 @@ export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sk
           } else if ('center' in entity && 'a' in entity) {
             const el = entity as Ellipse
             const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
+            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
+          } else if ('p1' in entity) {
+            const sp = entity as Spline
+            const pts = sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
             return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
           } else if ('center' in entity) {
             const circ = entity as Circle

@@ -18,9 +18,9 @@ export function failLoud(message: string): void {
   }
 }
 
-export type DrawingToolKind = 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'point' | 'project'
+export type DrawingToolKind = 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'project'
 
-export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse', 'point', 'project'])
+export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse', 'spline', 'point', 'project'])
 
 export interface SketchEditorInvariantState {
   activeTool: string | null

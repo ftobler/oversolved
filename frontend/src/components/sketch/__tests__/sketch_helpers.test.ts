@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { sampleEllipse, getEntityBounds, ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
-import type { Ellipse } from '@/types/cad'
+import { sampleEllipse, sampleBezier, getEntityBounds, ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
+import type { Ellipse, Spline } from '@/types/cad'
 
 describe('sampleEllipse', () => {
   it('returns a closed polyline of steps+1 points', () => {
@@ -40,6 +40,46 @@ describe('sampleEllipse', () => {
 
   it('returns [] for non-finite inputs', () => {
     expect(sampleEllipse(NaN, 0, 4, 2, 0)).toEqual([])
+  })
+})
+
+describe('sampleBezier', () => {
+  it('returns steps+1 points with z=0, anchored at P1 and P4', () => {
+    const pts = sampleBezier([0, 0], [1, 3], [3, 3], [4, 0], 16)
+    expect(pts).toHaveLength(17)
+    expect(pts[0][0]).toBeCloseTo(0)
+    expect(pts[0][1]).toBeCloseTo(0)
+    expect(pts[16][0]).toBeCloseTo(4)
+    expect(pts[16][1]).toBeCloseTo(0)
+    expect(pts.every(p => p[2] === 0)).toBe(true)
+  })
+
+  it('passes through the analytic midpoint B(0.5) = (P1 + 3P2 + 3P3 + P4)/8', () => {
+    const pts = sampleBezier([0, 0], [0, 3], [3, 3], [3, 0], 2)
+    // even step count -> pts[1] is exactly t=0.5
+    expect(pts[1][0]).toBeCloseTo(1.5)
+    expect(pts[1][1]).toBeCloseTo(2.25)
+  })
+
+  it('a degenerate Bezier with collinear evenly-spaced points is the straight line', () => {
+    const pts = sampleBezier([0, 0], [1, 0], [2, 0], [3, 0], 3)
+    expect(pts.map(p => p[0])).toEqual([0, 1, 2, 3])
+    expect(pts.every(p => p[1] === 0)).toBe(true)
+  })
+
+  it('returns [] for non-finite inputs', () => {
+    expect(sampleBezier([NaN, 0], [1, 1], [2, 1], [3, 0])).toEqual([])
+  })
+})
+
+describe('getEntityBounds for spline', () => {
+  it('bounds the curve by its control polygon', () => {
+    const sp: Spline = { p1: [0, 0], p2: [1, 5], p3: [3, -2], p4: [4, 1] }
+    const b = getEntityBounds(sp)
+    expect(b.minX).toBe(0)
+    expect(b.maxX).toBe(4)
+    expect(b.minY).toBe(-2)
+    expect(b.maxY).toBe(5)
   })
 })
 

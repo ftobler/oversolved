@@ -7,9 +7,10 @@ import {
   isProjectedArc,
   isProjectedEllipse,
   isProjectedPoint,
+  isProjectedSpline,
   getEntityKind,
 } from '@/types/cad'
-import type { Entity, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, Ellipse, LineSegment } from '@/types/cad'
+import type { Entity, ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, ProjectedSpline, Ellipse, Spline, LineSegment } from '@/types/cad'
 
 describe('unflattenGeometry projected_line', () => {
   it('produces a projected line with correct start and end points', () => {
@@ -301,10 +302,62 @@ describe('unflattenGeometry ellipse', () => {
   })
 })
 
+describe('unflattenGeometry spline', () => {
+  it('unflattens [x1,y1,x2,y2,x3,y3,x4,y4] into a Spline', () => {
+    const sketch = unflattenGeometry(
+      { 's1': [0, 0, 1, 3, 3, 3, 4, 0] },
+      [{ id: 's1', kind: 'spline' }]
+    )
+    const e = sketch['s1'] as Spline
+    expect(getEntityKind(e)).toBe('spline')
+    expect(e.p1).toEqual([0, 0])
+    expect(e.p2).toEqual([1, 3])
+    expect(e.p3).toEqual([3, 3])
+    expect(e.p4).toEqual([4, 0])
+    expect(isProjectedEntity(e)).toBe(false)
+  })
+
+  it('carries a source through as a projected spline', () => {
+    const sketch = unflattenGeometry(
+      { 's1': [0, 0, 1, 3, 3, 3, 4, 0] },
+      [{ id: 's1', kind: 'spline', source: '@sketch0/spline1' }]
+    )
+    const e = sketch['s1']
+    expect(isProjectedSpline(e)).toBe(true)
+    expect((e as ProjectedSpline).source).toBe('@sketch0/spline1')
+  })
+
+  it('preserves construction flag', () => {
+    const sketch = unflattenGeometry(
+      { 's1': [0, 0, 1, 1, 2, 1, 3, 0] },
+      [{ id: 's1', kind: 'spline', construction: true }]
+    )
+    expect((sketch['s1'] as Spline).construction).toBe(true)
+  })
+})
+
+describe('isProjectedSpline', () => {
+  it('returns true for a projected spline', () => {
+    const e: Entity = { p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0], projected: true, source: '@s0/sp1' }
+    expect(isProjectedSpline(e)).toBe(true)
+  })
+
+  it('returns false for a regular spline and for other projected kinds', () => {
+    expect(isProjectedSpline({ p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0] } as Entity)).toBe(false)
+    const projEllipse: Entity = { center: [0, 0], a: 4, b: 2, theta: 0, projected: true, source: '@s0/e1' }
+    expect(isProjectedSpline(projEllipse)).toBe(false)
+  })
+})
+
 describe('getEntityKind ellipse vs circle', () => {
   it('classifies an ellipse (center + a) as ellipse, not circle', () => {
     const el: Entity = { center: [0, 0], a: 4, b: 2, theta: 0 }
     expect(getEntityKind(el)).toBe('ellipse')
+  })
+
+  it('classifies a spline (p1..p4) as spline', () => {
+    const sp: Entity = { p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0] }
+    expect(getEntityKind(sp)).toBe('spline')
   })
 
   it('still classifies a circle (center + radius) as circle', () => {

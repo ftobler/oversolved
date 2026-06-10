@@ -44,6 +44,7 @@ export function getToolAllowedLayers(tool: ActiveTool): ReadonlySet<string> | nu
     case 'circle':
     case 'arc':
     case 'ellipse':
+    case 'spline':
     case 'point':
     case 'mirror':
       return new Set(SKETCH_PICK_LAYERS)

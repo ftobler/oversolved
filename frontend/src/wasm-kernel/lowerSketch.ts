@@ -23,13 +23,14 @@ import {
   Sel,
 } from './codec'
 
-const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2, ellipse: 5 }
+const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2, ellipse: 5, spline: 8 }
 const KIND_CODE: Record<string, number> = {
   line: Kind.Line,
   circle: Kind.Circle,
   arc: Kind.Arc,
   point: Kind.Point,
   ellipse: Kind.Ellipse,
+  spline: Kind.Spline,
 }
 const SEL_CODE: Record<string, number> = {
   start: Sel.start,
@@ -41,6 +42,9 @@ const SEL_CODE: Record<string, number> = {
   major2: Sel.majorNeg,
   minor1: Sel.minor,
   minor2: Sel.minorNeg,
+  // Spline off-curve control points.
+  c1: Sel.c1,
+  c2: Sel.c2,
 }
 
 /** The keys a constraint dict may carry a reference under, with their role. */

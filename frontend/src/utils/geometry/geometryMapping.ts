@@ -1,8 +1,8 @@
 import type {
   Sketch, Constraints, Point,
   PartEntityDef, PartFeature, PartConstraint, ConstraintRender,
-  LineSegment, Circle, Arc, PointEntity, Ellipse,
-  ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse,
+  LineSegment, Circle, Arc, PointEntity, Ellipse, Spline,
+  ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, ProjectedSpline,
 } from '@/types/cad'
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
@@ -92,6 +92,15 @@ export function unflattenGeometry(
         ...(construction && { construction: true }),
         ...(projTag ?? {}),
       } as Ellipse | ProjectedEllipse
+    } else if (kind === 'spline') {
+      result[id] = {
+        p1: [params[0] || 0, params[1] || 0],
+        p2: [params[2] || 0, params[3] || 0],
+        p3: [params[4] || 0, params[5] || 0],
+        p4: [params[6] || 0, params[7] || 0],
+        ...(construction && { construction: true }),
+        ...(projTag ?? {}),
+      } as Spline | ProjectedSpline
     } else if (kind === 'point') {
       result[id] = {
         x: params[0] || 0,
@@ -103,7 +112,7 @@ export function unflattenGeometry(
   return result
 }
 
-const KNOWN_POINTS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2'] as const
+const KNOWN_POINTS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'] as const
 
 /** Resolve a query string (e.g. "$line1" or "$arc1start") to an {entity, point?} ref.
  *  Tries known sub-element suffixes first, then falls back to a bare entity lookup. */
@@ -142,6 +151,12 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
       return ellipseAxisPoints(el.center[0], el.center[1], el.a, el.b, el.theta)[pt]
     }
     return [...el.center] as [number, number]
+  } else if (kind === 'spline') {
+    const sp = entity as Spline | ProjectedSpline
+    if (pt === 'end') return [...sp.p4] as [number, number]
+    if (pt === 'c1') return [...sp.p2] as [number, number]
+    if (pt === 'c2') return [...sp.p3] as [number, number]
+    return [...sp.p1] as [number, number]
   } else {
     const p = entity as PointEntity | ProjectedPointEntity
     return [p.x, p.y]

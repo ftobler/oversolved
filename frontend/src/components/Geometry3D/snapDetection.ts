@@ -1,7 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { Sketch, LineSegment, Circle, Arc, PointEntity, Entity } from '@/types/cad'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity, Spline, Entity } from '@/types/cad'
 import { suggestConstraint, type DraggedElementType, type SnapKind } from '@/registry'
 import { nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
 
@@ -41,6 +41,12 @@ function collectFromSketch(sketch: Sketch, featureId: string, domain: SnapCandid
     } else if ('center' in entity && 'radius' in entity) {
       const c = entity as Circle
       targets.push({ id: `vertex:${featureId}:${entityId}:center`, position: c.center, kind: 'vertex', domain })
+    } else if ('p1' in entity) {
+      const sp = entity as Spline
+      targets.push({ id: `vertex:${featureId}:${entityId}:start`, position: sp.p1, kind: 'vertex', domain })
+      targets.push({ id: `vertex:${featureId}:${entityId}:c1`,    position: sp.p2, kind: 'vertex', domain })
+      targets.push({ id: `vertex:${featureId}:${entityId}:c2`,    position: sp.p3, kind: 'vertex', domain })
+      targets.push({ id: `vertex:${featureId}:${entityId}:end`,   position: sp.p4, kind: 'vertex', domain })
     } else if ('x' in entity) {
       const p = entity as PointEntity
       targets.push({ id: `vertex:${featureId}:${entityId}:xy`, position: [p.x, p.y], kind: 'vertex', domain })

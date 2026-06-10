@@ -563,6 +563,27 @@ mod tests {
     }
 
     #[test]
+    fn spline_entity_round_trips() {
+        let input = Input {
+            entities: vec![Entity {
+                kind: Kind::Spline,
+                param_offset: 0,
+            }],
+            params_initial: vec![0.0, 0.0, 1.0, 2.0, 3.0, 2.0, 4.0, 0.0],
+            pinned_mask: vec![0],
+            equality_pins: Vec::new(),
+            constraints: Vec::new(),
+            options: Options::default(),
+        };
+        let decoded = decode_input(&encode_input(&input)).expect("decode");
+        assert_eq!(decoded.entities.len(), 1);
+        assert_eq!(decoded.entities[0].kind, Kind::Spline);
+        assert_eq!(decoded.params_initial, input.params_initial);
+        // Re-encoding the decode is byte-identical: kind code 5 round-trips.
+        assert_eq!(encode_input(&decoded), encode_input(&input));
+    }
+
+    #[test]
     fn bad_magic_rejected() {
         let mut bytes = encode_input(&sample_input());
         bytes[0] ^= 0xff;

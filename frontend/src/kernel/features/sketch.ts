@@ -28,6 +28,7 @@ import { detectTopology } from '../topology'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm } from '@/wasm-kernel/solverWasm'
+import { fitCubicBezier } from '@/utils/geometry/bezierFit'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 
 type Dict = Record<string, unknown>
@@ -191,7 +192,7 @@ function project3dTo2d(xyz: number[], plane: { origin: number[]; x_axis: number[
 }
 
 interface Resolved3dGeometry {
-  kindH: 'point' | 'line' | 'circle' | 'arc'
+  kindH: 'point' | 'line' | 'circle' | 'arc' | 'spline'
   data: Dict
 }
 
@@ -220,6 +221,13 @@ function resolve3dGeometry(data: Dict, _sourceQuery: string): Resolved3dGeometry
           angle_end: data.angle_end,
         },
       }
+    }
+    if (edgeKind === 'spline') {
+      // A sampled spline/NURBS edge carries its polyline points; the lowerer
+      // fits a cubic Bezier to them after projecting to the sketch plane.
+      const points = data.points as number[][] | undefined
+      if (!points || points.length < 2) return null
+      return { kindH: 'spline', data: { points } }
     }
     const start = data.start as number[] | undefined
     const end = data.end as number[] | undefined
@@ -322,6 +330,14 @@ function projectTo2d(
     const ea = atan2(e2d[1] - c2d[1], e2d[0] - c2d[0])
     const r2d = len2d([s2d[0] - c2d[0], s2d[1] - c2d[1]])
     return [...c2d, r2d, sa, ea]
+  }
+  if (kind === 'spline') {
+    // Any sampled 3D curve (spline/NURBS) projects to 2D points, then a cubic
+    // Bezier is least-squares fit to them -> the 8-param spline entity.
+    const pts3d = data.points as number[][] | undefined
+    if (!pts3d || pts3d.length < 2) return null
+    const pts2d = pts3d.map((p) => project3dTo2d(p, plane) as [number, number])
+    return fitCubicBezier(pts2d)
   }
   return null
 }

@@ -13,6 +13,7 @@ export type ToolId =
   | 'circle'
   | 'arc'
   | 'ellipse'
+  | 'spline'
   | 'point'
   | 'rectangle'
   | 'center_rectangle'

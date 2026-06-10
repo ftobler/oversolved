@@ -189,6 +189,76 @@ describe('computeDrawClick - ellipse tool', () => {
   })
 })
 
+describe('computeDrawClick - spline tool', () => {
+  it('accumulates the first three clicks without a mutation', () => {
+    const c1 = computeDrawClick('spline', [], [0, 0], emptySnap(), FEATURE, newId)
+    expect(c1.mutations).toHaveLength(0)
+    expect(c1.nextDrawPoints).toEqual([[0, 0]])
+    expect(c1.clearTool).toBe(false)
+
+    const c2 = computeDrawClick('spline', [[0, 0]], [1, 3], emptySnap(), FEATURE, newId)
+    expect(c2.mutations).toHaveLength(0)
+    expect(c2.nextDrawPoints).toEqual([[0, 0], [1, 3]])
+
+    const c3 = computeDrawClick('spline', [[0, 0], [1, 3]], [3, 3], emptySnap(), FEATURE, newId)
+    expect(c3.mutations).toHaveLength(0)
+    expect(c3.nextDrawPoints).toEqual([[0, 0], [1, 3], [3, 3]])
+    expect(c3.clearTool).toBe(false)
+  })
+
+  it('fourth click emits add_entity spline with 8 control-point params', () => {
+    const result = computeDrawClick('spline', [[0, 0], [1, 3], [3, 3]], [4, 0], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_entity')
+    if (m.type === 'add_entity') {
+      expect(m.kind).toBe('spline')
+      expect(m.params).toEqual([0, 0, 1, 3, 3, 3, 4, 0])
+    }
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('snaps the start point to a hovered vertex via add_entity_with_constraint', () => {
+    const snap = emptySnap()
+    snap.drawSnapVertexId = `vertex:${FEATURE}:V1:end`
+    const result = computeDrawClick('spline', [[0, 0], [1, 3], [3, 3]], [4, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_entity_with_constraint')
+    if (m.type === 'add_entity_with_constraint') {
+      expect(m.kind).toBe('spline')
+      expect(m.vertexKey).toBe('start')
+      expect(m.constraintKind).toBe('coincident')
+    }
+  })
+})
+
+describe('computePreviewPts - spline tool', () => {
+  it('first segment previews the P1->cursor handle line', () => {
+    const pts = computePreviewPts('spline', [[0, 0]], [1, 3])
+    expect(pts).toEqual([[0, 0, 0], [1, 3, 0]])
+  })
+
+  it('shows the control polygon after the second click', () => {
+    const pts = computePreviewPts('spline', [[0, 0], [1, 3]], [3, 3])
+    expect(pts).toEqual([[0, 0, 0], [1, 3, 0], [3, 3, 0]])
+  })
+
+  it('samples the cubic Bezier once three points are placed', () => {
+    const pts = computePreviewPts('spline', [[0, 0], [1, 3], [3, 3]], [4, 0])!
+    expect(pts.length).toBeGreaterThan(2)
+    // Endpoints of the sampled curve are P1 and the cursor (P4).
+    expect(pts[0][0]).toBeCloseTo(0)
+    expect(pts[0][1]).toBeCloseTo(0)
+    expect(pts[pts.length - 1][0]).toBeCloseTo(4)
+    expect(pts[pts.length - 1][1]).toBeCloseTo(0)
+  })
+
+  it('returns null with no hover', () => {
+    expect(computePreviewPts('spline', [[0, 0]], null)).toBeNull()
+  })
+})
+
 describe('computePreviewPts - ellipse tool', () => {
   it('samples a closed ellipse polyline from center + cursor', () => {
     const pts = computePreviewPts('ellipse', [[0, 0]], [4, 0])

@@ -35,6 +35,10 @@ pub enum PointSelector {
     MajorNeg,
     Minor,
     MinorNeg,
+    /// Spline off-curve control points: `C1` is P2 (params [2,3]), `C2` is P3
+    /// (params [4,5]). The on-curve endpoints use `Start`/`End`.
+    C1,
+    C2,
 }
 
 impl PointSelector {
@@ -49,6 +53,8 @@ impl PointSelector {
             6 => PointSelector::MajorNeg,
             7 => PointSelector::Minor,
             8 => PointSelector::MinorNeg,
+            9 => PointSelector::C1,
+            10 => PointSelector::C2,
             _ => return None,
         })
     }
@@ -64,6 +70,8 @@ impl PointSelector {
             PointSelector::MajorNeg => 6,
             PointSelector::Minor => 7,
             PointSelector::MinorNeg => 8,
+            PointSelector::C1 => 9,
+            PointSelector::C2 => 10,
         }
     }
 

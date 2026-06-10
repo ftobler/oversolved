@@ -1,4 +1,4 @@
-import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
+import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Spline, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 const ICON_SIZE = 14
 
@@ -33,6 +33,9 @@ export function getEntityBounds(entity: Entity, px: (x: number, y: number) => [n
     const circ = entity as Circle
     const { center, radius } = circ
     pts.push([center[0] - radius, center[1]], [center[0] + radius, center[1]], [center[0], center[1] - radius], [center[0], center[1] + radius])
+  } else if ('p1' in entity) {
+    const sp = entity as Spline
+    pts.push(sp.p1, sp.p2, sp.p3, sp.p4)
   } else if ('x' in entity) {
     const pt = entity as PointEntity
     pts.push([pt.x, pt.y])
@@ -116,6 +119,20 @@ export function renderSketch(
         <g key={id}>
           <ellipse cx={cx} cy={cy} rx={rx} ry={ry} transform={`rotate(${-el.theta} ${cx} ${cy})`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={dashArray} />
           <circle cx={cx} cy={cy} r={strokeWidth} fill={color} opacity={0.5} />
+        </g>
+      )
+    } else if ('p1' in entity) {
+      const sp = entity as Spline
+      const [x1, y1] = px(sp.p1[0], sp.p1[1])
+      const [x2, y2] = px(sp.p2[0], sp.p2[1])
+      const [x3, y3] = px(sp.p3[0], sp.p3[1])
+      const [x4, y4] = px(sp.p4[0], sp.p4[1])
+      const dashArray = sp.construction ? '4 2' : undefined
+      return (
+        <g key={id}>
+          <path d={`M ${x1} ${y1} C ${x2} ${y2} ${x3} ${y3} ${x4} ${y4}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeDasharray={dashArray} />
+          <circle cx={x1} cy={y1} r={strokeWidth * 1.5} fill={color} strokeDasharray={dashArray} />
+          <circle cx={x4} cy={y4} r={strokeWidth * 1.5} fill={color} strokeDasharray={dashArray} />
         </g>
       )
     } else {

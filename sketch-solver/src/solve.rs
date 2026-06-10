@@ -311,6 +311,13 @@ mod tests {
         }
     }
 
+    fn spline(off: usize) -> Entity {
+        Entity {
+            kind: Kind::Spline,
+            param_offset: off,
+        }
+    }
+
     fn c_target(kind: ConstraintKind, index: u32, point: PointSelector) -> Constraint {
         Constraint {
             kind_code: kind.to_u8(),
@@ -506,6 +513,37 @@ mod tests {
         let p = &out.params_solved;
         assert!((p[5] - 1.0).abs() < 1e-4, "x pinned: {}", p[5]);
         assert!((p[6] - 2.0 * 3.0_f32.sqrt()).abs() < 1e-3, "y on rotated ellipse: {}", p[6]);
+        assert!(out.diagnostics.residual_norm < 1e-4);
+    }
+
+    #[test]
+    fn point_on_fixed_spline_lands_on_the_curve() {
+        // Symmetric arch Bezier P1(0,0) P2(0,3) P3(3,3) P4(3,0), pinned whole.
+        // Its apex is B(0.5)=(1.5,2.25) with a horizontal tangent. A point pinned
+        // in x at 1.5 and forced onto the spline has y as the only free DOF; the
+        // perpendicular-distance residual drives it to the apex -> fully
+        // constrained, y = 2.25.
+        let fix_spline = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+        let on_spline = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: vec![
+                (RefRole::A, Ref::Entity { index: 1, point: PointSelector::Xy }),
+                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Absent }),
+            ],
+            ..Default::default()
+        };
+        let mut inp = input(
+            vec![spline(0), point(8)],
+            vec![0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 3.0, 0.0, 1.5, 1.0],
+            vec![fix_spline, on_spline],
+        );
+        inp.equality_pins = vec![EqualityPin { param_index: 8, target: 1.5 }];
+
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        let p = &out.params_solved;
+        assert!((p[8] - 1.5).abs() < 1e-4, "x pinned: {}", p[8]);
+        assert!((p[9] - 2.25).abs() < 1e-3, "y on spline apex: {}", p[9]);
         assert!(out.diagnostics.residual_norm < 1e-4);
     }
 

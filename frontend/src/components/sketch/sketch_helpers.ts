@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Point } from '@/types/cad'
+import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, Point } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { RENDER_KIND_TO_ICON } from '@/registry'
 
@@ -103,6 +103,29 @@ export function sampleEllipse(
   return pts
 }
 
+/** Sample a cubic Bezier `B(t)` defined by four control points into a polyline.
+ *  P1/P4 are on-curve endpoints, P2/P3 the off-curve handles. */
+export function sampleBezier(
+  p1: Point, p2: Point, p3: Point, p4: Point, steps = 32,
+): [number, number, number][] {
+  if (!allFinite(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1], p4[0], p4[1])) return []
+  const pts: [number, number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const mt = 1 - t
+    const a = mt * mt * mt
+    const b = 3 * mt * mt * t
+    const c = 3 * mt * t * t
+    const d = t * t * t
+    pts.push([
+      a * p1[0] + b * p2[0] + c * p3[0] + d * p4[0],
+      a * p1[1] + b * p2[1] + c * p3[1] + d * p4[1],
+      0,
+    ])
+  }
+  return pts
+}
+
 // The 4 ellipse control points: positive/negative ends of the major and minor
 // axes. These vertex keys are shared across query resolution (geometryMapping),
 // constraint lowering (lowerSketch SEL_CODE / partDocToSketches), picking, and
@@ -148,6 +171,13 @@ export function getEntityBounds(entity: Entity): { minX: number; maxX: number; m
     const hw = Math.hypot(el.a * Math.cos(th), el.b * Math.sin(th))
     const hh = Math.hypot(el.a * Math.sin(th), el.b * Math.cos(th))
     return { minX: el.center[0] - hw, maxX: el.center[0] + hw, minY: el.center[1] - hh, maxY: el.center[1] + hh }
+  } else if (kind === 'spline') {
+    const sp = entity as Spline
+    // The control polygon bounds the curve (convex-hull property), so the four
+    // control points give a conservative axis-aligned box.
+    const xs = [sp.p1[0], sp.p2[0], sp.p3[0], sp.p4[0]]
+    const ys = [sp.p1[1], sp.p2[1], sp.p3[1], sp.p4[1]]
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
   } else {
     const p = entity as PointEntity
     return { minX: p.x, maxX: p.x, minY: p.y, maxY: p.y }

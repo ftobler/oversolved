@@ -2,7 +2,7 @@
 
 export type Point = [number, number]
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'point' | 'project' | 'drag' | 'mirror' | null
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'project' | 'drag' | 'mirror' | null
 
 // Which geometric space the current selection lives in.
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
@@ -338,6 +338,14 @@ export interface Ellipse {
   construction?: boolean
 }
 
+export interface Spline {
+  p1: Point   // start point (on-curve)
+  p2: Point   // control point 1 (off-curve)
+  p3: Point   // control point 2 (off-curve)
+  p4: Point   // end point (on-curve)
+  construction?: boolean
+}
+
 // Projected entity variants — read-only reference geometry from another sketch
 export interface ProjectedLineSegment extends LineSegment {
   projected: true
@@ -364,14 +372,20 @@ export interface ProjectedEllipse extends Ellipse {
   source: string
 }
 
+export interface ProjectedSpline extends Spline {
+  projected: true
+  source: string
+}
+
 export type ProjectedEntity =
   | ProjectedLineSegment
   | ProjectedCircle
   | ProjectedArc
   | ProjectedPointEntity
   | ProjectedEllipse
+  | ProjectedSpline
 
-export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | ProjectedEntity
+export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | Spline | ProjectedEntity
 
 export function isProjectedEntity(e: Entity): e is ProjectedEntity {
   return 'projected' in e && (e as ProjectedEntity).projected === true
@@ -397,13 +411,18 @@ export function isProjectedPoint(e: Entity): e is ProjectedPointEntity {
   return isProjectedEntity(e) && 'x' in e
 }
 
-export type EntityKind = 'line' | 'arc' | 'circle' | 'ellipse' | 'point'
+export function isProjectedSpline(e: Entity): e is ProjectedSpline {
+  return isProjectedEntity(e) && 'p1' in e
+}
+
+export type EntityKind = 'line' | 'arc' | 'circle' | 'ellipse' | 'spline' | 'point'
 
 export function getEntityKind(entity: Entity): EntityKind {
   if ('start' in entity && 'end' in entity && 'radius' in entity) return 'arc'
   if ('start' in entity && 'end' in entity) return 'line'
   if ('center' in entity && 'radius' in entity) return 'circle'
   if ('center' in entity && 'a' in entity) return 'ellipse'
+  if ('p1' in entity) return 'spline'
   return 'point'
 }
 

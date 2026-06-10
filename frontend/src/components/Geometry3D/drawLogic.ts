@@ -169,6 +169,29 @@ export function computeDrawClick(
     return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
   }
 
+  if (t === 'spline') {
+    // 4-click cubic Bezier: P1 (start), P2/P3 (control handles), P4 (end).
+    if (pts.length === 0) {
+      const drawSnap = snap.hoveredVertexId ? { vertexId: snap.hoveredVertexId } : null
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+    }
+    if (pts.length < 3) {
+      const next: [number, number][] = [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]]
+      return { mutations: [], nextDrawPoints: next, nextDrawSnap: null, clearTool: false }
+    }
+    // Fourth click closes the curve.
+    const params = [pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], px, py]
+    let mutation: Mutation
+    if (snap.drawSnapVertexId) {
+      mutation = { type: 'add_entity_with_constraint', featureId, kind: 'spline',
+        params, vertexKey: 'start',
+        snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident' }
+    } else {
+      mutation = { type: 'add_entity', featureId, kind: 'spline', params }
+    }
+    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+  }
+
   if (t === 'arc') {
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId

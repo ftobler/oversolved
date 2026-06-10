@@ -43,6 +43,7 @@ pub enum Kind {
     Arc,
     Point,
     Ellipse,
+    Spline,
 }
 
 impl Kind {
@@ -50,6 +51,8 @@ impl Kind {
     /// Ellipse is `[cx, cy, a, b, theta]` where `a >= b >= 0` are the semi-major
     /// and semi-minor radii and `theta` is the major-axis rotation (degrees, to
     /// match the arc-angle convention; the residuals convert to radians).
+    /// Spline is a cubic Bezier `[x1, y1, x2, y2, x3, y3, x4, y4]`: P1/P4 are the
+    /// on-curve endpoints, P2/P3 the off-curve control points.
     pub fn param_count(self) -> usize {
         match self {
             Kind::Line => 4,
@@ -57,6 +60,7 @@ impl Kind {
             Kind::Arc => 5,
             Kind::Point => 2,
             Kind::Ellipse => 5,
+            Kind::Spline => 8,
         }
     }
 
@@ -67,6 +71,7 @@ impl Kind {
             2 => Kind::Arc,
             3 => Kind::Point,
             4 => Kind::Ellipse,
+            5 => Kind::Spline,
             _ => return None,
         })
     }
@@ -78,6 +83,7 @@ impl Kind {
             Kind::Arc => 2,
             Kind::Point => 3,
             Kind::Ellipse => 4,
+            Kind::Spline => 5,
         }
     }
 }
@@ -193,12 +199,19 @@ mod tests {
         assert_eq!(Kind::Arc.param_count(), 5);
         assert_eq!(Kind::Point.param_count(), 2);
         assert_eq!(Kind::Ellipse.param_count(), 5);
+        assert_eq!(Kind::Spline.param_count(), 8);
     }
 
     #[test]
     fn ellipse_kind_code_round_trips() {
         assert_eq!(Kind::from_u8(4), Some(Kind::Ellipse));
         assert_eq!(Kind::Ellipse.to_u8(), 4);
+    }
+
+    #[test]
+    fn spline_kind_code_round_trips() {
+        assert_eq!(Kind::from_u8(5), Some(Kind::Spline));
+        assert_eq!(Kind::Spline.to_u8(), 5);
     }
 
     #[test]

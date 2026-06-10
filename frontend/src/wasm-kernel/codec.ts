@@ -6,7 +6,7 @@
  * Everything is little-endian. See codec.rs for the full layout documentation.
  */
 
-export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4 } as const
+export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5 } as const
 
 export const ConstraintKindCode: Record<string, number> = {
   horizontal: 0,
@@ -43,6 +43,8 @@ export const Sel = {
   // Ellipse axis endpoints (control points), mirroring PointSelector in
   // sketch-solver/src/constraints.rs.
   major: 5, majorNeg: 6, minor: 7, minorNeg: 8,
+  // Spline off-curve control points P2/P3.
+  c1: 9, c2: 10,
 } as const
 
 export const AxisCode: Record<string, number> = { x: 0, y: 1, both: 2 }

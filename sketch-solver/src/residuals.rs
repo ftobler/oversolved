@@ -37,6 +37,99 @@ fn ellipse_point_residual(p: P2, ep: &[f64]) -> f64 {
     u * u / (a * a) + v * v / (b * b) - 1.0
 }
 
+/// Evaluate a cubic Bezier `B(t)`. `sp` is the spline param block
+/// `[x1, y1, x2, y2, x3, y3, x4, y4]`.
+fn bezier_eval(sp: &[f64], t: f64) -> P2 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    let mt = 1.0 - t;
+    let mt2 = mt * mt;
+    let mt3 = mt2 * mt;
+    [
+        mt3 * sp[0] + 3.0 * mt2 * t * sp[2] + 3.0 * mt * t2 * sp[4] + t3 * sp[6],
+        mt3 * sp[1] + 3.0 * mt2 * t * sp[3] + 3.0 * mt * t2 * sp[5] + t3 * sp[7],
+    ]
+}
+
+/// First derivative `B'(t)` of a cubic Bezier (the un-normalized tangent).
+fn bezier_deriv(sp: &[f64], t: f64) -> P2 {
+    let t2 = t * t;
+    let mt = 1.0 - t;
+    let mt2 = mt * mt;
+    [
+        3.0 * mt2 * (sp[2] - sp[0])
+            + 6.0 * mt * t * (sp[4] - sp[2])
+            + 3.0 * t2 * (sp[6] - sp[4]),
+        3.0 * mt2 * (sp[3] - sp[1])
+            + 6.0 * mt * t * (sp[5] - sp[3])
+            + 3.0 * t2 * (sp[7] - sp[5]),
+    ]
+}
+
+/// Second derivative `B''(t)` of a cubic Bezier.
+fn bezier_deriv2(sp: &[f64], t: f64) -> P2 {
+    let mt = 1.0 - t;
+    [
+        6.0 * mt * (sp[4] - 2.0 * sp[2] + sp[0]) + 6.0 * t * (sp[6] - 2.0 * sp[4] + sp[2]),
+        6.0 * mt * (sp[5] - 2.0 * sp[3] + sp[1]) + 6.0 * t * (sp[7] - 2.0 * sp[5] + sp[3]),
+    ]
+}
+
+/// Parameter `t in [0, 1]` of the closest point on a cubic Bezier to `p`.
+/// Coarse sample to bracket the global minimum, then a few Newton steps on
+/// `f(t) = (p - B(t)) . B'(t) = 0` (stationary squared-distance). The FD
+/// Jacobian path recomputes this each perturbation, so it just has to be
+/// deterministic, not differentiable.
+fn bezier_closest_t(sp: &[f64], p: P2) -> f64 {
+    const SAMPLES: usize = 24;
+    let dist2 = |t: f64| {
+        let b = bezier_eval(sp, t);
+        (p[0] - b[0]).powi(2) + (p[1] - b[1]).powi(2)
+    };
+    let mut best_t = 0.0;
+    let mut best_d = f64::INFINITY;
+    for i in 0..=SAMPLES {
+        let t = i as f64 / SAMPLES as f64;
+        let d = dist2(t);
+        if d < best_d {
+            best_d = d;
+            best_t = t;
+        }
+    }
+    let mut t = best_t;
+    for _ in 0..8 {
+        let b = bezier_eval(sp, t);
+        let d1 = bezier_deriv(sp, t);
+        let d2 = bezier_deriv2(sp, t);
+        let w = [p[0] - b[0], p[1] - b[1]];
+        let f = w[0] * d1[0] + w[1] * d1[1];
+        let fp = -(d1[0] * d1[0] + d1[1] * d1[1]) + w[0] * d2[0] + w[1] * d2[1];
+        if fp.abs() < 1e-12 {
+            break;
+        }
+        t -= f / fp;
+        t = t.clamp(0.0, 1.0);
+    }
+    t
+}
+
+/// Signed perpendicular distance from `p` to the Bezier at its closest point:
+/// `0` exactly on the curve. Used as the point-on-spline coincident residual,
+/// mirroring the point-on-line normal-distance row.
+fn spline_point_residual(p: P2, sp: &[f64]) -> f64 {
+    let t = bezier_closest_t(sp, p);
+    let b = bezier_eval(sp, t);
+    let d1 = bezier_deriv(sp, t);
+    let n = (d1[0] * d1[0] + d1[1] * d1[1]).sqrt();
+    if n < 1e-12 {
+        // Degenerate tangent: fall back to plain distance to the closest point.
+        return ((p[0] - b[0]).powi(2) + (p[1] - b[1]).powi(2)).sqrt();
+    }
+    let (tx, ty) = (d1[0] / n, d1[1] / n);
+    let w = [p[0] - b[0], p[1] - b[1]];
+    tx * w[1] - ty * w[0]
+}
+
 pub struct Problem<'a> {
     entities: &'a [Entity],
     /// Initial param vector (widened from the wire `f32`), the `x0` of the
@@ -166,6 +259,16 @@ impl<'a> Problem<'a> {
                             _ => [cx, cy],
                         }
                     }
+                    // Spline: start is P1, end is P4, C1/C2 the off-curve control
+                    // points P2/P3; any other selector resolves to the curve
+                    // midpoint B(0.5). ep = [x1,y1, x2,y2, x3,y3, x4,y4].
+                    Kind::Spline => match point {
+                        PointSelector::Start => [ep[0], ep[1]],
+                        PointSelector::End => [ep[6], ep[7]],
+                        PointSelector::C1 => [ep[2], ep[3]],
+                        PointSelector::C2 => [ep[4], ep[5]],
+                        _ => bezier_eval(ep, 0.5),
+                    },
                 }
             }
         }
@@ -368,6 +471,12 @@ impl<'a> Problem<'a> {
             let pa = self.point(x, a_ref);
             let ep_b = self.params(x, b_index.unwrap());
             r.push(ellipse_point_residual(pa, ep_b));
+        } else if !b_external && !b_point_present && b_kind == Some(Kind::Spline) {
+            // Point-on-spline: signed perpendicular distance to the closest
+            // point on the cubic Bezier, mirroring the point-on-line row.
+            let pa = self.point(x, a_ref);
+            let ep_b = self.params(x, b_index.unwrap());
+            r.push(spline_point_residual(pa, ep_b));
         } else {
             let pa = self.point(x, a_ref);
             let pb = self.point(x, b_ref);
@@ -474,7 +583,19 @@ impl<'a> Problem<'a> {
         line_dir[0] /= norm;
         line_dir[1] /= norm;
 
-        if self.kind_of(arc_idx) == Kind::Circle {
+        if self.kind_of(arc_idx) == Kind::Spline {
+            // Line tangent to a spline endpoint: the line direction is parallel
+            // to the Bezier tangent there, so the cross product is zero.
+            let sp = self.params(x, arc_idx);
+            let tan = match arc_pt {
+                PointSelector::End => bezier_deriv(sp, 1.0),
+                PointSelector::Start => bezier_deriv(sp, 0.0),
+                _ => bezier_deriv(sp, 0.5),
+            };
+            let tn = (tan[0] * tan[0] + tan[1] * tan[1]).sqrt().max(1e-12);
+            let (tx, ty) = (tan[0] / tn, tan[1] / tn);
+            r.push(line_dir[0] * ty - line_dir[1] * tx);
+        } else if self.kind_of(arc_idx) == Kind::Circle {
             if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
                 let contact = if pinned_pt == PointSelector::Start {
                     [line_ep[0], line_ep[1]]
@@ -774,6 +895,26 @@ impl<'a> Problem<'a> {
                             ]
                         }
                     }
+                    // Spline: start/end and the C1/C2 control points are the
+                    // identity on their own param pairs; the midpoint
+                    // B(0.5) = (P1 + 3P2 + 3P3 + P4)/8 depends on all four
+                    // control points. Mirror the `point()` selectors.
+                    Kind::Spline => match point {
+                        PointSelector::Start => vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)],
+                        PointSelector::End => vec![(off + 6, 1.0, 0.0), (off + 7, 0.0, 1.0)],
+                        PointSelector::C1 => vec![(off + 2, 1.0, 0.0), (off + 3, 0.0, 1.0)],
+                        PointSelector::C2 => vec![(off + 4, 1.0, 0.0), (off + 5, 0.0, 1.0)],
+                        _ => vec![
+                            (off, 0.125, 0.0),
+                            (off + 1, 0.0, 0.125),
+                            (off + 2, 0.375, 0.0),
+                            (off + 3, 0.0, 0.375),
+                            (off + 4, 0.375, 0.0),
+                            (off + 5, 0.0, 0.375),
+                            (off + 6, 0.125, 0.0),
+                            (off + 7, 0.0, 0.125),
+                        ],
+                    },
                 }
             }
         }
@@ -1022,7 +1163,8 @@ impl<'a> Problem<'a> {
             && !b_point
             && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc));
         let branch4 = !b_external && !b_point && b_kind == Some(Kind::Ellipse);
-        !(branch1 || branch2 || branch3 || branch4)
+        let branch5 = !b_external && !b_point && b_kind == Some(Kind::Spline);
+        !(branch1 || branch2 || branch3 || branch4 || branch5)
     }
 
     fn jac_fixed(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
@@ -1245,6 +1387,105 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert!((r[0] - (-3.0)).abs() < 1e-12);
         assert!((r[1] - (-4.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn spline_point_resolves_start_end_midpoint() {
+        // Cubic Bezier P1(0,0) P2(0,3) P3(3,3) P4(3,0).
+        let inp = input(
+            vec![ent(Kind::Spline, 0)],
+            vec![0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 3.0, 0.0],
+            vec![],
+        );
+        let p = Problem::new(&inp);
+        let x = p.x0.clone();
+        let pt = |sel| p.point(&x, Ref::Entity { index: 0, point: sel });
+        assert_eq!(pt(PointSelector::Start), [0.0, 0.0]);
+        assert_eq!(pt(PointSelector::End), [3.0, 0.0]);
+        // C1/C2 resolve to the off-curve control points P2/P3.
+        assert_eq!(pt(PointSelector::C1), [0.0, 3.0]);
+        assert_eq!(pt(PointSelector::C2), [3.0, 3.0]);
+        // B(0.5) = (P1 + 3P2 + 3P3 + P4)/8 = (1.5, 2.25).
+        let mid = pt(PointSelector::Center);
+        assert!((mid[0] - 1.5).abs() < 1e-9 && (mid[1] - 2.25).abs() < 1e-9, "mid {:?}", mid);
+    }
+
+    #[test]
+    fn point_on_spline_coincident_residual() {
+        // A point sitting exactly on B(0.5)=(1.5,2.25) -> residual ~0.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Spline, 2)],
+            vec![1.5, 2.25, 0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 3.0, 0.0],
+            vec![cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Absent)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!(r[0].abs() < 1e-6, "on-curve residual {}", r[0]);
+
+        // Move the point off the curve -> nonzero perpendicular distance.
+        let mut x = p.x0.clone();
+        x[1] = 0.5;
+        let r = p.residuals(&x);
+        assert!(r[0].abs() > 1e-3, "off-curve residual {}", r[0]);
+    }
+
+    /// Exercise both the analytic point_jac spline arm (point_distance on
+    /// start + midpoint, coincident point-point) and the FD fallback branches
+    /// (point-on-spline coincident, line-spline tangent) against full FD.
+    #[test]
+    fn spline_jacobian_matches_finite_difference() {
+        use PointSelector::{Absent, Start, Xy, C1, C2};
+        use RefRole::{Arc as ArcR, Line as LineR, A, B};
+
+        let entities = vec![
+            ent(Kind::Spline, 0), // 0 [0..8]
+            ent(Kind::Point, 8),  // 1 [8..10]
+            ent(Kind::Line, 10),  // 2 [10..14]
+        ];
+        let params = vec![
+            0.0, 0.0, 1.0, 2.0, 3.0, 2.0, 4.0, 0.0, // spline
+            2.0, 1.0, // point
+            0.0, 0.0, 1.0, 0.5, // line
+        ];
+        let constraints = vec![
+            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(0, Start)), (B, e_ref(1, Xy))], 2.0),
+            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Xy))], 1.0),
+            // C1/C2 control-point selectors through the analytic point_jac.
+            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(0, C1)), (B, e_ref(1, Xy))], 1.5),
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(0, C2)), (B, e_ref(1, Xy))]),
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(0, Start)), (B, e_ref(1, Xy))]),
+            cons(ConstraintKind::Coincident, vec![(A, e_ref(1, Xy)), (B, e_ref(0, Absent))]),
+            cons(ConstraintKind::Tangent, vec![(LineR, e_ref(2, Absent)), (ArcR, e_ref(0, Start))]),
+        ];
+        let inp = input(entities, params, constraints);
+        let p = Problem::new(&inp);
+        let x: Vec<f64> = inp
+            .params_initial
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| v as f64 + 0.21 * ((i as f64) * 1.7).sin())
+            .collect();
+        let n = x.len();
+
+        let analytic = p.jacobian(&x, n);
+        let residual_fn = |xx: &[f64]| p.residuals(xx);
+        let m = residual_fn(&x).len();
+        let fd = crate::lm::fd_jacobian(&residual_fn, &x, m);
+        for r in 0..m {
+            for col in 0..n {
+                let diff = (analytic[(r, col)] - fd[(r, col)]).abs();
+                assert!(
+                    diff < 1e-4,
+                    "row {r} col {col}: analytic={} fd={} (diff {diff})",
+                    analytic[(r, col)],
+                    fd[(r, col)],
+                );
+            }
+        }
     }
 
     #[test]

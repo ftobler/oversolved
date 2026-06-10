@@ -2,7 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 import type { Sketch, Entity } from '@/types/cad'
 import { getEntityBounds } from '@/components/sketch/sketch_helpers'
-import { sampleArc, sampleArcCCW, sampleEllipse } from '@/components/sketch/sketch_helpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier } from '@/components/sketch/sketch_helpers'
 
 // Default semi-minor/semi-major ratio for the two-click ellipse draw (golden
 // ratio). The second click only fixes the major axis; b is seeded from a. This
@@ -78,6 +78,16 @@ export function computePreviewPts(
   if (tool === 'arc' && pts.length === 1 && h) {
     return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
   }
+  if (tool === 'spline' && h) {
+    // Build up the cubic Bezier across the 4 clicks: show the control polygon
+    // while fewer than 3 points are placed, then the sampled curve once the
+    // first three are down and the cursor previews the endpoint.
+    if (pts.length === 1) return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
+    if (pts.length === 2) {
+      return [[pts[0][0], pts[0][1], 0], [pts[1][0], pts[1][1], 0], [h[0], h[1], 0]]
+    }
+    if (pts.length === 3) return sampleBezier(pts[0], pts[1], pts[2], h)
+  }
   if (tool === 'rect' && pts.length === 1 && h) {
     const [x0, y0] = pts[0]
     const [x1, y1] = h
@@ -114,6 +124,8 @@ export function findEntitiesAtPoint(sketch: Sketch, pt: [number, number], eps = 
     const e = entity as Entity
     if ('start' in e && 'end' in e) {
       if (near(e.start[0], e.start[1]) || near(e.end[0], e.end[1])) ids.push(eid)
+    } else if ('p1' in e) {
+      if (near(e.p1[0], e.p1[1]) || near(e.p4[0], e.p4[1])) ids.push(eid)
     } else if ('x' in e) {
       if (near(e.x, e.y)) ids.push(eid)
     } else if ('center' in e) {

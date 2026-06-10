@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
-import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse } from '@/types/cad'
+import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
-import { sampleArcCCW, sampleEllipse, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
+import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and
@@ -99,6 +99,12 @@ export function buildSketchSegments(
       for (let i = 0; i < pts.length - 1; i++) {
         appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
       }
+    } else if (kind === 'spline') {
+      const sp = entity as Spline
+      const pts = sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
+      for (let i = 0; i < pts.length - 1; i++) {
+        appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+      }
     } else {
       // point entities have no segments; they show only via the vertex layer.
       continue
@@ -151,6 +157,12 @@ export function buildSketchVertices(
       push(entityId, 'center', el.center[0], el.center[1])
       const ap = ellipseAxisPoints(el.center[0], el.center[1], el.a, el.b, el.theta)
       for (const key of ELLIPSE_AXIS_KEYS) push(entityId, key, ap[key][0], ap[key][1])
+    } else if (kind === 'spline') {
+      const sp = entity as Spline
+      push(entityId, 'start', sp.p1[0], sp.p1[1])
+      push(entityId, 'c1',    sp.p2[0], sp.p2[1])
+      push(entityId, 'c2',    sp.p3[0], sp.p3[1])
+      push(entityId, 'end',   sp.p4[0], sp.p4[1])
     } else if (kind === 'point') {
       const p = entity as PointEntity
       push(entityId, 'xy', p.x, p.y)
