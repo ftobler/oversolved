@@ -587,8 +587,8 @@ export type TopologyEdge =
   | TopologyEllipseArcEdge
 
 export interface TopologySurface {
-  boundary: TopologyEdge[]  // the outer loop (CCW)
-  holes?: TopologyEdge[][]  // inner loops (CW), one per hole -- maps to OCC face holes
+  boundary: TopologyEdge[]  // the outer loop
+  holes?: TopologyEdge[][]  // inner loops, one per hole -- maps to OCC face holes (orientation fixed by the face builder)
   query: string
 }
 

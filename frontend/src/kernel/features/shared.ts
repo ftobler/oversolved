@@ -115,7 +115,9 @@ export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
             const rev: Dict = { ...edict }
             rev.start = [...(edict.end as number[])]
             rev.end = [...(edict.start as number[])]
-            if (edict.kind === 'arc') {
+            // Arc and elliptical-arc carry an angle range + winding that must flip
+            // too, else the OCC edge builder rebuilds the wrong (stale) curve.
+            if (edict.kind === 'arc' || edict.kind === 'ellipse_arc') {
               rev.angle_start_deg = (edict.angle_end_deg as number) ?? 0
               rev.angle_end_deg = (edict.angle_start_deg as number) ?? 0
               rev.ccw = !((edict.ccw as boolean) ?? true)

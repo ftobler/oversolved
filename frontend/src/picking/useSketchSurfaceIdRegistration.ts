@@ -39,6 +39,16 @@ function buildSurfaceShapes(topology: Topology): { shape: THREE.Shape; query: st
     shape.moveTo(pts[0][0], pts[0][1])
     for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
     shape.closePath()
+    // Subtract inner loops so a donut's hole is not pickable as solid material.
+    for (const hole of surface.holes ?? []) {
+      const hpts = tessellateBoundary(hole, 32)
+      if (hpts.length < 3) continue
+      const path = new THREE.Path()
+      path.moveTo(hpts[0][0], hpts[0][1])
+      for (let i = 1; i < hpts.length; i++) path.lineTo(hpts[i][0], hpts[i][1])
+      path.closePath()
+      shape.holes.push(path)
+    }
     results.push({ shape, query: surface.query })
   }
   return results

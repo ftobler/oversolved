@@ -137,16 +137,16 @@ function bisect(g: (t: number) => number, lo: number, hi: number): number {
 }
 
 /**
- * Roots of g over [t0, t1] found by scanning for sign changes and refining.
- * `wrap` closes the domain (last sample back to first) for periodic curves.
+ * Roots of g over [t0, t1] found by scanning for sign changes and refining. For
+ * periodic curves pass the full period [0, 2pi); the seam is covered because the
+ * endpoints coincide (g(0) == g(2pi)).
  */
-function scanRoots(g: (t: number) => number, t0: number, t1: number, wrap = false): number[] {
+function scanRoots(g: (t: number) => number, t0: number, t1: number): number[] {
   const roots: number[] = []
   const step = (t1 - t0) / SCAN_SAMPLES
   let prevT = t0
   let prevG = g(prevT)
-  const total = wrap ? SCAN_SAMPLES : SCAN_SAMPLES
-  for (let i = 1; i <= total; i++) {
+  for (let i = 1; i <= SCAN_SAMPLES; i++) {
     const curT = t0 + i * step
     const curG = g(curT)
     if (prevG === 0) {
@@ -393,10 +393,10 @@ export function intersectCurves(a: Curve, b: Curve): Hit[] {
     let evalAt: (t: number) => Vec2
     if (scanned.kind === "circle") {
       evalAt = (phi) => [scanned.c[0] + scanned.r * Math.cos(phi), scanned.c[1] + scanned.r * Math.sin(phi)]
-      params = scanRoots((phi) => residual(evalAt(phi)), 0, TWO_PI, true)
+      params = scanRoots((phi) => residual(evalAt(phi)), 0, TWO_PI)
     } else if (scanned.kind === "ellipse") {
       evalAt = (phi) => ellipseAt(scanned, phi)
-      params = scanRoots((phi) => residual(evalAt(phi)), 0, TWO_PI, true)
+      params = scanRoots((phi) => residual(evalAt(phi)), 0, TWO_PI)
     } else if (scanned.kind === "bezier") {
       const bz = scanned
       evalAt = (t) => bezierAt(bz, t)
@@ -447,7 +447,9 @@ export function intersectCurves(a: Curve, b: Curve): Hit[] {
       const ts = bezierLine(a as never, b as never)
       for (const t of ts) {
         const p = bezierAt(a as never, t)
-        hits.push({ point: p, tA: t, tB: paramOf(b, p) })
+        const lp = paramOf(b, p)
+        if (lp < -1e-9 || lp > 1 + 1e-9) continue  // crossing the infinite line, not the segment
+        hits.push({ point: p, tA: t, tB: lp })
       }
       break
     }
@@ -455,7 +457,9 @@ export function intersectCurves(a: Curve, b: Curve): Hit[] {
       const ts = bezierLine(b as never, a as never)
       for (const t of ts) {
         const p = bezierAt(b as never, t)
-        hits.push({ point: p, tA: paramOf(a, p), tB: t })
+        const lp = paramOf(a, p)
+        if (lp < -1e-9 || lp > 1 + 1e-9) continue
+        hits.push({ point: p, tA: lp, tB: t })
       }
       break
     }

@@ -114,6 +114,14 @@ describe("intersectCurves: bezier pairs", () => {
     expect(hits.length).toBeGreaterThanOrEqual(2)
   })
 
+  it("bezier crossing the line's infinite extension (not the segment) yields no hit", () => {
+    // short segment x in [0,1] on y=0; the bezier crosses y=0 at x=5, off-segment.
+    const seg = line([0, 0], [1, 0])
+    const bz = bezier([5, -1], [5, -0.33], [5, 0.33], [5, 1])
+    expect(intersectCurves(bz, seg)).toHaveLength(0)
+    expect(intersectCurves(seg, bz)).toHaveLength(0)
+  })
+
   it("two crossing beziers (X)", () => {
     const a = bezier([-2, -2], [-1, -1], [1, 1], [2, 2])
     const b = bezier([-2, 2], [-1, 1], [1, -1], [2, -2])

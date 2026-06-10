@@ -15,7 +15,7 @@ import {
   TOL_TOPOLOGY_SPLIT,
 } from "./solverConstants"
 import { makeAncestryQuery, emitWire, absolute, parseAncestry } from "./query"
-import { loopCentroid, loopSignedArea, pointInLoop } from "./profileLoops"
+import { loopCentroid, classifyLoops } from "./profileLoops"
 import { intersectCurves, type Curve } from "./curveIntersect"
 import { subdivideBezier, ellipsePointAt, type BezierCtrl } from "./curveSplit"
 
@@ -889,42 +889,18 @@ function buildStandaloneSurfaces(
 }
 
 /**
- * Fold nested loops into outer+holes by even/odd containment depth: a loop at
- * even depth is a filled face, the loops directly inside it (odd depth) are its
- * holes, loops inside those (even again) are solid islands, and so on. This is
- * the OCC face-with-holes model -- a donut is one area with one inner loop.
+ * Fold nested loops into outer+holes (the OCC face-with-holes model -- a donut
+ * is one area with one inner loop). Delegates the even/odd containment nesting to
+ * `classifyLoops` (the same engine the extrude path uses), then maps each outer
+ * loop back to its source surface to keep that surface's ancestry query.
  */
 function nestSurfaces(surfaces: Record<string, unknown>[]): Record<string, unknown>[] {
-  const n = surfaces.length
-  if (n < 2) return surfaces
+  if (surfaces.length < 2) return surfaces
   const loops = surfaces.map((s) => (s["boundary"] as Record<string, unknown>[]) ?? [])
-  const cents = loops.map((l) => loopCentroid(l))
-  const areas = loops.map((l) => Math.abs(loopSignedArea(l)))
-
-  const depth = new Array<number>(n).fill(0)
-  const parent = new Array<number>(n).fill(-1)
-  for (let i = 0; i < n; i++) {
-    let bestArea = Infinity
-    for (let j = 0; j < n; j++) {
-      if (i === j) continue
-      // A container must strictly enclose i: hold its centroid AND be larger
-      // (so two concentric loops sharing a centroid nest by area, not mutually).
-      if (areas[j] > areas[i] && pointInLoop(cents[i], loops[j])) {
-        depth[i] += 1
-        if (areas[j] < bestArea) {
-          bestArea = areas[j]
-          parent[i] = j  // the immediately enclosing loop is the smallest container
-        }
-      }
-    }
-  }
-
   const out: Record<string, unknown>[] = []
-  for (let i = 0; i < n; i++) {
-    if (depth[i] % 2 === 1) continue  // a hole: folded into its parent below
-    const holes: Record<string, unknown>[][] = []
-    for (let j = 0; j < n; j++) if (depth[j] % 2 === 1 && parent[j] === i) holes.push(loops[j])
-    const s = { ...surfaces[i] }
+  for (const [outer, holes] of classifyLoops(loops)) {
+    const idx = loops.indexOf(outer)  // classifyLoops returns the same array refs
+    const s = { ...surfaces[idx] }
     if (holes.length) s["holes"] = holes
     out.push(s)
   }
