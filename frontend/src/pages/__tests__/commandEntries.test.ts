@@ -18,6 +18,7 @@ const PROGRAMMATIC_ONLY = new Set([
   'set_tool_drag',
   'set_tool_mirror',
   'set_tool_point',
+  'set_tool_ellipse',  // toolbar-only (no keyboard shortcut), like point
   'set_tool_rect',
   'set_tool_center_rect',
   'add_hole',

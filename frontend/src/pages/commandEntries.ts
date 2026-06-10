@@ -1,4 +1,4 @@
-import { CONSTRAINTS } from '@/registry'
+import { CONSTRAINTS, ENTITIES } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
@@ -26,13 +26,16 @@ export function buildCommandEntries(
     { name: 'toggle_plane_visibility',        fn: handleTogglePlaneVisibility },
     { name: 'set_tool_select',       fn: () => getState().setActiveTool(null) },
     { name: 'set_tool_drag',         fn: () => getState().setActiveTool('drag') },
-    { name: 'set_tool_line',         fn: () => getState().setActiveTool('line') },
-    { name: 'set_tool_circle',       fn: () => getState().setActiveTool('circle') },
-    { name: 'set_tool_arc',          fn: () => getState().setActiveTool('arc') },
-    { name: 'set_tool_point',        fn: () => getState().setActiveTool('point') },
+    // Drawing-entity tools are derived from the registry so a newly registered
+    // entity (e.g. ellipse) automatically gets its set_tool_<activeTool> command
+    // -- the toolbar button dispatches set_tool_<activeTool>, so a missing entry
+    // silently makes the tool unclickable.
+    ...ENTITIES.filter(e => e.activeTool).map(e => ({
+      name: 'set_tool_' + e.activeTool,
+      fn: () => getState().setActiveTool(e.activeTool!),
+    })),
     { name: 'set_tool_rect',         fn: () => getState().setActiveTool('rect') },
     { name: 'set_tool_center_rect',  fn: () => getState().setActiveTool('center_rect') },
-    { name: 'set_tool_project',      fn: () => getState().setActiveTool('project') },
     { name: 'set_tool_dimension',    fn: () => getState().setActiveTool('dimension') },
     { name: 'toggle_construction',   fn: () => getState().toggleConstruction() },
     ...CONSTRAINTS.map(c => ({
