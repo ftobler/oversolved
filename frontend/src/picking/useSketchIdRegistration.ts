@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
-import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
+import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
-import { sampleArcCCW } from '@/components/sketch/sketch_helpers'
+import { sampleArcCCW, sampleEllipse } from '@/components/sketch/sketch_helpers'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and
@@ -65,7 +65,7 @@ interface Vertices {
   vertexQueries: string[]
 }
 
-function buildSketchSegments(
+export function buildSketchSegments(
   featureId: string,
   sketch: Sketch,
   planeMatrix: THREE.Matrix4,
@@ -93,6 +93,12 @@ function buildSketchSegments(
       for (let i = 0; i < pts.length - 1; i++) {
         appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
       }
+    } else if (kind === 'ellipse') {
+      const el = entity as Ellipse
+      const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
+      for (let i = 0; i < pts.length - 1; i++) {
+        appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+      }
     } else {
       // point entities have no segments; they show only via the vertex layer.
       continue
@@ -111,7 +117,7 @@ function buildSketchSegments(
   }
 }
 
-function buildSketchVertices(
+export function buildSketchVertices(
   featureId: string,
   sketch: Sketch,
   planeMatrix: THREE.Matrix4,
@@ -140,6 +146,9 @@ function buildSketchVertices(
     } else if (kind === 'circle') {
       const c = entity as Circle
       push(entityId, 'center', c.center[0], c.center[1])
+    } else if (kind === 'ellipse') {
+      const el = entity as Ellipse
+      push(entityId, 'center', el.center[0], el.center[1])
     } else if (kind === 'point') {
       const p = entity as PointEntity
       push(entityId, 'xy', p.x, p.y)
