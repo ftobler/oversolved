@@ -10,7 +10,10 @@ function makeDoc(): PartDoc {
       {
         id: 'sk1',
         kind: 'sketch',
-        entities: [{ id: 'line1', kind: 'line' }],
+        entities: [
+          { id: 'line1', kind: 'line' },
+          { id: 'proj1', kind: 'ellipse', source: '?edge;ellipse' },
+        ],
         constraints: [
           { id: 'c1', kind: 'horizontal' },
           { id: 'c2', kind: 'vertical' },
@@ -59,5 +62,29 @@ describe('applyGeometryToFeature', () => {
     expect(() =>
       applyGeometryToFeature(doc, 'missing', {}, new Set())
     ).not.toThrow()
+  })
+
+  it('adopts the resolved kind of a projected entity (ellipse -> spline)', () => {
+    // A partial elliptical edge lowers to a spline (8 params); the doc entity
+    // was declared 'ellipse' at pick time and must adopt the resolved kind so
+    // its kind and stored params stay consistent.
+    const doc = makeDoc()
+    applyGeometryToFeature(
+      doc, 'sk1',
+      { proj1: [0, 0, 1, 1, 2, 1, 3, 0] },
+      new Set(),
+      { proj1: 'spline' },
+    )
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const proj = feat.entities!.find(e => e.id === 'proj1')!
+    expect(proj.kind).toBe('spline')
+    expect(feat.initial!.proj1).toHaveLength(8)
+  })
+
+  it('leaves kinds untouched when no resolved kinds are given', () => {
+    const doc = makeDoc()
+    applyGeometryToFeature(doc, 'sk1', { proj1: [0, 0, 4, 2, 0] }, new Set())
+    const proj = doc.features!.find(f => f.id === 'sk1')!.entities!.find(e => e.id === 'proj1')!
+    expect(proj.kind).toBe('ellipse')
   })
 })

@@ -56,12 +56,12 @@ describe('resolve3dGeometry', () => {
 describe('projectTo2d basic kinds', () => {
   it('point', () => {
     const g: Resolved3dGeometry = { kindH: 'point', data: { point: [3, 4, 9] } }
-    expect(projectTo2d('point', g, XY)).toEqual({ kind: 'point', params: [3, 4] })
+    expect(projectTo2d(g, XY)).toEqual({ kind: 'point', params: [3, 4] })
   })
 
   it('line', () => {
     const g: Resolved3dGeometry = { kindH: 'line', data: { start: [0, 0, 5], end: [4, 2, 5] } }
-    expect(projectTo2d('line', g, XY)).toEqual({ kind: 'line', params: [0, 0, 4, 2] })
+    expect(projectTo2d(g, XY)).toEqual({ kind: 'line', params: [0, 0, 4, 2] })
   })
 })
 
@@ -71,7 +71,7 @@ describe('orientation-aware circle projection', () => {
       { type: 'edge', kind: 'circle', center: [1, 2, 7], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0] },
       '?e',
     )!
-    const out = projectTo2d('circle', g, XY)
+    const out = projectTo2d(g, XY)
     expect(out?.kind).toBe('circle')
     expect(out?.params).toEqual([1, 2, 5])
   })
@@ -84,7 +84,7 @@ describe('orientation-aware circle projection', () => {
       { type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 5, axis, x_axis: [1, 0, 0] },
       '?e',
     )!
-    const out = projectTo2d('circle', g, XY)
+    const out = projectTo2d(g, XY)
     expect(out?.kind).toBe('ellipse')
     const [cx, cy, a, b, theta] = out!.params
     expect(cx).toBeCloseTo(0)
@@ -109,7 +109,7 @@ describe('ellipse edge projection', () => {
       { type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2, axis: [0, 0, 1], x_axis: [1, 0, 0] },
       '?e',
     )!
-    const out = projectTo2d('ellipse', g, XY)
+    const out = projectTo2d(g, XY)
     expect(out?.kind).toBe('ellipse')
     const [cx, cy, a, b, theta] = out!.params
     expect(cx).toBeCloseTo(0)
@@ -127,7 +127,7 @@ describe('ellipse edge projection', () => {
       },
       '?e',
     )!
-    const out = projectTo2d('ellipse', g, XY)!
+    const out = projectTo2d(g, XY)!
     expect(out.kind).toBe('spline')
     const p = out.params
     // Endpoints pinned: t=0 -> [4,0], t=pi/2 -> [0,2].
@@ -144,7 +144,7 @@ describe('ellipse edge projection', () => {
       { type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2, axis: [0, 0, 1], x_axis },
       '?e',
     )!
-    const out = projectTo2d('ellipse', g, XY)!
+    const out = projectTo2d(g, XY)!
     const [, , a, b, theta] = out.params
     expect(a).toBeCloseTo(4)
     expect(b).toBeCloseTo(2)
@@ -161,7 +161,7 @@ describe('arc projection (3D body arc)', () => {
       },
       '?e',
     )!
-    const out = projectTo2d('arc', g, XY)!
+    const out = projectTo2d(g, XY)!
     expect(out.kind).toBe('arc')
     const [cx, cy, r, sa, ea] = out.params
     expect(cx).toBeCloseTo(0)
@@ -186,7 +186,7 @@ describe('spline projection', () => {
       pts3d.push([bez(t, 0), bez(t, 1), 0])
     }
     const g: Resolved3dGeometry = { kindH: 'spline', data: { points: pts3d } }
-    const out = projectTo2d('spline', g, XY)!
+    const out = projectTo2d(g, XY)!
     expect(out.kind).toBe('spline')
     const p = out.params
     expect(p[0]).toBeCloseTo(0)  // P1

@@ -208,24 +208,30 @@ export function resolve3dGeometry(data: Dict, _sourceQuery: string): Resolved3dG
   return null
 }
 
-/** Project resolved 3D geometry to entity params on the sketch plane. Returns
- *  the resolved kind (a tilted circle lowers to 'ellipse') plus the params. */
+/**
+ * Project resolved 3D geometry to entity params on the sketch plane. Branches on
+ * the *resolved* geometry kind (`g3d.kindH`), never the declared entity kind:
+ * the declared kind is only a pick-time hint and can disagree with the source
+ * (e.g. after this very function promotes a circle to an ellipse, the doc entity
+ * becomes an ellipse while its source edge is still a circle). Returns the
+ * resolved kind plus params; a tilted circle lowers to 'ellipse', a partial
+ * ellipse to 'spline'.
+ */
 export function projectTo2d(
-  kind: string,
   g3d: Resolved3dGeometry,
   plane: PlaneFrame,
 ): ProjectedParams | null {
-  const { data } = g3d
-  if (kind === 'point') {
+  const { kindH, data } = g3d
+  if (kindH === 'point') {
     const pt = data.point as number[]
     return { kind: 'point', params: project3dTo2d(pt, plane) }
   }
-  if (kind === 'line') {
+  if (kindH === 'line') {
     const s2d = project3dTo2d(data.start as number[], plane)
     const e2d = project3dTo2d(data.end as number[], plane)
     return { kind: 'line', params: [...s2d, ...e2d] }
   }
-  if (kind === 'circle') {
+  if (kindH === 'circle') {
     const center = data.center as number[]
     const radius = data.radius as number
     const axis = data.axis as number[] | undefined
@@ -238,7 +244,7 @@ export function projectTo2d(
     const c2d = project3dTo2d(center, plane)
     return { kind: 'circle', params: [...c2d, radius] }
   }
-  if (kind === 'ellipse') {
+  if (kindH === 'ellipse') {
     const center = data.center as number[]
     const a = data.a as number
     const b = data.b as number
@@ -271,7 +277,7 @@ export function projectTo2d(
     const params = fitCubicBezier(pts2d)
     return params ? { kind: 'spline', params } : null
   }
-  if (kind === 'arc') {
+  if (kindH === 'arc') {
     const center = data.center as number[]
     const radius = data.radius as number
     const c2d = project3dTo2d(center, plane)
@@ -316,7 +322,7 @@ export function projectTo2d(
     const r2d = len2d([s2d[0] - c2d[0], s2d[1] - c2d[1]])
     return { kind: 'arc', params: [...c2d, r2d, sa, ea] }
   }
-  if (kind === 'spline') {
+  if (kindH === 'spline') {
     // Any sampled 3D curve (spline/NURBS) projects to 2D points, then a cubic
     // Bezier is least-squares fit to them -> the 8-param spline entity.
     const pts3d = data.points as number[][] | undefined

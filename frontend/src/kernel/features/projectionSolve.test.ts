@@ -73,5 +73,63 @@ describe('solveSketch projection lowering', () => {
     expect(g!.length).toBe(5)
     expect(g![2]).toBeCloseTo(5)              // a = R
     expect(g![3]).toBeCloseTo(5 * Math.cos(phi))  // b = R cos(phi)
+    // The kind change must be surfaced so the doc entity (declared 'circle')
+    // adopts 'ellipse' -- otherwise a 'circle' entity gets 5-param geometry.
+    expect(out.resolved_kinds?.e0).toBe('ellipse')
+  })
+
+  it('surfaces resolved_kinds=spline for a partial elliptical edge (declared ellipse)', () => {
+    if (!solveBytes) return
+    const partialEllipse: Dict = {
+      type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+      axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+    }
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'ell0', kind: 'ellipse', source: '?edge;ellipse' }],
+      initial: {},
+      constraints: [],
+    }
+    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
+    expect(out.status).not.toBe('error')
+    // 8 params => lowered to a spline; the doc entity must adopt 'spline' or a
+    // declared-'ellipse' entity renders 8 spline numbers as [cx,cy,a,b,theta].
+    expect(out.geometry?.ell0).toHaveLength(8)
+    expect(out.resolved_kinds?.ell0).toBe('spline')
+  })
+
+  it('converges: a doc entity already adopted as spline re-solves from an ellipse source', () => {
+    if (!solveBytes) return
+    // Second solve after convergence: the doc entity kind is now 'spline' (it
+    // adopted the resolved kind last solve) but its source edge is still an
+    // ellipse. Projection must branch on the resolved geometry, not the declared
+    // kind, or the spline branch reads a non-existent points array and fails.
+    const partialEllipse: Dict = {
+      type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+      axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+    }
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'ell0', kind: 'spline', source: '?edge;ellipse' }],
+      initial: {},
+      constraints: [],
+    }
+    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
+    expect(out.status).not.toBe('error')
+    expect(out.geometry?.ell0).toHaveLength(8)
+    expect(out.resolved_kinds).toBeUndefined()  // already spline -> no further change
+  })
+
+  it('does not surface a resolved kind when projection keeps the declared kind', () => {
+    if (!solveBytes) return
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'c0', kind: 'circle', source: '?edge;circle' }],
+      initial: {},
+      constraints: [],
+    }
+    const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, Body>)
+    // Parallel circle stays a circle -> no kind change -> no resolved_kinds.
+    expect(out.resolved_kinds).toBeUndefined()
   })
 })

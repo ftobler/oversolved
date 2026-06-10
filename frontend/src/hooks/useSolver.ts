@@ -83,6 +83,7 @@ export function useSolver(
   const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
     const result = data.result as Record<string, {
       geometry?: Record<string, number[]>
+      resolved_kinds?: Record<string, string>
       status?: string
       features?: Record<string, { status?: string }>
       topology?: import('@/types/cad').Topology
@@ -102,7 +103,7 @@ export function useSolver(
         const superfluousIds = feature.constraints
           ? new Set(Object.entries(feature.constraints).filter(([, c]) => c.superfluous).map(([cid]) => cid))
           : new Set<string>()
-        applyGeometryToFeature(cloned, id, feature.geometry, superfluousIds)
+        applyGeometryToFeature(cloned, id, feature.geometry, superfluousIds, feature.resolved_kinds)
         const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
         const astPosById = new Map(
           (featureDef?.constraints ?? [])

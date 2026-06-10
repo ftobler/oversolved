@@ -38,6 +38,10 @@ export interface SketchResult {
   status: string
   geometry?: Record<string, number[]>
   features?: Record<string, { status: string }>
+  /** For projected entities whose lowered kind differs from the kind declared
+   *  at pick time (tilted circle -> ellipse, partial ellipse -> spline): the
+   *  resolved kind, so the doc entity can adopt it and its params stay matched. */
+  resolved_kinds?: Record<string, string>
 }
 
 let solverBytes: SolveBytes | null = null
@@ -95,6 +99,9 @@ export function solveSketch(
   const entities = (feature.entities as Array<Dict>) ?? []
   const hasProjections = entities.some((e) => e.source)
   let loweredFeature = feature
+  // Projected entities whose lowered kind differs from the declared kind; the
+  // caller adopts these onto the doc entity so its params stay matched.
+  const resolvedKinds: Record<string, string> = {}
 
   if (hasProjections && entities.length > 0) {
     // Resolved params land in `initial` (keyed by entity id) -- the same place
@@ -122,10 +129,13 @@ export function solveSketch(
             const data3d = resolve3dGeometry(resolved, sourceStr)
             if (data3d) {
               const declaredKind = (ent.kind as string) ?? 'point'
-              const projected = projectTo2d(declaredKind, data3d, plane as PlaneFrame)
+              const projected = projectTo2d(data3d, plane as PlaneFrame)
               if (projected) {
                 initial[entId] = projected.params
-                // A tilted circle lowers to an ellipse: the resolved kind wins.
+                // A tilted circle lowers to an ellipse, a partial ellipse to a
+                // spline: the resolved kind wins, and is surfaced so the doc
+                // entity adopts it (its param count must match the geometry).
+                if (projected.kind !== declaredKind) resolvedKinds[entId] = projected.kind
                 return { ...ent, source: undefined, kind: projected.kind }
               }
             }
@@ -184,6 +194,7 @@ export function solveSketch(
     features,
     topology,
     plane_transform,
+    ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
     solve_ms: 0,
   }
 }
