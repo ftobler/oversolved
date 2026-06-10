@@ -91,6 +91,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-latest-arm64]
+        node-version: [20, 22, 24]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -105,9 +106,10 @@ jobs:
       - name: Generate constraint icons
         run: python oversolved/icons.py
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node v${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node-version }}
 
       - name: npm install
         run: npm install
