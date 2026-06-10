@@ -455,6 +455,38 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
   }
 }
 
+/**
+ * The repository payload registered for one B-rep edge. Carries every geometric
+ * field a consumer (projection lowering, measurements) might read: circle/arc
+ * use `radius`, ellipse needs `a`/`b` (semi-axes) -- omitting those makes a
+ * resolved elliptical edge unprojectable (resolve3dGeometry returns null).
+ */
+export function edgeAncestryPayload(
+  edge: Record<string, unknown>,
+  bodyId: string,
+  edgeCreatedBy: string,
+  idx: number,
+): Record<string, unknown> {
+  return {
+    type: edge.kind === 'line' ? 'straightedge' : 'edge',
+    body_id: bodyId,
+    created_by: edgeCreatedBy,
+    edge_index: idx,
+    kind: edge.kind,
+    start: edge.start,
+    end: edge.end,
+    center: edge.center,
+    radius: edge.radius,
+    a: edge.a,
+    b: edge.b,
+    axis: edge.axis,
+    x_axis: edge.x_axis,
+    angle_start: edge.angle_start,
+    angle_end: edge.angle_end,
+    classifiers: (edge.classifiers as string[]) ?? [],
+  }
+}
+
 function _registerBrepEdgeAncestry(
   globalRepo: Repository,
   body: Body,
@@ -481,23 +513,7 @@ function _registerBrepEdgeAncestry(
     } else if (body.profile_queries.length) {
       ancestorIds.push(...body.profile_queries)
     }
-    const edgeType = edge.kind === 'line' ? 'straightedge' : 'edge'
-    const payload = {
-      type: edgeType,
-      body_id: body.id,
-      created_by: edgeCreatedBy,
-      edge_index: idx,
-      kind: edge.kind,
-      start: edge.start,
-      end: edge.end,
-      center: edge.center,
-      radius: edge.radius,
-      axis: edge.axis,
-      x_axis: edge.x_axis,
-      angle_start: edge.angle_start,
-      angle_end: edge.angle_end,
-      classifiers: (edge.classifiers as string[]) ?? [],
-    }
+    const payload = edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx)
     const indexTag = emitWire(absolute(body.id, `edge${idx}`))
     evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
   }

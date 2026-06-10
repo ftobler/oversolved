@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   build,
+  edgeAncestryPayload,
   findFirstDirty,
   hashCheckpointSpec,
   hashResultDict,
@@ -8,6 +9,7 @@ import {
   type BuildDeps,
   type FeatureResult,
 } from './builder'
+import { resolve3dGeometry, projectTo2d } from './features/projectionLowering'
 import { Repository, makeAncestryQuery, ref, canonical } from './query'
 import { edgeGeometryHash } from './geomHash'
 import { repoFromSnapshot } from './builder'
@@ -901,5 +903,38 @@ describe('edge cases', () => {
     const sk1Ancestral = (sk1Snap.ancestral as Record<string, unknown>) ?? {}
     const hasSk2After = Object.keys(sk1Ancestral).some((k) => k.includes('@sk2'))
     expect(hasSk2After).toBe(false)
+  })
+})
+
+describe('edgeAncestryPayload (projection round-trip)', () => {
+  const XY = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
+
+  it('carries ellipse semi-axes so a resolved elliptical edge can be projected', () => {
+    // Regression: the payload used to omit a/b, so resolve3dGeometry returned
+    // null for a registered elliptical edge and the projection silently failed.
+    const edge = {
+      kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+      axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI,
+    }
+    const payload = edgeAncestryPayload(edge, '@body_1', '@cut1', 3)
+    expect(payload.a).toBe(4)
+    expect(payload.b).toBe(2)
+
+    // The payload (as globalRepo would hand it back) must resolve to 3D ellipse
+    // geometry and project to a 5-param ellipse on a coplanar sketch plane.
+    const g = resolve3dGeometry({ type: 'edge', ...payload }, '?e')
+    expect(g?.kindH).toBe('ellipse')
+    const out = projectTo2d(g!, XY)
+    expect(out?.kind).toBe('ellipse')
+    expect(out?.params).toHaveLength(5)
+  })
+
+  it('still carries radius for circle/arc edges', () => {
+    const payload = edgeAncestryPayload(
+      { kind: 'circle', center: [1, 2, 0], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0] },
+      '@body_1', '@ex1', 0,
+    )
+    expect(payload.radius).toBe(5)
+    expect(payload.type).toBe('edge')
   })
 })
