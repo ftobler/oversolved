@@ -86,8 +86,14 @@ export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
     for (const boundary of [(surface.boundary as Dict[]) ?? [], ...holes]) {
     if (boundary.length === 0) continue
 
+    // A full ellipse is a single self-closed edge with no shared endpoints: it is
+    // its own complete loop. (The endpoint-chaining below needs start/end edges,
+    // which a full ellipse lacks; a sliced ellipse arrives as ellipse_arc edges.)
+    for (const e of boundary) if (e.kind === 'ellipse') allLoops.push([e])
+
     const rawEdges: [number[], number[], Dict][] = []
     for (const e of boundary) {
+      if (e.kind === 'ellipse') continue
       const s = e.start as number[] | undefined | null
       const en = e.end as number[] | undefined | null
       if (s !== undefined && s !== null && en !== undefined && en !== null) {

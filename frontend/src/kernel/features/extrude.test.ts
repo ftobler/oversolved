@@ -39,8 +39,9 @@ describe('solveExtrude guard paths', () => {
 
   it('reads sketch/distance from the nested extrude sub-dict', () => {
     // An empty topology resolves to no loops; collectExtrudeLoops still succeeds
-    // (registers the top face), so we reach the "no closed profile" warning
-    // rather than an error -- proving the sub-dict merge + $sketch path ran.
+    // (registers the top face), so we reach the "no closed profile" branch --
+    // proving the sub-dict merge + $sketch path ran. A part-less extrude is now
+    // surfaced as a failure (status error), not a silent ok.
     const repo = new Repository()
     repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
     repo.register('_topo_sk', { surfaces: [] })
@@ -52,7 +53,8 @@ describe('solveExtrude guard paths', () => {
       repo,
       {},
     )
-    expect(result.status).toBe('ok')
+    expect(result.status).toBe('error')
+    expect(result.exception).toMatch(/no closed profile/)
     expect(result.mesh_warning).toMatch(/no closed profile/)
   })
 })

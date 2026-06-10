@@ -131,8 +131,11 @@ export function solveExtrude(
 
   let toolShape: OccShape
   if (cqFaces.length === 0 && allLoops.length === 0) {
-    // Empty-but-valid profile: no geometry. (Python falls through to a NameError
-    // here; we return the warning instead, the only reachable observable.)
+    // No profile geometry resolved -> no part. A part-less extrude is a failed
+    // extrude (surfaced as a red feature), not a silent ok. (profileErrors are
+    // already empty here -- a non-empty set threw above.)
+    result.status = 'error'
+    result.exception = 'extrude: no closed profile found in the referenced sketch; no part created'
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
   } else if (cqFaces.length > 0 && allLoops.length === 0) {

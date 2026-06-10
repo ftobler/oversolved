@@ -82,6 +82,33 @@ describe('extractProfileLoops parity', () => {
       expectClose(extractProfileLoops(c.surfaces as Record<string, unknown>[]), c.expected)
     })
   }
+
+  it('a full-ellipse surface yields its single closed loop (no start/end edges)', () => {
+    // A standalone full ellipse boundary is one self-closed `ellipse` edge with
+    // null endpoints; it must still produce a profile loop to extrude into a part.
+    const surfaces = [
+      { boundary: [{ kind: 'ellipse', center: [0, 0], a: 5, b: 2.5, theta: 0, start_vertex: null, end_vertex: null, id: 'e1' }], query: '?x' },
+    ]
+    const loops = extractProfileLoops(surfaces as Record<string, unknown>[])
+    expect(loops).toHaveLength(1)
+    expect(loops[0]).toHaveLength(1)
+    expect(loops[0][0].kind).toBe('ellipse')
+  })
+
+  it('a sliced ellipse surface (ellipse_arc + line) still chains into a loop', () => {
+    const surfaces = [
+      {
+        boundary: [
+          { kind: 'ellipse_arc', center: [0, 0], a: 5, b: 2.5, theta: 0, angle_start_deg: 90, angle_end_deg: 270, ccw: true, start: [0, 2.5], end: [0, -2.5] },
+          { kind: 'line', start: [0, -2.5], end: [0, 2.5] },
+        ],
+        query: '?y',
+      },
+    ]
+    const loops = extractProfileLoops(surfaces as Record<string, unknown>[])
+    expect(loops).toHaveLength(1)
+    expect(loops[0].length).toBe(2)
+  })
 })
 
 describe('resolveDirection parity', () => {

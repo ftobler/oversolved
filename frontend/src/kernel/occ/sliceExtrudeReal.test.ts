@@ -10,7 +10,7 @@ import { DisposeScope } from './disposeScope'
 import { volumeOf } from './booleans'
 import { extrudeProfileWithLineage } from './prismLineage'
 import { detectTopology } from '../topology'
-import type { PlaneLike } from '../features/shared'
+import { extractProfileLoops, type PlaneLike } from '../features/shared'
 import type { LoopEdge } from '../profileLoops'
 
 const oc = await loadOcc()
@@ -23,6 +23,21 @@ const loopsOf = (s: Geom): LoopEdge[][] => [
 ]
 
 describe.skipIf(!oc)('sliced-curve profile extrude (real OCC)', () => {
+  it('vanilla full ellipse extrudes through extractProfileLoops to a part', () => {
+    // Regression: a standalone full-ellipse surface (single self-closed `ellipse`
+    // edge, null endpoints) must survive extractProfileLoops and extrude.
+    const scope = new DisposeScope()
+    const topo = detectTopology({ e1: { kind: 'ellipse', center: [0, 0], a: 5, b: 2.5, theta: 0 } }, 'sk')
+    expect(topo.surfaces).toHaveLength(1)
+    const loops = extractProfileLoops(topo.surfaces as Geom[]) as LoopEdge[][]
+    expect(loops).toHaveLength(1)
+    const { solid } = extrudeProfileWithLineage(oc!, scope, loops, XY, [0, 0, 1], 10, 'sk')
+    const vol = volumeOf(oc!, scope, solid)
+    expect(vol).toBeGreaterThan(Math.PI * 5 * 2.5 * 10 * 0.9)  // ~= 392.7
+    expect(vol).toBeLessThan(Math.PI * 5 * 2.5 * 10 * 1.05)
+    scope.dispose()
+  })
+
   it('occ-extrude-half-ellipse: a minor-axis-sliced half ellipse ~= half the prism', () => {
     const scope = new DisposeScope()
     const topo = detectTopology(
