@@ -130,6 +130,8 @@ export interface Mesh3D {
   face_data?: FaceData[]
   triangle_to_face?: number[]
   face_queries?: string[]
+  /** Per-face boundary edge ancestry queries, aligned with `face_queries`. */
+  face_edge_queries?: string[][]
 }
 
 export interface EdgeDataLine {

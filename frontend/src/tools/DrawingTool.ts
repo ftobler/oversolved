@@ -16,6 +16,7 @@ export interface DrawingToolContext extends ToolContext {
   hoveredVertexPosition: Point | null
   hoveredSnapKind: SnapKind | null
   hoveredSourceKind?: string | null
+  hoveredFaceEdges?: { source: string; kind: string }[] | null
   alignmentSnapPoint: Point | null
   alignmentSnapKind: string | null
   alignmentSnapVertexId: string | null
@@ -47,6 +48,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         hoveredSnapKind: context.hoveredSnapKind,
         hoveredSelectionId: context.hoveredSelectionId,
         hoveredSourceKind: context.hoveredSourceKind,
+        hoveredFaceEdges: context.hoveredFaceEdges,
         drawSnapVertexId: context.drawSnapVertexId,
         alignmentSnapPoint: context.alignmentSnapPoint,
         alignmentSnapKind: context.alignmentSnapKind,

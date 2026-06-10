@@ -17,6 +17,10 @@ export interface DrawSnapState {
   /** Curve kind of the hovered body edge ('line'|'circle'|'arc'|'spline'),
    *  used by the project tool to choose the projected entity kind. */
   hoveredSourceKind?: string | null
+  /** When the hovered selection is a body face, the projection sources of its
+   *  boundary edges. The project tool lowers a face pick into one projected
+   *  entity per boundary edge (a closed wire). */
+  hoveredFaceEdges?: { source: string; kind: string }[] | null
   drawSnapVertexId: string | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: string | null
@@ -287,6 +291,7 @@ export function computeDrawClick(
     // Body geometry pick: ancestry query from face/edge/vertex layer
     if (hid.startsWith('?')) {
       let kind = 'point'
+      let isFace = false
       try {
         const q = parseQuery(hid)
         if (q.kind === 'ancestry' && q.typeRestriction) {
@@ -301,9 +306,22 @@ export function computeDrawClick(
             else if (snap.hoveredSourceKind === 'ellipse') kind = 'ellipse'
             else if (snap.hoveredSourceKind === 'spline') kind = 'spline'
             else kind = 'line'
+          } else if (tr === 'face' || tr === 'flatface' || tr === 'cylinderface') {
+            isFace = true
           }
         }
       } catch { /* parse failure: keep default point */ }
+
+      // A face pick projects its whole boundary as a closed wire: one projected
+      // entity per boundary edge. Without resolved boundary edges (older body or
+      // no topology) fall back to projecting the face centroid as a point.
+      if (isFace && snap.hoveredFaceEdges && snap.hoveredFaceEdges.length > 0) {
+        const mutations: Mutation[] = snap.hoveredFaceEdges.map((e) => ({
+          type: 'add_projected_entity', featureId, kind: e.kind, source: e.source,
+        }))
+        return { mutations, nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+      }
+
       return {
         mutations: [{ type: 'add_projected_entity', featureId, kind, source: hid }],
         nextDrawPoints: null,

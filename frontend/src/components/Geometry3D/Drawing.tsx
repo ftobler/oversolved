@@ -15,7 +15,7 @@ import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
-import { findEdgeKindForQuery } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
 export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -163,6 +163,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           normalSelection: state.normalSelection,
           hoveredSelectionId: state.hoveredSelectionId,
           hoveredSourceKind: findEdgeKindForQuery(state.hoveredSelectionId ?? '') ?? null,
+          hoveredFaceEdges: findFaceBoundaryEdges(state.hoveredSelectionId ?? ''),
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
           hoveredVertexId,

@@ -64,6 +64,27 @@ export function findBodyForFaceQuery(q: string): { body: BodyDispatchCallbacks; 
   return null
 }
 
+/**
+ * Resolve a face query to the projection sources of its boundary edges: one
+ * `{ source, kind }` per boundary edge, so the project tool can lower a face
+ * pick into a closed wire of projected entities. Returns null when the query is
+ * not a registered face or the body carries no per-face edge queries.
+ */
+export function findFaceBoundaryEdges(q: string): { source: string; kind: string }[] | null {
+  for (const body of byBodyKey.values()) {
+    const idx = body.mesh.face_queries?.indexOf(q) ?? -1
+    if (idx < 0) continue
+    const edgeQs = body.mesh.face_edge_queries?.[idx]
+    if (!edgeQs || edgeQs.length === 0) return null
+    return edgeQs.map((source) => {
+      const ei = body.edgeQueries?.indexOf(source) ?? -1
+      const kind = (ei >= 0 ? body.edgeKinds?.[ei] : undefined) ?? 'line'
+      return { source, kind }
+    })
+  }
+  return null
+}
+
 /** Clear face geometry on every registered body. */
 export function clearAllBodyHover(): void {
   for (const body of byBodyKey.values()) {

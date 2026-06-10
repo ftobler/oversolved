@@ -504,6 +504,33 @@ describe('computeDrawClick - project tool', () => {
     }
   })
 
+  it('projects a face as a closed wire: one entity per boundary edge', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = '?4,4;@bxx@fyy:flatface'
+    snap.hoveredFaceEdges = [
+      { source: '?a;e0:edge', kind: 'line' },
+      { source: '?a;e1:edge', kind: 'circle' },
+      { source: '?a;e2:edge', kind: 'line' },
+    ]
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(3)
+    expect(result.mutations.every(m => m.type === 'add_projected_entity')).toBe(true)
+    const kinds = result.mutations.map(m => (m.type === 'add_projected_entity' ? m.kind : ''))
+    expect(kinds).toEqual(['line', 'circle', 'line'])
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('falls back to a single point projection for a face with no boundary edges', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = '?4,4;@bxx@fyy:flatface'
+    snap.hoveredFaceEdges = null
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].kind).toBe('point')
+    }
+  })
+
   it('emits add_projected_entity for face ancestry query pick', () => {
     const snap = emptySnap()
     const ancQuery = '?4,4;@bxx@fyy:flatface'

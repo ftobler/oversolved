@@ -17,8 +17,9 @@
 
 import { DisposeScope } from './disposeScope'
 import { HandleTable, type OccHandle } from './handleTable'
-import type { OccModule, OccShape } from './occTypes'
+import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import {
+  edgeToGeom,
   faceCentroid,
   faceNormal,
   faceSurfaceType,
@@ -50,6 +51,8 @@ export interface TessMesh {
   face_data: FaceDatum[]
   triangle_to_face: number[]
   face_queries: string[]
+  /** Per-face boundary edge ancestry queries, aligned with `face_queries`. */
+  face_edge_queries?: string[][]
   is_fallback: boolean
 }
 
@@ -426,6 +429,77 @@ export function solidToEdges(
       }
     }
     return { edges, edge_queries }
+  } finally {
+    scope.dispose()
+  }
+}
+
+/** The sorted unique edges of a solid, retaining the OCC sub-shape so a face's
+ *  boundary edge can be matched back to its position (and thus its query). The
+ *  sort mirrors `solidToEdges` exactly, so index i lines up with `edge_queries[i]`. */
+function sortedUniqueEdges(oc: OccModule, scope: DisposeScope, solid: OccShape): OccSubShape[] {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  const uniq: OccSubShape[] = []
+  for (; exp.More(); exp.Next()) {
+    const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
+    if (!uniq.some((u) => u.IsSame(edge))) uniq.push(edge)
+  }
+  const entries = uniq.map((shape) => ({ shape, sortKey: edgeToGeom(oc, scope, shape as unknown as OccShape).sortKey }))
+  entries.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))
+  return entries.map((e) => e.shape)
+}
+
+/**
+ * For each face of a solid (in the same flat-before-curved order as
+ * `solidToMesh().face_queries`), the ancestry queries of its boundary edges.
+ * `edgeQueries` is the sorted per-edge query list from `solidToEdges`; each
+ * boundary edge is matched to its sorted position by topological identity
+ * (`IsSame`) so the returned queries are exactly the ones a direct edge pick
+ * would carry. This is what lets the project tool turn a face pick into a closed
+ * wire of projected entities (full-brep-projection face silhouette).
+ */
+export function solidToFaceEdgeQueries(
+  oc: OccModule,
+  table: HandleTable,
+  handle: OccHandle,
+  edgeQueries: string[],
+): string[][] {
+  const solid = table.get(handle)
+  const scope = new DisposeScope()
+  try {
+    const sortedEdges = sortedUniqueEdges(oc, scope, solid)
+    const indexOfEdge = (edge: OccSubShape): number =>
+      sortedEdges.findIndex((e) => e.IsSame(edge))
+
+    // Faces in the same sorted order solidToMesh/readShapeFaceMetadata use.
+    const E = oc.TopAbs_ShapeEnum
+    const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    const faces: { shape: OccShape; sortKey: number[] }[] = []
+    for (; fexp.More(); fexp.Next()) {
+      const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+      const item: FaceSortItem = {
+        centroid: faceCentroid(oc, scope, face),
+        normal: faceNormal(oc, scope, face),
+        surfaceType: faceSurfaceType(oc, scope, face),
+      }
+      faces.push({ shape: face, sortKey: faceSortKey(item) })
+    }
+    faces.sort((a, b) => compareFaceSortKeys(a.sortKey, b.sortKey))
+
+    return faces.map(({ shape }) => {
+      const seen: OccSubShape[] = []
+      const queries: string[] = []
+      const eexp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+      for (; eexp.More(); eexp.Next()) {
+        const edge = scope.track(oc.TopoDS.Edge_1(eexp.Current())) as OccSubShape
+        if (seen.some((s) => s.IsSame(edge))) continue
+        seen.push(edge)
+        const idx = indexOfEdge(edge)
+        if (idx >= 0 && edgeQueries[idx]) queries.push(edgeQueries[idx])
+      }
+      return queries
+    })
   } finally {
     scope.dispose()
   }

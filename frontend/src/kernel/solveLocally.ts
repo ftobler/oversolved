@@ -16,7 +16,7 @@ import { postRegister } from './features/postRegister'
 import { loadOccWeb } from './occ/loadOccWeb'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices, readShapeFaceMetadata } from './occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
 import { copyShape } from './occ/transforms'
@@ -114,6 +114,8 @@ function tessellateBodies(
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
       })
+      // Per-face boundary edge queries: a face pick projects as a closed wire.
+      mesh.face_edge_queries = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
