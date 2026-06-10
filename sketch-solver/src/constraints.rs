@@ -26,6 +26,15 @@ pub enum PointSelector {
     End,
     Center,
     Xy,
+    /// Ellipse axis endpoints (the 4 control points). `Major`/`Minor` are the
+    /// positive ends of the major/minor axes; `*Neg` the negative ends. The
+    /// distance from the ellipse center to a major endpoint is `a`, to a minor
+    /// endpoint is `b`, so a `point_distance(center, endpoint)` dimension pins
+    /// the major/minor radius without a dedicated constraint kind.
+    Major,
+    MajorNeg,
+    Minor,
+    MinorNeg,
 }
 
 impl PointSelector {
@@ -36,6 +45,10 @@ impl PointSelector {
             2 => PointSelector::End,
             3 => PointSelector::Center,
             4 => PointSelector::Xy,
+            5 => PointSelector::Major,
+            6 => PointSelector::MajorNeg,
+            7 => PointSelector::Minor,
+            8 => PointSelector::MinorNeg,
             _ => return None,
         })
     }
@@ -47,6 +60,10 @@ impl PointSelector {
             PointSelector::End => 2,
             PointSelector::Center => 3,
             PointSelector::Xy => 4,
+            PointSelector::Major => 5,
+            PointSelector::MajorNeg => 6,
+            PointSelector::Minor => 7,
+            PointSelector::MinorNeg => 8,
         }
     }
 

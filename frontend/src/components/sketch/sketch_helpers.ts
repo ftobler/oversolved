@@ -103,6 +103,29 @@ export function sampleEllipse(
   return pts
 }
 
+// The 4 ellipse control points: positive/negative ends of the major and minor
+// axes. These vertex keys are shared across query resolution (geometryMapping),
+// constraint lowering (lowerSketch SEL_CODE / partDocToSketches), picking, and
+// rendering -- and mirror PointSelector Major/MajorNeg/Minor/MinorNeg in the
+// Rust solver. A point_distance from 'center' to 'major1'/'minor1' dimensions
+// the major/minor radius.
+export const ELLIPSE_AXIS_KEYS = ['major1', 'major2', 'minor1', 'minor2'] as const
+export type EllipseAxisKey = typeof ELLIPSE_AXIS_KEYS[number]
+
+/** The 4 axis endpoints of an ellipse, derived from center/a/b/theta(deg). */
+export function ellipseAxisPoints(
+  cx: number, cy: number, a: number, b: number, thetaDeg: number,
+): Record<EllipseAxisKey, [number, number]> {
+  const th = thetaDeg * (Math.PI / 180)
+  const ct = Math.cos(th), st = Math.sin(th)
+  return {
+    major1: [cx + a * ct, cy + a * st],
+    major2: [cx - a * ct, cy - a * st],
+    minor1: [cx - b * st, cy + b * ct],
+    minor2: [cx + b * st, cy - b * ct],
+  }
+}
+
 export function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
   const kind = getEntityKind(entity)
   if (kind === 'arc') {

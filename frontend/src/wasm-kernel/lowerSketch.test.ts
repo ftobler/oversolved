@@ -52,4 +52,24 @@ describe('lowerSketch ellipse entity', () => {
     expect(b.ref).toEqual({ kind: 'entity', index: 1, point: Sel.absent })   // e1, no selector
     expect(input.params.slice(2, 7)).toEqual([0, 0, 4, 2, 0])  // ellipse block
   })
+
+  it('lowers a center->major1 point_distance to the major-axis Sel code', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'e1', kind: 'ellipse' }],
+      initial: { e1: [0, 0, 4, 2, 0] },
+      constraints: [{
+        kind: 'point_distance',
+        a: { entity: 'e1', point: 'center' },
+        b: { entity: 'e1', point: 'major1' },
+        value: 4,
+      }],
+    })
+    const pd = input.constraints.find(c => c.kind === 12)!  // point_distance
+    const a = pd.refs.find(r => r.role === Role.a)!
+    const b = pd.refs.find(r => r.role === Role.b)!
+    expect(a.ref).toEqual({ kind: 'entity', index: 0, point: Sel.center })
+    expect(b.ref).toEqual({ kind: 'entity', index: 0, point: Sel.major })  // code 5
+    expect(pd.value).toBe(4)
+  })
 })

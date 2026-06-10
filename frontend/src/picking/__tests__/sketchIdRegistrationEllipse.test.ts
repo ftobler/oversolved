@@ -32,4 +32,11 @@ describe('useSketchIdRegistration ellipse', () => {
     expect(vtx.vertices[idx][0]).toBeCloseTo(1)
     expect(vtx.vertices[idx][1]).toBeCloseTo(2)
   })
+
+  it('registers the 4 axis control points as pickable vertices', () => {
+    const vtx = buildSketchVertices('S1', ellipseSketch(), identity)
+    for (const key of ['major1', 'major2', 'minor1', 'minor2']) {
+      expect(vtx.vertexQueries).toContain(`vertex:S1:e1:${key}`)
+    }
+  })
 })

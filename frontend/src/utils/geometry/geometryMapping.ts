@@ -7,6 +7,7 @@ import type {
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
+import { ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
@@ -102,7 +103,7 @@ export function unflattenGeometry(
   return result
 }
 
-const KNOWN_POINTS = ['start', 'end', 'center', 'xy'] as const
+const KNOWN_POINTS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2'] as const
 
 /** Resolve a query string (e.g. "$line1" or "$arc1start") to an {entity, point?} ref.
  *  Tries known sub-element suffixes first, then falls back to a bare entity lookup. */
@@ -136,7 +137,11 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
   } else if (kind === 'circle') {
     return (entity as Circle | ProjectedCircle).center
   } else if (kind === 'ellipse') {
-    return [...(entity as Ellipse | ProjectedEllipse).center] as [number, number]
+    const el = entity as Ellipse | ProjectedEllipse
+    if (pt === 'major1' || pt === 'major2' || pt === 'minor1' || pt === 'minor2') {
+      return ellipseAxisPoints(el.center[0], el.center[1], el.a, el.b, el.theta)[pt]
+    }
+    return [...el.center] as [number, number]
   } else {
     const p = entity as PointEntity | ProjectedPointEntity
     return [p.x, p.y]

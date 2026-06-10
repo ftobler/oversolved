@@ -36,9 +36,14 @@ export function parseQuery(s: string): Query {
   throw new Error(`Unrecognized query string: ${s}`)
 }
 
+// Vertex-key suffixes a local query may carry. The ellipse axis-endpoint keys
+// (major1/major2/minor1/minor2) sit alongside the base line/arc/circle keys so
+// `$<eid>major1` round-trips to { eid, sub: 'major1' }.
+const LOCAL_SUBS = ["start", "end", "center", "xy", "major1", "major2", "minor1", "minor2"] as const
+
 function _parseLocal(s: string): LocalQuery {
   const body = s.slice(1)
-  for (const pt of ["start", "end", "center", "xy"]) {
+  for (const pt of LOCAL_SUBS) {
     if (body.length > pt.length && body.endsWith(pt))
       return { kind: "local", eid: body.slice(0, -pt.length), sub: pt }
   }

@@ -38,7 +38,12 @@ export const Role = {
   point_b: 7,
 } as const
 
-export const Sel = { absent: 0, start: 1, end: 2, center: 3, xy: 4 } as const
+export const Sel = {
+  absent: 0, start: 1, end: 2, center: 3, xy: 4,
+  // Ellipse axis endpoints (control points), mirroring PointSelector in
+  // sketch-solver/src/constraints.rs.
+  major: 5, majorNeg: 6, minor: 7, minorNeg: 8,
+} as const
 
 export const AxisCode: Record<string, number> = { x: 0, y: 1, both: 2 }
 

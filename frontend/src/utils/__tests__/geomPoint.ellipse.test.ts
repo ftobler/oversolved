@@ -24,4 +24,13 @@ describe('geomPoint for ellipse', () => {
   it('returns null for a missing entity', () => {
     expect(geomPoint(sketch, { entity: 'nope' })).toBeNull()
   })
+
+  it('resolves the 4 axis control points', () => {
+    // axis-aligned ellipse for easy expectations
+    const s: Sketch = { e1: { center: [0, 0], a: 4, b: 2, theta: 0 } as Ellipse }
+    expect(geomPoint(s, { entity: 'e1', point: 'major1' })).toEqual([4, 0])
+    expect(geomPoint(s, { entity: 'e1', point: 'major2' })).toEqual([-4, 0])
+    expect(geomPoint(s, { entity: 'e1', point: 'minor1' })).toEqual([0, 2])
+    expect(geomPoint(s, { entity: 'e1', point: 'minor2' })).toEqual([0, -2])
+  })
 })

@@ -151,8 +151,21 @@ impl<'a> Problem<'a> {
                         }
                     }
                     Kind::Point => [ep[0], ep[1]],
-                    // Ellipse resolves to its center, like a circle/arc center.
-                    Kind::Ellipse => [ep[0], ep[1]],
+                    // Ellipse: center by default; the 4 axis endpoints resolve
+                    // from (a, b, theta) so a point_distance to the center pins
+                    // the major/minor radius. ep = [cx, cy, a, b, theta_deg].
+                    Kind::Ellipse => {
+                        let (cx, cy, a, b) = (ep[0], ep[1], ep[2], ep[3]);
+                        let theta = ep[4].to_radians();
+                        let (ct, st) = (theta.cos(), theta.sin());
+                        match point {
+                            PointSelector::Major => [cx + a * ct, cy + a * st],
+                            PointSelector::MajorNeg => [cx - a * ct, cy - a * st],
+                            PointSelector::Minor => [cx - b * st, cy + b * ct],
+                            PointSelector::MinorNeg => [cx + b * st, cy - b * ct],
+                            _ => [cx, cy],
+                        }
+                    }
                 }
             }
         }
@@ -706,11 +719,40 @@ impl<'a> Problem<'a> {
                             vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
                         }
                     }
-                    // Circle/Point/Ellipse resolve to their first two params
-                    // (the center / xy), so the point Jacobian is the identity
-                    // on those two columns.
-                    Kind::Circle | Kind::Point | Kind::Ellipse => {
+                    // Circle/Point resolve to their first two params (center /
+                    // xy), so the point Jacobian is the identity on those.
+                    Kind::Circle | Kind::Point => {
                         vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)]
+                    }
+                    // Ellipse: center is the identity; an axis endpoint also
+                    // depends on a/b and theta. Mirror the `point()` formulas.
+                    Kind::Ellipse => {
+                        let base = vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)];
+                        let ep = self.params(x, index);
+                        let (a, b) = (ep[2], ep[3]);
+                        let theta = ep[4].to_radians();
+                        let (ct, st) = (theta.cos(), theta.sin());
+                        let mut j = base;
+                        match point {
+                            PointSelector::Major => {
+                                j.push((off + 2, ct, st));
+                                j.push((off + 4, -a * st * DEG2RAD, a * ct * DEG2RAD));
+                            }
+                            PointSelector::MajorNeg => {
+                                j.push((off + 2, -ct, -st));
+                                j.push((off + 4, a * st * DEG2RAD, -a * ct * DEG2RAD));
+                            }
+                            PointSelector::Minor => {
+                                j.push((off + 3, -st, ct));
+                                j.push((off + 4, -b * ct * DEG2RAD, -b * st * DEG2RAD));
+                            }
+                            PointSelector::MinorNeg => {
+                                j.push((off + 3, st, -ct));
+                                j.push((off + 4, b * ct * DEG2RAD, b * st * DEG2RAD));
+                            }
+                            _ => {}
+                        }
+                        j
                     }
                     Kind::Arc => {
                         if point == PointSelector::Center {
@@ -1164,6 +1206,30 @@ mod tests {
     }
 
     #[test]
+    fn ellipse_axis_endpoints_resolve_from_params() {
+        // Center (1,2), a=4, b=2, theta=0: major axis along +x, minor along +y.
+        let inp = input(vec![ent(Kind::Ellipse, 0)], vec![1.0, 2.0, 4.0, 2.0, 0.0], vec![]);
+        let p = Problem::new(&inp);
+        let x = p.x0.clone();
+        let pt = |sel| p.point(&x, Ref::Entity { index: 0, point: sel });
+        assert_eq!(pt(PointSelector::Center), [1.0, 2.0]);
+        let maj = pt(PointSelector::Major);
+        assert!((maj[0] - 5.0).abs() < 1e-9 && (maj[1] - 2.0).abs() < 1e-9, "major+ {:?}", maj);
+        let majn = pt(PointSelector::MajorNeg);
+        assert!((majn[0] - (-3.0)).abs() < 1e-9 && (majn[1] - 2.0).abs() < 1e-9, "major- {:?}", majn);
+        let min = pt(PointSelector::Minor);
+        assert!((min[0] - 1.0).abs() < 1e-9 && (min[1] - 4.0).abs() < 1e-9, "minor+ {:?}", min);
+        let minn = pt(PointSelector::MinorNeg);
+        assert!((minn[0] - 1.0).abs() < 1e-9 && (minn[1] - 0.0).abs() < 1e-9, "minor- {:?}", minn);
+
+        // Rotated 90deg: major axis now along +y.
+        let inp2 = input(vec![ent(Kind::Ellipse, 0)], vec![0.0, 0.0, 4.0, 2.0, 90.0], vec![]);
+        let p2 = Problem::new(&inp2);
+        let maj2 = p2.point(&p2.x0.clone(), Ref::Entity { index: 0, point: PointSelector::Major });
+        assert!((maj2[0]).abs() < 1e-9 && (maj2[1] - 4.0).abs() < 1e-9, "rotated major+ {:?}", maj2);
+    }
+
+    #[test]
     fn concentric_ellipse_and_circle_residual() {
         // Ellipse center (1,2), circle center (4,6): concentric residual (-3,-4).
         let inp = input(
@@ -1225,7 +1291,7 @@ mod tests {
     /// Python), so this gate catches any hand-derivative mistake.
     #[test]
     fn analytic_jacobian_matches_finite_difference() {
-        use PointSelector::{Absent, Center, End, Start, Xy};
+        use PointSelector::{Absent, Center, End, Major, Minor, Start, Xy};
         use RefRole::{Arc as ArcR, Line as LineR, Point as PointR, A, B, Target};
 
         let entities = vec![
@@ -1268,6 +1334,9 @@ mod tests {
             // point-on-ellipse (FD fallback branch) and concentric ellipse+circle
             cons(ConstraintKind::Coincident, vec![(A, e_ref(5, Xy)), (B, e_ref(6, Absent))]),
             cons(ConstraintKind::Concentric, vec![(A, e_ref(6, Absent)), (B, e_ref(2, Absent))]),
+            // ellipse axis-endpoint point_distance (exercises the endpoint point_jac)
+            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(6, Center)), (B, e_ref(6, Major))], 4.0),
+            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(6, Center)), (B, e_ref(6, Minor))], 2.0),
             // direction-normalizing / atan2 fallbacks
             cons(ConstraintKind::Normal, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
             cons_v(ConstraintKind::Angle, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))], 30.0),

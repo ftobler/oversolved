@@ -36,6 +36,11 @@ const SEL_CODE: Record<string, number> = {
   end: Sel.end,
   center: Sel.center,
   xy: Sel.xy,
+  // Ellipse axis-endpoint control points.
+  major1: Sel.major,
+  major2: Sel.majorNeg,
+  minor1: Sel.minor,
+  minor2: Sel.minorNeg,
 }
 
 /** The keys a constraint dict may carry a reference under, with their role. */

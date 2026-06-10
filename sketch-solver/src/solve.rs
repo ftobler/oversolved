@@ -510,6 +510,44 @@ mod tests {
     }
 
     #[test]
+    fn point_distance_to_axis_endpoints_dimensions_major_and_minor_radius() {
+        // Center + theta pinned; point_distance(center, Major)=5 pins a, and
+        // point_distance(center, Minor)=3 pins b. Fully constrained, and the
+        // solved ellipse has a=5, b=3.
+        let pd_major = Constraint {
+            kind_code: ConstraintKind::PointDistance.to_u8(),
+            refs: vec![
+                (RefRole::A, Ref::Entity { index: 0, point: PointSelector::Center }),
+                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Major }),
+            ],
+            value: Some(5.0),
+            ..Default::default()
+        };
+        let pd_minor = Constraint {
+            kind_code: ConstraintKind::PointDistance.to_u8(),
+            refs: vec![
+                (RefRole::A, Ref::Entity { index: 0, point: PointSelector::Center }),
+                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Minor }),
+            ],
+            value: Some(3.0),
+            ..Default::default()
+        };
+        let mut inp = input(
+            vec![ellipse(0)],
+            vec![0.0, 0.0, 1.0, 1.0, 0.0],
+            vec![pd_major, pd_minor],
+        );
+        inp.pinned_mask = vec![0b0001_0011]; // pin cx(0), cy(1), theta(4)
+
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        let p = &out.params_solved;
+        assert!((p[2] - 5.0).abs() < 1e-3, "major radius a: {}", p[2]);
+        assert!((p[3] - 3.0).abs() < 1e-3, "minor radius b: {}", p[3]);
+        assert!(out.diagnostics.residual_norm < 1e-4);
+    }
+
+    #[test]
     fn drag_reg_weights_bump_only_the_anchor_entity() {
         // line (off 0, 4 params) + point (off 4, 2 params); anchor = the point.
         let inp = Input {

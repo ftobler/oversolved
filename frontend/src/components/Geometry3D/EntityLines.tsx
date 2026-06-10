@@ -2,7 +2,7 @@ import { Line } from '@react-three/drei'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, sampleEllipse, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
 import { DashedLine } from '@/components/sketch/sketch_dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
@@ -77,6 +77,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
     const el = e as Ellipse
     if (!allFinite(el.center[0], el.center[1], el.a, el.b, el.theta)) return null
     const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
+    const ap = ellipseAxisPoints(el.center[0], el.center[1], el.a, el.b, el.theta)
     return (
       <>
         <group>
@@ -85,6 +86,9 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
             : <Line points={pts} color={color} lineWidth={lw} depthTest={(isEditing || selected) ? false : undefined} renderOrder={(isEditing || selected) ? RENDER_ORDER_EDITING : undefined} />}
         </group>
         <VertexDot x={el.center[0]} y={el.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey="center"  isEditing={isEditing} />
+        {ELLIPSE_AXIS_KEYS.map(key => (
+          <VertexDot key={key} x={ap[key][0]} y={ap[key][1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} vertexKey={key} isEditing={isEditing} />
+        ))}
       </>
     )
   } else {

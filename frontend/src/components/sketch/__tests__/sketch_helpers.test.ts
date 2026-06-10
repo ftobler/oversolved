@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sampleEllipse, getEntityBounds } from '@/components/sketch/sketch_helpers'
+import { sampleEllipse, getEntityBounds, ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
 import type { Ellipse } from '@/types/cad'
 
 describe('sampleEllipse', () => {
@@ -40,6 +40,25 @@ describe('sampleEllipse', () => {
 
   it('returns [] for non-finite inputs', () => {
     expect(sampleEllipse(NaN, 0, 4, 2, 0)).toEqual([])
+  })
+})
+
+describe('ellipseAxisPoints', () => {
+  it('axis-aligned: major along x, minor along y, distance = a / b from center', () => {
+    const ap = ellipseAxisPoints(1, 2, 4, 2, 0)
+    expect(ap.major1[0]).toBeCloseTo(5); expect(ap.major1[1]).toBeCloseTo(2)
+    expect(ap.major2[0]).toBeCloseTo(-3); expect(ap.major2[1]).toBeCloseTo(2)
+    expect(ap.minor1[0]).toBeCloseTo(1); expect(ap.minor1[1]).toBeCloseTo(4)
+    expect(ap.minor2[0]).toBeCloseTo(1); expect(ap.minor2[1]).toBeCloseTo(0)
+    // distance center->major1 == a, center->minor1 == b (this is what dimensions pin)
+    expect(Math.hypot(ap.major1[0] - 1, ap.major1[1] - 2)).toBeCloseTo(4)
+    expect(Math.hypot(ap.minor1[0] - 1, ap.minor1[1] - 2)).toBeCloseTo(2)
+  })
+
+  it('rotated 90deg swaps major onto +y', () => {
+    const ap = ellipseAxisPoints(0, 0, 4, 2, 90)
+    expect(ap.major1[0]).toBeCloseTo(0); expect(ap.major1[1]).toBeCloseTo(4)
+    expect(ap.minor1[0]).toBeCloseTo(-2); expect(ap.minor1[1]).toBeCloseTo(0)
   })
 })
 

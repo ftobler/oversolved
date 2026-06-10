@@ -15,7 +15,7 @@ function _refsDeletedEntity(c: PartConstraint, deletedIds: Set<string>): boolean
       if (bare === eid) return true
       if (bare.startsWith(eid)) {
         const suffix = bare.slice(eid.length)
-        if (['start', 'end', 'center', 'xy'].includes(suffix)) return true
+        if (['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2'].includes(suffix)) return true
       }
     }
   }

@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
-import { sampleArcCCW, sampleEllipse } from '@/components/sketch/sketch_helpers'
+import { sampleArcCCW, sampleEllipse, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and
@@ -149,6 +149,8 @@ export function buildSketchVertices(
     } else if (kind === 'ellipse') {
       const el = entity as Ellipse
       push(entityId, 'center', el.center[0], el.center[1])
+      const ap = ellipseAxisPoints(el.center[0], el.center[1], el.a, el.b, el.theta)
+      for (const key of ELLIPSE_AXIS_KEYS) push(entityId, key, ap[key][0], ap[key][1])
     } else if (kind === 'point') {
       const p = entity as PointEntity
       push(entityId, 'xy', p.x, p.y)

@@ -29,6 +29,7 @@ describe('parseQuery', () => {
 describe('parseQuery round-trips via emitWire', () => {
   const cases = [
     '$line1', '$line1start', '$line1end', '$line1center', '$line1xy',
+    '$ell1major1', '$ell1major2', '$ell1minor1', '$ell1minor2',
     '@sketch1', '@sketch1line1', '@sketch1line1start',
     '?d,c;@sketch1line1@sketch1arc1',
     '?d,c;@sketch1line1@sketch1arc1:flatface',

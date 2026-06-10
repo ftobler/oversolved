@@ -33,7 +33,7 @@ export interface ExtractResult {
   skipped: SkippedSketch[]
 }
 
-const KNOWN_POINTS = ['start', 'end', 'center', 'xy'] as const
+const KNOWN_POINTS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2'] as const
 const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
 
 /**
