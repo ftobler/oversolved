@@ -42,6 +42,9 @@ export interface SketchResult {
    *  at pick time (tilted circle -> ellipse, partial ellipse -> spline): the
    *  resolved kind, so the doc entity can adopt it and its params stay matched. */
   resolved_kinds?: Record<string, string>
+  /** Entity ids of projected entities whose source query could not be resolved
+   *  this solve; they were dropped so the rest of the sketch could build. */
+  projection_errors?: string[]
 }
 
 let solverBytes: SolveBytes | null = null
@@ -102,6 +105,10 @@ export function solveSketch(
   // Projected entities whose lowered kind differs from the declared kind; the
   // caller adopts these onto the doc entity so its params stay matched.
   const resolvedKinds: Record<string, string> = {}
+  // Projected entities whose source query could not be resolved this solve
+  // (e.g. a stale ancestry query after the source B-rep changed). They are
+  // dropped from the solve so the rest of the sketch still builds.
+  const projectionErrors: string[] = []
 
   if (hasProjections && entities.length > 0) {
     // Resolved params land in `initial` (keyed by entity id) -- the same place
@@ -109,10 +116,12 @@ export function solveSketch(
     // every solve, so projected geometry tracks the source B-rep (parametric
     // associativity); a projected entity carries no params in the doc itself.
     const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
-    const loweredEntities = entities.map((ent) => {
+    const loweredEntities: Array<Dict> = []
+    for (const ent of entities) {
       const source = ent.source
-      if (!source) return ent
+      if (!source) { loweredEntities.push(ent); continue }
       const entId = ent.id as string
+      let lowered: Dict | null = null
       try {
         const sourceStr = typeof source === 'string' ? source : ''
         if (sourceStr.startsWith('$')) {
@@ -120,9 +129,8 @@ export function solveSketch(
           const srcParams = initial[sourceEid]
           if (srcParams) {
             initial[entId] = [...srcParams]
-            return { ...ent, source: undefined }
+            lowered = { ...ent, source: undefined }
           }
-          return ent
         } else {
           const resolved = globalRepo.query(sourceStr, null) as Dict | null
           if (resolved) {
@@ -136,20 +144,25 @@ export function solveSketch(
                 // spline: the resolved kind wins, and is surfaced so the doc
                 // entity adopts it (its param count must match the geometry).
                 if (projected.kind !== declaredKind) resolvedKinds[entId] = projected.kind
-                return { ...ent, source: undefined, kind: projected.kind }
+                lowered = { ...ent, source: undefined, kind: projected.kind }
               }
             }
           }
         }
       } catch {
-        // source resolution failed; entity will keep its source
+        // fall through to the unresolved path below
       }
-      return ent
-    })
-
-    if (loweredEntities.every((e) => !e.source)) {
-      loweredFeature = { ...feature, entities: loweredEntities, initial }
+      if (lowered) {
+        loweredEntities.push(lowered)
+      } else {
+        // Unresolvable projection: drop it rather than leaving a `source` that
+        // would make partDocToSketches skip (and the whole sketch throw). The
+        // rest of the sketch -- including the user's own geometry -- still solves.
+        projectionErrors.push(entId)
+      }
     }
+
+    loweredFeature = { ...feature, entities: loweredEntities, initial }
   }
 
   // ── Lower the live PartDoc feature to SketchInput ──────────────────────
@@ -195,6 +208,7 @@ export function solveSketch(
     topology,
     plane_transform,
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
+    ...(projectionErrors.length ? { projection_errors: projectionErrors } : {}),
     solve_ms: 0,
   }
 }

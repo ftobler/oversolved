@@ -22,6 +22,11 @@ function stubRepo(payload: Dict): Repository {
   } as unknown as Repository
 }
 
+/** Repository stub that never resolves a query (stale ancestry / missing edge). */
+function deadRepo(): Repository {
+  return { query: () => null, elements: new Map() } as unknown as Repository
+}
+
 describe('solveSketch projection lowering', () => {
   beforeAll(() => {
     if (!solveBytes) return
@@ -118,6 +123,31 @@ describe('solveSketch projection lowering', () => {
     expect(out.status).not.toBe('error')
     expect(out.geometry?.ell0).toHaveLength(8)
     expect(out.resolved_kinds).toBeUndefined()  // already spline -> no further change
+  })
+
+  it('drops an unresolvable projection and still solves the rest of the sketch', () => {
+    if (!solveBytes) return
+    // A stale projection (source no longer resolves) must NOT throw the whole
+    // sketch -- it is dropped, the user's own geometry still solves, and the
+    // dropped id is reported. Regression for "the whole sketch went inert".
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'circle' },
+        { id: 'stale', kind: 'ellipse', source: '?edge;gone' },
+      ],
+      initial: { drawn: [2, 3, 4] },
+      constraints: [],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.status).not.toBe('exception')
+    expect(out.status).not.toBe('error')
+    // The drawn circle solved and renders.
+    expect(out.geometry?.drawn).toBeDefined()
+    expect(out.geometry?.drawn?.[2]).toBeCloseTo(4)
+    // The stale projection was dropped (no geometry) and reported.
+    expect(out.geometry?.stale).toBeUndefined()
+    expect(out.projection_errors).toContain('stale')
   })
 
   it('does not surface a resolved kind when projection keeps the declared kind', () => {
