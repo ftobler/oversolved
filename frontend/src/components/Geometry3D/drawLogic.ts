@@ -272,6 +272,8 @@ export function computeDrawClick(
         const ek = getEntityKind(entity)
         if (ek === 'arc') kind = 'arc'
         else if (ek === 'circle') kind = 'circle'
+        else if (ek === 'ellipse') kind = 'ellipse'
+        else if (ek === 'spline') kind = 'spline'
         else if (ek === 'point') kind = 'point'
       }
       return {
@@ -291,9 +293,13 @@ export function computeDrawClick(
           const tr = q.typeRestriction
           if (tr === 'edge' || tr === 'straightedge') {
             // The query alone can't tell a line from a circle/arc; the hovered
-            // edge's curve kind (when known) selects the base entity kind.
+            // edge's curve kind (when known) selects the base entity kind. A
+            // tilted circle still picks 'circle' here -- the projection lowerer
+            // promotes it to an ellipse once it sees the plane orientation.
             if (snap.hoveredSourceKind === 'circle') kind = 'circle'
             else if (snap.hoveredSourceKind === 'arc') kind = 'arc'
+            else if (snap.hoveredSourceKind === 'ellipse') kind = 'ellipse'
+            else if (snap.hoveredSourceKind === 'spline') kind = 'spline'
             else kind = 'line'
           }
         }

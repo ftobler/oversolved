@@ -153,7 +153,16 @@ export interface EdgeDataSpline {
   points: [number, number, number][]
 }
 
-export type EdgeData = EdgeDataLine | EdgeDataCircleArc | EdgeDataSpline
+export interface EdgeDataEllipse {
+  kind: 'ellipse'
+  center: [number, number, number]
+  a: number  // semi-major radius
+  b: number  // semi-minor radius
+  axis: [number, number, number]    // normal of the ellipse plane
+  x_axis: [number, number, number]  // direction of the major axis
+}
+
+export type EdgeData = EdgeDataLine | EdgeDataCircleArc | EdgeDataSpline | EdgeDataEllipse
 
 export interface BodyResult {
   id: string

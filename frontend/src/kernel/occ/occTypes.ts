@@ -270,12 +270,21 @@ export interface OccCircle extends OccDisposable {
   XAxis(): OccAxisDir
 }
 
+export interface OccEllipse extends OccDisposable {
+  Location(): OccXYZ
+  MajorRadius(): number
+  MinorRadius(): number
+  Axis(): OccAxisDir
+  XAxis(): OccAxisDir
+}
+
 export interface OccCurveAdaptor extends OccDisposable {
   GetType(): OccEnumValue
   FirstParameter(): number
   LastParameter(): number
   Value(u: number): OccXYZ
   Circle(): OccCircle
+  Ellipse(): OccEllipse
 }
 
 /** Opaque embind enum value (e.g. `TopAbs_ShapeEnum.TopAbs_FACE`). */
@@ -351,6 +360,7 @@ export interface OccModule extends OccSpikeModule {
   GeomAbs_CurveType: {
     GeomAbs_Line: OccEnumValue
     GeomAbs_Circle: OccEnumValue
+    GeomAbs_Ellipse: OccEnumValue
   }
 
   // --- 2b: shape construction --------------------------------------------

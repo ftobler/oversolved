@@ -470,6 +470,30 @@ describe('computeDrawClick - project tool', () => {
     }
   })
 
+  it('emits projected ellipse for an elliptical body edge pick', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@fyy:edge'
+    snap.hoveredSelectionId = ancQuery
+    snap.hoveredSourceKind = 'ellipse'
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].kind).toBe('ellipse')
+    }
+  })
+
+  it('emits projected spline for a spline body edge pick', () => {
+    const snap = emptySnap()
+    const ancQuery = '?4,4;@bxx@fyy:edge'
+    snap.hoveredSelectionId = ancQuery
+    snap.hoveredSourceKind = 'spline'
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
+    expect(result.mutations[0].type).toBe('add_projected_entity')
+    if (result.mutations[0].type === 'add_projected_entity') {
+      expect(result.mutations[0].kind).toBe('spline')
+    }
+  })
+
   it('falls back to projected_line for a curved edge with unknown source kind', () => {
     const snap = emptySnap()
     snap.hoveredSelectionId = '?4,4;@bxx@fyy:edge'

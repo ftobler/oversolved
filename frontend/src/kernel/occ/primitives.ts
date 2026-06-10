@@ -344,12 +344,24 @@ export function edgeToGeom(
     }
   }
 
-  // Elliptical B-rep edges fall through to the spline sampling below. A
-  // first-class ellipse edge reader needs a matching `edgeGeometryHash` branch
-  // and a regenerated Python parity baseline, so it is deferred to the
-  // full-brep-projection feature. Reading them as `ellipse` here without the
-  // hash branch made every elliptical edge collide to one geom hash (and thus
-  // one selection id / query). See edgeGeomHashCoupling.test.ts.
+  if (t === oc.GeomAbs_CurveType.GeomAbs_Ellipse.value) {
+    // First-class elliptical edge. The matching `edgeGeometryHash` ellipse
+    // branch keeps distinct ellipses on distinct geom hashes (selection ids /
+    // ancestry queries); see edgeGeomHashCoupling.test.ts.
+    const el = scope.track(ad.Ellipse())
+    const c = el.Location()
+    const axis = el.Axis().Direction()
+    const xdir = el.XAxis().Direction()
+    const a = el.MajorRadius()
+    const b = el.MinorRadius()
+    const center: Vec3 = [c.X(), c.Y(), c.Z()]
+    const ax: Vec3 = [axis.X(), axis.Y(), axis.Z()]
+    const xd: Vec3 = [xdir.X(), xdir.Y(), xdir.Z()]
+    return {
+      ed: { kind: 'ellipse', center, a, b, axis: ax, x_axis: xd },
+      sortKey: [1, 'ellipse', r6(center[0]), r6(center[1]), r6(center[2]), r6(a), r6(b), r6(xd[0]), r6(xd[1]), r6(xd[2])],
+    }
+  }
 
   // Fallback: sample the curve into a polyline (matches the Python spline arm;
   // NURBS curve_data extraction is a geom_hash concern deferred to 2c).

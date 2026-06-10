@@ -28,7 +28,7 @@ import { detectTopology } from '../topology'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm } from '@/wasm-kernel/solverWasm'
-import { fitCubicBezier } from '@/utils/geometry/bezierFit'
+import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 
 type Dict = Record<string, unknown>
@@ -97,16 +97,23 @@ export function solveSketch(
   let loweredFeature = feature
 
   if (hasProjections && entities.length > 0) {
+    // Resolved params land in `initial` (keyed by entity id) -- the same place
+    // lowerSketch reads seed params from. The source query is re-resolved on
+    // every solve, so projected geometry tracks the source B-rep (parametric
+    // associativity); a projected entity carries no params in the doc itself.
+    const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
     const loweredEntities = entities.map((ent) => {
       const source = ent.source
       if (!source) return ent
+      const entId = ent.id as string
       try {
         const sourceStr = typeof source === 'string' ? source : ''
         if (sourceStr.startsWith('$')) {
           const sourceEid = sourceStr.slice(1)
-          const sourceEnt = entities.find((e) => e.id === sourceEid)
-          if (sourceEnt && sourceEnt.params) {
-            return { ...ent, source: undefined, params: [...(sourceEnt.params as number[])] }
+          const srcParams = initial[sourceEid]
+          if (srcParams) {
+            initial[entId] = [...srcParams]
+            return { ...ent, source: undefined }
           }
           return ent
         } else {
@@ -114,9 +121,13 @@ export function solveSketch(
           if (resolved) {
             const data3d = resolve3dGeometry(resolved, sourceStr)
             if (data3d) {
-              const kind = (ent.kind as string) ?? 'point'
-              const params = projectTo2d(kind, data3d, plane)
-              if (params) return { ...ent, source: undefined, params }
+              const declaredKind = (ent.kind as string) ?? 'point'
+              const projected = projectTo2d(declaredKind, data3d, plane as PlaneFrame)
+              if (projected) {
+                initial[entId] = projected.params
+                // A tilted circle lowers to an ellipse: the resolved kind wins.
+                return { ...ent, source: undefined, kind: projected.kind }
+              }
             }
           }
         }
@@ -127,7 +138,7 @@ export function solveSketch(
     })
 
     if (loweredEntities.every((e) => !e.source)) {
-      loweredFeature = { ...feature, entities: loweredEntities }
+      loweredFeature = { ...feature, entities: loweredEntities, initial }
     }
   }
 
@@ -175,169 +186,4 @@ export function solveSketch(
     plane_transform,
     solve_ms: 0,
   }
-}
-
-function dot3(a: number[], b: number[]): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-function sub3(a: number[], b: number[]): number[] {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-/** Project a 3D point onto a plane frame, returning [u, v] 2D coordinates. */
-function project3dTo2d(xyz: number[], plane: { origin: number[]; x_axis: number[]; y_axis: number[] }): number[] {
-  const v = sub3(xyz, plane.origin)
-  return [dot3(v, plane.x_axis), dot3(v, plane.y_axis)]
-}
-
-interface Resolved3dGeometry {
-  kindH: 'point' | 'line' | 'circle' | 'arc' | 'spline'
-  data: Dict
-}
-
-/** Extract 3D geometry from a repository payload (mirrors `_resolve_source_geometry`). */
-function resolve3dGeometry(data: Dict, _sourceQuery: string): Resolved3dGeometry | null {
-  const dataType = (data.type as string) ?? ''
-  if (dataType === 'face' || dataType === 'flatface' || dataType === 'cylinderface') {
-    const pt = data.centroid || data.origin || [0, 0, 0]
-    return { kindH: 'point', data: { point: pt } }
-  }
-  if (dataType === 'edge' || dataType === 'straightedge') {
-    const edgeKind = (data.kind as string) ?? ''
-    if (edgeKind === 'circle' || edgeKind === 'arc') {
-      const center = data.center as number[] | undefined
-      const radius = data.radius as number | undefined
-      if (!center || radius == null) return null
-      if (edgeKind === 'circle') return { kindH: 'circle', data: { center, radius } }
-      return {
-        kindH: 'arc',
-        data: {
-          center,
-          radius,
-          axis: data.axis,
-          x_axis: data.x_axis,
-          angle_start: data.angle_start,
-          angle_end: data.angle_end,
-        },
-      }
-    }
-    if (edgeKind === 'spline') {
-      // A sampled spline/NURBS edge carries its polyline points; the lowerer
-      // fits a cubic Bezier to them after projecting to the sketch plane.
-      const points = data.points as number[][] | undefined
-      if (!points || points.length < 2) return null
-      return { kindH: 'spline', data: { points } }
-    }
-    const start = data.start as number[] | undefined
-    const end = data.end as number[] | undefined
-    if (!start || !end) return null
-    return { kindH: 'line', data: { start, end } }
-  }
-  if (dataType === 'vertex') {
-    const x = (data.x as number) ?? 0
-    const y = (data.y as number) ?? 0
-    const z = (data.z as number) ?? 0
-    return { kindH: 'point', data: { point: [x, y, z] } }
-  }
-  // Fallback: payloads from the slash registry (hole points, etc.)
-  if ('x' in data || 'y' in data || 'z' in data) {
-    const x = (data.x as number) ?? 0
-    const y = (data.y as number) ?? 0
-    const z = (data.z as number) ?? 0
-    return { kindH: 'point', data: { point: [x, y, z] } }
-  }
-  if (data.origin) {
-    return { kindH: 'point', data: { point: data.origin as number[] } }
-  }
-  return null
-}
-
-function len2d(v: number[]): number {
-  return Math.hypot(v[0], v[1])
-}
-
-function atan2(y: number, x: number): number {
-  return Math.atan2(y, x)
-}
-
-/** Project resolved 3D geometry to entity params on the sketch plane. */
-function projectTo2d(
-  kind: string,
-  g3d: Resolved3dGeometry,
-  plane: { origin: number[]; x_axis: number[]; y_axis: number[] },
-): number[] | null {
-  const { data } = g3d
-  if (kind === 'point') {
-    const pt = data.point as number[]
-    return project3dTo2d(pt, plane)
-  }
-  if (kind === 'line') {
-    const s2d = project3dTo2d(data.start as number[], plane)
-    const e2d = project3dTo2d(data.end as number[], plane)
-    return [...s2d, ...e2d]
-  }
-  if (kind === 'circle') {
-    const c2d = project3dTo2d(data.center as number[], plane)
-    return [...c2d, data.radius as number]
-  }
-  if (kind === 'arc') {
-    const center = data.center as number[]
-    const radius = data.radius as number
-    const c2d = project3dTo2d(center, plane)
-
-    if (typeof data.angle_start === 'number' && typeof data.angle_end === 'number') {
-      // Sketch-to-sketch arc projection (source arc has 2D angles already).
-      return [...c2d, radius, data.angle_start as number, data.angle_end as number]
-    }
-
-    // 3D body arc: resolve endpoints in 3D, project to 2D, then compute
-    // angles relative to the projected center. Mirrors `_project_3d_arc_to_params`.
-    const axis = data.axis as number[]
-    const ax = data.x_axis as number[]
-    const a0 = data.angle_start as number
-    const a1 = data.angle_end as number
-    if (!axis || !ax || a0 == null || a1 == null) return null
-
-    // orthonormal (x_axis, y_axis) from the arc's 3D frame
-    const axNorm = [ax[0], ax[1], ax[2]] as number[]
-    const normal = axis
-    const y_axis = [
-      normal[1] * axNorm[2] - normal[2] * axNorm[1],
-      normal[2] * axNorm[0] - normal[0] * axNorm[2],
-      normal[0] * axNorm[1] - normal[1] * axNorm[0],
-    ]
-
-    const cos0 = Math.cos(a0)
-    const sin0 = Math.sin(a0)
-    const cos1 = Math.cos(a1)
-    const sin1 = Math.sin(a1)
-    const start3d = [
-      center[0] + radius * (cos0 * axNorm[0] + sin0 * y_axis[0]),
-      center[1] + radius * (cos0 * axNorm[1] + sin0 * y_axis[1]),
-      center[2] + radius * (cos0 * axNorm[2] + sin0 * y_axis[2]),
-    ]
-    const end3d = [
-      center[0] + radius * (cos1 * axNorm[0] + sin1 * y_axis[0]),
-      center[1] + radius * (cos1 * axNorm[1] + sin1 * y_axis[1]),
-      center[2] + radius * (cos1 * axNorm[2] + sin1 * y_axis[2]),
-    ]
-
-    const s2d = project3dTo2d(start3d, plane)
-    const e2d = project3dTo2d(end3d, plane)
-
-    const sa = atan2(s2d[1] - c2d[1], s2d[0] - c2d[0])
-    const ea = atan2(e2d[1] - c2d[1], e2d[0] - c2d[0])
-    const r2d = len2d([s2d[0] - c2d[0], s2d[1] - c2d[1]])
-    return [...c2d, r2d, sa, ea]
-  }
-  if (kind === 'spline') {
-    // Any sampled 3D curve (spline/NURBS) projects to 2D points, then a cubic
-    // Bezier is least-squares fit to them -> the 8-param spline entity.
-    const pts3d = data.points as number[][] | undefined
-    if (!pts3d || pts3d.length < 2) return null
-    const pts2d = pts3d.map((p) => project3dTo2d(p, plane) as [number, number])
-    return fitCubicBezier(pts2d)
-  }
-  return null
 }

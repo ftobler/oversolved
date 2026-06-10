@@ -199,6 +199,31 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
           parts.push(...pts[i], ...pts[i + 1])
         }
       }
+    } else if (edge.kind === 'ellipse') {
+      const { center, a, b, x_axis, axis } = edge
+      if (!_isValidSegment(center) || !_isValidSegment(x_axis) || !_isValidSegment(axis)
+          || !Number.isFinite(a) || !Number.isFinite(b)) {
+        continue
+      }
+      // p(t) = center + a*cos(t)*u + b*sin(t)*v, with v = axis cross x_axis.
+      const ux = x_axis[0], uy = x_axis[1], uz = x_axis[2]
+      const nx = axis[0], ny = axis[1], nz = axis[2]
+      const vx = ny * uz - nz * uy
+      const vy = nz * ux - nx * uz
+      const vz = nx * uy - ny * ux
+      const cx = center[0], cy = center[1], cz = center[2]
+      let prevX = cx + a * ux
+      let prevY = cy + a * uy
+      let prevZ = cz + a * uz
+      for (let i = 1; i <= ARC_SEGMENTS; i++) {
+        const t = (2 * Math.PI * i) / ARC_SEGMENTS
+        const ca = a * Math.cos(t), sb = b * Math.sin(t)
+        const ex = cx + ca * ux + sb * vx
+        const ey = cy + ca * uy + sb * vy
+        const ez = cz + ca * uz + sb * vz
+        parts.push(prevX, prevY, prevZ, ex, ey, ez)
+        prevX = ex; prevY = ey; prevZ = ez
+      }
     }
   }
 
@@ -218,6 +243,8 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
       counts.push(segs)
     } else if (edge.kind === 'spline') {
       counts.push(Math.max(0, edge.points.length - 1))
+    } else if (edge.kind === 'ellipse') {
+      counts.push(ARC_SEGMENTS)
     }
   }
   return counts
