@@ -200,29 +200,31 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
         }
       }
     } else if (edge.kind === 'ellipse') {
-      const { center, a, b, x_axis, axis } = edge
+      const { center, a, b, x_axis, axis, angle_start, angle_end } = edge
       if (!_isValidSegment(center) || !_isValidSegment(x_axis) || !_isValidSegment(axis)
-          || !Number.isFinite(a) || !Number.isFinite(b)) {
+          || !Number.isFinite(a) || !Number.isFinite(b)
+          || Number.isNaN(angle_start) || Number.isNaN(angle_end)) {
         continue
       }
-      // p(t) = center + a*cos(t)*u + b*sin(t)*v, with v = axis cross x_axis.
+      // p(t) = center + a*cos(t)*u + b*sin(t)*v, with v = axis cross x_axis,
+      // swept over the edge's parametric range (partial arc, not full ellipse).
       const ux = x_axis[0], uy = x_axis[1], uz = x_axis[2]
       const nx = axis[0], ny = axis[1], nz = axis[2]
       const vx = ny * uz - nz * uy
       const vy = nz * ux - nx * uz
       const vz = nx * uy - ny * ux
       const cx = center[0], cy = center[1], cz = center[2]
-      let prevX = cx + a * ux
-      let prevY = cy + a * uy
-      let prevZ = cz + a * uz
-      for (let i = 1; i <= ARC_SEGMENTS; i++) {
-        const t = (2 * Math.PI * i) / ARC_SEGMENTS
+      const sweep = angle_end - angle_start
+      const segs = Math.max(2, Math.round(ARC_SEGMENTS * Math.abs(sweep) / (2 * Math.PI)))
+      const at = (t: number): [number, number, number] => {
         const ca = a * Math.cos(t), sb = b * Math.sin(t)
-        const ex = cx + ca * ux + sb * vx
-        const ey = cy + ca * uy + sb * vy
-        const ez = cz + ca * uz + sb * vz
-        parts.push(prevX, prevY, prevZ, ex, ey, ez)
-        prevX = ex; prevY = ey; prevZ = ez
+        return [cx + ca * ux + sb * vx, cy + ca * uy + sb * vy, cz + ca * uz + sb * vz]
+      }
+      let prev = at(angle_start)
+      for (let i = 1; i <= segs; i++) {
+        const cur = at(angle_start + sweep * (i / segs))
+        parts.push(...prev, ...cur)
+        prev = cur
       }
     }
   }
@@ -244,7 +246,8 @@ export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
     } else if (edge.kind === 'spline') {
       counts.push(Math.max(0, edge.points.length - 1))
     } else if (edge.kind === 'ellipse') {
-      counts.push(ARC_SEGMENTS)
+      const sweep = edge.angle_end - edge.angle_start
+      counts.push(Math.max(2, Math.round(ARC_SEGMENTS * Math.abs(sweep) / (2 * Math.PI))))
     }
   }
   return counts

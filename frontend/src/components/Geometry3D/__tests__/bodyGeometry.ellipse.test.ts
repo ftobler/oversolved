@@ -13,6 +13,8 @@ describe('buildEdgeSegments ellipse', () => {
     b: 2,
     axis: [0, 0, 1],
     x_axis: [1, 0, 0],
+    angle_start: 0,
+    angle_end: 2 * Math.PI,
   }
 
   it('emits one closed loop of ARC_SEGMENTS segments', () => {
@@ -24,6 +26,21 @@ describe('buildEdgeSegments ellipse', () => {
     expect(segs[0]).toBeCloseTo(5)  // 1 + 4
     expect(segs[1]).toBeCloseTo(2)
     expect(segs[2]).toBeCloseTo(0)
+  })
+
+  it('renders only the parametric range for a partial elliptical arc', () => {
+    // Quarter sweep [0, pi/2]: ~1/4 the segments of a full ellipse, and the
+    // endpoints sit at the major (t=0) and minor (t=pi/2) axis points.
+    const arc: EdgeData = { ...ellipse, angle_start: 0, angle_end: Math.PI / 2 }
+    const segs = buildEdgeSegments([arc])
+    const count = getEdgeSegmentCounts([arc])[0]
+    expect(segs.length).toBe(count * 6)
+    expect(count).toBeLessThan(getEdgeSegmentCounts([ellipse])[0])
+    // Last point at t=pi/2: center + b*v = [1, 2+2, 0].
+    const n = segs.length
+    expect(segs[n - 3]).toBeCloseTo(1)
+    expect(segs[n - 2]).toBeCloseTo(4)
+    expect(segs[n - 1]).toBeCloseTo(0)
   })
 
   it('every sampled point lies on the ellipse', () => {

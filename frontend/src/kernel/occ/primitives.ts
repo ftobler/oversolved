@@ -358,8 +358,10 @@ export function edgeToGeom(
     const ax: Vec3 = [axis.X(), axis.Y(), axis.Z()]
     const xd: Vec3 = [xdir.X(), xdir.Y(), xdir.Z()]
     return {
-      ed: { kind: 'ellipse', center, a, b, axis: ax, x_axis: xd },
-      sortKey: [1, 'ellipse', r6(center[0]), r6(center[1]), r6(center[2]), r6(a), r6(b), r6(xd[0]), r6(xd[1]), r6(xd[2])],
+      ed: { kind: 'ellipse', center, a, b, axis: ax, x_axis: xd, angle_start: u0, angle_end: u1 },
+      // u0/u1 distinguish a partial elliptical arc from a full ellipse and keep
+      // two arcs of the same conic on distinct geom hashes (mirrors the arc arm).
+      sortKey: [1, 'ellipse', r6(center[0]), r6(center[1]), r6(center[2]), r6(a), r6(b), r6(u0), r6(u1), r6(xd[0]), r6(xd[1]), r6(xd[2])],
     }
   }
 

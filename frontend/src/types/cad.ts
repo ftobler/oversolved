@@ -162,6 +162,8 @@ export interface EdgeDataEllipse {
   b: number  // semi-minor radius
   axis: [number, number, number]    // normal of the ellipse plane
   x_axis: [number, number, number]  // direction of the major axis
+  angle_start: number  // parametric eccentric-angle range; a partial elliptical
+  angle_end: number    // edge (cylinder cut, etc.) is an arc, not a full ellipse
 }
 
 export type EdgeData = EdgeDataLine | EdgeDataCircleArc | EdgeDataSpline | EdgeDataEllipse

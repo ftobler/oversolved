@@ -119,6 +119,24 @@ describe('ellipse edge projection', () => {
     expect(theta).toBeCloseTo(0)
   })
 
+  it('a partial elliptical arc projects as a spline (no 2D ellipse-arc entity)', () => {
+    const g = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+        axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+      },
+      '?e',
+    )!
+    const out = projectTo2d('ellipse', g, XY)!
+    expect(out.kind).toBe('spline')
+    const p = out.params
+    // Endpoints pinned: t=0 -> [4,0], t=pi/2 -> [0,2].
+    expect(p[0]).toBeCloseTo(4)
+    expect(p[1]).toBeCloseTo(0)
+    expect(p[6]).toBeCloseTo(0)
+    expect(p[7]).toBeCloseTo(2)
+  })
+
   it('a rotated in-plane ellipse reports its rotation', () => {
     // Major axis along the 2D 45 deg direction.
     const x_axis = [Math.SQRT1_2, Math.SQRT1_2, 0]

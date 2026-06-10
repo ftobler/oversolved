@@ -129,7 +129,9 @@ export function edgeGeometryHash(edge: Record<string, unknown>): string {
     }
   } else if (kind === "ellipse") {
     // Geometry-determined so two distinct ellipses never collide: center,
-    // semi-axes, plane normal, major-axis direction. See edgeGeomHashCoupling.
+    // semi-axes, plane normal, major-axis direction, plus the parametric range
+    // so a partial elliptical arc differs from the full ellipse. See
+    // edgeGeomHashCoupling.
     items.push("a" in edge ? pyRound4Str(Number(edge["a"])) : "0")
     items.push("b" in edge ? pyRound4Str(Number(edge["b"])) : "0")
     if ("center" in edge) for (const v of edge["center"] as number[]) items.push(pyRound4Str(v))
@@ -138,6 +140,8 @@ export function edgeGeometryHash(edge: Record<string, unknown>): string {
     else items.push("0", "0", "1")
     if ("x_axis" in edge) for (const v of edge["x_axis"] as number[]) items.push(pyRound4Str(v))
     else items.push("1", "0", "0")
+    items.push("angle_start" in edge ? pyRound4Str(Number(edge["angle_start"])) : "0")
+    items.push("angle_end" in edge ? pyRound4Str(Number(edge["angle_end"])) : "0")
   } else {
     const curveData = edge["curve_data"] as Record<string, unknown> | undefined
     if (curveData) {

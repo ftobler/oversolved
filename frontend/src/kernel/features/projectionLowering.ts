@@ -169,7 +169,13 @@ export function resolve3dGeometry(data: Dict, _sourceQuery: string): Resolved3dG
       const a = data.a as number | undefined
       const b = data.b as number | undefined
       if (!center || a == null || b == null) return null
-      return { kindH: 'ellipse', data: { center, a, b, axis: data.axis, x_axis: data.x_axis } }
+      return {
+        kindH: 'ellipse',
+        data: {
+          center, a, b, axis: data.axis, x_axis: data.x_axis,
+          angle_start: data.angle_start, angle_end: data.angle_end,
+        },
+      }
     }
     if (edgeKind === 'spline') {
       // A sampled spline/NURBS edge carries its polyline points; the lowerer
@@ -239,7 +245,31 @@ export function projectTo2d(
     const axis = (data.axis as number[] | undefined) ?? [0, 0, 1]
     const x_axis = (data.x_axis as number[] | undefined) ?? [1, 0, 0]
     const v = cross3(axis, x_axis)  // minor-axis direction in the ellipse plane
-    return { kind: 'ellipse', params: conicToEllipseParams(center, x_axis, a, v, b, plane) }
+    const a0 = data.angle_start as number | undefined
+    const a1 = data.angle_end as number | undefined
+    const full = a0 == null || a1 == null || Math.abs(Math.abs(a1 - a0) - 2 * Math.PI) < 1e-3
+    if (full) {
+      return { kind: 'ellipse', params: conicToEllipseParams(center, x_axis, a, v, b, plane) }
+    }
+    // A partial elliptical arc has no 2D ellipse-arc entity: sample the arc and
+    // fit a cubic Bezier, mirroring the generic spline-edge projection.
+    const u = normalize3(x_axis)
+    const vn = normalize3(v)
+    const N = 32
+    const pts2d: [number, number][] = []
+    for (let i = 0; i <= N; i++) {
+      const t = a0 + (a1 - a0) * (i / N)
+      const ca = a * Math.cos(t)
+      const sb = b * Math.sin(t)
+      const p3 = [
+        center[0] + ca * u[0] + sb * vn[0],
+        center[1] + ca * u[1] + sb * vn[1],
+        center[2] + ca * u[2] + sb * vn[2],
+      ]
+      pts2d.push(project3dTo2d(p3, plane) as [number, number])
+    }
+    const params = fitCubicBezier(pts2d)
+    return params ? { kind: 'spline', params } : null
   }
   if (kind === 'arc') {
     const center = data.center as number[]
