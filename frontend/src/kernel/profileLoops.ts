@@ -60,6 +60,30 @@ export function splineSamplePoints(e: LoopEdge, n: number): number[][] {
   return out
 }
 
+/** n interior points along an elliptical-arc edge; empty if not one. */
+export function ellipseArcSamplePoints(e: LoopEdge, n: number): number[][] {
+  if (e["kind"] !== "ellipse_arc") return []
+  const center = e["center"] as number[] | undefined
+  if (!center) return []
+  const a = (e["a"] as number) ?? 0.0
+  const b = (e["b"] as number) ?? 0.0
+  const rot = radians((e["theta"] as number) ?? 0.0)
+  const cr = Math.cos(rot)
+  const sr = Math.sin(rot)
+  const p0 = radians((e["angle_start_deg"] as number) ?? 0.0)
+  let p1 = radians((e["angle_end_deg"] as number) ?? 0.0)
+  const ccw = (e["ccw"] as boolean) ?? true
+  if (ccw) { if (p1 < p0) p1 += 2 * Math.PI } else if (p1 > p0) p1 -= 2 * Math.PI
+  const out: number[][] = []
+  for (let k = 0; k < n; k++) {
+    const phi = p0 + ((p1 - p0) * (k + 1)) / (n + 1)
+    const ax = a * Math.cos(phi)
+    const ay = b * Math.sin(phi)
+    out.push([center[0] + ax * cr - ay * sr, center[1] + ax * sr + ay * cr])
+  }
+  return out
+}
+
 /** n points spread around a full closed ellipse edge; empty if not one. */
 export function ellipseSamplePoints(e: LoopEdge, n: number): number[][] {
   if (e["kind"] !== "ellipse") return []
@@ -88,6 +112,7 @@ export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
   for (const e of loop) {
     if ("start" in e) pts.push(e["start"] as number[])
     pts.push(...arcSamplePoints(e, arcSamples))
+    pts.push(...ellipseArcSamplePoints(e, Math.max(arcSamples, 4)))
     pts.push(...splineSamplePoints(e, arcSamples))
     // A full ellipse is a standalone closed loop: it needs enough points to read
     // as a polygon on its own, independent of the coarse arc sample count.
@@ -131,10 +156,11 @@ export function pointInLoop(pt: number[], loop: LoopEdge[]): boolean {
 }
 
 /**
- * Group loops into (outer, holes) pairs for face construction (mirrors
- * `classify_loops`). Loops contained inside another loop become holes of the
- * smallest enclosing outer loop; uncontained loops are independent outer
- * boundaries (disjoint closed areas, each its own face).
+ * Group loops into (outer, holes) pairs for face construction by even/odd
+ * containment depth: a loop enclosed by an even number of others is a filled
+ * face, one enclosed by an odd number is a hole of its immediate (smallest
+ * strictly larger) container. A solid island inside a hole (depth 2) is its own
+ * face again -- so arbitrary nesting works, not just one level.
  */
 export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][] {
   if (loops.length === 0) return []
@@ -142,28 +168,29 @@ export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][]
 
   const n = loops.length
   const areas = loops.map((loop) => Math.abs(loopSignedArea(loop)))
+  const cents = loops.map((loop) => loopCentroid(loop))
 
-  // For each loop, find the smallest STRICTLY larger loop that contains it.
-  const containedBy: number[] = new Array(n).fill(-1)
+  const depth: number[] = new Array(n).fill(0)
+  const container: number[] = new Array(n).fill(-1)  // immediate enclosing loop
   for (let i = 0; i < n; i++) {
-    const pt = loopCentroid(loops[i])
-    let best = -1
     let bestArea = Infinity
     for (let j = 0; j < n; j++) {
       if (i === j) continue
-      if (areas[j] > areas[i] && areas[j] < bestArea && pointInLoop(pt, loops[j])) {
-        best = j
-        bestArea = areas[j]
+      if (areas[j] > areas[i] && pointInLoop(cents[i], loops[j])) {
+        depth[i] += 1
+        if (areas[j] < bestArea) {
+          bestArea = areas[j]
+          container[i] = j
+        }
       }
     }
-    containedBy[i] = best
   }
 
   const result: [LoopEdge[], LoopEdge[][]][] = []
   for (let oi = 0; oi < n; oi++) {
-    if (containedBy[oi] !== -1) continue
+    if (depth[oi] % 2 === 1) continue  // a hole, attached to its container below
     const holes: LoopEdge[][] = []
-    for (let i = 0; i < n; i++) if (containedBy[i] === oi) holes.push(loops[i])
+    for (let i = 0; i < n; i++) if (depth[i] % 2 === 1 && container[i] === oi) holes.push(loops[i])
     result.push([loops[oi], holes])
   }
   return result

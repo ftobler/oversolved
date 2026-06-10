@@ -1,4 +1,4 @@
-import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Spline, Topology, TopologyEdge, TopologyArcEdge, TopologyEllipseEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
+import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Spline, Topology, TopologyEdge, TopologyArcEdge, TopologyEllipseEdge, TopologyEllipseArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 const ICON_SIZE = 14
 
@@ -177,48 +177,79 @@ function appendEllipseSubpath(
   parts.push('Z')
 }
 
+/** Sample an elliptical-arc edge as a short polyline (decoration fidelity). */
+function appendEllipseArcSegments(
+  parts: string[],
+  edge: TopologyEllipseArcEdge,
+  px: (x: number, y: number) => [number, number],
+): void {
+  const rot = (edge.theta ?? 0) * (Math.PI / 180)
+  const cr = Math.cos(rot), sr = Math.sin(rot)
+  const p0 = (edge.angle_start_deg * Math.PI) / 180
+  let p1 = (edge.angle_end_deg * Math.PI) / 180
+  const twoPi = 2 * Math.PI
+  if (edge.ccw) { if (p1 < p0) p1 += twoPi } else if (p1 > p0) p1 -= twoPi
+  const steps = Math.max(2, Math.ceil((Math.abs(p1 - p0) / twoPi) * 64))
+  for (let i = 1; i <= steps; i++) {
+    const phi = p0 + ((p1 - p0) * i) / steps
+    const ax = edge.a * Math.cos(phi), ay = edge.b * Math.sin(phi)
+    const [lx, ly] = px(edge.center[0] + ax * cr - ay * sr, edge.center[1] + ax * sr + ay * cr)
+    parts.push(`L ${lx} ${ly}`)
+  }
+}
+
 export function buildSurfacePath(
-  surface: { boundary: TopologyEdge[] },
+  surface: { boundary: TopologyEdge[]; holes?: TopologyEdge[][] },
   px: (x: number, y: number) => [number, number],
   pxScale: number,
 ): string {
   const parts: string[] = []
-  let prevEnd: [number, number] | null = null
-  for (const edge of surface.boundary) {
-    // A full ellipse carries no shared endpoints: it is its own closed sub-path.
-    if (edge.kind === 'ellipse') {
-      if (prevEnd !== null) parts.push('Z')
-      appendEllipseSubpath(parts, edge, px, pxScale)
-      prevEnd = null
-      continue
+
+  // The outer boundary and each hole are emitted as closed sub-paths; the
+  // consumer fills with fill-rule evenodd, so holes punch through.
+  const emitLoop = (edges: TopologyEdge[]): void => {
+    let prevEnd: [number, number] | null = null
+    for (const edge of edges) {
+      // A full ellipse carries no shared endpoints: it is its own closed sub-path.
+      if (edge.kind === 'ellipse') {
+        if (prevEnd !== null) parts.push('Z')
+        appendEllipseSubpath(parts, edge, px, pxScale)
+        prevEnd = null
+        continue
+      }
+      const [sx, sy] = px(edge.start[0], edge.start[1])
+      const [ex, ey] = px(edge.end[0], edge.end[1])
+      const gapFromPrev = prevEnd === null
+        || Math.hypot(sx - prevEnd[0], sy - prevEnd[1]) > _LOOP_TOL
+      if (gapFromPrev) {
+        if (prevEnd !== null) parts.push('Z')
+        parts.push(`M ${sx} ${sy}`)
+      }
+      if (edge.kind === 'line') {
+        parts.push(`L ${ex} ${ey}`)
+      } else if (edge.kind === 'spline') {
+        const [c1x, c1y] = px(edge.c1[0], edge.c1[1])
+        const [c2x, c2y] = px(edge.c2[0], edge.c2[1])
+        parts.push(`C ${c1x} ${c1y} ${c2x} ${c2y} ${ex} ${ey}`)
+      } else if (edge.kind === 'ellipse_arc') {
+        appendEllipseArcSegments(parts, edge, px)
+      } else {
+        const ae = edge as TopologyArcEdge
+        const r = ae.radius * pxScale
+        const span = ae.ccw
+          ? ((ae.angle_end_deg - ae.angle_start_deg) + 360) % 360
+          : ((ae.angle_start_deg - ae.angle_end_deg) + 360) % 360
+        const largeArc = span > 180 ? 1 : 0
+        const sweep = ae.ccw ? 0 : 1
+        parts.push(`A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`)
+      }
+      prevEnd = [ex, ey]
     }
-    const [sx, sy] = px(edge.start[0], edge.start[1])
-    const [ex, ey] = px(edge.end[0], edge.end[1])
-    const gapFromPrev = prevEnd === null
-      || Math.hypot(sx - prevEnd[0], sy - prevEnd[1]) > _LOOP_TOL
-    if (gapFromPrev) {
-      if (prevEnd !== null) parts.push('Z')
-      parts.push(`M ${sx} ${sy}`)
-    }
-    if (edge.kind === 'line') {
-      parts.push(`L ${ex} ${ey}`)
-    } else if (edge.kind === 'spline') {
-      const [c1x, c1y] = px(edge.c1[0], edge.c1[1])
-      const [c2x, c2y] = px(edge.c2[0], edge.c2[1])
-      parts.push(`C ${c1x} ${c1y} ${c2x} ${c2y} ${ex} ${ey}`)
-    } else {
-      const ae = edge as TopologyArcEdge
-      const r = ae.radius * pxScale
-      const span = ae.ccw
-        ? ((ae.angle_end_deg - ae.angle_start_deg) + 360) % 360
-        : ((ae.angle_start_deg - ae.angle_end_deg) + 360) % 360
-      const largeArc = span > 180 ? 1 : 0
-      const sweep = ae.ccw ? 0 : 1
-      parts.push(`A ${r} ${r} 0 ${largeArc} ${sweep} ${ex} ${ey}`)
-    }
-    prevEnd = [ex, ey]
+    if (prevEnd !== null) parts.push('Z')
   }
-  if (prevEnd !== null) parts.push('Z')
+
+  emitLoop(surface.boundary)
+  for (const hole of surface.holes ?? []) emitLoop(hole)
   return parts.join(' ')
 }
 

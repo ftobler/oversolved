@@ -132,9 +132,10 @@ export function makeBezierEdge(oc: OccModule, scope: DisposeScope, poles: Vec3[]
 }
 
 /**
- * A full-ellipse edge. `majorAxis`/`normal` orient the ellipse frame; `a >= b`
- * are the semi-major/semi-minor radii (the sketch ellipse is always closed --
- * partial elliptical arcs are lowered to splines).
+ * An ellipse edge. `majorAxis`/`normal` orient the ellipse frame; `a >= b` are
+ * the semi-major/semi-minor radii. When `u0`/`u1` (eccentric angles, radians)
+ * are given and do not span a full turn, a trimmed elliptical arc is built (the
+ * sliced-ellipse case); otherwise the full closed ellipse.
  */
 export function makeEllipseEdge(
   oc: OccModule,
@@ -144,6 +145,8 @@ export function makeEllipseEdge(
   majorAxis: Vec3,
   a: number,
   b: number,
+  u0?: number,
+  u1?: number,
 ): OccShape {
   const ax2 = scope.track(
     new oc.gp_Ax2_2(
@@ -153,6 +156,16 @@ export function makeEllipseEdge(
     ),
   )
   const elips = scope.track(new oc.gp_Elips_2(ax2, a, b))
+  const isPartial =
+    u0 !== undefined && u1 !== undefined && Math.abs(Math.abs(u1 - u0) - 2 * Math.PI) > 1e-9
+  if (isPartial) {
+    const arc = scope.track(new oc.GC_MakeArcOfEllipse_1(elips, u0 as number, u1 as number, true))
+    const trimmed = scope.track(arc.Value())
+    const curve = trimmed.get()
+    if (!curve) throw new Error('make_ellipse_edge: GC_MakeArcOfEllipse produced no curve')
+    const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(curve))
+    return scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve)).Edge()
+  }
   const ell = scope.track(new oc.Geom_Ellipse_1(elips))
   const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(ell))
   const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))

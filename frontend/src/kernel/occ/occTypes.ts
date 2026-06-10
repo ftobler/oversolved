@@ -380,6 +380,13 @@ export interface OccModule extends OccSpikeModule {
     alpha2: number,
     sense: boolean,
   ) => OccArcMaker
+  /** GC_MakeArcOfEllipse(elips, alpha1, alpha2, sense): a trimmed elliptical arc. */
+  GC_MakeArcOfEllipse_1: new (
+    elips: OccDisposable,
+    alpha1: number,
+    alpha2: number,
+    sense: boolean,
+  ) => OccArcMaker
   Handle_Geom_Curve_2: new (curve: OccDisposable) => OccDisposable
   /** TColgp_Array1OfPnt(lower, upper): 1-based point array (Bezier poles). */
   TColgp_Array1OfPnt_2: new (lower: number, upper: number) => OccPntArray

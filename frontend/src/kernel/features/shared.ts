@@ -80,7 +80,10 @@ export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
 
   const allLoops: Dict[][] = []
   for (const surface of surfaces) {
-    const boundary = (surface.boundary as Dict[]) ?? []
+    // Emit the outer boundary and every inner hole as separate loops;
+    // classifyLoops re-nests them (outer + holes) for the OCC face.
+    const holes = (surface.holes as Dict[][]) ?? []
+    for (const boundary of [(surface.boundary as Dict[]) ?? [], ...holes]) {
     if (boundary.length === 0) continue
 
     const rawEdges: [number[], number[], Dict][] = []
@@ -130,6 +133,7 @@ export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
         allLoops.push(loop)
         break
       }
+    }
     }
   }
 

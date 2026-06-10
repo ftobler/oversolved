@@ -143,6 +143,25 @@ function buildEllipseEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, 
   return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, edge['a'] as number, edge['b'] as number)
 }
 
+/** A sliced ellipse boundary edge: a trimmed elliptical arc over its angle span. */
+function buildEllipseArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, edge: LoopEdge): OccShape {
+  const center3d = uvTo3d(plane, edge['center'] as number[])
+  const theta = ((edge['theta'] as number | undefined) ?? 0) * (Math.PI / 180)
+  const majorAxis = uvDirTo3d(plane, Math.cos(theta), Math.sin(theta))
+  const a = edge['a'] as number
+  const b = edge['b'] as number
+  let u0 = ((edge['angle_start_deg'] as number | undefined) ?? 0) * (Math.PI / 180)
+  let u1 = ((edge['angle_end_deg'] as number | undefined) ?? 0) * (Math.PI / 180)
+  // GC_MakeArcOfEllipse needs an increasing CCW span; flip a CW edge.
+  if (!((edge['ccw'] as boolean | undefined) ?? true)) {
+    const t = u0
+    u0 = u1
+    u1 = t
+  }
+  if (u1 <= u0) u1 += 2 * Math.PI
+  return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, a, b, u0, u1)
+}
+
 function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: LoopEdge[]): OccShape {
   const circle = fullCircleOf(loop)
   if (circle !== null) return makeWire(oc, scope, [buildArcEdge(oc, scope, plane, circle)])
@@ -157,6 +176,8 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
       edges.push(buildArcEdge(oc, scope, plane, edge))
     } else if (kind === 'ellipse') {
       edges.push(buildEllipseEdge(oc, scope, plane, edge))
+    } else if (kind === 'ellipse_arc') {
+      edges.push(buildEllipseArcEdge(oc, scope, plane, edge))
     } else if (kind === 'spline') {
       // Cubic Bezier boundary: lift the 4-point control polygon to 3D.
       const poles = [

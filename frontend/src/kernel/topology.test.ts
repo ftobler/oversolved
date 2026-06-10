@@ -559,24 +559,21 @@ describe("line-division classifiers", () => {
     expect(tokenSets.size).toBe(4)  // all four quadrants distinct
   })
 
-  it("concentric circles have disjoint lineage (no classifier needed)", () => {
-    /** A disk and the ring around it do NOT share ancestry: each region is
-     *  identified by its own bounding circle. No classifier is emitted and
-     *  the two surfaces resolve by distinct circle lineage alone. */
+  it("concentric circles form one washer (outer face + inner hole)", () => {
+    /** Even/odd nesting: the outer circle is a filled face whose single hole is
+     *  the inner circle (the OCC face-with-holes / donut model). No classifier
+     *  is needed; the region is identified by its outer bounding circle. */
     const r = detectTopology({
       outer: { kind: "circle", center: [0, 0], radius: 10.0 },
       inner: { kind: "circle", center: [0, 0], radius: 4.0 },
     }, "sk1")
-    expect(r.surfaces.length).toBe(2)
-    for (const s of r.surfaces) {
-      expect(s.classifiers as string[] ?? []).toEqual([])
-      expect(s.query).not.toContain("@cls_")
-    }
-    // Ancestry is disjoint: each surface query references a different bounding
-    // circle entity (@sk1/inner for the disk, @sk1/outer for the ring).
-    // Surfaces are sorted by radius (smallest first).
-    expect(r.surfaces[0].query).toContain("@sk1/inner")
-    expect(r.surfaces[1].query).toContain("@sk1/outer")
-    expect(r.surfaces[0].query).not.toEqual(r.surfaces[1].query)
+    expect(r.surfaces.length).toBe(1)
+    const s = r.surfaces[0]
+    expect(s.classifiers as string[] ?? []).toEqual([])
+    expect(s.query).toContain("@sk1/outer")
+    // The inner circle is the hole, carrying its own entity id for lineage.
+    const holes = s.holes as Record<string, unknown>[][]
+    expect(holes).toHaveLength(1)
+    expect(holes[0].some((e) => e.id === "inner")).toBe(true)
   })
 })

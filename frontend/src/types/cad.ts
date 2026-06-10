@@ -560,14 +560,35 @@ export interface TopologyEllipseEdge {
   id?: string
 }
 
+// A partial elliptical arc -- the result of slicing a full ellipse. Carries the
+// same carrier as TopologyEllipseEdge plus an eccentric-angle range (the
+// Geom_Ellipse parameter, degrees), so the OCC writer trims the conic exactly.
+export interface TopologyEllipseArcEdge {
+  kind: 'ellipse_arc'
+  center: Point
+  a: number
+  b: number
+  theta: number
+  angle_start_deg: number  // eccentric angle, degrees
+  angle_end_deg: number
+  ccw: boolean
+  start: Point
+  end: Point
+  start_vertex: string
+  end_vertex: string
+  id?: string
+}
+
 export type TopologyEdge =
   | TopologyLineEdge
   | TopologyArcEdge
   | TopologySplineEdge
   | TopologyEllipseEdge
+  | TopologyEllipseArcEdge
 
 export interface TopologySurface {
-  boundary: TopologyEdge[]
+  boundary: TopologyEdge[]  // the outer loop (CCW)
+  holes?: TopologyEdge[][]  // inner loops (CW), one per hole -- maps to OCC face holes
   query: string
 }
 

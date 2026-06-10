@@ -9,10 +9,12 @@ import type {
   TopologyArcEdge,
   TopologySplineEdge,
   TopologyEllipseEdge,
+  TopologyEllipseArcEdge,
   Point,
 } from '@/types/cad'
 
 const DEFAULT_SEGMENTS = 64
+const TWO_PI = 2 * Math.PI
 
 /** Interior + end points of a cubic-Bezier spline edge (the caller pushes start). */
 function splinePts(edge: TopologySplineEdge, segments: number): Point[] {
@@ -39,6 +41,24 @@ function ellipsePts(edge: TopologyEllipseEdge, segments: number): Point[] {
   for (let i = 0; i < segments; i++) {
     const t = (2 * Math.PI * i) / segments
     const ax = edge.a * Math.cos(t), ay = edge.b * Math.sin(t)
+    out.push([cx + ax * cr - ay * sr, cy + ax * sr + ay * cr])
+  }
+  return out
+}
+
+/** Interior + end points of an elliptical-arc edge (the caller pushes start). */
+function ellipseArcPts(edge: TopologyEllipseArcEdge, segments: number): Point[] {
+  const [cx, cy] = edge.center
+  const rot = (edge.theta ?? 0) * (Math.PI / 180)
+  const cr = Math.cos(rot), sr = Math.sin(rot)
+  const p0 = (edge.angle_start_deg * Math.PI) / 180
+  let p1 = (edge.angle_end_deg * Math.PI) / 180
+  if (edge.ccw) { if (p1 < p0) p1 += TWO_PI } else if (p1 > p0) p1 -= TWO_PI
+  const steps = Math.max(2, Math.ceil((Math.abs(p1 - p0) / TWO_PI) * segments))
+  const out: Point[] = []
+  for (let i = 1; i <= steps; i++) {
+    const phi = p0 + ((p1 - p0) * i) / steps
+    const ax = edge.a * Math.cos(phi), ay = edge.b * Math.sin(phi)
     out.push([cx + ax * cr - ay * sr, cy + ax * sr + ay * cr])
   }
   return out
@@ -76,6 +96,8 @@ export function tessellateBoundary(boundary: TopologyEdge[], segments = DEFAULT_
       pts.push(edge.end)
     } else if (edge.kind === 'spline') {
       pts.push(...splinePts(edge, segments))
+    } else if (edge.kind === 'ellipse_arc') {
+      pts.push(...ellipseArcPts(edge, segments))
     } else {
       pts.push(...arcPts(edge, segments))
     }
