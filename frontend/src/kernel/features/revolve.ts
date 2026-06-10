@@ -169,6 +169,10 @@ export function solveRevolve(
 
   let toolShape: OccShape
   if (cqFaces.length === 0 && allLoops.length === 0) {
+    // No profile geometry resolved -> no part. A part-less revolve is a failed
+    // revolve (surfaced as a red feature), not a silent ok.
+    result.status = 'error'
+    result.exception = 'revolve: no closed profile found in the referenced sketch; no part created'
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
   } else if (cqFaces.length > 0 && allLoops.length === 0) {

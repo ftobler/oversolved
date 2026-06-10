@@ -37,7 +37,7 @@ describe('solveRevolve guard paths', () => {
     ).toThrow(/sketch not found: missing/)
   })
 
-  it('reads sketch/angle from the nested revolve sub-dict and reaches the no-profile warning', () => {
+  it('reads sketch/angle from the nested revolve sub-dict and fails on the no-profile branch', () => {
     const repo = new Repository()
     repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
     repo.register('_topo_sk', { surfaces: [] })
@@ -49,7 +49,9 @@ describe('solveRevolve guard paths', () => {
       repo,
       {},
     )
-    expect(result.status).toBe('ok')
+    // A part-less revolve is surfaced as a failure, not a silent ok.
+    expect(result.status).toBe('error')
+    expect(result.exception).toMatch(/no closed profile/)
     expect(result.mesh_warning).toMatch(/no closed profile/)
   })
 
