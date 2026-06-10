@@ -541,7 +541,30 @@ export interface TopologyArcEdge {
   end_vertex: string
 }
 
-export type TopologyEdge = TopologyLineEdge | TopologyArcEdge
+export interface TopologySplineEdge {
+  kind: 'spline'
+  start: Point
+  end: Point
+  c1: Point  // first cubic-Bezier control handle
+  c2: Point  // second cubic-Bezier control handle
+}
+
+export interface TopologyEllipseEdge {
+  kind: 'ellipse'
+  center: Point
+  a: number  // semi-major radius
+  b: number  // semi-minor radius
+  theta: number  // major-axis rotation, degrees (sketch CCW)
+  start_vertex: string | null
+  end_vertex: string | null
+  id?: string
+}
+
+export type TopologyEdge =
+  | TopologyLineEdge
+  | TopologyArcEdge
+  | TopologySplineEdge
+  | TopologyEllipseEdge
 
 export interface TopologySurface {
   boundary: TopologyEdge[]

@@ -36,12 +36,62 @@ export function arcSamplePoints(e: LoopEdge, n: number): number[][] {
   return out
 }
 
-/** Polygon point list from a loop, inserting arc sample points. */
+/** n interior points sampled along a cubic-Bezier spline edge; empty if not one. */
+export function splineSamplePoints(e: LoopEdge, n: number): number[][] {
+  if (e["kind"] !== "spline") return []
+  const p1 = e["start"] as number[]
+  const c1 = e["c1"] as number[]
+  const c2 = e["c2"] as number[]
+  const p4 = e["end"] as number[]
+  if (!p1 || !c1 || !c2 || !p4) return []
+  const out: number[][] = []
+  for (let k = 0; k < n; k++) {
+    const t = (k + 1) / (n + 1)
+    const mt = 1 - t
+    const a = mt * mt * mt
+    const b = 3 * mt * mt * t
+    const c = 3 * mt * t * t
+    const d = t * t * t
+    out.push([
+      a * p1[0] + b * c1[0] + c * c2[0] + d * p4[0],
+      a * p1[1] + b * c1[1] + c * c2[1] + d * p4[1],
+    ])
+  }
+  return out
+}
+
+/** n points spread around a full closed ellipse edge; empty if not one. */
+export function ellipseSamplePoints(e: LoopEdge, n: number): number[][] {
+  if (e["kind"] !== "ellipse") return []
+  const center = e["center"] as number[] | undefined
+  if (center === undefined || center === null) return []
+  const cx = center[0]
+  const cy = center[1]
+  const a = (e["a"] as number) ?? 0.0
+  const b = (e["b"] as number) ?? 0.0
+  const rot = radians((e["theta"] as number) ?? 0.0)
+  const cr = Math.cos(rot)
+  const sr = Math.sin(rot)
+  const out: number[][] = []
+  for (let k = 0; k < n; k++) {
+    const t = (2 * Math.PI * k) / n
+    const ax = a * Math.cos(t)
+    const ay = b * Math.sin(t)
+    out.push([cx + ax * cr - ay * sr, cy + ax * sr + ay * cr])
+  }
+  return out
+}
+
+/** Polygon point list from a loop, inserting arc/spline/ellipse sample points. */
 export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
   const pts: number[][] = []
   for (const e of loop) {
     if ("start" in e) pts.push(e["start"] as number[])
     pts.push(...arcSamplePoints(e, arcSamples))
+    pts.push(...splineSamplePoints(e, arcSamples))
+    // A full ellipse is a standalone closed loop: it needs enough points to read
+    // as a polygon on its own, independent of the coarse arc sample count.
+    pts.push(...ellipseSamplePoints(e, Math.max(arcSamples * 4, 16)))
   }
   return pts
 }

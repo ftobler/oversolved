@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { Topology, PlaneTransform } from '@/types/cad'
+import { tessellateBoundary } from '@/kernel/topologyBoundary'
 
 /**
  * Register a sketch's topology surfaces with the sketchSurface ID layer.
@@ -32,23 +33,7 @@ function buildPlaneMatrix(planeTransform?: PlaneTransform): THREE.Matrix4 {
 function buildSurfaceShapes(topology: Topology): { shape: THREE.Shape; query: string }[] {
   const results: { shape: THREE.Shape; query: string }[] = []
   for (const surface of topology.surfaces) {
-    const pts: [number, number][] = []
-    surface.boundary.forEach((edge, ei) => {
-      if (ei === 0) pts.push(edge.start)
-      if (edge.kind === 'line') {
-        pts.push(edge.end)
-      } else {
-        const { center, radius, angle_start_deg, angle_end_deg, ccw } = edge
-        const span = ccw
-          ? ((angle_end_deg - angle_start_deg) + 360) % 360
-          : -(((angle_start_deg - angle_end_deg) + 360) % 360)
-        const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * 32))
-        for (let i = 1; i <= steps; i++) {
-          const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
-          pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
-        }
-      }
-    })
+    const pts = tessellateBoundary(surface.boundary, 32)
     if (pts.length < 3) continue
     const shape = new THREE.Shape()
     shape.moveTo(pts[0][0], pts[0][1])

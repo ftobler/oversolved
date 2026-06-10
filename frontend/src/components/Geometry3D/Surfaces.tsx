@@ -1,33 +1,18 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
-import type { Topology, TopologySurface, TopologyEdge, TopologyArcEdge, TopologyEdgeQuery, Point } from '@/types/cad'
+import type { Topology, TopologySurface, TopologyEdgeQuery, Point } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER } from '@/components/Geometry3D/constants'
 import { edgeSelectionId } from '@/components/Geometry3D/utils'
+import { tessellateBoundary } from '@/kernel/topologyBoundary'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
   return topology.surfaces.flatMap((surface: TopologySurface) => {
-    const pts: Point[] = []
-    surface.boundary.forEach((edge: TopologyEdge, ei: number) => {
-      if (ei === 0) pts.push(edge.start)
-      if (edge.kind === 'line') {
-        pts.push(edge.end)
-      } else {
-        const { center, radius, angle_start_deg, angle_end_deg, ccw } = edge as TopologyArcEdge
-        const span = ccw
-          ? ((angle_end_deg - angle_start_deg) + 360) % 360
-          : -(((angle_start_deg - angle_end_deg) + 360) % 360)
-        const steps = Math.max(2, Math.ceil((Math.abs(span) / 360) * ARC_SEGMENTS))
-        for (let i = 1; i <= steps; i++) {
-          const a = (angle_start_deg + (span * i) / steps) * (Math.PI / 180)
-          pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
-        }
-      }
-    })
+    const pts = tessellateBoundary(surface.boundary, ARC_SEGMENTS)
     if (pts.length < 3) return []
     const shape = new THREE.Shape()
     shape.moveTo(pts[0][0], pts[0][1])

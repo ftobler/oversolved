@@ -1,4 +1,4 @@
-import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Spline, Topology, TopologyEdge, TopologyArcEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
+import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Spline, Topology, TopologyEdge, TopologyArcEdge, TopologyEllipseEdge, Constraints, Constraint, DimLinearRender, DimRadiusRender, DimAngleRender, Entity } from '@/types/cad'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 const ICON_SIZE = 14
 
@@ -152,6 +152,31 @@ export function renderSketch(
 
 const _LOOP_TOL = 1e-6
 
+/** Append a full-ellipse self-contained closed sub-path (two half-ellipse arcs). */
+function appendEllipseSubpath(
+  parts: string[],
+  edge: TopologyEllipseEdge,
+  px: (x: number, y: number) => [number, number],
+  pxScale: number,
+): void {
+  const [cx, cy] = edge.center
+  const rot = (edge.theta ?? 0) * (Math.PI / 180)
+  const ca = Math.cos(rot)
+  const sa = Math.sin(rot)
+  // The two major-axis extremes in sketch space, taken through px so the screen
+  // flip is already applied; the SVG arc rotation then negates theta (px() flips
+  // the y axis, matching the renderSketch ellipse arm).
+  const [x0, y0] = px(cx + edge.a * ca, cy + edge.a * sa)
+  const [x1, y1] = px(cx - edge.a * ca, cy - edge.a * sa)
+  const rx = edge.a * pxScale
+  const ry = edge.b * pxScale
+  const rotDeg = -(edge.theta ?? 0)
+  parts.push(`M ${x0} ${y0}`)
+  parts.push(`A ${rx} ${ry} ${rotDeg} 0 1 ${x1} ${y1}`)
+  parts.push(`A ${rx} ${ry} ${rotDeg} 0 1 ${x0} ${y0}`)
+  parts.push('Z')
+}
+
 export function buildSurfacePath(
   surface: { boundary: TopologyEdge[] },
   px: (x: number, y: number) => [number, number],
@@ -160,6 +185,13 @@ export function buildSurfacePath(
   const parts: string[] = []
   let prevEnd: [number, number] | null = null
   for (const edge of surface.boundary) {
+    // A full ellipse carries no shared endpoints: it is its own closed sub-path.
+    if (edge.kind === 'ellipse') {
+      if (prevEnd !== null) parts.push('Z')
+      appendEllipseSubpath(parts, edge, px, pxScale)
+      prevEnd = null
+      continue
+    }
     const [sx, sy] = px(edge.start[0], edge.start[1])
     const [ex, ey] = px(edge.end[0], edge.end[1])
     const gapFromPrev = prevEnd === null
@@ -170,6 +202,10 @@ export function buildSurfacePath(
     }
     if (edge.kind === 'line') {
       parts.push(`L ${ex} ${ey}`)
+    } else if (edge.kind === 'spline') {
+      const [c1x, c1y] = px(edge.c1[0], edge.c1[1])
+      const [c2x, c2y] = px(edge.c2[0], edge.c2[1])
+      parts.push(`C ${c1x} ${c1y} ${c2x} ${c2y} ${ex} ${ey}`)
     } else {
       const ae = edge as TopologyArcEdge
       const r = ae.radius * pxScale
@@ -182,7 +218,7 @@ export function buildSurfacePath(
     }
     prevEnd = [ex, ey]
   }
-  if (parts.length > 0) parts.push('Z')
+  if (prevEnd !== null) parts.push('Z')
   return parts.join(' ')
 }
 

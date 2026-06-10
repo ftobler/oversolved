@@ -52,6 +52,35 @@ describe('buildSurfacePath', () => {
     expect(mCount).toBe(2)
     expect(zCount).toBe(2)
   })
+
+  it('a line + spline loop emits a cubic-Bezier segment (not an arc)', () => {
+    const surface = {
+      query: 'q',
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [4, 0] },
+        { kind: 'spline', start: [4, 0], end: [0, 0], c1: [3, 3], c2: [1, 3] },
+      ],
+    } as unknown as TopologySurface
+    const d = buildSurfacePath(surface, identity, 1)
+    expect(d).toContain('C 3 3 1 3 0 0')  // control handles then the endpoint
+    expect(d).not.toMatch(/NaN/)
+    expect((d.match(/\bM\b/g) ?? []).length).toBe(1)
+    expect((d.match(/\bZ\b/g) ?? []).length).toBe(1)
+  })
+
+  it('a full ellipse renders a closed two-arc sub-path (no crash, no NaN)', () => {
+    const surface = {
+      query: 'q',
+      boundary: [
+        { kind: 'ellipse', center: [3, 1], a: 4, b: 2, theta: 0, start_vertex: null, end_vertex: null, id: 'e1' },
+      ],
+    } as unknown as TopologySurface
+    const d = buildSurfacePath(surface, identity, 1)
+    expect(d).not.toMatch(/NaN/)
+    expect((d.match(/\bM\b/g) ?? []).length).toBe(1)
+    expect((d.match(/\bA\b/g) ?? []).length).toBe(2)  // two half-ellipse arcs
+    expect((d.match(/\bZ\b/g) ?? []).length).toBe(1)
+  })
 })
 
 describe('renderSketch ellipse arm', () => {

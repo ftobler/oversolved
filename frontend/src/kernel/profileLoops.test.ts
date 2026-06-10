@@ -511,4 +511,45 @@ describe('loopPts', () => {
     expect(pts[1][0]).toBeCloseTo(Math.cos(Math.PI / 4))
     expect(pts[1][1]).toBeCloseTo(Math.sin(Math.PI / 4))
   })
+
+  it('samples interior points along a spline edge (not just the chord)', () => {
+    // Symmetric bulge up: the midpoint must sit above the start->end chord.
+    const spline: LoopEdge = { kind: 'spline', start: [0, 0], end: [4, 0], c1: [1, 3], c2: [3, 3] }
+    const pts = loopPts([spline], 3)  // start + 3 interior bezier samples
+    expect(pts).toHaveLength(4)
+    expect(pts[0]).toEqual([0, 0])
+    expect(pts[2][1]).toBeGreaterThan(0)  // the curve bulges off the chord
+  })
+
+  it('samples a full ellipse edge as a closed polygon', () => {
+    const ell: LoopEdge = { kind: 'ellipse', center: [3, 1], a: 4, b: 2, theta: 0 }
+    const pts = loopPts([ell])
+    expect(pts.length).toBeGreaterThanOrEqual(16)
+    // Extents track the semi-axes about the center.
+    const xs = pts.map((p) => p[0])
+    const ys = pts.map((p) => p[1])
+    expect(Math.max(...xs)).toBeCloseTo(7, 6)
+    expect(Math.min(...xs)).toBeCloseTo(-1, 6)
+    expect(Math.max(...ys)).toBeCloseTo(3, 6)
+    expect(Math.min(...ys)).toBeCloseTo(-1, 6)
+  })
+})
+
+describe('loopCentroid: curved boundaries', () => {
+  it('a full ellipse centroid is its center, not [0,0]', () => {
+    const ell: LoopEdge = { kind: 'ellipse', center: [3, 1], a: 4, b: 2, theta: 0 }
+    const [cx, cy] = loopCentroid([ell])
+    expect(cx).toBeCloseTo(3, 6)
+    expect(cy).toBeCloseTo(1, 6)
+  })
+
+  it('a full ellipse signed area approaches pi*a*b (inscribed-polygon underestimate)', () => {
+    const ell: LoopEdge = { kind: 'ellipse', center: [0, 0], a: 4, b: 2, theta: 0 }
+    const exact = Math.PI * 4 * 2
+    const area = Math.abs(loopSignedArea([ell]))
+    // The inscribed 16-gon underestimates but must be within ~5% (enough for
+    // hole containment / nesting decisions in classifyLoops).
+    expect(area).toBeLessThan(exact)
+    expect(area).toBeGreaterThan(exact * 0.95)
+  })
 })
