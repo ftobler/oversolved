@@ -325,8 +325,33 @@ function arcEg(e: Geom, a0: number, a1: number, ccw = true): EdgeGeom {
   }
 }
 
+/** A cubic Bezier point at parameter t (P1, C1, C2, P4 control polygon). */
+function bezierPoint(p1: Pt, c1: Pt, c2: Pt, p4: Pt, t: number): Pt {
+  const mt = 1 - t
+  const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t
+  return [
+    a * p1[0] + b * c1[0] + c * c2[0] + d * p4[0],
+    a * p1[1] + b * c1[1] + c * c2[1] + d * p4[1],
+  ]
+}
+
+/** Half-edge geometry for a spline (no internal splitting: endpoint-chained). */
+function splineEg(e: Geom): EdgeGeom {
+  return {
+    kind: "spline",
+    start: e["start"],
+    end: e["end"],
+    c1: e["c1"],
+    c2: e["c2"],
+  }
+}
+
 function rev(eg: EdgeGeom): EdgeGeom {
   if (eg["kind"] === "line") return { kind: "line", start: eg["end"], end: eg["start"] }
+  if (eg["kind"] === "spline") {
+    // Reverse the control polygon: swap endpoints and swap the handles.
+    return { kind: "spline", start: eg["end"], end: eg["start"], c1: eg["c2"], c2: eg["c1"] }
+  }
   return {
     ...eg,
     angle_start_deg: eg["angle_end_deg"],
@@ -343,6 +368,18 @@ function depart(egeom: EdgeGeom): number {
     const d = egeom["end"] as Pt
     return Math.atan2(d[1] - s[1], d[0] - s[0])
   }
+  if (egeom["kind"] === "spline") {
+    // Departure tangent = Bezier derivative at t=0, i.e. direction start -> c1
+    // (falling back to the chord toward end if the handle is coincident).
+    const s = egeom["start"] as Pt
+    const c1 = egeom["c1"] as Pt
+    let dx = c1[0] - s[0], dy = c1[1] - s[1]
+    if (Math.abs(dx) < EPS && Math.abs(dy) < EPS) {
+      const d = egeom["end"] as Pt
+      dx = d[0] - s[0]; dy = d[1] - s[1]
+    }
+    return Math.atan2(dy, dx)
+  }
   const a = radians(egeom["angle_start_deg"] as number)
   const [tx, ty] = arcTangent(a, (egeom["ccw"] as boolean) ?? true)
   return Math.atan2(ty, tx)
@@ -353,6 +390,12 @@ function faceArea(cycle: number[], hes: HalfEdge[], verts: Map<string, Pt>): num
   for (const i of cycle) {
     const [vf, , eg] = hes[i]
     pts.push(verts.get(vf)!)
+    if (eg["kind"] === "spline") {
+      // Sample interior Bezier points so the shoelace area follows the curve,
+      // not the start->end chord (matches the arc midpoint treatment).
+      const s = eg["start"] as Pt, c1 = eg["c1"] as Pt, c2 = eg["c2"] as Pt, e = eg["end"] as Pt
+      for (let k = 1; k < 8; k++) pts.push(bezierPoint(s, c1, c2, e, k / 8))
+    }
     if (eg["kind"] === "arc") {
       let a0 = radians(eg["angle_start_deg"] as number)
       let a1 = radians(eg["angle_end_deg"] as number)
@@ -376,18 +419,34 @@ function faceArea(cycle: number[], hes: HalfEdge[], verts: Map<string, Pt>): num
 
 // ─── Topology detection helpers ───
 
-function classifyEntities(geometry: Geom): [Map<string, Geom>, Map<string, Geom>, Map<string, Geom>] {
+interface ClassifiedEntities {
+  lines: Map<string, Geom>
+  circles: Map<string, Geom>
+  arcs: Map<string, Geom>
+  splines: Map<string, Geom>
+  ellipses: Map<string, Geom>
+}
+
+function classifyEntities(geometry: Geom): ClassifiedEntities {
   const lines = new Map<string, Geom>()
   const circles = new Map<string, Geom>()
   const arcs = new Map<string, Geom>()
+  const splines = new Map<string, Geom>()
+  const ellipses = new Map<string, Geom>()
   for (const [eid, e] of Object.entries(geometry)) {
     const ent = e as Geom
     if (ent["construction"]) continue
-    if ("start" in ent && "radius" in ent) arcs.set(eid, ent)
+    // Spline/ellipse carry an explicit kind (both would otherwise be misread:
+    // a spline has start/end like a line, a full ellipse has a center like a
+    // circle). A full ellipse is a closed curve -> standalone area like a
+    // circle; a spline is an open edge chained by its endpoints.
+    if (ent["kind"] === "spline") splines.set(eid, ent)
+    else if (ent["kind"] === "ellipse") ellipses.set(eid, ent)
+    else if ("start" in ent && "radius" in ent) arcs.set(eid, ent)
     else if ("start" in ent) lines.set(eid, ent)
     else if ("center" in ent) circles.set(eid, ent)
   }
-  return [lines, circles, arcs]
+  return { lines, circles, arcs, splines, ellipses }
 }
 
 function normalizeArcsAndInitSplits(
@@ -469,6 +528,7 @@ function buildHalfEdgeGraph(
   circles: Map<string, Geom>,
   arcs: Map<string, Geom>,
   splits: Map<string, Split[]>,
+  splines: Map<string, Geom> = new Map(),
 ): [HalfEdge[], string[]] {
   const hes: HalfEdge[] = []
   const heEid: string[] = []
@@ -516,6 +576,19 @@ function buildHalfEdgeGraph(
       hes.push([v0, v1, eg], [v1, v0, rev(eg)])
       heEid.push(eid, eid)
     }
+  }
+
+  // Splines are endpoint-chained (no internal splitting): one half-edge pair
+  // between the entity's start/end vertices.
+  for (const [eid] of splines) {
+    const spl = splits.get(eid)
+    if (!spl || spl.length < 2) continue
+    const v0 = spl[0][1]
+    const v1 = spl[spl.length - 1][1]
+    if (v0 === v1) continue
+    const eg = splineEg(splines.get(eid)!)
+    hes.push([v0, v1, eg], [v1, v0, rev(eg)])
+    heEid.push(eid, eid)
   }
 
   return [hes, heEid]
@@ -676,6 +749,38 @@ function buildStandaloneSurfaces(
   return surfaces
 }
 
+/**
+ * Standalone areas for full (closed) ellipses, mirroring the standalone-circle
+ * path. Each ellipse becomes one area whose boundary is a single closed ellipse
+ * edge (the OCC face builder reads `kind:'ellipse'` and emits one curved edge).
+ * Concentric nesting (ellipse-in-ellipse holes) is not modelled yet.
+ */
+function buildStandaloneEllipses(
+  ellipses: Map<string, Geom>,
+  featureId: string,
+  surfacesSoFar = 0,
+): Record<string, unknown>[] {
+  const surfaces: Record<string, unknown>[] = []
+  let surfCount = surfacesSoFar
+  for (const [eid, e] of ellipses) {
+    const ancestorIds = [emitWire(absolute(featureId, eid)), `surface:${surfCount}`, emitWire(absolute(featureId))]
+    const query = makeAncestryQuery(ancestorIds, "flatface")
+    const boundary = [{
+      kind: "ellipse",
+      center: e["center"],
+      a: e["a"],
+      b: e["b"],
+      theta: e["theta"],
+      start_vertex: null,
+      end_vertex: null,
+      id: eid,
+    }]
+    surfaces.push({ boundary, query })
+    surfCount += 1
+  }
+  return surfaces
+}
+
 // ─── Geometric classifiers: line division ───
 
 function lineSideTokens(surface: Record<string, unknown>): string[] {
@@ -729,7 +834,7 @@ function attachLineDivisionClassifiers(surfaces: Record<string, unknown>[]): voi
 // ─── Main entry point ───
 
 export function detectTopology(geometry: Geom, featureId = ""): TopologyDict {
-  const [lines, circles, arcsRaw] = classifyEntities(geometry)
+  const { lines, circles, arcs: arcsRaw, splines, ellipses } = classifyEntities(geometry)
 
   const verts = new Map<string, Pt>()
   const splits = new Map<string, Split[]>()
@@ -752,13 +857,24 @@ export function detectTopology(geometry: Geom, featureId = ""): TopologyDict {
   for (const [k, v] of arcSplits) splits.set(k, v)
   for (const [k, v] of arcVerts) verts.set(k, v)
 
+  // Spline endpoints register into the same vertex pool (vid merges by
+  // position), so a spline that meets a line/arc at a coincident endpoint
+  // shares its vertex and joins the loop. Splines are not split mid-curve.
+  for (const [eid, e] of splines) {
+    splits.set(eid, [
+      [0.0, vid(verts, e["start"] as Pt)],
+      [1.0, vid(verts, e["end"] as Pt)],
+    ])
+  }
+
   const elist: [string, Geom][] = [...lines, ...circles, ...arcs]
   const intersectionVids = findAllIntersections(elist, lines, circles, splits, verts, arcA0)
 
-  const [hes, heEid] = buildHalfEdgeGraph(lines, circles, arcs, splits)
+  const [hes, heEid] = buildHalfEdgeGraph(lines, circles, arcs, splits, splines)
 
   let surfaces = traceFaceCycles(hes, heEid, verts, featureId)
   surfaces = surfaces.concat(buildStandaloneSurfaces(circles, splits, featureId, surfaces.length))
+  surfaces = surfaces.concat(buildStandaloneEllipses(ellipses, featureId, surfaces.length))
   attachLineDivisionClassifiers(surfaces)
 
   const intersectionPoints: Record<string, { x: number; y: number }> = {}

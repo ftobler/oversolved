@@ -20,6 +20,8 @@ import {
   edgeToGeom,
   makeArcEdge,
   makeLineEdge,
+  makeBezierEdge,
+  makeEllipseEdge,
   makeWire,
   makeFaceFromWire,
   type Vec3,
@@ -127,13 +129,43 @@ function buildArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, edge
   return makeArcEdge(oc, scope, center3d, normal, xAxis, radius, u0, u1)
 }
 
+/** A uv-plane direction lifted to 3D (no origin offset), for the ellipse axis. */
+function uvDirTo3d(plane: PlaneLike, du: number, dv: number): Vec3 {
+  const x = plane.x_axis
+  const y = plane.y_axis
+  return [du * x[0] + dv * y[0], du * x[1] + dv * y[1], du * x[2] + dv * y[2]]
+}
+
+function buildEllipseEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, edge: LoopEdge): OccShape {
+  const center3d = uvTo3d(plane, edge['center'] as number[])
+  const theta = ((edge['theta'] as number | undefined) ?? 0) * (Math.PI / 180)
+  const majorAxis = uvDirTo3d(plane, Math.cos(theta), Math.sin(theta))
+  return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, edge['a'] as number, edge['b'] as number)
+}
+
 function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: LoopEdge[]): OccShape {
   const circle = fullCircleOf(loop)
   if (circle !== null) return makeWire(oc, scope, [buildArcEdge(oc, scope, plane, circle)])
+  // A full ellipse is a single closed boundary edge -> one ellipse-edge wire.
+  if (loop.length === 1 && (loop[0]['kind'] as string) === 'ellipse') {
+    return makeWire(oc, scope, [buildEllipseEdge(oc, scope, plane, loop[0])])
+  }
   const edges: OccShape[] = []
   for (const edge of loop) {
-    if ((edge['kind'] as string) === 'arc') {
+    const kind = edge['kind'] as string
+    if (kind === 'arc') {
       edges.push(buildArcEdge(oc, scope, plane, edge))
+    } else if (kind === 'ellipse') {
+      edges.push(buildEllipseEdge(oc, scope, plane, edge))
+    } else if (kind === 'spline') {
+      // Cubic Bezier boundary: lift the 4-point control polygon to 3D.
+      const poles = [
+        uvTo3d(plane, edge['start'] as number[]),
+        uvTo3d(plane, edge['c1'] as number[]),
+        uvTo3d(plane, edge['c2'] as number[]),
+        uvTo3d(plane, edge['end'] as number[]),
+      ]
+      edges.push(makeBezierEdge(oc, scope, poles))
     } else {
       const p1 = uvTo3d(plane, edge['start'] as number[])
       const p2 = uvTo3d(plane, edge['end'] as number[])

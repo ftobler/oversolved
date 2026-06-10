@@ -24,6 +24,11 @@ export type OccShape = OccDisposable
 export type OccPnt = OccDisposable
 export type OccVec = OccDisposable
 
+/** A 1-based TColgp_Array1OfPnt (Bezier/BSpline poles). */
+export interface OccPntArray extends OccDisposable {
+  SetValue(index: number, pnt: OccPnt): void
+}
+
 export interface OccPolygonBuilder extends OccDisposable {
   Add_1(p: OccPnt): void
   Close(): void
@@ -376,6 +381,14 @@ export interface OccModule extends OccSpikeModule {
     sense: boolean,
   ) => OccArcMaker
   Handle_Geom_Curve_2: new (curve: OccDisposable) => OccDisposable
+  /** TColgp_Array1OfPnt(lower, upper): 1-based point array (Bezier poles). */
+  TColgp_Array1OfPnt_2: new (lower: number, upper: number) => OccPntArray
+  /** Geom_BezierCurve(poles): a Bezier curve through the pole array. */
+  Geom_BezierCurve_1: new (poles: OccPntArray) => OccDisposable
+  /** gp_Elips(axis, majorRadius, minorRadius): an ellipse in the axis frame. */
+  gp_Elips_2: new (axis: OccDisposable, majorRadius: number, minorRadius: number) => OccDisposable
+  /** Geom_Ellipse(elips): the parametric ellipse curve. */
+  Geom_Ellipse_1: new (elips: OccDisposable) => OccDisposable
   BRepBuilderAPI_MakeEdge_3: new (p1: OccPnt, p2: OccPnt) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_8: new (circle: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder

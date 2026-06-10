@@ -120,6 +120,45 @@ export function makeArcEdge(
   return builder.Edge()
 }
 
+/** A cubic Bezier edge from 4 control points (sketch spline -> OCC edge). */
+export function makeBezierEdge(oc: OccModule, scope: DisposeScope, poles: Vec3[]): OccShape {
+  const arr = scope.track(new oc.TColgp_Array1OfPnt_2(1, poles.length))
+  poles.forEach((p, i) => arr.SetValue(i + 1, scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2]))))
+  const bez = scope.track(new oc.Geom_BezierCurve_1(arr))
+  // Upcast the raw Geom_BezierCurve to a Handle_Geom_Curve for MakeEdge.
+  const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(bez))
+  const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
+  return builder.Edge()
+}
+
+/**
+ * A full-ellipse edge. `majorAxis`/`normal` orient the ellipse frame; `a >= b`
+ * are the semi-major/semi-minor radii (the sketch ellipse is always closed --
+ * partial elliptical arcs are lowered to splines).
+ */
+export function makeEllipseEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  normal: Vec3,
+  majorAxis: Vec3,
+  a: number,
+  b: number,
+): OccShape {
+  const ax2 = scope.track(
+    new oc.gp_Ax2_2(
+      scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
+      scope.track(new oc.gp_Dir_4(normal[0], normal[1], normal[2])),
+      scope.track(new oc.gp_Dir_4(majorAxis[0], majorAxis[1], majorAxis[2])),
+    ),
+  )
+  const elips = scope.track(new oc.gp_Elips_2(ax2, a, b))
+  const ell = scope.track(new oc.Geom_Ellipse_1(elips))
+  const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(ell))
+  const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
+  return builder.Edge()
+}
+
 function makeCirc(
   oc: OccModule,
   scope: DisposeScope,

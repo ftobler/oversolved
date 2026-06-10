@@ -105,6 +105,19 @@ export function enrichSketchEntity(kind: string, ep: number[]): Dict {
       end: [cx + r * Math.cos(rad(a1)), cy + r * Math.sin(rad(a1))],
     }
   }
+  if (kind === 'ellipse') {
+    // Full closed ellipse (partial elliptical arcs are lowered to splines).
+    // `kind` is carried so topology classifies it unambiguously: it has a
+    // center like a circle but is not one.
+    const [cx, cy, a, b, theta] = ep
+    return { kind: 'ellipse', center: [cx, cy], a, b, theta }
+  }
+  if (kind === 'spline') {
+    // Cubic Bezier: P1/P4 on-curve endpoints, P2/P3 control handles. `kind`
+    // disambiguates it from a line (both carry start/end and no radius).
+    const [x1, y1, x2, y2, x3, y3, x4, y4] = ep
+    return { kind: 'spline', start: [x1, y1], end: [x4, y4], c1: [x2, y2], c2: [x3, y3] }
+  }
   if (kind === 'point') return { x: ep[0], y: ep[1] }
   return {}
 }
