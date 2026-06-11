@@ -5,8 +5,10 @@
  * structure.  In later phases this file will also run the TS/WASM kernel and
  * diff results against the baseline.
  */
-import { describe, it, expect } from 'vitest'
-import baseline from './regression-baseline.json'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 interface BodyEntry {
   id: string
@@ -36,7 +38,13 @@ interface RegressionEntry {
   bodies: Record<string, BodyEntry>
 }
 
-const entries = baseline as unknown as RegressionEntry[]
+let entries: RegressionEntry[]
+
+beforeAll(() => {
+  const __dirname = dirname(fileURLToPath(import.meta.url))
+  const raw = readFileSync(resolve(__dirname, 'regression-baseline.json'), 'utf-8')
+  entries = JSON.parse(raw) as RegressionEntry[]
+})
 
 describe('WASM kernel regression baseline', () => {
   it('has entries', () => {
@@ -63,25 +71,39 @@ describe('WASM kernel regression baseline', () => {
   })
 
   it('mesh structures are valid', { timeout: 30000 }, () => {
+    const errors: string[] = []
     for (const entry of entries) {
-      for (const [, body] of Object.entries(entry.bodies)) {
+      for (const [bodyId, body] of Object.entries(entry.bodies)) {
         const mesh = body.mesh
         if (!mesh) continue
-        // Every mesh has vertices and faces arrays
-        expect(Array.isArray(mesh.vertices)).toBe(true)
-        expect(Array.isArray(mesh.faces)).toBe(true)
-        // Face indices are triplets within vertex range
+        if (!Array.isArray(mesh.vertices)) {
+          errors.push(`${entry.label}/${bodyId}: vertices not an array`)
+        }
+        if (!Array.isArray(mesh.faces)) {
+          errors.push(`${entry.label}/${bodyId}: faces not an array`)
+        }
+        if (!Array.isArray(mesh.vertices) || !Array.isArray(mesh.faces)) continue
         const n = mesh.vertices.length
-        for (const face of mesh.faces) {
-          expect(Array.isArray(face)).toBe(true)
-          expect(face.length).toBe(3)
-          for (const idx of face) {
-            expect(idx).toBeGreaterThanOrEqual(0)
-            expect(idx).toBeLessThan(n)
+        for (let fi = 0; fi < mesh.faces.length; fi++) {
+          const face = mesh.faces[fi]
+          if (!Array.isArray(face)) {
+            errors.push(`${entry.label}/${bodyId}: face[${fi}] not an array`)
+            continue
+          }
+          if (face.length !== 3) {
+            errors.push(`${entry.label}/${bodyId}: face[${fi}] length ${face.length} !== 3`)
+            continue
+          }
+          for (let vi = 0; vi < 3; vi++) {
+            const idx = face[vi]
+            if (typeof idx !== 'number' || idx < 0 || idx >= n) {
+              errors.push(`${entry.label}/${bodyId}: face[${fi}][${vi}]=${idx} out of range [0,${n})`)
+            }
           }
         }
       }
     }
+    expect(errors).toEqual([])
   })
 
   it('face_hashes match face_count', () => {
