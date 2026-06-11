@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartStyleEntry } from '@/types/cad'
+import type { PartDoc, PartFeature } from '@/types/cad'
 import { findFeature } from './helpers'
 
 const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
@@ -15,8 +15,8 @@ export function applyRenamePart(doc: PartDoc, bodyId: string, name: string): voi
 
 export function applySetBodyVisibility(doc: PartDoc, bodyId: string, visible: boolean): void {
   if (!doc.part_style) doc.part_style = {}
-  if (!doc.part_style[bodyId]) doc.part_style[bodyId] = {} as PartStyleEntry
-  doc.part_style[bodyId].visible = visible
+  const current = doc.part_style[bodyId] ?? {}
+  doc.part_style[bodyId] = { ...current, visible }
 }
 
 export function applySetPartColor(doc: PartDoc, bodyId: string, color: string): void {

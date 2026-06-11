@@ -21,4 +21,23 @@ describe('applySetBodyVisibility', () => {
     applySetBodyVisibility(doc, 'body_1', false)
     expect(doc.part_style?.body_1?.visible).toBe(false)
   })
+
+  it('does not leak visibility through shared part_style entries', () => {
+    const shared = { name: 'array part' }
+    const doc = {
+      kind: 'part',
+      version: 1,
+      features: [],
+      part_style: {
+        body_ca1: shared,
+        body_ca1_1: shared,
+      },
+    } as PartDoc
+
+    applySetBodyVisibility(doc, 'body_ca1', false)
+
+    expect(doc.part_style?.body_ca1?.visible).toBe(false)
+    expect(doc.part_style?.body_ca1_1?.visible).toBeUndefined()
+    expect(doc.part_style?.body_ca1).not.toBe(doc.part_style?.body_ca1_1)
+  })
 })

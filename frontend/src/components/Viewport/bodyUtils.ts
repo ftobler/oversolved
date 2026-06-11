@@ -1,8 +1,7 @@
 import type { Feature, BodyResult, EdgeData, PartStyleEntry } from '@/types/cad'
 
 /**
- * Computes which bodies should be visible given explicit user overrides and
- * feature-level visibility.
+ * Computes which bodies should be visible given explicit user overrides.
  *
  * Returns undefined when there are no overrides (show everything).
  * Returns a Set (possibly empty) when at least one body has been explicitly
@@ -10,19 +9,17 @@ import type { Feature, BodyResult, EdgeData, PartStyleEntry } from '@/types/cad'
  */
 export function computeEffectiveVisibleBodies(
   bodies: Record<string, BodyResult> | undefined,
-  visibleFeatures: Set<string>,
+  _visibleFeatures: Set<string>,
   partStyle: Record<string, PartStyleEntry>,
 ): Set<string> | undefined {
   const visible = new Set<string>()
   let anyExplicitHide = false
-  for (const [bodyId, body] of Object.entries(bodies || {})) {
+  for (const bodyId of Object.keys(bodies || {})) {
     if (partStyle[bodyId]?.visible === false) {
       anyExplicitHide = true
       continue
     }
-    if (body.created_by && visibleFeatures.has(body.created_by)) {
-      visible.add(bodyId)
-    }
+    visible.add(bodyId)
   }
   return (visible.size > 0 || anyExplicitHide) ? visible : undefined
 }

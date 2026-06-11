@@ -120,9 +120,30 @@ describe('computeEffectiveVisibleBodies', () => {
     expect(result?.size).toBe(0)
   })
 
-  it('excludes body when visible is true but its feature is hidden (no explicit show override)', () => {
+  it('keeps body visibility independent from feature visibility', () => {
     const result = computeEffectiveVisibleBodies(bodies, new Set(), partStyle({ body_a: { visible: true } }))
-    expect(result).toBeUndefined()
+    expect(result?.has('body_a')).toBe(true)
+    expect(result?.has('body_b')).toBe(true)
+  })
+
+  it('hides only one body when multiple bodies share one creator feature', () => {
+    const arrayBodies: Record<string, BodyResult> = {
+      body_UAM7nPd8Trb1gGJ7Wefu6uUc: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
+      body_UAM7nPd8Trb1gGJ7Wefu6uUc_1: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc_1', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
+      body_UAM7nPd8Trb1gGJ7Wefu6uUc_2: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc_2', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
+      body_UAM7nPd8Trb1gGJ7Wefu6uUc_3: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc_3', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
+    }
+
+    const result = computeEffectiveVisibleBodies(
+      arrayBodies,
+      new Set(['UAM7nPd8Trb1gGJ7Wefu6uUc']),
+      partStyle({ body_UAM7nPd8Trb1gGJ7Wefu6uUc_1: { visible: false } }),
+    )
+
+    expect(result?.has('body_UAM7nPd8Trb1gGJ7Wefu6uUc')).toBe(true)
+    expect(result?.has('body_UAM7nPd8Trb1gGJ7Wefu6uUc_1')).toBe(false)
+    expect(result?.has('body_UAM7nPd8Trb1gGJ7Wefu6uUc_2')).toBe(true)
+    expect(result?.has('body_UAM7nPd8Trb1gGJ7Wefu6uUc_3')).toBe(true)
   })
 
   it('treats missing visible as visible', () => {
