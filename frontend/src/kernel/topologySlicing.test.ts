@@ -131,30 +131,37 @@ describe("area builder: ellipse vs ellipse", () => {
   })
 })
 
-describe("area builder: inner loops / donut (even-odd nesting)", () => {
+describe("area builder: inner loops / donut (planar areas)", () => {
   const holesOf = (s: { holes?: unknown }): unknown[] => (s.holes as unknown[]) ?? []
 
-  it("donut-concentric-circles: one washer area with one hole", () => {
+  it("donut-concentric-circles: a washer-with-hole AND the inner disk", () => {
+    // The hole region is itself a selectable area, so two concentric circles
+    // make two areas: the outer ring (hole = inner) and the inner disk.
     const topo = detectTopology({ c1: circle(0, 0, 5), c2: circle(0, 0, 2.5) }, "sk")
-    expect(topo.surfaces).toHaveLength(1)
-    expect(holesOf(topo.surfaces[0])).toHaveLength(1)
+    expect(topo.surfaces).toHaveLength(2)
+    const withHole = topo.surfaces.filter((s) => holesOf(s).length > 0)
+    const disks = topo.surfaces.filter((s) => holesOf(s).length === 0)
+    expect(withHole).toHaveLength(1)  // the ring: outer circle with the inner as a hole
+    expect(disks).toHaveLength(1)  // the inner circle's own filled disk
   })
 
-  it("donut-concentric-ellipses: one elliptical washer with one hole", () => {
+  it("donut-concentric-ellipses: an elliptical washer AND the inner disk", () => {
     const topo = detectTopology({ e1: E1, e2: ellipse(0, 0, 4, 1.5, 0) }, "sk")
-    expect(topo.surfaces).toHaveLength(1)
-    expect(holesOf(topo.surfaces[0])).toHaveLength(1)
+    expect(topo.surfaces).toHaveLength(2)
+    expect(topo.surfaces.filter((s) => holesOf(s).length > 0)).toHaveLength(1)
+    expect(topo.surfaces.filter((s) => holesOf(s).length === 0)).toHaveLength(1)
   })
 
-  it("donut-circle-in-ellipse: elliptical face with a circular hole", () => {
+  it("donut-circle-in-ellipse: elliptical face with a circular hole AND the disk", () => {
     const topo = detectTopology({ e1: E1, c1: circle(-1.787076, -0.144848, 1.185717) }, "sk")
-    expect(topo.surfaces).toHaveLength(1)
-    expect(holesOf(topo.surfaces[0])).toHaveLength(1)
+    expect(topo.surfaces).toHaveLength(2)
+    const ring = topo.surfaces.find((s) => holesOf(s).length > 0)!
     // outer boundary is the ellipse, the hole is the circle.
-    expect((topo.surfaces[0].boundary as Geom[])[0].kind).toBe("ellipse")
+    expect((ring.boundary as Geom[])[0].kind).toBe("ellipse")
+    expect(holesOf(ring)).toHaveLength(1)
   })
 
-  it("donut-rect-two-holes: one rectangle face with two holes", () => {
+  it("donut-rect-two-holes: a rectangle with two holes AND each hole's disk", () => {
     const rect = {
       l1: line(-5, -5, 5, -5),
       l2: line(5, -5, 5, 5),
@@ -165,20 +172,24 @@ describe("area builder: inner loops / donut (even-odd nesting)", () => {
       { ...rect, c1: circle(-1.911068, 2.247443, 1.223361), c2: circle(1.787360, -2.300799, 1.534329) },
       "sk",
     )
-    expect(topo.surfaces).toHaveLength(1)
-    expect(holesOf(topo.surfaces[0])).toHaveLength(2)
+    expect(topo.surfaces).toHaveLength(3)  // the rectangle face + the two hole disks
+    const withHoles = topo.surfaces.filter((s) => holesOf(s).length > 0)
+    expect(withHoles).toHaveLength(1)
+    expect(holesOf(withHoles[0])).toHaveLength(2)
+    expect(topo.surfaces.filter((s) => holesOf(s).length === 0)).toHaveLength(2)
   })
 
-  it("nest-three-levels: outer-with-hole plus a solid island = 2 areas", () => {
+  it("nest-three-levels: every loop is its own area = 3 areas", () => {
+    // r7.5 ⊃ r5 ⊃ r2.5: outer ring (hole r5), middle ring (hole r2.5), inner disk.
     const topo = detectTopology(
       { c1: circle(0, 0, 7.5), c2: circle(0, 0, 5), c3: circle(0, 0, 2.5) },
       "sk",
     )
-    expect(topo.surfaces).toHaveLength(2)
-    const withHole = topo.surfaces.filter((s) => holesOf(s).length > 0)
-    const islands = topo.surfaces.filter((s) => holesOf(s).length === 0)
-    expect(withHole).toHaveLength(1)  // the r7.5 ring (hole = r5)
-    expect(islands).toHaveLength(1)  // the r2.5 solid disk
+    expect(topo.surfaces).toHaveLength(3)
+    const rings = topo.surfaces.filter((s) => holesOf(s).length > 0)
+    const disks = topo.surfaces.filter((s) => holesOf(s).length === 0)
+    expect(rings).toHaveLength(2)  // r7.5 (hole r5) and r5 (hole r2.5)
+    expect(disks).toHaveLength(1)  // the r2.5 solid disk
   })
 })
 

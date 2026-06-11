@@ -156,16 +156,11 @@ export function pointInLoop(pt: number[], loop: LoopEdge[]): boolean {
 }
 
 /**
- * Group loops into (outer, holes) pairs for face construction by even/odd
- * containment depth: a loop enclosed by an even number of others is a filled
- * face, one enclosed by an odd number is a hole of its immediate (smallest
- * strictly larger) container. A solid island inside a hole (depth 2) is its own
- * face again -- so arbitrary nesting works, not just one level.
+ * Containment analysis: for each loop, its nesting `depth` (how many other
+ * loops enclose it) and its immediate `container` (the smallest strictly larger
+ * loop that encloses it, or -1 if none).
  */
-export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][] {
-  if (loops.length === 0) return []
-  if (loops.length === 1) return [[loops[0], []]]
-
+function loopContainment(loops: LoopEdge[][]): { depth: number[]; container: number[] } {
   const n = loops.length
   const areas = loops.map((loop) => Math.abs(loopSignedArea(loop)))
   const cents = loops.map((loop) => loopCentroid(loop))
@@ -185,12 +180,52 @@ export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][]
       }
     }
   }
+  return { depth, container }
+}
+
+/**
+ * Group loops into (outer, holes) pairs for face construction by even/odd
+ * containment depth: a loop enclosed by an even number of others is a filled
+ * face, one enclosed by an odd number is a hole of its immediate (smallest
+ * strictly larger) container. A solid island inside a hole (depth 2) is its own
+ * face again -- so arbitrary nesting works, not just one level. This is the
+ * extrude/solid model where two concentric circles fuse into one washer solid.
+ */
+export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][] {
+  if (loops.length === 0) return []
+  if (loops.length === 1) return [[loops[0], []]]
+
+  const n = loops.length
+  const { depth, container } = loopContainment(loops)
 
   const result: [LoopEdge[], LoopEdge[][]][] = []
   for (let oi = 0; oi < n; oi++) {
     if (depth[oi] % 2 === 1) continue  // a hole, attached to its container below
     const holes: LoopEdge[][] = []
     for (let i = 0; i < n; i++) if (depth[i] % 2 === 1 && container[i] === oi) holes.push(loops[i])
+    result.push([loops[oi], holes])
+  }
+  return result
+}
+
+/**
+ * Planar subdivision: every loop bounds its own face whose holes are the loops
+ * immediately nested inside it -- at every depth, not just even ones. Two
+ * concentric circles yield two areas: the outer ring (with the inner circle as
+ * a hole) AND the inner disk. This is the sketch-area model, where every region
+ * the eye can see is selectable, unlike the even/odd `classifyLoops` donut.
+ */
+export function subdivideLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][] {
+  if (loops.length === 0) return []
+  if (loops.length === 1) return [[loops[0], []]]
+
+  const n = loops.length
+  const { container } = loopContainment(loops)
+
+  const result: [LoopEdge[], LoopEdge[][]][] = []
+  for (let oi = 0; oi < n; oi++) {
+    const holes: LoopEdge[][] = []
+    for (let i = 0; i < n; i++) if (container[i] === oi) holes.push(loops[i])
     result.push([loops[oi], holes])
   }
   return result

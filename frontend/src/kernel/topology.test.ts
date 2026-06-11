@@ -559,21 +559,23 @@ describe("line-division classifiers", () => {
     expect(tokenSets.size).toBe(4)  // all four quadrants distinct
   })
 
-  it("concentric circles form one washer (outer face + inner hole)", () => {
-    /** Even/odd nesting: the outer circle is a filled face whose single hole is
-     *  the inner circle (the OCC face-with-holes / donut model). No classifier
-     *  is needed; the region is identified by its outer bounding circle. */
+  it("concentric circles form a washer AND the inner disk (two areas)", () => {
+    /** Planar areas: the outer circle is a face whose single hole is the inner
+     *  circle (the ring), and the inner circle is ALSO its own filled disk area.
+     *  Every visible region is selectable. */
     const r = detectTopology({
       outer: { kind: "circle", center: [0, 0], radius: 10.0 },
       inner: { kind: "circle", center: [0, 0], radius: 4.0 },
     }, "sk1")
-    expect(r.surfaces.length).toBe(1)
-    const s = r.surfaces[0]
-    expect(s.classifiers as string[] ?? []).toEqual([])
-    expect(s.query).toContain("@sk1/outer")
-    // The inner circle is the hole, carrying its own entity id for lineage.
-    const holes = s.holes as Record<string, unknown>[][]
+    expect(r.surfaces.length).toBe(2)
+    const ring = r.surfaces.find((s) => ((s.holes as unknown[]) ?? []).length > 0)!
+    const disk = r.surfaces.find((s) => ((s.holes as unknown[]) ?? []).length === 0)!
+    expect(ring.query).toContain("@sk1/outer")
+    // The inner circle is the ring's hole, carrying its own entity id for lineage.
+    const holes = ring.holes as Record<string, unknown>[][]
     expect(holes).toHaveLength(1)
     expect(holes[0].some((e) => e.id === "inner")).toBe(true)
+    // The inner circle's interior is its own area.
+    expect(disk.query).toContain("@sk1/inner")
   })
 })

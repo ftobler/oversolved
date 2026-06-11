@@ -63,10 +63,13 @@ describe.skipIf(!oc)('sliced-curve profile extrude (real OCC)', () => {
       },
       'sk',
     )
-    expect(topo.surfaces).toHaveLength(1)
-    expect((topo.surfaces[0] as Geom).holes as unknown[]).toHaveLength(1)
+    // Concentric ellipses now make two areas: the ring (with the inner as a
+    // hole) and the inner disk. Extrude the ring to get the washer solid.
+    expect(topo.surfaces).toHaveLength(2)
+    const ring = topo.surfaces.find((s) => ((s as Geom).holes as unknown[] ?? []).length > 0)!
+    expect((ring as Geom).holes as unknown[]).toHaveLength(1)
     const h = 2
-    const { solid } = extrudeProfileWithLineage(oc!, scope, loopsOf(topo.surfaces[0] as Geom), XY, [0, 0, 1], h, 'sk')
+    const { solid } = extrudeProfileWithLineage(oc!, scope, loopsOf(ring as Geom), XY, [0, 0, 1], h, 'sk')
     const vol = volumeOf(oc!, scope, solid)
     // (outer - inner) area * h = pi*(5*2.5 - 3*1.5)*2 = pi*8.75*2 ~= 54.98.
     expect(vol).toBeGreaterThan(50)

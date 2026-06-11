@@ -2,7 +2,7 @@
 // extrude leaf (phase 2f): loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
-import { loopSignedArea, pointInLoop, classifyLoops, loopCentroid, arcSamplePoints, loopPts, type LoopEdge } from './profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, arcSamplePoints, loopPts, type LoopEdge } from './profileLoops'
 import { extractProfileLoops } from './features/shared'
 
 const square = (s: number): LoopEdge[] => [
@@ -226,6 +226,46 @@ describe('extractProfileLoops', () => {
     ]
     const loops = extractProfileLoops([surfaceFromEdges(edges)])
     expect(Array.isArray(loops)).toBe(true)
+  })
+})
+
+describe('subdivideLoops', () => {
+  it('returns empty/single trivially', () => {
+    expect(subdivideLoops([])).toEqual([])
+    const one = subdivideLoops([square(10)])
+    expect(one).toHaveLength(1)
+    expect(one[0][1]).toHaveLength(0)
+  })
+
+  it('keeps the nested loop as a hole AND its own filled face', () => {
+    // The even/odd classifyLoops drops the inner disk; subdivideLoops keeps it.
+    const outer = square(20)
+    const hole = box(10, 10, 2)
+    const groups = subdivideLoops([outer, hole])
+    expect(groups).toHaveLength(2)
+    const ring = groups.find((g) => g[0] === outer)!
+    const disk = groups.find((g) => g[0] === hole)!
+    expect(ring[1]).toEqual([hole])  // outer carries the inner as a hole
+    expect(disk[1]).toHaveLength(0)  // inner is also its own face
+  })
+
+  it('every level of a triple nest is its own face', () => {
+    const a = box(0, 0, 10)
+    const b = box(0, 0, 6)
+    const c = box(0, 0, 2)
+    const groups = subdivideLoops([a, b, c])
+    expect(groups).toHaveLength(3)
+    expect(groups.find((g) => g[0] === a)![1]).toEqual([b])  // a's hole is b
+    expect(groups.find((g) => g[0] === b)![1]).toEqual([c])  // b's hole is c
+    expect(groups.find((g) => g[0] === c)![1]).toEqual([])  // c is a solid disk
+  })
+
+  it('keeps disjoint loops as independent holeless faces', () => {
+    const a = box(5, 5, 2)
+    const b = box(50, 50, 2)
+    const groups = subdivideLoops([a, b])
+    expect(groups).toHaveLength(2)
+    expect(groups.every(([, holes]) => holes.length === 0)).toBe(true)
   })
 })
 

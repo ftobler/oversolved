@@ -15,7 +15,7 @@ import {
   TOL_TOPOLOGY_SPLIT,
 } from "./solverConstants"
 import { makeAncestryQuery, emitWire, absolute, parseAncestry } from "./query"
-import { loopCentroid, classifyLoops } from "./profileLoops"
+import { loopCentroid, subdivideLoops } from "./profileLoops"
 import { intersectCurves, type Curve } from "./curveIntersect"
 import { subdivideBezier, ellipsePointAt, type BezierCtrl } from "./curveSplit"
 
@@ -877,7 +877,7 @@ function buildStandaloneSurfaces(
   let surfCount = surfacesSoFar
 
   // Each uncut circle is a plain disk loop. Concentric nesting (disk-in-ring) is
-  // resolved uniformly for every entity kind by nestSurfaces (even/odd holes).
+  // resolved uniformly for every entity kind by nestSurfaces (planar areas).
   for (const [eid, e] of circles) {
     if (dedup(splits.get(eid) ?? []).length >= 2) continue
     const cx = (e["center"] as Pt)[0]
@@ -893,17 +893,18 @@ function buildStandaloneSurfaces(
 }
 
 /**
- * Fold nested loops into outer+holes (the OCC face-with-holes model -- a donut
- * is one area with one inner loop). Delegates the even/odd containment nesting to
- * `classifyLoops` (the same engine the extrude path uses), then maps each outer
- * loop back to its source surface to keep that surface's ancestry query.
+ * Fold nested loops into the sketch-area model via `subdivideLoops`: every loop
+ * stays its own area, carrying the loops immediately nested inside it as holes.
+ * Two concentric circles become two areas -- the outer ring (hole = inner
+ * circle) and the inner disk -- so every visible region is selectable. Each
+ * outer loop maps back to its source surface to keep that surface's ancestry.
  */
 function nestSurfaces(surfaces: Record<string, unknown>[]): Record<string, unknown>[] {
   if (surfaces.length < 2) return surfaces
   const loops = surfaces.map((s) => (s["boundary"] as Record<string, unknown>[]) ?? [])
   const out: Record<string, unknown>[] = []
-  for (const [outer, holes] of classifyLoops(loops)) {
-    const idx = loops.indexOf(outer)  // classifyLoops returns the same array refs
+  for (const [outer, holes] of subdivideLoops(loops)) {
+    const idx = loops.indexOf(outer)  // subdivideLoops returns the same array refs
     const s = { ...surfaces[idx] }
     if (holes.length) s["holes"] = holes
     out.push(s)
