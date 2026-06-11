@@ -5,6 +5,7 @@ export const COLOR_BODY_EDGE     = '#eeeeee'
 export const COLOR_BODY_HOVER    = '#91ccb7'
 export const COLOR_BODY_SELECTED = '#b5a16a'
 export const COLOR_BODY_EDGE_SEL = '#ffffff'
+export const DEFAULT_PART_ROUGHNESS = 0.7
 
 // Geometry color palette
 export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained

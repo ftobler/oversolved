@@ -5,6 +5,7 @@ export {
   COLOR_BODY_HOVER,
   COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE_SEL,
+  DEFAULT_PART_ROUGHNESS,
   COLOR_SOLVED,
   COLOR_FULLY_CONSTRAINED,
   COLOR_ERROR,
@@ -44,4 +45,3 @@ export const VERTEX_RADIUS = 0.04
 
 // Debug and z-offset (re-exported from Sketch3D constants)
 export const POINT_HIT_PIXELS_Z_OFFSET = 10
-

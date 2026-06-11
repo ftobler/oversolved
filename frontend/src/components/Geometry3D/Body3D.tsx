@@ -11,6 +11,7 @@ import {
   COLOR_SELECTED, COLOR_HOVER,
   blendWhite,
   POINT_HIT_PIXELS, POINT_VIS_PIXELS,
+  DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_HIGHLIGHT,
 } from '@/components/Geometry3D/constants'
@@ -74,7 +75,7 @@ interface Body3DProps {
   interactive?: boolean
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = 0.35, transmission = 0, interactive = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })

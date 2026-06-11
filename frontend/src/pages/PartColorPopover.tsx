@@ -1,8 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import type { Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { normalizeHexColor } from '@/utils/core/partColors'
-import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
+import { DEFAULT_PART_ROUGHNESS, normalizeHexColor, PART_COLOR_PALETTE } from '@/utils/core/partColors'
 
 interface PartColorPopoverProps {
   popover: { bodyId: string; position: [number, number]; session?: number } | null
@@ -37,7 +36,7 @@ function PartColorPopoverInner({
   const [colorDraft, setColorDraft] = useState(() => normalizeHexColor(style?.color) || '#6AB59B')
   const [transparencyDraft, setTransparencyDraft] = useState(style?.transparency ?? 0)
   const [metalnessDraft, setMetalnessDraft] = useState(style?.metalness ?? 0)
-  const [roughnessDraft, setRoughnessDraft] = useState(style?.roughness ?? 0.35)
+  const [roughnessDraft, setRoughnessDraft] = useState(style?.roughness ?? DEFAULT_PART_ROUGHNESS)
   const [transmissionDraft, setTransmissionDraft] = useState(style?.transmission ?? 0)
 
   // Focus first focusable element on mount

@@ -115,7 +115,7 @@ Hit geometry: entities via cylinder per segment (8px radius), vertices via spher
 - Render order constants: DEFAULT=0, GHOST=1, EDITING=10, HIGHLIGHT=999 (in `partColors.ts`).
 - Screenshot capture: imperative `gl.render(scene, camera)`, `captureScreenshotForSaving` renders at 1/4 resolution scaled to max 512px.
 - Colors defined in `partColors.ts` (body: mint green, sketch: blue/white/red, selected: orange, etc.).
-- Body meshes use `meshStandardMaterial` (roughness 0.35, metalness 0.3) with `vertexColors` for per-face coloring.
+- Body meshes use `meshPhysicalMaterial` (roughness 0.7 by default) with `vertexColors` for per-face coloring.
 
 ## Mutation Flow
 
