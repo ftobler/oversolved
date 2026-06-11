@@ -3,6 +3,7 @@
 // using the enrichSketchEntity dict form detectTopology consumes.
 import { describe, it, expect } from "vitest"
 import { detectTopology } from "./topology"
+import { TOL_TOPOLOGY_MERGE } from "./solverConstants"
 
 type Geom = Record<string, unknown>
 
@@ -42,21 +43,42 @@ describe("area builder: line / arc / circle slicing an ellipse", () => {
     expect(topo.surfaces.length).toBeGreaterThanOrEqual(2)
   })
 
-  it("slice-line-endpoint-on-ellipse: a chord ending on the rim splits it in two", () => {
-    // Regression for bugreports/ellipse_slice_error*: the line's end vertex is
-    // constrained onto the ellipse, so it sits on the rim only to within the
-    // solver residual (~1.7e-7). The line/ellipse intersection computed there
-    // must merge with that endpoint vertex, otherwise the chord never closes
-    // against the elliptical arcs and the cut collapses back to one area.
-    const ends: [number, number] = [-2.0701122283935547, 2.2756667137145996]
-    const starts: [number, number][] = [
-      [-7.447084903717041, -0.10095799714326859],  // one quadrant
-      [-6.315125942230225, -0.2938689887523651],  // one quadrant, nearer rim
-      [4.364737033843994, 1.8953800201416016],  // two quadrants
+  // Regression for bugreports/ellipse_slice_error{,2,3}: a chord whose endpoint
+  // is constrained onto the rim sits there only to within the solver residual, so
+  // the line-end vertex and the line/ellipse intersection computed there must
+  // merge for the cut to close. Rather than memorising the three reported points
+  // (the end-to-end real-solver check lives in sliceEndpointOnEllipseReal.test.ts)
+  // these tests drive the tolerance boundary directly: build a genuine chord A--B
+  // and continue the line a controlled `eps` past A (off the rim), so `eps` is
+  // exactly the line-end / intersection vertex gap the merge must absorb.
+  describe("slice-line-endpoint-near-rim: vertex-merge tolerance boundary", () => {
+    const ellAt = (phi: number): [number, number] => [5 * Math.cos(phi), 2.5 * Math.sin(phi)]
+    // L large so the off-rim point's *line parameter* stays well inside SPLIT,
+    // isolating the world-space MERGE tolerance as the only thing under test.
+    const surfaces = (phiA: number, phiB: number, eps: number, L = 100): number => {
+      const A = ellAt(phiA)
+      const B = ellAt(phiB)
+      const n = Math.hypot(A[0] - B[0], A[1] - B[1])
+      const dx = (A[0] - B[0]) / n
+      const dy = (A[1] - B[1]) / n
+      const start = line(B[0] - L * dx, B[1] - L * dy, A[0] + eps * dx, A[1] + eps * dy)
+      return detectTopology({ e1: E1, l1: start }, "sk").surfaces.length
+    }
+    // A moderate chord and a more grazing one (small angle at A amplifies nothing
+    // here because eps is the displacement directly -- the boundary is the same).
+    const chords: [string, number, number][] = [
+      ["moderate", 1.0, 3.0],
+      ["grazing", 0.3, 2.8],
     ]
-    for (const [sx, sy] of starts) {
-      const topo = detectTopology({ e1: E1, l1: line(sx, sy, ends[0], ends[1]) }, "sk")
-      expect(topo.surfaces).toHaveLength(2)
+    for (const [name, phiA, phiB] of chords) {
+      it(`${name}: closes into 2 areas while the gap stays under MERGE`, () => {
+        for (const eps of [1e-9, 1e-8, 1e-7, TOL_TOPOLOGY_MERGE / 2]) {
+          expect(surfaces(phiA, phiB, eps)).toBe(2)
+        }
+      })
+      it(`${name}: a gap past MERGE intentionally stops merging (1 area)`, () => {
+        expect(surfaces(phiA, phiB, TOL_TOPOLOGY_MERGE * 2)).toBe(1)
+      })
     }
   })
 
