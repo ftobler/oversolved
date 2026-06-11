@@ -603,6 +603,12 @@ export interface TopologyEdgeQuery {
   radius?: number
   angle_start_deg?: number
   angle_end_deg?: number
+  c1?: Point
+  c2?: Point
+  a?: number
+  b?: number
+  theta?: number
+  ccw?: boolean
 }
 
 export interface Topology {

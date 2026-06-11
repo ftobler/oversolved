@@ -898,7 +898,10 @@
             0,
             0
           ],
-          "radius": 6
+          "radius": 6,
+          "angle_start_deg": -48.189685104221404,
+          "angle_end_deg": 48.189685104221404,
+          "ccw": true
         },
         {
           "query": "?9,6,4;@skX/ci_ledge:1@skX:edge",
@@ -917,7 +920,10 @@
             0,
             0
           ],
-          "radius": 6
+          "radius": 6,
+          "angle_start_deg": 48.189685104221404,
+          "angle_end_deg": 311.8103148957786,
+          "ccw": true
         },
         {
           "query": "?9,6,4;@skX/ci_redge:2@skX:edge",
@@ -936,7 +942,10 @@
             8,
             0
           ],
-          "radius": 6
+          "radius": 6,
+          "angle_start_deg": -131.81031489577862,
+          "angle_end_deg": 131.81031489577862,
+          "ccw": true
         },
         {
           "query": "?9,6,4;@skX/ci_redge:3@skX:edge",
@@ -955,7 +964,10 @@
             8,
             0
           ],
-          "radius": 6
+          "radius": 6,
+          "angle_start_deg": 131.81031489577862,
+          "angle_end_deg": 228.18968510422138,
+          "ccw": true
         }
       ],
       "surfaces": [
@@ -1219,7 +1231,10 @@
             0,
             0
           ],
-          "radius": 5
+          "radius": 5,
+          "angle_start_deg": 0,
+          "angle_end_deg": 180,
+          "ccw": true
         },
         {
           "query": "?8,6,5;@skLC/ciedge:4@skLC:edge",
@@ -1238,7 +1253,10 @@
             0,
             0
           ],
-          "radius": 5
+          "radius": 5,
+          "angle_start_deg": 180,
+          "angle_end_deg": 360,
+          "ccw": true
         }
       ],
       "surfaces": [
@@ -1436,7 +1454,10 @@
             0,
             0
           ],
-          "radius": 10
+          "radius": 10,
+          "angle_start_deg": 0,
+          "angle_end_deg": 90,
+          "ccw": true
         }
       ],
       "surfaces": [

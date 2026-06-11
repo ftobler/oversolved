@@ -144,15 +144,84 @@ function EdgeMesh({ edge, featureId, mode }: EdgeMeshProps) {
     const r = edge.radius
     const a0 = edge.angle_start_deg ?? 0
     const a1 = edge.angle_end_deg ?? 0
+    const ccw = edge.ccw ?? true
 
     if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(r) && Number.isFinite(a0) && Number.isFinite(a1)) {
-      const curve = new THREE.EllipseCurve(cx, cy, r, r, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, false, 0)
+      const curve = new THREE.EllipseCurve(cx, cy, r, r, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, !ccw, 0)
       const points = curve.getPoints(32)
-      const arcGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+      const curveGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
 
       return (
         <line onClick={handleEdgeClick}>
-          <primitive object={arcGeometry} attach="geometry" />
+          <primitive object={curveGeometry} attach="geometry" />
+          <lineBasicMaterial color={color} linewidth={2} />
+        </line>
+      )
+    }
+  }
+
+  if (edge.kind === 'spline' && edge.c1 && edge.c2
+      && Number.isFinite(edge.c1[0]) && Number.isFinite(edge.c1[1])
+      && Number.isFinite(edge.c2[0]) && Number.isFinite(edge.c2[1])) {
+    const c1 = edge.c1
+    const c2 = edge.c2
+    const curve = new THREE.CubicBezierCurve(
+      new THREE.Vector2(start[0], start[1]),
+      new THREE.Vector2(c1[0], c1[1]),
+      new THREE.Vector2(c2[0], c2[1]),
+      new THREE.Vector2(end[0], end[1]),
+    )
+    const points = curve.getPoints(32)
+    const curveGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+
+    return (
+      <line onClick={handleEdgeClick}>
+        <primitive object={curveGeometry} attach="geometry" />
+        <lineBasicMaterial color={color} linewidth={2} />
+      </line>
+    )
+  }
+
+  if (edge.kind === 'ellipse_arc' && edge.center && edge.a !== undefined && edge.b !== undefined) {
+    const cx = edge.center[0]
+    const cy = edge.center[1]
+    const a = edge.a
+    const b = edge.b
+    const thetaDeg = edge.theta ?? 0
+    const a0 = edge.angle_start_deg ?? 0
+    const a1 = edge.angle_end_deg ?? 0
+    const ccw = edge.ccw ?? true
+
+    if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(a) && Number.isFinite(b)
+        && Number.isFinite(a0) && Number.isFinite(a1) && Number.isFinite(thetaDeg)) {
+      const curve = new THREE.EllipseCurve(cx, cy, a, b, (a0 * Math.PI) / 180, (a1 * Math.PI) / 180, !ccw, (thetaDeg * Math.PI) / 180)
+      const points = curve.getPoints(32)
+      const curveGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+
+      return (
+        <line onClick={handleEdgeClick}>
+          <primitive object={curveGeometry} attach="geometry" />
+          <lineBasicMaterial color={color} linewidth={2} />
+        </line>
+      )
+    }
+  }
+
+  if (edge.kind === 'ellipse' && edge.center && edge.a !== undefined && edge.b !== undefined) {
+    const cx = edge.center[0]
+    const cy = edge.center[1]
+    const a = edge.a
+    const b = edge.b
+    const thetaDeg = edge.theta ?? 0
+
+    if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(thetaDeg)) {
+      const curve = new THREE.EllipseCurve(cx, cy, a, b, 0, 2 * Math.PI, false, (thetaDeg * Math.PI) / 180)
+      const points = curve.getPoints(64)
+      const curveGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, 0)))
+
+      return (
+        <line onClick={handleEdgeClick}>
+          <primitive object={curveGeometry} attach="geometry" />
           <lineBasicMaterial color={color} linewidth={2} />
         </line>
       )

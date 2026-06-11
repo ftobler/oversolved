@@ -290,9 +290,13 @@ function buildEdgeQueries(hes: HalfEdge[], heEid: string[], featureId: string): 
       end: edgeData["end"],
       kind: edgeData["kind"],
     }
-    if ("center" in edgeData) {
-      entry["center"] = edgeData["center"]
-      entry["radius"] = edgeData["radius"]
+    // Propagate all curve-specific fields so the renderer can draw spline,
+    // elliptical-arc and arc edges without falling back to straight chords.
+    for (const key of ["center", "radius", "c1", "c2", "a", "b", "theta",
+                        "angle_start_deg", "angle_end_deg", "ccw"]) {
+      if (key in edgeData) {
+        entry[key] = edgeData[key]
+      }
     }
     edges.push(entry)
     edgeIdx += 1
