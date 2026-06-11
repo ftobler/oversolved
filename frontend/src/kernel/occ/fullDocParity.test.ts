@@ -24,8 +24,9 @@ import { build, type BuildDeps } from '../builder'
 import { initGlobalRepo } from '../query'
 import { createFeatureSolver, unportedKinds } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
-import { setSketchSolver, resetSketchSolver } from '../features/sketch'
+import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { loadTopology } from '@/wasm-kernel/loadTopology'
 import type { OccModule } from './occTypes'
 import type { Body } from '../types3d'
 import baseline from '@/wasm-kernel/regression-baseline.json'
@@ -34,6 +35,7 @@ import baseline from '@/wasm-kernel/regression-baseline.json'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+const topologyBytes = loadTopology()
 
 // ── Baseline types ──────────────────────────────────────────────────────
 
@@ -293,7 +295,7 @@ function tessellateBodies(
 
 // ── Test suite ───────────────────────────────────────────────────────────
 
-describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseline)', () => {
+describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs Python baseline)', () => {
   let occMod: OccModule
 
   beforeAll(async () => {
@@ -302,6 +304,7 @@ describe.skipIf(!oc || !solveBytes)('full-doc parity (TS kernel vs Python baseli
     if (solveBytes) {
       resetSketchSolver()
       setSketchSolver(solveBytes)
+      setSketchTopology(topologyBytes)
     }
   })
 
