@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { resetView, snapToDirection, alignToPlane, alignToFace, fitToContent } from '@/components/Viewport/cameraController'
-import { INITIAL_POSITION, INITIAL_ZOOM } from '@/components/Viewport/cameraConstants'
+import { snapToDirection, alignToPlane, alignToFace, fitToContent } from '@/components/Viewport/cameraController'
 import type { BodyResult } from '@/types/cad'
 
 function makeControls() {
@@ -17,15 +16,6 @@ function makeOrtho() {
 }
 
 describe('cameraController', () => {
-  it('resetView returns to the initial pose and recenters the target', () => {
-    const cam = makeOrtho()
-    const controls = makeControls()
-    resetView(cam, controls as never, 'test')
-    expect(cam.position.toArray()).toEqual(INITIAL_POSITION)
-    expect(cam.zoom).toBe(INITIAL_ZOOM)
-    expect(controls.target.toArray()).toEqual([0, 0, 0])
-  })
-
   it('snapToDirection points along the direction and preserves distance from origin', () => {
     const cam = makeOrtho()
     const dist = cam.position.length()
@@ -73,5 +63,33 @@ describe('cameraController', () => {
     expect(fit).toBe(true)
     expect(cam.zoom).toBeGreaterThan(0)
     expect(Number.isFinite(cam.zoom)).toBe(true)
+  })
+
+  it('scene fallback measures only fitBounds-tagged meshes and is stable on repeat (no oscillation)', () => {
+    const cam = makeOrtho()
+    const scene = new THREE.Scene()
+
+    // A fixed-size plane quad (what the real PlaneSurface tags). Zoom-independent.
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(50, 50))
+    plane.userData.fitBounds = true
+    scene.add(plane)
+
+    // An untagged screen-scaled helper: a small mesh whose world size tracks the
+    // current zoom (const/zoom), exactly like markers/labels/dimensions. If the
+    // fit measured this, every press would change zoom and re-measure it.
+    const helper = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1))
+    const syncHelper = () => { helper.scale.setScalar(400 / cam.zoom); helper.updateMatrixWorld() }
+    syncHelper()
+    scene.add(helper)
+    scene.updateMatrixWorld(true)
+
+    expect(fitToContent(cam, makeControls() as never, {}, scene)).toBe(true)
+    const zoomAfterFirst = cam.zoom
+
+    // Second press: the helper would have resized if it were measured. Re-sync it
+    // and fit again - a stable fit lands on the same zoom (fixed point).
+    syncHelper()
+    expect(fitToContent(cam, makeControls() as never, {}, scene)).toBe(true)
+    expect(cam.zoom).toBeCloseTo(zoomAfterFirst, 6)
   })
 })

@@ -48,9 +48,7 @@ interface PartEditorPanelProps {
   handleAddPlane: () => void
   handleImportStep: () => void
   handleExportStep: () => void
-  setViewportReset: React.Dispatch<React.SetStateAction<number>>
   viewportRef: React.RefObject<ViewportHandle | null>
-  viewportReset: number
   handleRightClick: (pos: [number, number], targetId?: string) => void
 }
 
@@ -71,9 +69,7 @@ export default function PartEditorPanel({
   handleAddPlane,
   handleImportStep,
   handleExportStep,
-  setViewportReset,
   viewportRef,
-  viewportReset,
   handleRightClick,
 }: PartEditorPanelProps) {
   return (
@@ -109,7 +105,7 @@ export default function PartEditorPanel({
               </button>
             </>
           )}
-          {mode === 'sketch' && <SketchToolbar onResetViewport={() => setViewportReset(v => v + 1)} />}
+          {mode === 'sketch' && <SketchToolbar onResetViewport={() => viewportRef.current?.autoZoomToFit(true)} />}
           {mode === 'feature' && (
             <>
               <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch} disabled={readOnly}><img src={featureSketchIcon} alt="Sketch" /></button>
@@ -160,7 +156,7 @@ export default function PartEditorPanel({
         )}
         {mode !== 'code' && (
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <Viewport ref={viewportRef} resetTrigger={viewportReset} onRightClick={(pos) => handleRightClick(pos)} />
+            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} />
             <LoadingOverlay isDocumentLoading={loading} />
           </div>
         )}

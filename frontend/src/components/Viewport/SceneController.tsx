@@ -5,7 +5,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
-import { resetView, snapToDirection } from '@/components/Viewport/cameraController'
+import { snapToDirection } from '@/components/Viewport/cameraController'
 
 const MOUSE_BUTTONS = {
   LEFT: -1 as unknown as THREE.MOUSE,
@@ -20,7 +20,6 @@ function rightButtonMapping(e: MouseEvent | PointerEvent): THREE.MOUSE {
 }
 
 interface SceneControllerProps {
-  resetTrigger?: number
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   pvRef: React.MutableRefObject<Pv[]>
   hoverRef: React.MutableRefObject<Hit | null>
@@ -29,27 +28,20 @@ interface SceneControllerProps {
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
 }
 
-export default function SceneController({ resetTrigger, canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
+export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
   const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
-  const lastReset = useRef(resetTrigger)
 
+  // Expose the Canvas-owned camera to the parent Viewport (for fitToContent).
+  // eslint-disable-next-line react-hooks/refs
   cameraRef.current = camera
 
   // The single orthographic camera is created and initially positioned by the
   // <Canvas orthographic camera={...}> in Viewport. R3F never swaps or
-  // repositions it on re-render. The ONLY automatic camera move here is an
-  // explicit Reset Viewport click (resetTrigger changing to a new value);
-  // everything else is user controlled. Comparing against the last acted-on
-  // value (not a "mounted" boolean) keeps StrictMode's setup/cleanup/setup
-  // double invocation from firing a spurious reset.
-  useEffect(() => {
-    if (resetTrigger === lastReset.current) return
-    lastReset.current = resetTrigger
-    resetView(camera, ctrlRef.current, 'resetTrigger')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetTrigger])
-
+  // repositions it on re-render, and SceneController never moves it on its own.
+  // Programmatic framing (startup fit and the Reset Viewport button) goes
+  // through Viewport's autoZoomToFit -> fitToContent; everything else here is
+  // user controlled via OrbitControls.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return

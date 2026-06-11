@@ -67,7 +67,6 @@ export default function Part() {
   // Read here for memos / props; mutate via store setters.
   const rollbackPosition = usePartEditorStore(s => s.rollbackPosition)
   const rollbackInitialized = useRef(false)
-  const [viewportReset, setViewportReset] = useState(0)
   const viewportRef = useRef<ViewportHandle>(null)
   const exportImportRef = useRef<PartExportImportHandle>(null)
   const handleFirstSolve = useCallback(() => {
@@ -709,9 +708,7 @@ export default function Part() {
         handleAddPlane={handleAddPlane}
         handleImportStep={handleImportStep}
         handleExportStep={handleExportStep}
-        setViewportReset={setViewportReset}
         viewportRef={viewportRef}
-        viewportReset={viewportReset}
         handleRightClick={handleRightClick}
         rightPanel={
           <PartDebugPanel

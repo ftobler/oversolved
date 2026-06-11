@@ -1,7 +1,8 @@
 // Single source of truth for the viewport camera's initial pose. The Canvas
 // (Viewport.tsx) creates the orthographic camera from INITIAL_CAMERA exactly
-// once; the Reset Viewport action (SceneController.tsx) returns to the same
-// pose. Keep these in one place so the two never drift apart.
+// once. After that, framing is content-driven (fitToContent); nothing returns
+// to this fixed pose, so this only sets the orientation/zoom seen for the
+// first frame before geometry arrives.
 export const INITIAL_POSITION: [number, number, number] = [20, 20, 100]
 export const INITIAL_ZOOM = 200
 

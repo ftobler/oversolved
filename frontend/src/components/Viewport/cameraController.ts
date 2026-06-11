@@ -1,7 +1,15 @@
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { BodyResult } from '@/types/cad'
-import { INITIAL_POSITION, INITIAL_ZOOM } from './cameraConstants'
+import { INITIAL_ZOOM } from './cameraConstants'
+
+// How much of the viewport the framed content fills: targetViewHeight =
+// contentHeight * FIT_MARGIN, so content occupies 1/FIT_MARGIN of the frustum.
+// Higher means more breathing room (zoomed out further). This is the single
+// knob for "how tight is zoom-to-fit" - it is the only thing that decides
+// framing now that fit-to-content is the one camera-framing path (the old
+// fixed-pose Reset Viewport is gone).
+export const FIT_MARGIN = 2.5
 
 // ─── camera chokepoint ───
 // Every programmatic camera move in the viewport goes through this module.
@@ -24,25 +32,8 @@ function commitProjection(camera: THREE.Camera): void {
   (camera as THREE.OrthographicCamera).updateProjectionMatrix()
 }
 
-function setZoom(camera: THREE.Camera, zoom: number): void {
-  if ('zoom' in camera) {
-    (camera as unknown as { zoom: number }).zoom = zoom
-    commitProjection(camera)
-  }
-}
-
 function readZoom(camera: THREE.Camera): number {
   return 'zoom' in camera ? (camera as unknown as { zoom: number }).zoom : INITIAL_ZOOM
-}
-
-// Return to the initial framing. `source` identifies the trigger (e.g. the
-// Reset Viewport button) purely for tracing.
-export function resetView(camera: THREE.Camera, controls: Controls, source: string): void {
-  traceCamera('resetView', 'source=', source)
-  camera.position.set(...INITIAL_POSITION)
-  setZoom(camera, INITIAL_ZOOM)
-  controls?.target.set(0, 0, 0)
-  controls?.update()
 }
 
 // Rotate to look down the given direction (gizmo face/edge/corner click),
@@ -143,12 +134,18 @@ export function fitToContent(
     }
   }
 
-  // Fall back to scene traversal if no body vertex data found.
+  // Fall back to scene traversal if no body vertex data found (sketch-only or
+  // empty docs). Only meshes tagged userData.fitBounds participate: those are
+  // fixed-world-size (plane quads). Screen-scaled helpers (markers, labels,
+  // dimension meshes, vertex dots) size themselves as const/zoom, so including
+  // them would make the fit a moving target - each press changes zoom, the
+  // helpers resize, the next press re-measures different bounds. Measuring only
+  // zoom-independent geometry keeps the fit a fixed point (no oscillation).
   if (!Number.isFinite(minX) && scene) {
     const box = new THREE.Box3()
     let hasContent = false
     scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
+      if (obj instanceof THREE.Mesh && obj.userData.fitBounds) {
         obj.geometry.computeBoundingBox()
         const geoBox = obj.geometry.boundingBox
         if (geoBox) {
@@ -195,8 +192,7 @@ export function fitToContent(
   const viewSizeX = maxVX - minVX
   const viewSizeY = maxVY - minVY
 
-  const margin = 2.0
-  const targetViewHeight = Math.max(viewSizeY * margin, viewSizeX * margin * (frustumHeight / frustumWidth))
+  const targetViewHeight = Math.max(viewSizeY * FIT_MARGIN, viewSizeX * FIT_MARGIN * (frustumHeight / frustumWidth))
   const zoom = frustumHeight / targetViewHeight
   if (zoom <= 0 || !Number.isFinite(zoom)) { traceCamera('fitToContent', 'bad zoom', zoom); return false }
 

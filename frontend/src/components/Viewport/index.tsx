@@ -35,7 +35,6 @@ import type { SketchData } from '@/types/cad'
 const ENABLE_ID_BUFFER_PICKING = true
 
 export interface ViewportProps {
-  resetTrigger?: number
   onRightClick?: (pos: [number, number]) => void
 }
 
@@ -181,13 +180,12 @@ export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlan
 export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
   captureScreenshotForSaving: () => Promise<string | null>
-  autoZoomToFit: () => void
+  autoZoomToFit: (force?: boolean) => void
   alignCameraToPlane: (planeId: string) => void
   alignCameraToFace: (faceNormal: [number, number, number], faceCenter: [number, number, number]) => void
 }
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
-  resetTrigger,
   onRightClick,
 }: ViewportProps, ref) {
   const features = usePartEditorStore(s => s.features) as Feature[]
@@ -296,11 +294,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // unframed is gone. Camera-only; never mutates app state.
   const fitPendingRef = useRef(true)
 
-  const tryFit = useCallback(() => {
+  const tryFit = useCallback((force = false) => {
     if (!fitPendingRef.current) return
-    // Don't reframe while editing a sketch: rollback-driven body changes during
-    // edit must not reposition the camera. Stays pending until edit ends.
-    if (usePartEditorStore.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch'); return }
+    // Don't auto-reframe while editing a sketch: rollback-driven body changes
+    // during edit must not reposition the camera. Stays pending until edit ends.
+    // `force` is the explicit Reset Viewport press: a deliberate user request
+    // always reframes, even mid-edit.
+    if (!force && usePartEditorStore.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch'); return }
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
     // Geometry (binary) arrives after the JSON solve, so the first attempts may
@@ -312,12 +312,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   }, [])
 
   // Imperative: re-arm the fit for the current document and attempt immediately.
-  // Called on each document's first solve; guards (editing / no geometry yet)
-  // live in tryFit, so a stale or mid-edit call is harmless.
-  const autoZoomToFit = useCallback(() => {
-    traceCamera('fit:request')
+  // This is the single camera-framing entry point: Part.handleFirstSolve calls
+  // it (unforced) on each document's first solve, and the Reset Viewport button
+  // calls it with force=true to reframe on demand. Guards (editing / no
+  // geometry yet) live in tryFit, so a stale or mid-edit unforced call is
+  // harmless.
+  const autoZoomToFit = useCallback((force = false) => {
+    traceCamera('fit:request', 'force=', force)
     fitPendingRef.current = true
-    tryFit()
+    tryFit(force)
   }, [tryFit])
 
   // Re-attempt as bodies arrive and when edit state changes (so a fit deferred
@@ -504,7 +507,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           }
         }}
       >
-        <SceneController key="scene-ctrl" resetTrigger={resetTrigger} canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
+        <SceneController key="scene-ctrl" canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
 
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}

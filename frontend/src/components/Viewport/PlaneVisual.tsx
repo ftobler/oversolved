@@ -69,7 +69,12 @@ export function PlaneSurface({ size, state = 'default', hideMesh, onPointerOver,
   return (
     <>
       {!hideMesh && (
-        <mesh onPointerOver={onPointerOver} onPointerOut={onPointerOut} onClick={onClick}>
+        // fitBounds: this fixed-world-size quad is the only stable mesh that
+        // zoom-to-fit measures in its scene-traversal fallback (no solid body).
+        // Screen-scaled helpers (markers, labels, dimension meshes, vertex dots)
+        // size themselves as const/zoom, so measuring them would make the fit a
+        // moving target that oscillates on repeated Reset Viewport presses.
+        <mesh userData={{ fitBounds: true }} onPointerOver={onPointerOver} onPointerOut={onPointerOut} onClick={onClick}>
           <planeGeometry args={[size, size]} />
           <meshBasicMaterial color={fillColor} transparent opacity={fillOpacity} side={THREE.DoubleSide} depthWrite={false} wireframe={false} />
         </mesh>

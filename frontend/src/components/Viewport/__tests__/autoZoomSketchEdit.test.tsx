@@ -200,4 +200,24 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // activeSketchFeatureId internally.
     expect(testCamera.zoom).toBe(999)
   })
+
+  it('forced fit (Reset Viewport button) reframes even while editing a sketch', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+
+    // Enter sketch edit with geometry present. An unforced fit is suppressed here.
+    await act(async () => {
+      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1', bodies: makeBodyWithVertices() })
+    })
+    testCamera.zoom = 999
+    testCamera.updateProjectionMatrix()
+
+    // The Reset Viewport button passes force=true: a deliberate user request
+    // reframes regardless of the editing guard.
+    act(() => {
+      ref.current?.autoZoomToFit(true)
+    })
+
+    expect(testCamera.zoom).not.toBe(999)
+  })
 })
