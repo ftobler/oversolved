@@ -88,6 +88,12 @@ export interface LowerResult {
   layout: EntityLayout[]
 }
 
+export interface LowerOptions {
+  dragMode?: boolean
+  dragAnchorId?: number
+  skipStatusPass?: boolean
+}
+
 function isRefDict(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
@@ -96,8 +102,12 @@ function isRefDict(v: unknown): v is Record<string, unknown> {
  * Lower a sketch. Appends the projected origin point (pinned at the plane
  * origin) exactly as `_solve_sketch` does, so DOF accounting and per-entity
  * status match the Python solver.
+ *
+ * Pass `opts.dragMode = true` and `opts.dragAnchorId` for a drag-frame solve;
+ * the default cold-solve options are `{ dragMode: false, dragAnchorId: 0,
+ * skipStatusPass: false }`.
  */
-export function lowerSketch(sk: SketchInput): LowerResult {
+export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
   const entities = [...sk.entities, { id: ORIGIN_ID, kind: 'point' }]
 
   const idToIndex = new Map<string, number>()
@@ -165,7 +175,11 @@ export function lowerSketch(sk: SketchInput): LowerResult {
     pinnedMask: [],
     equalityPins: [],
     constraints,
-    options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+    options: {
+      dragMode: opts?.dragMode ?? false,
+      dragAnchorId: opts?.dragAnchorId ?? 0,
+      skipStatusPass: opts?.skipStatusPass ?? false,
+    },
   }
   return { input, layout }
 }

@@ -20,8 +20,12 @@ import { TopologySurfaces, TopologyEdges } from '@/components/Geometry3D/Surface
 // Dragging
 import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
 
-// Soft solve: frontend-only drag preview honoring coincidence constraints
+// Soft solve: frontend-only drag preview honoring coincidence constraints.
+// Used as fallback for edge/dim_label drags (WASM path handles vertex drags).
 import { softSolve } from '@/utils/geometry/softSolve'
+
+// WASM drag solve: runs the real solver on every drag frame.
+import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
@@ -58,11 +62,21 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
 
-  // During drag on this feature, show soft-solve preview (honours coincidence constraints,
-  // other constraints relax silently). Hard solve fires on pointer-up via onMutation.
+  // WASM drag solve for vertex drags (runs the real solver per frame with
+  // warm-start continuity and rAF throttling). Returns null for edge/dim_label
+  // drags or when the solver is not yet cached.
+  const wasmPreview = useWasmDragSolve({ featureId, solved, drag, isDraggingThis })
+
+  // During drag on this feature, show WASM preview for vertex drags; fall back
+  // to softSolve for edge/dim_label drags. Hard solve fires on pointer-up via
+  // onMutation (unchanged).
   const preview = useMemo(
-    () => (drag && drag.featureId === featureId ? softSolve({ sketch: solved, drag, feature: featureDef }) : null),
-    [solved, drag, featureId, featureDef],
+    () => {
+      if (!drag || drag.featureId !== featureId) return null
+      if (drag.type === 'vertex' && wasmPreview) return wasmPreview
+      return softSolve({ sketch: solved, drag, feature: featureDef })
+    },
+    [solved, drag, featureId, featureDef, wasmPreview],
   )
 
   // On pointer-up the committed mutation re-solves asynchronously. Until the
