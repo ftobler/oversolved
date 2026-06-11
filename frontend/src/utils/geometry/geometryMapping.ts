@@ -544,15 +544,6 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
     return { kind: 'symbol_ngon', at, entity: entities[0], entities }
   }
 
-  if (kind === 'offset') {
-    const pa = resolved.a ? geomPoint(sketch, resolved.a) : null
-    const pb = resolved.b ? geomPoint(sketch, resolved.b) : null
-    if (!pa || !pb) return { kind: 'unknown' }
-    const at: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-    const entities = [resolved.a?.entity, resolved.b?.entity].filter(Boolean) as string[]
-    return { kind: 'symbol_offset', at, entity: resolved.a?.entity, entities }
-  }
-
   return { kind: 'unknown' }
 }
 

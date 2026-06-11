@@ -15,7 +15,7 @@
  * skipped with a reason. Those await the phase-2 projection lowering.
  */
 
-import type { PartConstraint, PartFeature, PartTarget } from '@/types/cad'
+import type { PartConstraint, PartFeature } from '@/types/cad'
 import type { SketchInput } from './lowerSketch'
 
 export interface ExtractedSketch {
@@ -97,12 +97,6 @@ function lowerConstraint(
   return out
 }
 
-/** Strip the leading `$` from a sketch-local entity ref, e.g. `$line1` -> `line1`. */
-function bareEntityId(ref: PartTarget | undefined): string | null {
-  if (typeof ref === 'string' && ref.startsWith('$')) return ref.slice(1)
-  return null
-}
-
 /**
  * Expand a single `ngon` sugar constraint into the primitive constraints that
  * make the member lines a regular polygon: every side equal in length, and a
@@ -129,54 +123,14 @@ function lowerNgonConstraint(c: PartConstraint): PartConstraint[] {
   return out
 }
 
-/**
- * Expand a single `offset` sugar constraint (source entity, copy entity, signed
- * distance) into primitive constraints. Lines lower to parallel + perpendicular
- * line distance; circles/arcs to concentric + an offset radius/diameter. Splines
- * and ellipses have no clean primitive offset, so the copy is left at the source
- * location (no residual touches it) -- a documented limitation. The solver never
- * sees `offset`.
- */
-function lowerOffsetConstraint(c: PartConstraint, feature: PartFeature): PartConstraint[] {
-  const srcId = bareEntityId(c.a)
-  const dstRef = c.b
-  if (!srcId || typeof dstRef !== 'string') return []
-  const src = feature.entities?.find((e) => e.id === srcId)
-  if (!src) return []
-  const srcRef = c.a as PartTarget
-  const distance = c.value ?? 0
-  const out: PartConstraint[] = []
-  switch (src.kind) {
-    case 'line':
-      out.push({ id: `${c.id}_par`, kind: 'parallel', a: srcRef, b: dstRef })
-      out.push({ id: `${c.id}_dist`, kind: 'line_distance', a: srcRef, b: `${dstRef}start`, value: distance })
-      break
-    case 'circle': {
-      const r = feature.initial?.[srcId]?.[2] ?? 0
-      out.push({ id: `${c.id}_con`, kind: 'concentric', a: srcRef, b: dstRef })
-      out.push({ id: `${c.id}_dia`, kind: 'diameter', target: dstRef, value: 2 * (r + distance) })
-      break
-    }
-    case 'arc': {
-      const r = feature.initial?.[srcId]?.[2] ?? 0
-      out.push({ id: `${c.id}_con`, kind: 'concentric', a: srcRef, b: dstRef })
-      out.push({ id: `${c.id}_rad`, kind: 'radius', target: dstRef, value: r + distance })
-      break
-    }
-    default:
-      break  // spline / ellipse: copy stays at source (documented limitation)
-  }
-  return out
-}
-
-/** Replace `ngon`/`offset` sugar constraints with their primitive expansions,
- *  leaving every other constraint untouched. Runs before the resolve loop so the
- *  solver only ever sees real constraint kinds. */
+/** Replace `ngon` sugar constraints with their primitive expansions, leaving
+ *  every other constraint untouched. Runs before the resolve loop so the solver
+ *  only ever sees real constraint kinds. (Offset is not sugar at this layer: it
+ *  is stored directly as parallel/concentric + an ordinary dimension.) */
 function expandSugarConstraints(feature: PartFeature): PartConstraint[] {
   const out: PartConstraint[] = []
   for (const c of feature.constraints ?? []) {
     if (c.kind === 'ngon') out.push(...lowerNgonConstraint(c))
-    else if (c.kind === 'offset') out.push(...lowerOffsetConstraint(c, feature))
     else out.push(c)
   }
   return out

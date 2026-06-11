@@ -34,7 +34,6 @@ const SYMBOL_TO_ICON: Record<string, string> = {
   symbol_colinear:   'constraint-colinear',
   symbol_angle:      'constraint-angle',
   symbol_ngon:       'toolbar-ngon',
-  symbol_offset:     'toolbar-offset',
 }
 
 function getIconUrl(kind: string): string | undefined {

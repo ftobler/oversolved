@@ -488,10 +488,14 @@ export function applyAddNgon(
   })
 }
 
-/** Offset sugar: for each source entity, clone it and record one `offset`
- *  constraint (source, copy, signed distance). The constraint is expanded to
- *  parallel + line_distance (lines) or concentric + radius/diameter (circles,
- *  arcs) at solve time; deleting it leaves the copy as an independent entity. */
+/** Offset: for each source entity, clone it and tie the copy to the source with
+ *  real, first-class constraints -- a geometric relationship (parallel for
+ *  lines, concentric for circles/arcs) plus an ordinary editable DIMENSION that
+ *  carries the distance. The offset distance is never stored as a private value
+ *  on a sugar constraint; it is a normal `line_distance` / `radius` / `diameter`
+ *  dimension the user can read, drag, retype, or delete, and the solver enforces
+ *  it like any other dimension. "Breaking" the offset is just deleting those
+ *  constraints. Splines/ellipses have no clean offset, so only the copy is made. */
 export function applyAddOffset(
   doc: PartDoc,
   featureId: string,
@@ -514,16 +518,27 @@ export function applyAddOffset(
     while (existingIds.has(dstId)) dstId = randomId(12)
 
     feature.entities.push({ id: dstId, kind: src.kind })
-    feature.initial[dstId] = [...srcParams]  // start as an exact copy; the solver moves it
+    feature.initial[dstId] = [...srcParams]  // start as an exact copy; the dimension moves it
 
-    const cid = uniqueConstraintId(feature.constraints, 'offset')
-    feature.constraints.push({
-      id: cid,
-      kind: 'offset',
-      a: parseTarget(`entity:${featureId}:${srcId}`, featureId),
-      b: parseTarget(`entity:${featureId}:${dstId}`, featureId),
-      value: round(distance),
-    })
+    const srcRef = `entity:${featureId}:${srcId}`
+    const dstRef = `entity:${featureId}:${dstId}`
+    switch (src.kind) {
+      case 'line':
+        applyAddConstraint(doc, featureId, 'parallel', [srcRef, dstRef])
+        applyAddConstraint(doc, featureId, 'line_distance',
+          [srcRef, `vertex:${featureId}:${dstId}:start`], round(distance))
+        break
+      case 'circle':
+        applyAddConstraint(doc, featureId, 'concentric', [srcRef, dstRef])
+        applyAddConstraint(doc, featureId, 'diameter', [dstRef], round(2 * (srcParams[2] + distance)))
+        break
+      case 'arc':
+        applyAddConstraint(doc, featureId, 'concentric', [srcRef, dstRef])
+        applyAddConstraint(doc, featureId, 'radius', [dstRef], round(srcParams[2] + distance))
+        break
+      default:
+        break  // spline / ellipse: copy only, no clean parametric offset
+    }
   }
 }
 
