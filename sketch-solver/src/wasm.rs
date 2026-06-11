@@ -15,3 +15,13 @@ use wasm_bindgen::prelude::*;
 pub fn solve_sketch_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
     crate::api::solve_bytes(input).map_err(|e| JsError::new(&format!("decode error: {e:?}")))
 }
+
+/// Run the sketch area builder (topology) from an ordered `richGeom` JSON
+/// payload, returning the structural topology JSON the TS decorator consumes.
+/// Separate from `solve_sketch_bytes`: topology and solve cross the boundary
+/// independently. See `api::detect_topology_bytes`.
+#[wasm_bindgen]
+pub fn detect_topology_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
+    crate::api::detect_topology_bytes(input)
+        .map_err(|e| JsError::new(&format!("topology decode error: {e:?}")))
+}

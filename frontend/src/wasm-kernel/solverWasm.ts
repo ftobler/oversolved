@@ -20,33 +20,45 @@
  */
 
 import type { SolveBytes } from './codec'
+import type { TopologyBytes } from './loadTopology'
 
 interface WebModule {
   default: (input?: unknown) => Promise<unknown>
   solve_sketch_bytes: SolveBytes
+  detect_topology_bytes: TopologyBytes
 }
-
-let cached: Promise<SolveBytes | null> | null = null
 
 /** Base URL the `--target web` pkg is served from. Override per deployment. */
 const DEFAULT_BASE = '/wasm/'
 
-export function loadSolverWasm(base: string = DEFAULT_BASE): Promise<SolveBytes | null> {
-  if (cached) return cached
-  cached = (async () => {
+let moduleCache: Promise<WebModule | null> | null = null
+
+/** Load + init the web wasm module once; both entry points share it. */
+function loadWebModule(base: string): Promise<WebModule | null> {
+  if (moduleCache) return moduleCache
+  moduleCache = (async () => {
     try {
       const mod = (await import(/* @vite-ignore */ `${base}sketch_solver.js`)) as WebModule
       // The web build needs its init() called once (fetches the .wasm).
       await mod.default(`${base}sketch_solver_bg.wasm`)
-      return mod.solve_sketch_bytes
+      return mod
     } catch {
       return null
     }
   })()
-  return cached
+  return moduleCache
+}
+
+export function loadSolverWasm(base: string = DEFAULT_BASE): Promise<SolveBytes | null> {
+  return loadWebModule(base).then((m) => m?.solve_sketch_bytes ?? null)
+}
+
+/** Browser loader for the Rust area builder (`detect_topology_bytes`). */
+export function loadTopologyWasm(base: string = DEFAULT_BASE): Promise<TopologyBytes | null> {
+  return loadWebModule(base).then((m) => m?.detect_topology_bytes ?? null)
 }
 
 /** Reset the memoized loader (tests / hot-reload). */
 export function resetSolverWasm(): void {
-  cached = null
+  moduleCache = null
 }

@@ -24,10 +24,10 @@ import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID } from '@/wasm-kernel/lowerSketch'
 import { encodeInput, decodeOutput, STATUS_NAME } from '@/wasm-kernel/codec'
-import { detectTopology } from '../topology'
+import { solveTopology, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
-import { loadSolverWasm } from '@/wasm-kernel/solverWasm'
+import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 
@@ -49,6 +49,11 @@ export interface SketchResult {
 
 let solverBytes: SolveBytes | null = null
 let solverLoading: Promise<SolveBytes | null> | null = null
+// The Rust area builder (`detect_topology_bytes`). When null, `solveSketch`
+// falls back to the in-process TS `detectTopology` (parity oracle / fresh
+// checkout). The browser wires this in `initSketchSolver`; the parity harness
+// injects it via `setSketchTopology`.
+let topologyBytes: TopologyBytes | null = null
 
 /** Inject a pre-loaded solver (node tests call this with ``loadSolver()``). */
 export function setSketchSolver(bytes: SolveBytes | null): void {
@@ -56,10 +61,27 @@ export function setSketchSolver(bytes: SolveBytes | null): void {
   solverLoading = null
 }
 
-/** Start loading the Rust solver from ``/wasm/`` (browser path). */
+/** Inject a pre-loaded Rust area builder; null restores the TS fallback. */
+export function setSketchTopology(bytes: TopologyBytes | null): void {
+  topologyBytes = bytes
+}
+
+/** Start loading the Rust solver + area builder from ``/wasm/`` (browser path). */
 export async function initSketchSolver(): Promise<SolveBytes | null> {
   if (solverBytes) return solverBytes
   if (!solverLoading) {
+    // Wire the area builder alongside the solver; both share one wasm module.
+    // Optional: a missing/failing topology loader falls back to TS detectTopology,
+    // so it must never break solver init.
+    try {
+      void loadTopologyWasm?.()
+        .then((t) => {
+          topologyBytes = t
+        })
+        .catch(() => {})
+    } catch {
+      // topology stays on the TS fallback
+    }
     solverLoading = loadSolverWasm().then((b) => {
       solverBytes = b
       return b
@@ -72,6 +94,7 @@ export async function initSketchSolver(): Promise<SolveBytes | null> {
 export function resetSketchSolver(): void {
   solverBytes = null
   solverLoading = null
+  topologyBytes = null
 }
 
 /**
@@ -198,7 +221,7 @@ export function solveSketch(
 
   // Topology + plane transform: what postRegister registers as _topo_/_pt_ so
   // downstream features can resolve this sketch's profile.
-  const topology = detectTopology(richGeom, featureId)
+  const topology = solveTopology(richGeom, featureId, topologyBytes)
   const plane_transform = frameToPlaneTransform(plane as Frame3D)
 
   return {

@@ -22,6 +22,9 @@ const ctl = vi.hoisted(() => {
 })
 vi.mock('@/wasm-kernel/solverWasm', () => ({
   loadSolverWasm: vi.fn(() => ctl.promise),
+  // The area builder shares the wasm module; this test drives only the solver,
+  // so topology resolves to null (solveSketch falls back to TS detectTopology).
+  loadTopologyWasm: vi.fn(() => Promise.resolve(null)),
   resetSolverWasm: vi.fn(),
 }))
 

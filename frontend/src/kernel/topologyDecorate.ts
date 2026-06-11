@@ -1,0 +1,151 @@
+// Decorate the structural topology emitted by the Rust/WASM area builder
+// (`detect_topology_bytes`) with the ancestry query strings and line-division
+// classifiers that stay on the TypeScript side of the split (see
+// `feature/topology-to-rust.md`). Rust owns the geometry; `query.ts` and the
+// classifiers stay here because 21 other modules depend on the exact query
+// strings byte-for-byte.
+//
+// The Rust output carries two decoration hints this module consumes and strips:
+//   - per edge:    `edge_type` ("straightedge" | "edge")
+//   - per surface: `face_entity_ids` (source entity ids, pre-emitWire/pre-sort)
+// Everything else (geometry, vertex ids, indices) is already final.
+
+import { makeAncestryQuery, emitWire, absolute, parseAncestry } from "./query"
+import { loopCentroid } from "./profileLoops"
+import { detectTopology, type TopologyDict } from "./topology"
+
+const EPS = 1e-9
+
+type Pt = number[]
+type Geom = Record<string, unknown>
+
+/** Bytes-in/bytes-out shape of the Rust `detect_topology_bytes` entry point. */
+export type TopologyBytes = (input: Uint8Array) => Uint8Array
+
+/** The structural JSON the Rust kernel returns (no query strings yet). */
+interface StructuralTopology {
+  intersection_points: Record<string, { x: number; y: number }>
+  vertices: Record<string, { x: number; y: number }>
+  edges: Record<string, unknown>[]
+  surfaces: Record<string, unknown>[]
+}
+
+// ─── line-division classifiers (ported verbatim from topology.ts; TS-side) ───
+
+function lineSideTokens(surface: Record<string, unknown>): string[] {
+  const boundary = (surface["boundary"] as Record<string, unknown>[]) ?? []
+  const centroid = loopCentroid(boundary)
+  const cx = centroid[0]
+  const cy = centroid[1]
+  const tokens = new Set<string>()
+  for (const e of boundary) {
+    if (e["kind"] !== "line") continue
+    const eid = e["id"] as string | null | undefined
+    const s = e["start"] as Pt | undefined
+    const en = e["end"] as Pt | undefined
+    if (!eid || !s || !en) continue
+    const ends: [number, number][] = [
+      [s[0], s[1]],
+      [en[0], en[1]],
+    ].sort((a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1])) as [number, number][]
+    const [x1, y1] = ends[0]
+    const [x2, y2] = ends[1]
+    const cross = (x2 - x1) * (cy - y1) - (y2 - y1) * (cx - x1)
+    if (Math.abs(cross) < EPS) continue
+    tokens.add("cls_ld_" + eid + (cross > 0 ? "_p" : "_n"))
+  }
+  return [...tokens].sort()
+}
+
+function attachLineDivisionClassifiers(surfaces: Record<string, unknown>[]): void {
+  const groups = new Map<string, Record<string, unknown>[]>()
+  for (const s of surfaces) {
+    const q = (s["query"] as string) ?? ""
+    if (!q.startsWith("?")) continue
+    const [ids] = parseAncestry(q)
+    const keyIds = ids.filter((i) => i.startsWith("@") && i.includes("/"))
+    const key = [...new Set(keyIds)].sort().join(" ")
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(s)
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    for (const s of group) {
+      const tokens = lineSideTokens(s)
+      if (!tokens.length) continue
+      s["classifiers"] = tokens
+      const [ids, t] = parseAncestry(s["query"] as string)
+      s["query"] = makeAncestryQuery([...ids, ...tokens.map((tok) => "@" + tok)], t)
+    }
+  }
+}
+
+// ─── decoration ───
+
+/**
+ * Attach ancestry query strings + classifiers to the Rust structural topology,
+ * producing the same `TopologyDict` the TS `detectTopology` returns.
+ */
+export function decorateTopology(structural: StructuralTopology, featureId: string): TopologyDict {
+  const edges = structural.edges.map((e) => {
+    const edgeType = (e["edge_type"] as string) ?? "edge"
+    const entityId = e["entity_id"] as string
+    const edgeIndex = e["edge_index"] as number
+    const ancestorIds = [emitWire(absolute(featureId, entityId)), `edge:${edgeIndex}`, emitWire(absolute(featureId))]
+    const query = makeAncestryQuery(ancestorIds, edgeType)
+    const out: Geom = { query }
+    for (const [k, v] of Object.entries(e)) {
+      if (k === "edge_type") continue  // decoration hint, not part of the dict
+      out[k] = v
+    }
+    return out
+  })
+
+  const surfaces = structural.surfaces.map((s, idx) => {
+    const faceEntityIds = (s["face_entity_ids"] as string[]) ?? []
+    const absIds = faceEntityIds.map((eid) => emitWire(absolute(featureId, eid))).sort()
+    const ids = [...absIds, `surface:${idx}`, emitWire(absolute(featureId))]
+    const query = makeAncestryQuery(ids, "flatface")
+    const out: Geom = {}
+    for (const [k, v] of Object.entries(s)) {
+      if (k === "face_entity_ids") continue  // decoration hint, stripped
+      out[k] = v
+    }
+    out["query"] = query
+    return out
+  })
+
+  // Line-side classifiers run after the base queries, exactly as in topology.ts.
+  attachLineDivisionClassifiers(surfaces)
+
+  return {
+    intersection_points: structural.intersection_points,
+    vertices: structural.vertices,
+    edges,
+    surfaces,
+  }
+}
+
+/** Serialize richGeom as the ordered `[[eid, geom], ...]` payload Rust expects. */
+function encodeTopologyInput(richGeom: Record<string, Record<string, unknown>>): Uint8Array {
+  const entries = Object.entries(richGeom)
+  return new TextEncoder().encode(JSON.stringify(entries))
+}
+
+/**
+ * Run the Rust area builder over `richGeom` and decorate the result. When no
+ * Rust topology function is provided, fall back to the in-process TS
+ * `detectTopology` (the parity oracle / fresh-checkout path).
+ */
+export function solveTopology(
+  richGeom: Record<string, Record<string, unknown>>,
+  featureId: string,
+  topologyBytes: TopologyBytes | null,
+): TopologyDict {
+  if (!topologyBytes) {
+    return detectTopology(richGeom, featureId)
+  }
+  const outBytes = topologyBytes(encodeTopologyInput(richGeom))
+  const structural = JSON.parse(new TextDecoder().decode(outBytes)) as StructuralTopology
+  return decorateTopology(structural, featureId)
+}

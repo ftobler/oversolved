@@ -8,6 +8,10 @@
 
 use crate::codec::{decode_input, encode_output, CodecError};
 use crate::solve::solve_sketch;
+use crate::topology::codec::{
+    decode_input as decode_topology_input, encode_output as encode_topology_output, TopologyCodecError,
+};
+use crate::topology::detect_topology;
 
 /// Decode a flat `Input` buffer, solve, and encode the flat `Output` buffer.
 ///
@@ -19,6 +23,18 @@ pub fn solve_bytes(input: &[u8]) -> Result<Vec<u8>, CodecError> {
     let inp = decode_input(input)?;
     let out = solve_sketch(&inp);
     Ok(encode_output(&out))
+}
+
+/// Decode an ordered `richGeom` payload, run the sketch area builder (topology),
+/// and encode the structural `TopologyOut` as JSON for the TS decorator.
+///
+/// This is the topology twin of `solve_bytes`: plain Rust (no wasm-bindgen) so
+/// native `cargo test` exercises the exact path the browser runs. Kept separate
+/// from the solve so the two stay independently testable.
+pub fn detect_topology_bytes(input: &[u8]) -> Result<Vec<u8>, TopologyCodecError> {
+    let geometry = decode_topology_input(input)?;
+    let out = detect_topology(&geometry);
+    Ok(encode_topology_output(&out))
 }
 
 #[cfg(test)]
