@@ -930,6 +930,12 @@ function buildStandaloneEllipses(
   for (const [eid, e] of ellipses) {
     // A cut ellipse (>=2 splits) flows through the DCEL as elliptical arcs.
     if (dedup(splits.get(eid) ?? []).length >= 2) continue
+    // A degenerate ellipse (a near-zero semi-axis) is geometrically a line
+    // segment, not an enclosing curve. This happens when a circle is projected
+    // edge-on onto a perpendicular sketch plane (its minor axis collapses to 0).
+    // It bounds no area, and feeding its zero-area face to an OCC boolean hangs
+    // the solver, so it must never become a fillable surface.
+    if (Math.abs(e["a"] as number) < MERGE || Math.abs(e["b"] as number) < MERGE) continue
     // Two geometrically identical full ellipses are one area, not two stacked.
     const c = e["center"] as Pt
     const key: Pt = [c[0], c[1], e["a"] as number, e["b"] as number, (e["theta"] as number) ?? 0]

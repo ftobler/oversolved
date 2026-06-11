@@ -21,6 +21,19 @@ describe('detectTopology: full ellipse', () => {
     expect(boundary[0].b).toBe(2)
     expect(boundary[0].id).toBe('e1')
   })
+
+  it('a degenerate ellipse (near-zero semi-axis) forms no area', () => {
+    // A circle projected edge-on onto a perpendicular sketch plane collapses its
+    // minor axis to ~0, lowering to a degenerate ellipse. It is geometrically a
+    // line segment and bounds no area; emitting it as a fillable surface produces
+    // a zero-area face that hangs the OCC boolean solver downstream (see
+    // bugreports/document_not_loading_20260611_131446.md).
+    const geometry: Geom = {
+      e1: { kind: 'ellipse', center: [0, 20], a: 5, b: 0, theta: 0 },
+    }
+    const topo = detectTopology(geometry, 'sk')
+    expect(topo.surfaces).toHaveLength(0)
+  })
 })
 
 describe('detectTopology: spline in a loop', () => {
