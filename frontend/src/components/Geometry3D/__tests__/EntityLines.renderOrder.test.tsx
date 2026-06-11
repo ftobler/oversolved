@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { LineSegment, Sketch } from '@/types/cad'
-import { COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
+import { COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
 const MockDashedLine = vi.fn((_props: Record<string, unknown>) => null)
@@ -42,6 +42,7 @@ function resetStore(overrides: Record<string, unknown> = {}) {
     activeFeatureId: null,
     drag: null,
     hoveredConstraintEntityIds: new Set(),
+    hoveredSelectionId: null,
     setInternalHoverSelection: vi.fn(),
     ...overrides,
   } as never)
@@ -96,11 +97,12 @@ describe('EntityItem selected-entity render order', () => {
     expect((props.renderOrder as number) > 0).toBe(true)
   })
 
-  it('hovered-only (not selected) entity outside edit mode does not get high renderOrder', async () => {
-      // hovered is always false for this test
-    // nothing in normalSelection → selected=false
+  it('hovered (not selected) entity rises above everything and draws on top', async () => {
+    // Regression: hover must raise the z-order so a partially occluded sketch
+    // line pops in front of the B-rep, not only on select.
     const { EntityItem } = await import('@/components/Geometry3D/EntityLines')
-    resetStore({ normalSelection: new Set() })
+    const entId = 'entity:sketch1:line1'
+    resetStore({ normalSelection: new Set(), hoveredSelectionId: entId })
 
     render(
       <EntityItem
@@ -114,9 +116,8 @@ describe('EntityItem selected-entity render order', () => {
     )
 
     const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
-    // renderOrder should be undefined or 0 when not selected and not editing
-    const ro = props.renderOrder as number | undefined
-    expect(ro == null || ro === 0).toBe(true)
+    expect(props.renderOrder).toBe(RENDER_ORDER_HIGHLIGHT)
+    expect(props.depthTest).toBe(false)
   })
 
   it('solid line that is visible-only (not editing, not selected) depth-tests normally', async () => {
@@ -135,9 +136,11 @@ describe('EntityItem selected-entity render order', () => {
     )
 
     const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
-    // depthTest must NOT be forced false, so the visible sketch sits at its
-    // plane (occluded by B-rep in front) like the sketch area, not floating.
-    expect(props.depthTest).toBeUndefined()
+    // Normal layer is expressed explicitly (depthTest true, renderOrder 0), never
+    // undefined, so deselect/unhover fully restores it instead of sticking. The
+    // visible sketch sits at its plane (occluded by B-rep in front), not floating.
+    expect(props.depthTest).toBe(true)
+    expect(props.renderOrder).toBe(0)
   })
 })
 

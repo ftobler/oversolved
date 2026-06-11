@@ -4,7 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch/sketch_helpers'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera.
@@ -75,9 +75,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const hovered = vertId ? hoveredVertexId === vertId : false
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
 
   return (
-    <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={selected || isEditing ? RENDER_ORDER_EDITING : 0} depthTest={!(selected || isEditing)} />
+    <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={renderOrder} depthTest={depthTest} />
   )
 }
 
@@ -102,12 +103,13 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = fa
   })
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
   return (
     <group ref={groupRef} position={[x, y, 0]}>
       {/* '+' cross: vertical bar */}
-      <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
+      <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
       {/* '+' cross: horizontal bar */}
-      <Line points={[[-1, 0, 0], [1, 0, 0]]} color={color} lineWidth={hovered ? 2 : 1} />
+      <Line points={[[-1, 0, 0], [1, 0, 0]]} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
     </group>
   )
 }

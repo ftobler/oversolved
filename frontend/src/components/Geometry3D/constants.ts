@@ -1,3 +1,9 @@
+import {
+  RENDER_ORDER_DEFAULT,
+  RENDER_ORDER_EDITING,
+  RENDER_ORDER_HIGHLIGHT,
+} from '@/utils/core/partColors'
+
 export {
   COLOR_BODY_DEFAULT,
   PART_COLOR_PALETTE,
@@ -23,6 +29,35 @@ export {
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
 } from '@/utils/core/partColors'
+
+// ─── sketch entity render layering ───
+// Single source of truth for the z-ordering (Three.js renderOrder) and depth
+// behaviour of a sketch entity, given its interaction state. There are exactly
+// three layers, and the result is ALWAYS explicit — never undefined.
+//
+// Why explicit matters: a drei <Line> keeps one persistent LineMaterial/Line2
+// for its lifetime. Passing `undefined` for depthTest/renderOrder does not
+// restore the default, it leaves whatever was last applied. Expressing "normal"
+// as undefined therefore makes the state sticky (a line that went on-top while
+// selected stayed on-top after deselect). Returning concrete values means every
+// transition, in any direction, fully resets the layer.
+//
+//   hovered            -> top of everything (above other editing lines too)
+//   selected | editing -> above the B-rep, at the edit layer
+//   visible only       -> depth-tested at its plane (clipped by solids in front)
+export interface EntityLayerState {
+  isEditing?: boolean
+  selected?: boolean
+  hovered?: boolean
+}
+
+export function entityRenderLayer(
+  { isEditing = false, selected = false, hovered = false }: EntityLayerState,
+): { depthTest: boolean; renderOrder: number } {
+  if (hovered) return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT }
+  if (selected || isEditing) return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
+  return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
+}
 
 // Drag snap — vertex pull zone must be larger than entity body pull zone so that
 // dragging near an endpoint always snaps to the vertex, not the entity body.
