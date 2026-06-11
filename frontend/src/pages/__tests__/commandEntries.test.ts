@@ -21,6 +21,8 @@ const PROGRAMMATIC_ONLY = new Set([
   'set_tool_ellipse',  // toolbar-only (no keyboard shortcut), like point
   'set_tool_rect',
   'set_tool_center_rect',
+  'set_tool_ngon',  // toolbar-only compound tool (no keyboard shortcut)
+  'apply_offset',   // selection action triggered from the toolbar
   'add_hole',
   'add_transform',
   ...TOOLBAR_ONLY_CONSTRAINT_COMMANDS,

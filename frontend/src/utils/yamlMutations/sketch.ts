@@ -6,18 +6,27 @@ import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } f
 
 const _REF_FIELDS: (keyof PartConstraint)[] = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b']
 
+function _refMatchesDeleted(ref: unknown, deletedIds: Set<string>): boolean {
+  if (typeof ref !== 'string' || !ref.startsWith('$')) return false
+  const bare = ref.slice(1)
+  for (const eid of deletedIds) {
+    if (bare === eid) return true
+    if (bare.startsWith(eid)) {
+      const suffix = bare.slice(eid.length)
+      if (['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'].includes(suffix)) return true
+    }
+  }
+  return false
+}
+
 function _refsDeletedEntity(c: PartConstraint, deletedIds: Set<string>): boolean {
   for (const field of _REF_FIELDS) {
-    const ref = c[field]
-    if (typeof ref !== 'string' || !ref.startsWith('$')) continue
-    const bare = ref.slice(1)
-    for (const eid of deletedIds) {
-      if (bare === eid) return true
-      if (bare.startsWith(eid)) {
-        const suffix = bare.slice(eid.length)
-        if (['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'].includes(suffix)) return true
-      }
-    }
+    if (_refMatchesDeleted(c[field], deletedIds)) return true
+  }
+  // N-ary refs (ngon sugar): GC the whole constraint if any member is deleted,
+  // otherwise a dangling member ref breaks the next lowering.
+  if (Array.isArray(c.refs)) {
+    for (const r of c.refs) if (_refMatchesDeleted(r, deletedIds)) return true
   }
   return false
 }
@@ -418,6 +427,104 @@ export function applyAddCenterRect(
     `vertex:${featureId}:${lD}:start`,
     `vertex:${featureId}:${pointId}:xy`,
   ])
+}
+
+/** N-gon sugar: N line entities forming a closed coincident chain plus a single
+ *  `ngon` regularity constraint. The lines store the circumscribed polygon
+ *  (vertices on the circumcircle through `corner`); the `ngon` constraint is
+ *  expanded to primitive equal-length + angle constraints at solve time. The
+ *  solver never sees a real `ngon` kind. */
+export function applyAddNgon(
+  doc: PartDoc,
+  featureId: string,
+  center: [number, number],
+  corner: [number, number],
+  sides: number,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+  if (!feature.constraints) feature.constraints = []
+
+  const n = Math.max(3, Math.floor(sides))
+  const [cx, cy] = center
+  const [vx, vy] = corner
+  const radius = Math.hypot(vx - cx, vy - cy)
+  if (radius <= 0) return
+  const angle0 = Math.atan2(vy - cy, vx - cx)
+
+  const existingIds = new Set(feature.entities.map(e => e.id))
+  const lineIds: string[] = []
+  for (let i = 0; i < n; i++) {
+    let id = randomId(12)
+    while (existingIds.has(id)) id = randomId(12)
+    existingIds.add(id)
+    lineIds.push(id)
+    const a1 = angle0 + (i / n) * 2 * Math.PI
+    const a2 = angle0 + ((i + 1) / n) * 2 * Math.PI
+    feature.entities.push({ id, kind: 'line' })
+    feature.initial[id] = [
+      cx + radius * Math.cos(a1), cy + radius * Math.sin(a1),
+      cx + radius * Math.cos(a2), cy + radius * Math.sin(a2),
+    ].map(round)
+  }
+
+  // Closed coincident chain: each line's end meets the next line's start.
+  for (let i = 0; i < n; i++) {
+    applyAddConstraint(doc, featureId, 'coincident', [
+      `vertex:${featureId}:${lineIds[i]}:end`,
+      `vertex:${featureId}:${lineIds[(i + 1) % n]}:start`,
+    ])
+  }
+
+  // The single regularity constraint. Deleting it "breaks" the n-gon, leaving
+  // the closed line chain as an editable irregular polygon.
+  const cid = uniqueConstraintId(feature.constraints, 'ngon')
+  feature.constraints.push({
+    id: cid,
+    kind: 'ngon',
+    refs: lineIds.map(eid => parseTarget(`entity:${featureId}:${eid}`, featureId)),
+  })
+}
+
+/** Offset sugar: for each source entity, clone it and record one `offset`
+ *  constraint (source, copy, signed distance). The constraint is expanded to
+ *  parallel + line_distance (lines) or concentric + radius/diameter (circles,
+ *  arcs) at solve time; deleting it leaves the copy as an independent entity. */
+export function applyAddOffset(
+  doc: PartDoc,
+  featureId: string,
+  sourceIds: string[],
+  distance: number,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+  if (!feature.constraints) feature.constraints = []
+
+  for (const srcId of sourceIds) {
+    const src = feature.entities.find(e => e.id === srcId)
+    const srcParams = feature.initial[srcId]
+    if (!src || !srcParams) continue
+
+    const existingIds = new Set(feature.entities.map(e => e.id))
+    let dstId = randomId(12)
+    while (existingIds.has(dstId)) dstId = randomId(12)
+
+    feature.entities.push({ id: dstId, kind: src.kind })
+    feature.initial[dstId] = [...srcParams]  // start as an exact copy; the solver moves it
+
+    const cid = uniqueConstraintId(feature.constraints, 'offset')
+    feature.constraints.push({
+      id: cid,
+      kind: 'offset',
+      a: parseTarget(`entity:${featureId}:${srcId}`, featureId),
+      b: parseTarget(`entity:${featureId}:${dstId}`, featureId),
+      value: round(distance),
+    })
+  }
 }
 
 export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: string): void {

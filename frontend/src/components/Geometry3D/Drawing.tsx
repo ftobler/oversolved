@@ -24,11 +24,12 @@ export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const drawHover = useSketchEditorStore(s => s.drawHover)
   const alignmentSnapPoint = useSketchEditorStore(s => s.alignmentSnapPoint)
   const alignmentSnapKind = useSketchEditorStore(s => s.alignmentSnapKind)
+  const ngonSides = useSketchEditorStore(s => s.ngonSides)
 
   if (activeFeatureId === null) return null
   if (effectiveTool === 'select') return null
 
-  const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover)
+  const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover, ngonSides)
   const endpoint = drawHover
 
   return (
@@ -181,6 +182,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('@/types/cad').ActiveTool) },
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
+          ngonSides: state.ngonSides,
           pushMode: () => {},
           popMode: () => {},
         }

@@ -15,12 +15,14 @@ export type ToolId =
   | 'ellipse'
   | 'spline'
   | 'point'
+  | 'ngon'
   | 'rectangle'
   | 'center_rectangle'
   | 'project'
   | 'drag'
   | 'constraint'
   | 'mirror'
+  | 'offset'
 
 export type ToolCategory = 'navigation' | 'drawing' | 'constraint' | 'selection' | 'dimension' | 'drag'
 

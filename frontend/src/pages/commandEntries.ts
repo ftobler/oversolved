@@ -36,6 +36,10 @@ export function buildCommandEntries(
     })),
     { name: 'set_tool_rect',         fn: () => getState().setActiveTool('rect') },
     { name: 'set_tool_center_rect',  fn: () => getState().setActiveTool('center_rect') },
+    // N-gon and center_rect are compound drawing tools with no ENTITIES entry, so
+    // their set_tool_<tool> commands are hardcoded (the toolbar button dispatches
+    // set_tool_ngon; a missing entry would make the button silently inert).
+    { name: 'set_tool_ngon',         fn: () => getState().setActiveTool('ngon') },
     { name: 'set_tool_dimension',    fn: () => getState().setActiveTool('dimension') },
     { name: 'toggle_construction',   fn: () => getState().toggleConstruction() },
     ...CONSTRAINTS.map(c => ({
@@ -54,6 +58,21 @@ export function buildCommandEntries(
     }},
     { name: 'set_tool_mirror', fn: () => {
       alert('Mirror tool is not yet implemented.')
+    }},
+    // Offset is a selection action, not a draw mode: it operates on the currently
+    // selected sketch entities. Prompt for the signed distance, then dispatch.
+    { name: 'apply_offset', fn: () => {
+      const st = getState()
+      const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 200
+      const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 200
+      st.openDialog({
+        position: [cx, cy],
+        label: 'Offset distance',
+        defaultValue: '5',
+        validate: (input) => (isNaN(parseFloat(input)) ? 'Enter a number' : null),
+        onConfirm: (input) => { st.applyOffset(parseFloat(input)); st.closeDialog() },
+        onCancel: () => st.closeDialog(),
+      })
     }},
     { name: 'add_extrude', fn: handleAddExtrude },
     { name: 'add_hole', fn: handleAddHole },

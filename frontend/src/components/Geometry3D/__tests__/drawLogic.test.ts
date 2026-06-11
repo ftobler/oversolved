@@ -404,6 +404,56 @@ describe('computeDrawClick - center_rect tool', () => {
   })
 })
 
+describe('computeDrawClick - ngon tool', () => {
+  it('first click records center, no mutations', () => {
+    const result = computeDrawClick('ngon', [], [1, 1], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.nextDrawPoints).toEqual([[1, 1]])
+  })
+
+  it('second click emits add_ngon with the default side count', () => {
+    const result = computeDrawClick('ngon', [[0, 0]], [10, 0], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_ngon')
+    if (result.mutations[0].type === 'add_ngon') {
+      expect(result.mutations[0].center).toEqual([0, 0])
+      expect(result.mutations[0].corner).toEqual([10, 0])
+      expect(result.mutations[0].sides).toBe(6)
+    }
+    expect(result.clearTool).toBe(true)
+  })
+
+  it('honors the side count from snap state', () => {
+    const snap = emptySnap()
+    snap.ngonSides = 5
+    const result = computeDrawClick('ngon', [[0, 0]], [10, 0], snap, FEATURE, newId)
+    if (result.mutations[0].type === 'add_ngon') {
+      expect(result.mutations[0].sides).toBe(5)
+    }
+  })
+})
+
+describe('computePreviewPts - ngon tool', () => {
+  it('previews a closed regular hexagon with the first vertex at the cursor', () => {
+    const pts = computePreviewPts('ngon', [[0, 0]], [10, 0])!
+    expect(pts).toHaveLength(7)  // 6 vertices + closing repeat
+    expect(pts[0][0]).toBeCloseTo(10)
+    expect(pts[0][1]).toBeCloseTo(0)
+    expect(pts[6]).toEqual(pts[0])  // closed loop
+    // every vertex on the circumcircle of radius 10
+    for (const p of pts) expect(Math.hypot(p[0], p[1])).toBeCloseTo(10, 6)
+  })
+
+  it('respects the side count argument', () => {
+    const pts = computePreviewPts('ngon', [[0, 0]], [4, 0], 3)!
+    expect(pts).toHaveLength(4)  // triangle + closing repeat
+  })
+
+  it('returns null before the center is placed', () => {
+    expect(computePreviewPts('ngon', [], [4, 0])).toBeNull()
+  })
+})
+
 describe('computeDrawClick - project tool', () => {
   it('returns nothing when no entity is hovered', () => {
     const result = computeDrawClick('project', [], [0, 0], emptySnap(), FEATURE, newId)

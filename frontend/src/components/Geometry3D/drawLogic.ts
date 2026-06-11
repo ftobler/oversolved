@@ -25,6 +25,8 @@ export interface DrawSnapState {
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: string | null
   alignmentSnapVertexId: string | null
+  /** Side count for the two-click n-gon tool. Defaults to 6 when absent. */
+  ngonSides?: number
 }
 
 export interface DrawClickResult {
@@ -248,6 +250,24 @@ export function computeDrawClick(
     // Second corner uses raw point — alignment snap would collapse the rectangle
     return {
       mutations: [{ type: 'add_center_rect', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]] }],
+      nextDrawPoints: null,
+      nextDrawSnap: null,
+      clearTool: true,
+    }
+  }
+
+  if (t === 'ngon') {
+    if (pts.length === 0) {
+      const drawSnap = snap.hoveredVertexId
+        ? { vertexId: snap.hoveredVertexId }
+        : null
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+    }
+    // Second click sets a vertex (circumradius + start angle). Raw point: an
+    // alignment snap would distort the polygon's orientation.
+    const sides = Math.max(3, Math.floor(snap.ngonSides ?? 6))
+    return {
+      mutations: [{ type: 'add_ngon', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]], sides }],
       nextDrawPoints: null,
       nextDrawSnap: null,
       clearTool: true,

@@ -45,13 +45,39 @@ export function arcAnglesFromRadiusPoint(
   return rpInCCW ? [aStart, aEnd] : [aEnd, aStart]
 }
 
+/** Vertices of a regular N-gon circumscribed by the circle through `corner`,
+ *  as a closed polyline (first vertex repeated at the end). The first vertex
+ *  sits at `corner`, matching the two-click n-gon draw. */
+export function ngonPolyline(
+  center: readonly [number, number],
+  corner: readonly [number, number],
+  sides: number,
+): [number, number, number][] {
+  const n = Math.max(3, Math.floor(sides))
+  const [cx, cy] = center
+  const radius = Math.hypot(corner[0] - cx, corner[1] - cy)
+  const angle0 = Math.atan2(corner[1] - cy, corner[0] - cx)
+  const out: [number, number, number][] = []
+  for (let i = 0; i < n; i++) {
+    const a = angle0 + (i / n) * 2 * Math.PI
+    out.push([cx + radius * Math.cos(a), cy + radius * Math.sin(a), 0])
+  }
+  out.push(out[0])  // close the loop exactly (no float drift on the seam)
+  return out
+}
+
 /** Compute preview polyline points for the current drawing tool state. */
 export function computePreviewPts(
   tool: string,
   pts: [number, number][],
   hover: [number, number] | null,
+  ngonSides = 6,
 ): [number, number, number][] | null {
   const h = hover
+
+  if (tool === 'ngon' && pts.length === 1 && h) {
+    return ngonPolyline(pts[0], h, ngonSides)
+  }
 
   if (tool === 'line' && pts.length === 1 && h) {
     return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]

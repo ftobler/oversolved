@@ -23,6 +23,7 @@ export interface DrawingToolContext extends ToolContext {
   setDrawSnap: (vertexId: string | null) => void
   sketch?: Record<string, Entity>
   otherSketches?: Record<string, Record<string, Entity>>
+  ngonSides?: number
 }
 
 export interface DrawingTool extends Tool {
@@ -53,6 +54,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         alignmentSnapPoint: context.alignmentSnapPoint,
         alignmentSnapKind: context.alignmentSnapKind,
         alignmentSnapVertexId: context.alignmentSnapVertexId,
+        ngonSides: context.ngonSides,
       }
 
       const result = computeDrawClick(

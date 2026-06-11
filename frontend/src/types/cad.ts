@@ -2,7 +2,7 @@
 
 export type Point = [number, number]
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'project' | 'drag' | 'mirror' | null
+export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
 
 // Which geometric space the current selection lives in.
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
@@ -224,6 +224,10 @@ export interface PartConstraint {
   target?: PartTarget
   a?: PartTarget
   b?: PartTarget
+  // N-ary refs (used by sugar constructions such as `ngon`, which references an
+  // arbitrary number of member entities). Lowered to primitive constraints
+  // before the solver runs; the solver never sees a `refs` array directly.
+  refs?: PartTarget[]
   // Semantic refs (used by tangent, normal, midpoint, etc.)
   line?: PartTarget
   arc?: PartTarget
@@ -652,6 +656,8 @@ export type Mutation =
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
+  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number }
+  | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }
   | { type: 'add_sketch'; featureId: string; label?: string }

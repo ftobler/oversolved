@@ -197,6 +197,7 @@ interface SketchEditorState {
   activeFeatureId: string | null
   showDebugHit: boolean
   showConstraintTiles: boolean
+  ngonSides: number  // side count for the two-click n-gon draw tool
   entityKindMap: Record<string, string>
   // Sticky-placement state: the picks the user has made inside the active
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
@@ -215,11 +216,13 @@ interface SketchEditorState {
   syncChipSelection: (values: string[]) => void
   clearChipSelection: () => void
   setActiveTool: (tool: ActiveTool) => void
+  setNgonSides: (n: number) => void
   setActiveFeatureId: (id: string | null) => void
   setShowDebugHit: (enabled: boolean) => void
   setShowConstraintTiles: (show: boolean) => void
   setEntityKindMap: (map: Record<string, string>) => void
   applyConstraint: (kind: string) => void
+  applyOffset: (distance: number) => void
   toggleConstruction: () => void
   deleteSelected: () => void
   openDialog: (opts: DialogState) => void
@@ -250,6 +253,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   isRotating: false,
   showDebugHit: false,
   showConstraintTiles: true,
+  ngonSides: 6,
   entityKindMap: {},
   hoveredConstraintEntityIds: new Set(),
   hoveredVertexId: null,
@@ -332,6 +336,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
+
+  // Clamp to the n-gon range (3..64) so the draw tool and preview never see a
+  // degenerate count.
+  setNgonSides: (n) => set({ ngonSides: Math.max(3, Math.min(64, Math.round(n) || 6)) }),
 
   setActiveTool: (tool) => {
     const prevTool = get().activeTool
@@ -451,6 +459,25 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
 
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
+  },
+
+  // Offset the selected sketch entities by a signed distance. Each selected
+  // entity is cloned and tied to its source by an `offset` constraint (lowered
+  // to parallel/concentric + distance before solving). Negative = inward/other
+  // side. A no-op when nothing solvable is selected.
+  applyOffset: (distance) => {
+    const { normalSelection: selection, activeFeatureId } = get()
+    const onMutation = _sketchCbs.onMutation
+    if (!onMutation) {
+      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — applyOffset will be a no-op.')
+      return
+    }
+    if (selection.size === 0 || !activeFeatureId) return
+    const sourceIds = [...selection]
+      .filter(t => t.startsWith('entity:') && t.split(':')[1] === activeFeatureId)
+      .map(t => t.split(':')[2])
+    if (sourceIds.length === 0) return
+    onMutation({ type: 'apply_offset', featureId: activeFeatureId, sourceIds, distance })
   },
 
   toggleConstruction: () => {

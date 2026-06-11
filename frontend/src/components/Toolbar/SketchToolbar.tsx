@@ -9,6 +9,8 @@ import {
   ConstraintTools,
   MirrorTool,
   ProjectTool,
+  NgonTool,
+  OffsetTool,
 } from '@/components/Toolbar/tools'
 
 interface SketchToolbarProps {
@@ -32,9 +34,11 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       {/* Rectangle is a composite tool, not a single entity */}
       <RectangleTool />
       <CenterRectangleTool />
+      <NgonTool />
 
       <ConstructionToggleTool />
       <MirrorTool />
+      <OffsetTool />
       <ProjectTool />
 
       <div className="toolbar-separator" />

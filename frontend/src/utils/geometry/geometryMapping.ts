@@ -522,6 +522,37 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
     }
   }
 
+  if (kind === 'ngon') {
+    // Sugar regularity constraint over N member lines: anchor the tile at the
+    // polygon centroid (mean of the member vertices) so the user sees it exists
+    // even though it is expanded away before the solver runs.
+    const refs = constraint.refs ?? []
+    const pts: Point[] = []
+    const entities: string[] = []
+    for (const q of refs) {
+      const r = resolveQueryRef(q, sketch)
+      if (!r) continue
+      entities.push(r.entity)
+      const p = geomPoint(sketch, r)
+      if (p) pts.push(p)
+    }
+    if (pts.length === 0) return { kind: 'unknown' }
+    const at: Point = [
+      pts.reduce((s, p) => s + p[0], 0) / pts.length,
+      pts.reduce((s, p) => s + p[1], 0) / pts.length,
+    ]
+    return { kind: 'symbol_ngon', at, entity: entities[0], entities }
+  }
+
+  if (kind === 'offset') {
+    const pa = resolved.a ? geomPoint(sketch, resolved.a) : null
+    const pb = resolved.b ? geomPoint(sketch, resolved.b) : null
+    if (!pa || !pb) return { kind: 'unknown' }
+    const at: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
+    const entities = [resolved.a?.entity, resolved.b?.entity].filter(Boolean) as string[]
+    return { kind: 'symbol_offset', at, entity: resolved.a?.entity, entities }
+  }
+
   return { kind: 'unknown' }
 }
 

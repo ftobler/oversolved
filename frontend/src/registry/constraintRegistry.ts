@@ -358,13 +358,20 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
 export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =
   new Map(CONSTRAINTS.map(c => [c.kind, c]))
 
-// Map from render kind → icon filename (for on-canvas symbols).
-export const RENDER_KIND_TO_ICON: Readonly<Record<string, string>> =
-  Object.fromEntries(
+// Map from render kind → icon filename (for on-canvas symbols). The sugar
+// constructions `ngon`/`offset` are not entries in CONSTRAINTS (they are not
+// manually insertable), but their constraints still render a read-only tile so
+// the user can see and delete them -- they reuse the same icon as their toolbar
+// tool (one icon per concept, not a separate constraint glyph).
+export const RENDER_KIND_TO_ICON: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
     CONSTRAINTS
       .filter(c => c.symbolIcon)
       .map(c => [c.renderKind, c.symbolIcon!])
-  )
+  ),
+  symbol_ngon: 'toolbar-ngon',
+  symbol_offset: 'toolbar-offset',
+}
 
 // Constraints that appear as direct toolbar buttons, in display order.
 export const TOOLBAR_CONSTRAINTS: readonly ConstraintDef[] =

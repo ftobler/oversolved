@@ -131,6 +131,42 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('applyOffset', () => {
+    it('dispatches apply_offset with the selected entity ids and distance', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C2')
+
+      useSketchEditorStore.getState().applyOffset(4)
+
+      expect(handler).toHaveBeenCalledOnce()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'apply_offset',
+        featureId: 'Sketch1',
+        sourceIds: expect.arrayContaining(['L1', 'C2']),
+        distance: 4,
+      })
+    })
+
+    it('ignores non-entity selections and other features', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().toggleNormalSelection('constraint:Sketch1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Other:L9')
+
+      useSketchEditorStore.getState().applyOffset(2)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('does nothing with no selection or no handler', () => {
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      expect(() => useSketchEditorStore.getState().applyOffset(2)).not.toThrow()
+    })
+  })
+
   describe('applyConstraint', () => {
     it('dispatches add_constraint with selected targets', () => {
       const handler = vi.fn()

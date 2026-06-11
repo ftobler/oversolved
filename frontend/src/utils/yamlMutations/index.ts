@@ -16,6 +16,8 @@ export {
   applyAddPointWithConstraint,
   applyAddRect,
   applyAddCenterRect,
+  applyAddNgon,
+  applyAddOffset,
   applySetFeaturePlane,
 } from './sketch'
 

@@ -9,6 +9,8 @@ export { default as ConstraintTools } from '@/components/Toolbar/tools/Constrain
 export { default as DragTool } from '@/components/Toolbar/tools/DragTool'
 export { default as MirrorTool } from '@/components/Toolbar/tools/MirrorTool'
 export { default as ProjectTool } from '@/components/Toolbar/tools/ProjectTool'
+export { default as NgonTool } from '@/components/Toolbar/tools/NgonTool'
+export { default as OffsetTool } from '@/components/Toolbar/tools/OffsetTool'
 
 // Export utilities
 export { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'

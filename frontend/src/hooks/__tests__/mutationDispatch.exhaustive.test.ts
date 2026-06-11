@@ -14,6 +14,8 @@ export const ALL_MUTATION_TYPES = [
   'add_projected_entity',
   'add_rect',
   'add_center_rect',
+  'add_ngon',
+  'apply_offset',
   'toggle_construction',
   'set_feature_plane',
   'add_sketch',

@@ -26,6 +26,10 @@ export function describeMutation(m: Mutation): string {
       return `add rect in ${m.featureId}`
     case 'add_center_rect':
       return `add center rect in ${m.featureId}`
+    case 'add_ngon':
+      return `add ${m.sides}-gon in ${m.featureId}`
+    case 'apply_offset':
+      return `offset ${m.sourceIds.length} entity(ies) by ${m.distance} in ${m.featureId}`
     case 'toggle_construction':
       return `toggle construction on ${m.targets.length} element(s)`
     case 'set_feature_plane':
