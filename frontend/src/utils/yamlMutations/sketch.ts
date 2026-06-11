@@ -1,6 +1,7 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } from './helpers'
+import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 
 // ─── Internals ───
 
@@ -525,7 +526,15 @@ export function offsetSeed(kind: string, p: number[], distance: number): number[
  *  driven. Authoring zero dimensions is deliberate -- offsetting a multi-line
  *  profile must not spray a dimension per entity, and baking the side into the
  *  seed removes the solver's freedom to flip the offset to the wrong side.
- *  Splines/ellipses have no clean offset, so only the (at-source) copy is made. */
+ *  Splines/ellipses have no clean offset, so only the (at-source) copy is made.
+ *
+ *  Connectivity carry-over: a *connected* selection (rectangle, n-gon, fillet
+ *  chain) is held together by `coincident` corners. Offsetting each entity in
+ *  isolation would tear those corners apart, so after cloning we rebuild every
+ *  corner among the selected sources on the clones -- mitering line/line corners
+ *  to the intersection of the two offset lines (NOT the offset of the shared
+ *  vertex) and carrying line/arc tangency over with a `tangent`. Still no
+ *  dimensions; the reconnection is the only added structure. */
 export function applyAddOffset(
   doc: PartDoc,
   featureId: string,
@@ -538,6 +547,10 @@ export function applyAddOffset(
   if (!feature.initial) feature.initial = {}
   if (!feature.constraints) feature.constraints = []
 
+  const cloneOf = new Map<string, string>()  // source id -> clone id
+  const kindOf = new Map<string, string>()   // source id -> entity kind
+  const existingIds = new Set(feature.entities.map(e => e.id))
+
   for (const srcId of sourceIds) {
     const src = feature.entities.find(e => e.id === srcId)
     const srcParams = feature.initial[srcId]
@@ -546,12 +559,14 @@ export function applyAddOffset(
     const seed = offsetSeed(src.kind, srcParams, distance)
     if (!seed) continue  // degenerate source: no offset direction
 
-    const existingIds = new Set(feature.entities.map(e => e.id))
     let dstId = randomId(12)
     while (existingIds.has(dstId)) dstId = randomId(12)
+    existingIds.add(dstId)
 
     feature.entities.push({ id: dstId, kind: src.kind })
     feature.initial[dstId] = seed.map(round)
+    cloneOf.set(srcId, dstId)
+    kindOf.set(srcId, src.kind)
 
     const srcRef = `entity:${featureId}:${srcId}`
     const dstRef = `entity:${featureId}:${dstId}`
@@ -566,6 +581,48 @@ export function applyAddOffset(
       default:
         break  // spline / ellipse: copy only, no relationship
     }
+  }
+
+  // Reconnect the corners. Miter points are intersections of the *seeded*
+  // (untrimmed) offset lines, so snapshot the seeds before we start trimming
+  // endpoints -- otherwise the second corner of a shared line would intersect an
+  // already-moved line and drift.
+  const seedSnapshot = new Map<string, number[]>()
+  for (const cloneId of cloneOf.values()) seedSnapshot.set(cloneId, [...feature.initial[cloneId]])
+
+  for (const corner of offsetCorners([...cloneOf.keys()], feature.constraints)) {
+    const cloneA = cloneOf.get(corner.a.entityId)
+    const cloneB = cloneOf.get(corner.b.entityId)
+    if (!cloneA || !cloneB) continue
+    const kindA = kindOf.get(corner.a.entityId)
+    const kindB = kindOf.get(corner.b.entityId)
+
+    const curved = (k: string | undefined) => k === 'arc' || k === 'circle'
+    if (kindA === 'line' && kindB === 'line') {
+      const ix = lineIntersect(seedSnapshot.get(cloneA)!, seedSnapshot.get(cloneB)!)
+      if (!ix) continue  // near-parallel: leave the gap, no coincident, no crash
+      const ia = lineVertexIndices(corner.a.vertexKey)
+      const ib = lineVertexIndices(corner.b.vertexKey)
+      if (!ia || !ib) continue
+      const pa = feature.initial[cloneA], pb = feature.initial[cloneB]
+      pa[ia[0]] = round(ix[0]); pa[ia[1]] = round(ix[1])
+      pb[ib[0]] = round(ix[0]); pb[ib[1]] = round(ix[1])
+      applyAddConstraint(doc, featureId, 'coincident', [
+        `vertex:${featureId}:${cloneA}:${corner.a.vertexKey}`,
+        `vertex:${featureId}:${cloneB}:${corner.b.vertexKey}`,
+      ])
+    } else if ((kindA === 'line' && curved(kindB)) || (curved(kindA) && kindB === 'line') ||
+               (curved(kindA) && curved(kindB))) {
+      // line/arc or arc/arc: a fillet corner. Endpoints of an arc clone cannot be
+      // mitered into place (the geometry is center+radius+angles), so carry the
+      // tangency over and let the solver settle the join.
+      applyAddConstraint(doc, featureId, 'tangent', [
+        `entity:${featureId}:${cloneA}`,
+        `entity:${featureId}:${cloneB}`,
+      ])
+    }
+    // spline/ellipse corners: no clean offset relationship, leave them ungrafted
+    // (matches the copy-at-source clone policy above).
   }
 }
 

@@ -14,7 +14,7 @@ import { loadSolver } from './loadSolver'
 import { lowerSketch } from './lowerSketch'
 import { encodeInput, decodeOutput } from './codec'
 import { partDocToSketches } from './partDocToSketches'
-import { applyAddNgon, applyAddOffset, applyAddEntity, applyDeleteElements } from '@/utils/yamlMutations'
+import { applyAddNgon, applyAddOffset, applyAddEntity, applyAddRect, applyDeleteElements } from '@/utils/yamlMutations'
 
 const bytes = loadSolver()
 
@@ -155,5 +155,49 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
     const dstId = doc.features![0].entities!.find((e) => e.id !== 'src')!.id
     const dst = solveFeature(doc)[dstId]
     expect(Math.abs(dst[2] - 7)).toBeLessThan(1e-2)
+  })
+})
+
+describe.skipIf(!bytes)('connected-profile offset stays a closed profile after solving', () => {
+  // The clones of a rectangle's 4 lines are parallel to their sources and meet at
+  // mitered, coincident corners. The solver must keep that loop closed (no corner
+  // gaps) -- this is the direct regression for the "disjointed geometry" report.
+  it('offset rectangle solves to a closed loop with no corner gaps', () => {
+    const doc = emptySketch()
+    applyAddRect(doc, 'sk', [0, 0], [10, 10])
+    const srcIds = doc.features![0].entities!.map((e) => e.id)
+    applyAddOffset(doc, 'sk', srcIds, 2)
+    const cloneIds = doc.features![0].entities!.map((e) => e.id).filter((id) => !srcIds.includes(id))
+    expect(cloneIds).toHaveLength(4)
+
+    const solved = solveFeature(doc)
+    const clones = cloneIds.map((id) => solved[id])
+
+    // The clone loop order matches the source order, so clone[i].end meets some
+    // clone[j].start. Verify every clone endpoint coincides with exactly one
+    // other clone endpoint (closed loop, no open corner).
+    const ends = clones.map((p) => [p[2], p[3]] as [number, number])
+    const starts = clones.map((p) => [p[0], p[1]] as [number, number])
+    for (const e of ends) {
+      const nearest = Math.min(...starts.map((s) => Math.hypot(s[0] - e[0], s[1] - e[1])))
+      expect(nearest).toBeLessThan(1e-2)  // each end lands on a start: corner closed
+    }
+  })
+
+  // A small inward offset of a 10x10 CCW square is a concentric 6x6 square (each
+  // side trimmed by the offset at both mitered corners). Under-constrained, so the
+  // least-change solver holds the seeded inner square.
+  it('small inward offset of a square solves to a smaller square', () => {
+    const doc = emptySketch()
+    applyAddRect(doc, 'sk', [0, 0], [10, 10])  // CCW: +offset mites inward
+    const srcIds = doc.features![0].entities!.map((e) => e.id)
+    applyAddOffset(doc, 'sk', srcIds, 2)
+    const cloneIds = doc.features![0].entities!.map((e) => e.id).filter((id) => !srcIds.includes(id))
+
+    const solved = solveFeature(doc)
+    for (const id of cloneIds) {
+      const p = solved[id]
+      expect(Math.hypot(p[2] - p[0], p[3] - p[1])).toBeCloseTo(6, 1)  // 10 - 2*2
+    }
   })
 })
