@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import fixture from "./occ/__fixtures__/topology.json"
-import { collinearOverlap, detectTopology } from "./topology"
+import { detectTopology, topologyAvailable } from "./topologyTestUtil"
 
 // Structure and identity-bearing query strings must match Python exactly;
 // coordinates are compared within a tight tolerance to absorb cross-language
@@ -40,7 +40,7 @@ function assertDeepClose(actual: unknown, expected: unknown, path: string): void
   expect(actual, `${path}`).toBe(expected)
 }
 
-describe("detectTopology parity with Python", () => {
+describe.skipIf(!topologyAvailable)("detectTopology parity with Python", () => {
   for (const [name, c] of Object.entries(fixture)) {
     it(name, () => {
       const result = detectTopology(
@@ -92,7 +92,7 @@ const COORD_TOL = 1e-6
 
 // ─── Surface counts ───
 
-describe("detectTopology surface counts", () => {
+describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   it("triangle → 1 surface, 0 intersections", () => {
     /** Three lines forming a closed triangle → 1 surface. */
     const r = detectTopology({
@@ -273,7 +273,7 @@ describe("detectTopology surface counts", () => {
 
 // ─── Query strings ───
 
-describe("detectTopology query strings", () => {
+describe.skipIf(!topologyAvailable)("detectTopology query strings", () => {
   it("triangle surface has query", () => {
     const r = detectTopology(
       { a: lineGeom(0, 0, 2, 0), b: lineGeom(2, 0, 1, 2), c: lineGeom(1, 2, 0, 0) },
@@ -317,7 +317,7 @@ describe("detectTopology query strings", () => {
 
 // ─── Construction lines ───
 
-describe("detectTopology construction lines", () => {
+describe.skipIf(!topologyAvailable)("detectTopology construction lines", () => {
   it("construction lines are ignored", () => {
     /** Construction lines are excluded from topology -- rectangle stays 1 surface. */
     const r = detectTopology({
@@ -349,7 +349,7 @@ describe("detectTopology construction lines", () => {
 
 // ─── Wrapping arcs ───
 
-describe("detectTopology wrapping arcs", () => {
+describe.skipIf(!topologyAvailable)("detectTopology wrapping arcs", () => {
   it("wrapping arc half-disk (270°→90° through 0°) → 1 surface", () => {
     /** Right-half-disk: CCW arc from 270° to 90° (through 0°) + vertical chord.
      *  The arc wraps through 0°, so angle_end (1.57 rad) < angle_start (4.71 rad).
@@ -407,7 +407,7 @@ describe("detectTopology wrapping arcs", () => {
 
 // ─── Boundary edge vertex references ───
 
-describe("detectTopology boundary edges", () => {
+describe.skipIf(!topologyAvailable)("detectTopology boundary edges", () => {
   it("boundary edges have vertex references", () => {
     /** Every line edge in a surface boundary must reference vertices that exist
      *  in the topology's vertices dict. */
@@ -454,37 +454,11 @@ describe("detectTopology boundary edges", () => {
   })
 })
 
-// ─── collinearOverlap degenerate segments ───
-
-describe("collinearOverlap degenerate segments", () => {
-  it("zero-length segment A returns empty", () => {
-    const result = collinearOverlap(
-      { start: [1.0, 0.0], end: [1.0, 0.0] },
-      { start: [0.0, 0.0], end: [2.0, 0.0] },
-    )
-    expect(result).toEqual([])
-  })
-
-  it("zero-length segment B returns empty", () => {
-    const result = collinearOverlap(
-      { start: [0.0, 0.0], end: [2.0, 0.0] },
-      { start: [1.0, 0.0], end: [1.0, 0.0] },
-    )
-    expect(result).toEqual([])
-  })
-
-  it("normal overlapping segments return overlap points", () => {
-    const result = collinearOverlap(
-      { start: [0.0, 0.0], end: [2.0, 0.0] },
-      { start: [1.0, 0.0], end: [3.0, 0.0] },
-    )
-    expect(result.length).toBeGreaterThan(0)
-  })
-})
+// (collinearOverlap unit coverage moved to the Rust dcel.rs cargo tests.)
 
 // ─── Degenerate and touching geometry ───
 
-describe("detectTopology degenerate geometry", () => {
+describe.skipIf(!topologyAvailable)("detectTopology degenerate geometry", () => {
   it("two touching rectangles → 2 surfaces", () => {
     /** Two rectangles touching along a collinear overlapping edge → 2 surfaces.
      *  Mirrors the exact geometry from bugreport
@@ -521,7 +495,7 @@ describe("detectTopology degenerate geometry", () => {
 
 // ─── Phase 2 line-division classifiers (ported from test_classifier_resolution.py) ───
 
-describe("line-division classifiers", () => {
+describe.skipIf(!topologyAvailable)("line-division classifiers", () => {
   it("split circle gets line-division classifiers per half", () => {
     /** A circle bisected by a line produces two half-disks, each carrying a
      *  line-division classifier token ("cls_ld_<eid>_p" / "cls_ld_<eid>_n"). */

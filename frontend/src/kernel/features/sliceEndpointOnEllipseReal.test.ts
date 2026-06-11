@@ -15,7 +15,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { lowerSketch } from '@/wasm-kernel/lowerSketch'
 import { encodeInput, decodeOutput } from '@/wasm-kernel/codec'
 import { enrichSketchEntity } from './postRegister'
-import { detectTopology } from '../topology'
+import { detectTopology, topologyAvailable } from '../topologyTestUtil'
 
 const bytes = loadSolver()
 
@@ -72,7 +72,7 @@ function solveAndSlice(start: [number, number]): { surfaces: number; residual: n
   return { surfaces: topo.surfaces.length, residual: ellipseResidual([solved.l1[2], solved.l1[3]], solved.e1) }
 }
 
-describe.skipIf(!bytes)('chord whose endpoint is solved onto an ellipse slices it in two', () => {
+describe.skipIf(!bytes || !topologyAvailable)('chord whose endpoint is solved onto an ellipse slices it in two', () => {
   for (const [name, start] of cases) {
     it(`${name}: two areas after the real solve`, () => {
       const { surfaces, residual } = solveAndSlice(start)

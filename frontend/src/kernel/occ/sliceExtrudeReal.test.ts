@@ -9,7 +9,7 @@ import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { volumeOf } from './booleans'
 import { extrudeProfileWithLineage } from './prismLineage'
-import { detectTopology } from '../topology'
+import { detectTopology, topologyAvailable } from '../topologyTestUtil'
 import { extractProfileLoops, type PlaneLike } from '../features/shared'
 import type { LoopEdge } from '../profileLoops'
 
@@ -22,7 +22,7 @@ const loopsOf = (s: Geom): LoopEdge[][] => [
   ...(((s.holes as LoopEdge[][]) ?? [])),
 ]
 
-describe.skipIf(!oc)('sliced-curve profile extrude (real OCC)', () => {
+describe.skipIf(!oc || !topologyAvailable)('sliced-curve profile extrude (real OCC)', () => {
   it('vanilla full ellipse extrudes through extractProfileLoops to a part', () => {
     // Regression: a standalone full-ellipse surface (single self-closed `ellipse`
     // edge, null endpoints) must survive extractProfileLoops and extrude.

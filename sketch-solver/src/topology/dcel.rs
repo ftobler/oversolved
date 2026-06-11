@@ -1383,6 +1383,17 @@ mod tests {
     }
 
     #[test]
+    fn collinear_overlap_degenerate_and_normal() {
+        // Ported from the deleted TS topology.test.ts collinearOverlap block.
+        // Zero-length segment A -> no overlap.
+        assert!(collinear_overlap(&line([1.0, 0.0], [1.0, 0.0]), &line([0.0, 0.0], [2.0, 0.0])).is_empty());
+        // Zero-length segment B -> no overlap.
+        assert!(collinear_overlap(&line([0.0, 0.0], [2.0, 0.0]), &line([1.0, 0.0], [1.0, 0.0])).is_empty());
+        // Genuinely overlapping collinear segments -> overlap points.
+        assert!(!collinear_overlap(&line([0.0, 0.0], [2.0, 0.0]), &line([1.0, 0.0], [3.0, 0.0])).is_empty());
+    }
+
+    #[test]
     fn line_slashes_circle_into_two_areas() {
         let geom = vec![
             ("c0".into(), circle([0.0, 0.0], 1.0)),

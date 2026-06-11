@@ -49,10 +49,10 @@ export interface SketchResult {
 
 let solverBytes: SolveBytes | null = null
 let solverLoading: Promise<SolveBytes | null> | null = null
-// The Rust area builder (`detect_topology_bytes`). When null, `solveSketch`
-// falls back to the in-process TS `detectTopology` (parity oracle / fresh
-// checkout). The browser wires this in `initSketchSolver`; the parity harness
-// injects it via `setSketchTopology`.
+// The Rust area builder (`detect_topology_bytes`). The browser wires it in
+// `initSketchSolver` (awaited alongside the solver); the node harness injects it
+// via `setSketchTopology`. Only null on a fresh checkout with no `just wasm`, in
+// which case the missing solver makes `solveSketch` throw first.
 let topologyBytes: TopologyBytes | null = null
 
 /** Inject a pre-loaded solver (node tests call this with ``loadSolver()``). */
@@ -70,31 +70,31 @@ export function setSketchTopology(bytes: TopologyBytes | null): void {
 export async function initSketchSolver(): Promise<SolveBytes | null> {
   if (solverBytes) return solverBytes
   if (!solverLoading) {
-    // Wire the area builder alongside the solver; both share one wasm module.
-    // Optional: a missing/failing topology loader falls back to TS detectTopology,
-    // so it must never break solver init.
+    // Wire the area builder alongside the solver (they share one wasm module) and
+    // AWAIT both, so the first synchronous solve never races a half-loaded
+    // topology. A null topology loader (mock / fresh checkout) leaves any
+    // already-injected loader in place.
+    let topoLoad: Promise<TopologyBytes | null>
     try {
-      void loadTopologyWasm?.()
-        .then((t) => {
-          topologyBytes = t
-        })
-        .catch(() => {})
+      topoLoad = loadTopologyWasm?.() ?? Promise.resolve(null)
     } catch {
-      // topology stays on the TS fallback
+      topoLoad = Promise.resolve(null)
     }
-    solverLoading = loadSolverWasm().then((b) => {
+    solverLoading = Promise.all([loadSolverWasm(), topoLoad.catch(() => null)]).then(([b, t]) => {
       solverBytes = b
+      if (t) topologyBytes = t
       return b
     })
   }
   return solverLoading
 }
 
-/** Clear the cached solver (tests). */
+/** Clear the cached solver (tests). The area builder loader is environment
+ *  stable (not per-test state), so it is intentionally preserved across a
+ *  solver reset; use `setSketchTopology(null)` to drop it explicitly. */
 export function resetSketchSolver(): void {
   solverBytes = null
   solverLoading = null
-  topologyBytes = null
 }
 
 /**

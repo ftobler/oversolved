@@ -3,11 +3,11 @@
 // (enrichSketchEntity form): a full ellipse is a standalone closed area; a
 // spline is an open edge chained into a loop by its endpoints.
 import { describe, it, expect } from 'vitest'
-import { detectTopology } from './topology'
+import { detectTopology, topologyAvailable } from './topologyTestUtil'
 
 type Geom = Record<string, unknown>
 
-describe('detectTopology: full ellipse', () => {
+describe.skipIf(!topologyAvailable)('detectTopology: full ellipse', () => {
   it('a single full ellipse forms one standalone area', () => {
     const geometry: Geom = {
       e1: { kind: 'ellipse', center: [0, 0], a: 4, b: 2, theta: 0 },
@@ -36,7 +36,7 @@ describe('detectTopology: full ellipse', () => {
   })
 })
 
-describe('detectTopology: spline in a loop', () => {
+describe.skipIf(!topologyAvailable)('detectTopology: spline in a loop', () => {
   it('a line + spline sharing both endpoints close into one area', () => {
     // D-shape: line A->B along the base, spline B->A bulging up.
     const A = [0, 0]

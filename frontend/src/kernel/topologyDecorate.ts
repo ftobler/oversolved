@@ -12,12 +12,19 @@
 
 import { makeAncestryQuery, emitWire, absolute, parseAncestry } from "./query"
 import { loopCentroid } from "./profileLoops"
-import { detectTopology, type TopologyDict } from "./topology"
 
 const EPS = 1e-9
 
 type Pt = number[]
 type Geom = Record<string, unknown>
+
+/** The decorated area-builder output (port of the former topology.ts type). */
+export interface TopologyDict {
+  intersection_points: Record<string, { x: number; y: number }>
+  vertices: Record<string, { x: number; y: number }>
+  edges: Record<string, unknown>[]
+  surfaces: Record<string, unknown>[]
+}
 
 /** Bytes-in/bytes-out shape of the Rust `detect_topology_bytes` entry point. */
 export type TopologyBytes = (input: Uint8Array) => Uint8Array
@@ -133,9 +140,11 @@ function encodeTopologyInput(richGeom: Record<string, Record<string, unknown>>):
 }
 
 /**
- * Run the Rust area builder over `richGeom` and decorate the result. When no
- * Rust topology function is provided, fall back to the in-process TS
- * `detectTopology` (the parity oracle / fresh-checkout path).
+ * Run the Rust area builder over `richGeom` and decorate the result. The area
+ * builder lives entirely in Rust/WASM now; `topologyBytes` must be wired (browser
+ * via `initSketchSolver`, node harness via `setSketchTopology`). It is only null
+ * on a fresh checkout with no `just wasm` build, where `solveSketch` already
+ * throws on the missing solver before reaching here.
  */
 export function solveTopology(
   richGeom: Record<string, Record<string, unknown>>,
@@ -143,7 +152,7 @@ export function solveTopology(
   topologyBytes: TopologyBytes | null,
 ): TopologyDict {
   if (!topologyBytes) {
-    return detectTopology(richGeom, featureId)
+    throw new Error("topology: Rust area builder not initialised (run `just wasm`)")
   }
   const outBytes = topologyBytes(encodeTopologyInput(richGeom))
   const structural = JSON.parse(new TextDecoder().decode(outBytes)) as StructuralTopology

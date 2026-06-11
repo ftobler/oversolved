@@ -2,7 +2,7 @@
 // Geometry is taken from captured bug reports (bugreports/slice_*, donut_*),
 // using the enrichSketchEntity dict form detectTopology consumes.
 import { describe, it, expect } from "vitest"
-import { detectTopology } from "./topology"
+import { detectTopology, topologyAvailable } from "./topologyTestUtil"
 import { TOL_TOPOLOGY_MERGE } from "./solverConstants"
 
 type Geom = Record<string, unknown>
@@ -26,7 +26,7 @@ const spline = (p: number[]): Geom => ({
 
 const E1 = ellipse(0, 0, 5, 2.5, 0)  // the standard test ellipse
 
-describe("area builder: line / arc / circle slicing an ellipse", () => {
+describe.skipIf(!topologyAvailable)("area builder: line / arc / circle slicing an ellipse", () => {
   it("slice-line-thru-ellipse-center: minor-axis line splits into 2 areas", () => {
     const topo = detectTopology({ e1: E1, l1: line(0, 2.5, 0, -2.5) }, "sk")
     expect(topo.surfaces).toHaveLength(2)
@@ -96,7 +96,7 @@ describe("area builder: line / arc / circle slicing an ellipse", () => {
   })
 })
 
-describe("area builder: spline slicing", () => {
+describe.skipIf(!topologyAvailable)("area builder: spline slicing", () => {
   it("slice-spline-thru-ellipse: spline slashes a full ellipse into areas", () => {
     const s = spline([-2.174095, 5.807216, -2.790440, -3.801748, 2.539267, 4.228380, 1.686274, -4.632326])
     const topo = detectTopology({ e1: E1, s1: s }, "sk")
@@ -117,7 +117,7 @@ describe("area builder: spline slicing", () => {
   })
 })
 
-describe("area builder: ellipse vs ellipse", () => {
+describe.skipIf(!topologyAvailable)("area builder: ellipse vs ellipse", () => {
   it("slice-ellipse-ellipse-overlap: overlapping ellipses split into regions", () => {
     const e2 = ellipse(-4.581310, -1.561098, 6.832069, 4.222219, -49.414097)
     const topo = detectTopology({ e1: E1, e2 }, "sk")
@@ -131,7 +131,7 @@ describe("area builder: ellipse vs ellipse", () => {
   })
 })
 
-describe("area builder: inner loops / donut (planar areas)", () => {
+describe.skipIf(!topologyAvailable)("area builder: inner loops / donut (planar areas)", () => {
   const holesOf = (s: { holes?: unknown }): unknown[] => (s.holes as unknown[]) ?? []
 
   it("donut-concentric-circles: a washer-with-hole AND the inner disk", () => {
@@ -193,7 +193,7 @@ describe("area builder: inner loops / donut (planar areas)", () => {
   })
 })
 
-describe("area builder: sliced ellipse produces ellipse_arc edges (repr)", () => {
+describe.skipIf(!topologyAvailable)("area builder: sliced ellipse produces ellipse_arc edges (repr)", () => {
   it("repr-half-ellipse-edge: a diameter line yields ellipse_arc boundary edges", () => {
     const topo = detectTopology({ e1: E1, l1: line(0, 2.5, 0, -2.5) }, "sk")
     const kinds = topo.surfaces.flatMap((s) => (s.boundary as Geom[]).map((e) => e.kind))
@@ -209,7 +209,7 @@ describe("area builder: sliced ellipse produces ellipse_arc edges (repr)", () =>
   })
 })
 
-describe("area builder: degenerate / robustness", () => {
+describe.skipIf(!topologyAvailable)("area builder: degenerate / robustness", () => {
   it("degen-line-tangent-ellipse: a tangent line does not split the ellipse", () => {
     const topo = detectTopology({ e1: E1, l1: line(-6, 2.5, 6, 2.5) }, "sk")
     expect(topo.surfaces).toHaveLength(1)
@@ -236,7 +236,7 @@ describe("area builder: degenerate / robustness", () => {
   })
 })
 
-describe("area builder: lineage / query parity", () => {
+describe.skipIf(!topologyAvailable)("area builder: lineage / query parity", () => {
   it("lineage-subedge-ancestry: every sliced ellipse sub-edge references its source id", () => {
     const topo = detectTopology({ e1: E1, l1: line(0, 2.5, 0, -2.5) }, "sk")
     const arcs = topo.surfaces.flatMap((s) => (s.boundary as Geom[]).filter((e) => e.kind === "ellipse_arc"))
