@@ -42,6 +42,24 @@ describe("area builder: line / arc / circle slicing an ellipse", () => {
     expect(topo.surfaces.length).toBeGreaterThanOrEqual(2)
   })
 
+  it("slice-line-endpoint-on-ellipse: a chord ending on the rim splits it in two", () => {
+    // Regression for bugreports/ellipse_slice_error*: the line's end vertex is
+    // constrained onto the ellipse, so it sits on the rim only to within the
+    // solver residual (~1.7e-7). The line/ellipse intersection computed there
+    // must merge with that endpoint vertex, otherwise the chord never closes
+    // against the elliptical arcs and the cut collapses back to one area.
+    const ends: [number, number] = [-2.0701122283935547, 2.2756667137145996]
+    const starts: [number, number][] = [
+      [-7.447084903717041, -0.10095799714326859],  // one quadrant
+      [-6.315125942230225, -0.2938689887523651],  // one quadrant, nearer rim
+      [4.364737033843994, 1.8953800201416016],  // two quadrants
+    ]
+    for (const [sx, sy] of starts) {
+      const topo = detectTopology({ e1: E1, l1: line(sx, sy, ends[0], ends[1]) }, "sk")
+      expect(topo.surfaces).toHaveLength(2)
+    }
+  })
+
   it("slice-arc-cuts-ellipse: an arc divides the ellipse", () => {
     const arc: Geom = {
       center: [-10.458259, -1.701254],

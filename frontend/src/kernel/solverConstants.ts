@@ -5,7 +5,12 @@
 export const TOL_LOOP_CLOSURE = 1e-6
 export const TOL_NEAR_ZERO_AREA = 1e-12
 export const TOL_TOPOLOGY_EPS = 1e-9
-export const TOL_TOPOLOGY_MERGE = 1e-7
+// World-space vertex merge: two area-builder vertices closer than this are one.
+// Must not be tighter than the solver's coincidence residual, else a line
+// endpoint constrained onto a curve and the curve/line intersection computed
+// there land on distinct vertices and the slice fails to close. Kept at the
+// loop-closure scale (TOL_LOOP_CLOSURE) which already bounds solver residuals.
+export const TOL_TOPOLOGY_MERGE = 1e-6
 export const TOL_TOPOLOGY_SPLIT = 1e-7
 
 // Arc tessellation density (mirrors solver_constants._ARC_SEGMENTS): the number
