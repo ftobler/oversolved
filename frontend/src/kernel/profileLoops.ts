@@ -60,6 +60,15 @@ export function splineSamplePoints(e: LoopEdge, n: number): number[][] {
   return out
 }
 
+/** True for a spline edge whose start and end coincide (a closed self-loop). */
+function splineIsClosed(e: LoopEdge): boolean {
+  if (e["kind"] !== "spline") return false
+  const p1 = e["start"] as number[] | undefined
+  const p4 = e["end"] as number[] | undefined
+  if (!p1 || !p4) return false
+  return Math.hypot(p1[0] - p4[0], p1[1] - p4[1]) < 1e-6
+}
+
 /** n interior points along an elliptical-arc edge; empty if not one. */
 export function ellipseArcSamplePoints(e: LoopEdge, n: number): number[][] {
   if (e["kind"] !== "ellipse_arc") return []
@@ -113,7 +122,9 @@ export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
     if ("start" in e) pts.push(e["start"] as number[])
     pts.push(...arcSamplePoints(e, arcSamples))
     pts.push(...ellipseArcSamplePoints(e, Math.max(arcSamples, 4)))
-    pts.push(...splineSamplePoints(e, arcSamples))
+    // A self-closing spline (start == end) is a standalone closed loop, so it
+    // needs enough points to read as a polygon on its own, like a full ellipse.
+    pts.push(...splineSamplePoints(e, splineIsClosed(e) ? Math.max(arcSamples * 4, 16) : arcSamples))
     // A full ellipse is a standalone closed loop: it needs enough points to read
     // as a polygon on its own, independent of the coarse arc sample count.
     pts.push(...ellipseSamplePoints(e, Math.max(arcSamples * 4, 16)))

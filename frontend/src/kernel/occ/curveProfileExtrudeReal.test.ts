@@ -29,6 +29,19 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
     scope.dispose()
   })
 
+  it('extrudes a self-closing spline (single closed Bezier loop) to a solid', () => {
+    const scope = new DisposeScope()
+    // Teardrop: one spline whose start and end both sit on the origin. The whole
+    // area is bounded by a single closed Bezier edge (no chord, no other edge).
+    const loop: LoopEdge[] = [
+      { kind: 'spline', start: [0, 0], c1: [4, 4], c2: [-4, 4], end: [0, 0] },
+    ]
+    const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 2, 'sk')
+    const vol = volumeOf(oc!, scope, solid)
+    expect(vol).toBeGreaterThan(1)
+    scope.dispose()
+  })
+
   it('extrudes a D-shape (line + spline) profile to a solid', () => {
     const scope = new DisposeScope()
     // base line A->B, spline B->A bulging up: a closed half-disc-ish area.

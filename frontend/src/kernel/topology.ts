@@ -953,6 +953,46 @@ function buildStandaloneEllipses(
   return surfaces
 }
 
+/**
+ * Standalone areas for closed (self-looping) splines: a spline whose start and
+ * end coincide and which is otherwise uncut bounds one area on its own, mirroring
+ * the standalone-circle/-ellipse path. The DCEL skips such a spline (its single
+ * segment has start_vertex == end_vertex), so the area is recovered here. The OCC
+ * face builder reads the single kind:'spline' boundary edge as one closed Bezier
+ * wire. A cut spline (internal intersection) flows through the DCEL as sub-Beziers.
+ */
+function buildStandaloneSplines(
+  splines: Map<string, Geom>,
+  splits: Map<string, Split[]>,
+  verts: Map<string, Pt>,
+  featureId: string,
+  surfacesSoFar = 0,
+): Record<string, unknown>[] {
+  const surfaces: Record<string, unknown>[] = []
+  let surfCount = surfacesSoFar
+  for (const [eid, e] of splines) {
+    if (dedup(splits.get(eid) ?? []).length > 2) continue
+    const v0 = vid(verts, e["start"] as Pt)
+    const v1 = vid(verts, e["end"] as Pt)
+    if (v0 !== v1) continue  // open spline: only closes a loop with other edges
+    const ancestorIds = [emitWire(absolute(featureId, eid)), `surface:${surfCount}`, emitWire(absolute(featureId))]
+    const query = makeAncestryQuery(ancestorIds, "flatface")
+    const boundary = [{
+      kind: "spline",
+      start: e["start"],
+      end: e["end"],
+      c1: e["c1"],
+      c2: e["c2"],
+      start_vertex: v0,
+      end_vertex: v1,
+      id: eid,
+    }]
+    surfaces.push({ boundary, query })
+    surfCount += 1
+  }
+  return surfaces
+}
+
 // ─── Geometric classifiers: line division ───
 
 function lineSideTokens(surface: Record<string, unknown>): string[] {
@@ -1069,6 +1109,7 @@ export function detectTopology(geometry: Geom, featureId = ""): TopologyDict {
   let surfaces = traceFaceCycles(hes, heEid, verts, featureId)
   surfaces = surfaces.concat(buildStandaloneSurfaces(circles, splits, featureId, surfaces.length))
   surfaces = surfaces.concat(buildStandaloneEllipses(ellipses, splits, featureId, surfaces.length))
+  surfaces = surfaces.concat(buildStandaloneSplines(splines, splits, verts, featureId, surfaces.length))
   // Fold disjoint nested loops (donut, holes in a face, islands) into outer+holes.
   surfaces = nestSurfaces(surfaces)
   attachLineDivisionClassifiers(surfaces)
