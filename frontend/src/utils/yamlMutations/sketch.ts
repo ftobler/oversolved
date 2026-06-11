@@ -488,14 +488,44 @@ export function applyAddNgon(
   })
 }
 
+/** Compute the offset seed params for a cloned entity: the source geometry moved
+ *  by `distance`, with the sign selecting the side. Returns null for a degenerate
+ *  source (a zero-length line) that has no well-defined normal.
+ *
+ *  Sign convention (locked by tests so a refactor cannot silently flip it): a
+ *  positive `distance` moves a line along the LEFT normal of its start->end
+ *  direction `(-dy, dx)/L`, and grows the radius of a circle/arc (outward).
+ *  Spline/ellipse have no clean parametric offset, so the seed is an exact copy.
+ *  Shared with the connected-profile offset so both author identical seeds. */
+export function offsetSeed(kind: string, p: number[], distance: number): number[] | null {
+  switch (kind) {
+    case 'line': {
+      const dx = p[2] - p[0], dy = p[3] - p[1]
+      const L = Math.hypot(dx, dy)
+      if (L < 1e-9) return null  // no direction, hence no normal: caller skips it
+      const nx = -dy / L, ny = dx / L
+      return [p[0] + distance * nx, p[1] + distance * ny,
+              p[2] + distance * nx, p[3] + distance * ny]
+    }
+    case 'circle':
+      return [p[0], p[1], Math.max(1e-6, p[2] + distance)]
+    case 'arc':
+      return [p[0], p[1], Math.max(1e-6, p[2] + distance), p[3], p[4]]
+    default:
+      return [...p]  // spline / ellipse: copy at source
+  }
+}
+
 /** Offset: for each source entity, clone it and tie the copy to the source with
- *  real, first-class constraints -- a geometric relationship (parallel for
- *  lines, concentric for circles/arcs) plus an ordinary editable DIMENSION that
- *  carries the distance. The offset distance is never stored as a private value
- *  on a sugar constraint; it is a normal `line_distance` / `radius` / `diameter`
- *  dimension the user can read, drag, retype, or delete, and the solver enforces
- *  it like any other dimension. "Breaking" the offset is just deleting those
- *  constraints. Splines/ellipses have no clean offset, so only the copy is made. */
+ *  ONLY a geometric relationship (parallel for lines, concentric for
+ *  circles/arcs). The offset distance and direction are baked into the clone's
+ *  initial geometry via `offsetSeed`, NOT stored as a dimension. The result is
+ *  intentionally under-constrained: the clone holds its seeded position because
+ *  nothing drives it, and the user dimensions it afterward if they want it
+ *  driven. Authoring zero dimensions is deliberate -- offsetting a multi-line
+ *  profile must not spray a dimension per entity, and baking the side into the
+ *  seed removes the solver's freedom to flip the offset to the wrong side.
+ *  Splines/ellipses have no clean offset, so only the (at-source) copy is made. */
 export function applyAddOffset(
   doc: PartDoc,
   featureId: string,
@@ -513,31 +543,28 @@ export function applyAddOffset(
     const srcParams = feature.initial[srcId]
     if (!src || !srcParams) continue
 
+    const seed = offsetSeed(src.kind, srcParams, distance)
+    if (!seed) continue  // degenerate source: no offset direction
+
     const existingIds = new Set(feature.entities.map(e => e.id))
     let dstId = randomId(12)
     while (existingIds.has(dstId)) dstId = randomId(12)
 
     feature.entities.push({ id: dstId, kind: src.kind })
-    feature.initial[dstId] = [...srcParams]  // start as an exact copy; the dimension moves it
+    feature.initial[dstId] = seed.map(round)
 
     const srcRef = `entity:${featureId}:${srcId}`
     const dstRef = `entity:${featureId}:${dstId}`
     switch (src.kind) {
       case 'line':
         applyAddConstraint(doc, featureId, 'parallel', [srcRef, dstRef])
-        applyAddConstraint(doc, featureId, 'line_distance',
-          [srcRef, `vertex:${featureId}:${dstId}:start`], round(distance))
         break
       case 'circle':
-        applyAddConstraint(doc, featureId, 'concentric', [srcRef, dstRef])
-        applyAddConstraint(doc, featureId, 'diameter', [dstRef], round(2 * (srcParams[2] + distance)))
-        break
       case 'arc':
         applyAddConstraint(doc, featureId, 'concentric', [srcRef, dstRef])
-        applyAddConstraint(doc, featureId, 'radius', [dstRef], round(srcParams[2] + distance))
         break
       default:
-        break  // spline / ellipse: copy only, no clean parametric offset
+        break  // spline / ellipse: copy only, no relationship
     }
   }
 }
