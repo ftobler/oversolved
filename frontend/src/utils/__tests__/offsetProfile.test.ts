@@ -252,13 +252,13 @@ describe('applyAddOffset connectivity', () => {
       ),
     ).toHaveLength(1)
 
+    // Track the coincident's id before deletion so we can verify it is removed.
+    const coinId = f.constraints!.find(
+      (c) => c.kind === 'coincident' && parseVertexRef(c.a, cloneSet) && parseVertexRef(c.b, cloneSet),
+    )!.id
+
     applyDeleteElements(doc, [`entity:sk:${cloneIds[0]}`])
     // The corner coincident referenced the deleted clone -> GC'd. Its parallel too.
-    const survivingCloneSet = new Set(f.entities!.map((e) => e.id).filter((id) => !['a', 'b'].includes(id)))
-    expect(
-      f.constraints!.some(
-        (c) => c.kind === 'coincident' && parseVertexRef(c.a, survivingCloneSet) && parseVertexRef(c.b, survivingCloneSet),
-      ),
-    ).toBe(false)
+    expect(f.constraints!.find((c) => c.id === coinId)).toBeUndefined()
   })
 })
