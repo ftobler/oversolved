@@ -205,7 +205,7 @@ fn ll(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2) -> Option<(f64, f64, Vec2)> {
     let dy3 = p3[1] - p1[1];
     let mut t = (dx3 * dy2 - dy3 * dx2) / det;
     let mut u = (dx3 * dy1 - dy3 * dx1) / det;
-    if !(-EPS <= t && t <= 1.0 + EPS && -EPS <= u && u <= 1.0 + EPS) {
+    if !(-EPS..=1.0 + EPS).contains(&t) || !(-EPS..=1.0 + EPS).contains(&u) {
         return None;
     }
     t = t.clamp(0.0, 1.0);
@@ -233,12 +233,12 @@ fn lc(p1: Vec2, p2: Vec2, cx: f64, cy: f64, r: f64) -> Vec<(f64, f64, Vec2)> {
     let mut seen: Vec<f64> = Vec::new();
     for sign in [-1.0, 1.0] {
         let raw = (-b + sign * sd) / (2.0 * a);
-        if !(-EPS <= raw && raw <= 1.0 + EPS) {
+        if !(-EPS..=1.0 + EPS).contains(&raw) {
             continue;
         }
         let t = raw.clamp(0.0, 1.0);
         let key = (t * 1e7).round() / 1e7;
-        if seen.iter().any(|k| *k == key) {
+        if seen.contains(&key) {
             continue;
         }
         seen.push(key);
@@ -658,6 +658,7 @@ fn classify(geometry: &[(String, InputEntity)]) -> Classified {
 }
 
 /// Normalize arcs (force CCW span <= pi by swapping endpoints) and seed splits.
+#[allow(clippy::type_complexity)]
 fn normalize_arcs_and_init_splits(
     arcs_in: &[(String, InputEntity)],
     arc_verts: &mut Verts,
@@ -704,8 +705,7 @@ fn find_all_intersections(
 ) {
     for i in 0..elist.len() {
         let (eid_a, ea) = &elist[i];
-        for j in (i + 1)..elist.len() {
-            let (eid_b, eb) = &elist[j];
+        for (eid_b, eb) in elist.iter().skip(i + 1) {
             let mut results = intersect(eid_a, ea, eid_b, eb, line_keys, circle_keys);
             if results.is_empty() && line_keys.contains(eid_a) && line_keys.contains(eid_b) {
                 results = collinear_overlap(ea, eb);
@@ -769,7 +769,7 @@ fn register_hit(entry: &Tagged, t: f64, v: &str, splits: &mut HashMap<String, Ve
     };
     match entry.kind {
         "line" => {
-            if t < -EPS || t > 1.0 + EPS {
+            if !(-EPS..=1.0 + EPS).contains(&t) {
                 return;
             }
             let tc = t.clamp(0.0, 1.0);
@@ -942,7 +942,7 @@ fn build_half_edge_graph(
         for k in 0..spl.len().saturating_sub(1) {
             let (t0, v0) = &spl[k];
             let (t1, v1) = &spl[k + 1];
-            if v0 == v1 || !(t1 > t0) {
+            if v0 == v1 || t1 <= t0 {
                 continue;
             }
             let eg = if *t0 <= 0.0 && *t1 >= 1.0 {
@@ -1190,8 +1190,7 @@ fn nest_surfaces(surfaces: Vec<SurfaceOut>) -> Vec<SurfaceOut> {
 
 fn build_edge_queries(hes: &[HalfEdge], he_eid: &[String]) -> Vec<EdgeOut> {
     let mut edges = Vec::new();
-    let mut edge_idx = 0usize;
-    for i in (0..hes.len()).step_by(2) {
+    for (edge_idx, i) in (0..hes.len()).step_by(2).enumerate() {
         let (_v0, _v1, eg) = &hes[i];
         let eid = &he_eid[i];
         let edge_type = if matches!(eg, EdgeGeom::Line { .. }) {
@@ -1205,7 +1204,6 @@ fn build_edge_queries(hes: &[HalfEdge], he_eid: &[String]) -> Vec<EdgeOut> {
             edge_type,
             geom: eg.clone(),
         });
-        edge_idx += 1;
     }
     edges
 }

@@ -197,7 +197,7 @@ fn line_line(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> Vec<Vec2> {
     let dy3 = b0[1] - a0[1];
     let t = (dx3 * dy2 - dy3 * dx2) / det;
     let u = (dx3 * dy1 - dy3 * dx1) / det;
-    if t < -1e-9 || t > 1.0 + 1e-9 || u < -1e-9 || u > 1.0 + 1e-9 {
+    if !(-1e-9..=1.0 + 1e-9).contains(&t) || !(-1e-9..=1.0 + 1e-9).contains(&u) {
         return vec![];
     }
     vec![[a0[0] + t * dx1, a0[1] + t * dy1]]
@@ -223,7 +223,7 @@ fn line_circle(l0: Vec2, l1: Vec2, c: Vec2, r: f64) -> Vec<Vec2> {
     let mut pts = Vec::new();
     for sign in [-1.0, 1.0] {
         let t = (-bb + sign * sd) / (2.0 * aa);
-        if t >= -1e-9 && t <= 1.0 + 1e-9 {
+        if (-1e-9..=1.0 + 1e-9).contains(&t) {
             pts.push([l0[0] + t * dx, l0[1] + t * dy]);
         }
     }
@@ -258,7 +258,7 @@ fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<
     let mut pts = Vec::new();
     for sign in [-1.0, 1.0] {
         let t = (-bb + sign * sd) / (2.0 * aa);
-        if t >= -1e-9 && t <= 1.0 + 1e-9 {
+        if (-1e-9..=1.0 + 1e-9).contains(&t) {
             pts.push([l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])]);
         }
     }
@@ -331,6 +331,7 @@ fn boxes_overlap(a: &[f64; 4], b: &[f64; 4]) -> bool {
 fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
     let mut out: Vec<Hit> = Vec::new();
     const FLAT: f64 = 1e-7;
+    #[allow(clippy::too_many_arguments)]
     fn recurse(
         x: &BzCtrl,
         xt0: f64,
@@ -447,7 +448,7 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
             for t in ts {
                 let p = bezier_at(*p0, *c1, *c2, *p3, t);
                 let lp = param_of(b, p);
-                if lp < -1e-9 || lp > 1.0 + 1e-9 {
+                if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
                     continue; // crossing the infinite line, not the segment
                 }
                 hits.push(Hit { point: p, t_a: t, t_b: lp });
@@ -458,7 +459,7 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
             for t in ts {
                 let p = bezier_at(*p0, *c1, *c2, *p3, t);
                 let lp = param_of(a, p);
-                if lp < -1e-9 || lp > 1.0 + 1e-9 {
+                if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
                     continue;
                 }
                 hits.push(Hit { point: p, t_a: lp, t_b: t });
