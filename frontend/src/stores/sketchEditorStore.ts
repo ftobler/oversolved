@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
-import { resolveDimension, dimensionTargets } from '@/registry'
+import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud } from './stateInvariants'
@@ -438,7 +438,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
 
   applyConstraint: (kind) => {
-    const { normalSelection: selection, activeFeatureId } = get()
+    const { normalSelection: selection, activeFeatureId, entityKindMap } = get()
     const onMutation = _sketchCbs.onMutation
     if (!onMutation) {
       if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — applyConstraint will be a no-op.')
@@ -449,6 +449,26 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_')
     )
     if (targets.length === 0) return
+
+    // Reject operand kinds the constraint cannot represent before authoring it.
+    // A parallel between two arcs (or a concentric on a line) otherwise lands in
+    // the doc as a constraint the solver can't satisfy and the canvas can't
+    // render -- leaving it stuck and undeletable. The registry's `entityKinds`
+    // is the single source of truth; an unknown kind (not in entityKindMap yet)
+    // is tolerated so this never blocks on a transient/empty map.
+    const def = CONSTRAINT_BY_KIND.get(kind)
+    if (def?.entityKinds) {
+      const allowed = def.entityKinds
+      const allOk = targets.every(t => {
+        if (!t.startsWith('entity:')) return true  // vertices/builtins unrestricted
+        const k = entityKindMap[t]
+        return k === undefined || allowed.includes(k)
+      })
+      if (!allOk) {
+        if (devOnly) console.warn(`[sketchEditorStore] applyConstraint(${kind}): rejected operand kind not in [${allowed.join(', ')}].`)
+        return
+      }
+    }
 
     if (kind === 'midpoint') {
       const entityTargets = targets.filter(t => t.startsWith('entity:'))

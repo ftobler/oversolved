@@ -163,7 +163,36 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
   }
 }
 
+// Public entry point. Delegates to the per-kind core renderer, then guarantees
+// a selectable glyph: when the core can't build a specific render (an unknown
+// or hand-edited shape, e.g. a parallel between two circles) we anchor a generic
+// `symbol_unknown` tile at the first resolvable operand so the constraint stays
+// visible and deletable rather than silently vanishing from the canvas.
 export function computeConstraintRender(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
+  const render = computeConstraintRenderCore(constraint, sketch)
+  if (render.kind !== 'unknown') return render
+  return fallbackConstraintGlyph(constraint, sketch)
+}
+
+// Anchor a fallback glyph at the first operand that resolves to a point. Returns
+// `unknown` only when nothing resolves (e.g. every referenced entity is gone),
+// in which case there is genuinely nowhere to put a tile.
+function fallbackConstraintGlyph(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
+  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, sketch) : q
+  const refs = [
+    constraint.a, constraint.b, constraint.target,
+    constraint.line, constraint.arc, constraint.point,
+    constraint.point_a, constraint.point_b,
+  ].map(normalize).filter((r): r is { entity: string; point?: string } => !!r)
+  const entities = [...new Set(refs.map(r => r.entity))]
+  for (const ref of refs) {
+    const at = geomPoint(sketch, ref)
+    if (at) return { kind: 'symbol_unknown', at, entity: ref.entity, entities }
+  }
+  return { kind: 'unknown' }
+}
+
+function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
   // Normalize refs: convert query strings to {entity, point?} objects.
   const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, sketch) : q
   const resolved: ResolvedConstraint = {

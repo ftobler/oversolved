@@ -29,6 +29,7 @@ function reset() {
     hoveredSnapKind: null,
     hoveredConstraintEntityIds: new Set(),
     modeStack: [],
+    entityKindMap: {},
   })
   setSketchCallback('onMutation', null)
 }
@@ -202,6 +203,70 @@ describe('sketchEditorStore', () => {
         kind: 'parallel',
         targets: expect.arrayContaining(['entity:Sketch1:L1', 'entity:Sketch1:L2']),
       })
+    })
+
+    it('rejects parallel between two arcs (entityKinds guard)', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:A1': 'arc',
+        'entity:Sketch1:A2': 'arc',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A2')
+
+      useSketchEditorStore.getState().applyConstraint('parallel')
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('rejects parallel mixing a line and a circle', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:C1': 'circle',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+
+      useSketchEditorStore.getState().applyConstraint('parallel')
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('allows parallel between two lines when kinds are known', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+
+      useSketchEditorStore.getState().applyConstraint('parallel')
+
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
+    it('rejects concentric between two lines', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+
+      useSketchEditorStore.getState().applyConstraint('concentric')
+
+      expect(handler).not.toHaveBeenCalled()
     })
 
     it('does nothing with empty selection', () => {

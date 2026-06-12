@@ -79,6 +79,18 @@ export interface ConstraintDef {
    * If false, it may only be reachable via the dimension tool or the code editor.
    */
   showInToolbar: boolean
+
+  /**
+   * Allowed entity kinds for this constraint's entity operands. When set, every
+   * `entity:` target must have a kind in this list or the constraint is rejected
+   * before it reaches the solver (see applyConstraint). Vertex/point targets are
+   * unaffected. Only use for constraints whose valid operands are a single closed
+   * set of kinds -- e.g. parallel is line-only, concentric is arc/circle. Mixed
+   * constraints (tangent = line + curve) cannot be expressed as a flat list and
+   * leave this undefined; their solver residuals handle the operand kinds.
+   * `undefined` means no entity-kind restriction.
+   */
+  entityKinds?: readonly string[]
 }
 
 // ─── Registry ───
@@ -136,6 +148,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     symbolIcon: 'constraint-concentric',
     toolbarIcon: 'constraint-concentric',
     showInToolbar: true,
+    entityKinds: ['arc', 'circle'],  // shares a center; lines have none
   },
   {
     kind: 'equal_length',
@@ -149,6 +162,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     toolbarIcon: 'constraint-equal',
     shortcut: 'e',
     showInToolbar: true,
+    entityKinds: ['line'],  // compares segment lengths
   },
   {
     kind: 'parallel',
@@ -162,6 +176,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     toolbarIcon: 'constraint-parallel',
     shortcut: 'p',
     showInToolbar: true,
+    entityKinds: ['line'],  // parallel is defined for line directions only
   },
   {
     kind: 'normal',
@@ -371,6 +386,10 @@ export const RENDER_KIND_TO_ICON: Readonly<Record<string, string>> = {
       .map(c => [c.renderKind, c.symbolIcon!])
   ),
   symbol_ngon: 'toolbar-ngon',
+  // Fallback glyph for a constraint whose specific render shape can't be built
+  // (e.g. a hand-edited parallel between two circles). Keeps every constraint
+  // selectable and deletable instead of vanishing. See computeConstraintRender.
+  symbol_unknown: 'constraint-unknown',
 }
 
 // Constraints that appear as direct toolbar buttons, in display order.

@@ -526,6 +526,14 @@ impl<'a> Problem<'a> {
         else {
             return;
         };
+        // Parallel is only defined for line directions. A non-line operand (a
+        // hand-edited or legacy doc) contributes no rows rather than reading
+        // its params as endpoints: a circle would index out of bounds and an
+        // arc would solve toward a garbage direction. Must stay in sync with
+        // the same guard in `jac_parallel`.
+        if self.kind_of(a_idx) != Kind::Line || self.kind_of(b_idx) != Kind::Line {
+            return;
+        }
         let ea = self.params(x, a_idx);
         let eb = self.params(x, b_idx);
         let da = [ea[2] - ea[0], ea[3] - ea[1]];
@@ -1023,6 +1031,11 @@ impl<'a> Problem<'a> {
         else {
             return;
         };
+        // Mirror the non-line guard in `r_parallel`: residual and Jacobian row
+        // counts must agree, so a skipped residual must skip its row here too.
+        if self.kind_of(ai) != Kind::Line || self.kind_of(bi) != Kind::Line {
+            return;
+        }
         let ea = self.params(x, ai).to_vec();
         let eb = self.params(x, bi).to_vec();
         let da = [ea[2] - ea[0], ea[3] - ea[1]];
@@ -1506,6 +1519,45 @@ mod tests {
 
     fn e_ref(index: u32, point: PointSelector) -> Ref {
         Ref::Entity { index, point }
+    }
+
+    /// A parallel constraint between non-line entities (hand-edited or legacy
+    /// docs; the UI refuses to author them) must contribute zero rows in both
+    /// the residual and the Jacobian: a circle operand would otherwise read
+    /// out of bounds (3-param block) and an arc operand would steer toward a
+    /// garbage direction built from its radius and angles.
+    #[test]
+    fn parallel_skips_non_line_entities() {
+        let abs = PointSelector::Absent;
+        let entities = vec![
+            ent(Kind::Circle, 0), // C1 [0..3]
+            ent(Kind::Arc, 3),    // A1 [3..8]
+            ent(Kind::Arc, 8),    // A2 [8..13]
+            ent(Kind::Line, 13),  // L1 [13..17]
+            ent(Kind::Line, 17),  // L2 [17..21]
+        ];
+        let params = vec![
+            1.0, 2.0, 0.5, // C1
+            0.0, 0.0, 2.0, 10.0, 80.0, // A1
+            5.0, 5.0, 1.0, 200.0, 300.0, // A2
+            0.0, 0.0, 3.0, 1.0, // L1
+            1.0, 2.0, 4.0, 5.0, // L2
+        ];
+        let constraints = vec![
+            cons(ConstraintKind::Parallel, ab(e_ref(0, abs), e_ref(1, abs))), // circle/arc
+            cons(ConstraintKind::Parallel, ab(e_ref(1, abs), e_ref(2, abs))), // arc/arc
+            cons(ConstraintKind::Parallel, ab(e_ref(0, abs), e_ref(3, abs))), // circle/line
+            cons(ConstraintKind::Parallel, ab(e_ref(3, abs), e_ref(4, abs))), // line/line
+        ];
+        let inp = input(entities, params, constraints);
+        let p = Problem::new(&inp);
+        let x = p.x0.clone();
+        let n = x.len();
+        // Only the line/line pairing contributes a row; the rest are skipped.
+        let r = p.residuals(&x);
+        assert_eq!(r.len(), 1);
+        let j = p.jacobian(&x, n);
+        assert_eq!(j.nrows(), 1);
     }
 
     fn cons(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>) -> Constraint {
