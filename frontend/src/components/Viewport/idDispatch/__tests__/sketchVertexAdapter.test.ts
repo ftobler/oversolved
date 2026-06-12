@@ -58,6 +58,14 @@ describe('sketchVertexAdapter', () => {
     expect(s.dragPending).toBeNull()
   })
 
+  it('onPointerDown does not start a drag for a dock handle (inferred contacts are select-only)', () => {
+    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    sketchVertexAdapter.onPointerDown('dock:feat1:tan', 100, 200)
+    const s = useSketchEditorStore.getState()
+    expect(s.isPointerDown).toBe(false)
+    expect(s.dragPending).toBeNull()
+  })
+
   it('clearSketchVertexHover clears all vertex hover fields', () => {
     sketchVertexAdapter.onHover('vertex:feat1:arc1:center')
     clearSketchVertexHover()

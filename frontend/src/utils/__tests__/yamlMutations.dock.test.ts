@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { applyAddConstraint, applyAddDock } from '@/utils/yamlMutations/sketch'
+import { mutationHandlers } from '@/hooks/mutationDispatch'
 
 // Two circles held tangent; the dock materializes a point at the contact and
 // ties it to the tangent host (lazy inferred materialization).
@@ -104,5 +105,27 @@ describe('applyAddConstraint dock interception (materialize-on-reference)', () =
     // p1, p2, plus exactly ONE materialized contact point.
     expect(points(doc)).toHaveLength(3)
     expect(docks(doc)).toHaveLength(1)
+  })
+})
+
+describe('add_constraint dispatch with a dock handle target (click-pick path)', () => {
+  it('a selection containing a dock handle materializes through the mutation dispatch', () => {
+    const doc = makeSketchDoc()
+    sketch(doc).entities!.push({ id: 'free', kind: 'point' })
+    sketch(doc).initial!['free'] = [7, 7]
+    // This mirrors ConstraintTool: targets = Array.from(normalSelection), where one
+    // selected item is the dock marker's `dock:<fid>:<hostId>` handle.
+    mutationHandlers.add_constraint(doc, {
+      type: 'add_constraint',
+      featureId: 'Sketch1',
+      kind: 'coincident',
+      targets: ['vertex:Sketch1:free:xy', `dock:Sketch1:${hostId(doc)}`],
+    })
+    // The dock materialized and the coincident references the real point.
+    expect(points(doc)).toHaveLength(2)
+    expect(docks(doc)).toHaveLength(1)
+    const cs = (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')
+    expect(cs).toHaveLength(1)
+    expect(JSON.stringify(cs[0])).not.toContain('dock:')
   })
 })

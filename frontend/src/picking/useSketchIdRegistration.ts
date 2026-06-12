@@ -5,6 +5,7 @@ import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ell
 import { getEntityKind } from '@/types/cad'
 import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
+import { sketchToDockCandidates } from '@/components/Geometry3D/snapDetection'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and
@@ -212,6 +213,21 @@ export function useSketchIdRegistration(params: {
     const seg = buildSketchSegments(featureId, sketch, m)
     const vtx = buildSketchVertices(featureId, sketch, m, suppressed)
 
+    // Inferred dock contacts (tangencies) register as pickable 0-D handles in the
+    // vertex layer, carrying their `dock:<fid>:<hostId>` query. Clicking one
+    // selects the handle; the constraint that names it materializes a real point
+    // (lazy inferred materialization). `parseVertexKey` returns null for a `dock:`
+    // key, so picking one never starts an entity drag -- it is select-only.
+    const dockCands = sketchToDockCandidates(sketch, featureId, constraints ?? [], 'active_sketch')
+    if (dockCands.length > 0) {
+      const dv = new THREE.Vector3()
+      for (const dc of dockCands) {
+        dv.set(dc.position[0], dc.position[1], 0).applyMatrix4(m)
+        vtx.vertices.push([dv.x, dv.y, dv.z])
+        vtx.vertexQueries.push(dc.id)
+      }
+    }
+
     if (seg.edgeQueries.length > 0) {
       pipeline.sketchEntityLayer.registerBody({
         bodyKey: featureId,
@@ -235,7 +251,8 @@ export function useSketchIdRegistration(params: {
       pipeline.markDirty()
     }
     // planeKey is the load-bearing dep for plane changes; planeTransform
-    // object identity isn't.
+    // object identity isn't. `constraints` drives the dock-contact set (a new
+    // tangent adds a handle, materializing one removes it).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed])
+  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed, constraints])
 }
