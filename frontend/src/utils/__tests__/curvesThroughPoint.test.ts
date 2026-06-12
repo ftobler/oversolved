@@ -28,10 +28,26 @@ describe('curvesThroughPoint', () => {
     expect(curvesThroughPoint(sketch, [5, 0], 1e-6)).toEqual(['onX'])
   })
 
-  it('matches an arc on radius', () => {
-    const sketch: Sketch = {
+  it('matches an arc only within its swept span', () => {
+    // Upper half-circle (0 deg -> 180 deg CCW): (0,5) is on the span, (0,-5) is on
+    // the full-circle locus but off the arc and must NOT match.
+    const arc: Sketch = {
       arc1: { center: [0, 0], radius: 5, angle_start: 0, angle_end: 180, start: [5, 0], end: [-5, 0] },
     }
-    expect(curvesThroughPoint(sketch, [0, 5], 1e-6)).toEqual(['arc1'])
+    expect(curvesThroughPoint(arc, [0, 5], 1e-6)).toEqual(['arc1'])
+    expect(curvesThroughPoint(arc, [0, -5], 1e-6)).toEqual([])
+  })
+
+  it('counts a contact sitting on an arc endpoint', () => {
+    const arc: Sketch = {
+      arc1: { center: [0, 0], radius: 5, angle_start: 0, angle_end: 180, start: [5, 0], end: [-5, 0] },
+    }
+    expect(curvesThroughPoint(arc, [5, 0], 1e-6)).toEqual(['arc1'])   // start
+    expect(curvesThroughPoint(arc, [-5, 0], 1e-6)).toEqual(['arc1'])  // end
+  })
+
+  it('a full circle matches anywhere on its locus regardless of angle', () => {
+    const circ: Sketch = { c: { center: [0, 0], radius: 5 } }
+    expect(curvesThroughPoint(circ, [0, -5], 1e-6)).toEqual(['c'])
   })
 })
