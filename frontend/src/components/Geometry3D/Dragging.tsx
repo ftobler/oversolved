@@ -12,7 +12,7 @@ import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstraction
 import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 import type { PartConstraint } from '@/types/cad'
 import type { DragToolContext } from '@/tools/DragTool'
-import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/components/Geometry3D/snapDetection'
+import { sketchToVertexCandidates, sketchToEntityCandidates, sketchToDockCandidates } from '@/components/Geometry3D/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
 export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints }: {
@@ -122,6 +122,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
     if (currentDrag.type === 'vertex' && sketch) {
       const pixelsPerUnit = p2w(camera)
       const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
+      // Inferred tangent contacts are 0-D snap targets carrying a `dock:` handle;
+      // snapping to one materializes a real point (lazy inferred materialization).
+      vertexCandidates.push(...sketchToDockCandidates(sketch, featureId, constraints ?? [], 'active_sketch'))
       const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
       const skipIds = new Set<string>()
       // Qualify with featureId: candidate ids are `entity:${featureId}:${entityId}`

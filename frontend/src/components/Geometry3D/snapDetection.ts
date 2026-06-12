@@ -1,9 +1,10 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { Sketch, LineSegment, Circle, Arc, PointEntity, Spline, Entity } from '@/types/cad'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity, Spline, Entity, PartConstraint, PartEntityDef } from '@/types/cad'
 import { suggestConstraint, type DraggedElementType, type SnapKind } from '@/registry'
 import { nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
+import { dockHostsOf } from '@/utils/geometry/dockHosts'
 
 export type DragSnapKind = 'vertex' | 'entity'
 
@@ -73,6 +74,53 @@ export function sketchToVertexCandidates(
   domain: SnapCandidate['domain'],
 ): SnapCandidate[] {
   return collectFromSketch(sketch, featureId, domain)
+}
+
+/** Convert a solved Sketch entity to the raw {kind, params} form `dockHostsOf`
+ *  consumes. Only line/circle/arc carry a tangent contact, so other kinds are
+ *  dropped (a tangent naming them yields no foot anyway). */
+function sketchEntityToParams(entity: Entity): { kind: string; params: number[] } | null {
+  if ('start' in entity && 'end' in entity) {
+    if ('radius' in entity && 'angle_start' in entity) {
+      const a = entity as Arc
+      return { kind: 'arc', params: [a.center[0], a.center[1], a.radius, a.angle_start, a.angle_end] }
+    }
+    const l = entity as LineSegment
+    return { kind: 'line', params: [l.start[0], l.start[1], l.end[0], l.end[1]] }
+  }
+  if ('center' in entity && 'radius' in entity) {
+    const c = entity as Circle
+    return { kind: 'circle', params: [c.center[0], c.center[1], c.radius] }
+  }
+  return null
+}
+
+/** Snap candidates for the inferred contacts of dockable hosts (lazy inferred
+ *  materialization). Each tangent contact is offered as a 0-D snap target whose id
+ *  is the transient `dock:<featureId>:<hostId>` handle -- snapping to it (e.g.
+ *  dragging an endpoint onto it) authors a `coincident` against the handle, which
+ *  `applyAddConstraint` materializes into a real point. Hosts already materialized
+ *  are omitted by `dockHostsOf` (the real point is its own vertex candidate). */
+export function sketchToDockCandidates(
+  sketch: Sketch,
+  featureId: string,
+  constraints: PartConstraint[],
+  domain: SnapCandidate['domain'],
+): SnapCandidate[] {
+  const entities: PartEntityDef[] = []
+  const params: Record<string, number[]> = {}
+  for (const [id, entity] of Object.entries(sketch)) {
+    const geo = sketchEntityToParams(entity)
+    if (!geo) continue
+    entities.push({ id, kind: geo.kind })
+    params[id] = geo.params
+  }
+  return dockHostsOf(entities, constraints, params).map(h => ({
+    id: `dock:${featureId}:${h.hostId}`,
+    position: h.at,
+    kind: 'vertex' as SnapKind,
+    domain,
+  }))
 }
 
 export function sketchToEntityCandidates(
