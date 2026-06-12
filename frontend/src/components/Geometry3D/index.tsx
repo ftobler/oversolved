@@ -20,8 +20,8 @@ import { TopologySurfaces } from '@/components/Geometry3D/Surfaces'
 // Dragging
 import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
 
-// Inferred dock contacts (lazy inferred materialization)
-import { DockMarkers } from '@/components/Geometry3D/DockMarkers'
+// Inferred contact points: tangencies + curve-curve intersections (lazy inferred materialization)
+import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
 
 // Soft solve: frontend-only drag preview honoring coincidence constraints.
 // Used as fallback for edge/dim_label drags (WASM path handles vertex drags).
@@ -155,6 +155,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     planeTransform: resolvedPlaneTransform,
     enabled: !activeFeatureId || isEditing,
     constraints: featureDef?.constraints,
+    topology,
   })
 
   useSketchSurfaceIdRegistration({
@@ -205,8 +206,8 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} constraints={featureDef?.constraints} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} isEditing={isEditing} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
-      {isEditing && <DockMarkers sketch={displaySketch} featureId={featureId} constraints={featureDef?.constraints} />}
-      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} />}
+      {isEditing && <InferredContactMarkers sketch={displaySketch} featureId={featureId} constraints={featureDef?.constraints} topology={topology} />}
+      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={topology} />}
       {isEditing && <DragSnapIndicator />}
       {isEditing && <DragAlignmentIndicator />}
       <DrawPreview activeFeatureId={activeFeatureId} />

@@ -129,3 +129,24 @@ describe('add_constraint dispatch with a dock handle target (click-pick path)', 
     expect(JSON.stringify(cs[0])).not.toContain('dock:')
   })
 })
+
+describe('applyAddConstraint isect handle interception (free intersection)', () => {
+  it('an isect: handle materializes a point pinned to its baked-in curves', () => {
+    const doc = makeSketchDoc()  // circA, circB + tangent (curves available)
+    sketch(doc).entities!.push({ id: 'free', kind: 'point' })
+    sketch(doc).initial!['free'] = [3, 3]
+    // Handle as the pick layer would emit it: isect:<fid>:<x>:<y>:<curveA>:<curveB>.
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:free:xy',
+      'isect:Sketch1:5:0:circA:circB',
+    ])
+    // A materialized point sits at the intersection, pinned to both curves.
+    expect(points(doc)).toHaveLength(2)  // free + materialized
+    const mat = points(doc).find(p => p.id !== 'free')!.id
+    expect(sketch(doc).initial![mat]).toEqual([5, 0])
+    // Two coincident-to-locus pins (to circA/circB) plus the authored coincident.
+    const coincidents = (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')
+    expect(coincidents.length).toBe(3)
+    expect(JSON.stringify(coincidents)).not.toContain('isect:')
+  })
+})

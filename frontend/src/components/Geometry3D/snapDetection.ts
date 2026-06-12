@@ -1,10 +1,16 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { Sketch, LineSegment, Circle, Arc, PointEntity, Spline, Entity, PartConstraint, PartEntityDef } from '@/types/cad'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity, Spline, Entity, PartConstraint, PartEntityDef, Topology } from '@/types/cad'
 import { suggestConstraint, type DraggedElementType, type SnapKind } from '@/registry'
 import { nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
 import { dockHostsOf } from '@/utils/geometry/dockHosts'
+import { curvesThroughPoint } from '@/utils/geometry/curvesThroughPoint'
+
+// Coincidence tolerance for matching a topology intersection point against the
+// solved curves and existing points. The point and the curves come from the same
+// solve, so they agree to high precision; this only absorbs rounding.
+const INFERRED_TOL = 1e-3
 
 export type DragSnapKind = 'vertex' | 'entity'
 
@@ -121,6 +127,66 @@ export function sketchToDockCandidates(
     kind: 'vertex' as SnapKind,
     domain,
   }))
+}
+
+const round4 = (n: number) => Math.round(n * 1e4) / 1e4
+
+/** Snap candidates for free curve-curve intersections -- the other half of the
+ *  inferred-point set (the topology emits a crossing point where two curves meet
+ *  with no constraint relating them). Each is offered as a 0-D target whose id
+ *  `isect:<fid>:<x>:<y>:<curveA>:<curveB>...` bakes in the contributing curves
+ *  (resolved here, where the solved geometry is richest) so the materialize
+ *  interception needs no geometry: it just calls `applyAddPointAtIntersection`.
+ *
+ *  Suppressed once materialized: an intersection coinciding with an existing point
+ *  entity is dropped (the real point stands in), so the marker disappears after
+ *  the first reference -- the picking-layer analogue of the dock idempotency. */
+export function sketchToIntersectionCandidates(
+  sketch: Sketch,
+  topology: Topology | undefined,
+  featureId: string,
+  domain: SnapCandidate['domain'],
+): SnapCandidate[] {
+  if (!topology) return []
+  const pointPositions: [number, number][] = []
+  for (const entity of Object.values(sketch)) {
+    if ('x' in entity && 'y' in entity && !('start' in entity) && !('center' in entity)) {
+      const p = entity as PointEntity
+      pointPositions.push([p.x, p.y])
+    }
+  }
+  const out: SnapCandidate[] = []
+  for (const pt of Object.values(topology.intersection_points)) {
+    const at: [number, number] = [pt.x, pt.y]
+    if (pointPositions.some(pp => Math.hypot(pp[0] - at[0], pp[1] - at[1]) < INFERRED_TOL)) continue
+    const curves = curvesThroughPoint(sketch, at, INFERRED_TOL)
+    if (curves.length < 2) continue
+    out.push({
+      id: `isect:${featureId}:${round4(at[0])}:${round4(at[1])}:${curves.join(':')}`,
+      position: at,
+      kind: 'vertex' as SnapKind,
+      domain,
+    })
+  }
+  return out
+}
+
+/** The full inferred-point snap/pick set: dockable-host contacts UNION free
+ *  curve-curve intersections, the two halves the design names. An intersection
+ *  coinciding with a dock (a tangent contact that also has a tangent constraint)
+ *  is dropped so the contact is offered once, as a dock. */
+export function inferredContactCandidates(
+  sketch: Sketch,
+  featureId: string,
+  constraints: PartConstraint[],
+  topology: Topology | undefined,
+  domain: SnapCandidate['domain'],
+): SnapCandidate[] {
+  const docks = sketchToDockCandidates(sketch, featureId, constraints, domain)
+  const isects = sketchToIntersectionCandidates(sketch, topology, featureId, domain)
+  const deduped = isects.filter(ic =>
+    !docks.some(d => Math.hypot(d.position[0] - ic.position[0], d.position[1] - ic.position[1]) < INFERRED_TOL))
+  return [...docks, ...deduped]
 }
 
 export function sketchToEntityCandidates(

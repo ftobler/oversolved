@@ -10,17 +10,18 @@ import { p2w } from '@/components/sketch/sketch_helpers'
 import { COLOR_SNAP, COLOR_PREVIEW } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
-import type { PartConstraint } from '@/types/cad'
+import type { PartConstraint, Topology } from '@/types/cad'
 import type { DragToolContext } from '@/tools/DragTool'
-import { sketchToVertexCandidates, sketchToEntityCandidates, sketchToDockCandidates } from '@/components/Geometry3D/snapDetection'
+import { sketchToVertexCandidates, sketchToEntityCandidates, inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
-export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints }: {
+export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints, topology }: {
   featureId: string
   sketch?: Sketch
   sketchGroupRef?: React.RefObject<THREE.Group | null>
   otherSketches?: Record<string, Sketch>
   constraints?: PartConstraint[]
+  topology?: Topology
 }) {
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
@@ -122,9 +123,10 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
     if (currentDrag.type === 'vertex' && sketch) {
       const pixelsPerUnit = p2w(camera)
       const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
-      // Inferred tangent contacts are 0-D snap targets carrying a `dock:` handle;
-      // snapping to one materializes a real point (lazy inferred materialization).
-      vertexCandidates.push(...sketchToDockCandidates(sketch, featureId, constraints ?? [], 'active_sketch'))
+      // Inferred contacts (tangencies + curve-curve intersections) are 0-D snap
+      // targets carrying a `dock:`/`isect:` handle; snapping to one materializes a
+      // real point (lazy inferred materialization).
+      vertexCandidates.push(...inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch'))
       const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
       const skipIds = new Set<string>()
       // Qualify with featureId: candidate ids are `entity:${featureId}:${entityId}`

@@ -1,11 +1,11 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
-import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint } from '@/types/cad'
+import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint, Topology } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
-import { sketchToDockCandidates } from '@/components/Geometry3D/snapDetection'
+import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and
@@ -186,9 +186,10 @@ export function useSketchIdRegistration(params: {
   planeTransform?: PlaneTransform
   enabled?: boolean
   constraints?: PartConstraint[]
+  topology?: Topology
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, sketch, planeTransform, enabled = true, constraints } = params
+  const { featureId, sketch, planeTransform, enabled = true, constraints, topology } = params
 
   // Build a stable matrix key from planeTransform so the hook re-runs when
   // the plane changes but not just because the prop reference shifts.
@@ -213,15 +214,16 @@ export function useSketchIdRegistration(params: {
     const seg = buildSketchSegments(featureId, sketch, m)
     const vtx = buildSketchVertices(featureId, sketch, m, suppressed)
 
-    // Inferred dock contacts (tangencies) register as pickable 0-D handles in the
-    // vertex layer, carrying their `dock:<fid>:<hostId>` query. Clicking one
-    // selects the handle; the constraint that names it materializes a real point
-    // (lazy inferred materialization). `parseVertexKey` returns null for a `dock:`
-    // key, so picking one never starts an entity drag -- it is select-only.
-    const dockCands = sketchToDockCandidates(sketch, featureId, constraints ?? [], 'active_sketch')
-    if (dockCands.length > 0) {
+    // Inferred contacts (tangencies + curve-curve intersections) register as
+    // pickable 0-D handles in the vertex layer, carrying their `dock:`/`isect:`
+    // query. Clicking one selects the handle; the constraint that names it
+    // materializes a real point (lazy inferred materialization). `parseVertexKey`
+    // returns null for these keys, so picking one never starts an entity drag --
+    // it is select-only.
+    const inferred = inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch')
+    if (inferred.length > 0) {
       const dv = new THREE.Vector3()
-      for (const dc of dockCands) {
+      for (const dc of inferred) {
         dv.set(dc.position[0], dc.position[1], 0).applyMatrix4(m)
         vtx.vertices.push([dv.x, dv.y, dv.z])
         vtx.vertexQueries.push(dc.id)
@@ -251,8 +253,8 @@ export function useSketchIdRegistration(params: {
       pipeline.markDirty()
     }
     // planeKey is the load-bearing dep for plane changes; planeTransform
-    // object identity isn't. `constraints` drives the dock-contact set (a new
-    // tangent adds a handle, materializing one removes it).
+    // object identity isn't. `constraints`/`topology` drive the inferred-contact
+    // set (a new tangent or crossing adds a handle, materializing one removes it).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed, constraints])
+  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed, constraints, topology])
 }

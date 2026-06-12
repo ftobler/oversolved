@@ -2,11 +2,11 @@ import { useRef } from 'react'
 import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Sketch, PartConstraint } from '@/types/cad'
+import type { Sketch, PartConstraint, Topology } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch/sketch_helpers'
 import { COLOR_SNAP, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
-import { sketchToDockCandidates } from '@/components/Geometry3D/snapDetection'
+import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 
 // A hollow ring drawn at constant pixel size, billboarded to face the camera.
 // Hollow (not a filled dot) signals "inferred, not yet a real point" -- it is a
@@ -38,20 +38,22 @@ function DockRing({ x, y, px, id }: { x: number; y: number; px: number; id: stri
   )
 }
 
-/** Persistent markers for the inferred contacts of dockable hosts (tangencies).
- *  Visual-only: the contact is "just there to hover, snap to, and pick out of the
- *  soup" and stays inferred until constrained (lazy inferred materialization). The
- *  marker disappears once the host is materialized -- `sketchToDockCandidates`
- *  (via `dockHostsOf`) omits hosts a `dock` constraint already names, and the real
- *  point's VertexDot stands in. No picking/registration here; the drag-snap path
- *  (Dragging.tsx) is the interaction surface for now. */
-export function DockMarkers({ sketch, featureId, constraints }: {
+/** Persistent markers for the inferred-point set: dockable-host contacts
+ *  (tangencies) UNION free curve-curve intersections. Visual-only: a contact is
+ *  "just there to hover, snap to, and pick out of the soup" and stays inferred
+ *  until constrained (lazy inferred materialization). Each marker disappears once
+ *  materialized -- `dockHostsOf` omits docked hosts and `sketchToIntersectionCandidates`
+ *  omits intersections that coincide with a real point, the materialized point's
+ *  VertexDot standing in. Picking is via the vertex ID layer
+ *  (`useSketchIdRegistration`), which carries the same `dock:`/`isect:` handles. */
+export function InferredContactMarkers({ sketch, featureId, constraints, topology }: {
   sketch?: Sketch
   featureId: string
   constraints?: PartConstraint[]
+  topology?: Topology
 }) {
   if (!sketch) return null
-  const candidates = sketchToDockCandidates(sketch, featureId, constraints ?? [], 'active_sketch')
+  const candidates = inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch')
   if (candidates.length === 0) return null
   return (
     <>

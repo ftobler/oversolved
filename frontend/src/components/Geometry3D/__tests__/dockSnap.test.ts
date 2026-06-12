@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { Sketch, PartConstraint } from '@/types/cad'
 import { sketchToDockCandidates, findSnapTarget, sketchToEntityCandidates } from '@/components/Geometry3D/snapDetection'
 import { computeDragMutation } from '@/components/Geometry3D/dragLogic'
-import { DockMarkers } from '@/components/Geometry3D/DockMarkers'
+import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 const FEATURE = 'S1'
@@ -66,14 +66,14 @@ describe('drag-snap to a dock contact yields a materializing constraint', () => 
   })
 })
 
-describe('DockMarkers render decision', () => {
-  it('renders nothing without a sketch or without a dockable host', () => {
-    expect(DockMarkers({ sketch: undefined, featureId: FEATURE })).toBeNull()
-    expect(DockMarkers({ sketch: makeSketch(), featureId: FEATURE, constraints: [] })).toBeNull()
+describe('InferredContactMarkers render decision', () => {
+  it('renders nothing without a sketch or without any inferred contact', () => {
+    expect(InferredContactMarkers({ sketch: undefined, featureId: FEATURE })).toBeNull()
+    expect(InferredContactMarkers({ sketch: makeSketch(), featureId: FEATURE, constraints: [] })).toBeNull()
   })
 
   it('renders a marker tree when a tangent contact exists', () => {
-    const el = DockMarkers({ sketch: makeSketch(), featureId: FEATURE, constraints: tangent })
+    const el = InferredContactMarkers({ sketch: makeSketch(), featureId: FEATURE, constraints: tangent })
     expect(el).not.toBeNull()
   })
 })

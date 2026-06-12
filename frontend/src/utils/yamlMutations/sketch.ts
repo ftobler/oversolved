@@ -175,9 +175,10 @@ export function applyAddConstraint(
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.constraints) feature.constraints = []
-  // Materialize-on-reference: a `dock:` handle target promotes to a real point
-  // before the constraint is built, so the rest of this function never sees one.
-  targets = _resolveDockTargets(doc, featureId, targets)
+  // Materialize-on-reference: an inferred-point handle target (`dock:`/`isect:`)
+  // promotes to a real point before the constraint is built, so the rest of this
+  // function never sees one.
+  targets = _resolveInferredTargets(doc, featureId, targets)
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
@@ -404,9 +405,9 @@ export function applyAddPointAtIntersection(
   featureId: string,
   at: [number, number],
   curveEntityIds: string[],
-): void {
+): string | null {
   const feature = findFeature(doc, featureId)
-  if (!feature) return
+  if (!feature) return null
   if (!feature.entities) feature.entities = []
   if (!feature.initial) feature.initial = {}
 
@@ -429,13 +430,14 @@ export function applyAddPointAtIntersection(
   feature.entities.push({ id: eid, kind: 'point' })
   feature.initial[eid] = [round(at[0]), round(at[1])]
 
-  if (loci.length < 2) return  // not an intersection; leave a free point
+  if (loci.length < 2) return eid  // not an intersection; leave a free point
   for (const cid of loci) {
     applyAddConstraint(doc, featureId, 'coincident', [
       `vertex:${featureId}:${eid}:xy`,
       `entity:${featureId}:${cid}`,
     ])
   }
+  return eid
 }
 
 /** Materialize the inferred point of a dockable host (lazy inferred
@@ -504,25 +506,41 @@ function _dockPointId(dock: PartConstraint, knownIds: Set<string>): string | nul
   return null
 }
 
-/** Materialize-on-reference: replace any `dock:<featureId>:<hostId>` handle in a
- *  constraint's target list with the vertex ref of its materialized point. The act
- *  of naming an inferred dock is what makes it real (lazy inferred materialization)
- *  -- so authoring a constraint against a dock handle inserts the point + dock
- *  constraint (or reuses an existing one) and rewrites the operand to that point.
- *  The seed location is recomputed from the current solved params, never carried
- *  on the handle, so it cannot go stale. Non-dock targets pass through untouched. */
-function _resolveDockTargets(doc: PartDoc, featureId: string, targets: string[]): string[] {
-  if (!targets.some(t => t.startsWith('dock:'))) return targets
+/** Materialize-on-reference: replace any inferred-point handle in a constraint's
+ *  target list with the vertex ref of its materialized point. Naming an inferred
+ *  point is what makes it real (lazy inferred materialization). Two handle kinds,
+ *  the two halves of the inferred set:
+ *
+ *  - `dock:<featureId>:<hostId>` -- a dockable host's contact (today a tangent).
+ *    Inserts the point + `dock` constraint (or reuses one); the seed is recomputed
+ *    from current params via `dockLocationOf`, never carried on the handle.
+ *  - `isect:<featureId>:<x>:<y>:<curveA>:<curveB>...` -- a free curve-curve
+ *    intersection (no host). The contributing curves are baked into the handle at
+ *    pick time, so this just calls `applyAddPointAtIntersection`.
+ *
+ *  Non-handle targets pass through untouched. */
+function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: string[]): string[] {
+  if (!targets.some(t => t.startsWith('dock:') || t.startsWith('isect:'))) return targets
   const feature = findFeature(doc, featureId)
   if (!feature) return targets
   return targets.map(t => {
-    if (!t.startsWith('dock:')) return t
-    const parts = t.split(':')
-    const fid = parts[1]
-    const hostId = parts.slice(2).join(':')  // host ids are random base64url, colon-free, but be safe
-    const at = dockLocationOf(feature.entities ?? [], feature.constraints ?? [], feature.initial ?? {}, hostId)
-    const pid = applyAddDock(doc, fid, at ?? [0, 0], hostId)
-    return pid ? `vertex:${fid}:${pid}:xy` : t
+    if (t.startsWith('dock:')) {
+      const parts = t.split(':')
+      const fid = parts[1]
+      const hostId = parts.slice(2).join(':')  // host ids are colon-free base64url, but be safe
+      const at = dockLocationOf(feature.entities ?? [], feature.constraints ?? [], feature.initial ?? {}, hostId)
+      const pid = applyAddDock(doc, fid, at ?? [0, 0], hostId)
+      return pid ? `vertex:${fid}:${pid}:xy` : t
+    }
+    if (t.startsWith('isect:')) {
+      const parts = t.split(':')  // isect, fid, x, y, ...curveIds
+      const fid = parts[1]
+      const at: [number, number] = [parseFloat(parts[2]), parseFloat(parts[3])]
+      const curves = parts.slice(4)
+      const pid = applyAddPointAtIntersection(doc, fid, at, curves)
+      return pid ? `vertex:${fid}:${pid}:xy` : t
+    }
+    return t
   })
 }
 
