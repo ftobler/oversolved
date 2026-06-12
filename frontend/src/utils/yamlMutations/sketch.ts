@@ -115,9 +115,22 @@ export function applyMoveVertex(
   entityId: string,
   vertexKey: string,
   to: [number, number],
+  solvedGeometry?: Record<string, number[]>,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.initial) return
+  // Drag commit: adopt the last WASM drag frame for ALL entities first, so the
+  // hard solve seeds from the on-screen state instead of pre-drag geometry +
+  // one teleported vertex (which can land in a different solution basin).
+  // Only known entity ids with matching param counts are written -- a stale or
+  // kind-mismatched entry must not corrupt the doc.
+  if (solvedGeometry) {
+    for (const [eid, p] of Object.entries(solvedGeometry)) {
+      const cur = feature.initial[eid]
+      if (!cur || cur.length !== p.length) continue
+      feature.initial[eid] = p.map(round)
+    }
+  }
   const params = feature.initial[entityId]
   if (!params) return
   const kind = feature.entities?.find(e => e.id === entityId)?.kind

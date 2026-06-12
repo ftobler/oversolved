@@ -644,8 +644,8 @@ export type EntityStatus = Record<string, ConstraintStatus>
 // ── Mutation Types ────
 
 export type Mutation =
-  | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point }
-  | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string }
+  | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }
+  | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_entity'; featureId: string; entityId: string; delta: Point }
   | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number; pos?: Point }
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }

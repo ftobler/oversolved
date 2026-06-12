@@ -64,6 +64,38 @@ describe('applyMoveVertex', () => {
     expect(doc.features![0].initial!.line1[0]).toBe(1.234568)
     expect(doc.features![0].initial!.line1[1]).toBe(9.876543)
   })
+
+  // ── solvedGeometry: the drag commit writes the whole solved frame ──────
+
+  it('writes solvedGeometry into initial for all entities, vertex on top', () => {
+    const doc = makeSampleDoc()
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'end', [15.5, 5], {
+      line1: [0.5, 0.5, 15.2, 4.8],  // last drag frame; end overridden by `to`
+      circ1: [6, 6, 3],
+      pt1: [2, 3],
+    })
+    expect(doc.features![0].initial!.line1).toEqual([0.5, 0.5, 15.5, 5])
+    expect(doc.features![0].initial!.circ1).toEqual([6, 6, 3])
+    expect(doc.features![0].initial!.pt1).toEqual([2, 3])
+  })
+
+  it('rounds solvedGeometry params like direct vertex writes', () => {
+    const doc = makeSampleDoc()
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'end', [15, 5], {
+      circ1: [6.123456789, 6, 3],
+    })
+    expect(doc.features![0].initial!.circ1[0]).toBe(6.123457)
+  })
+
+  it('skips unknown or param-count-mismatched solvedGeometry entries', () => {
+    const doc = makeSampleDoc()
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'end', [15, 5], {
+      ghost: [1, 2],  // not in initial: must not be created
+      circ1: [6, 6],  // wrong param count for a circle: must not corrupt
+    })
+    expect(doc.features![0].initial!.ghost).toBeUndefined()
+    expect(doc.features![0].initial!.circ1).toEqual([5, 5, 3])
+  })
 })
 
 describe('applyAddConstraint', () => {

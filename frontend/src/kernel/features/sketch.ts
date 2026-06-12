@@ -22,8 +22,9 @@ import type { PartFeature, Sketch, Entity } from '@/types/cad'
 import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
-import { lowerSketch, ORIGIN_ID, type LowerOptions, type SketchInput, type EntityLayout } from '@/wasm-kernel/lowerSketch'
-import { encodeInput, decodeOutput, STATUS_NAME } from '@/wasm-kernel/codec'
+import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
+import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
+import { VERTEX_INDICES } from '@/registry'
 import { solveTopology, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
@@ -199,10 +200,8 @@ export function solveSketch(
   }
 
   const { sketch } = extract.sketches[0]
-  dragInputCache.set(featureId, { sketch, layout: null as unknown as EntityLayout[], plane: plane as Frame3D | null, feature: loweredFeature as unknown as PartFeature, lastHardSolveParams: [] })
   const { input, layout } = lowerSketch(sketch)
   const out = decodeOutput(solverBytes(encodeInput(input)))
-  dragInputCache.set(featureId, { sketch, layout, plane: plane as Frame3D | null, feature: loweredFeature as unknown as PartFeature, lastHardSolveParams: [...out.paramsSolved] })
   const status = STATUS_NAME[out.overallStatus]
 
   // Reconstruct per-entity geometry and status maps, plus rich geometry for
@@ -240,70 +239,99 @@ export function solveSketch(
 
 // ── Drag-solve infrastructure ──────────────────────────────────────────
 
-/** Cached lowering context for drag-frame WASM solves. Keyed by feature id.
- *  Populated by solveSketch on every hard solve; read by solveSketchDrag. */
-export interface DragCacheEntry {
-  sketch: SketchInput
+/** True once the WASM solver is loaded in THIS JS context. The worker and the
+ *  main thread each hold their own module instance; the drag path runs on the
+ *  main thread and must check its own instance, never assume the worker's. */
+export function isSketchSolverReady(): boolean {
+  return solverBytes !== null
+}
+
+/** Everything one drag needs, lowered once at pointer-down. The per-frame
+ *  solve only rewrites `input.params` (warm-start + cursor) and re-encodes;
+ *  the entity/constraint lowering is never repeated during the drag. */
+export interface DragContext {
+  /** Lowered solver input with `dragMode`/`dragAnchorId`/`skipStatusPass`
+   *  baked in. Its params are overwritten every frame. */
+  input: FlatInput
   layout: EntityLayout[]
-  plane: Frame3D | null
-  feature: PartFeature
-  /** The last hard-solve params (flat array); seed for frame-0 warm-start. */
-  lastHardSolveParams: number[]
-}
-const dragInputCache = new Map<string, DragCacheEntry>()
-
-/** Get the cached lowering context for a feature. Returns null on cache miss
- *  (no hard solve has been done yet, or the feature is not a sketch). */
-export function getDragCache(featureId: string): DragCacheEntry | null {
-  return dragInputCache.get(featureId) ?? null
+  /** Lowered seed params (= feature.initial = the last hard solve, because
+   *  applyGeometryToFeature writes solved geometry back into `initial`).
+   *  This is the frame-0 warm start. */
+  params0: number[]
+  /** Flat param indices the cursor position is written to each frame. */
+  cursorIndices: [number, number]
 }
 
-/** Seed the drag cache for tests that call solveSketchDrag directly. */
-export function setDragCacheForTest(featureId: string, entry: DragCacheEntry): void {
-  dragInputCache.set(featureId, entry)
-}
+/**
+ * Build the drag context for one drag, straight from the feature definition.
+ * Runs on the main thread with no Repository and no prior in-process hard
+ * solve: the last hard solve's geometry is already in `feature.initial`.
+ *
+ * Projected entities (carrying a `source` query) cannot be re-resolved here;
+ * their last resolved params are also in `initial`, so the source is stripped
+ * and the params reused. A projected entity with no params yet is dropped,
+ * mirroring solveSketch's projection_errors path (constraints referencing it
+ * are dropped by partDocToSketches).
+ *
+ * Returns null when the feature does not lower, the dragged entity is not in
+ * the layout, or the vertex has no direct param mapping (caller falls back to
+ * softSolve).
+ */
+export function prepareDragContext(
+  feature: PartFeature,
+  dragEntityId: string,
+  dragVertexKey: string,
+): DragContext | null {
+  try {
+    const entities = feature.entities ?? []
+    let loweredFeature = feature
+    if (entities.some((e) => e.source)) {
+      const initial = feature.initial ?? {}
+      const kept: typeof entities = []
+      for (const ent of entities) {
+        if (!ent.source) { kept.push(ent); continue }
+        if (initial[ent.id]) kept.push({ ...ent, source: undefined })
+      }
+      loweredFeature = { ...feature, entities: kept }
+    }
 
-/** Map a vertex key to the param indices within an entity's param block.
- *  Returns the flat-array indices where the cursor position should be
- *  written during a drag frame. Returns null for derived vertices
- *  (arc start/end, ellipse major/minor, spline c1/c2) that cannot be
- *  overwritten via direct param write. */
-function vertexParamIndices(kind: string, offset: number, vertexKey: string): number[] | null {
-  switch (kind) {
-    case 'line':
-      if (vertexKey === 'start') return [offset, offset + 1]
-      if (vertexKey === 'end') return [offset + 2, offset + 3]
-      return null
-    case 'circle':
-      if (vertexKey === 'center') return [offset, offset + 1]
-      return null
-    case 'arc':
-      if (vertexKey === 'center') return [offset, offset + 1]
-      // start/end are derived from angle params
-      return null
-    case 'point':
-      if (vertexKey === 'xy') return [offset, offset + 1]
-      return null
-    case 'ellipse':
-      if (vertexKey === 'center') return [offset, offset + 1]
-      // major1/major2/minor1/minor2 are derived
-      return null
-    case 'spline':
-      // p0=[offset..offset+1], p1=[offset+2..offset+3], p2=[offset+4..offset+5], p3=[offset+6..offset+7]
-      // But vertexKey for spline is set via Sel codes not plain start/end – skip for now
-      return null
-    default:
-      return null
+    const extract = partDocToSketches([loweredFeature])
+    if (extract.skipped.length || !extract.sketches.length) return null
+
+    const { input, layout } = lowerSketch(extract.sketches[0].sketch)
+
+    const anchorIndex = layout.findIndex((l) => l.id === dragEntityId)
+    if (anchorIndex === -1) return null
+    const ent = layout[anchorIndex]
+    const vi = VERTEX_INDICES[ent.kind]?.[dragVertexKey]
+    if (!vi) return null
+
+    // The doc param layout and the lowered layout share per-kind ordering, so
+    // the registry indices apply directly at the entity's offset.
+    input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
+    return {
+      input,
+      layout,
+      params0: [...input.params],
+      cursorIndices: [ent.offset + vi[0], ent.offset + vi[1]],
+    }
+  } catch {
+    return null
   }
 }
 
-/** Rebuild a Sketch from flattened solver params + entity layout.
- *  The output matches what Geometry3D expects for rendering. */
-function paramsToPreview(params: number[], layout: EntityLayout[]): Sketch {
+/** Rebuild a Sketch (for Geometry3D rendering) and a per-entity geometry map
+ *  (the pointer-up commit payload) from flattened solver params + layout. */
+export function paramsToPreview(
+  params: number[],
+  layout: EntityLayout[],
+): { sketch: Sketch; geometry: Record<string, number[]> } {
   const sketch: Record<string, Entity> = {}
+  const geometry: Record<string, number[]> = {}
   for (const ent of layout) {
     if (ent.id === ORIGIN_ID) continue
     const p = params.slice(ent.offset, ent.offset + ent.size)
+    geometry[ent.id] = p
     switch (ent.kind) {
       case 'line':
         sketch[ent.id] = { start: [p[0], p[1]], end: [p[2], p[3]] } as Entity
@@ -333,12 +361,15 @@ function paramsToPreview(params: number[], layout: EntityLayout[]): Sketch {
         break
     }
   }
-  return sketch
+  return { sketch, geometry }
 }
 
 export interface DragSolveResult {
   /** Reconstructed Sketch for Geometry3D preview rendering. */
   sketch: Sketch
+  /** Per-entity solved params; carried into the pointer-up commit so the hard
+   *  solve seeds from the on-screen state (no basin jump on release). */
+  geometry: Record<string, number[]>
   /** Solved params (becomes the next frame's warm-start seed). */
   params: number[]
   /** Solver status string. */
@@ -346,49 +377,32 @@ export interface DragSolveResult {
 }
 
 /**
- * Run a single drag-frame WASM solve. Always reads the lowering context from the
- * cache (populated by the last hard solve). Uses warm-start params + cursor
- * overwrite + drag options. Does NOT mutate the PartDoc or the Repository.
+ * Run a single drag-frame WASM solve against a prepared context. Writes the
+ * warm-start params + cursor into the context's input and solves; mutates
+ * nothing else (not the PartDoc, not the Repository, not the feature).
  *
- * Returns null when the drag cache is empty (hard solve never ran), the solver
- * is not loaded, or the dragged vertex has no direct param indices.
+ * Returns null when the solver is not loaded in this context or the solve
+ * throws (caller holds the last good preview).
  */
 export function solveSketchDrag(
-  featureId: string,
+  ctx: DragContext,
   warmStartParams: number[],
-  dragEntityId: string,
-  dragVertexKey: string,
   cursorWorld: [number, number],
 ): DragSolveResult | null {
   if (!solverBytes) return null
 
-  const cache = dragInputCache.get(featureId)
-  if (!cache) return null
-
-  const { sketch: sketchInput, layout } = cache
-  const dragEntityIndex = layout.findIndex((l) => l.id === dragEntityId)
-  if (dragEntityIndex === -1) return null
-
-  const dragEnt = layout[dragEntityIndex]
-  const indices = vertexParamIndices(dragEnt.kind, dragEnt.offset, dragVertexKey)
-  if (!indices) return null
-
-  const opts: LowerOptions = {
-    dragMode: true,
-    dragAnchorId: dragEntityIndex,
-    skipStatusPass: true,
-  }
-  const { input } = lowerSketch(sketchInput, opts)
+  const { input, layout, cursorIndices } = ctx
 
   // Overwrite params with warm-start seed, then pin the dragged vertex to
   // the cursor position. The firm REG_WEIGHT_DRAG on the anchor entity's
   // params (Rust solve.rs) keeps the vertex near the cursor while constraints
   // resolve.
-  for (let i = 0; i < input.params.length && i < warmStartParams.length; i++) {
+  const n = Math.min(input.params.length, warmStartParams.length)
+  for (let i = 0; i < n; i++) {
     input.params[i] = warmStartParams[i]
   }
-  input.params[indices[0]] = cursorWorld[0]
-  input.params[indices[1]] = cursorWorld[1]
+  input.params[cursorIndices[0]] = cursorWorld[0]
+  input.params[cursorIndices[1]] = cursorWorld[1]
 
   let out
   try {
@@ -398,6 +412,6 @@ export function solveSketchDrag(
   }
 
   const status = STATUS_NAME[out.overallStatus]
-  const preview = paramsToPreview(out.paramsSolved, layout)
-  return { sketch: preview, params: out.paramsSolved, status }
+  const { sketch, geometry } = paramsToPreview(out.paramsSolved, layout)
+  return { sketch, geometry, params: out.paramsSolved, status }
 }

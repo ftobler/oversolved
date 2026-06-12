@@ -1,6 +1,7 @@
 import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 import type { Point } from '@/types/cad'
 import { shouldActivateDrag, computeDragMutation } from '@/components/Geometry3D/dragLogic'
+import { getLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 
 export interface DragToolContext extends ToolContext {
@@ -93,7 +94,11 @@ export function createDragTool(): DragTool {
       }
 
       const endClient: [number, number] = [_e.clientX, _e.clientY]
-      const mutation = computeDragMutation(endClient, context.drag, context.dragSnap ?? null, null)
+      // The last WASM drag-frame solve rides along so the commit hard solve
+      // seeds from the on-screen state (no basin jump on release). Read here,
+      // synchronously in the pointer-up handler -- the rAF loop's cleanup
+      // clears the registry only after the store update re-renders.
+      const mutation = computeDragMutation(endClient, context.drag, context.dragSnap ?? null, null, getLastDragSolve())
       if (mutation) {
         context.onMutation?.(mutation)
       }

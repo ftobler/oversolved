@@ -79,9 +79,9 @@ export type MutationHandlers = {
 
 export const mutationHandlers: MutationHandlers = {
   move_vertex: (next, m) =>
-    applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to),
+    applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to, m.solvedGeometry),
   move_vertex_with_constraint: (next, m) => {
-    applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to)
+    applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to, m.solvedGeometry)
     const draggedRef = `vertex:${m.featureId}:${m.entityId}:${m.vertexKey}`
     const snapRef = m.snapVertexId ?? m.snapEntityRef
     if (snapRef) {

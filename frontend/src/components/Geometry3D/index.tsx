@@ -63,20 +63,25 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   const isDraggingThis = !!drag && drag.featureId === featureId
 
   // WASM drag solve for vertex drags (runs the real solver per frame with
-  // warm-start continuity and rAF throttling). Returns null for edge/dim_label
-  // drags or when the solver is not yet cached.
-  const wasmPreview = useWasmDragSolve({ featureId, solved, drag, isDraggingThis })
+  // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
+  // drags, unmapped vertices, or while the main-thread solver is still loading.
+  const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis })
 
-  // During drag on this feature, show WASM preview for vertex drags; fall back
-  // to softSolve for edge/dim_label drags. Hard solve fires on pointer-up via
-  // onMutation (unchanged).
+  // During drag on this feature, show the WASM preview for vertex drags; fall
+  // back to softSolve only when the WASM path is not engaged. While engaged
+  // but before the first WASM frame lands (at most one rAF tick), preview is
+  // null and displaySketch falls through to `solved` -- never softSolve, whose
+  // disagreement with the first WASM frame would show as a jump. Hard solve
+  // fires on pointer-up via onMutation (unchanged).
   const preview = useMemo(
     () => {
       if (!drag || drag.featureId !== featureId) return null
-      if (drag.type === 'vertex' && wasmPreview) return wasmPreview
+      if (drag.type === 'vertex' && wasmDrag.engaged) return wasmDrag.sketch
       return softSolve({ sketch: solved, drag, feature: featureDef })
     },
-    [solved, drag, featureId, featureDef, wasmPreview],
+    // Depend on the result fields, not the result object: the hook returns a
+    // fresh object every render, which would defeat the memo.
+    [solved, drag, featureId, featureDef, wasmDrag.engaged, wasmDrag.sketch],
   )
 
   // On pointer-up the committed mutation re-solves asynchronously. Until the
@@ -97,7 +102,9 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   }
   if (nextHeld !== held) setHeld(nextHeld)
 
-  const displaySketch = isDraggingThis ? (preview as Sketch) : (nextHeld ?? solved)
+  // During drag: preview, falling back to `solved` for the engaged-but-first-
+  // frame-pending window. After drag: the held preview until a fresh solve.
+  const displaySketch = isDraggingThis ? (preview ?? nextHeld ?? solved) : (nextHeld ?? solved)
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
 
@@ -129,16 +136,19 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     return () => setEntityKindMap({})
   }, [isEditing, featureId, kindMap, setEntityKindMap])
 
-  // Register the SOLVED sketch (not displaySketch). displaySketch is replaced
-  // each drag tick by softSolve, which would otherwise unregister/re-allocate
-  // every pointermove. The ID buffer doesn't need mid-drag accuracy because
-  // selection is disabled during drag.
+  // Register the held-or-solved sketch, NOT displaySketch: displaySketch is
+  // replaced every drag tick, which would unregister/re-allocate per frame.
+  // The ID buffer doesn't need mid-drag accuracy because selection is disabled
+  // during drag. But after pointer-up the real solver's held preview can be
+  // far from `solved` (whole constraint chains move), so re-register from the
+  // held sketch once at drag end -- hover/pick then matches what is on screen
+  // while the commit solve is in flight.
   // Inactive sketches stay inert (ID buffer excludes their layers; Surfaces.tsx R3F handlers bail out via isInactive)
   // behavior for non-active sketches). When no sketch is being edited, all
   // sketches register so they can be picked from the assembly view.
   useSketchIdRegistration({
     featureId,
-    sketch: solved,
+    sketch: nextHeld ?? solved,
     planeTransform: resolvedPlaneTransform,
     enabled: !activeFeatureId || isEditing,
   })

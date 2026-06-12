@@ -1,15 +1,22 @@
 // @vitest-environment node
 //
-// Tests for the WASM drag fast-path (solveSketchDrag), per feature/solver-on-drag.md.
-// Skips when the Rust solver WASM is absent.
+// Tests for the WASM drag fast-path (prepareDragContext + solveSketchDrag),
+// per feature/solver-on-drag-rewire.md. Skips when the Rust solver WASM is
+// absent.
+//
+// The context is built straight from the feature definition with NO prior
+// in-process solveSketch call -- exactly the production topology, where the
+// hard solve lives in a Web Worker and the drag path must be self-sufficient
+// on the main thread. (The first implementation relied on caches populated by
+// solveSketch and was silently dead in the browser; see the rewire plan.)
 //
 // Tolerance notes: the drag path uses sparse CG Levenberg-Marquardt optimised
 // for ~5ms latency, not full SVD convergence. Constraints are approximately
-// satisfied — not bit-exact. Tolerances reflect this.
+// satisfied -- not bit-exact. Tolerances reflect this.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
+  prepareDragContext,
   solveSketchDrag,
-  setDragCacheForTest,
   setSketchSolver,
   resetSketchSolver,
 } from './sketch'
@@ -17,11 +24,12 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { lowerSketch } from '@/wasm-kernel/lowerSketch'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { encodeInput, decodeOutput } from '@/wasm-kernel/codec'
-import type { DragCacheEntry } from './sketch'
+import { applyMoveVertex } from '@/utils/yamlMutations/sketch'
+import type { PartDoc, PartFeature } from '@/types/cad'
 
 const solveBytes = loadSolver()
 
-function rectSketchFeature(sketchId: string, w = 10, h = 6) {
+function rectSketchFeature(sketchId: string, w = 10, h = 6): PartFeature {
   return {
     id: sketchId, kind: 'sketch', label: 'Rectangle', plane: '@builtin_plane_front',
     entities: [
@@ -41,38 +49,21 @@ function rectSketchFeature(sketchId: string, w = 10, h = 6) {
       { id: 'len1', kind: 'length', target: { entity: 'bottom' }, value: w },
       { id: 'len2', kind: 'length', target: { entity: 'left' }, value: h },
     ],
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function seedCache(feature: any): DragCacheEntry {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { sketches } = partDocToSketches([feature as any])
-  const { sketch: sketchInput } = sketches[0]
-  const { input, layout } = lowerSketch(sketchInput)
-  if (!solveBytes) throw new Error('seedCache: WASM solver not loaded')
-  const out = decodeOutput(solveBytes(encodeInput(input)))
-  const entry: DragCacheEntry = {
-    sketch: sketchInput,
-    layout,
-    plane: null,
-    feature,
-    lastHardSolveParams: [...out.paramsSolved],
-  }
-  setDragCacheForTest(feature.id, entry)
-  return entry
+  } as unknown as PartFeature
 }
 
 // The drag path uses REG_WEIGHT_BASE=1e-3 on all params and
-// REG_WEIGHT_DRAG=5e-2 on the anchor entity — this biases toward the
+// REG_WEIGHT_DRAG=5e-2 on the anchor entity -- this biases toward the
 // warm-start, so the dragged vertex stays near (but not exactly at) the
 // cursor. Tolerances reflect this regularized behaviour.
 const CURSOR_TOL = 0.2
 const CONSTRAINT_TOL = 0.5
 
-describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
+describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM solver)', () => {
   beforeAll(() => {
     resetSketchSolver()
+    // Inject the solver ONLY -- no solveSketch call ever happens in this
+    // suite. The drag path must engage without any in-process hard solve.
     setSketchSolver(solveBytes)
   })
 
@@ -80,26 +71,83 @@ describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
     resetSketchSolver()
   })
 
-  it('returns null when the cache is empty', () => {
-    const result = solveSketchDrag('unknown', [0, 0], 'L1', 'start', [5, 0])
-    expect(result).toBeNull()
+  // ── Context construction ───────────────────────────────────────────────
+
+  it('builds the context from the feature definition alone (production topology)', () => {
+    const ctx = prepareDragContext(rectSketchFeature('engage'), 'bottom', 'start')
+    expect(ctx).not.toBeNull()
+    // params0 is the lowered feature.initial = last hard solve.
+    const bottom = ctx!.layout.find((l) => l.id === 'bottom')!
+    expect(ctx!.params0.slice(bottom.offset, bottom.offset + 4)).toEqual([0, 0, 10, 0])
+    // The cursor lands on bottom.start's params.
+    expect(ctx!.cursorIndices).toEqual([bottom.offset, bottom.offset + 1])
+    // Drag options are baked in, anchored on the dragged entity's layout index.
+    expect(ctx!.input.options).toEqual({
+      dragMode: true,
+      dragAnchorId: ctx!.layout.indexOf(bottom),
+      skipStatusPass: true,
+    })
   })
 
-  it('drag-solve does not mutate the cached feature', () => {
+  it('returns null for an unknown entity or unmapped vertex', () => {
+    const feature = rectSketchFeature('nulls')
+    expect(prepareDragContext(feature, 'nonexistent', 'start')).toBeNull()
+    // A circle has no 'start' drag handle (only 'center' is a direct vertex).
+    const circle = {
+      id: 'circleSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'C1', kind: 'circle' }],
+      initial: { C1: [5, 5, 3] },
+      constraints: [],
+    } as unknown as PartFeature
+    expect(prepareDragContext(circle, 'C1', 'start')).toBeNull()
+    expect(prepareDragContext(circle, 'C1', 'center')).not.toBeNull()
+  })
+
+  it('returns null for a non-sketch feature instead of throwing', () => {
+    const notASketch = { id: 'ext1', kind: 'extrude' } as unknown as PartFeature
+    expect(prepareDragContext(notASketch, 'x', 'start')).toBeNull()
+  })
+
+  it('lowers projected entities from initial and drops unresolved ones', () => {
+    const feature = {
+      id: 'projSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'L1', kind: 'line' },
+        { id: 'P1', kind: 'point', source: 'some>ancestry>query' },
+        { id: 'P2', kind: 'point', source: 'unresolved>query' },
+      ],
+      // P1's projection was resolved by the last hard solve; P2's was not.
+      initial: { L1: [0, 0, 10, 0], P1: [3, 4] },
+      constraints: [
+        { id: 'c1', kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: { entity: 'P2', point: 'xy' } },
+      ],
+    } as unknown as PartFeature
+
+    const ctx = prepareDragContext(feature, 'L1', 'end')
+    expect(ctx).not.toBeNull()
+    const ids = ctx!.layout.map((l) => l.id)
+    expect(ids).toContain('P1')  // source stripped, params reused from initial
+    expect(ids).not.toContain('P2')  // no resolved params: dropped
+    const p1 = ctx!.layout.find((l) => l.id === 'P1')!
+    expect(ctx!.params0.slice(p1.offset, p1.offset + 2)).toEqual([3, 4])
+  })
+
+  it('drag-solve mutates neither the feature nor the context layout/seed', () => {
     const feature = rectSketchFeature('noMutate')
-    const entry = seedCache(feature)
-    const saved = JSON.parse(JSON.stringify(entry.sketch))
+    const savedFeature = JSON.parse(JSON.stringify(feature))
+    const ctx = prepareDragContext(feature, 'bottom', 'start')!
+    const savedParams0 = [...ctx.params0]
 
-    solveSketchDrag('noMutate', [...entry.lastHardSolveParams], 'bottom', 'start', [2, 0])
+    solveSketchDrag(ctx, [...ctx.params0], [2, 0])
 
-    // The cached SketchInput must be unchanged.
-    expect(entry.sketch).toEqual(saved)
+    expect(feature).toEqual(savedFeature)
+    expect(ctx.params0).toEqual(savedParams0)
   })
+
+  // ── Solve behaviour (ported from the first implementation) ─────────────
 
   it('cursor seed keeps anchor near cursor after solve (underconstrained sketch)', () => {
-    // Two lines joined by a coincident, no length/dimension constraints.
-    // The free vertices can move more freely.
-    const feature: Record<string, unknown> = {
+    const feature = {
       id: 'cursorTest', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
         { id: 'L1', kind: 'line' },
@@ -111,30 +159,25 @@ describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
         { id: 'h1', kind: 'horizontal', target: { entity: 'L1' } },
         { id: 'v1', kind: 'vertical', target: { entity: 'L2' } },
       ],
-    }
-    const entry = seedCache(feature)
+    } as unknown as PartFeature
+    const ctx = prepareDragContext(feature, 'L2', 'end')!
 
-    // Drag L2.end from [10, 10] to [12, 9]. The vertical constraint on L2
+    // Drag L2.end from [10, 10] toward [10, 8]. The vertical constraint on L2
     // keeps X aligned, but Y can move.
     const cursor: [number, number] = [10, 8]
-    const result = solveSketchDrag('cursorTest', [...entry.lastHardSolveParams], 'L2', 'end', cursor)
+    const result = solveSketchDrag(ctx, [...ctx.params0], cursor)
 
     expect(result).not.toBeNull()
     const l2Sketch = result!.sketch.L2 as { start: [number, number]; end: [number, number] }
-    // L2.end Y coordinate should be near the cursor Y (the vertical constraint
-    // locks X, and the regularization biases Y toward the cursor).
     expect(Math.abs(l2Sketch.end[1] - cursor[1])).toBeLessThan(CURSOR_TOL)
   })
 
   it('coincident join follows the dragged vertex', () => {
-    const feature = rectSketchFeature('coincidentTest')
-    const entry = seedCache(feature)
+    const ctx = prepareDragContext(rectSketchFeature('coincidentTest'), 'bottom', 'end')!
 
-    // Drag bottom.end = [10,0] to [12, 2]. bottom.end is coincident with
-    // right.start (c1). After the drag solve, right.start should be close to
-    // bottom.end (the coincident constraint is hard with weight=1.0).
-    const cursor: [number, number] = [12, 2]
-    const result = solveSketchDrag('coincidentTest', [...entry.lastHardSolveParams], 'bottom', 'end', cursor)
+    // bottom.end is coincident with right.start (c1): after the drag solve,
+    // right.start stays on bottom.end (hard constraint, weight=1.0).
+    const result = solveSketchDrag(ctx, [...ctx.params0], [12, 2])
 
     expect(result).not.toBeNull()
     const bottomSketch = result!.sketch.bottom as { start: [number, number]; end: [number, number] }
@@ -147,11 +190,8 @@ describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
   })
 
   it('horizontal line stays horizontal during drag', () => {
-    const feature = rectSketchFeature('horizTest')
-    const entry = seedCache(feature)
-
-    const cursor: [number, number] = [3, 0.5]
-    const result = solveSketchDrag('horizTest', [...entry.lastHardSolveParams], 'bottom', 'start', cursor)
+    const ctx = prepareDragContext(rectSketchFeature('horizTest'), 'bottom', 'start')!
+    const result = solveSketchDrag(ctx, [...ctx.params0], [3, 0.5])
 
     expect(result).not.toBeNull()
     const bottomSketch = result!.sketch.bottom as { start: [number, number]; end: [number, number] }
@@ -159,11 +199,8 @@ describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
   })
 
   it('vertical line stays vertical during drag', () => {
-    const feature = rectSketchFeature('vertTest')
-    const entry = seedCache(feature)
-
-    const cursor: [number, number] = [-0.5, 2]
-    const result = solveSketchDrag('vertTest', [...entry.lastHardSolveParams], 'left', 'start', cursor)
+    const ctx = prepareDragContext(rectSketchFeature('vertTest'), 'left', 'start')!
+    const result = solveSketchDrag(ctx, [...ctx.params0], [-0.5, 2])
 
     expect(result).not.toBeNull()
     const leftSketch = result!.sketch.left as { start: [number, number]; end: [number, number] }
@@ -171,32 +208,26 @@ describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
   })
 
   it('length constraint is honoured during drag (softSolve could not)', () => {
-    const feature = rectSketchFeature('lengthTest', 10, 6)
-    const entry = seedCache(feature)
-
-    const cursor: [number, number] = [2, 0]
-    const result = solveSketchDrag('lengthTest', [...entry.lastHardSolveParams], 'bottom', 'start', cursor)
+    const ctx = prepareDragContext(rectSketchFeature('lengthTest', 10, 6), 'bottom', 'start')!
+    const result = solveSketchDrag(ctx, [...ctx.params0], [2, 0])
 
     expect(result).not.toBeNull()
     const bottomSketch = result!.sketch.bottom as { start: [number, number]; end: [number, number] }
-    const dx = bottomSketch.end[0] - bottomSketch.start[0]
-    const dy = bottomSketch.end[1] - bottomSketch.start[1]
-    const len = Math.sqrt(dx * dx + dy * dy)
-    // The length of 'bottom' should be close to 10. softSolve relaxes length
-    // entirely; the WASM drag path enforces it as a hard constraint (weight=1).
+    const len = Math.hypot(
+      bottomSketch.end[0] - bottomSketch.start[0],
+      bottomSketch.end[1] - bottomSketch.start[1],
+    )
     expect(Math.abs(len - 10)).toBeLessThan(0.1)
   })
 
-  it('warm-start continuity: tiny cursor step -> tiny geometry step', () => {
-    const feature = rectSketchFeature('warmTest')
-    const entry = seedCache(feature)
+  it('warm-start continuity: tiny cursor step -> tiny geometry step (one lowering)', () => {
+    const ctx = prepareDragContext(rectSketchFeature('warmTest'), 'bottom', 'start')!
 
-    // Frame 1: drag bottom.start to [0.1, 0]
-    const result1 = solveSketchDrag('warmTest', [...entry.lastHardSolveParams], 'bottom', 'start', [0.1, 0])
+    // Both frames reuse the SAME context: lowering happened once, at
+    // pointer-down; each frame only rewrites params.
+    const result1 = solveSketchDrag(ctx, [...ctx.params0], [0.1, 0])
     expect(result1).not.toBeNull()
-
-    // Frame 2: use frame 1's params as warm-start, drag to [0.2, 0]
-    const result2 = solveSketchDrag('warmTest', result1!.params, 'bottom', 'start', [0.2, 0])
+    const result2 = solveSketchDrag(ctx, result1!.params, [0.2, 0])
     expect(result2).not.toBeNull()
 
     const b1 = (result1!.sketch.bottom as { start: [number, number] }).start
@@ -205,38 +236,79 @@ describe.skipIf(!solveBytes)('solveSketchDrag (real WASM solver)', () => {
     expect(dist).toBeLessThan(1.0)
   })
 
-  it('dragAnchorId maps to the correct entity layout index', () => {
-    const feature = rectSketchFeature('anchorTest')
-    const entry = seedCache(feature)
+  it('spline control point drags via the registry mapping (was silent softSolve fallback)', () => {
+    const feature = {
+      id: 'splineSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'S1', kind: 'spline' }],
+      initial: { S1: [0, 0, 3, 5, 7, 5, 10, 0] },
+      constraints: [],
+    } as unknown as PartFeature
+    const ctx = prepareDragContext(feature, 'S1', 'c1')!
+    expect(ctx).not.toBeNull()
 
-    const bottomIdx = entry.layout.findIndex((l) => l.id === 'bottom')
-    expect(bottomIdx).toBeGreaterThanOrEqual(0)
+    const cursor: [number, number] = [4, 7]
+    const result = solveSketchDrag(ctx, [...ctx.params0], cursor)
 
-    // Dragging bottom.start should succeed (non-null result).
-    const result = solveSketchDrag('anchorTest', [...entry.lastHardSolveParams], 'bottom', 'start', [1, 0])
     expect(result).not.toBeNull()
-
-    // Dragging a non-existent entity returns null.
-    const bad = solveSketchDrag('anchorTest', [...entry.lastHardSolveParams], 'nonexistent', 'start', [0, 0])
-    expect(bad).toBeNull()
+    // p2 is the c1 control point in the rendered Sketch shape.
+    const s1 = result!.sketch.S1 as { p2: [number, number] }
+    expect(Math.hypot(s1.p2[0] - cursor[0], s1.p2[1] - cursor[1])).toBeLessThan(CURSOR_TOL)
   })
 
-  it('non-direct-param vertex (arc center) returns null when no mapping exists', () => {
-    // For a circle entity, only 'center' is a direct param.
-    const feature: Record<string, unknown> = {
-      id: 'circleSketch', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'C1', kind: 'circle' }],
-      initial: { C1: [5, 5, 3] },
-      constraints: [],
+  // ── Commit: the solved frame seeds the hard solve (Part B) ─────────────
+
+  it('committing solvedGeometry keeps the hard solve in the drag basin (no snap on release)', () => {
+    // The rect is fully constrained up to translation: dragging a corner
+    // translates it. Drag far from the original position over several
+    // warm-started frames, like a real drag.
+    const feature = rectSketchFeature('commitTest')
+    const ctx = prepareDragContext(feature, 'bottom', 'end')!
+    let warm = [...ctx.params0]
+    let last = null as ReturnType<typeof solveSketchDrag>
+    // 40 small frames from [10,0] to [20,8] -- the per-frame step is small,
+    // like a real pointermove stream, so the regularized anchor tracks the
+    // cursor closely and the final frame sits at the drop position.
+    for (let i = 1; i <= 40; i++) {
+      const cursor: [number, number] = [10 + (10 * i) / 40, (8 * i) / 40]
+      last = solveSketchDrag(ctx, warm, cursor)
+      expect(last).not.toBeNull()
+      warm = last!.params
     }
-    seedCache(feature)
 
-    // Dragging the center (direct param) should succeed.
-    const center = solveSketchDrag('circleSketch', [5, 5, 3, 0, 0], 'C1', 'center', [6, 6])
-    expect(center).not.toBeNull()
+    // Pointer-up: commit the on-screen state + the final vertex position.
+    const doc = { features: [feature] } as unknown as PartDoc
+    applyMoveVertex(doc, 'commitTest', 'bottom', 'end', [20, 8], last!.geometry)
 
-    // Dragging a non-mapped vertexKey returns null.
-    const bad = solveSketchDrag('circleSketch', [5, 5, 3, 0, 0], 'C1', 'start', [6, 6])
-    expect(bad).toBeNull()
+    // The committed initial IS the last drag frame (rounded), vertex on top.
+    const draggedBottom = last!.geometry.bottom
+    expect(feature.initial!.bottom[0]).toBeCloseTo(draggedBottom[0], 3)
+    expect(feature.initial!.bottom[2]).toBe(20)
+    expect(feature.initial!.bottom[3]).toBe(8)
+
+    // The commit hard solve (cold, no drag regularization) seeds from the
+    // committed initial and must stay where the user dropped the geometry --
+    // near x=10..20, not back at the pre-drag x=0..10.
+    if (!solveBytes) throw new Error('WASM solver not loaded')
+    const { sketches } = partDocToSketches([feature])
+    const { input, layout } = lowerSketch(sketches[0].sketch)
+    const out = decodeOutput(solveBytes(encodeInput(input)))
+    const bottom = layout.find((l) => l.id === 'bottom')!
+    const solvedEndX = out.paramsSolved[bottom.offset + 2]
+    expect(Math.abs(solvedEndX - 20)).toBeLessThan(1.0)
+
+    // Contrast (the bug this fixes): a naive commit -- pre-drag geometry plus
+    // one teleported vertex -- re-forms the rect near its OLD position.
+    const naive = rectSketchFeature('naiveCommit')
+    const naiveDoc = { features: [naive] } as unknown as PartDoc
+    applyMoveVertex(naiveDoc, 'naiveCommit', 'bottom', 'end', [20, 8])
+    const naiveExtract = partDocToSketches([naive])
+    const naiveLowered = lowerSketch(naiveExtract.sketches[0].sketch)
+    const naiveOut = decodeOutput(solveBytes(encodeInput(naiveLowered.input)))
+    const naiveBottom = naiveLowered.layout.find((l) => l.id === 'bottom')!
+    const naiveStartX = naiveOut.paramsSolved[naiveBottom.offset]
+    const committedStartX = out.paramsSolved[bottom.offset]
+    // The solvedGeometry commit lands the rect's start ~10 units to the right
+    // of where the naive commit re-forms it.
+    expect(committedStartX - naiveStartX).toBeGreaterThan(5)
   })
 })
