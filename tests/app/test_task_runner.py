@@ -113,8 +113,9 @@ class TestIsTaskDue:
         assert is_task_due(None, "0 2 * * *") is True
 
     def test_recently_run_not_due(self):
-        last_run = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        assert is_task_due(last_run, "0 2 * * *") is False
+        now = datetime(2025, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+        last_run = (now - timedelta(hours=1)).isoformat()
+        assert is_task_due(last_run, "0 2 * * *", now) is False
 
     def test_overdue_is_due(self):
         last_run = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
@@ -166,10 +167,20 @@ class TestRunDueTasks:
         assert t["last_run_status"] == "success"
         assert t["last_run_at"] is not None
 
-    def test_run_due_tasks_skips_recently_run_task(self, db, task_store):
+    def test_run_due_tasks_skips_recently_run_task(self, db, task_store, monkeypatch):
+        import oversolved.periodic_tasks as pt
+        frozen_now = datetime(2025, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+
+        class FakeDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return frozen_now
+
+        monkeypatch.setattr(pt, "datetime", FakeDatetime)
+
         db.execute(
             "INSERT INTO periodic_tasks (task_key, last_run_at, last_run_status) VALUES (?, ?, ?)",
-            ("test.fake", (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(), "success"),
+            ("test.fake", (frozen_now - timedelta(hours=1)).isoformat(), "success"),
         )
         db.commit()
 
