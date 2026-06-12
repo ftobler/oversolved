@@ -804,6 +804,22 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('applyConstraint includes dock: and isect: handles in targets (lazy materialization)', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+      useSketchEditorStore.getState().toggleNormalSelection('dock:S1:tan1')
+      useSketchEditorStore.getState().toggleNormalSelection('isect:S1:1:2:curA:curB')
+      useSketchEditorStore.getState().applyConstraint('coincident')
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'coincident',
+        targets: expect.arrayContaining(['vertex:S1:L1:start', 'dock:S1:tan1', 'isect:S1:1:2:curA:curB']),
+      })
+    })
+
     it('applyConstraint does nothing in mixed domain with no sketch entities', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

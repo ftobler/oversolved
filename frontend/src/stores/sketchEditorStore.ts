@@ -446,7 +446,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
     if (selection.size === 0 || !activeFeatureId) return
     const targets = [...selection].filter(t =>
-      t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_')
+      t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_') || t.startsWith('dock:') || t.startsWith('isect:')
     )
     if (targets.length === 0) return
 
