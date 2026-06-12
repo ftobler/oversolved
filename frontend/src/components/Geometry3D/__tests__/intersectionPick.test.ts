@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch, Topology, PartConstraint } from '@/types/cad'
 import { sketchToIntersectionCandidates, inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
+import { reconcileMaterializedContacts, type TopologyDict } from '@/kernel/topologyDecorate'
 
 const FEATURE = 'S1'
 
@@ -33,17 +34,26 @@ describe('sketchToIntersectionCandidates', () => {
     expect(sketchToIntersectionCandidates(makeSketch(), topo({ a: { x: 0, y: 9 } }), FEATURE, 'active_sketch')).toHaveLength(0)
   })
 
-  it('suppresses a crossing that is already materialized (a point sits there)', () => {
-    const sketch = makeSketch()
-    sketch['mat'] = { x: 5, y: 0 } as Sketch[string]
-    const cands = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5, y: 0 }, b: { x: -5, y: 0 } }), FEATURE, 'active_sketch')
-    // only (-5,0) remains; the (5,0) crossing is covered by the real point.
-    expect(cands).toHaveLength(1)
-    expect(cands[0].position[0]).toBe(-5)
-  })
-
   it('returns nothing without topology', () => {
     expect(sketchToIntersectionCandidates(makeSketch(), undefined, FEATURE, 'active_sketch')).toHaveLength(0)
+  })
+})
+
+describe('reconcileMaterializedContacts (slice 4: topology leans on the materialized point)', () => {
+  const dict = (pts: Record<string, { x: number; y: number }>): TopologyDict => ({
+    intersection_points: pts, vertices: {}, edges: [], surfaces: [],
+  })
+
+  it('drops a crossing owned by a materialized point so it is no longer inferred', () => {
+    const t = reconcileMaterializedContacts(dict({ a: { x: 5, y: 0 }, b: { x: -5, y: 0 } }), [[5, 0]])
+    // (5,0) is now a real point's identity; only the un-materialized (-5,0) remains.
+    expect(Object.values(t.intersection_points).map(p => p.x)).toEqual([-5])
+  })
+
+  it('is a no-op when no point coincides (or no points exist)', () => {
+    const ip = { a: { x: 5, y: 0 } }
+    expect(reconcileMaterializedContacts(dict(ip), []).intersection_points).toBe(ip)
+    expect(reconcileMaterializedContacts(dict(ip), [[1, 1]]).intersection_points).toEqual(ip)
   })
 })
 

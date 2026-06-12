@@ -25,7 +25,7 @@ import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
 import { VERTEX_INDICES } from '@/registry'
-import { solveTopology, type TopologyBytes } from '../topologyDecorate'
+import { solveTopology, reconcileMaterializedContacts, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
@@ -209,6 +209,9 @@ export function solveSketch(
   const geometry: Record<string, number[]> = {}
   const features: Record<string, { status: string }> = {}
   const richGeom: Record<string, Record<string, unknown>> = {}
+  // Solved positions of materialized point entities, so the topology can lean on
+  // them instead of re-emitting an inferred crossing at the same spot (slice 4).
+  const pointPositions: [number, number][] = []
   for (let i = 0; i < layout.length; i++) {
     const ent = layout[i]
     const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
@@ -218,11 +221,16 @@ export function solveSketch(
     }
     features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
     richGeom[ent.id] = enrichSketchEntity(ent.kind, params)
+    if (ent.kind === 'point') pointPositions.push([params[0], params[1]])
   }
 
   // Topology + plane transform: what postRegister registers as _topo_/_pt_ so
-  // downstream features can resolve this sketch's profile.
-  const topology = solveTopology(richGeom, featureId, topologyBytes)
+  // downstream features can resolve this sketch's profile. A crossing already
+  // owned by a materialized point yields to that point's identity.
+  const topology = reconcileMaterializedContacts(
+    solveTopology(richGeom, featureId, topologyBytes),
+    pointPositions,
+  )
   const plane_transform = frameToPlaneTransform(plane as Frame3D)
 
   return {

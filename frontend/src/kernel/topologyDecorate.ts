@@ -133,6 +133,35 @@ export function decorateTopology(structural: StructuralTopology, featureId: stri
   }
 }
 
+/**
+ * Identity unification for lazy inferred materialization (slice 4). The area
+ * builder classifies only curves -- point entities are dropped (`classify` in
+ * `dcel.rs`) -- so it rederives a curve-curve crossing every solve with no idea a
+ * real `point` now owns that contact. Once a point is materialized there, the
+ * topology must lean on that point's identity instead of re-emitting an ephemeral
+ * positional intersection vertex. This drops every `intersection_points` entry
+ * that coincides with a materialized point, so all downstream consumers (snap/pick
+ * markers, the topology-vertex registration in `postRegister`, the SVG overlay)
+ * resolve the contact through the stable point entity, not a transient `_vN`.
+ *
+ * Pure; the inferred crossing simply yields to the real point. Edges/surfaces are
+ * untouched -- they are already built in Rust; `intersection_points` is only the
+ * rendered/snappable vertex list.
+ */
+export function reconcileMaterializedContacts(
+  topology: TopologyDict,
+  pointPositions: ReadonlyArray<readonly [number, number]>,
+  tol = 1e-3,
+): TopologyDict {
+  if (pointPositions.length === 0) return topology
+  const kept: Record<string, { x: number; y: number }> = {}
+  for (const [vid, pt] of Object.entries(topology.intersection_points)) {
+    const owned = pointPositions.some(p => Math.hypot(p[0] - pt.x, p[1] - pt.y) < tol)
+    if (!owned) kept[vid] = pt
+  }
+  return { ...topology, intersection_points: kept }
+}
+
 /** Serialize richGeom as the ordered `[[eid, geom], ...]` payload Rust expects. */
 function encodeTopologyInput(richGeom: Record<string, Record<string, unknown>>): Uint8Array {
   const entries = Object.entries(richGeom)

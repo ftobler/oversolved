@@ -138,9 +138,10 @@ const round4 = (n: number) => Math.round(n * 1e4) / 1e4
  *  (resolved here, where the solved geometry is richest) so the materialize
  *  interception needs no geometry: it just calls `applyAddPointAtIntersection`.
  *
- *  Suppressed once materialized: an intersection coinciding with an existing point
- *  entity is dropped (the real point stands in), so the marker disappears after
- *  the first reference -- the picking-layer analogue of the dock idempotency. */
+ *  A crossing already owned by a materialized point is NOT offered: the topology
+ *  itself drops it (`reconcileMaterializedContacts`, slice 4), so its
+ *  `intersection_points` no longer lists the contact and the real point's vertex
+ *  candidate stands in. */
 export function sketchToIntersectionCandidates(
   sketch: Sketch,
   topology: Topology | undefined,
@@ -148,17 +149,9 @@ export function sketchToIntersectionCandidates(
   domain: SnapCandidate['domain'],
 ): SnapCandidate[] {
   if (!topology) return []
-  const pointPositions: [number, number][] = []
-  for (const entity of Object.values(sketch)) {
-    if ('x' in entity && 'y' in entity && !('start' in entity) && !('center' in entity)) {
-      const p = entity as PointEntity
-      pointPositions.push([p.x, p.y])
-    }
-  }
   const out: SnapCandidate[] = []
   for (const pt of Object.values(topology.intersection_points)) {
     const at: [number, number] = [pt.x, pt.y]
-    if (pointPositions.some(pp => Math.hypot(pp[0] - at[0], pp[1] - at[1]) < INFERRED_TOL)) continue
     const curves = curvesThroughPoint(sketch, at, INFERRED_TOL)
     if (curves.length < 2) continue
     out.push({
