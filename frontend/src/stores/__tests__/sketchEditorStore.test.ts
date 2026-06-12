@@ -269,6 +269,70 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
+    it('allows equal between two circles (equal radius)', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:C1': 'circle',
+        'entity:Sketch1:C2': 'circle',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C2')
+
+      useSketchEditorStore.getState().applyConstraint('equal_length')
+
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
+    it('allows equal between an arc and a circle', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:A1': 'arc',
+        'entity:Sketch1:C1': 'circle',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+
+      useSketchEditorStore.getState().applyConstraint('equal_length')
+
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
+    it('rejects equal mixing a line and a circle (no shared measure)', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:C1': 'circle',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+
+      useSketchEditorStore.getState().applyConstraint('equal_length')
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('allows equal between two lines', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+
+      useSketchEditorStore.getState().applyConstraint('equal_length')
+
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
     it('does nothing with empty selection', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

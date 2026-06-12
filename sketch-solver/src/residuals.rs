@@ -23,6 +23,12 @@ type P2 = [f64; 2];
 
 const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 
+/// A circle or arc: both store their radius at param index 2, so constraints
+/// like equal-radius and circle/circle tangency treat them interchangeably.
+fn is_curve(k: Kind) -> bool {
+    matches!(k, Kind::Circle | Kind::Arc)
+}
+
 /// Point-on-ellipse conic residual. `ep` is the ellipse param block
 /// `[cx, cy, a, b, theta_deg]`; the result is 0 exactly on the curve, negative
 /// inside, positive outside. Mirrors the formula in `feature/ellipse-entity.md`.
@@ -582,6 +588,25 @@ impl<'a> Problem<'a> {
             ) => (li, ai, ap),
             _ => return,
         };
+        // Neither operand is a line: this is curve/curve tangency (two circles
+        // or arcs). The centers' distance equals rA+rB when the circles touch
+        // externally or |rA-rB| when one sits inside the other; follow whichever
+        // the current geometry is nearest so the solver never flips the tangency
+        // type mid-solve. The Jacobian comes from the finite-difference fallback.
+        if !matches!(self.kind_of(line_idx), Kind::Line) {
+            let ca = self.params(x, line_idx);
+            let cb = self.params(x, arc_idx);
+            let d = ((ca[0] - cb[0]).powi(2) + (ca[1] - cb[1]).powi(2)).sqrt();
+            let (ra, rb) = (ca[2], cb[2]);
+            let external = d - (ra + rb);
+            let internal = d - (ra - rb).abs();
+            r.push(if external.abs() <= internal.abs() {
+                external
+            } else {
+                internal
+            });
+            return;
+        }
         let line_ep = self.params(x, line_idx).to_vec();
         let arc_ep = self.params(x, arc_idx).to_vec();
         let mut line_dir = [line_ep[2] - line_ep[0], line_ep[3] - line_ep[1]];
@@ -635,9 +660,19 @@ impl<'a> Problem<'a> {
         };
         let ea = self.params(x, a_idx);
         let eb = self.params(x, b_idx);
-        let len_a = ((ea[2] - ea[0]).powi(2) + (ea[3] - ea[1]).powi(2)).sqrt();
-        let len_b = ((eb[2] - eb[0]).powi(2) + (eb[3] - eb[1]).powi(2)).sqrt();
-        r.push(len_a - len_b);
+        let (ka, kb) = (self.kind_of(a_idx), self.kind_of(b_idx));
+        if ka == Kind::Line && kb == Kind::Line {
+            let len_a = ((ea[2] - ea[0]).powi(2) + (ea[3] - ea[1]).powi(2)).sqrt();
+            let len_b = ((eb[2] - eb[0]).powi(2) + (eb[3] - eb[1]).powi(2)).sqrt();
+            r.push(len_a - len_b);
+        } else if is_curve(ka) && is_curve(kb) {
+            // Equal between two circles/arcs compares radii (params[2] holds the
+            // radius for both kinds). Must stay in sync with jac_equal_length.
+            r.push(ea[2] - eb[2]);
+        }
+        // A line/curve mix would compare a length to a radius, which is not a
+        // meaningful equality: contribute no row (the UI also refuses to author
+        // it; see the equal_length entityKindGroups guard).
     }
 
     fn r_point_distance(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
@@ -1077,9 +1112,23 @@ impl<'a> Problem<'a> {
         else {
             return;
         };
+        let (ka, kb) = (self.kind_of(ai), self.kind_of(bi));
+        let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
+        // Curve/curve equality compares radii: d(rA - rB) is +1 / -1 on the two
+        // radius params (index 2). Mirror the residual's kind branching so the
+        // row count agrees; a line/curve mix contributes no row.
+        if is_curve(ka) && is_curve(kb) {
+            let mut row = vec![0.0; n];
+            row[oa + 2] += 1.0;
+            row[ob + 2] += -1.0;
+            rows.push(row);
+            return;
+        }
+        if ka != Kind::Line || kb != Kind::Line {
+            return;
+        }
         let ea = self.params(x, ai).to_vec();
         let eb = self.params(x, bi).to_vec();
-        let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
         let na = ((ea[2] - ea[0]).powi(2) + (ea[3] - ea[1]).powi(2)).sqrt();
         let nb = ((eb[2] - eb[0]).powi(2) + (eb[3] - eb[1]).powi(2)).sqrt();
         let mut row = vec![0.0; n];
@@ -1558,6 +1607,52 @@ mod tests {
         assert_eq!(r.len(), 1);
         let j = p.jacobian(&x, n);
         assert_eq!(j.nrows(), 1);
+    }
+
+    /// Equal between two circles compares radii, and tangent between two circles
+    /// drives the centers apart by rA+rB (external) or |rA-rB| (internal). Both
+    /// used to misread a circle's 3-param block as a line and produce garbage;
+    /// now they have proper curve/curve residuals.
+    #[test]
+    fn equal_radius_and_circle_tangent() {
+        let abs = PointSelector::Absent;
+        // C1 center (0,0) r=2; C2 center (10,0) r=3.
+        let make = || vec![ent(Kind::Circle, 0), ent(Kind::Circle, 3)];
+        let params = || vec![0.0, 0.0, 2.0, 10.0, 0.0, 3.0];
+
+        // Equal radius: residual = rA - rB = 2 - 3 = -1, and the analytic
+        // Jacobian agrees with finite differences.
+        {
+            let cons_eq = cons(ConstraintKind::EqualLength, ab(e_ref(0, abs), e_ref(1, abs)));
+            let inp = input(make(), params(), vec![cons_eq]);
+            let p = Problem::new(&inp);
+            let x = p.x0.clone();
+            let n = x.len();
+            let r = p.residuals(&x);
+            assert_eq!(r.len(), 1);
+            assert!((r[0] - (2.0 - 3.0)).abs() < 1e-12, "equal radius: {}", r[0]);
+            let analytic = p.jacobian(&x, n);
+            let fd = crate::lm::fd_jacobian(&|xx: &[f64]| p.residuals(xx), &x, 1);
+            for col in 0..n {
+                assert!(
+                    (analytic[(0, col)] - fd[(0, col)]).abs() < 1e-5,
+                    "equal jac col {col}: analytic={} fd={}",
+                    analytic[(0, col)],
+                    fd[(0, col)],
+                );
+            }
+        }
+
+        // Tangent: d=10, rA+rB=5, |rA-rB|=1. External (10-5=5) is nearer than
+        // internal (10-1=9), so the residual is the external one.
+        {
+            let cons_tan = cons(ConstraintKind::Tangent, ab(e_ref(0, abs), e_ref(1, abs)));
+            let inp = input(make(), params(), vec![cons_tan]);
+            let p = Problem::new(&inp);
+            let r = p.residuals(&p.x0.clone());
+            assert_eq!(r.len(), 1);
+            assert!((r[0] - 5.0).abs() < 1e-12, "circle tangent: {}", r[0]);
+        }
     }
 
     fn cons(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>) -> Constraint {

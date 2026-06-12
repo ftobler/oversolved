@@ -453,19 +453,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // Reject operand kinds the constraint cannot represent before authoring it.
     // A parallel between two arcs (or a concentric on a line) otherwise lands in
     // the doc as a constraint the solver can't satisfy and the canvas can't
-    // render -- leaving it stuck and undeletable. The registry's `entityKinds`
-    // is the single source of truth; an unknown kind (not in entityKindMap yet)
-    // is tolerated so this never blocks on a transient/empty map.
+    // render -- leaving it stuck and undeletable. The registry's
+    // `entityKindGroups` is the single source of truth: every entity operand's
+    // kind must fall in one common group. An unknown kind (not in entityKindMap
+    // yet) is tolerated so this never blocks on a transient/empty map.
     const def = CONSTRAINT_BY_KIND.get(kind)
-    if (def?.entityKinds) {
-      const allowed = def.entityKinds
-      const allOk = targets.every(t => {
-        if (!t.startsWith('entity:')) return true  // vertices/builtins unrestricted
-        const k = entityKindMap[t]
-        return k === undefined || allowed.includes(k)
-      })
+    if (def?.entityKindGroups) {
+      const groups = def.entityKindGroups
+      const kinds = targets
+        .filter(t => t.startsWith('entity:'))
+        .map(t => entityKindMap[t])
+        .filter((k): k is string => k !== undefined)
+      const allOk = groups.some(g => kinds.every(k => g.includes(k)))
       if (!allOk) {
-        if (devOnly) console.warn(`[sketchEditorStore] applyConstraint(${kind}): rejected operand kind not in [${allowed.join(', ')}].`)
+        if (devOnly) console.warn(`[sketchEditorStore] applyConstraint(${kind}): operand kinds [${kinds.join(', ')}] not allowed.`)
         return
       }
     }

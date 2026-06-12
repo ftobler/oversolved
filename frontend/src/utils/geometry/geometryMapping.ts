@@ -383,14 +383,18 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   if (kind === 'equal_length') {
     const eid = resolved.a?.entity
     const eid2 = resolved.b?.entity
-    if (!eid || !eid2) return { kind: 'unknown' }
-    const ea = sketch[eid] as LineSegment | Arc
-    const eb = sketch[eid2] as LineSegment | Arc
-    if (!ea || !eb || !('start' in ea) || !('end' in ea) || !('start' in eb) || !('end' in eb)) return { kind: 'unknown' }
-    const at_a: Point = [(ea.start[0] + ea.end[0]) / 2, (ea.start[1] + ea.end[1]) / 2]
+    if (!eid || !eid2 || !resolved.a) return { kind: 'unknown' }
+    const ea = sketch[eid] as LineSegment | Arc | Circle
+    if (!ea) return { kind: 'unknown' }
+    // Lines anchor the glyph at the segment midpoint; circles/arcs (equal-radius)
+    // anchor at their representative point (center) via geomPoint.
+    const at: Point | null = 'start' in ea && 'end' in ea
+      ? [(ea.start[0] + ea.end[0]) / 2, (ea.start[1] + ea.end[1]) / 2]
+      : geomPoint(sketch, resolved.a)
+    if (!at) return { kind: 'unknown' }
     return {
       kind: 'symbol_equal',
-      at: at_a,
+      at,
       entity: eid,
       entities: [eid, eid2],
     }

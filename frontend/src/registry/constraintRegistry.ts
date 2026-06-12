@@ -81,16 +81,19 @@ export interface ConstraintDef {
   showInToolbar: boolean
 
   /**
-   * Allowed entity kinds for this constraint's entity operands. When set, every
-   * `entity:` target must have a kind in this list or the constraint is rejected
-   * before it reaches the solver (see applyConstraint). Vertex/point targets are
-   * unaffected. Only use for constraints whose valid operands are a single closed
-   * set of kinds -- e.g. parallel is line-only, concentric is arc/circle. Mixed
-   * constraints (tangent = line + curve) cannot be expressed as a flat list and
-   * leave this undefined; their solver residuals handle the operand kinds.
+   * Allowed entity-kind combinations for this constraint's entity operands, as a
+   * list of groups. The constraint is rejected before it reaches the solver (see
+   * applyConstraint) unless every `entity:` operand's kind belongs to one common
+   * group. Vertex/point targets are unaffected. Examples:
+   *   - parallel:  [['line']]                  -- both operands must be lines
+   *   - concentric:[['arc', 'circle']]         -- any mix of arcs/circles
+   *   - equal:     [['line'], ['arc','circle']] -- two lines (length) OR two
+   *                                                curves (radius), never mixed
+   * Constraints whose operands are heterogeneous by design (tangent = line +
+   * curve) leave this undefined; their solver residuals handle the kinds.
    * `undefined` means no entity-kind restriction.
    */
-  entityKinds?: readonly string[]
+  entityKindGroups?: readonly (readonly string[])[]
 }
 
 // ─── Registry ───
@@ -148,7 +151,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     symbolIcon: 'constraint-concentric',
     toolbarIcon: 'constraint-concentric',
     showInToolbar: true,
-    entityKinds: ['arc', 'circle'],  // shares a center; lines have none
+    entityKindGroups: [['arc', 'circle']],  // shares a center; lines have none
   },
   {
     kind: 'equal_length',
@@ -162,7 +165,9 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     toolbarIcon: 'constraint-equal',
     shortcut: 'e',
     showInToolbar: true,
-    entityKinds: ['line'],  // compares segment lengths
+    // Two lines compare length; two circles/arcs compare radius. A line vs a
+    // curve has no shared measure, so it is rejected.
+    entityKindGroups: [['line'], ['arc', 'circle']],
   },
   {
     kind: 'parallel',
@@ -176,7 +181,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     toolbarIcon: 'constraint-parallel',
     shortcut: 'p',
     showInToolbar: true,
-    entityKinds: ['line'],  // parallel is defined for line directions only
+    entityKindGroups: [['line']],  // parallel is defined for line directions only
   },
   {
     kind: 'normal',

@@ -48,4 +48,20 @@ describe('computeConstraintRender (fallback glyph)', () => {
     const r = computeConstraintRender(c, sketch) as SymbolRender
     expect(r.kind).toBe('symbol_parallel')
   })
+
+  it('equal between two circles renders a symbol_equal at the first center', () => {
+    const sketch = makeSketch()
+    const c: PartConstraint = { id: 'E1', kind: 'equal_length', a: '$C1', b: '$C2' }
+    const r = computeConstraintRender(c, sketch) as SymbolRender
+    expect(r.kind).toBe('symbol_equal')
+    expect(r.at).toEqual([2, 3])  // C1 center
+    expect(r.entities).toEqual(['C1', 'C2'])
+  })
+
+  it('tangent between two circles still renders a selectable glyph', () => {
+    const sketch = makeSketch()
+    const c: PartConstraint = { id: 'T1', kind: 'tangent', a: '$C1', b: '$C2' }
+    const r = computeConstraintRender(c, sketch) as SymbolRender
+    expect(r.kind).toBe('symbol_tangent')
+  })
 })
