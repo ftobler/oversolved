@@ -234,6 +234,12 @@ export interface PartConstraint {
   point?: PartTarget
   point_a?: PartTarget
   point_b?: PartTarget
+  // Dock host: the id of another constraint in the same sketch whose implied
+  // geometry (e.g. a tangent's contact foot) this constraint pins `point` to.
+  // Used by the `dock` constraint kind (lazy inferred materialization). Stored as
+  // a constraint id, NOT an entity ref, so the lowering looks it up among the
+  // feature's constraints; a missing host lowers to nothing (the point floats).
+  host?: string
   // Optional scalar overrides (used by fixed constraint)
   x?: number
   y?: number
@@ -655,6 +661,7 @@ export type Mutation =
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string }
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string }
   | { type: 'add_point_at_intersection'; featureId: string; at: Point; curveEntityIds: string[] }
+  | { type: 'add_dock'; featureId: string; at: Point; hostConstraintId: string }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number }

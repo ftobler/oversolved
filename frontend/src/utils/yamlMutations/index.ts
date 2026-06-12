@@ -15,6 +15,7 @@ export {
   applyAddEntityWithConstraint,
   applyAddPointWithConstraint,
   applyAddPointAtIntersection,
+  applyAddDock,
   applyAddRect,
   applyAddCenterRect,
   applyAddNgon,

@@ -434,6 +434,48 @@ export function applyAddPointAtIntersection(
   }
 }
 
+/** Materialize the inferred point of a dockable host (lazy inferred
+ *  materialization). Inserts a real `point` entity P seeded at the host's current
+ *  contact location and a `dock` constraint tying P to the host. The dock lowers
+ *  (in `partDocToSketches`) to operand locus pins reusing the existing coincident
+ *  primitive -- no new solver constraint. P is an ordinary point thereafter: other
+ *  constraints reference it, it is draggable, and deleting the host just floats it.
+ *
+ *  Idempotent: a second materialization of the same host reuses the existing P,
+ *  so naming the same contact twice never spawns a duplicate point. */
+export function applyAddDock(
+  doc: PartDoc,
+  featureId: string,
+  at: [number, number],
+  hostConstraintId: string,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+  if (!feature.constraints) feature.constraints = []
+
+  const host = feature.constraints.find(c => c.id === hostConstraintId)
+  if (!host) return  // nothing to dock to
+
+  // Idempotent: reuse the point of an existing dock on the same host.
+  if (feature.constraints.some(c => c.kind === 'dock' && c.host === hostConstraintId)) return
+
+  const existing = new Set(feature.entities.map(e => e.id))
+  let eid = randomId(12)
+  while (existing.has(eid)) eid = randomId(12)
+  feature.entities.push({ id: eid, kind: 'point' })
+  feature.initial[eid] = [round(at[0]), round(at[1])]
+
+  const cid = uniqueConstraintId(feature.constraints, 'dock')
+  feature.constraints.push({
+    id: cid,
+    kind: 'dock',
+    point: parseTarget(`vertex:${featureId}:${eid}:xy`, featureId),
+    host: hostConstraintId,
+  })
+}
+
 export function applyAddRect(
   doc: PartDoc,
   featureId: string,

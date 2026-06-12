@@ -24,6 +24,8 @@ export function describeMutation(m: Mutation): string {
       return `add ${m.kind} from ${m.source} in ${m.featureId}`
     case 'add_point_at_intersection':
       return `add point at intersection in ${m.featureId}`
+    case 'add_dock':
+      return `materialize docked point in ${m.featureId}`
     case 'add_rect':
       return `add rect in ${m.featureId}`
     case 'add_center_rect':

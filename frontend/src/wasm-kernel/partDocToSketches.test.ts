@@ -128,6 +128,59 @@ describe('partDocToSketches', () => {
     expect(cs[0]).toMatchObject({ kind: 'equal_length', a: { entity: 'l0' }, b: { entity: 'l1' } })
   })
 
+  it('expands a dock constraint to two coincident-to-locus pins against its host', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [
+          { id: 'circA', kind: 'circle' }, { id: 'circB', kind: 'circle' },
+          { id: 'pt', kind: 'point' },
+        ],
+        initial: { circA: [0, 0, 5], circB: [10, 0, 5], pt: [5, 0] },
+        constraints: [
+          { id: 'tan', kind: 'tangent', a: '$circA', b: '$circB' },
+          { id: 'dk', kind: 'dock', point: '$ptxy', host: 'tan' },
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    const cs = sketches[0].sketch.constraints
+    // The tangent survives; the dock becomes two coincidents pinning pt to each
+    // curve as a locus (no vertex key on the curve operand). No raw `dock`.
+    expect(cs.filter((c) => c.kind === 'dock')).toHaveLength(0)
+    expect(cs.filter((c) => c.kind === 'tangent')).toHaveLength(1)
+    const coincidents = cs.filter((c) => c.kind === 'coincident')
+    expect(coincidents).toHaveLength(2)
+    expect(coincidents[0]).toMatchObject({ a: { entity: 'pt', point: 'xy' }, b: { entity: 'circA' } })
+    expect(coincidents[1]).toMatchObject({ a: { entity: 'pt', point: 'xy' }, b: { entity: 'circB' } })
+    // Locus form: the curve operand carries NO point key.
+    expect((coincidents[0].b as { point?: string }).point).toBeUndefined()
+  })
+
+  it('drops a dock whose host constraint is gone (fail-soft float)', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [
+          { id: 'circA', kind: 'circle' }, { id: 'circB', kind: 'circle' },
+          { id: 'pt', kind: 'point' },
+        ],
+        initial: { circA: [0, 0, 5], circB: [10, 0, 5], pt: [5, 0] },
+        constraints: [
+          // host 'tan' was deleted; the dangling dock lowers to nothing so pt
+          // floats as an ordinary under-constrained point.
+          { id: 'dk', kind: 'dock', point: '$ptxy', host: 'tan' },
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches[0].sketch.constraints).toHaveLength(0)
+  })
+
   it('ignores non-sketch features', () => {
     const features: PartFeature[] = [
       { id: 'ex1', kind: 'extrude', extrude: undefined } as unknown as PartFeature,

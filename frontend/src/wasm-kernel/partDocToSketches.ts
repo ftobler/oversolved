@@ -123,14 +123,55 @@ function lowerNgonConstraint(c: PartConstraint): PartConstraint[] {
   return out
 }
 
-/** Replace `ngon` sugar constraints with their primitive expansions, leaving
- *  every other constraint untouched. Runs before the resolve loop so the solver
- *  only ever sees real constraint kinds. (Offset is not sugar at this layer: it
- *  is stored directly as parallel/concentric + an ordinary dimension.) */
+/** Coerce a constraint ref into LOCUS form (the whole curve, no vertex key) so a
+ *  `coincident` against it reads as point-on-curve, not point-to-point. A tangent
+ *  host's operands are already entity-only, but stripping defensively keeps the
+ *  dock lowering correct for any future dockable host whose operand carries a
+ *  vertex key. */
+function toLocus(ref: unknown): unknown {
+  if (ref && typeof ref === 'object') {
+    const obj = ref as { entity?: unknown; point?: unknown }
+    if (typeof obj.entity === 'string') return { entity: obj.entity }
+  }
+  return ref  // `$entityId` string is already a bare locus
+}
+
+/** Expand a `dock` constraint into the operand locus pins that materialize an
+ *  inferred point at its host's implied contact (lazy inferred materialization).
+ *
+ *  A `dock` names a point `P` and a `host` constraint id. The host is the thing
+ *  that defines the contact (today: a `tangent(A, B)`, whose implied foot is the
+ *  point where A and B touch). Lowering pins P to both of the host's operands as
+ *  loci -- `coincident(P, A)` + `coincident(P, B)` -- which is exactly the
+ *  existing `r_coincident` locus form, so there is NO new solver primitive.
+ *
+ *  Lifetime is fail-soft: the lowering is gated on the host still existing. Delete
+ *  the host and this returns nothing, leaving P an ordinary under-constrained
+ *  point resting at its last solved position (it floats until reconstrained). */
+function expandDockConstraint(c: PartConstraint, feature: PartFeature): PartConstraint[] {
+  if (!c.host || !c.point) return []
+  const host = (feature.constraints ?? []).find((h) => h.id === c.host)
+  if (!host) return []  // host deleted: float (emit no residual)
+  // Dockable hosts: those with an implied contact not already an explicit operand.
+  // `tangent` has an implied foot. coincident/parallel/dimensions do not.
+  if (host.kind === 'tangent' && host.a != null && host.b != null) {
+    return [
+      { id: `${c.id}_d0`, kind: 'coincident', a: c.point, b: toLocus(host.a) as PartConstraint['b'] },
+      { id: `${c.id}_d1`, kind: 'coincident', a: c.point, b: toLocus(host.b) as PartConstraint['b'] },
+    ]
+  }
+  return []
+}
+
+/** Replace sugar constraints (`ngon`, `dock`) with their primitive expansions,
+ *  leaving every other constraint untouched. Runs before the resolve loop so the
+ *  solver only ever sees real constraint kinds. (Offset is not sugar at this
+ *  layer: it is stored directly as parallel/concentric + an ordinary dimension.) */
 function expandSugarConstraints(feature: PartFeature): PartConstraint[] {
   const out: PartConstraint[] = []
   for (const c of feature.constraints ?? []) {
     if (c.kind === 'ngon') out.push(...lowerNgonConstraint(c))
+    else if (c.kind === 'dock') out.push(...expandDockConstraint(c, feature))
     else out.push(c)
   }
   return out
