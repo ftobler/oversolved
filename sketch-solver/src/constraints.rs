@@ -189,6 +189,7 @@ pub enum ConstraintKind {
     Midpoint,
     Concentric,
     Fixed,
+    RadiusDifference,
 }
 
 impl ConstraintKind {
@@ -210,6 +211,7 @@ impl ConstraintKind {
             13 => ConstraintKind::Midpoint,
             14 => ConstraintKind::Concentric,
             15 => ConstraintKind::Fixed,
+            16 => ConstraintKind::RadiusDifference,
             _ => return None,
         })
     }
@@ -232,6 +234,7 @@ impl ConstraintKind {
             ConstraintKind::Midpoint => 13,
             ConstraintKind::Concentric => 14,
             ConstraintKind::Fixed => 15,
+            ConstraintKind::RadiusDifference => 16,
         }
     }
 }

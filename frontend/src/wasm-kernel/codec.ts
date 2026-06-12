@@ -25,6 +25,7 @@ export const ConstraintKindCode: Record<string, number> = {
   midpoint: 13,
   concentric: 14,
   fixed: 15,
+  radius_difference: 16,
 }
 
 export const Role = {

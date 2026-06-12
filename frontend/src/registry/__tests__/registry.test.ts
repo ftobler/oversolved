@@ -183,9 +183,20 @@ describe('dimension rules', () => {
     )).toEqual({ constraintKind: 'line_distance' })
   })
 
-  it('resolveDimension two picks: two non-line entities → line_distance', () => {
+  it('resolveDimension two picks: two circles/arcs → radius_difference', () => {
     expect(resolveDimension([
       { isVertex: false, target: 'A1', entityKind: 'arc' },
+      { isVertex: false, target: 'C1', entityKind: 'circle' },
+    ])).toEqual({ constraintKind: 'radius_difference' })
+    expect(resolveDimension([
+      { isVertex: false, target: 'C1', entityKind: 'circle' },
+      { isVertex: false, target: 'C2', entityKind: 'circle' },
+    ])).toEqual({ constraintKind: 'radius_difference' })
+  })
+
+  it('resolveDimension two picks: a line and a curve → line_distance', () => {
+    expect(resolveDimension([
+      { isVertex: false, target: 'L1', entityKind: 'line' },
       { isVertex: false, target: 'C1', entityKind: 'circle' },
     ])).toEqual({ constraintKind: 'line_distance' })
   })

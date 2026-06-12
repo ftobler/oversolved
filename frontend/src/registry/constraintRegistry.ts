@@ -312,6 +312,16 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     symbolIcon: 'constraint-angle',
     showInToolbar: false,
   },
+  {
+    kind: 'radius_difference',
+    label: 'Radius Difference',
+    description: 'Sets the difference between the radii of two circles or arcs (the radial gap between concentric ones).',
+    category: 'dimensional',
+    hasValue: true,
+    refPattern: 'a_b',
+    renderKind: 'dim_linear',  // drawn as a radial linear gap dimension
+    showInToolbar: false,  // accessed via the Dimension tool on two circles/arcs
+  },
 ] as const
 
 // ─── Dimension tool auto-detection ───
@@ -324,6 +334,7 @@ export interface DimensionRule {
     | { type: 'single_entity'; entityKind: string }
     | { type: 'two_vertices' }
     | { type: 'two_lines' }
+    | { type: 'two_curves' }
     | { type: 'two_entities' }
     | { type: 'mixed' }
 
@@ -359,6 +370,11 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
     trigger: { type: 'two_lines' },
     constraintKind: 'angle',
     description: 'Click two line segments to set the angle between them.',
+  },
+  {
+    trigger: { type: 'two_curves' },
+    constraintKind: 'radius_difference',
+    description: 'Click two circles or arcs to set the difference between their radii.',
   },
   {
     trigger: { type: 'two_entities' },
@@ -520,11 +536,19 @@ export function resolveDimension(
       return rule ? { constraintKind: rule.constraintKind } : null
     }
 
-    let triggerType: 'two_vertices' | 'two_lines' | 'two_entities' | 'mixed'
+    const isCurve = (k?: string | null) => k === 'circle' || k === 'arc'
+    let triggerType: 'two_vertices' | 'two_lines' | 'two_curves' | 'two_entities' | 'mixed'
     if (a.isVertex && b.isVertex) {
       triggerType = 'two_vertices'
     } else if (!a.isVertex && !b.isVertex) {
-      triggerType = a.entityKind === 'line' && b.entityKind === 'line' ? 'two_lines' : 'two_entities'
+      if (a.entityKind === 'line' && b.entityKind === 'line') {
+        triggerType = 'two_lines'
+      } else if (isCurve(a.entityKind) && isCurve(b.entityKind)) {
+        // Two circles/arcs -> dimension the radial gap between them.
+        triggerType = 'two_curves'
+      } else {
+        triggerType = 'two_entities'
+      }
     } else {
       triggerType = 'mixed'
     }

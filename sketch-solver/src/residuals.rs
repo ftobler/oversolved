@@ -341,6 +341,7 @@ impl<'a> Problem<'a> {
             ConstraintKind::Midpoint => self.r_midpoint(c, x, r),
             ConstraintKind::Concentric => self.r_concentric(c, x, r),
             ConstraintKind::Fixed => self.r_fixed(c, x, r),
+            ConstraintKind::RadiusDifference => self.r_radius_difference(c, x, r),
         }
     }
 
@@ -675,6 +676,27 @@ impl<'a> Problem<'a> {
         // it; see the equal_length entityKindGroups guard).
     }
 
+    /// Dimension between two circles/arcs (typically concentric): the gap
+    /// |rA - rB| equals the target value. Absolute so it is independent of which
+    /// operand was selected first, and the dimension value the user types is the
+    /// positive radial gap. The Jacobian uses the finite-difference fallback.
+    fn r_radius_difference(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
+        let (
+            Some(Ref::Entity { index: a_idx, .. }),
+            Some(Ref::Entity { index: b_idx, .. }),
+            Some(value),
+        ) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
+        else {
+            return;
+        };
+        if !is_curve(self.kind_of(a_idx)) || !is_curve(self.kind_of(b_idx)) {
+            return;
+        }
+        let ra = self.params(x, a_idx)[2];
+        let rb = self.params(x, b_idx)[2];
+        r.push((ra - rb).abs() - value);
+    }
+
     fn r_point_distance(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let (Some(a), Some(b), Some(value)) =
             (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
@@ -982,7 +1004,8 @@ impl<'a> Problem<'a> {
             | ConstraintKind::Normal
             | ConstraintKind::Angle
             | ConstraintKind::Tangent
-            | ConstraintKind::Midpoint => rows.extend(self.fd_constraint_rows(c, x, n)),
+            | ConstraintKind::Midpoint
+            | ConstraintKind::RadiusDifference => rows.extend(self.fd_constraint_rows(c, x, n)),
         }
     }
 
@@ -1653,6 +1676,32 @@ mod tests {
             assert_eq!(r.len(), 1);
             assert!((r[0] - 5.0).abs() < 1e-12, "circle tangent: {}", r[0]);
         }
+    }
+
+    /// A radius-difference dimension between two concentric circles drives the
+    /// gap |rA - rB| to the target value.
+    #[test]
+    fn radius_difference_dimension() {
+        let abs = PointSelector::Absent;
+        // Concentric circles at the origin: rA=2, rB=5 -> current gap 3.
+        let entities = vec![ent(Kind::Circle, 0), ent(Kind::Circle, 3)];
+        let params = vec![0.0, 0.0, 2.0, 0.0, 0.0, 5.0];
+        let c = cons_v(
+            ConstraintKind::RadiusDifference,
+            ab(e_ref(0, abs), e_ref(1, abs)),
+            4.0,
+        );
+        let inp = input(entities, params, vec![c]);
+        let p = Problem::new(&inp);
+        let x = p.x0.clone();
+        let n = x.len();
+        // residual = |2 - 5| - 4 = 3 - 4 = -1.
+        let r = p.residuals(&x);
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - (-1.0)).abs() < 1e-12, "radius diff: {}", r[0]);
+        // The finite-difference Jacobian is well-defined away from rA == rB.
+        let analytic = p.jacobian(&x, n);
+        assert_eq!(analytic.nrows(), 1);
     }
 
     fn cons(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>) -> Constraint {

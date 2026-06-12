@@ -462,6 +462,31 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     }
   }
 
+  if (kind === 'radius_difference') {
+    const eid = resolved.a?.entity
+    const eid2 = resolved.b?.entity
+    if (!eid || !eid2) return { kind: 'unknown' }
+    const ea = sketch[eid] as Circle | Arc
+    const eb = sketch[eid2] as Circle | Arc
+    if (!ea || !eb || !('radius' in ea) || !('radius' in eb) || !('center' in ea)) return { kind: 'unknown' }
+    // Draw the radial gap along a fixed direction (+x) so p1/p2 sit on the inner
+    // and outer circle; the dim length then equals |rA - rB|. The label is moved
+    // by `pos`; `normal` is perpendicular to the measurement so dragging slides
+    // the dimension line sideways (matching the other linear dims).
+    const [cx, cy] = ea.center
+    const rInner = Math.min(ea.radius, eb.radius)
+    const rOuter = Math.max(ea.radius, eb.radius)
+    return {
+      kind: 'dim_linear',
+      p1: [cx + rInner, cy],
+      p2: [cx + rOuter, cy],
+      value: resolved.value ?? Math.abs(ea.radius - eb.radius),
+      normal: [0, 1],
+      entity: eid,
+      ...(resolved.pos && { pos: resolved.pos }),
+    }
+  }
+
   if (kind === 'midpoint') {
     const line = resolved.line
     if (!line) return { kind: 'unknown' }
