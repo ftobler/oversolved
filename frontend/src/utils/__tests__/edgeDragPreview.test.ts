@@ -120,6 +120,30 @@ describe('edgeDragPreview', () => {
     expect(result.P1 as { x: number; y: number }).toEqual({ x: 4, y: 6 })
   })
 
+  it('moves spline control points by the delta', () => {
+    const sketch: Sketch = {
+      S1: { p1: [0, 0], p2: [5, 5], p3: [10, 5], p4: [15, 0] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'entity:S1:S1',
+      featureId: 'S1',
+      entityId: 'S1',
+      vertexKey: '',
+      startWorld: [7.5, 2.5],
+      currentWorld: [10, 5],
+      startClient: [100, 100],
+    }
+
+    const result = edgeDragPreview(sketch, drag)
+
+    const spline = result.S1 as { p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number] }
+    expect(spline.p1).toEqual([2.5, 2.5])
+    expect(spline.p2).toEqual([7.5, 7.5])
+    expect(spline.p3).toEqual([12.5, 7.5])
+    expect(spline.p4).toEqual([17.5, 2.5])
+  })
+
   it('does not mutate the input sketch', () => {
     const sketch: Sketch = {
       L1: { start: [0, 0], end: [10, 0] },

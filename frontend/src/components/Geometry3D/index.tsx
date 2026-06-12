@@ -80,6 +80,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       if (!drag || drag.featureId !== featureId) return null
       if (drag.type === 'vertex' && wasmDrag.engaged) return wasmDrag.sketch
       if (drag.type === 'edge') return edgeDragPreview(solved, drag)
+      if (drag.type === 'dim_label') return solved
       return null
     },
     // Depend on the result fields, not the result object: the hook returns a
