@@ -22,6 +22,20 @@ use super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_S
 
 const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 
+// Near-tangency collapse: two curves that the solver tried to make tangent leave
+// a contact whose two analytic intersection points sit `2h` apart and tend to a
+// single point as `h -> 0`. Exact tangency (`h == 0`) never survives floating
+// point, so we DEFINE the contact at the foot point whenever the two roots are
+// within `TANGENT_COLLAPSE_REL * r_min` of coinciding. The real picture is
+// 0-or-2 intersections; asserting the one foot is the "virtual tangent point"
+// that collapses the numerical ambiguity into a singular truth the area builder
+// can lean on -- a tangent pair then stays two clean standalone faces instead of
+// being sliced by a phantom sliver arc. The threshold is on the point separation
+// (not the centre-distance gap, which the sqrt amplifies) and relative to the
+// smaller radius so it tracks model scale and clears the solver's converged
+// tangent residual by orders of magnitude while never merging a real crossing.
+const TANGENT_COLLAPSE_REL: f64 = 1e-3;
+
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
 
 /// One sketch entity's solved+enriched geometry, mirroring the stringly-typed
@@ -262,12 +276,20 @@ fn cc(cx1: f64, cy1: f64, r1: f64, cx2: f64, cy2: f64, r2: f64) -> Vec<(f64, f64
     let h = h2.max(0.0).sqrt();
     let mx = cx1 + (a * (cx2 - cx1)) / d;
     let my = cy1 + (a * (cy2 - cy1)) / d;
+    // Virtual tangent point: when the two roots are within tolerance of
+    // coinciding, define the single contact at the foot [mx, my] (the exact
+    // tangent point in the h == 0 limit) instead of emitting two near-duplicate
+    // intersections that would slice both curves at a phantom sliver.
+    if h <= TANGENT_COLLAPSE_REL * r1.min(r2).max(EPS) {
+        return vec![(
+            (my - cy1).atan2(mx - cx1),
+            (my - cy2).atan2(mx - cx2),
+            [mx, my],
+        )];
+    }
     let ox = (h * (cy2 - cy1)) / d;
     let oy = (h * (cx2 - cx1)) / d;
-    let mut pts: Vec<Vec2> = vec![[mx + ox, my - oy], [mx - ox, my + oy]];
-    if h < EPS {
-        pts.truncate(1);
-    }
+    let pts: Vec<Vec2> = vec![[mx + ox, my - oy], [mx - ox, my + oy]];
     pts.into_iter()
         .map(|[sx, sy]| {
             (
@@ -1354,6 +1376,55 @@ mod tests {
         assert_eq!(t.surfaces.len(), 1);
         assert_eq!(t.surfaces[0].boundary.len(), 2);
         assert_eq!(t.surfaces[0].face_entity_ids, vec!["c0".to_string()]);
+    }
+
+    #[test]
+    fn cc_exact_external_tangency_is_one_point() {
+        let pts = cc(0.0, 0.0, 5.0, 10.0, 0.0, 5.0);
+        assert_eq!(pts.len(), 1);
+        assert!((pts[0].2[0] - 5.0).abs() < 1e-9 && pts[0].2[1].abs() < 1e-9);
+    }
+
+    #[test]
+    fn cc_near_tangent_overlap_collapses_to_one_point() {
+        // The solver leaves a hair of overlap at a tangency; the two analytic
+        // roots are ~2.2e-3 apart and must collapse to the single foot at (5,0).
+        let pts = cc(0.0, 0.0, 5.0, 10.0 - 1e-6, 0.0, 5.0);
+        assert_eq!(pts.len(), 1);
+        assert!((pts[0].2[0] - 5.0).abs() < 1e-3 && pts[0].2[1].abs() < 1e-3);
+    }
+
+    #[test]
+    fn cc_internal_tangency_is_one_point() {
+        let pts = cc(0.0, 0.0, 5.0, 3.0, 0.0, 2.0);  // d == r1 - r2
+        assert_eq!(pts.len(), 1);
+        assert!((pts[0].2[0] - 5.0).abs() < 1e-9 && pts[0].2[1].abs() < 1e-9);
+    }
+
+    #[test]
+    fn cc_clear_crossing_keeps_two_points() {
+        let pts = cc(0.0, 0.0, 5.0, 8.0, 0.0, 5.0);  // roots 6 apart, not tangent
+        assert_eq!(pts.len(), 2);
+    }
+
+    #[test]
+    fn cc_disjoint_circles_have_no_points() {
+        assert!(cc(0.0, 0.0, 5.0, 20.0, 0.0, 5.0).is_empty());
+    }
+
+    #[test]
+    fn near_tangent_circles_stay_two_standalone_faces() {
+        // Regression for the white-line report: two "tangent" circles the solver
+        // left a hair overlapping must NOT be sliced into half-edge arcs. The cc
+        // collapse keeps one contact -> one split each -> both standalone, no edges.
+        let geom = vec![
+            ("cA".into(), circle([0.0, 0.0], 5.0)),
+            ("cB".into(), circle([10.0 - 1e-6, 0.0], 5.0)),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 2);
+        assert!(t.edges.is_empty(), "tangent circles must emit no split edges");
+        assert_eq!(t.intersection_points.len(), 1, "one virtual tangent point");
     }
 
     #[test]
