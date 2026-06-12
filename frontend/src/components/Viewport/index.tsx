@@ -181,6 +181,7 @@ export interface ViewportHandle {
   captureScreenshot: () => Promise<string | null>
   captureScreenshotForSaving: () => Promise<string | null>
   autoZoomToFit: (force?: boolean) => void
+  cancelPendingFit: () => void
   alignCameraToPlane: (planeId: string) => void
   alignCameraToFace: (faceNormal: [number, number, number], faceCenter: [number, number, number]) => void
 }
@@ -323,11 +324,23 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     tryFit(force)
   }, [tryFit])
 
-  // Re-attempt as bodies arrive and when edit state changes (so a fit deferred
-  // during sketch edit lands once the user exits).
+  // Re-attempt only as bodies arrive: the initial (first-solve) fit retries
+  // here as geometry populates. We deliberately do NOT react to edit-state
+  // (activeFeatureId) changes: a fit must only land for the initial solve or
+  // the manual Reset Viewport button, never on edit-exit, undo, or any other
+  // solve. tryFit no-ops unless a fit is armed, so steady-state solves are inert.
   useEffect(() => {
     tryFit()
-  }, [bodies, activeFeatureId, tryFit])
+  }, [bodies, tryFit])
+
+  // Disarm any pending (deferred) fit so a subsequent doc/body change cannot
+  // reframe the camera. Undo/redo use this: undo exits the active sketch edit,
+  // which would otherwise let a fit deferred during the edit land and move the
+  // camera. Undo/redo must never change the camera.
+  const cancelPendingFit = useCallback(() => {
+    if (fitPendingRef.current) traceCamera('fit:cancel')
+    fitPendingRef.current = false
+  }, [])
 
   const alignCameraToPlane = useCallback((planeId: string) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
@@ -341,7 +354,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     alignToFace(camera, controlsRef.current, faceNormal, faceCenter)
   }, [cameraRef])
 
-  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane, alignCameraToFace }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, alignCameraToPlane, alignCameraToFace])
+  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace])
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 

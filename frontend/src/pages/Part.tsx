@@ -429,9 +429,20 @@ export default function Part() {
     useSolverStore.getState().setIsSolving(solving)
   }, [solving])
 
+  // Undo/redo must never move the camera. Disarm any pending (deferred) fit
+  // first so the doc/body change they trigger cannot reframe the viewport.
+  const handleUndoNoFit = useCallback(() => {
+    viewportRef.current?.cancelPendingFit()  // camera-only; intentional no-op when Viewport absent
+    handleUndo()
+  }, [handleUndo])
+  const handleRedoNoFit = useCallback(() => {
+    viewportRef.current?.cancelPendingFit()  // camera-only; intentional no-op when Viewport absent
+    handleRedo()
+  }, [handleRedo])
+
   usePartCommands(
-    handleUndo,
-    handleRedo,
+    handleUndoNoFit,
+    handleRedoNoFit,
     handleDeleteSelectedFeatures,
     handleToggleSketchPlaneVisibility,
     handleTogglePlaneVisibility,
