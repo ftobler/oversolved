@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
-import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline } from '@/types/cad'
+import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
+import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 
 /**
  * Register a sketch's entities and vertices with the sketchEntity and
@@ -127,15 +128,21 @@ export function buildSketchVertices(
   featureId: string,
   sketch: Sketch,
   planeMatrix: THREE.Matrix4,
+  suppressed?: Set<string>,
 ): Vertices {
   const vertices: [number, number, number][] = []
   const vertexQueries: string[] = []
   const v = new THREE.Vector3()
   const push = (entityId: string, key: string, x: number, y: number) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    const query = `vertex:${featureId}:${entityId}:${key}`
+    // A coincident partner is not pickable: its cluster leader is registered at
+    // the same spot, so hover/select resolves to the same handle the render
+    // layer draws (VertexDot suppresses the identical id).
+    if (suppressed?.has(query)) return
     v.set(x, y, 0).applyMatrix4(planeMatrix)
     vertices.push([v.x, v.y, v.z])
-    vertexQueries.push(`vertex:${featureId}:${entityId}:${key}`)
+    vertexQueries.push(query)
   }
 
   for (const [entityId, entity] of Object.entries(sketch)) {
@@ -177,9 +184,10 @@ export function useSketchIdRegistration(params: {
   sketch: Sketch | undefined
   planeTransform?: PlaneTransform
   enabled?: boolean
+  constraints?: PartConstraint[]
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, sketch, planeTransform, enabled = true } = params
+  const { featureId, sketch, planeTransform, enabled = true, constraints } = params
 
   // Build a stable matrix key from planeTransform so the hook re-runs when
   // the plane changes but not just because the prop reference shifts.
@@ -188,6 +196,13 @@ export function useSketchIdRegistration(params: {
     return planeTransform.rotation.join(',') + '|' + planeTransform.origin.join(',')
   }, [planeTransform])
 
+  // Constraint-backed coincident clusters: hide partner vertices so pick matches
+  // the deduped render. Keyed off the constraints object identity.
+  const suppressed = useMemo(
+    () => suppressedCoincidentVertexIds(constraints ?? [], featureId),
+    [constraints, featureId],
+  )
+
   useEffect(() => {
     if (!enabled) return
     if (!pipeline) return
@@ -195,7 +210,7 @@ export function useSketchIdRegistration(params: {
 
     const m = buildPlaneMatrix(planeTransform)
     const seg = buildSketchSegments(featureId, sketch, m)
-    const vtx = buildSketchVertices(featureId, sketch, m)
+    const vtx = buildSketchVertices(featureId, sketch, m, suppressed)
 
     if (seg.edgeQueries.length > 0) {
       pipeline.sketchEntityLayer.registerBody({
@@ -222,5 +237,5 @@ export function useSketchIdRegistration(params: {
     // planeKey is the load-bearing dep for plane changes; planeTransform
     // object identity isn't.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline, featureId, sketch, planeKey, enabled])
+  }, [pipeline, featureId, sketch, planeKey, enabled, suppressed])
 }

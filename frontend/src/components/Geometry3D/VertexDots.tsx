@@ -58,10 +58,13 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
  *
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
  *  is visual-only — no R3F event props. */
-export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing }: {
+export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing, suppressedVertexIds }: {
   x: number; y: number; px: number; baseColor: string
   featureId?: string; entityId?: string; vertexKey?: string
   isEditing?: boolean
+  // Composite ids hidden because a coincident-bonded leader already draws this
+  // point. Pick registration suppresses the same ids so render and pick agree.
+  suppressedVertexIds?: Set<string>
 }) {
   const vertId = featureId && entityId && vertexKey ? `vertex:${featureId}:${entityId}:${vertexKey}` : undefined
 
@@ -76,6 +79,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
+
+  // After the hooks (rules-of-hooks): a coincident partner is not drawn -- the
+  // cluster leader stands in for it, so the merged point reads as one handle.
+  if (vertId && suppressedVertexIds?.has(vertId)) return null
 
   return (
     <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={renderOrder} depthTest={depthTest} />
