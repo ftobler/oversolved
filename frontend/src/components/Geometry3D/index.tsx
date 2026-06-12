@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartFeature } from '@/types/cad'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
 import { VertexDot, VertexHighlight, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
@@ -79,7 +79,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     () => {
       if (!drag || drag.featureId !== featureId) return null
       if (drag.type === 'vertex' && wasmDrag.engaged) return wasmDrag.sketch
-      if (drag.type === 'edge') return edgeDragPreview(solved, drag)
+      if (drag.type === 'edge') return edgeDragPreview(solved, drag as VertexOrEdgeDrag & { type: 'edge' })
       if (drag.type === 'dim_label') return solved
       return null
     },
