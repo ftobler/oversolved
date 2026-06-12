@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { planeLabel } from '@/components/Geometry3D/utils'
-import { buildSurfaceShapes, surfaceFillStyle, edgeColorStyle } from '@/components/Geometry3D/Surfaces'
+import { buildSurfaceShapes, surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
 import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE } from '@/utils/core/partColors'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Topology } from '@/types/cad'
@@ -66,15 +66,6 @@ describe('planeLabel', () => {
   })
 })
 
-describe('edgeColorStyle', () => {
-  it('selected edges always use the selection color regardless of mode', () => {
-    expect(edgeColorStyle('editing', true)).toBe(COLOR_SELECTED)
-  })
-
-  it('unselected edges are white in editing mode (active closed-loop indicator)', () => {
-    expect(edgeColorStyle('editing', false)).toBe('white')
-  })
-})
 
 // 3c: buildSurfaceShapes
 describe('buildSurfaceShapes', () => {
@@ -157,10 +148,11 @@ describe('buildSurfaceShapes', () => {
 // 3f: surfaces are not draggable (checklist)
 // SurfaceMesh does not attach onPointerDown — verified by code review.
 
-// 3g: R3F mesh click suppression in editing mode (SurfaceMesh and EdgeMesh)
-// mode='editing' means the ID buffer owns entity/vertex clicks; the R3F meshes must
-// NOT call toggleNormalSelection. They still stopPropagation to prevent DrawPlane
-// from clearing the ID-buffer selection. Only mode='view' allows R3F mesh selection.
+// 3g: R3F mesh click suppression in editing mode (SurfaceMesh)
+// mode='editing' means the ID buffer owns entity/vertex/edge clicks; the R3F surface
+// mesh must NOT call toggleNormalSelection. It still stopPropagation to prevent
+// DrawPlane from clearing the ID-buffer selection. Topology edges are no longer drawn
+// as R3F lines -- they are picked through the ID buffer (registerTopologyEdges).
 describe('topology mesh click suppression during editing', () => {
   beforeEach(() => {
     useSketchEditorStore.getState().clearNormalSelection()

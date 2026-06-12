@@ -15,7 +15,7 @@ import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
 import { DimensionPreview } from '@/components/Geometry3D/dimensions/Preview'
 
 // Topology surface rendering
-import { TopologySurfaces, TopologyEdges } from '@/components/Geometry3D/Surfaces'
+import { TopologySurfaces } from '@/components/Geometry3D/Surfaces'
 
 // Dragging
 import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
@@ -198,7 +198,6 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
-      {topology && <TopologyEdges topology={topology} featureId={featureId} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} isEditing={isEditing} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
@@ -216,6 +215,6 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 export { VertexDot, VertexHighlight, ProjectedOriginPoint }
 export { EntityLines, ProjectedEntities }
 export { ConstraintOverlays }
-export { TopologySurfaces, TopologyEdges }
+export { TopologySurfaces }
 export { DragPlane, DragSnapIndicator, DragAlignmentIndicator }
 export { DrawPreview, DrawPlane }
