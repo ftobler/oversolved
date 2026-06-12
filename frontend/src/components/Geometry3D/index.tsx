@@ -23,9 +23,9 @@ import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/componen
 // Inferred contact points: tangencies + curve-curve intersections (lazy inferred materialization)
 import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
 
-// Soft solve: frontend-only drag preview honoring coincidence constraints.
-// Used as fallback for edge/dim_label drags (WASM path handles vertex drags).
-import { softSolve } from '@/utils/geometry/softSolve'
+// Edge drag preview: frontend-only translation of the dragged entity's vertices.
+// No constraint resolution -- the WASM hard solve handles that on pointer-up.
+import { edgeDragPreview } from '@/utils/geometry/edgeDragPreview'
 
 // WASM drag solve: runs the real solver on every drag frame.
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
@@ -56,7 +56,6 @@ export interface Geometry3DProps {
   entityStatus?: EntityStatus
   showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>
-  /** Full feature definition; used by soft solve to honour coincidence constraints during drag. */
   featureDef?: PartFeature
 }
 
@@ -70,26 +69,27 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // drags, unmapped vertices, or while the main-thread solver is still loading.
   const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis })
 
-  // During drag on this feature, show the WASM preview for vertex drags; fall
-  // back to softSolve only when the WASM path is not engaged. While engaged
-  // but before the first WASM frame lands (at most one rAF tick), preview is
-  // null and displaySketch falls through to `solved` -- never softSolve, whose
-  // disagreement with the first WASM frame would show as a jump. Hard solve
-  // fires on pointer-up via onMutation (unchanged).
+  // During drag on this feature: vertex drags use WASM; edge drags use a simple
+  // translation preview (no constraint resolution -- the hard solve handles it
+  // on pointer-up). While WASM is engaged but before the first frame lands (at
+  // most one rAF tick), preview is null and displaySketch falls through to
+  // `solved` -- no disagreement with the first WASM frame. Hard solve fires on
+  // pointer-up via onMutation (unchanged).
   const preview = useMemo(
     () => {
       if (!drag || drag.featureId !== featureId) return null
       if (drag.type === 'vertex' && wasmDrag.engaged) return wasmDrag.sketch
-      return softSolve({ sketch: solved, drag, feature: featureDef })
+      if (drag.type === 'edge') return edgeDragPreview(solved, drag)
+      return null
     },
     // Depend on the result fields, not the result object: the hook returns a
     // fresh object every render, which would defeat the memo.
-    [solved, drag, featureId, featureDef, wasmDrag.engaged, wasmDrag.sketch],
+    [solved, drag, featureId, wasmDrag.engaged, wasmDrag.sketch],
   )
 
   // On pointer-up the committed mutation re-solves asynchronously. Until the
-  // fresh `solved` arrives we keep showing the last soft-solve preview, so the
-  // geometry doesn't snap back to its pre-drag position for the solver round-trip.
+  // fresh `solved` arrives we keep showing the last drag preview, so the geometry
+  // doesn't snap back to its pre-drag position for the solver round-trip.
   // Derived synchronously via the "adjust state during render" pattern (no effect,
   // so no one-frame revert). A new `solved` identity supersedes the held preview.
   const [held, setHeld] = useState<Sketch | null>(null)

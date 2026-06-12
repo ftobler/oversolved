@@ -17,7 +17,7 @@
  *  - Every successful frame is published to the dragSolveRegistry so the
  *    pointer-up commit can write the on-screen state into the doc.
  *  - Edge/dim_label drags and unmapped vertices return engaged=false; the
- *    caller falls back to softSolve.
+ *    caller shows a translation preview or the static sketch.
  */
 import { useRef, useEffect, useMemo, useState } from 'react'
 import type { Sketch, PartFeature } from '@/types/cad'
@@ -44,7 +44,7 @@ export interface WasmDragSolveResult {
   /** The WASM-solved preview, or null before the first frame lands. */
   sketch: Sketch | null
   /** True when the WASM path owns this drag (context built + solver loaded).
-   *  The caller must NOT softSolve then -- a one-frame softSolve preview that
+    *  The caller must NOT show a fallback preview then -- a one-frame stale preview that
    *  disagrees with the first WASM frame produces a visible jump. */
   engaged: boolean
 }
@@ -60,18 +60,18 @@ export function useWasmDragSolve(
 
   // Main-thread solver init. Idempotent and failure-tolerant (resolves null
   // when /wasm/ is not provisioned); until it lands, engaged stays false and
-  // drags fall back to softSolve.
+  // vertex drags show the static sketch (no preview for at most one rAF tick).
   useEffect(() => {
     void initSketchSolver()
   }, [])
 
   // ── Build the drag context at pointer-down ───────────────────────────
   // A useMemo, not an effect: the engagement decision must be synchronous
-  // with the render that first sees the drag, or the caller would softSolve
-  // for one frame. prepareDragContext is pure. The memo key is the drag
-  // identity (entity + vertex), stable across pointermove updates.
+  // with the render that first sees the drag, or the caller would show a
+  // stale fallback for one frame. prepareDragContext is pure. The memo key
+  // is the drag identity (entity + vertex), stable across pointermove updates.
   // Solver readiness is latched here per drag on purpose: if the WASM is
-  // still loading at pointer-down, the WHOLE drag stays on softSolve --
+  // still loading at pointer-down, the WHOLE drag shows the static sketch --
   // flipping to the WASM path mid-drag would flash a disagreeing frame.
   const isVertexDragHere =
     isDraggingThis && !!drag && drag.type === 'vertex' && drag.featureId === featureId

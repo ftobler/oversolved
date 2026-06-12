@@ -140,7 +140,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
           entityCandidates.push(...sketchToEntityCandidates(otherSketch, otherFeatId, 'other_sketch'))
         }
       }
-      // Coincident partners of the dragged vertex move with it (softSolve keeps
+      // Coincident partners of the dragged vertex move with it (WASM keeps
       // them on top of the dragged dot). Excluding them stops the snap indicator
       // from latching onto a partner sitting under the cursor.
       const bondedVertexIds = collectCoincidentVertexIds(

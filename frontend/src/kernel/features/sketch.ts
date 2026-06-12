@@ -282,8 +282,8 @@ export interface DragContext {
  * are dropped by partDocToSketches).
  *
  * Returns null when the feature does not lower, the dragged entity is not in
- * the layout, or the vertex has no direct param mapping (caller falls back to
- * softSolve).
+ * the layout, or the vertex has no direct param mapping (caller shows the
+ * static sketch or a simple translation preview).
  */
 export function prepareDragContext(
   feature: PartFeature,

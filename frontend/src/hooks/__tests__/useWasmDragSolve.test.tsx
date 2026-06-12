@@ -96,10 +96,10 @@ describe('useWasmDragSolve', () => {
     expect(mockPrepare).not.toHaveBeenCalled()
   })
 
-  it('engages synchronously on the first render that sees a vertex drag (no softSolve flash)', () => {
+  it('engages synchronously on the first render that sees a vertex drag (no fallback flash)', () => {
     const { result } = renderHook(() =>
       useWasmDragSolve({ featureId: 'S1', featureDef, drag: vertexDrag([1, 1]), isDraggingThis: true }))
-    // Engaged before any rAF tick -- the caller must not softSolve frame 0.
+    // Engaged before any rAF tick -- the caller must not show a fallback frame 0.
     expect(result.current.engaged).toBe(true)
     expect(result.current.sketch).toBeNull()
     expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', 'start')

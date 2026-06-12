@@ -207,7 +207,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(Math.abs(leftSketch.start[0] - leftSketch.end[0])).toBeLessThan(CONSTRAINT_TOL)
   })
 
-  it('length constraint is honoured during drag (softSolve could not)', () => {
+  it('length constraint is honoured during drag (pure translation could not)', () => {
     const ctx = prepareDragContext(rectSketchFeature('lengthTest', 10, 6), 'bottom', 'start')!
     const result = solveSketchDrag(ctx, [...ctx.params0], [2, 0])
 
@@ -236,7 +236,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(dist).toBeLessThan(1.0)
   })
 
-  it('spline control point drags via the registry mapping (was silent softSolve fallback)', () => {
+  it('spline control point drags via the registry mapping (was silent WASM-fallback)', () => {
     const feature = {
       id: 'splineSketch', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [{ id: 'S1', kind: 'spline' }],
