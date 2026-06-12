@@ -123,7 +123,7 @@ describe('Part - eliminate redundant solves', () => {
 
     // Adding a sketch also auto-enters sketch edit, which fires a second
     // (preview) solve. Previously the IndexedDB build cache short-circuited
-    // that second solve before it reached the backend; with the cache removed
+    // that second solve before it reached the worker; with the cache removed
     // it now runs through the local kernel (fast, checkpoint-cached).
     await waitFor(() => {
       expect(countSolveCalls()).toBe(2)

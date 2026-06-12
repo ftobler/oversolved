@@ -386,7 +386,7 @@ describe('parseTarget for feature-plane references', () => {
   })
 
   it('passes through @extrude feature-plane ref unchanged', () => {
-    // @extrude1 will resolve to extrude1's origin/top plane (TBD by backend).
+    // @extrude1 will resolve to extrude1's origin/top plane (resolved by the kernel).
     // The frontend must pass it through without modification.
     expect(parseTarget('@extrude1', 'sketch2')).toBe('@extrude1')
   })

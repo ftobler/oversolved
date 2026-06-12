@@ -4,8 +4,7 @@
  * ``solveLocally`` loads OCC.js lazily, wires the builder deps (feature solver
  * adapter, tessellation, repository), calls ``build()``, and returns a
  * ``BuildResponse`` compatible with the existing ``applySolveResult`` path.
- * When OCC.js is unavailable it returns ``null`` so the caller can fall back
- * to the Python WebSocket.
+ * When OCC.js is unavailable it returns ``null``.
  */
 
 import { build, type BuildDeps, type BuildResponse } from './builder'
@@ -197,7 +196,7 @@ export function extractBrepMetadata(
  * Solve a document locally through the TS/WASM kernel.
  *
  * Returns the ``BuildResponse`` on success, or ``null`` when OCC.js is not
- * available (caller should fall back to Python WebSocket).
+ * available (will return null).
  */
 export async function solveLocally(
   spec: Record<string, unknown>,
@@ -216,7 +215,7 @@ export async function solveLocally(
   // absent) is fine — sketch features then throw and the builder catches them.
   const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) {
-    console.log('[solveLocally] OCC.js not available, returning null (fallback to Python)')
+    console.log('[solveLocally] OCC.js not available, returning null')
     return null
   }
   console.log('[solveLocally] OCC.js loaded, running build()')

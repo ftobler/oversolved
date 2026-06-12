@@ -43,9 +43,9 @@ function makeVertexDrag(overrides: Partial<VertexOrEdgeDrag> = {}): DragState {
 
 // ─── test_soft_solve_is_frontend_only ───
 //
-// The soft solve must not send any WebSocket message during a drag.
+// The soft solve must not trigger a hard solve during a drag.
 // Only a hard solve (triggered by onMutation on pointer-up) should communicate
-// with the backend.
+// with the solver.
 describe('test_soft_solve_is_frontend_only', () => {
   it('softSolve does not construct WebSocket or call any async operation', () => {
     // Verify softSolve is synchronous and returns a plain object, not a Promise.
@@ -158,7 +158,7 @@ describe('test_soft_solve_honours_coincidence', () => {
 // ─── test_soft_solve_does_not_persist ───
 //
 // Pointer-up must commit the hard-solve result, not the last soft-solve result.
-// The hard solve runs via onMutation -> reSolve (backend WebSocket).
+// The hard solve runs via onMutation -> reSolve (WASM kernel).
 // This test verifies that:
 //   - softSolve produces its preview independently of the committed sketch,
 //   - the final committed value is the hard-solve result (the mutation's target position),
@@ -171,7 +171,7 @@ describe('test_soft_solve_does_not_persist', () => {
   it('soft-solve preview differs from committed hard-solve result when they diverge', () => {
     // Scenario:
     //   Soft solve: moves L1.end to [15, 5] (raw cursor position, no constraint resolution)
-    //   Hard solve: backend resolves the coincident constraint, places L1.end at exactly [14, 4]
+    //   Hard solve: the kernel resolves the coincident constraint, places L1.end at exactly [14, 4]
     //   After pointer-up the committed sketch uses the hard-solve value.
 
     const sketch = makeSketchWithLines()
@@ -183,13 +183,13 @@ describe('test_soft_solve_does_not_persist', () => {
     expect((softResult.L1 as LineEntity).end).toEqual([15, 5])
 
     // After pointer-up, onMutation fires with the final cursor position [15, 5].
-    // The backend hard solve returns a fully-resolved sketch. Simulate the backend
+    // The WASM kernel hard solve returns a fully-resolved sketch. Simulate the kernel
     // snapping to a slightly different position due to constraint resolution.
     const hardSolvedSketch: Sketch = structuredClone(sketch)
     ;(hardSolvedSketch.L1 as LineEntity).end = [14, 4]
     ;(hardSolvedSketch.L2 as LineEntity).start = [14, 4]
 
-    // The committed (hard-solve) position is what was returned by the backend.
+    // The committed (hard-solve) position is what was returned by the kernel.
     const committed = hardSolvedSketch
     expect((committed.L1 as LineEntity).end).toEqual([14, 4])
 

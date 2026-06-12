@@ -10,8 +10,8 @@ The solver uses queries to reference geometry. A query is a string (or typed obj
 
 There are two element-key conventions, one per repository:
 
-- **Local sketch repo** (`solver.py` `_get_or_build_repo`): concatenated, no separator. Example: `sketch1line1start`. Matches `$` `LocalQuery` resolution (`context + ele + sub`).
-- **Global repo** (`solver_registry.py`): slash-separated. Example: `sketch1/line1/start`. Matches `@` `AbsoluteQuery` resolution (`feat + "/" + ele + "/" + sub`).
+- **Local sketch repo** (concatenated): no separator. Example: `sketch1line1start`. Matches `$` `LocalQuery` resolution (`context + ele + sub`).
+- **Global repo** (slash-separated): Example: `sketch1/line1/start`. Matches `@` `AbsoluteQuery` resolution (`feat + "/" + ele + "/" + sub`).
 
 ## Query Syntax
 
@@ -84,7 +84,7 @@ Faces of 3D bodies use:
 
 The ancestor ID combines feature ID with a face index. Resolution: parse → lookup in `Repository.ancestral` by subset match → filter by type → return.
 
-Frontend: Three.js `faceIndex` → backend `triangle_to_face` → B-rep face number → `face_queries[faceIndex]` → query string.
+Frontend: Three.js `faceIndex` → `triangle_to_face` → B-rep face number → `face_queries[faceIndex]` → query string.
 
 ## Repository Resolution
 

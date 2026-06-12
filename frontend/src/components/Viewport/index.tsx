@@ -442,7 +442,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const activeResult = solveResults?.[activeFeatureId]
     const activeFeature = features?.find(f => f.id === activeFeatureId)
 
-    // Resolve plane transform: backend-provided or derived from builtin plane string.
+    // Resolve plane transform: kernel-provided or derived from builtin plane string.
     const planeTransform = activeResult?.plane_transform
       ?? (activeFeature?.plane ? builtinPlaneTransform(activeFeature.plane) : null)
 

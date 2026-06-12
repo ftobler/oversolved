@@ -1,4 +1,4 @@
-"""Flask application for the Oversolved solver API."""
+"""Flask application for the Oversolved API."""
 
 import logging
 import os

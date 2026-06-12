@@ -17,7 +17,7 @@ import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
  *
  * @param selection - Set of selection strings (e.g., "vertex:S1:L1:start", "@builtin_plane_front")
  * @param sketch - Current sketch geometry (resolved entities)
- * @param solveResults - Backend solve results containing plane data and other 3D information
+ * @param solveResults - WASM kernel solve results containing plane data and other 3D information
  * @returns Array of measurement strings (typically 0 or 1 element)
  */
 export function computeMeasurements(

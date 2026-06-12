@@ -13,7 +13,7 @@ import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 // To add a new constraint:
 //   1. Add an entry to CONSTRAINTS below.
 //   2. Add render logic in utils/geometryMapping.ts  (computeConstraintRender).
-//   3. Add solver residual in the backend  (solver.py → residuals).
+//   3. Add solver residual in the WASM kernel  (sketch solver).
 //   4. Optionally add an SVG icon in assets/icons/.
 
 // ─── Constraint definition ───

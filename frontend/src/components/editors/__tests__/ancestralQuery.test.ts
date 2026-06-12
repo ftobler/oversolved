@@ -23,8 +23,8 @@ beforeEach(() => {
 
 describe('test_click_face_stores_ancestral_query', () => {
   it('face query stored by Body3D starts with ? (ancestry format)', () => {
-    // Body3D.tsx resolveFaceQuery returns face_queries[i] from the backend
-    // when available.  Those backend-provided strings are ancestral queries.
+    // Body3D.tsx resolveFaceQuery returns face_queries[i] from the kernel
+    // when available.  Those kernel-provided strings are ancestral queries.
     const ancestralQuery = '?d,d;@extrude1face0@extrude1face1:face'
     useSketchEditorStore.getState().toggleNormalSelection(ancestralQuery)
     const sel = useSketchEditorStore.getState().normalSelection

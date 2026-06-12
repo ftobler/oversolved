@@ -74,7 +74,7 @@ Three classes of selection:
 
 Selection IDs: `entity:<feat>:<eid>`, `vertex:<feat>:<eid>:<key>`, `constraint:<feat>:<cid>`, `face:<feat>:<?query>`, `@builtin_*`, `@<body>/face/<n>` etc.
 
-3D B-rep face selection: Three.js `faceIndex` → backend `triangle_to_face` → B-rep face index → `face_queries[faceIndex]` → stable query string.
+3D B-rep face selection: Three.js `faceIndex` → `triangle_to_face` → B-rep face index → `face_queries[faceIndex]` → stable query string.
 
 ### Layer 4: Tool Layer
 
@@ -121,7 +121,7 @@ Hit geometry: entities via cylinder per segment (8px radius), vertices via spher
 
 ```
 User interaction → Tool logic → Mutation object → onMutation
-  → Part.tsx → YAML AST updated → Backend re-solve
+  → Part.tsx → YAML AST updated → WASM kernel re-solve
   → Geometry returned → Store updated → Scene re-rendered
 ```
 

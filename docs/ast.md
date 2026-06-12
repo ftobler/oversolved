@@ -218,4 +218,4 @@ Determined from Jacobian rank at the solution:
 
 ## Frontend Adapter Note
 
-The frontend rendering layer (`Geometry3D`) converts solver result flat arrays to named-field format (`{line1: {start: [x,y], end: [x,y]}}`). Flat arrays are used on the wire so server output is isomorphic with the document `initial` field.
+The frontend rendering layer (`Geometry3D`) converts solver result flat arrays to named-field format (`{line1: {start: [x,y], end: [x,y]}}`). Flat arrays are used on the wire so solver output is isomorphic with the document `initial` field.

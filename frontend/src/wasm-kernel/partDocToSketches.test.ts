@@ -34,7 +34,7 @@ describe('partDocToSketches', () => {
     expect(c[2]).toMatchObject({ kind: 'length', target: { entity: 'bottom' }, value: 10 })
   })
 
-  it('drops constraints whose refs do not resolve locally (mirrors backend filter)', () => {
+  it('drops constraints whose refs do not resolve locally (mirrors historical behavior)', () => {
     const features: PartFeature[] = [
       {
         id: 'sk1',

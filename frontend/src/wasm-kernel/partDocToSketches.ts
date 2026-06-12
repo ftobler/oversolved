@@ -6,8 +6,8 @@
  * which we resolve to `{entity, point}` dict form here -- the same sketch-local
  * resolution `geometryMapping.resolveQueryRef` already does for rendering, NOT
  * the ancestral / projection query system (that is phase 2c). A constraint whose
- * refs do not all resolve to local entities is dropped, mirroring the backend's
- * `_filter_local_constraints`; the Python solver drops them too, so the
+ * refs do not all resolve to local entities is dropped, mirroring the previous
+ * `_filter_local_constraints` behavior; the Python solver used to drop them too, so the
  * constraint sets stay aligned.
  *
  * Sketches that need resolution we cannot do client-side yet -- projected
@@ -74,7 +74,7 @@ function resolveLocal(
 
 /**
  * Lower one constraint to dict-ref form. Returns null (drop the constraint) when
- * any present ref does not resolve to a local entity -- matching the backend.
+ * any present ref does not resolve to a local entity -- matching the historical behavior.
  */
 function lowerConstraint(
   c: PartConstraint,

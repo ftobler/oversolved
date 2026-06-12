@@ -51,7 +51,7 @@ function _parseLocal(s: string): LocalQuery {
 }
 
 function _parseAbsolute(s: string): AbsoluteQuery {
-  // feature_id / eid split is resolved by the backend resolver
+  // feature_id / eid split is resolved by the query resolver
   return { kind: "absolute", featureId: s.slice(1) }
 }
 
