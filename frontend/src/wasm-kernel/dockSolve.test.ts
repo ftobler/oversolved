@@ -96,6 +96,29 @@ describe.skipIf(!bytes)('docked point', () => {
     expect(p[1]).toBeCloseTo(0, 3)
   })
 
+  it('materialize-on-reference: a dock handle in a coincident solves to the contact', () => {
+    const doc = tangentDoc()
+    // A free point elsewhere; constrain it coincident to the tangent contact by
+    // naming the dock handle. The interception materializes the contact point and
+    // rewrites the coincident to it.
+    const sk = doc.features![0]
+    sk.entities!.push({ id: 'free', kind: 'point' })
+    sk.initial!['free'] = [3, 4]
+    applyAddConstraint(doc, 'sk', 'coincident', ['vertex:sk:free:xy', `dock:sk:${hostId(doc)}`])
+
+    const solved = solveFeature(doc)
+    const mat = doc.features![0].entities!.filter(e => e.kind === 'point').map(e => e.id)
+    expect(mat).toHaveLength(2)
+    const contactId = mat.find(id => id !== 'free')!
+    const c = solved[contactId]
+    const f = solved.free
+    // Contact sits on both circles and the free point rode to it.
+    expect(distTo(c, [solved.circA[0], solved.circA[1]])).toBeCloseTo(solved.circA[2], 4)
+    expect(distTo(c, [solved.circB[0], solved.circB[1]])).toBeCloseTo(solved.circB[2], 4)
+    expect(f[0]).toBeCloseTo(c[0], 4)
+    expect(f[1]).toBeCloseTo(c[1], 4)
+  })
+
   it('is idempotent: docking the same host twice reuses the point', () => {
     const doc = tangentDoc()
     applyAddDock(doc, 'sk', [5, 0], hostId(doc))

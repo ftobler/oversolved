@@ -2,6 +2,7 @@ import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/c
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
+import { dockLocationOf } from '@/utils/geometry/dockHosts'
 
 // ─── Internals ───
 
@@ -174,6 +175,9 @@ export function applyAddConstraint(
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.constraints) feature.constraints = []
+  // Materialize-on-reference: a `dock:` handle target promotes to a real point
+  // before the constraint is built, so the rest of this function never sees one.
+  targets = _resolveDockTargets(doc, featureId, targets)
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
@@ -442,24 +446,29 @@ export function applyAddPointAtIntersection(
  *  constraints reference it, it is draggable, and deleting the host just floats it.
  *
  *  Idempotent: a second materialization of the same host reuses the existing P,
- *  so naming the same contact twice never spawns a duplicate point. */
+ *  so naming the same contact twice never spawns a duplicate point.
+ *
+ *  Returns the materialized point's entity id (new or reused), or null when the
+ *  host does not exist. The id lets the caller rewrite an authored constraint to
+ *  reference the point -- the materialize-on-reference path in applyAddConstraint. */
 export function applyAddDock(
   doc: PartDoc,
   featureId: string,
   at: [number, number],
   hostConstraintId: string,
-): void {
+): string | null {
   const feature = findFeature(doc, featureId)
-  if (!feature) return
+  if (!feature) return null
   if (!feature.entities) feature.entities = []
   if (!feature.initial) feature.initial = {}
   if (!feature.constraints) feature.constraints = []
 
   const host = feature.constraints.find(c => c.id === hostConstraintId)
-  if (!host) return  // nothing to dock to
+  if (!host) return null  // nothing to dock to
 
   // Idempotent: reuse the point of an existing dock on the same host.
-  if (feature.constraints.some(c => c.kind === 'dock' && c.host === hostConstraintId)) return
+  const existingDock = feature.constraints.find(c => c.kind === 'dock' && c.host === hostConstraintId)
+  if (existingDock) return _dockPointId(existingDock, new Set(feature.entities.map(e => e.id)))
 
   const existing = new Set(feature.entities.map(e => e.id))
   let eid = randomId(12)
@@ -473,6 +482,47 @@ export function applyAddDock(
     kind: 'dock',
     point: parseTarget(`vertex:${featureId}:${eid}:xy`, featureId),
     host: hostConstraintId,
+  })
+  return eid
+}
+
+/** Extract the point entity id a `dock` constraint names, from either the live
+ *  `$<eid>xy` wire form or the resolved `{entity, point}` dict form. */
+function _dockPointId(dock: PartConstraint, knownIds: Set<string>): string | null {
+  const ref = dock.point
+  if (ref && typeof ref === 'object') {
+    const e = (ref as { entity?: unknown }).entity
+    return typeof e === 'string' ? e : null
+  }
+  if (typeof ref === 'string' && ref.startsWith('$')) {
+    const bare = ref.slice(1)
+    if (bare.endsWith('xy')) {
+      const eid = bare.slice(0, -2)
+      if (knownIds.has(eid)) return eid
+    }
+  }
+  return null
+}
+
+/** Materialize-on-reference: replace any `dock:<featureId>:<hostId>` handle in a
+ *  constraint's target list with the vertex ref of its materialized point. The act
+ *  of naming an inferred dock is what makes it real (lazy inferred materialization)
+ *  -- so authoring a constraint against a dock handle inserts the point + dock
+ *  constraint (or reuses an existing one) and rewrites the operand to that point.
+ *  The seed location is recomputed from the current solved params, never carried
+ *  on the handle, so it cannot go stale. Non-dock targets pass through untouched. */
+function _resolveDockTargets(doc: PartDoc, featureId: string, targets: string[]): string[] {
+  if (!targets.some(t => t.startsWith('dock:'))) return targets
+  const feature = findFeature(doc, featureId)
+  if (!feature) return targets
+  return targets.map(t => {
+    if (!t.startsWith('dock:')) return t
+    const parts = t.split(':')
+    const fid = parts[1]
+    const hostId = parts.slice(2).join(':')  // host ids are random base64url, colon-free, but be safe
+    const at = dockLocationOf(feature.entities ?? [], feature.constraints ?? [], feature.initial ?? {}, hostId)
+    const pid = applyAddDock(doc, fid, at ?? [0, 0], hostId)
+    return pid ? `vertex:${fid}:${pid}:xy` : t
   })
 }
 

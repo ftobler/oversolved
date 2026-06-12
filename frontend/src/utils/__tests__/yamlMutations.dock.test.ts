@@ -61,3 +61,48 @@ describe('applyAddDock', () => {
     expect(docks(doc)).toHaveLength(0)
   })
 })
+
+const coincidents = (doc: PartDoc) => (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')
+
+describe('applyAddConstraint dock interception (materialize-on-reference)', () => {
+  it('a dock: handle target materializes the point and rewrites the constraint to it', () => {
+    const doc = makeSketchDoc()
+    sketch(doc).entities!.push({ id: 'free', kind: 'point' })
+    sketch(doc).initial!['free'] = [9, 9]
+
+    // Author coincident(freePoint, dockHandle). Naming the dock makes it real.
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:free:xy',
+      `dock:Sketch1:${hostId(doc)}`,
+    ])
+
+    // The dock materialized: a new point + a dock constraint exist.
+    expect(points(doc)).toHaveLength(2)  // 'free' plus the materialized contact
+    expect(docks(doc)).toHaveLength(1)
+    const matId = docks(doc)[0].host === hostId(doc)
+      ? points(doc).find(p => p.id !== 'free')!.id
+      : null
+    expect(matId).not.toBeNull()
+
+    // The authored coincident now references the materialized point, not the handle.
+    const cs = coincidents(doc)
+    expect(cs).toHaveLength(1)
+    const blob = JSON.stringify(cs[0])
+    expect(blob).toContain('free')
+    expect(blob).toContain(matId!)
+    expect(blob).not.toContain('dock:')
+  })
+
+  it('two constraints naming the same dock share one materialized point (idempotent)', () => {
+    const doc = makeSketchDoc()
+    sketch(doc).entities!.push({ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' })
+    sketch(doc).initial!['p1'] = [1, 1]
+    sketch(doc).initial!['p2'] = [2, 2]
+    const handle = `dock:Sketch1:${hostId(doc)}`
+    applyAddConstraint(doc, 'Sketch1', 'coincident', ['vertex:Sketch1:p1:xy', handle])
+    applyAddConstraint(doc, 'Sketch1', 'coincident', ['vertex:Sketch1:p2:xy', handle])
+    // p1, p2, plus exactly ONE materialized contact point.
+    expect(points(doc)).toHaveLength(3)
+    expect(docks(doc)).toHaveLength(1)
+  })
+})
