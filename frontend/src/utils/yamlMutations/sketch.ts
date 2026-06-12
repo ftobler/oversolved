@@ -384,6 +384,56 @@ export function applyAddPointWithConstraint(
   ])
 }
 
+/** Materialize a real `point` entity at a curve-curve contact (a tangency or an
+ *  intersection) and pin it to every curve through the point with a
+ *  `coincident`-to-locus constraint.
+ *
+ *  Point-on-curve is just the locus form of `coincident` (see `r_coincident` in
+ *  the solver): `coincident(pointVertex, entityLocus)` -- where the locus ref is
+ *  the whole entity `entity:<fid>:<eid>` with no vertexKey -- keeps the point on
+ *  that curve. With >= 2 curves the point is pinned to the contact and stays
+ *  there as the sketch solves, so it becomes a normal draggable point that other
+ *  constraints can reference. Fewer than 2 distinct usable loci authors a free
+ *  point with no constraint: a single locus is not an intersection. */
+export function applyAddPointAtIntersection(
+  doc: PartDoc,
+  featureId: string,
+  at: [number, number],
+  curveEntityIds: string[],
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return
+  if (!feature.entities) feature.entities = []
+  if (!feature.initial) feature.initial = {}
+
+  // Usable loci: distinct, existing, non-point curves. A point entity has no
+  // locus to lie on; construction curves are allowed (a construction tangency is
+  // still a real contact point).
+  const seen = new Set<string>()
+  const loci: string[] = []
+  for (const cid of curveEntityIds) {
+    if (seen.has(cid)) continue
+    seen.add(cid)
+    const def = feature.entities.find(e => e.id === cid)
+    if (!def || def.kind === 'point') continue
+    loci.push(cid)
+  }
+
+  const existing = new Set(feature.entities.map(e => e.id))
+  let eid = randomId(12)
+  while (existing.has(eid)) eid = randomId(12)
+  feature.entities.push({ id: eid, kind: 'point' })
+  feature.initial[eid] = [round(at[0]), round(at[1])]
+
+  if (loci.length < 2) return  // not an intersection; leave a free point
+  for (const cid of loci) {
+    applyAddConstraint(doc, featureId, 'coincident', [
+      `vertex:${featureId}:${eid}:xy`,
+      `entity:${featureId}:${cid}`,
+    ])
+  }
+}
+
 export function applyAddRect(
   doc: PartDoc,
   featureId: string,
