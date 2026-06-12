@@ -7,6 +7,7 @@ import {
   applyAddEntity,
   applyAddEntityWithConstraint,
   applyAddProjectedEntity,
+  applyAddPointAtIntersection,
   applyAddRect,
   applyAddCenterRect,
   applyAddNgon,
@@ -104,6 +105,8 @@ export const mutationHandlers: MutationHandlers = {
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId),
   add_projected_entity: (next, m) =>
     applyAddProjectedEntity(next, m.featureId, m.kind, m.source),
+  add_point_at_intersection: (next, m) =>
+    applyAddPointAtIntersection(next, m.featureId, m.at, m.curveEntityIds),
   add_rect: (next, m) =>
     applyAddRect(next, m.featureId, m.p0, m.p1),
   add_center_rect: (next, m) =>

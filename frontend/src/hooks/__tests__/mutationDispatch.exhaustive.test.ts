@@ -12,6 +12,7 @@ export const ALL_MUTATION_TYPES = [
   'add_entity',
   'add_entity_with_constraint',
   'add_projected_entity',
+  'add_point_at_intersection',
   'add_rect',
   'add_center_rect',
   'add_ngon',
