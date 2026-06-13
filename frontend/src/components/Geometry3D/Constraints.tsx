@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -9,17 +9,26 @@ import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
 
 function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
   const [hovered, setHovered] = useState(false)
+  const wasHoveredRef = useRef(false)
   const cId = `constraint:${featureId}:${id}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(cId))
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
+
+  // Clear hover state on unmount so deleting a hovered constraint tile does not
+  // leave the geometry stuck in the constraint-highlight color.
+  useEffect(() => {
+    return () => {
+      if (wasHoveredRef.current) setHoveredConstraintEntities(new Set())
+    }
+  }, [setHoveredConstraintEntities])
 
   const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
   const fg_style = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
   return (
     <div
       key={id}
-      onMouseEnter={() => { setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
-      onMouseLeave={() => { setHovered(false); setHoveredConstraintEntities(new Set()) }}
+      onMouseEnter={() => { wasHoveredRef.current = true; setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
+      onMouseLeave={() => { wasHoveredRef.current = false; setHovered(false); setHoveredConstraintEntities(new Set()) }}
       onClick={(e) => { e.stopPropagation(); const s = useSketchEditorStore.getState(); s.clearNormalSelection(); s.addToNormalSelection(cId) }}
       onPointerDown={(e) => e.stopPropagation()}
       style={{

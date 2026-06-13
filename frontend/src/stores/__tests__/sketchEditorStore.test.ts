@@ -499,6 +499,18 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
 
+    it('clears hoveredConstraintEntityIds after dispatch', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        activeFeatureId: 'S1',
+        normalSelection: new Set(['constraint:S1:C1']),
+        hoveredConstraintEntityIds: new Set(['entity:S1:L1']),
+      })
+      useSketchEditorStore.getState().deleteSelected()
+      expect(useSketchEditorStore.getState().hoveredConstraintEntityIds.size).toBe(0)
+    })
+
     it('constraint click replaces selection instead of accumulating (bug fix: delete too much)', () => {
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')

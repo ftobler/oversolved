@@ -531,7 +531,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     })
     if (targets.length === 0) return
     onMutation({ type: 'delete', targets })
-    set({ normalSelection: new Set() })
+    set({ normalSelection: new Set(), hoveredConstraintEntityIds: new Set() })
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
