@@ -1,5 +1,4 @@
 import '@testing-library/jest-dom'
-import 'fake-indexeddb/auto'
 import { beforeEach } from 'vitest'
 
 // Drive the whole node suite through the Rust/WASM area builder (the same path
