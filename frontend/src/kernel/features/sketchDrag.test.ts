@@ -24,7 +24,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { lowerSketch } from '@/wasm-kernel/lowerSketch'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { encodeInput, decodeOutput } from '@/wasm-kernel/codec'
-import { applyMoveVertex } from '@/utils/yamlMutations/sketch'
+import { applyMoveVertex, applyMoveEntity } from '@/utils/yamlMutations/sketch'
 import type { PartDoc, PartFeature } from '@/types/cad'
 
 const solveBytes = loadSolver()
@@ -253,6 +253,127 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     // p2 is the c1 control point in the rendered Sketch shape.
     const s1 = result!.sketch.S1 as { p2: [number, number] }
     expect(Math.hypot(s1.p2[0] - cursor[0], s1.p2[1] - cursor[1])).toBeLessThan(CURSOR_TOL)
+  })
+
+  // ── Edge/entity drag: whole-entity translation ─────────────────────────
+
+  it('builds an edge drag context (vertexKey=null)', () => {
+    const feature = rectSketchFeature('edgeCtx')
+    const ctx = prepareDragContext(feature, 'bottom', null)
+    expect(ctx).not.toBeNull()
+    expect(ctx!.isEdgeDrag).toBe(true)
+    // A line has two coordinate pairs: start [0,1], end [2,3].
+    expect(ctx!.entityCoordPairs).toEqual([[0, 1], [2, 3]])
+    expect(ctx!.entityParamOffset).toBe(ctx!.layout.find((l) => l.id === 'bottom')!.offset)
+    // Drag options are baked in, anchored on the dragged entity.
+    expect(ctx!.input.options.dragMode).toBe(true)
+    expect(ctx!.input.options.skipStatusPass).toBe(true)
+  })
+
+  it('returns null for an entity with no coordinate pairs', () => {
+    // Unknown kind has no ALL_COORD_INDICES entry.
+    const feature = {
+      id: 'badEdge', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'X1', kind: 'unknown' }],
+      initial: { X1: [0, 0] },
+      constraints: [],
+    } as unknown as PartFeature
+    expect(prepareDragContext(feature, 'X1', null)).toBeNull()
+  })
+
+  it('edge drag translates the entity by delta and solves', () => {
+    const feature = rectSketchFeature('edgeTranslate')
+    const ctx = prepareDragContext(feature, 'bottom', null)!
+
+    // Drag bottom line by delta [5, 2]. The solver should translate it and
+    // keep the rectangle shape (horizontal/vertical/length constraints).
+    const delta: [number, number] = [5, 2]
+    const cursor: [number, number] = [5, 2]
+    const result = solveSketchDrag(ctx, ctx.params0, cursor, delta)
+
+    expect(result).not.toBeNull()
+    const bottom = result!.sketch.bottom as { start: [number, number]; end: [number, number] }
+    // bottom moved from [0,0]-[10,0] to [5,2]-[15,2].
+    expect(bottom.start[0]).toBeCloseTo(5, 0)
+    expect(bottom.start[1]).toBeCloseTo(2, 0)
+    expect(bottom.end[0]).toBeCloseTo(15, 0)
+    expect(bottom.end[1]).toBeCloseTo(2, 0)
+
+    // Rectangle integrity: other edges stayed connected (coincident corners).
+    const left = result!.sketch.left as { start: [number, number]; end: [number, number] }
+    const top = result!.sketch.top as { start: [number, number]; end: [number, number] }
+    const right = result!.sketch.right as { start: [number, number]; end: [number, number] }
+
+    // left.start (was [0,6]) should be coincident with top.end (was [0,6])
+    // After drag: left.start ≈ [5,8] (moved by delta)
+    const distTopLeft = Math.hypot(left.start[0] - top.end[0], left.start[1] - top.end[1])
+    expect(distTopLeft).toBeLessThan(CONSTRAINT_TOL)
+    // left.end (was [0,0]) should be coincident with bottom.start (was [0,0])
+    // After drag: both at [5,2]
+    const distBotLeft = Math.hypot(left.end[0] - bottom.start[0], left.end[1] - bottom.start[1])
+    expect(distBotLeft).toBeLessThan(CONSTRAINT_TOL)
+    // right.start (was [10,0]) should be coincident with bottom.end (was [10,0])
+    // After drag: both at [15,2]
+    const distBotRight = Math.hypot(right.start[0] - bottom.end[0], right.start[1] - bottom.end[1])
+    expect(distBotRight).toBeLessThan(CONSTRAINT_TOL)
+    // top.start (was [10,6]) should be coincident with right.end (was [10,6])
+    // After drag: both at [15,8]
+    const distTopRight = Math.hypot(top.start[0] - right.end[0], top.start[1] - right.end[1])
+    expect(distTopRight).toBeLessThan(CONSTRAINT_TOL)
+
+    // Horizontal constraints still hold.
+    expect(Math.abs(bottom.start[1] - bottom.end[1])).toBeLessThan(CONSTRAINT_TOL)
+    expect(Math.abs(top.start[1] - top.end[1])).toBeLessThan(CONSTRAINT_TOL)
+
+    // Length constraints still honoured.
+    const bottomLen = Math.hypot(bottom.end[0] - bottom.start[0], bottom.end[1] - bottom.start[1])
+    expect(Math.abs(bottomLen - 10)).toBeLessThan(0.1)
+    const leftLen = Math.hypot(left.end[0] - left.start[0], left.end[1] - left.start[1])
+    expect(Math.abs(leftLen - 6)).toBeLessThan(0.1)
+  })
+
+  it('committing edge drag solvedGeometry keeps the hard solve in the drag basin', () => {
+    const feature = rectSketchFeature('edgeCommit')
+    const ctx = prepareDragContext(feature, 'bottom', null)!
+
+    // Single drag frame: translate bottom by [5, 2].
+    const delta: [number, number] = [5, 2]
+    const result = solveSketchDrag(ctx, ctx.params0, delta, delta)
+    expect(result).not.toBeNull()
+
+    // Pointer-up: commit with solved geometry + delta.
+    const doc = { features: [feature] } as unknown as PartDoc
+    const bottom = feature.initial!.bottom
+    const origBottom = [...bottom]
+    applyMoveEntity(doc, 'edgeCommit', 'bottom', delta, result!.geometry)
+
+    // The committed initial adopts the solved frame's geometry.
+    expect(feature.initial!.bottom[0]).toBeCloseTo(result!.geometry.bottom[0], 3)
+    // The delta is applied on top (to correct solver drift).
+    const expectedStartX = origBottom[0] + delta[0]
+    expect(feature.initial!.bottom[0]).toBeCloseTo(expectedStartX, 1)
+
+    // Hard solve from committed initial stays in the drag basin.
+    if (!solveBytes) throw new Error('WASM solver not loaded')
+    const { sketches } = partDocToSketches([feature])
+    const { input, layout } = lowerSketch(sketches[0].sketch)
+    const out = decodeOutput(solveBytes(encodeInput(input)))
+    const bottomLayout = layout.find((l) => l.id === 'bottom')!
+    const solvedStartX = out.paramsSolved[bottomLayout.offset]
+    // The solved rect should be near the dragged position, not back at [0,0].
+    expect(Math.abs(solvedStartX - expectedStartX)).toBeLessThan(1.0)
+
+    // Contrast: a naive commit without solvedGeometry snaps back.
+    const naive = rectSketchFeature('naiveEdgeCommit')
+    const naiveDoc = { features: [naive] } as unknown as PartDoc
+    applyMoveEntity(naiveDoc, 'naiveEdgeCommit', 'bottom', delta)
+    const naiveExtract = partDocToSketches([naive])
+    const naiveLowered = lowerSketch(naiveExtract.sketches[0].sketch)
+    const naiveOut = decodeOutput(solveBytes(encodeInput(naiveLowered.input)))
+    const naiveBottomLayout = naiveLowered.layout.find((l) => l.id === 'bottom')!
+    const naiveStartX = naiveOut.paramsSolved[naiveBottomLayout.offset]
+    // The solvedGeometry commit lands the rect further right than the naive commit.
+    expect(solvedStartX - naiveStartX).toBeGreaterThan(2)
   })
 
   // ── Commit: the solved frame seeds the hard solve (Part B) ─────────────

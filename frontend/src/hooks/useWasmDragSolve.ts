@@ -1,6 +1,6 @@
 /**
  * useWasmDragSolve -- run the WASM drag fast-path on every rAF tick during a
- * pointer-down vertex drag.
+ * pointer-down vertex or entity (edge) drag.
  *
  * Architecture per feature/solver-on-drag-rewire.md: the production hard solve
  * runs in a Web Worker, so this hook must be self-sufficient on the main
@@ -10,14 +10,17 @@
  * hard solve's geometry, so nothing is needed from the worker.
  *
  *  - Lowering happens once per drag; each frame only rewrites params.
- *  - Warm-start seed = previous frame's solved params (frame 0 = `initial`).
+ *  - Vertex drags: warm-start seed = previous frame's solved params
+ *    (frame 0 = `initial`).
+ *  - Edge/entity drags: each frame seeds from `initial` and translates the
+ *    entity by the cursor delta, then solves.
  *  - rAF-throttled with a dirty flag: at most one WASM call per displayed
  *    frame, and none at all while the cursor has not moved.
  *  - Convergence failure / overconstrained -> hold last good preview.
  *  - Every successful frame is published to the dragSolveRegistry so the
  *    pointer-up commit can write the on-screen state into the doc.
- *  - Edge/dim_label drags and unmapped vertices return engaged=false; the
- *    caller shows a translation preview or the static sketch.
+ *  - Unmapped vertices return engaged=false; the caller shows a
+ *    translation preview or the static sketch.
  */
 import { useRef, useEffect, useMemo, useState } from 'react'
 import type { Sketch, PartFeature } from '@/types/cad'
@@ -55,6 +58,7 @@ export function useWasmDragSolve(
   const warmStartRef = useRef<number[] | null>(null)
   const latestCursorRef = useRef<[number, number] | null>(null)
   const dirtyRef = useRef(false)
+  const startWorldRef = useRef<[number, number] | null>(null)
 
   const [preview, setPreview] = useState<Sketch | null>(null)
 
@@ -75,34 +79,45 @@ export function useWasmDragSolve(
   // flipping to the WASM path mid-drag would flash a disagreeing frame.
   const isVertexDragHere =
     isDraggingThis && !!drag && drag.type === 'vertex' && drag.featureId === featureId
-  const dragEntityId = isVertexDragHere ? drag.entityId : null
-  const dragVertexKey = isVertexDragHere ? drag.vertexKey : null
+  const isEdgeDragHere =
+    isDraggingThis && !!drag && drag.type === 'edge' && drag.featureId === featureId
+  const isDragHere = isVertexDragHere || isEdgeDragHere
+
+  const dragEntityId = isDragHere && drag ? drag.entityId : null
+  const dragVertexKey = isVertexDragHere && drag ? drag.vertexKey : null
   const ctx = useMemo(() => {
-    if (!featureDef || !dragEntityId || !dragVertexKey) return null
+    if (!featureDef || !dragEntityId) return null
     if (!isSketchSolverReady()) return null
+    // For vertex drags, pass the vertex key. For edge drags, pass null.
     return prepareDragContext(featureDef, dragEntityId, dragVertexKey)
   }, [featureDef, dragEntityId, dragVertexKey])
 
-  // ── Track the latest cursor; mark dirty only when it actually moved ───
+  // ── Track the latest cursor and edge-drag startWorld; mark dirty only
+  //     when the cursor actually moved ──────────────────────────────────
   useEffect(() => {
-    if (!isVertexDragHere || !drag || drag.type !== 'vertex') return
+    if (!isDragHere || !drag) return
     const c = drag.currentWorld
     const prev = latestCursorRef.current
     if (!prev || prev[0] !== c[0] || prev[1] !== c[1]) {
       latestCursorRef.current = [c[0], c[1]]
       dirtyRef.current = true
     }
+    // Capture startWorld for edge drags (used to compute the cursor delta).
+    if (isEdgeDragHere && drag.type === 'edge') {
+      startWorldRef.current = [drag.startWorld[0], drag.startWorld[1]]
+    }
   })
 
   // ── Per-drag rAF solve loop ──────────────────────────────────────────
   useEffect(() => {
-    if (!ctx) {
+    if (!ctx || !isDragHere) {
       // Drag ended (or never engaged): drop all per-drag state. The pointer-up
       // handler has already read the registry by the time this effect runs
       // (window pointerup fires before the store update re-renders us).
       warmStartRef.current = null
       latestCursorRef.current = null
       dirtyRef.current = false
+      startWorldRef.current = null
       setLastDragSolve(null)
       // Reset in response to an external event (pointer-up / drag end).
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -117,12 +132,30 @@ export function useWasmDragSolve(
     const frame = () => {
       if (dirtyRef.current && latestCursorRef.current) {
         dirtyRef.current = false
-        const ws = warmStartRef.current ?? ctx.params0
-        const result = solveSketchDrag(ctx, ws, latestCursorRef.current)
-        if (result && result.status !== 'overconstrained') {
-          warmStartRef.current = result.params
-          setLastDragSolve({ featureId, geometry: result.geometry })
-          setPreview(result.sketch)
+
+        if (ctx.isEdgeDrag && startWorldRef.current) {
+          // Edge drag: compute cursor delta and pass to the solver.
+          // Each frame seeds from params0 + delta (not warm-start) so the
+          // solver always starts from a valid solved state.
+          const cursor = latestCursorRef.current
+          const delta: [number, number] = [
+            cursor[0] - startWorldRef.current[0],
+            cursor[1] - startWorldRef.current[1],
+          ]
+          const result = solveSketchDrag(ctx, ctx.params0, cursor, delta)
+          if (result && result.status !== 'overconstrained') {
+            setLastDragSolve({ featureId, geometry: result.geometry })
+            setPreview(result.sketch)
+          }
+        } else {
+          // Vertex drag: warm-start from the previous frame's solved params.
+          const ws = warmStartRef.current ?? ctx.params0
+          const result = solveSketchDrag(ctx, ws, latestCursorRef.current)
+          if (result && result.status !== 'overconstrained') {
+            warmStartRef.current = result.params
+            setLastDragSolve({ featureId, geometry: result.geometry })
+            setPreview(result.sketch)
+          }
         }
       }
       raf = requestAnimationFrame(frame)
@@ -135,7 +168,7 @@ export function useWasmDragSolve(
       // drag on the same feature would commit this drag's stale geometry.
       setLastDragSolve(null)
     }
-  }, [ctx, featureId])
+  }, [ctx, featureId, isDragHere])
 
-  return { sketch: preview, engaged: !!ctx }
+  return { sketch: preview, engaged: !!ctx && isDragHere }
 }

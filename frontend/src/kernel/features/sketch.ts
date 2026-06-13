@@ -24,7 +24,7 @@ import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
-import { VERTEX_INDICES } from '@/registry'
+import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { solveTopology, reconcileMaterializedContacts, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
@@ -266,8 +266,15 @@ export interface DragContext {
    *  applyGeometryToFeature writes solved geometry back into `initial`).
    *  This is the frame-0 warm start. */
   params0: number[]
-  /** Flat param indices the cursor position is written to each frame. */
+  /** Flat param indices the cursor position is written to each frame.
+   *  For edge/entity drags this is the start of the entity's param block. */
   cursorIndices: [number, number]
+  /** True when this is an entity-level (whole-entity translation) drag. */
+  isEdgeDrag: boolean
+  /** Param offset of the dragged entity in the flat array. */
+  entityParamOffset: number
+  /** All [xIndex, yIndex] coordinate pair offsets within the entity's param block. */
+  entityCoordPairs: [number, number][]
 }
 
 /**
@@ -281,6 +288,10 @@ export interface DragContext {
  * mirroring solveSketch's projection_errors path (constraints referencing it
  * are dropped by partDocToSketches).
  *
+ * For vertex drags, `dragVertexKey` is the specific vertex being dragged
+ * (e.g. 'start', 'end', 'center'). For edge/entity drags (whole-entity
+ * translation), pass `dragVertexKey = null`.
+ *
  * Returns null when the feature does not lower, the dragged entity is not in
  * the layout, or the vertex has no direct param mapping (caller shows the
  * static sketch or a simple translation preview).
@@ -288,7 +299,7 @@ export interface DragContext {
 export function prepareDragContext(
   feature: PartFeature,
   dragEntityId: string,
-  dragVertexKey: string,
+  dragVertexKey: string | null,
 ): DragContext | null {
   try {
     const entities = feature.entities ?? []
@@ -311,17 +322,41 @@ export function prepareDragContext(
     const anchorIndex = layout.findIndex((l) => l.id === dragEntityId)
     if (anchorIndex === -1) return null
     const ent = layout[anchorIndex]
-    const vi = VERTEX_INDICES[ent.kind]?.[dragVertexKey]
-    if (!vi) return null
 
-    // The doc param layout and the lowered layout share per-kind ordering, so
-    // the registry indices apply directly at the entity's offset.
+    const isEdge = dragVertexKey === null
+    if (!isEdge) {
+      const vi = VERTEX_INDICES[ent.kind]?.[dragVertexKey]
+      if (!vi) return null
+      // The doc param layout and the lowered layout share per-kind ordering, so
+      // the registry indices apply directly at the entity's offset.
+      input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
+      return {
+        input,
+        layout,
+        params0: [...input.params],
+        cursorIndices: [ent.offset + vi[0], ent.offset + vi[1]],
+        isEdgeDrag: false,
+        entityParamOffset: ent.offset,
+        entityCoordPairs: [],
+      }
+    }
+
+    // Edge/entity drag: whole-entity translation. The anchor entity's ALL
+    // params get REG_WEIGHT_DRAG (Rust solve.rs) to bias it toward the
+    // translated position. Each solve frame applies the cursor delta to every
+    // coordinate pair, then lets the solver resolve constraints on other
+    // entities.
+    const coordPairs = ALL_COORD_INDICES[ent.kind]
+    if (!coordPairs) return null
     input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
     return {
       input,
       layout,
       params0: [...input.params],
-      cursorIndices: [ent.offset + vi[0], ent.offset + vi[1]],
+      cursorIndices: [ent.offset, ent.offset + 1],
+      isEdgeDrag: true,
+      entityParamOffset: ent.offset,
+      entityCoordPairs: coordPairs as [number, number][],
     }
   } catch {
     return null
@@ -389,6 +424,11 @@ export interface DragSolveResult {
  * warm-start params + cursor into the context's input and solves; mutates
  * nothing else (not the PartDoc, not the Repository, not the feature).
  *
+ * For vertex drags, `cursorWorld` pins the dragged vertex.
+ * For edge/entity drags, `edgeDelta` (cursor delta from drag start) translates
+ * every coordinate pair of the dragged entity before solving — each frame
+ * seeds from the original params0 plus the delta.
+ *
  * Returns null when the solver is not loaded in this context or the solve
  * throws (caller holds the last good preview).
  */
@@ -396,21 +436,39 @@ export function solveSketchDrag(
   ctx: DragContext,
   warmStartParams: number[],
   cursorWorld: [number, number],
+  edgeDelta?: [number, number],
 ): DragSolveResult | null {
   if (!solverBytes) return null
 
   const { input, layout, cursorIndices } = ctx
 
-  // Overwrite params with warm-start seed, then pin the dragged vertex to
-  // the cursor position. The firm REG_WEIGHT_DRAG on the anchor entity's
-  // params (Rust solve.rs) keeps the vertex near the cursor while constraints
-  // resolve.
-  const n = Math.min(input.params.length, warmStartParams.length)
-  for (let i = 0; i < n; i++) {
-    input.params[i] = warmStartParams[i]
+  if (ctx.isEdgeDrag && edgeDelta) {
+    // Edge/entity drag: each frame seeds from params0 (the last hard solve)
+    // and translates the dragged entity's coordinate pairs by the cursor
+    // delta. Starting fresh from params0 every frame avoids warm-start drift;
+    // the solver's REG_WEIGHT_DRAG on the anchor entity keeps it near the
+    // translated position while hard constraints resolve on all entities.
+    const n = input.params.length
+    for (let i = 0; i < n; i++) {
+      input.params[i] = ctx.params0[i]
+    }
+    const offset = ctx.entityParamOffset
+    for (const [xi, yi] of ctx.entityCoordPairs) {
+      input.params[offset + xi] += edgeDelta[0]
+      input.params[offset + yi] += edgeDelta[1]
+    }
+  } else {
+    // Vertex drag: warm-start from the previous frame, then pin the dragged
+    // vertex to the cursor position. The firm REG_WEIGHT_DRAG on the anchor
+    // entity's params (Rust solve.rs) keeps the vertex near the cursor while
+    // constraints resolve.
+    const n = Math.min(input.params.length, warmStartParams.length)
+    for (let i = 0; i < n; i++) {
+      input.params[i] = warmStartParams[i]
+    }
+    input.params[cursorIndices[0]] = cursorWorld[0]
+    input.params[cursorIndices[1]] = cursorWorld[1]
   }
-  input.params[cursorIndices[0]] = cursorWorld[0]
-  input.params[cursorIndices[1]] = cursorWorld[1]
 
   let out
   try {

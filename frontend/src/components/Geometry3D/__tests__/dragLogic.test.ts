@@ -231,14 +231,32 @@ describe('computeDragMutation', () => {
     }
   })
 
-  it('edge drags never carry solvedGeometry (WASM path is vertex-only)', () => {
+  it('edge drag carries solvedGeometry when WASM solve is engaged', () => {
     const drag = makeDrag({
       type: 'edge',
       startClient: [100, 100],
       startWorld: [0, 0],
       currentWorld: [3, 4],
     })
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry: { L1: [1] } })
+    const geometry = { L1: [3, 4, 13, 4], L2: [10, 0, 10, 10] }
+    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry })
     expect(result?.type).toBe('move_entity')
+    if (result?.type === 'move_entity') {
+      expect(result.solvedGeometry).toEqual(geometry)
+    }
+  })
+
+  it('edge drag without WASM solve carries no solvedGeometry', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+    })
+    const result = computeDragMutation([200, 200], drag, null, null, null)
+    expect(result?.type).toBe('move_entity')
+    if (result?.type === 'move_entity') {
+      expect(result.solvedGeometry).toBeUndefined()
+    }
   })
 })

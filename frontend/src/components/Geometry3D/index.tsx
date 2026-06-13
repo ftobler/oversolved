@@ -79,7 +79,13 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     () => {
       if (!drag || drag.featureId !== featureId) return null
       if (drag.type === 'vertex' && wasmDrag.engaged) return wasmDrag.sketch
-      if (drag.type === 'edge') return edgeDragPreview(solved, drag as VertexOrEdgeDrag & { type: 'edge' })
+      if (drag.type === 'edge') {
+        // Use the WASM-solved preview when engaged (constraint-aware), falling
+        // back to a simple translation preview when the solver path is not
+        // available (e.g. still loading, or edge drag on a non-solvable entity).
+        if (wasmDrag.engaged) return wasmDrag.sketch
+        return edgeDragPreview(solved, drag as VertexOrEdgeDrag & { type: 'edge' })
+      }
       if (drag.type === 'dim_label') return solved
       return null
     },

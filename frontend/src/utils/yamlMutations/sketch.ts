@@ -147,11 +147,27 @@ export function applyMoveEntity(
   featureId: string,
   entityId: string,
   delta: [number, number],
+  solvedGeometry?: Record<string, number[]>,
 ): void {
   const [dx, dy] = delta
-  if (dx === 0 && dy === 0) return
   const feature = findFeature(doc, featureId)
   if (!feature?.initial) return
+
+  // Drag commit: adopt the last WASM drag frame for ALL entities first, so the
+  // hard solve seeds from the on-screen state instead of pre-drag geometry +
+  // a teleported entity (which can land in a different solution basin).
+  // The solved geometry already reflects the translated position, so when it
+  // is present the delta is not applied (avoiding double-translation).
+  if (solvedGeometry) {
+    for (const [eid, p] of Object.entries(solvedGeometry)) {
+      const cur = feature.initial[eid]
+      if (!cur || cur.length !== p.length) continue
+      feature.initial[eid] = p.map(round)
+    }
+    return
+  }
+
+  if (dx === 0 && dy === 0) return
   const params = feature.initial[entityId]
   if (!params) return
   const kind = feature.entities?.find(e => e.id === entityId)?.kind

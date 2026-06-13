@@ -49,6 +49,28 @@ const fakeCtx = {
   layout: [{ id: 'L1', kind: 'line', offset: 0, size: 4 }],
   params0: [0, 0, 10, 0],
   cursorIndices: [0, 1] as [number, number],
+  isEdgeDrag: false,
+  entityParamOffset: 0,
+  entityCoordPairs: [] as [number, number][],
+}
+
+const fakeEdgeCtx = {
+  ...fakeCtx,
+  isEdgeDrag: true,
+  entityCoordPairs: [[0, 1], [2, 3]] as [number, number][],
+}
+
+function edgeDrag(currentWorld: [number, number], startWorld: [number, number] = [0, 0]): DragState {
+  return {
+    type: 'edge',
+    vertexId: 'entity:S1:L1',
+    featureId: 'S1',
+    entityId: 'L1',
+    vertexKey: '',
+    startWorld,
+    currentWorld,
+    startClient: [100, 100],
+  } as DragState
 }
 
 function solveResult(params: number[]) {
@@ -173,6 +195,83 @@ describe('useWasmDragSolve', () => {
     const { result, rerender } = renderHook(
       ({ drag, dragging }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: dragging }),
       { initialProps: { drag: vertexDrag([1, 1]) as DragState | null, dragging: true } },
+    )
+    pump()
+    expect(getLastDragSolve()).not.toBeNull()
+    rerender({ drag: null, dragging: false })
+    expect(result.current.engaged).toBe(false)
+    expect(result.current.sketch).toBeNull()
+    expect(getLastDragSolve()).toBeNull()
+  })
+
+  // ── Edge/entity drag tests ──────────────────────────────────────────
+
+  it('engages for edge drags too', () => {
+    mockPrepare.mockReturnValue(fakeEdgeCtx)
+    const { result } = renderHook(() =>
+      useWasmDragSolve({ featureId: 'S1', featureDef, drag: edgeDrag([3, 4]), isDraggingThis: true }))
+    expect(result.current.engaged).toBe(true)
+    expect(result.current.sketch).toBeNull()
+    // prepareDragContext called with null vertexKey for edge drags.
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null)
+  })
+
+  it('solves edge drags with delta (not cursor pin)', () => {
+    mockPrepare.mockReturnValue(fakeEdgeCtx)
+    mockSolve.mockReturnValue(solveResult([3, 4, 13, 4]))
+    const { result } = renderHook(() =>
+      useWasmDragSolve({ featureId: 'S1', featureDef, drag: edgeDrag([3, 4], [0, 0]), isDraggingThis: true }))
+    pump()
+    expect(mockSolve).toHaveBeenCalledTimes(1)
+    // Edge drag passes delta=[3,4] = cursorWorld - startWorld.
+    expect(mockSolve).toHaveBeenCalledWith(fakeEdgeCtx, fakeEdgeCtx.params0, [3, 4], [3, 4])
+    expect(result.current.sketch).not.toBeNull()
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [3, 4, 13, 4] } })
+  })
+
+  it('does not engage for edge drag when the context cannot be built', () => {
+    mockPrepare.mockReturnValue(null)
+    const { result } = renderHook(() =>
+      useWasmDragSolve({ featureId: 'S1', featureDef, drag: edgeDrag([3, 4]), isDraggingThis: true }))
+    expect(result.current.engaged).toBe(false)
+    pump(2)
+    expect(mockSolve).not.toHaveBeenCalled()
+  })
+
+  it('dirty flag works for edge drags too', () => {
+    mockPrepare.mockReturnValue(fakeEdgeCtx)
+    renderHook(() =>
+      useWasmDragSolve({ featureId: 'S1', featureDef, drag: edgeDrag([3, 4]), isDraggingThis: true }))
+    pump(4)
+    expect(mockSolve).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds last preview on a failed edge drag frame', () => {
+    mockPrepare.mockReturnValue(fakeEdgeCtx)
+    // First frame succeeds with translated geometry.
+    mockSolve.mockReturnValue(solveResult([3, 4, 13, 4]))
+    const { result, rerender } = renderHook(
+      ({ drag }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: true }),
+      { initialProps: { drag: edgeDrag([3, 4]) } },
+    )
+    pump()
+    const held = result.current.sketch
+    expect(held).not.toBeNull()
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [3, 4, 13, 4] } })
+    // Second frame fails.
+    mockSolve.mockReturnValue(null)
+    rerender({ drag: edgeDrag([5, 6]) })
+    pump()
+    expect(result.current.sketch).toBe(held)
+    // Registry still carries the last good frame.
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [3, 4, 13, 4] } })
+  })
+
+  it('clears edge drag state on end', () => {
+    mockPrepare.mockReturnValue(fakeEdgeCtx)
+    const { result, rerender } = renderHook(
+      ({ drag, dragging }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: dragging }),
+      { initialProps: { drag: edgeDrag([3, 4]) as DragState | null, dragging: true } },
     )
     pump()
     expect(getLastDragSolve()).not.toBeNull()

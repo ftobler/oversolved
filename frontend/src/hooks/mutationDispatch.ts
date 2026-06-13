@@ -91,7 +91,7 @@ export const mutationHandlers: MutationHandlers = {
     }
   },
   move_entity: (next, m) =>
-    applyMoveEntity(next, m.featureId, m.entityId, m.delta),
+    applyMoveEntity(next, m.featureId, m.entityId, m.delta, m.solvedGeometry),
   add_constraint: (next, m) =>
     applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value, m.pos),
   set_constraint_value: (next, m) =>
