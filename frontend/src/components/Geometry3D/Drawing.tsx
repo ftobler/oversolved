@@ -17,7 +17,7 @@ import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/draw
 import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
-export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
+export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string; activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
@@ -27,6 +27,10 @@ export function DrawPreview({ activeFeatureId }: { activeFeatureId?: string }) {
   const ngonSides = useSketchEditorStore(s => s.ngonSides)
 
   if (activeFeatureId === null) return null
+  // The preview lives inside each sketch's transformed group; only the active
+  // sketch may draw it, else other visible sketches double-render it on their
+  // own planes (the draw cursor lives in the active sketch's local space).
+  if (featureId !== activeFeatureId) return null
   if (effectiveTool === 'select') return null
 
   const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover, ngonSides)

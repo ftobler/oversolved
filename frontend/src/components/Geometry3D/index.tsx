@@ -217,7 +217,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={topology} />}
       {isEditing && <DragSnapIndicator />}
       {isEditing && <DragAlignmentIndicator />}
-      <DrawPreview activeFeatureId={activeFeatureId} />
+      <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} />
       {isEditing && <DimensionPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} planeTransform={resolvedPlaneTransform} />}
     </group>
