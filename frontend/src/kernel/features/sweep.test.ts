@@ -120,6 +120,34 @@ describe('orderedPathWorldEdges', () => {
   it('throws when a path sketch is unknown', () => {
     expect(() => orderedPathWorldEdges(['$missing'], new Repository())).toThrow(/path sketch not found/)
   })
+
+  it('resolves a line-arc-line spine picked edge-by-edge (bug: sweep_20260613_134746)', () => {
+    // The corrected pipe sweep: the path is the three sketch-1 edges picked
+    // individually. They must order into one open line -> arc -> line chain.
+    const sk = 'bOhvSew-4vrj_rLeRX0-ZR78'
+    const repo = new Repository()
+    repo.register('_pt_' + sk, planeXY)
+    repo.register('_topo_' + sk, {
+      edges: [
+        { entity_id: 'SN7Aax6PfaDQoVdM', edge_index: 0, kind: 'line', start: [0, 0], end: [-10, 0] },
+        {
+          entity_id: '6a0ityCkkAXICmG2', edge_index: 1, kind: 'arc',
+          center: [-10, -5], radius: 5, start: [-10, 0], end: [-7.69, -9.43],
+          angle_start_deg: 90, angle_end_deg: -62.48, ccw: false,
+        },
+        { entity_id: 'RJ5pRtfqTByhFHlV', edge_index: 2, kind: 'line', start: [-7.69, -9.43], end: [-1.33, -6.12] },
+      ],
+    })
+    const [edges] = orderedPathWorldEdges([
+      `entity:${sk}:SN7Aax6PfaDQoVdM`,
+      `entity:${sk}:6a0ityCkkAXICmG2`,
+      `entity:${sk}:RJ5pRtfqTByhFHlV`,
+    ], repo)
+    expect(edges).toHaveLength(3)
+    expect(edges.map((e) => e.kind)).toContain('arc')  // the arc is part of the spine
+    // One connected open chain: exactly two free endpoints (origin + far line end).
+    expect(chainEnds(edges)).toEqual([JSON.stringify([-1.33, -6.12, 0]), JSON.stringify([0, 0, 0])])
+  })
 })
 
 describe('pathRefToSketchId', () => {
