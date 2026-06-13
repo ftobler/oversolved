@@ -12,7 +12,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
-import { sketchToWorld2d, type PlaneLike } from './shared'
+import { sketchToWorld2d, extractProfileLoops, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
 import { makeLineEdge, makeArcEdge, type Vec3 } from '../occ/primitives'
@@ -75,13 +75,21 @@ export function pathRefToSketchId(pathRef: string, globalRepo: Repository): stri
 }
 
 /**
- * Order path edges into a connected chain by matching 2D endpoints (mirrors
+ * Order path edges into a connected chain by matching endpoints (mirrors
  * `_order_edges_into_chain`). Geometry is orientation-independent for wire
  * assembly, so only the sequence matters. Throws if not one connected chain.
+ * Endpoints are compared component-wise across all dimensions, so this works
+ * for both 2D sketch points and 3D world points (a path spanning sketches on
+ * different planes is ordered in world space).
  */
 export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): Dict[] {
-  const close = (a: number[], b: number[]): boolean =>
-    Math.abs(a[0] - b[0]) < tol && Math.abs(a[1] - b[1]) < tol
+  const close = (a: number[], b: number[]): boolean => {
+    const n = Math.max(a.length, b.length)
+    for (let i = 0; i < n; i++) {
+      if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) >= tol) return false
+    }
+    return true
+  }
 
   if (edges.length <= 1) return [...edges]
 
@@ -164,35 +172,103 @@ export function worldArcEdge(
 }
 
 /**
- * Resolve a sweep path reference to ordered world-space spine edges (mirrors
- * `_collect_path_edges`). The path's sketch topology edges must form a connected
- * chain. Returns [spineEdges, pathSketchId].
+ * Split a sketch-entity selection ref (`entity:<sketchId>:<eid>` or
+ * `vertex:<sketchId>:<eid>:<sub>`) into its sketch id and entity id. Returns a
+ * null `eid` for any other ref form (the whole sketch is selected).
+ */
+function refToSketchAndEntity(ref: string, globalRepo: Repository): { sketchId: string; eid: string | null } {
+  if (ref.startsWith('entity:') || ref.startsWith('vertex:')) {
+    const parts = ref.split(':')
+    return { sketchId: parts[1], eid: parts[2] ?? null }
+  }
+  return { sketchId: pathRefToSketchId(ref, globalRepo), eid: null }
+}
+
+/**
+ * Collect the world-space topo edges a single path ref contributes. An
+ * `entity:`/`vertex:` ref selects only the edges of that one sketch entity
+ * (edge-precise); any other ref selects every edge of the sketch. Edges carry
+ * their world-space start/end (and center for arcs) so a path spanning sketches
+ * on different planes orders correctly. Returns [worldEdges, sketchId].
+ */
+function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string] {
+  const { sketchId, eid } = refToSketchAndEntity(ref, globalRepo)
+  const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
+  if (plane === undefined) throw new Error(`sweep: path sketch not found: ${JSON.stringify(sketchId)}`)
+  const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+  const rawEdges = (topo.edges as Dict[]) ?? []
+  const selected = eid === null ? rawEdges : rawEdges.filter((e) => e.entity_id === eid)
+
+  const worldEdges: Dict[] = []
+  for (const e of selected) {
+    const we: Dict = {
+      kind: e.kind,
+      edge_index: e.edge_index,
+      start: sketchToWorld2d(e.start as number[], plane),
+      end: sketchToWorld2d(e.end as number[], plane),
+    }
+    if (e.kind === 'arc' && 'center' in e) {
+      we.center = sketchToWorld2d(e.center as number[], plane)
+      we.radius = Number(e.radius)
+    }
+    worldEdges.push(we)
+  }
+  return [worldEdges, sketchId]
+}
+
+/**
+ * Gather one or more sweep path references into a single ordered chain of
+ * world-space edge descriptors (the OCC-free core of `_collect_path_edges`,
+ * extended for multi-pick / edge-precise selection). Edges shared between refs
+ * are deduped, and the whole set must form one connected chain. Returns
+ * [orderedWorldEdges, firstPathSketchId].
+ */
+export function orderedPathWorldEdges(
+  pathRefs: string | string[],
+  globalRepo: Repository,
+): [Dict[], string] {
+  const refs = Array.isArray(pathRefs) ? pathRefs : [pathRefs]
+  const worldEdges: Dict[] = []
+  const seen = new Set<string>()  // dedupe edges shared between refs (sketch + index)
+  let firstSketchId = ''
+  for (const ref of refs) {
+    const [edges, sketchId] = pathRefWorldEdges(ref, globalRepo)
+    if (!firstSketchId) firstSketchId = sketchId
+    for (const e of edges) {
+      const key = sketchId + ':' + String(e.edge_index)
+      if (seen.has(key)) continue
+      seen.add(key)
+      worldEdges.push(e)
+    }
+  }
+  if (worldEdges.length === 0) throw new Error('sweep: path has no edges')
+  return [orderEdgesIntoChain(worldEdges), firstSketchId]
+}
+
+/**
+ * Resolve one or more sweep path references to ordered world-space spine edges
+ * (mirrors `_collect_path_edges`, extended for multi-pick / edge-precise
+ * selection). All contributed edges must form one connected chain. Returns
+ * [spineEdges, firstPathSketchId].
  */
 export function collectPathEdges(
   oc: OccModule,
   scope: DisposeScope,
-  pathRef: string,
+  pathRefs: string | string[],
   globalRepo: Repository,
 ): [OccShape[], string] {
-  const sketchId = pathRefToSketchId(pathRef, globalRepo)
-  const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-  if (plane === undefined) throw new Error(`sweep: path sketch not found: ${JSON.stringify(sketchId)}`)
-  const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
-  const rawEdges = ((topo.edges as Dict[]) ?? []).slice()
-  if (rawEdges.length === 0) throw new Error(`sweep: path sketch ${JSON.stringify(sketchId)} has no edges`)
-
+  const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo)
   const spineEdges: OccShape[] = []
-  for (const e of orderEdgesIntoChain(rawEdges)) {
-    const startW = sketchToWorld2d(e.start as number[], plane)
-    const endW = sketchToWorld2d(e.end as number[], plane)
+  for (const e of ordered) {
     if (e.kind === 'arc' && 'center' in e) {
-      const centerW = sketchToWorld2d(e.center as number[], plane)
-      spineEdges.push(worldArcEdge(oc, scope, centerW, startW, endW, Number(e.radius)))
+      spineEdges.push(
+        worldArcEdge(oc, scope, e.center as number[], e.start as number[], e.end as number[], Number(e.radius)),
+      )
     } else {
-      spineEdges.push(makeLineEdge(oc, scope, startW as Vec3, endW as Vec3))
+      spineEdges.push(makeLineEdge(oc, scope, e.start as Vec3, e.end as Vec3))
     }
   }
-  return [spineEdges, sketchId]
+  return [spineEdges, firstSketchId]
 }
 
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
@@ -215,15 +291,36 @@ export function solveSweep(
     : sketchRaw
       ? [sketchRaw as string]
       : []
-  // A profile picked entity-by-entity arrives as `entity:<sketchId>:<eid>` (or
-  // `vertex:...`) viewport selection IDs. The profile is the whole parent sketch,
-  // so collapse those to the sketch id and dedupe (multiple edges of one sketch
-  // map to a single profile). Plain `$`/`@`/`?` refs pass through unchanged.
-  const sketchRefs = [...new Set(rawRefs.map(profileRefToSketchRef))]
-  const pathRef = (merged.path as string) ?? ''
+  const pathRaw = merged.path
+  const pathRefs: string[] = Array.isArray(pathRaw)
+    ? (pathRaw as string[]).filter((s) => s)
+    : pathRaw
+      ? [pathRaw as string]
+      : []
 
-  if (sketchRefs.length === 0) throw new Error('sweep: requires at least one profile reference')
-  if (!pathRef) throw new Error('sweep: requires a path reference')
+  if (rawRefs.length === 0) throw new Error('sweep: requires at least one profile reference')
+  if (pathRefs.length === 0) throw new Error('sweep: requires a path reference')
+
+  // Partition profile refs. `entity:`/`vertex:` picks are edge-precise: only the
+  // picked entity's edges contribute, and several picks on one sketch assemble
+  // into a single loop. Region/sketch refs (`?`/`@`/`$`) keep routing through
+  // collectExtrudeLoops, where face/region matching is already precise.
+  const entityEidsBySketch = new Map<string, Set<string>>()
+  const regionRefs: string[] = []
+  for (const ref of rawRefs) {
+    if (ref.startsWith('entity:') || ref.startsWith('vertex:')) {
+      const parts = ref.split(':')
+      const sk = parts[1]
+      let set = entityEidsBySketch.get(sk)
+      if (!set) {
+        set = new Set()
+        entityEidsBySketch.set(sk, set)
+      }
+      if (parts[2]) set.add(parts[2])
+    } else {
+      regionRefs.push(ref)
+    }
+  }
 
   const allLoops: Dict[][] = []
   const cqFaces: OccShape[] = []
@@ -234,7 +331,7 @@ export function solveSweep(
   const faceLineage: Lineage = {}
   const edgeLineage: Lineage = {}
 
-  for (const sketchRef of sketchRefs) {
+  for (const sketchRef of [...new Set(regionRefs)]) {
     let resolved
     try {
       resolved = collectExtrudeLoops(oc, scope, table, sketchRef, featureId, 0.0, globalRepo, bodyStore)
@@ -257,6 +354,31 @@ export function solveSweep(
     }
   }
 
+  // Edge-precise profiles: assemble the picked entities' topo edges into closed
+  // loops (the same endpoint chaining collectExtrudeLoops uses for surfaces).
+  for (const [sketchId, eids] of entityEidsBySketch) {
+    const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
+    if (plane === undefined) {
+      profileErrors.push(`sketch not found: ${sketchId}`)
+      continue
+    }
+    const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+    const edges = ((topo.edges as Dict[]) ?? []).filter((e) => eids.has(e.entity_id as string))
+    const loops = extractProfileLoops([{ boundary: edges }])
+    if (loops.length === 0) {
+      profileErrors.push(`sweep: picked profile edges do not form a closed loop (sketch ${sketchId})`)
+      continue
+    }
+    allLoops.push(...loops)
+    for (const surface of (topo.surfaces as Dict[]) ?? []) {
+      profileQueries.push(...surfaceEntityIds(surface))
+    }
+    if (firstPt === null) {
+      firstPt = plane
+      firstSketchId = sketchId
+    }
+  }
+
   if (profileErrors.length && cqFaces.length === 0 && allLoops.length === 0) {
     throw new Error(profileErrors.join('; '))
   }
@@ -265,7 +387,7 @@ export function solveSweep(
   }
   if (allLoops.length === 0) throw new Error('sweep: no closed profile found')
 
-  const [spineEdges] = collectPathEdges(oc, scope, pathRef, globalRepo)
+  const [spineEdges] = collectPathEdges(oc, scope, pathRefs, globalRepo)
 
   const bodyId = 'body_' + featureId
   const result: SweepResult = { status: 'ok', body_id: bodyId }

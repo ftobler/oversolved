@@ -78,6 +78,10 @@ export function describeMutation(m: Mutation): string {
       return `add sweep profile ${m.sketchQuery}`
     case 'remove_sweep_profile':
       return `remove sweep profile at index ${m.index}`
+    case 'add_sweep_path':
+      return `add sweep path ${m.pathQuery}`
+    case 'remove_sweep_path':
+      return `remove sweep path at index ${m.index}`
     case 'add_import_step':
       return `import STEP ${m.label ?? m.featureId}`
     case 'add_fillet':

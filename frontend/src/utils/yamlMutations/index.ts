@@ -1,6 +1,6 @@
 // Barrel: backward-compatible re-exports for '@//utils/yamlMutations'
 
-export { parseTarget, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch } from './helpers'
+export { parseTarget, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch, normalizeSweepPath } from './helpers'
 
 export {
   applyMoveVertex,
@@ -35,6 +35,8 @@ export {
   applyAddSweep,
   applyAddSweepProfile,
   applyRemoveSweepProfile,
+  applyAddSweepPath,
+  applyRemoveSweepPath,
   applySetSweepField,
   applyAddImportStep,
   applyAddFillet,

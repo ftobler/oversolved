@@ -1,7 +1,7 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/useFieldPicking'
-import { normalizeSweepSketch } from '@/utils/yamlMutations'
+import { normalizeSweepSketch, normalizeSweepPath } from '@/utils/yamlMutations'
 import { resolveBodyMergeRef } from '@/utils/query/resolveBodyPickRef'
 
 interface SweepEditorProps {
@@ -14,9 +14,10 @@ interface SweepEditorProps {
 export function SweepEditor({
   feature, onMutation, features, partLabels,
 }: SweepEditorProps) {
-  const sweep = feature.sweep ?? { sketch: [], path: '' }
+  const sweep = feature.sweep ?? { sketch: [], path: [] }
   const fid = feature.id
   const profiles = normalizeSweepSketch(sweep.sketch)
+  const paths = normalizeSweepPath(sweep.path)
   const showMergeTarget = sweep.operation !== 'new'
 
   const sketchPick = usePickField(fid, 'sketch', (selectionId) => {
@@ -30,8 +31,8 @@ export function SweepEditor({
     const pathQuery = selectionId.startsWith('face:')
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
-    onMutation({ type: 'set_sweep_field', featureId: fid, field: 'path', value: pathQuery })
-  })
+    onMutation({ type: 'add_sweep_path', featureId: fid, pathQuery })
+  }, { multi: true })
 
   const mergePick = usePickField(fid, 'merge_target', (selectionId) => {
     onMutation({ type: 'set_sweep_field', featureId: fid, field: 'merge_target', value: resolveBodyMergeRef(selectionId) })
@@ -40,23 +41,23 @@ export function SweepEditor({
   return (
     <div className="plane-editor">
       <div className="feature-field-row feature-field-row--stacked">
+        <span className="feature-field-label">Path</span>
+        <PickChip
+          values={paths}
+          isPicking={pathPick.isPicking}
+          onActivate={pathPick.toggle}
+          onRemove={(index) => onMutation({ type: 'remove_sweep_path', featureId: fid, index })}
+          features={features}
+          partLabels={partLabels}
+        />
+      </div>
+      <div className="feature-field-row feature-field-row--stacked">
         <span className="feature-field-label">Profile</span>
         <PickChip
           values={profiles}
           isPicking={sketchPick.isPicking}
           onActivate={sketchPick.toggle}
           onRemove={(index) => onMutation({ type: 'remove_sweep_profile', featureId: fid, index })}
-          features={features}
-          partLabels={partLabels}
-        />
-      </div>
-      <div className="feature-field-row feature-field-row--stacked">
-        <span className="feature-field-label">Path</span>
-        <PickChip
-          values={sweep.path ? [sweep.path] : []}
-          isPicking={pathPick.isPicking}
-          onActivate={pathPick.toggle}
-          onRemove={() => onMutation({ type: 'set_sweep_field', featureId: fid, field: 'path', value: '' })}
           features={features}
           partLabels={partLabels}
         />

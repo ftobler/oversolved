@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, profileRefToSketchRef } from './sweep'
+import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, profileRefToSketchRef, orderedPathWorldEdges } from './sweep'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -40,6 +40,85 @@ describe('orderEdgesIntoChain', () => {
       { id: 'b', start: [5, 5], end: [6, 5] },
     ]
     expect(() => orderEdgesIntoChain(edges)).toThrow(/connected chain/)
+  })
+
+  it('orders 3D world edges, distinguishing endpoints that share x/y', () => {
+    // Two edges meeting at (10,0,0); edge c rises in z so both its endpoints
+    // share the same x/y. A 2D-only comparison would mis-degree it.
+    const edges: Edge[] = [
+      { id: 'c', start: [10, 0, 0], end: [10, 0, 5] },
+      { id: 'l', start: [0, 0, 0], end: [10, 0, 0] },
+    ]
+    const ids = orderEdgesIntoChain(edges).map((e) => e.id).join('')
+    expect(['lc', 'cl']).toContain(ids)
+  })
+})
+
+// XY plane: sketchToWorld2d([u,v]) -> [u, v, 0].
+const planeXY = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+// Plane through (10,0,0) spanning world Z (its local x) and world Y (its local y).
+const planeZ = { origin: [10, 0, 0], x_axis: [0, 0, 1], y_axis: [0, 1, 0], normal: [1, 0, 0] }
+
+function repoWithPathSketches(): Repository {
+  const repo = new Repository()
+  // skX (XY): l1 (0,0)->(10,0), l2 (10,0)->(10,5).
+  repo.register('_pt_skX', planeXY)
+  repo.register('_topo_skX', {
+    edges: [
+      { entity_id: 'l1', edge_index: 0, kind: 'line', start: [0, 0], end: [10, 0] },
+      { entity_id: 'l2', edge_index: 1, kind: 'line', start: [10, 0], end: [10, 5] },
+    ],
+  })
+  // skZ (rises in world Z from (10,0,0)): l3 (0,0)->(5,0) -> world (10,0,0)->(10,0,5).
+  repo.register('_pt_skZ', planeZ)
+  repo.register('_topo_skZ', {
+    edges: [{ entity_id: 'l3', edge_index: 0, kind: 'line', start: [0, 0], end: [5, 0] }],
+  })
+  return repo
+}
+
+// The two free (degree-1) endpoints of an ordered open chain, as sorted JSON
+// (chain direction is not fixed, so compare the endpoint set, not positions).
+function chainEnds(edges: Edge[]): string[] {
+  const counts = new Map<string, number>()
+  for (const e of edges) {
+    for (const p of [e.start as number[], e.end as number[]]) {
+      const k = JSON.stringify(p)
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
+  }
+  return [...counts.entries()].filter(([, n]) => n === 1).map(([k]) => k).sort()
+}
+
+describe('orderedPathWorldEdges', () => {
+  it('selects only the picked entity edge (edge-precise)', () => {
+    const [edges] = orderedPathWorldEdges(['entity:skX:l1'], repoWithPathSketches())
+    expect(edges).toHaveLength(1)
+    expect(edges[0].start).toEqual([0, 0, 0])
+    expect(edges[0].end).toEqual([10, 0, 0])
+  })
+
+  it('orders multiple picked entity edges into a chain', () => {
+    const [edges] = orderedPathWorldEdges(['entity:skX:l2', 'entity:skX:l1'], repoWithPathSketches())
+    expect(edges).toHaveLength(2)
+    expect(chainEnds(edges)).toEqual([JSON.stringify([0, 0, 0]), JSON.stringify([10, 5, 0])])
+  })
+
+  it('dedupes an edge picked via both whole-sketch and entity refs', () => {
+    const [edges] = orderedPathWorldEdges(['skX', 'entity:skX:l1'], repoWithPathSketches())
+    expect(edges).toHaveLength(2)  // l1 not double-counted
+  })
+
+  it('chains a path spanning two sketches on different planes (world ordering)', () => {
+    const [edges, firstSketchId] = orderedPathWorldEdges(['entity:skX:l1', 'entity:skZ:l3'], repoWithPathSketches())
+    expect(firstSketchId).toBe('skX')
+    expect(edges).toHaveLength(2)
+    // Free ends are (0,0,0) and (10,0,5); they meet at the plane seam (10,0,0).
+    expect(chainEnds(edges)).toEqual([JSON.stringify([0, 0, 0]), JSON.stringify([10, 0, 5])])
+  })
+
+  it('throws when a path sketch is unknown', () => {
+    expect(() => orderedPathWorldEdges(['$missing'], new Repository())).toThrow(/path sketch not found/)
   })
 })
 

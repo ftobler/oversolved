@@ -55,3 +55,8 @@ export function normalizeSweepSketch(sketch: string | string[]): string[] {
   if (Array.isArray(sketch)) return sketch
   return sketch ? [sketch] : []
 }
+
+export function normalizeSweepPath(path: string | string[] | undefined): string[] {
+  if (Array.isArray(path)) return path
+  return path ? [path] : []
+}

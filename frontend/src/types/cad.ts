@@ -78,7 +78,7 @@ export interface RevolveFeatureDef {
 
 export interface SweepFeatureDef {
   sketch: string | string[]  // profile reference(s)
-  path: string  // query for the spine: a sketch whose edges form the path
+  path: string | string[]  // spine reference(s): sketch edges that form the path
   operation?: 'add' | 'cut' | 'new'
   merge_target?: string
 }
@@ -687,6 +687,8 @@ export type Mutation =
   | { type: 'set_sweep_field'; featureId: string; field: keyof SweepFeatureDef; value: unknown }
   | { type: 'add_sweep_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
+  | { type: 'add_sweep_path'; featureId: string; pathQuery: string }
+  | { type: 'remove_sweep_path'; featureId: string; index: number }
   | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
   | { type: 'add_fillet'; featureId: string; label?: string }
   | { type: 'add_chamfer'; featureId: string; label?: string }

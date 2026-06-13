@@ -1,6 +1,6 @@
 import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
-import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch } from './helpers'
+import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch, normalizeSweepPath } from './helpers'
 
 // ─── Set Feature Field (generic) ───
 
@@ -212,7 +212,7 @@ export function applyAddSweep(
     label: label ?? 'Sweep',
     sweep: {
       sketch: sketchQuery ? [sketchQuery] : [],
-      path: pathQuery ?? '',
+      path: pathQuery ? [pathQuery] : [],
     },
   }
   doc.features.push(feature)
@@ -243,6 +243,33 @@ export function applyRemoveSweepProfile(doc: PartDoc, featureId: string, index: 
   const current = normalizeSweepSketch(feature.sweep.sketch)
   current.splice(index, 1)
   feature.sweep.sketch = current
+}
+
+export function applyAddSweepPath(doc: PartDoc, featureId: string, pathQuery: string): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.sweep) {
+    warn(`applyAddSweepPath: feature ${featureId} has no sweep`)
+    return
+  }
+  const current = normalizeSweepPath(feature.sweep.path)
+  const idx = current.indexOf(pathQuery)
+  if (idx >= 0) {
+    current.splice(idx, 1)
+  } else {
+    current.push(pathQuery)
+  }
+  feature.sweep.path = current
+}
+
+export function applyRemoveSweepPath(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.sweep) {
+    warn(`applyRemoveSweepPath: feature ${featureId} has no sweep`)
+    return
+  }
+  const current = normalizeSweepPath(feature.sweep.path)
+  current.splice(index, 1)
+  feature.sweep.path = current
 }
 
 // ─── Import Step ───

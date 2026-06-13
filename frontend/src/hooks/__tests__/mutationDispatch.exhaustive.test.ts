@@ -40,6 +40,8 @@ export const ALL_MUTATION_TYPES = [
   'set_sweep_field',
   'add_sweep_profile',
   'remove_sweep_profile',
+  'add_sweep_path',
+  'remove_sweep_path',
   'add_import_step',
   'add_fillet',
   'add_chamfer',
