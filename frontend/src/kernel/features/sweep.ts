@@ -39,6 +39,20 @@ function surfaceEntityIds(surface: Dict): string[] {
   return [...new Set(ids.filter((i) => i.startsWith('@') && i.includes('/')))].sort()
 }
 
+/**
+ * Normalize a sweep profile reference. A viewport `entity:<sketchId>:<eid>` or
+ * `vertex:<sketchId>:<eid>:<sub>` selection ID identifies a single sketch
+ * entity; the profile is its parent sketch, so return the bare sketch id (which
+ * collectExtrudeLoops resolves like a plain `$sketch` ref). All other ref forms
+ * (`$`, `@`, `?`, bare ids) pass through unchanged.
+ */
+export function profileRefToSketchRef(ref: string): string {
+  if (ref.startsWith('entity:') || ref.startsWith('vertex:')) {
+    return ref.split(':')[1]
+  }
+  return ref
+}
+
 /** Resolve a sweep path reference to the sketch id holding the spine. */
 export function pathRefToSketchId(pathRef: string, globalRepo: Repository): string {
   if (pathRef.startsWith('@')) return pathRef.slice(1).split('/')[0]
@@ -196,11 +210,16 @@ export function solveSweep(
   const merged: Dict = { ...sub, ...feature }
 
   const sketchRaw = merged.sketch
-  const sketchRefs: string[] = Array.isArray(sketchRaw)
+  const rawRefs: string[] = Array.isArray(sketchRaw)
     ? (sketchRaw as string[]).filter((s) => s)
     : sketchRaw
       ? [sketchRaw as string]
       : []
+  // A profile picked entity-by-entity arrives as `entity:<sketchId>:<eid>` (or
+  // `vertex:...`) viewport selection IDs. The profile is the whole parent sketch,
+  // so collapse those to the sketch id and dedupe (multiple edges of one sketch
+  // map to a single profile). Plain `$`/`@`/`?` refs pass through unchanged.
+  const sketchRefs = [...new Set(rawRefs.map(profileRefToSketchRef))]
   const pathRef = (merged.path as string) ?? ''
 
   if (sketchRefs.length === 0) throw new Error('sweep: requires at least one profile reference')

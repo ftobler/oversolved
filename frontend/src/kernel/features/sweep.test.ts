@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { solveSweep, orderEdgesIntoChain, pathRefToSketchId } from './sweep'
+import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, profileRefToSketchRef } from './sweep'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -63,6 +63,22 @@ describe('pathRefToSketchId', () => {
   })
 })
 
+describe('profileRefToSketchRef', () => {
+  it('collapses an entity selection ID to its parent sketch id', () => {
+    expect(profileRefToSketchRef('entity:bOhvSew-4vrj:SN7Aax6PfaDQoVdM')).toBe('bOhvSew-4vrj')
+  })
+
+  it('collapses a vertex selection ID to its parent sketch id', () => {
+    expect(profileRefToSketchRef('vertex:sk1:e2:start')).toBe('sk1')
+  })
+
+  it('passes plain $/@/? refs through unchanged', () => {
+    expect(profileRefToSketchRef('$sk1')).toBe('$sk1')
+    expect(profileRefToSketchRef('@sk1/e2')).toBe('@sk1/e2')
+    expect(profileRefToSketchRef('?3;@sk1')).toBe('?3;@sk1')
+  })
+})
+
 describe('solveSweep guard paths', () => {
   it('requires at least one profile reference', () => {
     expect(() =>
@@ -88,5 +104,33 @@ describe('solveSweep guard paths', () => {
         bodyStore,
       ),
     ).toThrow(/sketch not found: missing/)
+  })
+
+  it('resolves entity-selection profile refs to their parent sketch (bug: sweep_20260613)', () => {
+    // The profile was picked edge-by-edge, persisting `entity:<sketchId>:<eid>`
+    // selection IDs. These must collapse to the parent sketch, not surface the
+    // cryptic "sketch not found: entity:..." that the bug report hit.
+    const sketchId = 'bOhvSew-4vrj_rLeRX0-ZR78'
+    let msg = ''
+    try {
+      solveSweep(
+        oc,
+        scope,
+        table,
+        {
+          id: 'sw',
+          sweep: {
+            path: '$p',
+            sketch: [`entity:${sketchId}:SN7Aax6PfaDQoVdM`, `entity:${sketchId}:6a0ityCkkAXICmG2`],
+          },
+        },
+        new Repository(),
+        {},
+      )
+    } catch (e) {
+      msg = (e as Error).message
+    }
+    expect(msg).toContain(`sketch not found: ${sketchId}`)
+    expect(msg).not.toContain('entity:')
   })
 })
