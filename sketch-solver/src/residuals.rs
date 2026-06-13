@@ -659,7 +659,7 @@ impl<'a> Problem<'a> {
             r.push(line_dir[0] * ty - line_dir[1] * tx);
         } else if self.kind_of(arc_idx) == Kind::Circle {
             if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
-                let contact = if pinned_pt == PointSelector::Start {
+                let contact = if pinned_pt == PointSelector::End {
                     [line_ep[0], line_ep[1]]
                 } else {
                     [line_ep[2], line_ep[3]]
@@ -667,12 +667,13 @@ impl<'a> Problem<'a> {
                 let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
                 r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
             } else {
-                let contact = [line_ep[2], line_ep[3]];
-                let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
-                r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
-                let dist =
-                    ((contact[0] - arc_ep[0]).powi(2) + (contact[1] - arc_ep[1]).powi(2)).sqrt();
-                r.push(dist - arc_ep[2]);
+                // Perpendicular distance from circle center to the infinite line
+                // equals the radius -- the line body is tangent without pinning a
+                // specific endpoint to the circle.
+                let (cx, cy) = (arc_ep[0], arc_ep[1]);
+                let num = (cx - line_ep[0]) * line_dir[1]
+                    - (cy - line_ep[1]) * line_dir[0];
+                r.push(num.abs() - arc_ep[2]);
             }
         } else {
             let contact = [line_ep[2], line_ep[3]];
@@ -1429,6 +1430,32 @@ mod tests {
         let r = p.residuals(&p.x0.clone());
         assert_eq!(r.len(), 1);
         assert!((r[0] - 3.0).abs() < 1e-12, "residual: {}", r[0]);
+    }
+
+    #[test]
+    fn line_circle_tangent_residual() {
+        // Line from (0,0) to (3,1), circle at (2,3) r=2.5.
+        // Perpendicular distance from center to line = |2*1 - 3*3| / sqrt(10)
+        // = 7 / sqrt(10). Residual = 7/sqrt(10) - 2.5.
+        let abs = PointSelector::Absent;
+        let c = vec![Constraint {
+            kind_code: ConstraintKind::Tangent.to_u8(),
+            refs: vec![
+                (RefRole::Line, Ref::Entity { index: 0, point: abs }),
+                (RefRole::Arc, Ref::Entity { index: 1, point: abs }),
+            ],
+            ..Default::default()
+        }];
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Circle, 4)],
+            vec![0.0, 0.0, 3.0, 1.0, 2.0, 3.0, 2.5],
+            c,
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        let expected = 7.0 / (10.0_f64).sqrt() - 2.5;
+        assert!((r[0] - expected).abs() < 1e-12, "residual: {}, expected: {}", r[0], expected);
     }
 
     #[test]
