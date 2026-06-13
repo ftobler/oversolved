@@ -11,7 +11,6 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
   const [hovered, setHovered] = useState(false)
   const cId = `constraint:${featureId}:${id}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(cId))
-  const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
 
   const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
@@ -21,7 +20,7 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
       key={id}
       onMouseEnter={() => { setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
       onMouseLeave={() => { setHovered(false); setHoveredConstraintEntities(new Set()) }}
-      onClick={(e) => { e.stopPropagation(); toggleNormalSelection(cId) }}
+      onClick={(e) => { e.stopPropagation(); const s = useSketchEditorStore.getState(); s.clearNormalSelection(); s.addToNormalSelection(cId) }}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
         width: ICON_SIZE,

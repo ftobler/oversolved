@@ -46,7 +46,9 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
-    useSketchEditorStore.getState().toggleNormalSelection(`constraint:${interaction.featureId}:${cid}`)
+    const st = useSketchEditorStore.getState()
+    st.clearNormalSelection()
+    st.addToNormalSelection(`constraint:${interaction.featureId}:${cid}`)
   }, [interaction, cid, consumeClick])
   const onDoubleClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (consumeClick()) return

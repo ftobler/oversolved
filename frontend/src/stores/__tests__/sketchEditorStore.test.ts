@@ -498,6 +498,16 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().deleteSelected()
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
+
+    it('constraint click replaces selection instead of accumulating (bug fix: delete too much)', () => {
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      // Simulate clicking a constraint tile/dim label
+      const st = useSketchEditorStore.getState()
+      st.clearNormalSelection()
+      st.addToNormalSelection('constraint:S1:C1')
+      expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['constraint:S1:C1']))
+    })
   })
 
   describe('setActiveTool', () => {
