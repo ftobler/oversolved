@@ -579,6 +579,48 @@ fn depart(eg: &EdgeGeom) -> f64 {
     }
 }
 
+/// Signed curvature (left turn positive) at the departure end of a half-edge, in
+/// its stored traversal direction. Used only to break angular ties at a vertex
+/// where two edges leave along the same tangent (a tangency cusp): the edge that
+/// bends right is infinitesimally "before" the one that bends left, so ordering
+/// ascending by (depart angle, bend) puts them in the geometrically correct CCW
+/// order that pure first-derivative angle cannot resolve.
+fn bend(eg: &EdgeGeom) -> f64 {
+    match *eg {
+        EdgeGeom::Line { .. } | EdgeGeom::Ellipse { .. } => 0.0,
+        EdgeGeom::Arc { radius, ccw, .. } => {
+            let s = if ccw { 1.0 } else { -1.0 };
+            s / radius
+        }
+        EdgeGeom::EllipseArc {
+            a, b, angle_start_deg, ccw, ..
+        } => {
+            // Curvature is rotation-invariant, so evaluate in the unrotated frame.
+            let phi = radians(angle_start_deg);
+            let s = if ccw { 1.0 } else { -1.0 };
+            let dx = a * phi.sin();
+            let dy = b * phi.cos();
+            let speed2 = dx * dx + dy * dy;
+            if speed2 < EPS {
+                return 0.0;
+            }
+            s * a * b / speed2.powf(1.5)
+        }
+        EdgeGeom::Spline { start, c1, c2, .. } => {
+            let d1 = [3.0 * (c1[0] - start[0]), 3.0 * (c1[1] - start[1])];
+            let d2 = [
+                6.0 * (start[0] - 2.0 * c1[0] + c2[0]),
+                6.0 * (start[1] - 2.0 * c1[1] + c2[1]),
+            ];
+            let speed2 = d1[0] * d1[0] + d1[1] * d1[1];
+            if speed2 < EPS {
+                return 0.0; // degenerate tangent: no curvature signal to tie-break on
+            }
+            (d1[0] * d2[1] - d1[1] * d2[0]) / speed2.powf(1.5)
+        }
+    }
+}
+
 type HalfEdge = (String, String, EdgeGeom);
 
 fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64 {
@@ -998,17 +1040,26 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
         return surfaces;
     }
 
-    let mut out_map: HashMap<String, Vec<(f64, usize)>> = HashMap::new();
+    let mut out_map: HashMap<String, Vec<(f64, f64, usize)>> = HashMap::new();
     for (i, (vf, _, eg)) in hes.iter().enumerate() {
         let angle = depart(eg);
-        out_map.entry(vf.clone()).or_default().push((angle, i));
+        out_map.entry(vf.clone()).or_default().push((angle, bend(eg), i));
     }
     for outs in out_map.values_mut() {
+        // Order CCW by departure angle. Two edges that leave along the same tangent
+        // (a tangency cusp) have effectively equal angles; the first derivative
+        // cannot separate them, so break the tie by signed curvature (the
+        // right-bending edge precedes the left-bending one). ANGLE_TIE rounds away
+        // the float noise between two analytically-equal tangent directions while
+        // staying far below the gap between genuinely distinct crossing edges.
+        const ANGLE_TIE: f64 = 1e-7;
         outs.sort_by(|a, b| {
-            if a.0 != b.0 {
+            if (a.0 - b.0).abs() > ANGLE_TIE {
                 a.0.partial_cmp(&b.0).unwrap()
+            } else if a.1 != b.1 {
+                a.1.partial_cmp(&b.1).unwrap()
             } else {
-                a.1.cmp(&b.1)
+                a.2.cmp(&b.2)
             }
         });
     }
@@ -1027,10 +1078,10 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
     for outs in out_map.values() {
         let k = outs.len();
         for pos in 0..outs.len() {
-            let i = outs[pos].1;
+            let i = outs[pos].2;
             let ti = i ^ 1;
             let prev = ((pos as i64 - 1).rem_euclid(k as i64)) as usize;
-            next_he.insert(ti, outs[prev].1);
+            next_he.insert(ti, outs[prev].2);
         }
     }
 
@@ -1462,6 +1513,23 @@ mod tests {
         assert!(collinear_overlap(&line([0.0, 0.0], [2.0, 0.0]), &line([1.0, 0.0], [1.0, 0.0])).is_empty());
         // Genuinely overlapping collinear segments -> overlap points.
         assert!(!collinear_overlap(&line([0.0, 0.0], [2.0, 0.0]), &line([1.0, 0.0], [3.0, 0.0])).is_empty());
+    }
+
+    #[test]
+    fn three_mutually_tangent_circles_make_four_areas() {
+        // Bug report tangential_sketch_area_building: three equal circles, each
+        // pair externally tangent, must yield 4 areas (3 disks + 1 central
+        // curvilinear triangle). The tangent vertices are cusps where two arcs
+        // share a departure direction, so the face tracer must break the angular
+        // tie by curvature or it merges/loses faces.
+        let r = 2.61391544342041;
+        let geom = vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("B".into(), circle([-5.223526954650879, -0.21208451688289642], r)),
+            ("C".into(), circle([-2.4280929565429688, -4.629749298095703], r)),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 4, "expected 3 disks + 1 central triangle");
     }
 
     #[test]

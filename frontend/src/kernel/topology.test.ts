@@ -190,6 +190,21 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
     expect(ni(r)).toBe(2)
   })
 
+  it("three mutually tangent circles → 4 surfaces", () => {
+    /** Three equal circles, each pair externally tangent (equilateral layout):
+     *  3 disks + 1 central curvilinear triangle. The tangent points are cusps
+     *  where two arcs share a departure direction, so the face tracer must break
+     *  the angular tie by curvature. Regression for the
+     *  tangential_sketch_area_building bug report (gave 2 surfaces). */
+    const r = 2.61391544342041
+    const result = detectTopology({
+      A: circleGeom(0, 0, r),
+      B: circleGeom(-5.223526954650879, -0.21208451688289642, r),
+      C: circleGeom(-2.4280929565429688, -4.629749298095703, r),
+    })
+    expect(ns(result)).toBe(4)
+  })
+
   it("semicircle arc + diameter → 1 surface", () => {
     /** Upper semicircle arc + diameter line → 1 surface (half-disk). */
     const r = detectTopology({
