@@ -158,6 +158,11 @@ export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): ChainEdge[] {
  * (mirrors `_world_arc_edge`). The rotation plane comes from the start/end radius
  * vectors; major arcs (>180 degrees) are not supported.
  */
+/**
+ * Build a world-space minor circular arc edge through start -> end about center
+ * (mirrors `_world_arc_edge`). The rotation plane comes from the start/end radius
+ * vectors; major arcs (>180 degrees) are not supported.
+ */
 export function worldArcEdge(
   oc: OccModule,
   scope: DisposeScope,
@@ -307,8 +312,14 @@ export function collectPathEdges(
     const s = (reversed ? e.end : e.start) as number[]
     const t = (reversed ? e.start : e.end) as number[]
     if (e.kind === 'arc' && 'center' in e) {
+      // Always build the minor arc for the spine. The topology ccw flag is a
+      // face-cycle direction marker -- when an edge was normalized (span >180°
+      // swapped, always ccw=true) and then reversed by the chain walk, the
+      // ccw-mismatch logic would build the major arc, sending the sweep the
+      // long way around the circle. Omitting ccw forces the minor (shortest)
+      // arc, which is what the spine always needs.
       spineEdges.push(
-        worldArcEdge(oc, scope, e.center as number[], s, t, Number(e.radius), e.ccw as boolean | undefined, e._normal as number[] | undefined),
+        worldArcEdge(oc, scope, e.center as number[], s, t, Number(e.radius)),
       )
     } else {
       spineEdges.push(makeLineEdge(oc, scope, s as Vec3, t as Vec3))

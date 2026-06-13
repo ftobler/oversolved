@@ -203,6 +203,13 @@ export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]):
   }
 }
 
+/** Gap-closing tolerance for ShapeFix_Wire healing.  Must be large enough to
+ *  absorb the ~0.002 endpoint drift from worldArcEdge's floating-point angle
+ *  recomputation (atan2 → OCC circle evaluation), but small enough not to merge
+ *  distinct vertices on short edges.  Spine joints are typically several units
+ *  apart, so 0.01 is safe. */
+const WIRE_HEAL_TOL = 0.01
+
 /**
  * Heal a wire by rebuilding it from single-edge wires through ShapeFix_Wire.
  * Proactive form of the makeWire fallback — use for spine wires where
@@ -215,25 +222,25 @@ export function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: Occ
     singleBuilder.Add_1(e)
     sfw.Load_1(singleBuilder.Wire())
   }
-  sfw.SetPrecision(1e-5)
+  sfw.SetPrecision(WIRE_HEAL_TOL)
   sfw.FixReorder_1()
-  sfw.FixConnected_1(1e-5)
+  sfw.FixConnected_1(WIRE_HEAL_TOL)
   sfw.Perform()
   return sfw.Wire()
 }
 
 /**
- * Run ShapeFix_Wire on an existing wire to close sub-micron gaps at joints
+ * Run ShapeFix_Wire on an existing wire to close gaps at joints
  * (FixReorder + FixConnected). Use when the wire may have been built successfully
- * but carries solver-level endpoint imprecision that can destabilize downstream
+ * but carries endpoint imprecision that can destabilize downstream
  * operations (e.g. MakePipeShell).
  */
 export function healWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
   const sfw = scope.track(new oc.ShapeFix_Wire_1())
   sfw.Load_1(wire)
-  sfw.SetPrecision(1e-5)
+  sfw.SetPrecision(WIRE_HEAL_TOL)
   sfw.FixReorder_1()
-  sfw.FixConnected_1(1e-5)
+  sfw.FixConnected_1(WIRE_HEAL_TOL)
   sfw.Perform()
   return sfw.Wire()
 }

@@ -152,6 +152,40 @@ describe('orderedPathWorldEdges', () => {
     // One connected open chain: exactly two free endpoints (origin + far line end).
     expect(chainEnds(edges)).toEqual([JSON.stringify([-1.33, -6.12, 0]), JSON.stringify([0, 0, 0])])
   })
+
+  it('reverses a topology-normalized arc in the chain (bug: major-arc sweep)', () => {
+    // After topology normalisation, an arc whose CCW span exceeds 180° has
+    // its start/end swapped and ccw is always true for the forward edge.
+    // The chain walk must reverse it to connect the preceding line, and
+    // collectPathEdges must NOT build the major complement arc.
+    // Pre-normalisation: arc goes from [-10,0] to [-7.69,-9.43] CW (152°).
+    // Post-normalisation: start [-7.69,-9.43], end [-10,0], ccw=true.
+    const sk = 'sk'
+    const repo = new Repository()
+    repo.register('_pt_' + sk, planeXY)
+    repo.register('_topo_' + sk, {
+      edges: [
+        { entity_id: 'L1', edge_index: 0, kind: 'line', start: [0, 0], end: [-10, 0] },
+        {
+          entity_id: 'A1', edge_index: 1, kind: 'arc',
+          center: [-10, -5], radius: 5,
+          start: [-7.69, -9.43], end: [-10, 0],
+          angle_start_deg: -62.48, angle_end_deg: 90, ccw: true,
+        },
+        { entity_id: 'L2', edge_index: 2, kind: 'line', start: [-7.69, -9.43], end: [-1.33, -6.12] },
+      ],
+    })
+    const [edges] = orderedPathWorldEdges([
+      `entity:${sk}:L1`, `entity:${sk}:A1`, `entity:${sk}:L2`,
+    ], repo)
+    expect(edges).toHaveLength(3)
+    // The arc must be reversed: its end [-10,0] connects to L1's end.
+    const arcEdge = edges.find((ce) => ce.edge.kind === 'arc')
+    expect(arcEdge).toBeDefined()
+    expect(arcEdge!.reversed).toBe(true)
+    // Chain endpoints match: free end of L1 is [0,0,0], free end of L2 is [-1.33,-6.12,0].
+    expect(chainEnds(edges)).toEqual([JSON.stringify([-1.33, -6.12, 0]), JSON.stringify([0, 0, 0])])
+  })
 })
 
 describe('pathRefToSketchId', () => {
