@@ -5,7 +5,7 @@ import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
 import { rgbToId } from '@/picking/idEncoding'
 import { EMPTY_ID } from '@/picking/idEncoding'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { getToolAllowedLayers } from '@/components/Viewport/idDispatch/toolAllowedLayers'
+import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 
 interface RubberBandRect {
   x: number

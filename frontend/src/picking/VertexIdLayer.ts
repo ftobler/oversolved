@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
+import { VERTEX_LAYER_NAME } from './layerNames'
 
 /**
  * Concrete ID layer for B-rep vertices.
@@ -15,7 +16,7 @@ import { idToRGBNormalized } from './idEncoding'
  * always win where they draw -- matching the architecture's "vertex
  * wins over edge wins over face" priority via geometric layering.
  */
-export const VERTEX_LAYER_NAME = 'vertex'
+export { VERTEX_LAYER_NAME }
 export interface VertexIdLayerConfig {
   name?: string
   priority?: number

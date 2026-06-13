@@ -11,6 +11,7 @@ import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { ToolId } from '@/registry/toolRegistry'
+import { getToolPickConfig } from '@/registry/toolPickConfig'
 
 // Callbacks dispatched from pure-layer store actions back into React state.
 // Registered by Part.tsx on mount via setSketchCallback(); torn down on unmount.
@@ -371,19 +372,17 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         drawHover: null,
         drawSnapVertexId: null,
       }
-      // Clear stale pending dimension state when not in dimension tool
-      if (tool !== 'dimension') {
-        updates.dimensionPicks = []
-        updates.dimensionCursorWorld = null
-      } else {
-        // Entering the dimension tool wipes the current normal selection so
-        // the picks the user makes inside the tool aren't contaminated by
-        // whatever was selected before. (Spec: "user clicks 'd', everything
-        // de-selects.") Also resets any leftover placement state so the first
-        // click starts a fresh gesture.
+      // Reset leftover dimension placement state on every tool switch so the
+      // first click in any tool starts a fresh gesture.
+      updates.dimensionPicks = []
+      updates.dimensionCursorWorld = null
+      // A tool whose config requests it (currently only dimension) wipes the
+      // current normal selection on enter so the picks the user makes inside
+      // the tool aren't contaminated by a pre-existing selection. (Spec: "user
+      // clicks 'd', everything de-selects.") Driven by ToolPickConfig so the
+      // per-tool rule lives with the tool's policy, not buried here.
+      if (getToolPickConfig(tool).clearsSelectionOnEnter) {
         updates.normalSelection = new Set<string>()
-        updates.dimensionPicks = []
-        updates.dimensionCursorWorld = null
       }
       // Clear stale pick-field state when entering any tool
       if (tool !== null && state.activePickField !== null) {

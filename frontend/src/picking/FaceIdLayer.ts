@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
+import { FACE_LAYER_NAME } from './layerNames'
 
 const _warnedDuplicates = new Set<string>()
 
@@ -18,7 +19,7 @@ const _warnedDuplicates = new Set<string>()
  * `buildBodyGeometry(mesh).toNonIndexed()`. Each triangle's 3 vertex
  * colors are identical -- the face ID.
  */
-export const FACE_LAYER_NAME = 'face'
+export { FACE_LAYER_NAME }
 
 export interface FaceIdLayerConfig {
   name?: string

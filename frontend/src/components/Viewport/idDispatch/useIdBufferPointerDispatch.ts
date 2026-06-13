@@ -9,7 +9,7 @@ import { sketchEntityAdapter } from './sketchEntityAdapter'
 import { sketchVertexAdapter } from './sketchVertexAdapter'
 import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
-import { getToolAllowedLayers } from './toolAllowedLayers'
+import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,

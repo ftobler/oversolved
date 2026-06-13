@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
+import { EDGE_LAYER_NAME } from './layerNames'
 
 const _warnedDuplicates = new Set<string>()
 
@@ -22,7 +23,7 @@ const _warnedDuplicates = new Set<string>()
  * A small clip-space depth bias is applied so edges lying on a face
  * surface don't z-fight with the face into oblivion.
  */
-export const EDGE_LAYER_NAME = 'edge'
+export { EDGE_LAYER_NAME }
 export const EDGE_DEPTH_BIAS = -1e-4
 
 export interface EdgeIdLayerConfig {

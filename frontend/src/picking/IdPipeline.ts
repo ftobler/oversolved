@@ -6,15 +6,18 @@ import { FaceIdLayer } from './FaceIdLayer'
 import { EdgeIdLayer } from './EdgeIdLayer'
 import { VertexIdLayer } from './VertexIdLayer'
 import type { IdLayer } from './IdLayer'
+import {
+  PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
+  SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
+} from './layerNames'
 
-// Layer name constants for the helper / sketch / origin layers. The B-rep
-// layer names live in their respective modules (FACE/EDGE/VERTEX_LAYER_NAME).
-export const PLANE_LAYER_NAME = 'planeFace'
-export const SKETCH_SURFACE_LAYER_NAME = 'sketchSurface'
-export const SKETCH_ENTITY_LAYER_NAME = 'sketchEntity'
-export const SKETCH_VERTEX_LAYER_NAME = 'sketchVertex'
-export const ORIGIN_LAYER_NAME = 'originMarker'
-export const DIMENSION_LABEL_LAYER_NAME = 'dimensionLabel'
+// Layer name constants now live in the pure ./layerNames module (no three.js)
+// so tool/selection policy can import them headlessly. Re-export here so the
+// @/picking barrel and existing import sites keep resolving them unchanged.
+export {
+  PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
+  SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
+}
 export const SKETCH_ENTITY_FAT_PIXELS = 8
 export const SKETCH_VERTEX_FAT_PIXELS = 12
 export const ORIGIN_FAT_PIXELS = 14
