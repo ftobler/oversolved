@@ -6,7 +6,6 @@
 //! solved params back into the doc stay in the TS builder (the plan's "what
 //! stays scalar TS" boundary).
 
-use crate::constraints::{ConstraintKind, Ref, RefRole};
 use crate::lm::{solve_lm, solve_lm_sparse};
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
@@ -79,13 +78,17 @@ pub fn solve_sketch(input: &Input) -> Output {
     let final_loss = result.residual_norm * result.residual_norm;
     let rank = matrix_rank(&jac, RANK_TOL);
 
-    let n_pinned = count_pinned_dof(input);
-    let rigid_body_dof = 3usize.saturating_sub(n_pinned);
-    let free_target = n.saturating_sub(rigid_body_dof);
-
+    // Fully constrained means zero remaining DOF: the rank of the constraint
+    // Jacobian reaches the parameter count. Every grounding constraint (fixed,
+    // pinned_mask, equality pins, coincident-to-origin) already contributes its
+    // own Jacobian rows, so the rank reflects them directly. We deliberately do
+    // not forgive a "rigid-body" DOF allowance here: a point pinned to the
+    // origin still leaves the geometry free to rotate about it, and that
+    // rotation is a real, removable DOF (e.g. a horizontal/angle constraint),
+    // not an unconstrainable gauge freedom.
     let status = if final_loss > LOSS_THRESHOLD {
         Status::Overconstrained
-    } else if rank < free_target {
+    } else if rank < n {
         Status::Underconstrained
     } else {
         Status::FullyConstrained
@@ -161,31 +164,6 @@ fn refine_drag_sparse(
         aug
     };
     solve_lm_sparse(x_clean, &f2, &jac2).x
-}
-
-/// Total parameters pinned, for the rigid-body-DOF bookkeeping. Mirrors
-/// `n_fixed_pinned` in `_run_solver`, extended to the crate's first-class
-/// `pinned_mask` and `equality_pins` (each removes one DOF).
-fn count_pinned_dof(input: &Input) -> usize {
-    let mut n = 0usize;
-    for c in &input.constraints {
-        if c.kind() != Some(ConstraintKind::Fixed) {
-            continue;
-        }
-        match c.ref_for(RefRole::Target) {
-            Some(Ref::Entity { index, point }) => {
-                if point.is_present() || c.xy.is_some() {
-                    n += 2;
-                } else {
-                    n += input.entities[index as usize].kind.param_count();
-                }
-            }
-            _ => n += 2,
-        }
-    }
-    n += input.pinned_mask_bit_count(input.params_initial.len());
-    n += input.equality_pins.len();
-    n
 }
 
 /// Rank of `j` = count of singular values strictly above `tol` (matches
@@ -287,7 +265,7 @@ fn vertex_freedom(input: &Input, jac: &DMatrix<f64>) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constraints::{Constraint, ConstraintKind, PointSelector};
+    use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
     use crate::{Entity, EqualityPin, Kind, Options, Status};
 
     fn line(off: usize) -> Entity {
@@ -369,6 +347,31 @@ mod tests {
         assert!((p[2] - 10.0).abs() < 1e-3, "end.x {}", p[2]);
         assert!(p[3].abs() < 1e-3, "end.y {}", p[3]);
         assert!(out.diagnostics.residual_norm < 1e-5);
+    }
+
+    #[test]
+    fn line_pinned_at_origin_with_length_but_no_orientation_is_underconstrained() {
+        // Regression: start pinned at the origin and length fixed, but the line
+        // is still free to rotate about that pinned point. That rotation is a
+        // real, removable DOF (a horizontal/angle constraint would take it), so
+        // the sketch is NOT fully constrained. The old rigid-body-DOF allowance
+        // wrongly forgave this one DOF and reported FullyConstrained.
+        let mut fixed_start = c_target(ConstraintKind::Fixed, 0, PointSelector::Start);
+        fixed_start.xy = Some((0.0, 0.0));
+        let mut length = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        length.value = Some(10.0);
+
+        let inp = input(
+            vec![line(0)],
+            vec![0.0, 0.0, 9.0, 1.0],
+            vec![fixed_start, length],
+        );
+        let out = solve_sketch(&inp);
+
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        assert_eq!(out.entity_status, vec![Status::Underconstrained.to_u8()]);
+        // One free DOF remains (the rotation): rank 3 of 4 params.
+        assert_eq!(out.diagnostics.dof, 1);
     }
 
     #[test]
