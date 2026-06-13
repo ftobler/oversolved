@@ -144,8 +144,10 @@ pub struct Problem<'a> {
     constraints: &'a [Constraint],
     pinned_indices: Vec<usize>,
     equality_pins: Vec<(usize, f64)>,
-    /// (line_index, circle_index) -> which line endpoint is pinned to the
-    /// circle, mirroring `line_circle_coincident` in `_build_residuals_fn`.
+    /// (line_index, curve_index) -> which line endpoint is pinned to the
+    /// curve (circle or arc), mirroring `line_circle_coincident` in
+    /// `_build_residuals_fn`.  An arc tangent uses the same pinned-foot
+    /// path as a circle once the coincident is known.
     line_circle_coincident: HashMap<(u32, u32), PointSelector>,
 }
 
@@ -179,10 +181,10 @@ impl<'a> Problem<'a> {
                 }),
             ) = (a, b)
             {
-                // a is a line with an explicit point; b is a circle without one.
+                // a is a line with an explicit point; b is a curve without one.
                 if a_pt.is_present()
                     && input.entities.get(a_idx as usize).map(|e| e.kind) == Some(Kind::Line)
-                    && input.entities.get(b_idx as usize).map(|e| e.kind) == Some(Kind::Circle)
+                    && is_curve(input.entities.get(b_idx as usize).map(|e| e.kind).unwrap_or(Kind::Point))
                     && !b_pt.is_present()
                 {
                     let sel = if a_pt == PointSelector::End {
@@ -191,6 +193,19 @@ impl<'a> Problem<'a> {
                         PointSelector::Start
                     };
                     line_circle_coincident.insert((a_idx, b_idx), sel);
+                }
+                // Symmetric: b is a line with an explicit point; a is a curve without one.
+                if b_pt.is_present()
+                    && input.entities.get(b_idx as usize).map(|e| e.kind) == Some(Kind::Line)
+                    && is_curve(input.entities.get(a_idx as usize).map(|e| e.kind).unwrap_or(Kind::Point))
+                    && !a_pt.is_present()
+                {
+                    let sel = if b_pt == PointSelector::End {
+                        PointSelector::End
+                    } else {
+                        PointSelector::Start
+                    };
+                    line_circle_coincident.insert((b_idx, a_idx), sel);
                 }
             }
         }
@@ -675,10 +690,27 @@ impl<'a> Problem<'a> {
                     - (cy - line_ep[1]) * line_dir[0];
                 r.push(num.abs() - arc_ep[2]);
             }
-        } else {
-            let contact = [line_ep[2], line_ep[3]];
-            let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
-            r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
+        } else if self.kind_of(arc_idx) == Kind::Arc {
+            // Arc: same two paths as circle. If a coincident maps a line endpoint
+            // to the arc, the contact is pinned and we measure perpendicularity of
+            // the line direction against the arc's radial direction at that
+            // endpoint. Otherwise the line is tangent to the arc's underlying
+            // circle: distance from arc centre to the infinite line equals the
+            // radius.
+            if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
+                let contact = if pinned_pt == PointSelector::End {
+                    [line_ep[0], line_ep[1]]
+                } else {
+                    [line_ep[2], line_ep[3]]
+                };
+                let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
+                r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
+            } else {
+                let (cx, cy) = (arc_ep[0], arc_ep[1]);
+                let num = (cx - line_ep[0]) * line_dir[1]
+                    - (cy - line_ep[1]) * line_dir[0];
+                r.push(num.abs() - arc_ep[2]);
+            }
         }
     }
 
@@ -1456,6 +1488,63 @@ mod tests {
         assert_eq!(r.len(), 1);
         let expected = 7.0 / (10.0_f64).sqrt() - 2.5;
         assert!((r[0] - expected).abs() < 1e-12, "residual: {}, expected: {}", r[0], expected);
+    }
+
+    // ─── line-arc tangent tests ───
+
+    /// Unpinned line-arc tangent: the line is nowhere near the arc's start/end
+    /// angles, but it IS tangent to the arc's underlying circle. The correct
+    /// residual is the perpendicular distance of the arc centre to the line
+    /// minus the arc radius -- identical to the unpinned line-circle case.
+    #[test]
+    fn line_arc_tangent_unpinned() {
+        // Arc at (0,0) r=2, angles 0..180 (upper half). Horizontal line y=2
+        // from (0,2) to (10,2): distance centre->line = 2 = radius -> tangent.
+        let abs = PointSelector::Absent;
+        let c = vec![Constraint {
+            kind_code: ConstraintKind::Tangent.to_u8(),
+            refs: vec![
+                (RefRole::Line, Ref::Entity { index: 0, point: abs }),
+                (RefRole::Arc, Ref::Entity { index: 1, point: abs }),
+            ],
+            ..Default::default()
+        }];
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
+            vec![0.0, 2.0, 10.0, 2.0, 0.0, 0.0, 2.0, 0.0, 180.0],
+            c,
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        // centre (0,0) to horizontal line y=2: distance = 2, radius = 2 => zero
+        assert!(r[0].abs() < 1e-12, "horizontal line y=2 tangent to arc r=2: {}", r[0]);
+    }
+
+    /// A line that is NOT tangent to the arc's circle yields a non-zero
+    /// residual. Uses a vertical line so the broken arc-start-angle path
+    /// cannot produce the correct result by accident.
+    #[test]
+    fn line_arc_tangent_not_tangent() {
+        let abs = PointSelector::Absent;
+        let c = vec![Constraint {
+            kind_code: ConstraintKind::Tangent.to_u8(),
+            refs: vec![
+                (RefRole::Line, Ref::Entity { index: 0, point: abs }),
+                (RefRole::Arc, Ref::Entity { index: 1, point: abs }),
+            ],
+            ..Default::default()
+        }];
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
+            // vertical line x=0, arc at (3,0) r=2: centre->line = 3, radius = 2 => offset 1
+            vec![0.0, 0.0, 0.0, 10.0, 3.0, 0.0, 2.0, 0.0, 180.0],
+            c,
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - 1.0).abs() < 1e-12, "offset 1: {}", r[0]);
     }
 
     #[test]
