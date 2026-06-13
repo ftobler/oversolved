@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, profileRefToSketchRef, orderedPathWorldEdges } from './sweep'
+import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, profileRefToSketchRef, orderedPathWorldEdges, type ChainEdge } from './sweep'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -25,13 +25,16 @@ describe('orderEdgesIntoChain', () => {
     const ordered = orderEdgesIntoChain(edges)
     // Direction is not fixed (either degree-1 end may start the walk), so assert
     // the sequence is a valid connected chain a-b-c (forward or reversed).
-    const ids = ordered.map((e) => e.id).join('')
+    const ids = ordered.map((ce) => ce.edge.id).join('')
     expect(['abc', 'cba']).toContain(ids)
   })
 
   it('returns a single edge unchanged', () => {
     const edges: Edge[] = [{ id: 'only', start: [0, 0], end: [1, 1] }]
-    expect(orderEdgesIntoChain(edges)).toEqual(edges)
+    const result = orderEdgesIntoChain(edges)
+    expect(result).toHaveLength(1)
+    expect(result[0].edge).toEqual(edges[0])
+    expect(result[0].reversed).toBe(false)
   })
 
   it('throws when edges do not form a connected chain', () => {
@@ -49,7 +52,7 @@ describe('orderEdgesIntoChain', () => {
       { id: 'c', start: [10, 0, 0], end: [10, 0, 5] },
       { id: 'l', start: [0, 0, 0], end: [10, 0, 0] },
     ]
-    const ids = orderEdgesIntoChain(edges).map((e) => e.id).join('')
+    const ids = orderEdgesIntoChain(edges).map((ce) => ce.edge.id).join('')
     expect(['lc', 'cl']).toContain(ids)
   })
 })
@@ -79,10 +82,10 @@ function repoWithPathSketches(): Repository {
 
 // The two free (degree-1) endpoints of an ordered open chain, as sorted JSON
 // (chain direction is not fixed, so compare the endpoint set, not positions).
-function chainEnds(edges: Edge[]): string[] {
+function chainEnds(chain: ChainEdge[]): string[] {
   const counts = new Map<string, number>()
-  for (const e of edges) {
-    for (const p of [e.start as number[], e.end as number[]]) {
+  for (const ce of chain) {
+    for (const p of [ce.edge.start as number[], ce.edge.end as number[]]) {
       const k = JSON.stringify(p)
       counts.set(k, (counts.get(k) ?? 0) + 1)
     }
@@ -94,8 +97,9 @@ describe('orderedPathWorldEdges', () => {
   it('selects only the picked entity edge (edge-precise)', () => {
     const [edges] = orderedPathWorldEdges(['entity:skX:l1'], repoWithPathSketches())
     expect(edges).toHaveLength(1)
-    expect(edges[0].start).toEqual([0, 0, 0])
-    expect(edges[0].end).toEqual([10, 0, 0])
+    expect(edges[0].edge.start).toEqual([0, 0, 0])
+    expect(edges[0].edge.end).toEqual([10, 0, 0])
+    expect(edges[0].reversed).toBe(false)
   })
 
   it('orders multiple picked entity edges into a chain', () => {
@@ -144,7 +148,7 @@ describe('orderedPathWorldEdges', () => {
       `entity:${sk}:RJ5pRtfqTByhFHlV`,
     ], repo)
     expect(edges).toHaveLength(3)
-    expect(edges.map((e) => e.kind)).toContain('arc')  // the arc is part of the spine
+    expect(edges.map((ce) => ce.edge.kind)).toContain('arc')  // the arc is part of the spine
     // One connected open chain: exactly two free endpoints (origin + far line end).
     expect(chainEnds(edges)).toEqual([JSON.stringify([-1.33, -6.12, 0]), JSON.stringify([0, 0, 0])])
   })

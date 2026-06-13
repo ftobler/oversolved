@@ -75,14 +75,21 @@ export function pathRefToSketchId(pathRef: string, globalRepo: Repository): stri
 }
 
 /**
- * Order path edges into a connected chain by matching endpoints (mirrors
- * `_order_edges_into_chain`). Geometry is orientation-independent for wire
- * assembly, so only the sequence matters. Throws if not one connected chain.
- * Endpoints are compared component-wise across all dimensions, so this works
- * for both 2D sketch points and 3D world points (a path spanning sketches on
- * different planes is ordered in world space).
+ * Ordered-edge descriptor: the edge data plus whether it was walked backward
+ * (its `end` matched the current chain endpoint, so the walk continued from
+ * its `start`).  Callers use `reversed` to build the OCC edge from end→start
+ * so the wire's natural forward direction follows the chain without reversing
+ * edges later, avoiding arc-direction ambiguity.
  */
-export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): Dict[] {
+export type ChainEdge = { edge: Dict; reversed: boolean }
+
+/**
+ * Order path edges into a connected chain, returning each edge plus a
+ * `reversed` flag when it was traversed end→start during the walk.
+ * The chain always starts from a degree-1 endpoint and walks forward.
+ * See [[orderEdgesIntoChain]] for the flag-less original.
+ */
+export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): ChainEdge[] {
   const close = (a: number[], b: number[]): boolean => {
     const n = Math.max(a.length, b.length)
     for (let i = 0; i < n; i++) {
@@ -91,7 +98,7 @@ export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): Dict[] {
     return true
   }
 
-  if (edges.length <= 1) return [...edges]
+  if (edges.length <= 1) return edges.map((e) => ({ edge: e, reversed: false }))
 
   const endpoints: number[][] = []
   for (const e of edges) {
@@ -103,20 +110,23 @@ export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): Dict[] {
   const used = new Array(edges.length).fill(false)
   let startI = 0
   let curPt = edges[0].end as number[]
+  let startReversed = false
   for (let i = 0; i < edges.length; i++) {
     if (degree(edges[i].start as number[]) === 1) {
       startI = i
       curPt = edges[i].end as number[]
+      startReversed = false
       break
     }
     if (degree(edges[i].end as number[]) === 1) {
       startI = i
       curPt = edges[i].start as number[]
+      startReversed = true
       break
     }
   }
 
-  const ordered: Dict[] = [edges[startI]]
+  const ordered: ChainEdge[] = [{ edge: edges[startI], reversed: startReversed }]
   used[startI] = true
   for (let k = 0; k < edges.length - 1; k++) {
     let found = false
@@ -124,14 +134,14 @@ export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): Dict[] {
       if (used[j]) continue
       const e = edges[j]
       if (close(e.start as number[], curPt)) {
-        ordered.push(e)
+        ordered.push({ edge: e, reversed: false })
         used[j] = true
         curPt = e.end as number[]
         found = true
         break
       }
       if (close(e.end as number[], curPt)) {
-        ordered.push(e)
+        ordered.push({ edge: e, reversed: true })
         used[j] = true
         curPt = e.start as number[]
         found = true
@@ -155,6 +165,8 @@ export function worldArcEdge(
   start: number[],
   end: number[],
   radius: number,
+  ccw?: boolean,
+  sketchNormal?: number[],
 ): OccShape {
   let v0 = [start[0] - center[0], start[1] - center[1], start[2] - center[2]]
   let v1 = [end[0] - center[0], end[1] - center[1], end[2] - center[2]]
@@ -178,9 +190,27 @@ export function worldArcEdge(
   const crossMag = Math.sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2])
   if (crossMag < 1e-12) throw new Error('sweep: degenerate or 180-degree arc in path not supported')
   const dot = v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2]
-  const angle = Math.atan2(crossMag, dot)
+  const minorAngle = Math.atan2(crossMag, dot)
+
+  // When the ccw flag is known, determine whether the minor-angle rotation
+  // (which is CCW from the cross-product direction) matches the sketch
+  // entity's CCW sense as viewed from the sketch plane normal.  If they
+  // disagree the arc must sweep the major way (360° minus minor) with a
+  // reversed circle normal.
+  if (ccw !== undefined) {
+    const sn = sketchNormal ?? [0, 0, 1]  // default: top-plane normal
+    const crossDotNormal = cross[0] * sn[0] + cross[1] * sn[1] + cross[2] * sn[2]
+    // crossDotNormal > 0: cross aligns with sketch normal, minor is CCW from above.
+    const minorIsCcwFromAbove = crossDotNormal > 0
+    if (ccw !== minorIsCcwFromAbove) {
+      const majorAngle = 2 * Math.PI - minorAngle
+      const flipped: Vec3 = [-cross[0] / crossMag, -cross[1] / crossMag, -cross[2] / crossMag]
+      return makeArcEdge(oc, scope, center as Vec3, flipped, v0 as Vec3, radius, 0.0, majorAngle)
+    }
+  }
+
   const normal: Vec3 = [cross[0] / crossMag, cross[1] / crossMag, cross[2] / crossMag]
-  return makeArcEdge(oc, scope, center as Vec3, normal, v0 as Vec3, radius, 0.0, angle)
+  return makeArcEdge(oc, scope, center as Vec3, normal, v0 as Vec3, radius, 0.0, minorAngle)
 }
 
 /**
@@ -222,6 +252,8 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
     if (e.kind === 'arc' && 'center' in e) {
       we.center = sketchToWorld2d(e.center as number[], plane)
       we.radius = Number(e.radius)
+      we.ccw = (e.ccw as boolean) ?? undefined
+      we._normal = plane.normal as number[]  // sketch plane ref for ccw alignment
     }
     worldEdges.push(we)
   }
@@ -238,7 +270,7 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
 export function orderedPathWorldEdges(
   pathRefs: string | string[],
   globalRepo: Repository,
-): [Dict[], string] {
+): [ChainEdge[], string] {
   const refs = Array.isArray(pathRefs) ? pathRefs : [pathRefs]
   const worldEdges: Dict[] = []
   const seen = new Set<string>()  // dedupe edges shared between refs (sketch + index)
@@ -271,13 +303,15 @@ export function collectPathEdges(
 ): [OccShape[], string] {
   const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo)
   const spineEdges: OccShape[] = []
-  for (const e of ordered) {
+  for (const { edge: e, reversed } of ordered) {
+    const s = (reversed ? e.end : e.start) as number[]
+    const t = (reversed ? e.start : e.end) as number[]
     if (e.kind === 'arc' && 'center' in e) {
       spineEdges.push(
-        worldArcEdge(oc, scope, e.center as number[], e.start as number[], e.end as number[], Number(e.radius)),
+        worldArcEdge(oc, scope, e.center as number[], s, t, Number(e.radius), e.ccw as boolean | undefined, e._normal as number[] | undefined),
       )
     } else {
-      spineEdges.push(makeLineEdge(oc, scope, e.start as Vec3, e.end as Vec3))
+      spineEdges.push(makeLineEdge(oc, scope, s as Vec3, t as Vec3))
     }
   }
   return [spineEdges, firstSketchId]
