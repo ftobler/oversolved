@@ -156,8 +156,20 @@ export function worldArcEdge(
   end: number[],
   radius: number,
 ): OccShape {
-  const v0 = [start[0] - center[0], start[1] - center[1], start[2] - center[2]]
-  const v1 = [end[0] - center[0], end[1] - center[1], end[2] - center[2]]
+  let v0 = [start[0] - center[0], start[1] - center[1], start[2] - center[2]]
+  let v1 = [end[0] - center[0], end[1] - center[1], end[2] - center[2]]
+
+  // Snap to exact radius: solver output may have |v0| or |v1| off by 1e-9.
+  // Normalizing prevents the arc edge from drifting off the nominal circle,
+  // which would create a second-order gap at the joints.  The residual gap
+  // (snapped arc endpoint vs. raw line endpoint) is healed by makeWire.
+  const v0Mag = Math.sqrt(v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2])
+  const v1Mag = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2])
+  if (Math.abs(v0Mag - radius) > 1e-9 || Math.abs(v1Mag - radius) > 1e-9) {
+    v0 = [v0[0] / v0Mag * radius, v0[1] / v0Mag * radius, v0[2] / v0Mag * radius]
+    v1 = [v1[0] / v1Mag * radius, v1[1] / v1Mag * radius, v1[2] / v1Mag * radius]
+  }
+
   const cross = [
     v0[1] * v1[2] - v0[2] * v1[1],
     v0[2] * v1[0] - v0[0] * v1[2],

@@ -24,6 +24,7 @@ import {
   makeEllipseEdge,
   makeWire,
   makeFaceFromWire,
+  healWire,
   type Vec3,
 } from './primitives'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
@@ -503,18 +504,40 @@ export function sweepProfileWithLineage(
   if (spineEdges.length === 0) throw new Error('sweep: empty path')
 
   const face = sketchLoopsToFace(oc, scope, loops, plane)
-  const outerWire = scope.track(oc.BRepTools.OuterWire(face))
-  const spineWire = makeWire(oc, scope, spineEdges)
+  const rawOuterWire = scope.track(oc.BRepTools.OuterWire(face))
+  const spineWire = healWire(oc, scope, makeWire(oc, scope, spineEdges))
+  const outerWire = scope.track(healWire(oc, scope, rawOuterWire))
 
-  const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
-  builder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
-  builder.Add_1(outerWire, false, false)
-  builder.Build()
-  if (!builder.IsDone()) throw new Error('BRepOffsetAPI_MakePipeShell failed')
-  if (!builder.MakeSolid()) throw new Error('sweep: could not cap swept shell into a solid')
-  const solid = builder.Shape()
+  let solid: OccShape
+  let pipeBuilder = null
+  const modes = [
+    oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner,
+    oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed,
+  ]
+  let lastError: unknown = null
+  for (const mode of modes) {
+    const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
+    builder.SetTransitionMode(mode)
+    builder.Add_1(outerWire, false, false)
+    try {
+      builder.Build()
+      if (builder.IsDone() && builder.MakeSolid()) {
+        solid = builder.Shape()
+        pipeBuilder = builder
+        lastError = null
+        break
+      }
+    } catch (e) {
+      lastError = e
+    }
+  }
+  if (lastError !== null) {
+    const msg = lastError instanceof Error ? lastError.message : String(lastError)
+    throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)
+  }
+  if (!solid!) throw new Error('sweep: could not build a solid from the swept shell')
 
-  const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane)
+  const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder!, loops, plane)
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
   prefixTokens(lineage.faceLineage, tokenPrefix)
   prefixTokens(lineage.edgeLineage, tokenPrefix)

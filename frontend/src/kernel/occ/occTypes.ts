@@ -255,6 +255,15 @@ export interface OccShapeFixFace extends OccDisposable {
   Face(): OccShape
 }
 
+export interface OccShapeFixWire extends OccDisposable {
+  Load_1(wire: OccShape): void
+  SetPrecision(precision: number): void
+  FixReorder_1(): boolean
+  FixConnected_1(precision: number): boolean
+  Perform(): void
+  Wire(): OccShape
+}
+
 export interface OccLocation extends OccDisposable {
   Transformation(): OccTrsf
 }
@@ -405,6 +414,7 @@ export interface OccModule extends OccSpikeModule {
   BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccPrismBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
+  ShapeFix_Wire_1: new () => OccShapeFixWire
 
   // --- 2b: geometry readers ----------------------------------------------
   GProp_GProps_1: new () => OccGProps
@@ -483,6 +493,8 @@ export interface OccModule extends OccSpikeModule {
   BRepOffsetAPI_MakePipeShell: new (spine: OccShape) => OccPipeShellBuilder
   BRepBuilderAPI_TransitionMode: {
     BRepBuilderAPI_RightCorner: OccEnumValue
+    BRepBuilderAPI_Transformed: OccEnumValue
+    BRepBuilderAPI_RoundCorner: OccEnumValue
   }
 
   // --- 2f: fillet / chamfer leaf ------------------------------------------

@@ -190,11 +190,52 @@ function makeCirc(
   return scope.track(new oc.gp_Circ_2(ax2, radius))
 }
 
-/** Assemble ordered edges into a wire (BRepBuilderAPI_MakeWire). */
+/** Assemble ordered edges into a wire (BRepBuilderAPI_MakeWire), with
+ *  ShapeFix_Wire gap-healing when the raw wire build fails on sub-micron joints
+ *  (common in solver-driven line-arc-line spines). */
 export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
   for (const e of edges) builder.Add_1(e)
-  return builder.Wire()
+  try {
+    return builder.Wire()
+  } catch {
+    return healWireFromEdges(oc, scope, edges)
+  }
+}
+
+/**
+ * Heal a wire by rebuilding it from single-edge wires through ShapeFix_Wire.
+ * Proactive form of the makeWire fallback — use for spine wires where
+ * solver-level endpoint gaps are expected.
+ */
+export function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
+  const sfw = scope.track(new oc.ShapeFix_Wire_1())
+  for (const e of edges) {
+    const singleBuilder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
+    singleBuilder.Add_1(e)
+    sfw.Load_1(singleBuilder.Wire())
+  }
+  sfw.SetPrecision(1e-5)
+  sfw.FixReorder_1()
+  sfw.FixConnected_1(1e-5)
+  sfw.Perform()
+  return sfw.Wire()
+}
+
+/**
+ * Run ShapeFix_Wire on an existing wire to close sub-micron gaps at joints
+ * (FixReorder + FixConnected). Use when the wire may have been built successfully
+ * but carries solver-level endpoint imprecision that can destabilize downstream
+ * operations (e.g. MakePipeShell).
+ */
+export function healWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
+  const sfw = scope.track(new oc.ShapeFix_Wire_1())
+  sfw.Load_1(wire)
+  sfw.SetPrecision(1e-5)
+  sfw.FixReorder_1()
+  sfw.FixConnected_1(1e-5)
+  sfw.Perform()
+  return sfw.Wire()
 }
 
 /**
