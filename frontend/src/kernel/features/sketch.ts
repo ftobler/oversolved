@@ -275,6 +275,14 @@ export interface DragContext {
   entityParamOffset: number
   /** All [xIndex, yIndex] coordinate pair offsets within the entity's param block. */
   entityCoordPairs: [number, number][]
+  /** Set for an arc start/end drag. The endpoint is derived (center + radius at
+   *  an angle), not a direct param pair, so the cursor XY must be mapped into
+   *  the arc's radius and angle params each frame instead of written directly. */
+  arcEndpoint?: {
+    centerIndices: [number, number]
+    radiusIndex: number
+    angleIndex: number
+  }
 }
 
 /**
@@ -326,19 +334,42 @@ export function prepareDragContext(
     const isEdge = dragVertexKey === null
     if (!isEdge) {
       const vi = VERTEX_INDICES[ent.kind]?.[dragVertexKey]
-      if (!vi) return null
-      // The doc param layout and the lowered layout share per-kind ordering, so
-      // the registry indices apply directly at the entity's offset.
-      input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
-      return {
-        input,
-        layout,
-        params0: [...input.params],
-        cursorIndices: [ent.offset + vi[0], ent.offset + vi[1]],
-        isEdgeDrag: false,
-        entityParamOffset: ent.offset,
-        entityCoordPairs: [],
+      if (vi) {
+        // The doc param layout and the lowered layout share per-kind ordering, so
+        // the registry indices apply directly at the entity's offset.
+        input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
+        return {
+          input,
+          layout,
+          params0: [...input.params],
+          cursorIndices: [ent.offset + vi[0], ent.offset + vi[1]],
+          isEdgeDrag: false,
+          entityParamOffset: ent.offset,
+          entityCoordPairs: [],
+        }
       }
+      // Arc start/end are derived from center + radius + angle, so they have no
+      // direct param pair in VERTEX_INDICES. Pin them via radius/angle instead
+      // (params: [cx, cy, radius, angle_start, angle_end]).
+      if (ent.kind === 'arc' && (dragVertexKey === 'start' || dragVertexKey === 'end')) {
+        const angleIndex = ent.offset + (dragVertexKey === 'start' ? 3 : 4)
+        input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
+        return {
+          input,
+          layout,
+          params0: [...input.params],
+          cursorIndices: [ent.offset + 2, angleIndex],
+          isEdgeDrag: false,
+          entityParamOffset: ent.offset,
+          entityCoordPairs: [],
+          arcEndpoint: {
+            centerIndices: [ent.offset, ent.offset + 1],
+            radiusIndex: ent.offset + 2,
+            angleIndex,
+          },
+        }
+      }
+      return null
     }
 
     // Edge/entity drag: whole-entity translation. The anchor entity's ALL
@@ -466,8 +497,25 @@ export function solveSketchDrag(
     for (let i = 0; i < n; i++) {
       input.params[i] = warmStartParams[i]
     }
-    input.params[cursorIndices[0]] = cursorWorld[0]
-    input.params[cursorIndices[1]] = cursorWorld[1]
+    if (ctx.arcEndpoint) {
+      // Map the cursor XY into the arc's radius and angle. The center comes from
+      // the warm start (REG_WEIGHT_DRAG biases it to stay put unless constraints
+      // move it), so radius = |cursor - center| and angle points at the cursor;
+      // the endpoint then lands on the cursor.
+      const { centerIndices, radiusIndex, angleIndex } = ctx.arcEndpoint
+      const dx = cursorWorld[0] - input.params[centerIndices[0]]
+      const dy = cursorWorld[1] - input.params[centerIndices[1]]
+      input.params[radiusIndex] = Math.hypot(dx, dy)
+      // Keep the angle on the warm-start branch (atan2 wraps at +/-180) so a
+      // crossing of the seam does not flip the arc by a full turn.
+      const prev = input.params[angleIndex]
+      let ang = (Math.atan2(dy, dx) * 180) / Math.PI
+      ang += Math.round((prev - ang) / 360) * 360
+      input.params[angleIndex] = ang
+    } else {
+      input.params[cursorIndices[0]] = cursorWorld[0]
+      input.params[cursorIndices[1]] = cursorWorld[1]
+    }
   }
 
   let out

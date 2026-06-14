@@ -52,6 +52,45 @@ describe('applyMoveVertex', () => {
     expect(doc.features![0].initial!.pt1).toEqual([9.5, 10.5])
   })
 
+  // arc1 = [cx, cy, r, angle_start, angle_end]; start/end are derived points,
+  // not direct param pairs, so the drop position maps into radius + angle.
+  const makeArcDoc = (params: number[] = [0, 0, 5, 0, 90]): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [
+      {
+        id: 'Sketch1', kind: 'sketch',
+        initial: { arc1: params },
+        entities: [{ id: 'arc1', kind: 'arc' }],
+        constraints: [],
+      },
+    ],
+  })
+
+  it('moves arc start by mapping the drop point into radius/angle', () => {
+    const doc = makeArcDoc()
+    // start at (5,0). Drop at (6,0): radius grows to 6, start angle stays 0,
+    // end (angle 90) is unchanged.
+    applyMoveVertex(doc, 'Sketch1', 'arc1', 'start', [6, 0])
+    expect(doc.features![0].initial!.arc1).toEqual([0, 0, 6, 0, 90])
+  })
+
+  it('moves arc end by mapping the drop point into radius/angle', () => {
+    const doc = makeArcDoc()
+    // Drop the end at (0,3): radius shrinks to 3, end angle stays 90.
+    applyMoveVertex(doc, 'Sketch1', 'arc1', 'end', [0, 3])
+    expect(doc.features![0].initial!.arc1).toEqual([0, 0, 3, 0, 90])
+  })
+
+  it('keeps the arc angle on its continuous branch across the +/-180 seam', () => {
+    const doc = makeArcDoc([0, 0, 5, 170, 270])
+    // Drop start just past 180deg (at angle ~190 => atan2 returns ~-170);
+    // the result must stay near 190, not jump to -170.
+    const rad = (190 * Math.PI) / 180
+    applyMoveVertex(doc, 'Sketch1', 'arc1', 'start', [5 * Math.cos(rad), 5 * Math.sin(rad)])
+    expect(doc.features![0].initial!.arc1[3]).toBeCloseTo(190, 4)
+  })
+
   it('no-ops for unknown entity', () => {
     const doc = makeSampleDoc()
     applyMoveVertex(doc, 'Sketch1', 'nonexistent', 'start', [0, 0])

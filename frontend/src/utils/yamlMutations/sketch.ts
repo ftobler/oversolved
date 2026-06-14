@@ -137,9 +137,24 @@ export function applyMoveVertex(
   const kind = feature.entities?.find(e => e.id === entityId)?.kind
   if (!kind) return
   const indices = VERTEX_INDICES[kind]?.[vertexKey]
-  if (!indices) return
-  params[indices[0]] = round(to[0])
-  params[indices[1]] = round(to[1])
+  if (indices) {
+    params[indices[0]] = round(to[0])
+    params[indices[1]] = round(to[1])
+    return
+  }
+  // Arc start/end are derived (center + radius at an angle), so they have no
+  // direct param pair. Map the drop position into the arc's radius and angle
+  // (params: [cx, cy, radius, angle_start, angle_end]) so the endpoint lands on
+  // `to`. The center is whatever the drag frame solved to (already in params).
+  if (kind === 'arc' && (vertexKey === 'start' || vertexKey === 'end')) {
+    const dx = to[0] - params[0]
+    const dy = to[1] - params[1]
+    params[2] = round(Math.hypot(dx, dy))
+    const ai = vertexKey === 'start' ? 3 : 4
+    let ang = (Math.atan2(dy, dx) * 180) / Math.PI
+    ang += Math.round((params[ai] - ang) / 360) * 360
+    params[ai] = round(ang)
+  }
 }
 
 export function applyMoveEntity(

@@ -255,6 +255,45 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(Math.hypot(s1.p2[0] - cursor[0], s1.p2[1] - cursor[1])).toBeLessThan(CURSOR_TOL)
   })
 
+  it('arc start endpoint drags via radius/angle mapping (derived vertex)', () => {
+    const feature = {
+      id: 'arcSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'A1', kind: 'arc' }],
+      // [cx, cy, radius, angle_start, angle_end]: start at (5,0), end at (0,5).
+      initial: { A1: [0, 0, 5, 0, 90] },
+      constraints: [],
+    } as unknown as PartFeature
+    const ctx = prepareDragContext(feature, 'A1', 'start')!
+    expect(ctx).not.toBeNull()
+    expect(ctx.arcEndpoint).toBeTruthy()
+
+    // Drag the start point outward to (6, 0): the radius grows to 6 and the
+    // start angle stays ~0, so the start lands on the cursor.
+    const cursor: [number, number] = [6, 0]
+    const result = solveSketchDrag(ctx, [...ctx.params0], cursor)
+    expect(result).not.toBeNull()
+    const a1 = result!.sketch.A1 as { start: [number, number]; radius: number }
+    expect(Math.hypot(a1.start[0] - cursor[0], a1.start[1] - cursor[1])).toBeLessThan(CURSOR_TOL)
+    expect(Math.abs(a1.radius - 6)).toBeLessThan(CURSOR_TOL)
+  })
+
+  it('arc end endpoint builds a context and follows the cursor', () => {
+    const feature = {
+      id: 'arcEndSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'A1', kind: 'arc' }],
+      initial: { A1: [0, 0, 5, 0, 90] },
+      constraints: [],
+    } as unknown as PartFeature
+    const ctx = prepareDragContext(feature, 'A1', 'end')!
+    expect(ctx.arcEndpoint).toBeTruthy()
+
+    // Drag the end point (was at (0,5)) toward (0,3): radius shrinks to 3.
+    const result = solveSketchDrag(ctx, [...ctx.params0], [0, 3])
+    expect(result).not.toBeNull()
+    const a1 = result!.sketch.A1 as { end: [number, number] }
+    expect(Math.hypot(a1.end[0] - 0, a1.end[1] - 3)).toBeLessThan(CURSOR_TOL)
+  })
+
   // ── Edge/entity drag: whole-entity translation ─────────────────────────
 
   it('builds an edge drag context (vertexKey=null)', () => {
