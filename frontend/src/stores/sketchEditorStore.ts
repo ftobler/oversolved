@@ -419,10 +419,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   setActiveFeatureId: (id) => set(state => {
+    // Entering/exiting a sketch is never a continuation of a drag gesture (the
+    // active feature does not change mid-drag), so any leftover drag/dragPending
+    // here is stuck state from a lost gesture -- e.g. a load race that remounts
+    // the DragPlane mid-press and loses its pointerup cleanup. Orbit is derived
+    // as `!drag && !dragPending` (SceneController), so clearing it on every real
+    // edit transition guarantees the camera re-enables the instant you press Edit.
+    const dragReset = state.activeFeatureId !== id
+      ? { drag: null, dragPending: null, dragStartClient: null, dragSnap: null, isPointerDown: false }
+      : {}
     if (state.activeFeatureId !== null && id === null) {
-      return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
+      return { ...dragReset, activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
     }
-    return { activeFeatureId: id }
+    return { ...dragReset, activeFeatureId: id }
   }),
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),

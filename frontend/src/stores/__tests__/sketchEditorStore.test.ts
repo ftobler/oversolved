@@ -567,6 +567,65 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       expect(useSketchEditorStore.getState().activeTool).toBe('line')
     })
+
+    // Load race: pressing Edit while a document is still loading can remount the
+    // DragPlane mid-press, losing the pointerup that would clear dragPending.
+    // Orbit is derived as `!drag && !dragPending`, so stuck drag state disables
+    // the camera permanently. Entering/exiting a sketch must recover it.
+    it('clears stuck drag state on transition to a new feature', () => {
+      const pending = {
+        type: 'vertex' as const,
+        vertexId: 'vertex:S0:e1:start',
+        featureId: 'S0',
+        entityId: 'e1',
+        vertexKey: 'start',
+        startWorld: [0, 0] as [number, number],
+      }
+      useSketchEditorStore.getState().setActiveFeatureId('S0')
+      useSketchEditorStore.getState().setDragPending(pending)
+      useSketchEditorStore.getState().setDragStartClient([10, 20])
+      useSketchEditorStore.getState().setIsPointerDown(true)
+
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+
+      const s = useSketchEditorStore.getState()
+      expect(s.dragPending).toBeNull()
+      expect(s.drag).toBeNull()
+      expect(s.dragStartClient).toBeNull()
+      expect(s.dragSnap).toBeNull()
+      expect(s.isPointerDown).toBe(false)
+    })
+
+    it('clears stuck drag state on exit to null', () => {
+      const pending = {
+        type: 'vertex' as const,
+        vertexId: 'vertex:S1:e1:start',
+        featureId: 'S1',
+        entityId: 'e1',
+        vertexKey: 'start',
+        startWorld: [0, 0] as [number, number],
+      }
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setDragPending(pending)
+      useSketchEditorStore.getState().setActiveFeatureId(null)
+      expect(useSketchEditorStore.getState().dragPending).toBeNull()
+    })
+
+    it('leaves drag state untouched when the feature is unchanged', () => {
+      const pending = {
+        type: 'vertex' as const,
+        vertexId: 'vertex:S1:e1:start',
+        featureId: 'S1',
+        entityId: 'e1',
+        vertexKey: 'start',
+        startWorld: [0, 0] as [number, number],
+      }
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setDragPending(pending)
+      // Re-asserting the same active feature must not clobber an in-progress drag.
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      expect(useSketchEditorStore.getState().dragPending).toBe(pending)
+    })
   })
 
   describe('draw tool state', () => {
