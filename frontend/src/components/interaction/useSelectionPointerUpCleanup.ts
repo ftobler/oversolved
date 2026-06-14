@@ -40,7 +40,20 @@ export function runPointerUpCleanup() {
 
 export function useSelectionPointerUpCleanup() {
   useEffect(() => {
+    // pointercancel / lostpointercapture matter under a load race: a blocking
+    // WASM re-solve (e.g. triggered by entering a sketch edit) or the removal of
+    // an element involved in the gesture makes the browser end the gesture with
+    // pointercancel instead of pointerup. Without catching those, isPointerDown
+    // and drag/dragPending stay stuck -- which freezes the camera, since orbit is
+    // derived as !isPointerDown || (!drag && !dragPending). Routing all three to
+    // the same cleanup guarantees the gesture state is released however it ends.
     window.addEventListener('pointerup', runPointerUpCleanup)
-    return () => window.removeEventListener('pointerup', runPointerUpCleanup)
+    window.addEventListener('pointercancel', runPointerUpCleanup)
+    window.addEventListener('lostpointercapture', runPointerUpCleanup)
+    return () => {
+      window.removeEventListener('pointerup', runPointerUpCleanup)
+      window.removeEventListener('pointercancel', runPointerUpCleanup)
+      window.removeEventListener('lostpointercapture', runPointerUpCleanup)
+    }
   }, [])
 }

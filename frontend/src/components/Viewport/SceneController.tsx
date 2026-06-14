@@ -20,6 +20,9 @@ function rightButtonMapping(e: MouseEvent | PointerEvent): THREE.MOUSE {
   return THREE.MOUSE.ROTATE
 }
 
+// TEMP DEBUG (camera freeze) module-scoped counters.
+const orbitDbg = { moves: 0, changes: 0, instanceId: 0, gestureInstance: 0, lastInstance: null as unknown }
+
 interface SceneControllerProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   pvRef: React.MutableRefObject<Pv[]>
@@ -30,8 +33,18 @@ interface SceneControllerProps {
 }
 
 export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
-  const { camera } = useThree()
+  const { camera, gl } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
+
+  // TEMP DEBUG (camera freeze): is the camera object being swapped, and does
+  // SceneController remount? Both would force drei to recreate OrbitControls.
+  useEffect(() => {
+    console.log('[orbit-debug] SceneController MOUNT', { cameraUuid: camera.uuid })
+    return () => console.log('[orbit-debug] SceneController UNMOUNT')
+  }, [])
+  useEffect(() => {
+    console.log('[orbit-debug] camera changed', { cameraUuid: camera.uuid })
+  }, [camera])
 
   // Expose the Canvas-owned camera to the parent Viewport (for fitToContent).
   // eslint-disable-next-line react-hooks/refs
@@ -70,11 +83,51 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   const orbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
   const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
 
+  // TEMP DEBUG (camera freeze): per-gesture move counters + instance identity.
+  useEffect(() => {
+    const canvas = gl.domElement  // the WebGL canvas OrbitControls binds to
+    if (!canvas) return
+    const onDown = (e: PointerEvent) => {
+      orbitDbg.moves = 0
+      orbitDbg.gestureInstance = orbitDbg.instanceId
+      console.log('[orbit-debug] pointerdown', {
+        button: e.button,
+        enabled: ctrlRef.current?.enabled,
+        instanceId: orbitDbg.instanceId,
+        domEl: ctrlRef.current?.domElement?.tagName,
+      })
+    }
+    const onMove = () => { orbitDbg.moves++ }
+    const onUp = () => {
+      console.log('[orbit-debug] pointerup', {
+        rawMovesOnCanvas: orbitDbg.moves,
+        instanceAtStart: orbitDbg.gestureInstance,
+        instanceNow: orbitDbg.instanceId,
+        replacedMidGesture: orbitDbg.gestureInstance !== orbitDbg.instanceId,
+      })
+    }
+    canvas.addEventListener('pointerdown', onDown)
+    canvas.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      canvas.removeEventListener('pointerdown', onDown)
+      canvas.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [gl])
+
   return (
     <OrbitControls
       ref={(ctrl) => {
         ctrlRef.current = ctrl
         controlsRef.current = ctrl
+        // TEMP DEBUG: only count a genuinely NEW controls object (ignore the
+        // null/instance churn from this inline callback re-running each render).
+        if (ctrl && ctrl !== orbitDbg.lastInstance) {
+          orbitDbg.lastInstance = ctrl
+          orbitDbg.instanceId++
+          console.log('[orbit-debug] NEW controls instance', orbitDbg.instanceId)
+        }
       }}
       enabled={orbitEnabled}
       mouseButtons={MOUSE_BUTTONS}
@@ -82,8 +135,9 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
       enableZoom
       enablePan
       enableDamping={false}
-      onStart={() => setIsRotating(true)}
-      onEnd={() => setIsRotating(false)}
+      onStart={() => { console.log('[orbit-debug] onStart'); setIsRotating(true) }}
+      onChange={() => { orbitDbg.changes++ }}
+      onEnd={() => { console.log('[orbit-debug] onEnd', { onChangeCount: orbitDbg.changes }); orbitDbg.changes = 0; setIsRotating(false) }}
     />
   )
 }
