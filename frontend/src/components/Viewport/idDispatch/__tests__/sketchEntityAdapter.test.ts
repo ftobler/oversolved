@@ -12,7 +12,6 @@ beforeEach(() => {
     activeFeatureId: null,
     hoveredSelectionId: null,
     isPointerDown: false,
-    orbitEnabled: true,
     dragPending: null,
     dragStartClient: null,
     drag: null,
@@ -38,7 +37,6 @@ describe('sketchEntityAdapter', () => {
     sketchEntityAdapter.onPointerDown('entity:feat1:line1', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
-    expect(s.orbitEnabled).toBe(false)
     expect(s.dragStartClient).toEqual([100, 200])
     expect(s.dragPending).not.toBeNull()
     expect(s.dragPending!.type).toBe('edge')

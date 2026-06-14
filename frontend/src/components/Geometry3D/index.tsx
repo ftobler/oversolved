@@ -201,7 +201,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   //   5. DrawPlane mesh          (z=-0.002, mounted only when activeTool is a drawing tool)
   //   6. B-rep faces/edges       (always interactive)
   //   7. Deselect plane          (z=-1000, catch-all for click-on-empty)
-  //   8. OrbitControls           (canvas div level, suppressed via orbitEnabled=false during drag)
+  //   8. OrbitControls           (canvas div level, suppressed during drag)
   //
   // New interaction consumers must fit into this stack via z-positioning.
   // Do not change z-offsets without understanding this ordering.

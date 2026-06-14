@@ -21,7 +21,6 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
@@ -114,7 +113,6 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
-    setOrbitEnabled(false)
     setIsPointerDown(true)
     setDragStartClient([e.clientX, e.clientY])
     setDragPending({
@@ -124,7 +122,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
       anchorWorld: [anchorX, anchorY],
       startWorld: [labelX, labelY],
     })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 

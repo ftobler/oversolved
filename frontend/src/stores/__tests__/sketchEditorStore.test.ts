@@ -18,7 +18,6 @@ function reset() {
     hoveredSelectionId: null,
     isPointerDown: false,
     drag: null,
-    orbitEnabled: true,
     activeTool: null,
     activeFeatureId: null,
     dimensionPicks: [],
@@ -618,19 +617,6 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().openContextMenu([100, 200])
       useSketchEditorStore.getState().closeContextMenu()
       expect(useSketchEditorStore.getState().contextMenu).toBeNull()
-    })
-  })
-
-  describe('orbit control', () => {
-    it('defaults to enabled', () => {
-      expect(useSketchEditorStore.getState().orbitEnabled).toBe(true)
-    })
-
-    it('can be disabled and re-enabled', () => {
-      useSketchEditorStore.getState().setOrbitEnabled(false)
-      expect(useSketchEditorStore.getState().orbitEnabled).toBe(false)
-      useSketchEditorStore.getState().setOrbitEnabled(true)
-      expect(useSketchEditorStore.getState().orbitEnabled).toBe(true)
     })
   })
 

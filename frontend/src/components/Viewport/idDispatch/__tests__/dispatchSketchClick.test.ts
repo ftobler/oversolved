@@ -16,7 +16,6 @@ beforeEach(() => {
     drag: null,
     dragPending: null,
     dragStartClient: null,
-    orbitEnabled: true,
     isPointerDown: false,
     hoveredVertexId: null,
     hoveredVertexPosition: null,
@@ -44,7 +43,6 @@ describe('dispatchDragInitiation guard logic', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
-    expect(s.orbitEnabled).toBe(false)
     expect(s.dragStartClient).toEqual([100, 200])
     expect(s.dragPending).not.toBeNull()
     expect(s.dragPending!.type).toBe('vertex')
@@ -66,7 +64,6 @@ describe('dispatchDragInitiation guard logic', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
-    expect(s.orbitEnabled).toBe(false)
     expect(s.dragStartClient).toEqual([100, 200])
     expect(s.dragPending).not.toBeNull()
     expect(s.dragPending!.type).toBe('edge')
@@ -85,7 +82,6 @@ describe('dispatchDragInitiation guard logic', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
-    expect(s.orbitEnabled).toBe(false)
     expect(s.dragPending).not.toBeNull()
   })
 
@@ -102,7 +98,6 @@ describe('dispatchDragInitiation guard logic', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
-    expect(s.orbitEnabled).toBe(true)
     expect(s.dragPending).toBeNull()
   })
 
@@ -119,7 +114,6 @@ describe('dispatchDragInitiation guard logic', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
-    expect(s.orbitEnabled).toBe(true)
     expect(s.dragPending).toBeNull()
   })
 
@@ -136,7 +130,6 @@ describe('dispatchDragInitiation guard logic', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
-    expect(s.orbitEnabled).toBe(true)
     expect(s.dragPending).toBeNull()
   })
 })

@@ -17,10 +17,9 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged   } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
@@ -85,7 +84,6 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
-    setOrbitEnabled(false)
     setIsPointerDown(true)
     setDragStartClient([e.clientX, e.clientY])
     setDragPending({
@@ -96,7 +94,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
       startWorld: [labelX, labelY],
     })
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+  }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 
@@ -152,7 +150,6 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
@@ -210,7 +207,6 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
-    setOrbitEnabled(false)
     setIsPointerDown(true)
     setDragStartClient([e.clientX, e.clientY])
     setDragPending({
@@ -220,7 +216,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
       anchorWorld: [anchorX, anchorY],
       startWorld: [labelX, labelY],
     })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 

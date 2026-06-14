@@ -21,7 +21,6 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useRef<THREE.Mesh>(null)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
@@ -107,7 +106,6 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
     if (!interaction) return
     e.stopPropagation()
     resetDragMoved()
-    setOrbitEnabled(false)
     setIsPointerDown(true)
     setDragStartClient([e.clientX, e.clientY])
     setDragPending({
@@ -117,7 +115,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       anchorWorld: [vx, vy],
       startWorld: [labelX, labelY],
     })
-  }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setOrbitEnabled, setIsPointerDown, setDragStartClient, setDragPending])
+  }, [interaction, cid, vx, vy, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 

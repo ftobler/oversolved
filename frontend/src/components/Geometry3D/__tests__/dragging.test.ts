@@ -427,7 +427,6 @@ describe('dispatchDragInitiation integration', () => {
       drag: null,
       dragPending: null,
       dragStartClient: null,
-      orbitEnabled: true,
       isPointerDown: false,
       hoveredVertexId: null,
       hoveredVertexPosition: null,
@@ -454,7 +453,6 @@ describe('dispatchDragInitiation integration', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
-    expect(s.orbitEnabled).toBe(false)
     expect(s.dragStartClient).toEqual([100, 200])
     expect(s.dragPending).not.toBeNull()
     expect(s.dragPending!.type).toBe('vertex')

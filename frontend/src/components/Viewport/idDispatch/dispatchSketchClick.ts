@@ -69,7 +69,6 @@ export function dispatchDragInitiation(
   if (!state.activeFeatureId || state.activeFeatureId !== featureId) return
   if (effectiveTool !== null && effectiveTool !== 'select' && effectiveTool !== 'drag') return
 
-  state.setOrbitEnabled(false)
   state.setIsPointerDown(true)
   state.setDragStartClient([clientX, clientY])
 
@@ -92,7 +91,6 @@ export function dispatchDragInitiation(
     setDragPending: state.setDragPending,
     setDragSnap: state.setDragSnap,
     startClient: [clientX, clientY],
-    setOrbitEnabled: state.setOrbitEnabled,
     pushMode: () => {},
     popMode: () => {},
   }

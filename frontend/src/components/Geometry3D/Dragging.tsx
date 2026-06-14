@@ -30,7 +30,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragSnap = useSketchEditorStore(s => s.setDragSnap)
   const setAlignmentSnap = useSketchEditorStore(s => s.setAlignmentSnap)
-  const setOrbitEnabled = useSketchEditorStore(s => s.setOrbitEnabled)
   const onMutation = getSketchCallback('onMutation')
   const { camera, gl } = useThree()
 
@@ -100,7 +99,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
               setDragPending,
               setDragSnap,
               startClient: dragStartClient,
-              setOrbitEnabled,
               pushMode: () => {},
               popMode: () => {},
             }
@@ -186,7 +184,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
     if (!currentDrag && dragPending && dragPending.featureId === featureId) {
       setDragPending(null)
       setDragStartClient(null)
-      setOrbitEnabled(true)
       return
     }
 
@@ -206,13 +203,13 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
           onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
         }
       }
-      setDrag(null); setDragSnap(null); setOrbitEnabled(true)
+      setDrag(null); setDragSnap(null)
       return
     }
 
     const dragTool = toolRegistry.get('drag')
     if (!dragTool) {
-      setDrag(null); setDragSnap(null); setOrbitEnabled(true)
+      setDrag(null); setDragSnap(null)
       return
     }
     const state = useSketchEditorStore.getState()
@@ -232,7 +229,6 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
       setDragPending,
       setDragSnap,
       startClient: state.dragStartClient,
-      setOrbitEnabled,
       pushMode: () => {},
       popMode: () => {},
     }

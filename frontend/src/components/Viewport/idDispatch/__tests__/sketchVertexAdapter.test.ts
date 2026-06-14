@@ -14,7 +14,6 @@ beforeEach(() => {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     isPointerDown: false,
-    orbitEnabled: true,
     dragPending: null,
     dragStartClient: null,
     drag: null,
@@ -34,7 +33,6 @@ describe('sketchVertexAdapter', () => {
     sketchVertexAdapter.onPointerDown('vertex:feat1:line1:start', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
-    expect(s.orbitEnabled).toBe(false)
     expect(s.dragPending).not.toBeNull()
     expect(s.dragPending!.type).toBe('vertex')
     if (s.dragPending!.type === 'vertex' || s.dragPending!.type === 'edge') {

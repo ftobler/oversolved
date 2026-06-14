@@ -227,7 +227,6 @@ describe('ToolRegistry', () => {
         setDragPending: vi.fn(),
         setDragSnap: vi.fn(),
         startClient: [100, 100] as [number, number],
-        setOrbitEnabled: vi.fn(),
       }
       const result = registry.get('drag')!.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
       expect(result).toBeNull()
@@ -242,7 +241,6 @@ describe('ToolRegistry', () => {
       const onMutation = vi.fn()
       const setDrag = vi.fn()
       const setDragSnap = vi.fn()
-      const setOrbitEnabled = vi.fn()
       const context = {
         normalSelection: new Set<string>(),
         hoveredSelectionId: null,
@@ -261,12 +259,10 @@ describe('ToolRegistry', () => {
         setDragPending: vi.fn(),
         setDragSnap,
         startClient: [100, 100] as [number, number],
-        setOrbitEnabled,
       }
       registry.get('drag')!.handlers.onPointerUp!({ clientX: 200, clientY: 200 } as PointerEvent, [10, 10], null, context)
       expect(onMutation).toHaveBeenCalled()
       expect(setDrag).toHaveBeenCalledWith(null)
-      expect(setOrbitEnabled).toHaveBeenCalledWith(true)
     })
 
     it('routes onPointerDown through registry for drawing tool', () => {

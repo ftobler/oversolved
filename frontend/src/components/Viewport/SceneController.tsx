@@ -63,7 +63,9 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
       pvRef.current = drawCubeGizmo(canvasRef.current, camera, hoverRef.current)
   })
 
-  const orbitEnabled = useSketchEditorStore(s => s.orbitEnabled)
+  const drag = useSketchEditorStore(s => s.drag)
+  const dragPending = useSketchEditorStore(s => s.dragPending)
+  const orbitEnabled = !drag && !dragPending
   const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
 
   return (

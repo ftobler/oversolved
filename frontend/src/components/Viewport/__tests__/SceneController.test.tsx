@@ -18,7 +18,6 @@ vi.mock('@react-three/drei', () => ({
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    orbitEnabled: true,
     setIsRotating: () => {},
   })
 })

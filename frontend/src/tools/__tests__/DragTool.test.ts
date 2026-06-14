@@ -19,7 +19,6 @@ function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolCo
     setDragPending: vi.fn(),
     setDragSnap: vi.fn(),
     startClient: [100, 100],
-    setOrbitEnabled: vi.fn(),
     pushMode: vi.fn(),
     popMode: vi.fn(),
     ...overrides,

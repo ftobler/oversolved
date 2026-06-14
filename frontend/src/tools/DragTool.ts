@@ -12,7 +12,6 @@ export interface DragToolContext extends ToolContext {
   setDragPending: (pending: DragToolContext['dragPending']) => void
   setDragSnap: (snap: SnapTarget | null) => void
   startClient: [number, number] | null
-  setOrbitEnabled: (enabled: boolean) => void
 }
 
 export interface DragTool extends Tool {
@@ -88,10 +87,7 @@ export function createDragTool(): DragTool {
 
       context.setDragPending(null)
 
-      if (!context.drag || !context.startClient) {
-        context.setOrbitEnabled(true)
-        return
-      }
+      if (!context.drag || !context.startClient) return
 
       const endClient: [number, number] = [_e.clientX, _e.clientY]
       // The last WASM drag-frame solve rides along so the commit hard solve
@@ -105,7 +101,6 @@ export function createDragTool(): DragTool {
 
       context.setDrag(null)
       context.setDragSnap(null)
-      context.setOrbitEnabled(true)
     },
   }
 

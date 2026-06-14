@@ -183,9 +183,7 @@ interface SketchEditorState {
   clearDraw: () => void
 
   // NAVIGATION SUBSYSTEM
-  orbitEnabled: boolean
   isRotating: boolean
-  setOrbitEnabled: (enabled: boolean) => void
   setIsRotating: (rotating: boolean) => void
 
   // MODE STACK — tracks nested editor modes; must be empty when returning to "main"
@@ -250,7 +248,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   dragStartClient: null,
   dragPending: null,
   dragSnap: null,
-  orbitEnabled: true,
   isRotating: false,
   showDebugHit: false,
   showConstraintTiles: true,
@@ -329,8 +326,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setDragStartClient: (pos) => set({ dragStartClient: pos }),
   setDragPending: (pending) => set({ dragPending: pending }),
   setDragSnap: (snap) => set({ dragSnap: snap }),
-
-  setOrbitEnabled: (enabled) => set({ orbitEnabled: enabled }),
 
   setIsRotating: (rotating: boolean) => set({ isRotating: rotating }),
 
