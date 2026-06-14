@@ -5,6 +5,7 @@ import { runPointerUpCleanup } from '@/components/interaction/useSelectionPointe
 beforeEach(() => {
   useSketchEditorStore.setState({
     isPointerDown: false,
+    orbitEnabled: true,
     normalSelection: new Set(),
   })
 })
@@ -42,5 +43,31 @@ describe('runPointerUpCleanup', () => {
 
     const state = useSketchEditorStore.getState()
     expect(state.isPointerDown).toBe(false)
+  })
+
+  it('restores orbitEnabled when isPointerDown is true', () => {
+    useSketchEditorStore.setState({
+      isPointerDown: true,
+      orbitEnabled: false,
+    })
+
+    runPointerUpCleanup()
+
+    const state = useSketchEditorStore.getState()
+    expect(state.isPointerDown).toBe(false)
+    expect(state.orbitEnabled).toBe(true)
+  })
+
+  it('leaves orbitEnabled unchanged when isPointerDown is false', () => {
+    useSketchEditorStore.setState({
+      isPointerDown: false,
+      orbitEnabled: false,
+    })
+
+    runPointerUpCleanup()
+
+    const state = useSketchEditorStore.getState()
+    expect(state.isPointerDown).toBe(false)
+    expect(state.orbitEnabled).toBe(false)
   })
 })
