@@ -188,7 +188,12 @@ export function useSolver(
     }
   }, [setCodeText, modeRef, docRef, setDoc])
 
-  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
+  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number) => {
+    // Stale-guard: if a newer reSolve has been issued, discard this response.
+    // The caller (reSolve) also checks isStale() before calling, but this
+    // defends against alternative call sites and ensures the two state updates
+    // (applySolveResult + setBodies/setPickBodies) atomically skip when stale.
+    if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return
     applySolveResult(d, data, solveTimeMs)
     if (data.bodies) {
       setBodies(data.bodies)
@@ -302,7 +307,7 @@ export function useSolver(
       // pick_boundary was requested, pick_bodies (the "before" state). The TS
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
-      applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs)
+      applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs, currentRequestId)
       if (!firstSolveDone.current && onFirstSolve) {
         firstSolveDone.current = true
         setTimeout(onFirstSolve, 0)

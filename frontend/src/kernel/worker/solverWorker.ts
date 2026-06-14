@@ -137,9 +137,17 @@ if (inWorker()) {
   // document/window, which do not exist here.
   setOccLoader(loadOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
+
+  // Serial queue so concurrent solve requests don't race on the shared
+  // persistentTable / lastBuildState (solveLocally.ts). Each resolve awaits
+  // the previous one before starting, guaranteeing sequential access to the
+  // OCC HandleTable and checkpoint cache.
+  let solveQueue: Promise<void> = Promise.resolve()
   ctx.onmessage = (e) => {
-    void handleSolveRequest(e.data, solveLocally).then((res) =>
-      ctx.postMessage(res, collectTransferables(res)),
+    solveQueue = solveQueue.then(() =>
+      handleSolveRequest(e.data, solveLocally).then((res) =>
+        ctx.postMessage(res, collectTransferables(res)),
+      ),
     )
   }
 }

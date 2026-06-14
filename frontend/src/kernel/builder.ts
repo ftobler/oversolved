@@ -873,6 +873,11 @@ export function build(
       pickBodiesOut = (Object.keys(snap).length)
         ? snap
         : deps.tessellateBodies(pickCheckpoint.body_store_snapshot, null)
+    } else {
+      // Checkpoint not found (e.g. prevState was null on first solve, or the
+      // checkpoint was evicted between solves). Return empty so the caller
+      // clears stale pick_bodies state instead of silently keeping it.
+      pickBodiesOut = {}
     }
   }
 
