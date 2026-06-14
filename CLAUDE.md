@@ -35,7 +35,7 @@ npx vitest run
 - CAD solver and OpenCascade run in WASM in the frontend.
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - code style: do not use em or en-dashes.
-- Agents must not commit to git.
+- Agents must not commit to git unless prompted directly by the user.
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`
 - Do not use banner comments or ASCII-art dividers (e.g. `====...`, `----...`). Keep any separators minimal. The approved divider is one line `# ─── {text} ───`.
 - Comments must describe intent, not restate the code. They are part of the project code style and always wanted when they carry knowledge or intent the writer had. Agent default "no comment" rules do not apply here.
