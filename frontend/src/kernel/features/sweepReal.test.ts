@@ -77,6 +77,40 @@ function arcPathSketch(sketchId: string, cx: number, cy: number, r: number, a0: 
   }
 }
 
+// A circle profile centred on the plane origin (so it sits ON the path start).
+function circleSketch(sketchId: string, r: number, plane = '@builtin_plane_right') {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Profile', plane,
+    entities: [{ id: 'c0', kind: 'circle' as const }],
+    initial: { c0: [0, 0, r] },
+    constraints: [],
+  }
+}
+
+// The real corpus path (sketch 1): line -> tangent arc -> line on builtin_plane_top.
+// `segs` chooses how many path entities to include (2 = line+arc works in the app,
+// 3 = line+arc+line fails). Geometry copied from the user's failing model.
+const CORPUS_LN0 = [0, 0, -10, 0]                      // [x0,y0,x1,y1]
+const CORPUS_ARC = [-10, -5, 5, 90, -211.456]          // [cx,cy,r,a0deg,a1deg]
+const CORPUS_LN1 = [-14.265, -2.391, -19.484, -10.921]
+function corpusPathSketch(sketchId: string, segs: 2 | 3, plane = '@builtin_plane_top') {
+  const entities: Array<{ id: string; kind: string }> = [
+    { id: 'ln0', kind: 'line' }, { id: 'arc0', kind: 'arc' },
+  ]
+  const initial: Record<string, number[]> = { ln0: CORPUS_LN0, arc0: CORPUS_ARC }
+  const constraints: Array<Record<string, unknown>> = [
+    { id: 'cc1', kind: 'coincident' as const,
+      a: { entity: 'arc0', point: 'start' }, b: { entity: 'ln0', point: 'end' } },
+  ]
+  if (segs === 3) {
+    entities.push({ id: 'ln1', kind: 'line' })
+    initial.ln1 = CORPUS_LN1
+    constraints.push({ id: 'cc2', kind: 'coincident' as const,
+      a: { entity: 'ln1', point: 'start' }, b: { entity: 'arc0', point: 'end' } })
+  }
+  return { id: sketchId, kind: 'sketch' as const, label: 'Path', plane, entities, initial, constraints }
+}
+
 function sweepSpec(sweepId: string, profileId: string, pathId: string, opts: { operation?: string; mergeTarget?: string } = {}) {
   const spec: Record<string, unknown> = {
     id: sweepId, kind: 'sweep', label: 'Sweep',
@@ -225,6 +259,54 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     const mesh = body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
+  })
+
+  function bbox(mesh: { vertices: number[][] }): { min: number[]; max: number[] } {
+    const min = [Infinity, Infinity, Infinity]
+    const max = [-Infinity, -Infinity, -Infinity]
+    for (const v of mesh.vertices) for (let i = 0; i < 3; i++) {
+      if (v[i] < min[i]) min[i] = v[i]
+      if (v[i] > max[i]) max[i] = v[i]
+    }
+    return { min, max }
+  }
+
+  it('corpus path: 2 segments (line+arc) sweeps to a valid body', () => {
+    const result = run({
+      features: [
+        circleSketch('prof', 1.7, '@builtin_plane_right'),
+        corpusPathSketch('pth', 2),
+        sweepSpec('sw1', 'prof', 'pth'),
+      ],
+    })
+    const r = res(result, 'sw1')
+    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(r.status).toBe('ok')
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshValid(mesh)
+  })
+
+  it('corpus path: 3 segments (line+arc+line) sweeps to the correct shape', () => {
+    const result = run({
+      features: [
+        circleSketch('prof', 1.7, '@builtin_plane_right'),
+        corpusPathSketch('pth', 3),
+        sweepSpec('sw1', 'prof', 'pth'),
+      ],
+    })
+    const r = res(result, 'sw1')
+    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(r.status).toBe('ok')
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      assertMeshValid(mesh)
+      const bb = bbox(mesh)
+      // The third line ends at world x=-19.48, z=10.92. A correct sweep must
+      // reach there; a broken/backward third segment or a collapsed wire would
+      // not extend the body past the arc end (~x=-14, z=2.4).
+      expect(bb.min[0]).toBeLessThan(-18)   // reaches x ~ -19.5
+      expect(bb.max[2]).toBeGreaterThan(9)  // reaches z ~ +10.9
+    }
   })
 
   it('cut sweep removes volume from existing body', () => {

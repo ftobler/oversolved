@@ -3,7 +3,9 @@
 // the path reference to an ordered chain of world-space spine edges, sweeps the
 // profile's outer boundary along the spine with per-entity lineage, and applies
 // the body operation. Includes the path-collection helpers (_path_ref_to_sketch_id,
-// _order_edges_into_chain, _world_arc_edge, _collect_path_edges).
+// _order_edges_into_chain, _collect_path_edges). Spine arcs are built from their
+// exact in-plane angle data (spineArcEdge), chain-forward, with the joints snapped
+// so the wire assembles regardless of solver-level endpoint precision.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -154,71 +156,6 @@ export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): ChainEdge[] {
 }
 
 /**
- * Build a world-space minor circular arc edge through start -> end about center
- * (mirrors `_world_arc_edge`). The rotation plane comes from the start/end radius
- * vectors; major arcs (>180 degrees) are not supported.
- */
-/**
- * Build a world-space minor circular arc edge through start -> end about center
- * (mirrors `_world_arc_edge`). The rotation plane comes from the start/end radius
- * vectors; major arcs (>180 degrees) are not supported.
- */
-export function worldArcEdge(
-  oc: OccModule,
-  scope: DisposeScope,
-  center: number[],
-  start: number[],
-  end: number[],
-  radius: number,
-  ccw?: boolean,
-  sketchNormal?: number[],
-): OccShape {
-  let v0 = [start[0] - center[0], start[1] - center[1], start[2] - center[2]]
-  let v1 = [end[0] - center[0], end[1] - center[1], end[2] - center[2]]
-
-  // Snap to exact radius: solver output may have |v0| or |v1| off by 1e-9.
-  // Normalizing prevents the arc edge from drifting off the nominal circle,
-  // which would create a second-order gap at the joints.  The residual gap
-  // (snapped arc endpoint vs. raw line endpoint) is healed by makeWire.
-  const v0Mag = Math.sqrt(v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2])
-  const v1Mag = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2])
-  if (Math.abs(v0Mag - radius) > 1e-9 || Math.abs(v1Mag - radius) > 1e-9) {
-    v0 = [v0[0] / v0Mag * radius, v0[1] / v0Mag * radius, v0[2] / v0Mag * radius]
-    v1 = [v1[0] / v1Mag * radius, v1[1] / v1Mag * radius, v1[2] / v1Mag * radius]
-  }
-
-  const cross = [
-    v0[1] * v1[2] - v0[2] * v1[1],
-    v0[2] * v1[0] - v0[0] * v1[2],
-    v0[0] * v1[1] - v0[1] * v1[0],
-  ]
-  const crossMag = Math.sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2])
-  if (crossMag < 1e-12) throw new Error('sweep: degenerate or 180-degree arc in path not supported')
-  const dot = v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2]
-  const minorAngle = Math.atan2(crossMag, dot)
-
-  // When the ccw flag is known, determine whether the minor-angle rotation
-  // (which is CCW from the cross-product direction) matches the sketch
-  // entity's CCW sense as viewed from the sketch plane normal.  If they
-  // disagree the arc must sweep the major way (360° minus minor) with a
-  // reversed circle normal.
-  if (ccw !== undefined) {
-    const sn = sketchNormal ?? [0, 0, 1]  // default: top-plane normal
-    const crossDotNormal = cross[0] * sn[0] + cross[1] * sn[1] + cross[2] * sn[2]
-    // crossDotNormal > 0: cross aligns with sketch normal, minor is CCW from above.
-    const minorIsCcwFromAbove = crossDotNormal > 0
-    if (ccw !== minorIsCcwFromAbove) {
-      const majorAngle = 2 * Math.PI - minorAngle
-      const flipped: Vec3 = [-cross[0] / crossMag, -cross[1] / crossMag, -cross[2] / crossMag]
-      return makeArcEdge(oc, scope, center as Vec3, flipped, v0 as Vec3, radius, 0.0, majorAngle)
-    }
-  }
-
-  const normal: Vec3 = [cross[0] / crossMag, cross[1] / crossMag, cross[2] / crossMag]
-  return makeArcEdge(oc, scope, center as Vec3, normal, v0 as Vec3, radius, 0.0, minorAngle)
-}
-
-/**
  * Split a sketch-entity selection ref (`entity:<sketchId>:<eid>` or
  * `vertex:<sketchId>:<eid>:<sub>`) into its sketch id and entity id. Returns a
  * null `eid` for any other ref form (the whole sketch is selected).
@@ -257,8 +194,20 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
     if (e.kind === 'arc' && 'center' in e) {
       we.center = sketchToWorld2d(e.center as number[], plane)
       we.radius = Number(e.radius)
-      we.ccw = (e.ccw as boolean) ?? undefined
-      we._normal = plane.normal as number[]  // sketch plane ref for ccw alignment
+      // Carry the EXACT in-plane arc descriptor (sketch-2D center + stored
+      // angle span + ccw) and its plane. spineArcEdge builds the arc with its
+      // circle axis locked to the exact plane normal, so shallow / near-180
+      // arcs stay in plane (reconstructing the plane from world endpoints is
+      // ill-conditioned and tilts the arc). The stored angles also fix the
+      // arc SIDE without guessing minor vs major from the endpoints.
+      we._plane = plane
+      we._arc = {
+        center: e.center as number[],  // 2D sketch coords (mapped via plane)
+        radius: Number(e.radius),
+        angle_start_deg: Number(e.angle_start_deg),
+        angle_end_deg: Number(e.angle_end_deg),
+        ccw: (e.ccw as boolean) ?? true,
+      }
     }
     worldEdges.push(we)
   }
@@ -294,11 +243,94 @@ export function orderedPathWorldEdges(
   return [orderEdgesIntoChain(worldEdges), firstSketchId]
 }
 
+/** The 2D in-plane descriptor of a spine arc, carried from topology. */
+type ArcParams = {
+  center: number[]
+  radius: number
+  angle_start_deg: number
+  angle_end_deg: number
+  ccw: boolean
+}
+
+/**
+ * Build a spine arc edge running in the CHAIN-FORWARD direction (s -> t) over
+ * the correct side of the circle.
+ *
+ * This is deliberately NOT buildArcEdge (the profile arc builder). A profile
+ * arc lands in a face whose orientation ShapeFix_Face later normalizes, so its
+ * edge direction is free. A SPINE wire's direction IS the sweep path: the
+ * profile is carried from the wire's first vertex to its last, so each edge
+ * must point the way the chain walks. Lines already do (makeLineEdge(s, t));
+ * arcs must too, or the second segment sweeps backward and the solid comes out
+ * the wrong shape (or collapses to the profile face).
+ *
+ * The circle axis is locked to the EXACT plane normal: shallow / near-180 arcs
+ * stay in plane instead of tilting (the old world-point reconstruction derived
+ * the axis from a cross product that degenerates as the span shrinks). The
+ * stored angle span fixes the arc SIDE, so there is no minor/major guessing.
+ */
+function spineArcEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  plane: PlaneLike,
+  arc: ArcParams,
+  reversed: boolean,
+): OccShape {
+  const center3d = sketchToWorld2d(arc.center, plane) as Vec3
+  const a0 = (arc.angle_start_deg * Math.PI) / 180
+  const a1 = (arc.angle_end_deg * Math.PI) / 180
+  // Stored sweep: a0 -> a1, turning ccw ? +1 : -1. Walking the chain backward
+  // swaps the endpoints AND flips the turn direction.
+  const startA = reversed ? a1 : a0
+  const endA = reversed ? a0 : a1
+  const turnCcw = arc.ccw !== reversed  // ccw XOR reversed
+  const xAxis = plane.x_axis as Vec3
+  if (turnCcw) {
+    // Increasing param in the (x_axis, normal x x_axis) frame is CCW.
+    let u1 = endA
+    while (u1 <= startA) u1 += 2 * Math.PI
+    return makeArcEdge(oc, scope, center3d, plane.normal as Vec3, xAxis, arc.radius, startA, u1)
+  }
+  // CW: flip the circle axis so the CW turn becomes increasing param. In the
+  // flipped frame a sketch angle theta sits at param -theta, so the edge still
+  // runs geometrically start -> end.
+  const flipped: Vec3 = [-plane.normal[0], -plane.normal[1], -plane.normal[2]]
+  let u1 = -endA
+  while (u1 <= -startA) u1 += 2 * Math.PI
+  return makeArcEdge(oc, scope, center3d, flipped, xAxis, arc.radius, -startA, u1)
+}
+
+/** The two endpoint coordinates of an edge (the explorer yields its 2 vertices). */
+function edgeEndpoints(oc: OccModule, scope: DisposeScope, edge: OccShape): [number[], number[]] {
+  const pts: number[][] = []
+  const exp = scope.track(new oc.TopExp_Explorer_2(edge, oc.TopAbs_ShapeEnum.TopAbs_VERTEX, oc.TopAbs_ShapeEnum.TopAbs_SHAPE))
+  while (exp.More()) {
+    const v = scope.track(oc.TopoDS.Vertex_1(exp.Current()))
+    const p = scope.track(oc.BRep_Tool.Pnt(v))
+    pts.push([p.X(), p.Y(), p.Z()])
+    exp.Next()
+  }
+  return [pts[0], pts[pts.length - 1]]
+}
+
+function dist3(a: number[], b: number[]): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+}
+
 /**
  * Resolve one or more sweep path references to ordered world-space spine edges
  * (mirrors `_collect_path_edges`, extended for multi-pick / edge-precise
  * selection). All contributed edges must form one connected chain. Returns
  * [spineEdges, firstPathSketchId].
+ *
+ * Joint snapping: an arc edge's endpoints are forced onto the ideal circle by
+ * OCC, so they sit ~1e-7..1e-6 off the solver's joint point (this is normal
+ * kernel precision, NOT a solver defect). That sub-micron gap is above
+ * BRepBuilderAPI_MakeWire's confusion tolerance, so a line FOLLOWING an arc
+ * fails to attach and the wire collapses (the "second segment broken" bug).
+ * We make the arc endpoints authoritative and build the neighbouring line
+ * edges to those exact coordinates, so every joint coincides and the wire
+ * assembles without relying on the solver hitting any particular precision.
  */
 export function collectPathEdges(
   oc: OccModule,
@@ -307,24 +339,38 @@ export function collectPathEdges(
   globalRepo: Repository,
 ): [OccShape[], string] {
   const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo)
-  const spineEdges: OccShape[] = []
-  for (const { edge: e, reversed } of ordered) {
-    const s = (reversed ? e.end : e.start) as number[]
-    const t = (reversed ? e.start : e.end) as number[]
-    if (e.kind === 'arc' && 'center' in e) {
-      // Always build the minor arc for the spine. The topology ccw flag is a
-      // face-cycle direction marker -- when an edge was normalized (span >180°
-      // swapped, always ccw=true) and then reversed by the chain walk, the
-      // ccw-mismatch logic would build the major arc, sending the sweep the
-      // long way around the circle. Omitting ccw forces the minor (shortest)
-      // arc, which is what the spine always needs.
-      spineEdges.push(
-        worldArcEdge(oc, scope, e.center as number[], s, t, Number(e.radius)),
-      )
-    } else {
-      spineEdges.push(makeLineEdge(oc, scope, s as Vec3, t as Vec3))
+  const n = ordered.length
+
+  // Chain-forward intended endpoints (world topology coords) of each edge.
+  const S = ordered.map(({ edge: e, reversed }) => (reversed ? e.end : e.start) as number[])
+  const T = ordered.map(({ edge: e, reversed }) => (reversed ? e.start : e.end) as number[])
+
+  // Build arcs first and record their ACTUAL occ endpoints (the rigid joints
+  // lines snap to). Match each occ vertex to the intended s/t by proximity.
+  const arcShape: (OccShape | null)[] = new Array(n).fill(null)
+  const aStart: number[][] = new Array(n)
+  const aEnd: number[][] = new Array(n)
+  ordered.forEach(({ edge: e, reversed }, i) => {
+    if (e.kind === 'arc' && '_arc' in e) {
+      const shp = spineArcEdge(oc, scope, e._plane as PlaneLike, e._arc as ArcParams, reversed)
+      const [v0, v1] = edgeEndpoints(oc, scope, shp)
+      ;[aStart[i], aEnd[i]] = dist3(v0, S[i]) <= dist3(v1, S[i]) ? [v0, v1] : [v1, v0]
+      arcShape[i] = shp
     }
-  }
+  })
+
+  // Canonical joint coordinate at each edge boundary: an adjacent arc's actual
+  // endpoint wins; two lines already share an exact topology vertex.
+  const startOf = (i: number): number[] =>
+    arcShape[i] ? aStart[i] : i > 0 && arcShape[i - 1] ? aEnd[i - 1] : S[i]
+  const endOf = (i: number): number[] =>
+    arcShape[i] ? aEnd[i] : i < n - 1 && arcShape[i + 1] ? aStart[i + 1] : T[i]
+
+  const spineEdges: OccShape[] = ordered.map(({ edge: e }, i) =>
+    e.kind === 'arc' && '_arc' in e
+      ? (arcShape[i] as OccShape)
+      : makeLineEdge(oc, scope, startOf(i) as Vec3, endOf(i) as Vec3),
+  )
   return [spineEdges, firstSketchId]
 }
 

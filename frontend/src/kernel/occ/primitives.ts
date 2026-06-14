@@ -203,11 +203,11 @@ export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]):
   }
 }
 
-/** Gap-closing tolerance for ShapeFix_Wire healing.  Must be large enough to
- *  absorb the ~0.002 endpoint drift from worldArcEdge's floating-point angle
- *  recomputation (atan2 → OCC circle evaluation), but small enough not to merge
- *  distinct vertices on short edges.  Spine joints are typically several units
- *  apart, so 0.01 is safe. */
+/** Gap-closing tolerance for ShapeFix_Wire healing.  Spine arcs are now built
+ *  from exact in-plane angle data (buildArcEdge), so joint gaps are at the
+ *  solver level (~1e-9) and this heal is only a safety net.  Large enough to
+ *  absorb any residual joint imprecision, small enough not to merge distinct
+ *  vertices on short edges.  Spine joints are typically several units apart. */
 const WIRE_HEAL_TOL = 0.01
 
 /**

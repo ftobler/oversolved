@@ -18,14 +18,40 @@ import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { volumeOf } from './booleans'
 import { sweepProfileWithLineage } from './prismLineage'
-import { makeLineEdge, type Vec3 } from './primitives'
-import { worldArcEdge } from '../features/sweep'
+import { makeLineEdge, makeArcEdge, type Vec3 } from './primitives'
 import type { PlaneLike } from '../features/shared'
 import type { LoopEdge } from '../profileLoops'
 import type { OccModule, OccShape } from './occTypes'
 import fixture from './__fixtures__/sweep.json'
 
 const oc = await loadOcc()
+
+// Local point-based arc builder for the parity fixtures. This test pins the
+// brep producer (sweepProfileWithLineage), not arc resolution, and its fixture
+// arcs are well-conditioned (a clean 90-degree arc), so reconstructing the
+// minor arc from the three world points is fine here. Production spine arcs are
+// built from exact angle data via buildArcEdge (see collectPathEdges), not this.
+function fixtureArcEdge(
+  occ: OccModule,
+  scope: DisposeScope,
+  center: number[],
+  start: number[],
+  end: number[],
+  radius: number,
+): OccShape {
+  const v0 = [start[0] - center[0], start[1] - center[1], start[2] - center[2]]
+  const v1 = [end[0] - center[0], end[1] - center[1], end[2] - center[2]]
+  const cross: Vec3 = [
+    v0[1] * v1[2] - v0[2] * v1[1],
+    v0[2] * v1[0] - v0[0] * v1[2],
+    v0[0] * v1[1] - v0[1] * v1[0],
+  ]
+  const crossMag = Math.hypot(cross[0], cross[1], cross[2])
+  const dot = v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2]
+  const minorAngle = Math.atan2(crossMag, dot)
+  const normal: Vec3 = [cross[0] / crossMag, cross[1] / crossMag, cross[2] / crossMag]
+  return makeArcEdge(occ, scope, center as Vec3, normal, v0 as Vec3, radius, 0.0, minorAngle)
+}
 
 type Lineage = Record<string, string[]>
 type Segment = { kind: string; start: number[]; end: number[]; center?: number[]; radius?: number }
@@ -67,7 +93,7 @@ describe.skipIf(!oc)('sweepProfileWithLineage (real OCC)', () => {
       try {
         const spine: OccShape[] = c.segments.map((seg) =>
           seg.kind === 'arc'
-            ? worldArcEdge(occ, scope, seg.center as number[], seg.start, seg.end, seg.radius as number)
+            ? fixtureArcEdge(occ, scope, seg.center as number[], seg.start, seg.end, seg.radius as number)
             : makeLineEdge(occ, scope, seg.start as Vec3, seg.end as Vec3),
         )
         const { solid, faceLineage, edgeLineage } = sweepProfileWithLineage(
