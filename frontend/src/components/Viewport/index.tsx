@@ -34,6 +34,11 @@ import type { SketchData } from '@/types/cad'
 
 const ENABLE_ID_BUFFER_PICKING = true
 
+// Stabilized props for the R3F Canvas. Inline objects would produce new
+// references every Viewport render, forcing CanvasImpl to re-render needlessly.
+const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
+const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
+
 export interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void
 }
@@ -368,6 +373,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // 268: rubber-band drag-box selection on empty canvas space.
   const rubberBand = useRubberBandSelect(glRef)
 
+  const onPointerMissed = useCallback(() => {
+    if (wasLastClickConsumedByIdDispatch()) return
+    if (wasLastClickStaleResolve()) return
+    if (rubberBand.state.isDraggingRef.current) return
+    if (!wasPointerDrag.current && pointerDownButton.current === 0) {
+      useSketchEditorStore.getState().clearNormalSelection()
+    }
+  }, [rubberBand])
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
     pointerDownButton.current = e.button
@@ -495,30 +509,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       <Canvas
         orthographic
         camera={INITIAL_CAMERA}
-        style={{ width: '100%', height: '100%', background: '#111' }}
-        gl={{ antialias: true, logarithmicDepthBuffer: true }}
+        style={CANVAS_STYLE}
+        gl={CANVAS_GL}
         onCreated={onCreated}
-        onPointerMissed={() => {
-          // Only clear selection if this was a left-click on empty space, not a camera drag.
-          // Skip when the id-buffer dispatcher already consumed the click (e.g. dim label):
-          // R3F sees no R3F handler on the dim label mesh post-267.3 and would otherwise
-          // treat every label click as a miss.
-          if (wasLastClickConsumedByIdDispatch()) return
-          // Skip selection clear when the ID buffer was stale (pending
-          // re-render after geometry change). A null resolve in that case
-          // is a transient transition state, not empty space.
-          if (wasLastClickStaleResolve()) return
-          // Skip selection clear during an active rubber-band drag.
-          // onPointerMissed fires (synchronously from R3F's internal handler)
-          // before handlePointerUp on the parent div, so the rubber band is
-          // still in its dragging state. Use the ref-backed flag so the guard
-          // works even if React state hasn't committed between pointermove and
-          // the R3F pointerup handler.
-          if (rubberBand.state.isDraggingRef.current) return
-          if (!wasPointerDrag.current && pointerDownButton.current === 0) {
-            useSketchEditorStore.getState().clearNormalSelection()
-          }
-        }}
+        onPointerMissed={onPointerMissed}
       >
         <SceneController key="scene-ctrl" canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
 

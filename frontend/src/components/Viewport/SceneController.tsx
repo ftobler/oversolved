@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useThree, useFrame } from '@react-three/fiber'
@@ -20,8 +20,20 @@ function rightButtonMapping(e: MouseEvent | PointerEvent): THREE.MOUSE {
   return THREE.MOUSE.ROTATE
 }
 
-// TEMP DEBUG (camera freeze) module-scoped counters.
-const orbitDbg = { moves: 0, changes: 0, instanceId: 0, gestureInstance: 0, lastInstance: null as unknown }
+// Camera freeze fix: R3F wraps Canvas children in React.Suspense. When a
+// child suspends mid-solve the entire Canvas tree hides and re-shows,
+// disposing OrbitControls in between. Three-stdlib's dispose() removes
+// document-level listeners but does not clear the private pointers array,
+// so after reconnect the controls can never re-arm. We force a fresh
+// OrbitControls instance on every show by bumping showSeq in the effect
+// that re-fires on each show, and save/restore the camera pose so the
+// viewport keeps the user's last framing.
+interface SavedOrbitState {
+  position: [number, number, number]
+  target: [number, number, number]
+  zoom: number
+}
+let savedOrbitState: SavedOrbitState | null = null
 
 interface SceneControllerProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -33,29 +45,58 @@ interface SceneControllerProps {
 }
 
 export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
-  const { camera, gl } = useThree()
+  const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
+  const cameraRefStable = useRef(camera)
+  // eslint-disable-next-line react-hooks/refs
+  cameraRefStable.current = camera
 
-  // TEMP DEBUG (camera freeze): is the camera object being swapped, and does
-  // SceneController remount? Both would force drei to recreate OrbitControls.
+  // showSeq bumps every time this component's effect setup runs, which
+  // happens on initial mount AND on every re-show after React Suspense
+  // hides the tree (Suspense calls cleanup then re-runs setup on show).
+  // A clean OrbitControls key forces drei's useMemo to produce a fresh
+  // three-stdlib instance with an empty pointers array.
+  const [showSeq, setShowSeq] = useState(0)
+
+  // Save camera pose before the effect is torn down (unmount or Suspense
+  // hide), then bump showSeq on next setup so the controls is re-keyed.
   useEffect(() => {
-    console.log('[orbit-debug] SceneController MOUNT', { cameraUuid: camera.uuid })
-    return () => console.log('[orbit-debug] SceneController UNMOUNT')
+    setShowSeq(k => k + 1)
+    return () => {
+      const cam = cameraRefStable.current
+      if (ctrlRef.current && cam) {
+        savedOrbitState = {
+          position: [cam.position.x, cam.position.y, cam.position.z],
+          target: [ctrlRef.current.target.x, ctrlRef.current.target.y, ctrlRef.current.target.z],
+          zoom: cam.zoom,
+        }
+      }
+    }
   }, [])
+
+  // Restore camera pose when a fresh controls is born (showSeq changes).
+  // Deferred by one rAF so the new OrbitControls has connected first.
   useEffect(() => {
-    console.log('[orbit-debug] camera changed', { cameraUuid: camera.uuid })
-  }, [camera])
+    const state = savedOrbitState
+    savedOrbitState = null
+    if (!state) return
+    const ctrl = ctrlRef.current
+    const raf = requestAnimationFrame(() => {
+      if (!ctrl) return
+      camera.position.set(...state.position)
+      ctrl.target.set(...state.target)
+      camera.zoom = state.zoom
+      camera.updateProjectionMatrix()
+      ctrl.update()
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [showSeq, camera])
 
   // Expose the Canvas-owned camera to the parent Viewport (for fitToContent).
   // eslint-disable-next-line react-hooks/refs
   cameraRef.current = camera
 
-  // The single orthographic camera is created and initially positioned by the
-  // <Canvas orthographic camera={...}> in Viewport. R3F never swaps or
-  // repositions it on re-render, and SceneController never moves it on its own.
-  // Programmatic framing (startup fit and the Reset Viewport button) goes
-  // through Viewport's autoZoomToFit -> fitToContent; everything else here is
-  // user controlled via OrbitControls.
+  // Right-button mapping: shift/ctrl/meta override the default rotate action.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -83,51 +124,12 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   const orbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
   const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
 
-  // TEMP DEBUG (camera freeze): per-gesture move counters + instance identity.
-  useEffect(() => {
-    const canvas = gl.domElement  // the WebGL canvas OrbitControls binds to
-    if (!canvas) return
-    const onDown = (e: PointerEvent) => {
-      orbitDbg.moves = 0
-      orbitDbg.gestureInstance = orbitDbg.instanceId
-      console.log('[orbit-debug] pointerdown', {
-        button: e.button,
-        enabled: ctrlRef.current?.enabled,
-        instanceId: orbitDbg.instanceId,
-        domEl: ctrlRef.current?.domElement?.tagName,
-      })
-    }
-    const onMove = () => { orbitDbg.moves++ }
-    const onUp = () => {
-      console.log('[orbit-debug] pointerup', {
-        rawMovesOnCanvas: orbitDbg.moves,
-        instanceAtStart: orbitDbg.gestureInstance,
-        instanceNow: orbitDbg.instanceId,
-        replacedMidGesture: orbitDbg.gestureInstance !== orbitDbg.instanceId,
-      })
-    }
-    canvas.addEventListener('pointerdown', onDown)
-    canvas.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    return () => {
-      canvas.removeEventListener('pointerdown', onDown)
-      canvas.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-  }, [gl])
-
   return (
     <OrbitControls
+      key={showSeq}
       ref={(ctrl) => {
         ctrlRef.current = ctrl
         controlsRef.current = ctrl
-        // TEMP DEBUG: only count a genuinely NEW controls object (ignore the
-        // null/instance churn from this inline callback re-running each render).
-        if (ctrl && ctrl !== orbitDbg.lastInstance) {
-          orbitDbg.lastInstance = ctrl
-          orbitDbg.instanceId++
-          console.log('[orbit-debug] NEW controls instance', orbitDbg.instanceId)
-        }
       }}
       enabled={orbitEnabled}
       mouseButtons={MOUSE_BUTTONS}
@@ -135,9 +137,8 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
       enableZoom
       enablePan
       enableDamping={false}
-      onStart={() => { console.log('[orbit-debug] onStart'); setIsRotating(true) }}
-      onChange={() => { orbitDbg.changes++ }}
-      onEnd={() => { console.log('[orbit-debug] onEnd', { onChangeCount: orbitDbg.changes }); orbitDbg.changes = 0; setIsRotating(false) }}
+      onStart={() => setIsRotating(true)}
+      onEnd={() => setIsRotating(false)}
     />
   )
 }
