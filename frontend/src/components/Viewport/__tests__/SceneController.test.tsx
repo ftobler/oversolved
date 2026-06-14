@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import * as THREE from 'three'
 import SceneController from '@/components/Viewport/SceneController'
+import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
@@ -27,6 +28,30 @@ function makeRef<T>(initial: T): React.MutableRefObject<T> {
   ;(ref as unknown as Record<string, unknown>).current = initial
   return ref
 }
+
+describe('deriveOrbitEnabled', () => {
+  const drag = { featureId: 'S1' }
+  const pending = { featureId: 'S1' }
+
+  it('disables orbit only during an active pointer-down element drag', () => {
+    expect(deriveOrbitEnabled(true, drag, null)).toBe(false)
+    expect(deriveOrbitEnabled(true, null, pending)).toBe(false)
+  })
+
+  it('keeps orbit enabled while the pointer is up regardless of stale drag state', () => {
+    // Load race: DragPlane unmounted mid-gesture left drag/dragPending stuck,
+    // but the pointer is up so the camera must not freeze.
+    expect(deriveOrbitEnabled(false, drag, null)).toBe(true)
+    expect(deriveOrbitEnabled(false, null, pending)).toBe(true)
+    expect(deriveOrbitEnabled(false, drag, pending)).toBe(true)
+  })
+
+  it('keeps orbit enabled when pressing on empty space (no element drag)', () => {
+    // Camera rotate/pan does not set drag/dragPending; isPointerDown stays false.
+    expect(deriveOrbitEnabled(false, null, null)).toBe(true)
+    expect(deriveOrbitEnabled(true, null, null)).toBe(true)
+  })
+})
 
 describe('SceneController camera preservation', () => {
   it('never touches the camera on re-render (camera is owned by the Canvas, user controlled)', async () => {

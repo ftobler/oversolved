@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
 import { snapToDirection } from '@/components/Viewport/cameraController'
+import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
 
 const MOUSE_BUTTONS = {
   LEFT: -1 as unknown as THREE.MOUSE,
@@ -65,7 +66,8 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
 
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
-  const orbitEnabled = !drag && !dragPending
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
+  const orbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
   const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
 
   return (

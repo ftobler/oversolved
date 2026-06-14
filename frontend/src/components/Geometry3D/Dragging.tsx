@@ -15,6 +15,14 @@ import type { DragToolContext } from '@/tools/DragTool'
 import { sketchToVertexCandidates, sketchToEntityCandidates, inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
+// Sketch dragging is the prime consumer of the camera-drag block: the
+// drag/dragPending state this component sets and clears is what disables
+// OrbitControls (see deriveOrbitEnabled in orbitEnabled.ts). Camera orbit is
+// suppressed while a sketch element is being dragged so the two gestures do not
+// fight. Because that block is keyed on this state, any path that sets it must
+// also clear it on release; a lost release (e.g. a load race that unmounts this
+// DragPlane mid-gesture) is recovered by the pointer-up gating in
+// deriveOrbitEnabled rather than relying solely on the handlers here.
 export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, constraints, topology }: {
   featureId: string
   sketch?: Sketch
