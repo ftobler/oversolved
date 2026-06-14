@@ -27,7 +27,6 @@ vi.mock('@/hooks/useSolver', () => ({
     setSolveResults: vi.fn(),
     bodies: {},
     pickBodies: {},
-    setPickBodies: vi.fn(),
     solving: false,
     solveTime: 0,
     solveError: null,

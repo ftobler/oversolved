@@ -120,6 +120,26 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
   return out
 }
 
+// ─── Actor pattern: serializes solve requests ──────────────────────────
+// The engine (solveLocally) owns mutable cross-solve state (HandleTable +
+// last BuildState). Concurrent solve requests would race on these shared
+// resources. The Actor guarantees sequential access by chaining every
+// request onto the previous one's completion promise.
+
+type ActorMessage = { request: SolveRequest; respond: (res: SolveResponse) => void }
+
+class SolveActor {
+  private queue: Promise<void> = Promise.resolve()
+
+  post(msg: ActorMessage): void {
+    this.queue = this.queue.then(() =>
+      handleSolveRequest(msg.request, solveLocally).then((res) =>
+        msg.respond(res),
+      ),
+    )
+  }
+}
+
 // --- Worker bootstrap (skipped on the main thread / in tests) -------------
 
 interface WorkerCtx {
@@ -137,17 +157,11 @@ if (inWorker()) {
   // document/window, which do not exist here.
   setOccLoader(loadOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
-
-  // Serial queue so concurrent solve requests don't race on the shared
-  // persistentTable / lastBuildState (solveLocally.ts). Each resolve awaits
-  // the previous one before starting, guaranteeing sequential access to the
-  // OCC HandleTable and checkpoint cache.
-  let solveQueue: Promise<void> = Promise.resolve()
+  const actor = new SolveActor()
   ctx.onmessage = (e) => {
-    solveQueue = solveQueue.then(() =>
-      handleSolveRequest(e.data, solveLocally).then((res) =>
-        ctx.postMessage(res, collectTransferables(res)),
-      ),
-    )
+    actor.post({
+      request: e.data,
+      respond: (res) => { ctx.postMessage(res, collectTransferables(res)) },
+    })
   }
 }

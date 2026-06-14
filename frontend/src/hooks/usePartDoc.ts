@@ -23,7 +23,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   } = useDocumentState(uuid, reSolveRef, { solveOnLoad })
 
   const {
-    solveResults, setSolveResults, bodies, pickBodies, setPickBodies,
+    solveResults, setSolveResults, bodies, pickBodies,
     solving, solveTime, solveError, setSolveError, solveResult, setSolveRawResult,
     featureTimings, reSolve,
     validation, clearValidation,
@@ -166,7 +166,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     featureTimings,
     bodies,
     pickBodies,
-    setPickBodies,
     solving,
     solveTime,
     solveError,
