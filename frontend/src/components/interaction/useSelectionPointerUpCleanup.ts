@@ -6,7 +6,6 @@ export function runPointerUpCleanup() {
   if (!state.isPointerDown) return
 
   state.setIsPointerDown(false)
-  state.setOrbitEnabled(true)
 }
 
 export function useSelectionPointerUpCleanup() {
