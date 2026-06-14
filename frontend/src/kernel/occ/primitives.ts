@@ -190,30 +190,59 @@ function makeCirc(
   return scope.track(new oc.gp_Circ_2(ax2, radius))
 }
 
+/** Number of edges in a wire/shape. */
+function edgeCount(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const exp = scope.track(
+    new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE),
+  )
+  let n = 0
+  while (exp.More()) {
+    n++
+    exp.Next()
+  }
+  return n
+}
+
 /** Assemble ordered edges into a wire (BRepBuilderAPI_MakeWire), with
- *  ShapeFix_Wire gap-healing when the raw wire build fails on sub-micron joints
- *  (common in solver-driven line-arc-line spines). */
+ *  ShapeFix_Wire gap-healing when the raw wire build fails on sub-micron joints.
+ *
+ *  Guards connectivity: BRepBuilderAPI_MakeWire silently drops an edge whose
+ *  joint gap exceeds its confusion tolerance, and the heal fallback cannot
+ *  re-attach it (ShapeFix only re-loads one wire), so the wire would collapse
+ *  to a subset and the sweep/extrude would produce a wrong-shape or single-face
+ *  solid while still reporting ok. We instead fail loudly: a missing edge means
+ *  the joints need snapping upstream (see collectPathEdges). */
 export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
   for (const e of edges) builder.Add_1(e)
+  let wire: OccShape | null = null
   try {
-    return builder.Wire()
+    wire = builder.Wire()
   } catch {
-    return healWireFromEdges(oc, scope, edges)
+    wire = healWireFromEdges(oc, scope, edges)
   }
+  const got = edgeCount(oc, scope, wire)
+  if (got < edges.length) {
+    throw new Error(
+      `makeWire: only ${got} of ${edges.length} edges connected; a joint gap exceeds the kernel tolerance (snap the joints upstream)`,
+    )
+  }
+  return wire
 }
 
-/** Gap-closing tolerance for ShapeFix_Wire healing.  Spine arcs are now built
- *  from exact in-plane angle data (buildArcEdge), so joint gaps are at the
- *  solver level (~1e-9) and this heal is only a safety net.  Large enough to
- *  absorb any residual joint imprecision, small enough not to merge distinct
- *  vertices on short edges.  Spine joints are typically several units apart. */
+/** Gap-closing tolerance for ShapeFix_Wire healing.  Spine joints are snapped to
+ *  the arc's exact endpoints upstream (collectPathEdges), so a built wire's
+ *  residual gaps are at solver precision (~1e-6) and this heal only tidies them.
+ *  Large enough to absorb that, small enough not to merge distinct vertices on
+ *  short edges.  Spine joints are typically several units apart. */
 const WIRE_HEAL_TOL = 0.01
 
 /**
- * Heal a wire by rebuilding it from single-edge wires through ShapeFix_Wire.
- * Proactive form of the makeWire fallback — use for spine wires where
- * solver-level endpoint gaps are expected.
+ * Best-effort heal of a set of edges into one wire via ShapeFix_Wire. NOTE: the
+ * current bindings only expose Load_1 (one wire), so this cannot re-attach edges
+ * that BRepBuilderAPI_MakeWire already rejected; makeWire's connectivity guard
+ * catches the resulting drop. Effective only when the edges already (nearly)
+ * connect.
  */
 export function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   const sfw = scope.track(new oc.ShapeFix_Wire_1())
