@@ -37,6 +37,8 @@ export interface OccPolygonBuilder extends OccDisposable {
 
 export interface OccFaceBuilder extends OccDisposable {
   Face(): OccShape
+  /** False when the (wire, onlyPlane) face could not be built, e.g. non-coplanar. */
+  IsDone(): boolean
   /** Add a hole wire to the face under construction (BRepBuilderAPI_MakeFace::Add). */
   Add(wire: OccShape): void
 }
@@ -246,6 +248,8 @@ export interface OccArcMaker extends OccDisposable {
 
 export interface OccWireBuilder extends OccDisposable {
   Add_1(edge: OccShape): void
+  /** False when the added edges do not chain into a single connected wire. */
+  IsDone(): boolean
   Wire(): OccShape
 }
 

@@ -1,0 +1,139 @@
+// Gated real-OCC tests for B-rep edge profiles (feature: extrude-brep-profile).
+// Picks the four coplanar bottom edges of a box, assembles them into a profile
+// face, and extrudes -- both via the helpers directly and end to end through
+// solveExtrude. Skips when OCC.js is absent.
+
+import { describe, it, expect, beforeAll } from 'vitest'
+import { loadOcc } from '../occ/loadOcc'
+import { DisposeScope } from '../occ/disposeScope'
+import { HandleTable } from '../occ/handleTable'
+import { makeBox, makePrism, faceCentroid, faceNormal, type Vec3 } from '../occ/primitives'
+import { volumeOf } from '../occ/booleans'
+import { faceGeometryHash } from '../geomHash'
+import { Repository } from '../query'
+import { solidToEdges } from '../occ/tessellation'
+import { solveExtrude } from './extrude'
+import { resolveProfileEdges, edgesToProfileFace, resolveEdgeProfileFace } from './edgeProfile'
+import type { Body } from '../types3d'
+import type { OccModule, OccShape } from '../occ/occTypes'
+
+const oc = await loadOcc()
+
+describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  function boxFaceLineage(scope: DisposeScope, box: OccShape): Record<string, string[]> {
+    const E = occ.TopAbs_ShapeEnum
+    const out: Record<string, string[]> = {}
+    const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    let i = 0
+    for (; exp.More(); exp.Next()) {
+      const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+      out[faceGeometryHash(faceCentroid(occ, scope, f), faceNormal(occ, scope, f))] = [`@face_${i++}`]
+    }
+    return out
+  }
+
+  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+    const box = makeBox(occ, scope, 10, 10, 10)
+    const faceLineage = boxFaceLineage(scope, box)
+    return {
+      body_b: {
+        id: 'body_b',
+        created_by: 'ex1',
+        modified_by: [],
+        shape: table.register(scope.detach(box), 'ex1'),
+        sketch_id: 'sk',
+        brep_diff: null,
+        profile_queries: [],
+        face_lineage: faceLineage,
+        edge_lineage: {},
+      },
+    }
+  }
+
+  /** Ancestry queries for the four edges whose endpoints both lie at z == zPlane. */
+  function edgeLoopAtZ(
+    table: HandleTable,
+    body: Body,
+    zPlane: number,
+  ): string[] {
+    const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
+      createdBy: body.created_by,
+      bodyId: body.id,
+      profileQueries: body.profile_queries,
+      edgeLineage: body.edge_lineage,
+    })
+    const out: string[] = []
+    for (let i = 0; i < edges.length; i++) {
+      const ed = edges[i]
+      if (ed.kind !== 'line') continue
+      if (Math.abs(ed.start[2] - zPlane) < 1e-6 && Math.abs(ed.end[2] - zPlane) < 1e-6) {
+        out.push(edge_queries[i])
+      }
+    }
+    return out
+  }
+
+  it('assembles four coplanar box edges into a profile face and extrudes it', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
+      expect(bottom.length).toBe(4)
+
+      const edges = resolveProfileEdges(occ, scope, table, bottom, bodyStore)
+      expect(edges.length).toBe(4)
+
+      const face = edgesToProfileFace(occ, scope, edges)
+      const n = faceNormal(occ, scope, face)
+      const prism = makePrism(occ, scope, face, n as Vec3, 5)
+      // 10x10 face swept 5 deep -> 500.
+      expect(volumeOf(occ, scope, prism)).toBeCloseTo(500, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('solveExtrude builds a new body from an edge-loop profile', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
+
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: bottom, distance: 5, operation: 'new' } },
+        new Repository(), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      const newBody = bodyStore.body_ex2
+      expect(newBody).toBeDefined()
+      expect(volumeOf(occ, scope, table.get<OccShape>(newBody.shape!))).toBeCloseTo(500, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('rejects a non-coplanar / open edge set', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
+      const top = edgeLoopAtZ(table, bodyStore.body_b, 10)
+      // One bottom edge + one top edge: not connected, not a closed coplanar loop.
+      expect(() =>
+        resolveEdgeProfileFace(occ, scope, table, [bottom[0], top[0]], bodyStore),
+      ).toThrow()
+    } finally {
+      scope.dispose()
+    }
+  })
+})

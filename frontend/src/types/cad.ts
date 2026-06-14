@@ -9,11 +9,16 @@ export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
 
 export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
 export type ExtrudeOperation = 'add' | 'cut' | 'new'
+export type ExtrudeTermination = 'blind' | 'up_to'
 
 export interface ExtrudeFeatureDef {
   sketch: string | string[]
   distance: number
   direction?: ExtrudeDirection
+  // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
+  // referenced by `up_to` (a plane, point, or planar face).
+  termination?: ExtrudeTermination
+  up_to?: string
   operation?: ExtrudeOperation
   merge_target?: string
 }

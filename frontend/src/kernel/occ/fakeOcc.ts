@@ -99,6 +99,9 @@ export function makeFakeOcc(): FakeOccModule {
     Face(): OccShape {
       return owned()
     }
+    IsDone(): boolean {
+      return true
+    }
     Add(_wire: OccShape): void {
       void _wire
     }

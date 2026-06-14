@@ -15,12 +15,14 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry } from '../query'
-import { faceNormal, makePrism, type Vec3 } from '../occ/primitives'
+import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
 import { resolveDirection, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
+import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
+import { resolveUpToPlane, upToDistance, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -79,6 +81,13 @@ export function solveExtrude(
     throw new Error('extrude: requires at least one profile reference')
   }
 
+  // B-rep edge picks define their profile from selected solid edges, not from a
+  // sketch or a whole face; they resolve to an assembled planar face below and
+  // join the cqFaces path. Everything else (sketch/face/surface refs) keeps the
+  // original loop-collection route.
+  const edgeRefs = sketchRefs.filter(isEdgeProfileRef)
+  const profileRefs = sketchRefs.filter((s) => !isEdgeProfileRef(s))
+
   const allLoops: Dict[][] = []
   const cqFaces: OccShape[] = []
   let firstPt: PlaneLike | null = null
@@ -88,7 +97,7 @@ export function solveExtrude(
   const faceLineage: Lineage = {}
   const edgeLineage: Lineage = {}
 
-  for (const sketchRef of sketchRefs) {
+  for (const sketchRef of profileRefs) {
     let resolved
     try {
       resolved = collectExtrudeLoops(
@@ -120,6 +129,15 @@ export function solveExtrude(
     }
   }
 
+  // All picked edges together bound one coplanar profile loop -> one face.
+  if (edgeRefs.length > 0) {
+    try {
+      cqFaces.push(resolveEdgeProfileFace(oc, scope, table, edgeRefs, bodyStore))
+    } catch (exc) {
+      profileErrors.push(exc instanceof Error ? exc.message : String(exc))
+    }
+  }
+
   if (profileErrors.length && cqFaces.length === 0 && allLoops.length === 0) {
     throw new Error(profileErrors.join('; '))
   }
@@ -129,7 +147,6 @@ export function solveExtrude(
   const operation = ((merged.operation as string) ?? 'add') as BodyOperation
   const direction = (merged.direction as string) ?? 'normal'
 
-  let toolShape: OccShape
   if (cqFaces.length === 0 && allLoops.length === 0) {
     // No profile geometry resolved -> no part. A part-less extrude is a failed
     // extrude (surfaced as a red feature), not a silent ok. (profileErrors are
@@ -138,10 +155,42 @@ export function solveExtrude(
     result.exception = 'extrude: no closed profile found in the referenced sketch; no part created'
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
-  } else if (cqFaces.length > 0 && allLoops.length === 0) {
+  }
+
+  // Up-to termination: resolve the cut plane once, using a representative extrude
+  // direction so a point target can take the extrude direction as its normal.
+  const termination = (merged.termination as string) ?? 'blind'
+  const upToRef = (merged.up_to as string) ?? ''
+  const usingFaces = cqFaces.length > 0 && allLoops.length === 0
+  let cutPlane: CutPlane | null = null
+  if (termination === 'up_to' && upToRef) {
+    if (direction === 'symmetric') {
+      throw new Error('extrude up_to: symmetric direction is not supported')
+    }
+    const probeDir: Vec3 = usingFaces
+      ? (direction === 'reverse'
+          ? (faceNormal(oc, scope, cqFaces[0]).map((n) => -n) as Vec3)
+          : (faceNormal(oc, scope, cqFaces[0]) as Vec3))
+      : (resolveDirection((firstPt?.normal as number[]) ?? [0, 0, 1], firstPt as PlaneLike, direction, distance)[0] as Vec3)
+    cutPlane = resolveUpToPlane(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
+    if (cutPlane === null) {
+      result.solver_warning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
+    }
+  }
+
+  let toolShape: OccShape
+  if (usingFaces) {
     const faceNormalVec = faceNormal(oc, scope, cqFaces[0])
     const reverseVec = faceNormalVec.map((n) => -n) as Vec3
-    if (direction === 'symmetric') {
+    if (cutPlane !== null) {
+      const dirVec = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
+      if (upToDistance(cutPlane, faceCentroid(oc, scope, cqFaces[0]), dirVec) <= 1e-9) {
+        throw new Error('extrude up_to: target is behind the extrude direction')
+      }
+      let tool = makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH)
+      for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, dirVec, UP_TO_REACH))
+      toolShape = trimAtPlane(oc, scope, tool, cutPlane, dirVec)
+    } else if (direction === 'symmetric') {
       const half = distance / 2.0
       let tool = fuse(
         oc,
@@ -172,16 +221,20 @@ export function solveExtrude(
       direction,
       distance,
     )
+    const length = cutPlane !== null ? UP_TO_REACH : effectiveDistance
+    if (cutPlane !== null && upToDistance(cutPlane, effectivePlane.origin, directionVec as Vec3) <= 1e-9) {
+      throw new Error('extrude up_to: target is behind the extrude direction')
+    }
     const lineage = extrudeProfileWithLineage(
       oc,
       scope,
       allLoops,
       effectivePlane,
       directionVec as Vec3,
-      effectiveDistance,
+      length,
       firstSketchId,
     )
-    toolShape = lineage.solid
+    toolShape = cutPlane !== null ? trimAtPlane(oc, scope, lineage.solid, cutPlane, directionVec as Vec3) : lineage.solid
     Object.assign(faceLineage, lineage.faceLineage)
     Object.assign(edgeLineage, lineage.edgeLineage)
   }

@@ -93,7 +93,8 @@ describe('ExtrudeEditor renders in Sidebar', () => {
       editingFeatureId: 'ex1',
     })
     expect(screen.getByRole('spinbutton')).toBeInTheDocument()
-    expect(screen.getAllByRole('combobox')).toHaveLength(2)
+    // Operation, Direction, Termination.
+    expect(screen.getAllByRole('combobox')).toHaveLength(3)
   })
 
   it('does not render editor when editingFeatureId is null', () => {
@@ -234,6 +235,36 @@ describe('operation select', () => {
       field: 'operation',
       value: 'add',
     })
+  })
+})
+
+// 4b: termination select + up-to pick chip
+describe('termination select', () => {
+  it('switches to up_to and hides the distance input, showing the up-to chip', () => {
+    const onMutation = vi.fn()
+    renderSidebar({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    }, { onMutation })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Termination' }), { target: { value: 'up_to' } })
+    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'up_to',
+    })
+  })
+
+  it('shows the up-to pick chip (not the distance input) when termination is up_to', () => {
+    const upToFeature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, termination: 'up_to' },
+    }
+    renderSidebar({
+      features: [upToFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+    expect(screen.getByText('(pick plane, point, or face)')).toBeInTheDocument()
   })
 })
 
