@@ -25,6 +25,9 @@ import type { LoopEdge } from '../profileLoops'
 import type { OccModule, OccShape } from './occTypes'
 
 const oc = await loadOcc()
+// Narrowed handle for the helpers; the describe below is skipped when oc is null,
+// so these only run with a real module.
+const occ = oc as OccModule
 
 // Path-sketch plane mapped to the world XZ plane: sketchToWorld2d([u,v]) = [u,0,v].
 // Right-handed (normal = x_axis x y_axis = [0,-1,0]).
@@ -74,9 +77,9 @@ function arcSweep(a0: number, a1: number, ccw: boolean): { vol: number; c: numbe
         start: pt(a0), end: pt(a1), angle_start_deg: a0, angle_end_deg: a1, ccw,
       }],
     })
-    const [spine] = collectPathEdges(oc, scope, sk, repo)
-    const { solid } = sweepProfileWithLineage(oc, scope, squareLoops, planeXY, spine, sk)
-    return massProps(oc, scope, solid)
+    const [spine] = collectPathEdges(occ, scope, sk, repo)
+    const { solid } = sweepProfileWithLineage(occ, scope, squareLoops, planeXY, spine, sk)
+    return massProps(occ, scope, solid)
   } finally {
     scope.dispose()
   }
@@ -129,10 +132,10 @@ describe.skipIf(!oc)('sweep spine shape + stability (real OCC)', () => {
           { entity_id: 'A1', edge_index: 1, kind: 'arc', center: [CX, CY], radius: R, start: aStart, end: aEnd, angle_start_deg: 180, angle_end_deg: 90, ccw: false },
         ],
       })
-      const [spine] = collectPathEdges(oc, scope, sk, repo)
+      const [spine] = collectPathEdges(occ, scope, sk, repo)
       expect(spine.length).toBe(2)
-      const { solid } = sweepProfileWithLineage(oc, scope, squareLoops, planeXY, spine, sk)
-      const { vol, c } = massProps(oc, scope, solid)
+      const { solid } = sweepProfileWithLineage(occ, scope, squareLoops, planeXY, spine, sk)
+      const { vol, c } = massProps(occ, scope, solid)
       // Line (length 6, vol 96) + arc (quarter, vol ~251) -> well above the
       // single-face / single-segment degenerate volumes.
       expect(vol).toBeGreaterThan(300)
@@ -161,9 +164,9 @@ describe.skipIf(!oc)('sweep spine shape + stability (real OCC)', () => {
             { entity_id: 'A1', edge_index: 1, kind: 'arc', center: [CX, CY], radius: R, start: pt(arcStartDeg), end: pt(arcEndDeg), angle_start_deg: arcStartDeg, angle_end_deg: arcEndDeg, ccw: arcStartDeg < arcEndDeg },
           ],
         })
-        const [spine] = collectPathEdges(oc, scope, sk, repo)
-        const { solid } = sweepProfileWithLineage(oc, scope, squareLoops, planeXY, spine, sk)
-        return massProps(oc, scope, solid)
+        const [spine] = collectPathEdges(occ, scope, sk, repo)
+        const { solid } = sweepProfileWithLineage(occ, scope, squareLoops, planeXY, spine, sk)
+        return massProps(occ, scope, solid)
       } finally {
         scope.dispose()
       }
