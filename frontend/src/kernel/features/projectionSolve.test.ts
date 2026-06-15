@@ -150,6 +150,32 @@ describe('solveSketch projection lowering', () => {
     expect(out.projection_errors).toContain('stale')
   })
 
+  it('pins a coincident-to-origin to the document origin on an offset plane', () => {
+    if (!solveBytes) return
+    // A sketch on a face plane offset from the global origin. A line's endpoint
+    // is coincident with @builtin_origin: it must land at the DOCUMENT origin
+    // expressed in the plane's local frame, not the plane's own local (0,0)
+    // -- the "line constrained to origin" bug.
+    const offsetPlane: Dict = {
+      type: 'face', origin: [5, 10, -2], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0],
+    }
+    // Document origin (0,0,0) in this plane's local frame: (0-5, 0-10) = (-5, -10).
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '?face;flatface',
+      entities: [{ id: 'ln', kind: 'line' }],
+      initial: { ln: [2, 3, 8, 9] },
+      constraints: [
+        { id: 'c_co', kind: 'coincident', a: '$ln', b: '@builtin_origin' },
+      ],
+    }
+    const out = solveSketch(feature, stubRepo(offsetPlane), {} as Record<string, Body>)
+    expect(out.status).not.toBe('error')
+    const g = out.geometry?.ln
+    expect(g).toBeDefined()
+    expect(g![0]).toBeCloseTo(-5)
+    expect(g![1]).toBeCloseTo(-10)
+  })
+
   it('does not surface a resolved kind when projection keeps the declared kind', () => {
     if (!solveBytes) return
     const feature: Dict = {

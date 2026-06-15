@@ -41,12 +41,19 @@ const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_
  * the live `$entityId[point]` query-string form, the already-resolved
  * `{entity, point}` dict form, and `@builtin_origin` (the origin-point
  * query that every sketch needs for coincident-to-origin constraints --
- * maps to `{external_xy:[0,0]}` which the Rust solver's coincident handler
- * accepts natively).
+ * maps to `{external_xy: originLocal}` which the Rust solver's coincident
+ * handler accepts natively).
+ *
+ * `originLocal` is the document origin (0,0,0) expressed in this sketch's local
+ * 2D frame. It is [0,0] for the builtin planes (which pass through the global
+ * origin) but nonzero for a sketch on an offset/projected face -- using a bare
+ * [0,0] there would pin the constraint to the plane's local origin, a different
+ * 3D point than the document origin (the "line constrained to origin" bug).
  */
 function resolveLocal(
   q: unknown,
   entityIds: Set<string>,
+  originLocal: [number, number],
 ): { entity: string; point?: string } | { external_xy: [number, number] } | null {
   if (q && typeof q === 'object') {
     const obj = q as { entity?: unknown; point?: unknown }
@@ -58,7 +65,7 @@ function resolveLocal(
     return null
   }
   if (typeof q === 'string') {
-    if (q === '@builtin_origin') return { external_xy: [0, 0] }
+    if (q === '@builtin_origin') return { external_xy: [...originLocal] }
     if (!q.startsWith('$')) return null
     const local = q.slice(1)
     for (const pt of KNOWN_POINTS) {
@@ -79,12 +86,13 @@ function resolveLocal(
 function lowerConstraint(
   c: PartConstraint,
   entityIds: Set<string>,
+  originLocal: [number, number],
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
   for (const key of REF_KEYS) {
     const raw = c[key]
     if (raw == null) continue
-    const resolved = resolveLocal(raw, entityIds)
+    const resolved = resolveLocal(raw, entityIds, originLocal)
     if (!resolved) return null
     out[key] = resolved
   }
@@ -177,7 +185,18 @@ function expandSugarConstraints(feature: PartFeature): PartConstraint[] {
   return out
 }
 
-export function partDocToSketches(features: PartFeature[] | undefined): ExtractResult {
+/**
+ * Lower sketch features to solver `SketchInput`. `originLocal` is the document
+ * origin (0,0,0) in the sketch's local 2D frame, applied to every
+ * `@builtin_origin` ref; it defaults to [0,0] (correct for builtin planes) and
+ * the caller passes the projected value for a sketch on an offset/projected
+ * plane. Callers that lower more than one feature at once must share a plane, or
+ * resolve per-feature themselves (today both callers pass a single feature).
+ */
+export function partDocToSketches(
+  features: PartFeature[] | undefined,
+  originLocal: [number, number] = [0, 0],
+): ExtractResult {
   const sketches: ExtractedSketch[] = []
   const skipped: SkippedSketch[] = []
 
@@ -197,7 +216,7 @@ export function partDocToSketches(features: PartFeature[] | undefined): ExtractR
     const entityIds = new Set(entities.map((e) => e.id))
     const constraints: Array<Record<string, unknown>> = []
     for (const c of expandSugarConstraints(feature)) {
-      const lowered = lowerConstraint(c, entityIds)
+      const lowered = lowerConstraint(c, entityIds, originLocal)
       if (lowered) constraints.push(lowered)
     }
 

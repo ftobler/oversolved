@@ -101,6 +101,30 @@ describe('partDocToSketches', () => {
     expect(c[1]).toMatchObject({ kind: 'diameter', target: { entity: 'c1' }, value: 10 })
   })
 
+  it('resolves @builtin_origin to the projected originLocal on an offset plane', () => {
+    // On a sketch whose plane does not pass through the document origin, the
+    // origin lives at nonzero local 2D coords. The lowering must carry those, or
+    // a coincident-to-origin pins to the plane's local (0,0) -- a different 3D
+    // point ("line constrained to origin" bug).
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'c1', kind: 'circle' }],
+        initial: { c1: [0, 0, 5] },
+        constraints: [
+          { id: 'c_coincident', kind: 'coincident', a: '$c1center', b: '@builtin_origin' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features, [3, -7])
+    expect(sketches[0].sketch.constraints[0]).toMatchObject({
+      kind: 'coincident',
+      a: { entity: 'c1', point: 'center' },
+      b: { external_xy: [3, -7] },
+    })
+  })
+
   it('expands an ngon sugar constraint to equal_length + angle (not dropped)', () => {
     const features: PartFeature[] = [
       {

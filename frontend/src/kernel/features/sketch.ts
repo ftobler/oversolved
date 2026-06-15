@@ -26,7 +26,7 @@ import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSk
 import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { solveTopology, reconcileMaterializedContacts, type TopologyBytes } from '../topologyDecorate'
-import { frameToPlaneTransform, type Frame3D } from '../types3d'
+import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
@@ -190,8 +190,13 @@ export function solveSketch(
   }
 
   // ── Lower the live PartDoc feature to SketchInput ──────────────────────
+  // Express the document origin (0,0,0) in this sketch's local 2D frame so a
+  // `@builtin_origin` coincident pins to the actual document origin, not the
+  // sketch plane's local (0,0) -- which differ for a sketch on an offset/
+  // projected face ("line constrained to origin" bug).
+  const originLocal = projectWorldToFrame([0, 0, 0], plane as Frame3D)
   const pf = loweredFeature as unknown as PartFeature
-  const extract = partDocToSketches([pf])
+  const extract = partDocToSketches([pf], originLocal)
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
   }

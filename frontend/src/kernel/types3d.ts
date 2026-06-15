@@ -110,3 +110,24 @@ export function normalToFrame(normal: [number, number, number]): {
     y_axis: [yx, yy, yz],
   }
 }
+
+/** Local 2D coordinates of a 3D world point on a sketch plane: the in-plane
+ *  components of (world - frame.origin) along the frame's x/y axes. A point off
+ *  the plane projects to the foot of its perpendicular. Used to express the
+ *  document origin (0,0,0) in a sketch's local frame -- only [0,0] when the
+ *  plane passes through the global origin (the builtin planes), nonzero for a
+ *  sketch on an offset/projected face. */
+export function projectWorldToFrame(
+  world: readonly [number, number, number],
+  frame: Frame3D,
+): [number, number] {
+  const d: [number, number, number] = [
+    world[0] - frame.origin[0],
+    world[1] - frame.origin[1],
+    world[2] - frame.origin[2],
+  ]
+  return [
+    d[0] * frame.x_axis[0] + d[1] * frame.x_axis[1] + d[2] * frame.x_axis[2],
+    d[0] * frame.y_axis[0] + d[1] * frame.y_axis[1] + d[2] * frame.y_axis[2],
+  ]
+}
