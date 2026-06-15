@@ -13,8 +13,6 @@ interface UseEditFeatureInput {
   docRef: React.MutableRefObject<PartDoc | null>
   reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>
   setMode: (mode: 'sketch' | 'feature' | 'code') => void
-  // Called on edit exit to drop the sketch-on-face FSM state. Optional so
-  // tests / future call sites that don't use plane picking can omit it.
   clearPlaneSelection?: () => void
 }
 
@@ -28,16 +26,8 @@ export interface UseEditFeatureReturn {
   enterEditSketch: (featureId: string) => void
   exitEditSketch: () => void
   clearEditingFeature: () => void
-  saveRollbackPosition: () => void
 }
 
-/**
- * Compute pick_boundary for the feature being edited. Sketches/planes don't
- * use a pick boundary (their picks resolve against the full body state). For
- * solid-modifying features (extrude, fillet, etc.) the boundary is the
- * non-builtin index of the feature -- picks resolve against the body
- * checkpoint frozen just before that feature ran.
- */
 function computePickBoundary(
   features: PartFeature[],
   featureId: string,
@@ -62,7 +52,6 @@ export function useEditFeature({
   clearPlaneSelection,
 }: UseEditFeatureInput): UseEditFeatureReturn {
   const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
-  const [savedRollbackPosition, setSavedRollbackPosition] = useState<number | null>(null)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
 
   const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
@@ -71,7 +60,6 @@ export function useEditFeature({
     const feature = features[idx]
     startEditSession(suppressUndo)
     const store = usePartEditorStore.getState()
-    setSavedRollbackPosition(store.rollbackPosition ?? features.length)
     const pickBoundary = computePickBoundary(features, featureId, builtInIds)
     if (feature.kind === 'sketch') {
       store.setActiveSketchFeatureId(featureId)
@@ -86,14 +74,12 @@ export function useEditFeature({
   const _exitEditCleanup = useCallback(() => {
     if (clearPlaneSelection) clearPlaneSelection()
     const store = usePartEditorStore.getState()
-    const targetRollback = savedRollbackPosition
-    setSavedRollbackPosition(null)
     setEditForcedVisible(new Set())
     store.setEditingFeatureId(null)
     store.setPickBoundary(null)
-    store.setRollbackPosition(targetRollback)
+    store.setRollbackPosition(null)
     if (docRef.current) reSolve(docRef.current)
-  }, [savedRollbackPosition, docRef, reSolve, clearPlaneSelection])
+  }, [docRef, reSolve, clearPlaneSelection])
 
   const commitEditFeature = useCallback(() => {
     commitEditSession()
@@ -118,11 +104,6 @@ export function useEditFeature({
     commitEditFeature()  // sketch exits always commit
   }, [commitEditFeature])
 
-  const saveRollbackPosition = useCallback(() => {
-    const store = usePartEditorStore.getState()
-    setSavedRollbackPosition(store.rollbackPosition)
-  }, [])
-
   const clearEditingFeature = useCallback(() => {
     usePartEditorStore.getState().setEditingFeatureId(null)
   }, [])
@@ -137,6 +118,5 @@ export function useEditFeature({
     enterEditSketch,
     exitEditSketch,
     clearEditingFeature,
-    saveRollbackPosition,
   }
 }
