@@ -266,54 +266,8 @@ fn vertex_freedom(input: &Input, jac: &DMatrix<f64>) -> Vec<f32> {
 mod tests {
     use super::*;
     use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
-    use crate::{Entity, EqualityPin, Kind, Options, Status};
-
-    fn line(off: usize) -> Entity {
-        Entity {
-            kind: Kind::Line,
-            param_offset: off,
-        }
-    }
-
-    fn point(off: usize) -> Entity {
-        Entity {
-            kind: Kind::Point,
-            param_offset: off,
-        }
-    }
-
-    fn ellipse(off: usize) -> Entity {
-        Entity {
-            kind: Kind::Ellipse,
-            param_offset: off,
-        }
-    }
-
-    fn spline(off: usize) -> Entity {
-        Entity {
-            kind: Kind::Spline,
-            param_offset: off,
-        }
-    }
-
-    fn c_target(kind: ConstraintKind, index: u32, point: PointSelector) -> Constraint {
-        Constraint {
-            kind_code: kind.to_u8(),
-            refs: vec![(RefRole::Target, Ref::Entity { index, point })],
-            ..Default::default()
-        }
-    }
-
-    fn input(entities: Vec<Entity>, params: Vec<f32>, constraints: Vec<Constraint>) -> Input {
-        Input {
-            entities,
-            params_initial: params,
-            pinned_mask: Vec::new(),
-            equality_pins: Vec::new(),
-            constraints,
-            options: Options::default(),
-        }
-    }
+    use crate::test_util::*;
+    use crate::{EqualityPin, Options, Status};
 
     #[test]
     fn free_line_is_underconstrained() {

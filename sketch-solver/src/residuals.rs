@@ -1392,33 +1392,8 @@ impl<'a> Problem<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ConstraintKind, EqualityPin, Options};
-
-    fn ent(kind: Kind, off: usize) -> Entity {
-        Entity {
-            kind,
-            param_offset: off,
-        }
-    }
-
-    fn target(index: u32, point: PointSelector) -> (RefRole, Ref) {
-        (RefRole::Target, Ref::Entity { index, point })
-    }
-
-    fn ab(a: Ref, b: Ref) -> Vec<(RefRole, Ref)> {
-        vec![(RefRole::A, a), (RefRole::B, b)]
-    }
-
-    fn input(entities: Vec<Entity>, params: Vec<f32>, constraints: Vec<Constraint>) -> Input {
-        Input {
-            entities,
-            params_initial: params,
-            pinned_mask: Vec::new(),
-            equality_pins: Vec::new(),
-            constraints,
-            options: Options::default(),
-        }
-    }
+    use crate::test_util::*;
+    use crate::{ConstraintKind, EqualityPin};
 
     #[test]
     fn horizontal_and_length_residuals_on_known_line() {
@@ -1904,10 +1879,6 @@ mod tests {
         assert!((r[1] - 4.0).abs() < 1e-12);
     }
 
-    fn e_ref(index: u32, point: PointSelector) -> Ref {
-        Ref::Entity { index, point }
-    }
-
     /// A parallel constraint between non-line entities (hand-edited or legacy
     /// docs; the UI refuses to author them) must contribute zero rows in both
     /// the residual and the Jacobian: a circle operand would otherwise read
@@ -2017,23 +1988,6 @@ mod tests {
         // The finite-difference Jacobian is well-defined away from rA == rB.
         let analytic = p.jacobian(&x, n);
         assert_eq!(analytic.nrows(), 1);
-    }
-
-    fn cons(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>) -> Constraint {
-        Constraint {
-            kind_code: kind.to_u8(),
-            refs,
-            ..Default::default()
-        }
-    }
-
-    fn cons_v(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>, value: f64) -> Constraint {
-        Constraint {
-            kind_code: kind.to_u8(),
-            refs,
-            value: Some(value),
-            ..Default::default()
-        }
     }
 
     /// Cover every constraint kind (and both coincident analytic + fallback

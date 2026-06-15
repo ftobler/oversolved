@@ -28,6 +28,8 @@ pub mod lm;
 pub mod residuals;
 pub mod solve;
 pub mod sparse;
+#[cfg(test)]
+pub mod test_util;
 pub mod topology;
 
 #[cfg(target_arch = "wasm32")]
