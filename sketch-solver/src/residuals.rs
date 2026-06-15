@@ -451,6 +451,13 @@ impl<'a> Problem<'a> {
             Ref::Entity { index, .. } => Some(index),
             _ => None,
         };
+        // "Denotes a single point": an external point, an entity referenced with
+        // an explicit point selector, or a point entity. Used so the curve-locus
+        // point-on-curve branches fire regardless of operand order -- e.g. a
+        // coincident between a line and the document origin (an external point)
+        // reads as point-on-line, not as pinning the line's start endpoint.
+        let b_is_point =
+            b_external || b_point_present || b_kind == Some(Kind::Point);
 
         if !a_external
             && !b_external
@@ -503,7 +510,7 @@ impl<'a> Problem<'a> {
             let pa = self.point(x, a_ref);
             let ep_b = self.params(x, b_index.unwrap());
             r.push(spline_point_residual(pa, ep_b));
-        } else if !a_external && !a_point_present && a_kind == Some(Kind::Line) && b_point_present {
+        } else if !a_external && !a_point_present && a_kind == Some(Kind::Line) && b_is_point {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             let (dx, dy) = (ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]);
@@ -513,17 +520,17 @@ impl<'a> Problem<'a> {
         } else if !a_external
             && !a_point_present
             && (a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc))
-            && b_point_present
+            && b_is_point
         {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             let dist = ((pa[0] - ep_a[0]).powi(2) + (pa[1] - ep_a[1]).powi(2)).sqrt();
             r.push(dist - ep_a[2]);
-        } else if !a_external && !a_point_present && a_kind == Some(Kind::Ellipse) && b_point_present {
+        } else if !a_external && !a_point_present && a_kind == Some(Kind::Ellipse) && b_is_point {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             r.push(ellipse_point_residual(pa, ep_a));
-        } else if !a_external && !a_point_present && a_kind == Some(Kind::Spline) && b_point_present {
+        } else if !a_external && !a_point_present && a_kind == Some(Kind::Spline) && b_is_point {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             r.push(spline_point_residual(pa, ep_a));
@@ -1298,6 +1305,9 @@ impl<'a> Problem<'a> {
             Ref::Entity { index, .. } => Some(self.kind_of(index)),
             _ => None,
         };
+        // Mirrors `r_coincident`'s `b_is_point`: external, explicit point
+        // selector, or a point entity all denote a single point.
+        let b_is_point = b_external || b_point || b_kind == Some(Kind::Point);
         let branch1 = !a_external
             && !b_external
             && !a_point
@@ -1310,13 +1320,13 @@ impl<'a> Problem<'a> {
             && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc));
         let branch4 = !b_external && !b_point && b_kind == Some(Kind::Ellipse);
         let branch5 = !b_external && !b_point && b_kind == Some(Kind::Spline);
-        let branch2b = !a_external && !a_point && a_kind == Some(Kind::Line) && b_point;
+        let branch2b = !a_external && !a_point && a_kind == Some(Kind::Line) && b_is_point;
         let branch3b = !a_external
             && !a_point
             && (a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc))
-            && b_point;
-        let branch4b = !a_external && !a_point && a_kind == Some(Kind::Ellipse) && b_point;
-        let branch5b = !a_external && !a_point && a_kind == Some(Kind::Spline) && b_point;
+            && b_is_point;
+        let branch4b = !a_external && !a_point && a_kind == Some(Kind::Ellipse) && b_is_point;
+        let branch5b = !a_external && !a_point && a_kind == Some(Kind::Spline) && b_is_point;
         !(branch1 || branch2 || branch3 || branch4 || branch5 || branch2b || branch3b || branch4b || branch5b)
     }
 
@@ -1462,6 +1472,30 @@ mod tests {
         let r = p.residuals(&p.x0.clone());
         assert_eq!(r.len(), 1);
         assert!((r[0] - 3.0).abs() < 1e-12, "residual: {}", r[0]);
+    }
+
+    #[test]
+    fn point_on_line_coincident_with_external_point() {
+        // A line locus (role A, Absent) coincident with an EXTERNAL point (the
+        // document origin form) must read as point-on-line, not pin the line's
+        // start. Vertical line x=0 from (0,0) to (0,10); external point (3,5).
+        // Signed perpendicular distance = -3 -> a SINGLE residual row.
+        let c = vec![Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: ab(
+                Ref::Entity {
+                    index: 0,
+                    point: PointSelector::Absent,
+                },
+                Ref::External { x: 3.0, y: 5.0 },
+            ),
+            ..Default::default()
+        }];
+        let inp = input(vec![ent(Kind::Line, 0)], vec![0.0, 0.0, 0.0, 10.0], c);
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1, "point-on-line is one row, not point-to-point's two");
+        assert!((r[0] - (-3.0)).abs() < 1e-12, "residual: {}", r[0]);
     }
 
     #[test]

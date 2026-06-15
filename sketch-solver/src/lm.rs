@@ -89,21 +89,38 @@ pub fn solve_lm(
     const LAMBDA_DOWN: f64 = 0.4;
 
     let mut jacm = jac(&x);
-    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
 
     // Initial damping from the scale of JᵀJ's diagonal.
     let mut jtj = jacm.transpose() * &jacm;
-    let mut lambda = 1e-3
-        * (0..n)
-            .map(|i| jtj[(i, i)])
-            .fold(0.0_f64, f64::max)
-            .max(1e-12);
+    let max_diag = (0..n)
+        .map(|i| jtj[(i, i)])
+        .fold(0.0_f64, f64::max)
+        .max(1e-12);
+    let mut lambda = 1e-3 * max_diag;
+
+    // Seed anchor (Tikhonov toward x0). Pure Marquardt damping (lambda * diag(JᵀJ))
+    // gives a null-space DOF -- a direction the constraints leave free -- almost no
+    // regularization, so off-diagonal coupling and finite-difference Jacobian noise
+    // can drive that direction to absurd values: an under-constrained line asked
+    // only to pass through a point would collapse to zero length or fly off to
+    // 1e4+. A small absolute pull toward the seed bounds those free directions to
+    // their drawn position while staying negligible against any real curvature, so
+    // well-constrained solves are unaffected (the gradient at x=x0 is unchanged).
+    let mu = 1e-8 * max_diag;
+    let x0v = DVector::from_column_slice(x0);
+    // Augmented objective 0.5||r||² + 0.5·μ·||x - x0||² -- the gradient/damping and
+    // the accept test must use the SAME cost or step acceptance is inconsistent.
+    let anchor_cost = |xs: &[f64]| -> f64 {
+        0.5 * mu * (0..n).map(|i| (xs[i] - x0[i]).powi(2)).sum::<f64>()
+    };
+    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x);
 
     let mut iters = 0;
     while iters < MAX_ITERS {
         iters += 1;
         let rv = DVector::from_vec(r.clone());
-        let g = jacm.transpose() * &rv; // gradient Jᵀr
+        let xv = DVector::from_column_slice(&x);
+        let g = jacm.transpose() * &rv + mu * (&xv - &x0v); // gradient Jᵀr + μ(x - x0)
 
         if g.amax() < GTOL {
             break;
@@ -114,8 +131,10 @@ pub fn solve_lm(
         for _ in 0..30 {
             let mut a = jtj.clone();
             for i in 0..n {
-                // Marquardt scaling: damp proportional to each column's curvature.
-                a[(i, i)] += lambda * jtj[(i, i)].max(1e-12);
+                // Marquardt scaling: damp proportional to each column's curvature,
+                // plus the absolute seed-anchor floor `mu` so flat (free)
+                // directions stay finite.
+                a[(i, i)] += lambda * jtj[(i, i)].max(1e-12) + mu;
             }
             let Some(delta) = a.clone().lu().solve(&(-&g)) else {
                 lambda *= LAMBDA_UP;
@@ -124,7 +143,7 @@ pub fn solve_lm(
 
             let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
             let r_new = f(&x_new);
-            let cost_new = 0.5 * r_new.iter().map(|&e| e * e).sum::<f64>();
+            let cost_new = 0.5 * r_new.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x_new);
 
             if cost_new < cost {
                 let dx = norm2(delta.as_slice());

@@ -150,12 +150,17 @@ describe('solveSketch projection lowering', () => {
     expect(out.projection_errors).toContain('stale')
   })
 
-  it('pins a coincident-to-origin to the document origin on an offset plane', () => {
+  it('runs a line body (not its endpoint) through the document origin on an offset plane', () => {
     if (!solveBytes) return
-    // A sketch on a face plane offset from the global origin. A line's endpoint
-    // is coincident with @builtin_origin: it must land at the DOCUMENT origin
-    // expressed in the plane's local frame, not the plane's own local (0,0)
-    // -- the "line constrained to origin" bug.
+    // The "line constrained to origin" bug, as reported: a sketch on a face plane
+    // offset from the global origin, a line selected as a whole entity (locus, no
+    // vertex key) coincident with @builtin_origin. The correct reading is
+    // point-on-line: the line BODY passes through the document origin, the
+    // endpoint is NOT pinned to it. Two fixes combine here -- the origin resolves
+    // to the projected DOCUMENT origin (not the plane's local 0,0), and
+    // coincident(line, point) is point-on-line. The line is kept horizontal at a
+    // fixed length so the solve is well-posed (an otherwise-free line + point-on-
+    // line is degenerate: a zero-length line satisfies it trivially).
     const offsetPlane: Dict = {
       type: 'face', origin: [5, 10, -2], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0],
     }
@@ -163,8 +168,10 @@ describe('solveSketch projection lowering', () => {
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '?face;flatface',
       entities: [{ id: 'ln', kind: 'line' }],
-      initial: { ln: [2, 3, 8, 9] },
+      initial: { ln: [0, 5, 10, 5] },
       constraints: [
+        { id: 'c_horiz', kind: 'horizontal', target: '$ln' },
+        { id: 'c_len', kind: 'length', target: '$ln', value: 10 },
         { id: 'c_co', kind: 'coincident', a: '$ln', b: '@builtin_origin' },
       ],
     }
@@ -172,8 +179,15 @@ describe('solveSketch projection lowering', () => {
     expect(out.status).not.toBe('error')
     const g = out.geometry?.ln
     expect(g).toBeDefined()
-    expect(g![0]).toBeCloseTo(-5)
+    // Horizontal line through y = -10 (the document origin's local y): the line
+    // body passes through the origin, but the segment keeps its length and
+    // neither endpoint sits AT the origin.
     expect(g![1]).toBeCloseTo(-10)
+    expect(g![3]).toBeCloseTo(-10)
+    expect(Math.hypot(g![2] - g![0], g![3] - g![1])).toBeCloseTo(10)  // not collapsed
+    const startAtOrigin = Math.abs(g![0] + 5) < 1e-6 && Math.abs(g![1] + 10) < 1e-6
+    const endAtOrigin = Math.abs(g![2] + 5) < 1e-6 && Math.abs(g![3] + 10) < 1e-6
+    expect(startAtOrigin || endAtOrigin).toBe(false)
   })
 
   it('does not surface a resolved kind when projection keeps the declared kind', () => {
