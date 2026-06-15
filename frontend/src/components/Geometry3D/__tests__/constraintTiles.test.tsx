@@ -24,7 +24,7 @@ vi.mock('@/components/sketch/sketch_helpers', async (importOriginal) => {
   }
 })
 
-vi.mock('@/components/sketch/sketch_dimensions', () => ({
+vi.mock('@/components/Geometry3D/dimensions', () => ({
   LinearDimension: () => <div data-testid="linear-dim" />,
   RadiusDimension: () => <div data-testid="radius-dim" />,
   DiameterDimension: () => <div data-testid="diameter-dim" />,

@@ -13,7 +13,7 @@ vi.mock('@react-three/drei', () => ({
 vi.mock('@/components/Geometry3D/VertexDots', () => ({
   Dot: () => <div data-testid="preview-dot" />,
 }))
-vi.mock('@/components/sketch/sketch_dimensions', () => ({
+vi.mock('@/components/Geometry3D/dimensions', () => ({
   DashedLine: () => <div data-testid="preview-dashed" />,
 }))
 

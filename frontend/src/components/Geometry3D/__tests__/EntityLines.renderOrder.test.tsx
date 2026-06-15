@@ -11,7 +11,7 @@ vi.mock('@react-three/drei', () => ({
   Line: (props: Record<string, unknown>) => { MockLine(props); return null },
 }))
 
-vi.mock('@/components/sketch/sketch_dimensions', () => ({
+vi.mock('@/components/Geometry3D/dimensions', () => ({
   DashedLine: (props: Record<string, unknown>) => { MockDashedLine(props); return null },
 }))
 
