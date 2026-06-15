@@ -212,7 +212,6 @@ export default function Part() {
     exitEditFeature,
     enterEditSketch,
     exitEditSketch,
-    saveRollbackPosition,
   } = useEditFeature({
     features,
     builtInIds: BUILT_IN_IDS,
@@ -331,11 +330,6 @@ export default function Part() {
     const fid = randomId(18)
     const label = `${kind} ${Object.keys(bodies).length + 1}`
     const store = usePartEditorStore.getState()
-    // Save the current rollback position so _exitEditCleanup can restore it
-    // when the user commits/cancels. This unifies the add-new-feature path
-    // with the edit-existing-feature path — no extra rollback rules per
-    // feature kind, only the standard save-and-restore pattern.
-    saveRollbackPosition()
     // Extend rollback so the mutation-triggered reSolve includes the new
     // feature, and pre-stage pick_boundary as if the new feature were the
     // edit target. The new feature will land at non-builtin index
@@ -352,7 +346,7 @@ export default function Part() {
     store.setEditingFeatureId(fid)
     const firstPick = FIRST_PICK_FIELD[kind]
     if (firstPick) setActivePickField({ featureId: fid, ...firstPick })
-  }, [doc, features, handleMutation, bodies, setActivePickField, saveRollbackPosition])
+  }, [doc, features, handleMutation, bodies, setActivePickField])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -362,13 +356,12 @@ export default function Part() {
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
     const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
     const store = usePartEditorStore.getState()
-    saveRollbackPosition()
     store.setRollbackPosition(features.length + 1)
     handleMutation({ type: 'add_plane', featureId, label, definition })
     store.setEditingFeatureId(featureId)
     const firstPick = FIRST_PICK_FIELD['plane']
     if (firstPick) setActivePickField({ featureId, ...firstPick })
-  }, [doc, features.length, handleMutation, selection, setActivePickField, saveRollbackPosition])
+  }, [doc, features.length, handleMutation, selection, setActivePickField])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
