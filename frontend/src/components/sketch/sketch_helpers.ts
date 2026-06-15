@@ -25,11 +25,8 @@ export const iconModules = import.meta.glob('@/assets/icons/*.svg', {
   import: 'default',
 }) as Record<string, string>
 
-// Derived from the constraint registry — maps render kind to icon filename.
-export const SYMBOL_TO_ICON: Readonly<Record<string, string>> = RENDER_KIND_TO_ICON
-
 export function getIconUrl(kind: string): string | undefined {
-  const name = SYMBOL_TO_ICON[kind]
+  const name = RENDER_KIND_TO_ICON[kind]
   if (!name) return undefined
   return iconModules[`/src/assets/icons/${name}.svg`]
     ?? iconModules[`../assets/icons/${name}.svg`]

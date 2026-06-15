@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
+import { useRegisteredBody } from './idRegistrationUtils'
 
 /**
  * Register the origin marker as a single pickable vertex.
@@ -15,22 +15,17 @@ export function useOriginMarkerIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { selectionId, enabled = true } = params
-  // The origin marker is by definition at the world origin. Hardcoded so
-  // callers can't accidentally drift the pickable point from the visible Dot.
-  const px = 0, py = 0, pz = 0
 
-  useEffect(() => {
-    if (!enabled) return
-    if (!pipeline) return
-    pipeline.originLayer.registerBody({
-      bodyKey: selectionId,
-      vertices: [[px, py, pz]],
-      vertexQueries: [selectionId],
-    })
-    pipeline.markDirty()
-    return () => {
-      pipeline.originLayer.unregisterBody(selectionId)
-      pipeline.markDirty()
-    }
-  }, [pipeline, selectionId, px, py, pz, enabled])
+  useRegisteredBody(pipeline, enabled, selectionId,
+    (p) => {
+      p.originLayer.registerBody({
+        bodyKey: selectionId,
+        vertices: [[0, 0, 0]],
+        vertexQueries: [selectionId],
+      })
+      return true
+    },
+    (p) => p.originLayer.unregisterBody(selectionId),
+    [selectionId],
+  )
 }

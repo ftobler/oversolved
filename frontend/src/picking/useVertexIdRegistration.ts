@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
+import { useRegisteredBody } from './idRegistrationUtils'
 
 /**
  * Hook used by Body3D to register a body's vertices with the vertex ID
@@ -14,26 +14,20 @@ export function useVertexIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, bodyId, vertices, vertexQueries, enabled = true } = params
+  const bodyKey = `${featureId}/${bodyId}`
 
-  useEffect(() => {
-    if (!enabled) return
-    if (!pipeline) return
-    if (!vertices || vertices.length === 0) return
-    if (!vertexQueries || vertexQueries.length === 0) return
-
-    const bodyKey = `${featureId}/${bodyId}`
-    try {
-      pipeline.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries })
-      pipeline.markDirty()
-    } catch (err) {
-      // Picking must never break visible rendering.
-      console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
-      return
-    }
-
-    return () => {
-      pipeline.vertexLayer.unregisterBody(bodyKey)
-      pipeline.markDirty()
-    }
-  }, [pipeline, featureId, bodyId, vertices, vertexQueries, enabled])
+  useRegisteredBody(pipeline, enabled, bodyKey,
+    (p) => {
+      if (!vertices || vertices.length === 0 || !vertexQueries || vertexQueries.length === 0) return false
+      try {
+        p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries })
+        return true
+      } catch (err) {
+        console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
+        return false
+      }
+    },
+    (p) => p.vertexLayer.unregisterBody(bodyKey),
+    [featureId, bodyId, vertices, vertexQueries],
+  )
 }

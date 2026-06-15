@@ -35,6 +35,14 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
   return _sketchCbs[key]
 }
 
+function requireMutation(name: string): ((m: Mutation) => void) | null {
+  const onMutation = _sketchCbs.onMutation
+  if (!onMutation) {
+    if (devOnly) console.warn(`[sketchEditorStore] onMutation: callback not registered — ${name} will be a no-op.`)
+  }
+  return onMutation
+}
+
 function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<SketchEditorState>) => void): void {
   const state = get()
   const patches = repairSelectionState(state)
@@ -431,11 +439,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId, entityKindMap } = get()
-    const onMutation = _sketchCbs.onMutation
-    if (!onMutation) {
-      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — applyConstraint will be a no-op.')
-      return
-    }
+    const onMutation = requireMutation('applyConstraint')
+    if (!onMutation) return
     if (selection.size === 0 || !activeFeatureId) return
     const targets = [...selection].filter(t =>
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_') || t.startsWith('dock:') || t.startsWith('isect:')
@@ -480,11 +485,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   // side. A no-op when nothing solvable is selected.
   applyOffset: (distance) => {
     const { normalSelection: selection, activeFeatureId } = get()
-    const onMutation = _sketchCbs.onMutation
-    if (!onMutation) {
-      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — applyOffset will be a no-op.')
-      return
-    }
+    const onMutation = requireMutation('applyOffset')
+    if (!onMutation) return
     if (selection.size === 0 || !activeFeatureId) return
     const sourceIds = [...selection]
       .filter(t => t.startsWith('entity:') && t.split(':')[1] === activeFeatureId)
@@ -495,11 +497,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   toggleConstruction: () => {
     const { normalSelection: selection } = get()
-    const onMutation = _sketchCbs.onMutation
-    if (!onMutation) {
-      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — toggleConstruction will be a no-op.')
-      return
-    }
+    const onMutation = requireMutation('toggleConstruction')
+    if (!onMutation) return
     if (selection.size === 0) return
     const targets = [...selection].filter(t => t.startsWith('entity:'))
     if (targets.length === 0) return
@@ -508,11 +507,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   deleteSelected: () => {
     const { normalSelection: selection, activeFeatureId } = get()
-    const onMutation = _sketchCbs.onMutation
-    if (!onMutation) {
-      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — deleteSelected will be a no-op.')
-      return
-    }
+    const onMutation = requireMutation('deleteSelected')
+    if (!onMutation) return
     if (selection.size === 0) return
     const targets = [...selection].filter(target => {
       if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
@@ -566,11 +562,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       // user keep picking. Do not deactivate the tool.
       return
     }
-    const onMutation = _sketchCbs.onMutation
-    if (!onMutation) {
-      if (devOnly) console.warn('[sketchEditorStore] onMutation: callback not registered — finalizeDimensionPlacement will be a no-op.')
-      return
-    }
+    const onMutation = requireMutation('finalizeDimensionPlacement')
+    if (!onMutation) return
     // The dim self-deduplicates if a same entity was clicked twice.
     const targets = dimensionTargets(dimensionPicks)
     const featureId = activeFeatureId

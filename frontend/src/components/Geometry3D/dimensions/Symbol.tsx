@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity } from '@/types/cad'
 import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds } from '@/components/sketch/sketch_helpers'
+import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { LinearDimension } from './Linear'
 import { RadiusDimension, DiameterDimension } from './Radial'
 import { AngleDimension } from './Angle'
@@ -90,7 +91,7 @@ export function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOv
       const colWidth = ICON_SIZE + 2
       const groupWidth = Math.min(ICON_COLS, symbolIcons.length) * colWidth
       symbolElements.push(
-        <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, 0.001]} style={{ pointerEvents: 'auto' }}>
+        <Html key={`icons-${eid}`} position={[bounds.maxX, bounds.maxY, LABEL_Z_OFFSET]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {symbolIcons.map(({ url, key }) => (
               <ConstraintTile key={key} url={url} id={key} />

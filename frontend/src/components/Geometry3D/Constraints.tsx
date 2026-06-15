@@ -4,7 +4,7 @@ import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/components/sketch/sketch_helpers'
 import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '@/components/Geometry3D/dimensions'
-import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
 
 function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
@@ -139,7 +139,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
       const colWidth = ICON_SIZE + 2
       const groupWidth = Math.min(ICON_COLS, icons.length) * colWidth
       symbolElements.push(
-        <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], 0.001]} style={{ pointerEvents: 'auto' }}>
+        <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'auto' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {icons.map(({ url, key, highlightIds, superfluous }) => (
               <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} />

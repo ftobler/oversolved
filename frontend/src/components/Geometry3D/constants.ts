@@ -80,3 +80,7 @@ export const VERTEX_RADIUS = 0.04
 
 // Debug and z-offset (re-exported from Sketch3D constants)
 export const POINT_HIT_PIXELS_Z_OFFSET = 10
+
+// Tiny z-offset used to lift dimension labels, constraint icons, and entity
+// markers above the sketch plane (z=0) so they render on top without z-fighting.
+export const LABEL_Z_OFFSET = 0.001

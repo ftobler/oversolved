@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
+import { useRegisteredBody } from './idRegistrationUtils'
 import type { EdgeData } from '@/types/cad'
 import { buildEdgeSegments, getEdgeSegmentCounts } from '@/components/Geometry3D/bodyGeometry'
 
@@ -20,38 +20,30 @@ export function useEdgeIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, bodyId, edges, edgeQueries, enabled = true } = params
+  const bodyKey = `${featureId}/${bodyId}`
 
-  useEffect(() => {
-    if (!enabled) return
-    if (!pipeline) return
-    if (!edges || edges.length === 0) return
-    if (!edgeQueries || edgeQueries.length === 0) return
-
-    const segmentPositions = buildEdgeSegments(edges)
-    if (segmentPositions.length === 0) return
-
-    const segCounts = getEdgeSegmentCounts(edges)
-    const totalSegments = segCounts.reduce((a, b) => a + b, 0)
-    const segmentToEdge = new Uint32Array(totalSegments)
-    let cursor = 0
-    for (let edgeIdx = 0; edgeIdx < segCounts.length; edgeIdx++) {
-      const count = segCounts[edgeIdx]
-      for (let i = 0; i < count; i++) segmentToEdge[cursor++] = edgeIdx
-    }
-
-    const bodyKey = `${featureId}/${bodyId}`
-    try {
-      pipeline.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries })
-      pipeline.markDirty()
-    } catch (err) {
-      // Picking must never break visible rendering.
-      console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
-      return
-    }
-
-    return () => {
-      pipeline.edgeLayer.unregisterBody(bodyKey)
-      pipeline.markDirty()
-    }
-  }, [pipeline, featureId, bodyId, edges, edgeQueries, enabled])
+  useRegisteredBody(pipeline, enabled, bodyKey,
+    (p) => {
+      if (!edges || edges.length === 0 || !edgeQueries || edgeQueries.length === 0) return false
+      const segmentPositions = buildEdgeSegments(edges)
+      if (segmentPositions.length === 0) return false
+      const segCounts = getEdgeSegmentCounts(edges)
+      const totalSegments = segCounts.reduce((a, b) => a + b, 0)
+      const segmentToEdge = new Uint32Array(totalSegments)
+      let cursor = 0
+      for (let edgeIdx = 0; edgeIdx < segCounts.length; edgeIdx++) {
+        const count = segCounts[edgeIdx]
+        for (let i = 0; i < count; i++) segmentToEdge[cursor++] = edgeIdx
+      }
+      try {
+        p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries })
+        return true
+      } catch (err) {
+        console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
+        return false
+      }
+    },
+    (p) => p.edgeLayer.unregisterBody(bodyKey),
+    [featureId, bodyId, edges, edgeQueries],
+  )
 }

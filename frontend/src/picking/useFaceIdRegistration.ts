@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
+import { useRegisteredBody } from './idRegistrationUtils'
 import type { Mesh3D } from '@/types/cad'
 import { buildBodyGeometry, faceCount } from '@/components/Geometry3D/bodyGeometry'
 
@@ -20,47 +20,34 @@ export function useFaceIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, bodyId, mesh, enabled = true } = params
+  const bodyKey = `${featureId}/${bodyId}`
 
-  useEffect(() => {
-    if (!enabled) return
-    if (!pipeline) return
-    const { triangle_to_face, face_queries } = mesh
-    if (!triangle_to_face || !face_queries || face_queries.length === 0) return
-
-    const bodyKey = `${featureId}/${bodyId}`
-    const numTris = faceCount(mesh.faces)
-    if (numTris === 0) return
-
-    const { positions, indices } = buildBodyGeometry(mesh)
-    const nonIndexed = new Float32Array(indices.length * 3)
-    for (let i = 0; i < indices.length; i++) {
-      const vi = indices[i] * 3
-      nonIndexed[i * 3]     = positions[vi]
-      nonIndexed[i * 3 + 1] = positions[vi + 1]
-      nonIndexed[i * 3 + 2] = positions[vi + 2]
-    }
-
-    const tri2face = triangle_to_face instanceof Uint32Array
-      ? triangle_to_face
-      : Uint32Array.from(triangle_to_face)
-
-    try {
-      pipeline.faceLayer.registerBody({
-        bodyKey,
-        positions: nonIndexed,
-        triangleToFace: tri2face,
-        faceQueries: face_queries,
-      })
-      pipeline.markDirty()
-    } catch (err) {
-      // Picking must never break visible rendering.
-      console.warn('Face ID registration failed; continuing without face picking for this body', { bodyKey, err })
-      return
-    }
-
-    return () => {
-      pipeline.faceLayer.unregisterBody(bodyKey)
-      pipeline.markDirty()
-    }
-  }, [pipeline, featureId, bodyId, mesh, enabled])
+  useRegisteredBody(pipeline, enabled, bodyKey,
+    (p) => {
+      const { triangle_to_face, face_queries } = mesh
+      if (!triangle_to_face || !face_queries || face_queries.length === 0) return false
+      const numTris = faceCount(mesh.faces)
+      if (numTris === 0) return false
+      const { positions, indices } = buildBodyGeometry(mesh)
+      const nonIndexed = new Float32Array(indices.length * 3)
+      for (let i = 0; i < indices.length; i++) {
+        const vi = indices[i] * 3
+        nonIndexed[i * 3]     = positions[vi]
+        nonIndexed[i * 3 + 1] = positions[vi + 1]
+        nonIndexed[i * 3 + 2] = positions[vi + 2]
+      }
+      const tri2face = triangle_to_face instanceof Uint32Array
+        ? triangle_to_face
+        : Uint32Array.from(triangle_to_face)
+      try {
+        p.faceLayer.registerBody({ bodyKey, positions: nonIndexed, triangleToFace: tri2face, faceQueries: face_queries })
+        return true
+      } catch (err) {
+        console.warn('Face ID registration failed; continuing without face picking for this body', { bodyKey, err })
+        return false
+      }
+    },
+    (p) => p.faceLayer.unregisterBody(bodyKey),
+    [featureId, bodyId, mesh],
+  )
 }

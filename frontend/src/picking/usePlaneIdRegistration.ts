@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
+import { useRegisteredBody } from './idRegistrationUtils'
 
 /**
  * Register a single rectangular plane quad with the planeFace ID layer.
@@ -27,40 +27,29 @@ export function usePlaneIdRegistration(params: {
   const rx = rotation?.[0] ?? 0, ry = rotation?.[1] ?? 0, rz = rotation?.[2] ?? 0
   const ox = origin?.[0] ?? 0, oy = origin?.[1] ?? 0, oz = origin?.[2] ?? 0
 
-  useEffect(() => {
-    if (!enabled) return
-    if (!pipeline) return
-    const half = size / 2
-    const corners: [number, number, number][] = [
-      [-half, -half, 0], [+half, -half, 0], [+half, +half, 0], [-half, +half, 0],
-    ]
-    const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'))
-    m.setPosition(ox, oy, oz)
-    const v = new THREE.Vector3()
-    const world = corners.map(([x, y, z]) => {
-      v.set(x, y, z).applyMatrix4(m)
-      return [v.x, v.y, v.z] as [number, number, number]
-    })
-
-    // Two triangles, non-indexed (matches FaceIdLayer.registerBody contract).
-    const positions = new Float32Array([
-      ...world[0], ...world[1], ...world[2],
-      ...world[0], ...world[2], ...world[3],
-    ])
-    const triangleToFace = new Uint32Array([0, 0])
-    const faceQueries = [selectionId]
-
-    pipeline.planeLayer.registerBody({
-      bodyKey: selectionId,
-      positions,
-      triangleToFace,
-      faceQueries,
-    })
-    pipeline.markDirty()
-
-    return () => {
-      pipeline.planeLayer.unregisterBody(selectionId)
-      pipeline.markDirty()
-    }
-  }, [pipeline, selectionId, size, rx, ry, rz, ox, oy, oz, enabled])
+  useRegisteredBody(pipeline, enabled, selectionId,
+    (p) => {
+      const half = size / 2
+      const corners: [number, number, number][] = [
+        [-half, -half, 0], [+half, -half, 0], [+half, +half, 0], [-half, +half, 0],
+      ]
+      const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'))
+      m.setPosition(ox, oy, oz)
+      const v = new THREE.Vector3()
+      const world = corners.map(([x, y, z]) => {
+        v.set(x, y, z).applyMatrix4(m)
+        return [v.x, v.y, v.z] as [number, number, number]
+      })
+      const positions = new Float32Array([
+        ...world[0], ...world[1], ...world[2],
+        ...world[0], ...world[2], ...world[3],
+      ])
+      const triangleToFace = new Uint32Array([0, 0])
+      const faceQueries = [selectionId]
+      p.planeLayer.registerBody({ bodyKey: selectionId, positions, triangleToFace, faceQueries })
+      return true
+    },
+    (p) => p.planeLayer.unregisterBody(selectionId),
+    [selectionId, size, rx, ry, rz, ox, oy, oz],
+  )
 }

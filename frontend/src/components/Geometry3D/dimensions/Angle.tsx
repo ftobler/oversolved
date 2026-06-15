@@ -11,6 +11,7 @@ import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRe
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import { computeAngleDimension } from './angleDimensionLogic'
 import type { PlaneTransform } from '@/types/cad'
+import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
 export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   cid: string
@@ -98,7 +99,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
   useDimensionLabelIdRegistration({
     constraintId: cid,
-    position: [labelX, labelY, 0.001],
+    position: [labelX, labelY, LABEL_Z_OFFSET],
     enabled: !!interaction && !isDragged,
     planeTransform,
   })
@@ -158,14 +159,14 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
       {/* Interaction hit area */}
       {!isDragged && (
-        <mesh ref={meshRef} position={[labelX, labelY, 0.001]}>
+        <mesh ref={meshRef} position={[labelX, labelY, LABEL_Z_OFFSET]}>
           <circleGeometry args={[1, 8]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       )}
 
       {/* Label text */}
-      <Html position={[labelX, labelY, 0.001]} center style={{ pointerEvents: interaction ? 'auto' : 'none' }}>
+      <Html position={[labelX, labelY, LABEL_Z_OFFSET]} center style={{ pointerEvents: interaction ? 'auto' : 'none' }}>
         <div
           onClick={handleLabelClick}
           onDoubleClick={(e) => { if (interaction) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
