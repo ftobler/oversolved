@@ -39,6 +39,10 @@ import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
+function setRollbackForNewFeature(features: PartFeature[]) {
+  usePartEditorStore.getState().setRollbackPosition(features.length + 1)
+}
+
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
@@ -336,7 +340,7 @@ export default function Part() {
     // = current non-builtin count, so the solve is cached under that key.
     // When the user later clicks Edit on the new feature, enterEditFeature
     // recomputes the same pick_boundary and the cache hit is free.
-    store.setRollbackPosition(features.length + 1)
+    setRollbackForNewFeature(features)
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
     // enterEditFeature would bail because React hasn't re-rendered with the
@@ -355,23 +359,22 @@ export default function Part() {
     const label = `plane ${planeCount + 1}`
     const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
     const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
-    const store = usePartEditorStore.getState()
-    store.setRollbackPosition(features.length + 1)
+    setRollbackForNewFeature(features)
     handleMutation({ type: 'add_plane', featureId, label, definition })
-    store.setEditingFeatureId(featureId)
+    usePartEditorStore.getState().setEditingFeatureId(featureId)
     const firstPick = FIRST_PICK_FIELD['plane']
     if (firstPick) setActivePickField({ featureId, ...firstPick })
-  }, [doc, features.length, handleMutation, selection, setActivePickField])
+  }, [doc, features, handleMutation, selection, setActivePickField])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
-    usePartEditorStore.getState().setRollbackPosition(features.length + 1)
+    setRollbackForNewFeature(features)
     handleMutation({ type: 'add_sketch', featureId, label })
     setActivePickField({ featureId, field: 'plane' })
-  }, [doc, features.length, handleMutation, setActivePickField])
+  }, [doc, features, handleMutation, setActivePickField])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -386,11 +389,11 @@ export default function Part() {
       if (!data?.file_id) return
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
-      usePartEditorStore.getState().setRollbackPosition(features.length + 1)
+      setRollbackForNewFeature(features)
       handleMutation({ type: 'add_import_step', featureId, fileId: data.file_id, label })
     }
     input.click()
-  }, [handleMutation, features.length])
+  }, [handleMutation, features])
 
   const handleExportStep = useCallback(() => {
     exportImportRef.current?.openExport(null, docName || 'export')
