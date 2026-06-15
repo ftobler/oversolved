@@ -276,6 +276,11 @@ export function computeDrawClick(
 
   if (t === 'project') {
     const hid = snap.hoveredSelectionId
+    // [PROJECT-DEBUG] temporary instrumentation for edge-pick bug
+    console.log('[PROJECT-DEBUG] computeDrawClick project branch', {
+      hid, hoveredSourceKind: snap.hoveredSourceKind,
+      startsWithQ: hid?.startsWith('?'), startsWithEntity: hid?.startsWith('entity:'),
+    })
     if (!hid) return nothing
 
     // Sketch entity pick: entity:<featureId>:<entityId>

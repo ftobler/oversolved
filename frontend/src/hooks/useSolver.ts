@@ -125,6 +125,11 @@ export function useSolver(
 
     const cloned: PartDoc = structuredClone(d)
     const results: Record<string, SketchData> = {}
+    // [PROJECT-DEBUG] temporary instrumentation for edge-pick bug
+    for (const [id, feature] of Object.entries(result)) {
+      const pe = (feature as { projection_errors?: string[] }).projection_errors
+      if (pe && pe.length) console.log('[PROJECT-DEBUG] solve dropped projections', { feature: id, projection_errors: pe })
+    }
     for (const [id, feature] of Object.entries(result)) {
       const featureDef = (cloned.features ?? []).find(f => f.id === id)
       if (feature.geometry) {

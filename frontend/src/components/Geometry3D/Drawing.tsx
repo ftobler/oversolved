@@ -152,6 +152,15 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
       onPointerDown={e => {
         e.stopPropagation()
         const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
+        if (effectiveTool === 'project') {
+          // [PROJECT-DEBUG] temporary instrumentation for edge-pick bug
+          console.log('[PROJECT-DEBUG] DrawPlane onPointerDown fired', {
+            sanitized: !!sanitized,
+            hoveredSelectionId: useSketchEditorStore.getState().hoveredSelectionId,
+            hasTool: !!toolRegistry.get(effectiveTool)?.handlers.onPointerDown,
+            hasOnMutation: !!onMutation,
+          })
+        }
         if (!sanitized) return
         const [x, y] = sanitized.localPoint
 
