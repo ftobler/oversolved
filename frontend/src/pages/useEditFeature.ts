@@ -28,6 +28,7 @@ export interface UseEditFeatureReturn {
   enterEditSketch: (featureId: string) => void
   exitEditSketch: () => void
   clearEditingFeature: () => void
+  saveRollbackPosition: () => void
 }
 
 /**
@@ -117,6 +118,11 @@ export function useEditFeature({
     commitEditFeature()  // sketch exits always commit
   }, [commitEditFeature])
 
+  const saveRollbackPosition = useCallback(() => {
+    const store = usePartEditorStore.getState()
+    setSavedRollbackPosition(store.rollbackPosition)
+  }, [])
+
   const clearEditingFeature = useCallback(() => {
     usePartEditorStore.getState().setEditingFeatureId(null)
   }, [])
@@ -131,5 +137,6 @@ export function useEditFeature({
     enterEditSketch,
     exitEditSketch,
     clearEditingFeature,
+    saveRollbackPosition,
   }
 }
