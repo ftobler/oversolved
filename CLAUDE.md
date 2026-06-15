@@ -60,6 +60,12 @@ When asked to implement a feature:
 - Code review using a subagent.
 - when done update `feature/overview.md` to mark as complete and remove the `*.md` file you implemented the feature from.
 
+When the user asks to plan a feature but mentions of making it light or quick:
+- do not do research
+- dump his intent + your immediate knowledge (if you have any) inside the feature plan
+- do not play the architect, that is here the implementers job.
+- can be as simple as a mental note or a TODO item.
+
 ## knowledge base
 
 There is a knowledge base in `feature/knowledgebase.agent.md` and `feature/knowledgebase.user.md`.
