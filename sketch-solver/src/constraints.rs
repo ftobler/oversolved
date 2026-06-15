@@ -169,7 +169,7 @@ impl Axis {
     }
 }
 
-/// The 18 constraint kinds the solver understands. Codes are stable wire values;
+/// The 19 constraint kinds the solver understands. Codes are stable wire values;
 /// do not renumber without bumping the codec contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstraintKind {
