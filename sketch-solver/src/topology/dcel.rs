@@ -1541,4 +1541,45 @@ mod tests {
         let t = detect_topology(&geom);
         assert_eq!(t.surfaces.len(), 2);
     }
+
+    fn ellipse(center: Vec2, a: f64, b: f64, theta: f64) -> InputEntity {
+        InputEntity {
+            kind: Some("ellipse".into()),
+            center: Some(center),
+            a: Some(a),
+            b: Some(b),
+            theta: Some(theta),
+            ..Default::default()
+        }
+    }
+
+    fn spline_closed(start_end: Vec2, c1: Vec2, c2: Vec2) -> InputEntity {
+        InputEntity {
+            kind: Some("spline".into()),
+            start: Some(start_end),
+            end: Some(start_end),
+            c1: Some(c1),
+            c2: Some(c2),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn standalone_ellipse_is_one_surface() {
+        let geom = vec![("e0".into(), ellipse([0.0, 0.0], 4.0, 2.0, 30.0))];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1);
+        assert_eq!(t.surfaces[0].boundary.len(), 1);
+        assert!(matches!(t.surfaces[0].boundary[0].geom, EdgeGeom::Ellipse { .. }));
+    }
+
+    #[test]
+    fn closed_spline_is_one_surface() {
+        // A cubic Bezier starting and ending at the same point.
+        let geom = vec![("s0".into(), spline_closed([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0]))];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1);
+        assert_eq!(t.surfaces[0].boundary.len(), 1);
+        assert!(matches!(t.surfaces[0].boundary[0].geom, EdgeGeom::Spline { .. }));
+    }
 }
