@@ -1393,7 +1393,7 @@ impl<'a> Problem<'a> {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use crate::{ConstraintKind, EqualityPin};
+    use crate::{ConstraintKind, EqualityPin, Options};
 
     #[test]
     fn horizontal_and_length_residuals_on_known_line() {
@@ -1990,11 +1990,56 @@ mod tests {
         assert_eq!(analytic.nrows(), 1);
     }
 
-    /// Cover every constraint kind (and both coincident analytic + fallback
-    /// branches, plus the arc point_jac) in one problem, then assert the
-    /// analytic Jacobian matches a full finite-difference Jacobian everywhere.
-    /// FD is the trusted oracle (it is what shadow-mode parity validated against
-    /// Python), so this gate catches any hand-derivative mistake.
+    /// Build the full entities/params/constraints for the all-constraints Jacobian
+    /// coverage test, then assert the analytic Jacobian matches FD. The FD is the
+    /// trusted oracle (it is what shadow-mode parity validated against Python),
+    /// so this gate catches any hand-derivative mistake.
+    ///
+    /// Extracted to a helper so the bigger problem (with RadiusDifference,
+    /// PointDistanceX/Y) stays manageable.
+    fn check_big_jac_problem(
+        entities: Vec<Entity>,
+        params: Vec<f32>,
+        constraints: Vec<Constraint>,
+        pinned_mask: Vec<u8>,
+        equality_pins: Vec<EqualityPin>,
+    ) {
+        let inp = Input {
+            entities,
+            params_initial: params,
+            pinned_mask,
+            equality_pins,
+            constraints,
+            options: Options::default(),
+        };
+        let p = Problem::new(&inp);
+        // Perturb away from seed so derivatives are exercised at a generic point.
+        let x: Vec<f64> = inp
+            .params_initial
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| v as f64 + 0.37 * ((i as f64) * 1.3).sin())
+            .collect();
+        let n = x.len();
+        let analytic = p.jacobian(&x, n);
+        let residual_fn = |xx: &[f64]| p.residuals(xx);
+        let m = residual_fn(&x).len();
+        let fd = crate::lm::fd_jacobian(&residual_fn, &x, m);
+        assert_eq!(analytic.nrows(), m);
+        assert_eq!(fd.nrows(), m);
+        for r in 0..m {
+            for col in 0..n {
+                let diff = (analytic[(r, col)] - fd[(r, col)]).abs();
+                assert!(
+                    diff < 1e-4,
+                    "row {r} col {col}: analytic={} fd={} (diff {diff})",
+                    analytic[(r, col)],
+                    fd[(r, col)],
+                );
+            }
+        }
+    }
+
     #[test]
     fn analytic_jacobian_matches_finite_difference() {
         use PointSelector::{Absent, Center, End, Major, Minor, Start, Xy};
@@ -2008,6 +2053,7 @@ mod tests {
             ent(Kind::Point, 16), // 4  P1 [16..18]
             ent(Kind::Point, 18), // 5  P2 [18..20]
             ent(Kind::Ellipse, 20), // 6  E1 [20..25]
+            ent(Kind::Circle, 25), // 7  C2 [25..28]
         ];
         let params = vec![
             0.0, 0.0, 3.0, 1.0, // L1
@@ -2017,6 +2063,7 @@ mod tests {
             5.0, 6.0, // P1
             7.0, 2.0, // P2
             2.5, 3.5, 4.0, 2.0, 25.0, // E1 (cx, cy, a, b, theta_deg)
+            10.0, -5.0, 1.5, // C2
         ];
 
         let constraints = vec![
@@ -2050,6 +2097,11 @@ mod tests {
             cons(ConstraintKind::Tangent, vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(3, Start))]),
             cons(ConstraintKind::Midpoint, vec![(LineR, e_ref(0, Absent)), (PointR, e_ref(4, Xy))]),
             cons_v(ConstraintKind::LineDistance, vec![(A, e_ref(0, Absent)), (B, e_ref(5, Xy))], 1.0),
+            // radius-difference dimension between C1 and C2
+            cons_v(ConstraintKind::RadiusDifference, ab(e_ref(2, Absent), e_ref(7, Absent)), 1.0),
+            // point-distance-x/y between P1 and P2
+            cons_v(ConstraintKind::PointDistanceX, ab(e_ref(4, Xy), e_ref(5, Xy)), 2.0),
+            cons_v(ConstraintKind::PointDistanceY, ab(e_ref(4, Xy), e_ref(5, Xy)), 4.0),
             // fixed: explicit-xy point, point+xy, and full-entity
             Constraint {
                 kind_code: ConstraintKind::Fixed.to_u8(),
@@ -2073,40 +2125,15 @@ mod tests {
             },
         ];
 
-        let mut inp = input(entities, params, constraints);
-        inp.pinned_mask = vec![0b0000_0010]; // pin param 1
-        inp.equality_pins = vec![EqualityPin {
-            param_index: 9,
-            target: 2.0,
-        }];
-
-        let p = Problem::new(&inp);
-        // Evaluate away from the seed so derivatives are exercised at a generic point.
-        let x: Vec<f64> = inp
-            .params_initial
-            .iter()
-            .enumerate()
-            .map(|(i, &v)| v as f64 + 0.37 * ((i as f64) * 1.3).sin())
-            .collect();
-        let n = x.len();
-
-        let analytic = p.jacobian(&x, n);
-        let residual_fn = |xx: &[f64]| p.residuals(xx);
-        let m = residual_fn(&x).len();
-        let fd = crate::lm::fd_jacobian(&residual_fn, &x, m);
-
-        assert_eq!(analytic.nrows(), m);
-        assert_eq!(fd.nrows(), m);
-        for r in 0..m {
-            for col in 0..n {
-                let diff = (analytic[(r, col)] - fd[(r, col)]).abs();
-                assert!(
-                    diff < 1e-4,
-                    "row {r} col {col}: analytic={} fd={} (diff {diff})",
-                    analytic[(r, col)],
-                    fd[(r, col)],
-                );
-            }
-        }
+        check_big_jac_problem(
+            entities,
+            params,
+            constraints,
+            vec![0b0000_0010], // pin param 1
+            vec![EqualityPin {
+                param_index: 9,
+                target: 2.0,
+            }],
+        );
     }
 }
