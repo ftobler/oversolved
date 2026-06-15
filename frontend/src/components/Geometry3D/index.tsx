@@ -36,6 +36,7 @@ import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 // Utilities
 import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
 import { builtinPlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
+import { frameFromPlaneTransform, projectWorldToFrame } from '@/kernel/types3d'
 
 // Colors
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
@@ -64,10 +65,26 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
 
+  const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(() => {
+    if (planeTransform) return planeTransform
+    if (plane) return builtinPlaneTransform(plane) ?? undefined
+    return undefined
+  }, [planeTransform, plane])
+
+  // Document origin (0,0,0) expressed in this sketch's local 2D frame: the drag
+  // preview pins a `@builtin_origin` coincident here instead of the plane's
+  // local (0,0). Nonzero only for a sketch on an offset/projected face;
+  // matches solveSketch's hard-solve projection so the preview does not snap
+  // back on release.
+  const originLocal = useMemo<[number, number]>(() => {
+    if (!resolvedPlaneTransform) return [0, 0]
+    return projectWorldToFrame([0, 0, 0], frameFromPlaneTransform(resolvedPlaneTransform))
+  }, [resolvedPlaneTransform])
+
   // WASM drag solve for vertex drags (runs the real solver per frame with
   // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
   // drags, unmapped vertices, or while the main-thread solver is still loading.
-  const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis })
+  const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis, originLocal })
 
   // During drag on this feature: vertex drags use WASM; edge drags use a simple
   // translation preview (no constraint resolution -- the hard solve handles it
@@ -117,12 +134,6 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   const displaySketch = isDraggingThis ? (preview ?? nextHeld ?? solved) : (nextHeld ?? solved)
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
-
-  const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(() => {
-    if (planeTransform) return planeTransform
-    if (plane) return builtinPlaneTransform(plane) ?? undefined
-    return undefined
-  }, [planeTransform, plane])
 
   const rot = resolvedPlaneTransform
     ? planeRotationFromTransform(resolvedPlaneTransform)

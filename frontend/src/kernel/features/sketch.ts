@@ -313,6 +313,7 @@ export function prepareDragContext(
   feature: PartFeature,
   dragEntityId: string,
   dragVertexKey: string | null,
+  originLocal: [number, number] = [0, 0],
 ): DragContext | null {
   try {
     const entities = feature.entities ?? []
@@ -327,7 +328,13 @@ export function prepareDragContext(
       loweredFeature = { ...feature, entities: kept }
     }
 
-    const extract = partDocToSketches([loweredFeature])
+    // originLocal expresses the document origin (0,0,0) in this sketch's local
+    // 2D frame so a `@builtin_origin` coincident pins to the actual document
+    // origin during the drag preview -- not the plane's local (0,0), which
+    // differ for a sketch on an offset/projected face. The hard solve already
+    // does this (solveSketch); without it here the dragged geometry pins to the
+    // wrong point and visibly snaps back on release.
+    const extract = partDocToSketches([loweredFeature], originLocal)
     if (extract.skipped.length || !extract.sketches.length) return null
 
     const { input, layout } = lowerSketch(extract.sketches[0].sketch)

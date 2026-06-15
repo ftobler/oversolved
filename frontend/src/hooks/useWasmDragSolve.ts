@@ -41,6 +41,11 @@ export interface UseWasmDragSolveInput {
   drag: DragState | null
   /** True when a drag is active on THIS feature. */
   isDraggingThis: boolean
+  /** Document origin (0,0,0) in this sketch's local 2D frame, so a
+   *  `@builtin_origin` coincident pins to the document origin during the drag
+   *  preview. [0,0] for the builtin planes; nonzero for an offset/projected
+   *  face. Defaults to [0,0] (builtin-plane behaviour). */
+  originLocal?: [number, number]
 }
 
 export interface WasmDragSolveResult {
@@ -53,7 +58,7 @@ export interface WasmDragSolveResult {
 }
 
 export function useWasmDragSolve(
-  { featureId, featureDef, drag, isDraggingThis }: UseWasmDragSolveInput,
+  { featureId, featureDef, drag, isDraggingThis, originLocal }: UseWasmDragSolveInput,
 ): WasmDragSolveResult {
   const warmStartRef = useRef<number[] | null>(null)
   const latestCursorRef = useRef<[number, number] | null>(null)
@@ -85,12 +90,16 @@ export function useWasmDragSolve(
 
   const dragEntityId = isDragHere && drag ? drag.entityId : null
   const dragVertexKey = isVertexDragHere && drag ? drag.vertexKey : null
+  // Scalarised so a fresh array prop identity each render does not rebuild the
+  // context mid-drag (the memo key must be stable across pointermove updates).
+  const originX = originLocal?.[0] ?? 0
+  const originY = originLocal?.[1] ?? 0
   const ctx = useMemo(() => {
     if (!featureDef || !dragEntityId) return null
     if (!isSketchSolverReady()) return null
     // For vertex drags, pass the vertex key. For edge drags, pass null.
-    return prepareDragContext(featureDef, dragEntityId, dragVertexKey)
-  }, [featureDef, dragEntityId, dragVertexKey])
+    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY])
+  }, [featureDef, dragEntityId, dragVertexKey, originX, originY])
 
   // ── Track the latest cursor and edge-drag startWorld; mark dirty only
   //     when the cursor actually moved ──────────────────────────────────

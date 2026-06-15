@@ -124,7 +124,7 @@ describe('useWasmDragSolve', () => {
     // Engaged before any rAF tick -- the caller must not show a fallback frame 0.
     expect(result.current.engaged).toBe(true)
     expect(result.current.sketch).toBeNull()
-    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', 'start')
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', 'start', [0, 0])
   })
 
   it('does not engage when the context cannot be built (unmapped vertex)', () => {
@@ -213,7 +213,7 @@ describe('useWasmDragSolve', () => {
     expect(result.current.engaged).toBe(true)
     expect(result.current.sketch).toBeNull()
     // prepareDragContext called with null vertexKey for edge drags.
-    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null)
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null, [0, 0])
   })
 
   it('solves edge drags with delta (not cursor pin)', () => {

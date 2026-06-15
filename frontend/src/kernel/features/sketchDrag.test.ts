@@ -89,6 +89,40 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     })
   })
 
+  it('pins @builtin_origin to the projected origin during drag (offset-plane snap-back bug)', () => {
+    // A sketch on a face plane offset from the document origin. A line endpoint
+    // is coincident with @builtin_origin. The drag preview must pin it to the
+    // DOCUMENT origin expressed in the plane frame (originLocal), not the
+    // plane's local (0,0) -- otherwise the drag shows the wrong coordinate
+    // system and the geometry snaps back on release.
+    const feature = {
+      id: 'originDrag', kind: 'sketch', plane: '?face;flatface',
+      entities: [{ id: 'ln', kind: 'line' }],
+      initial: { ln: [2, 3, 8, 9] },
+      constraints: [
+        { id: 'c_co', kind: 'coincident', a: '$lnstart', b: '@builtin_origin' },
+      ],
+    } as unknown as PartFeature
+
+    // Document origin (0,0,0) on this plane lands at local (-5, -10).
+    const originLocal: [number, number] = [-5, -10]
+    const ctx = prepareDragContext(feature, 'ln', 'end', originLocal)!
+    expect(ctx).not.toBeNull()
+
+    // The lowered coincident carries the projected origin, not [0,0].
+    const externalRefs = ctx.input.constraints
+      .flatMap((c) => c.refs)
+      .filter((r) => r.ref.kind === 'external')
+      .map((r) => r.ref as { x: number; y: number })
+    expect(externalRefs).toContainEqual({ kind: 'external', x: -5, y: -10 })
+
+    // Drag ln.end and confirm ln.start stays pinned near originLocal, not [0,0].
+    const result = solveSketchDrag(ctx, [...ctx.params0], [12, 4])
+    expect(result).not.toBeNull()
+    const ln = result!.sketch.ln as { start: [number, number]; end: [number, number] }
+    expect(Math.hypot(ln.start[0] - originLocal[0], ln.start[1] - originLocal[1])).toBeLessThan(CONSTRAINT_TOL)
+  })
+
   it('returns null for an unknown entity or unmapped vertex', () => {
     const feature = rectSketchFeature('nulls')
     expect(prepareDragContext(feature, 'nonexistent', 'start')).toBeNull()
