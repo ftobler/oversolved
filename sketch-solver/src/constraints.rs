@@ -169,7 +169,7 @@ impl Axis {
     }
 }
 
-/// The 16 constraint kinds the solver understands. Codes are stable wire values;
+/// The 18 constraint kinds the solver understands. Codes are stable wire values;
 /// do not renumber without bumping the codec contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstraintKind {
@@ -190,6 +190,8 @@ pub enum ConstraintKind {
     Concentric,
     Fixed,
     RadiusDifference,
+    PointDistanceX,
+    PointDistanceY,
 }
 
 impl ConstraintKind {
@@ -212,6 +214,8 @@ impl ConstraintKind {
             14 => ConstraintKind::Concentric,
             15 => ConstraintKind::Fixed,
             16 => ConstraintKind::RadiusDifference,
+            17 => ConstraintKind::PointDistanceX,
+            18 => ConstraintKind::PointDistanceY,
             _ => return None,
         })
     }
@@ -235,6 +239,8 @@ impl ConstraintKind {
             ConstraintKind::Concentric => 14,
             ConstraintKind::Fixed => 15,
             ConstraintKind::RadiusDifference => 16,
+            ConstraintKind::PointDistanceX => 17,
+            ConstraintKind::PointDistanceY => 18,
         }
     }
 }

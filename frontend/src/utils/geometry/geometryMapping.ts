@@ -422,6 +422,48 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     }
   }
 
+  if (kind === 'point_distance_x') {
+    const eid = resolved.a?.entity
+    const eid2 = resolved.b?.entity
+    if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
+    const pa = geomPoint(sketch, resolved.a)
+    const pb = geomPoint(sketch, resolved.b)
+    if (!pa || !pb) return { kind: 'unknown' }
+    const midY = (pa[1] + pb[1]) / 2
+    return {
+      kind: 'dim_linear',
+      p1: [pa[0], midY],
+      p2: [pb[0], midY],
+      value: resolved.value || 0,
+      normal: [0, 1],
+      entity: eid,
+      ext1_line: [pa[0] - 100, pa[1], pa[0] + 100, pa[1]],
+      ext2_line: [pb[0] - 100, pb[1], pb[0] + 100, pb[1]],
+      ...(resolved.pos && { pos: resolved.pos }),
+    }
+  }
+
+  if (kind === 'point_distance_y') {
+    const eid = resolved.a?.entity
+    const eid2 = resolved.b?.entity
+    if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
+    const pa = geomPoint(sketch, resolved.a)
+    const pb = geomPoint(sketch, resolved.b)
+    if (!pa || !pb) return { kind: 'unknown' }
+    const midX = (pa[0] + pb[0]) / 2
+    return {
+      kind: 'dim_linear',
+      p1: [midX, pa[1]],
+      p2: [midX, pb[1]],
+      value: resolved.value || 0,
+      normal: [1, 0],
+      entity: eid,
+      ext1_line: [pa[0], pa[1] - 100, pa[0], pa[1] + 100],
+      ext2_line: [pb[0], pb[1] - 100, pb[0], pb[1] + 100],
+      ...(resolved.pos && { pos: resolved.pos }),
+    }
+  }
+
   if (kind === 'line_distance') {
     const eid = resolved.a?.entity
     if (!eid || !resolved.b) return { kind: 'unknown' }

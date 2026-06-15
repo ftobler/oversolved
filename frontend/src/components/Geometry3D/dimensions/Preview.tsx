@@ -3,7 +3,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { resolveDimension, dimensionTargets } from '@/registry'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
 import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
-import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/geometry/dimensionNaturalValue'
+import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints } from '@/utils/geometry/dimensionNaturalValue'
 import type {
   PartConstraint, PlaneTransform, Sketch,
 } from '@/types/cad'
@@ -38,8 +38,27 @@ export function DimensionPreview({
     if (dimensionPicks.length === 0) return null
     const resolved = resolveDimension(dimensionPicks, sketch, featureId)
     if (!resolved) return null
-    const kind = resolved.constraintKind
+    let kind = resolved.constraintKind
     const targets = dimensionTargets(dimensionPicks)
+
+    // Mirror the mode-switching logic from finalizeDimensionPlacement so the
+    // preview shows the correct dimension type as the user positions the cursor.
+    if (kind === 'point_distance' && cursorWorld && targets.length >= 2) {
+      const pts = resolveDimPoints(kind, targets, sketch, featureId)
+      if (pts) {
+        const [pa, pb] = pts
+        const anchorX = (pa[0] + pb[0]) / 2
+        const anchorY = (pa[1] + pb[1]) / 2
+        const ox = cursorWorld[0] - anchorX
+        const oy = cursorWorld[1] - anchorY
+        if (Math.abs(oy) > Math.abs(ox) && Math.abs(oy) > 0.001) {
+          kind = 'point_distance_x'
+        } else if (Math.abs(ox) > Math.abs(oy) && Math.abs(ox) > 0.001) {
+          kind = 'point_distance_y'
+        }
+      }
+    }
+
     const value = computeNaturalDimensionValue(kind, targets, sketch, featureId) ?? 0
 
     // Build a fake PartConstraint to feed through computeConstraintRender.

@@ -6,7 +6,7 @@ import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
-import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/geometry/dimensionNaturalValue'
+import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -567,12 +567,34 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // The dim self-deduplicates if a same entity was clicked twice.
     const targets = dimensionTargets(dimensionPicks)
     const featureId = activeFeatureId
-    const constraintKind = resolved.constraintKind
+    let constraintKind = resolved.constraintKind
 
     // Snapshot the placement anchor BEFORE clearing -- the cursorWorld field
     // is cleared on tool exit but we want the dispatched pos to point at where
     // the click happened, not at a later cursor position.
     const placementWorld = dimensionCursorWorld
+
+    // Two-vertex point_distance dims: detect the user's drag direction from
+    // the placement point and switch the constraint kind accordingly.
+    //   - vertical drag (up/down)  → point_distance_x (horizontal measurement)
+    //   - horizontal drag (left/right) → point_distance_y (vertical measurement)
+    //   - balanced / no drag → point_distance (euclidean distance)
+    // Once placed the type stays (future label drags only move `pos`).
+    if (constraintKind === 'point_distance' && placementWorld && sketch && targets.length >= 2) {
+      const pts = resolveDimPoints(constraintKind, targets, sketch, featureId)
+      if (pts) {
+        const [pa, pb] = pts
+        const anchorX = (pa[0] + pb[0]) / 2
+        const anchorY = (pa[1] + pb[1]) / 2
+        const ox = placementWorld[0] - anchorX
+        const oy = placementWorld[1] - anchorY
+        if (Math.abs(oy) > Math.abs(ox) && Math.abs(oy) > 0.001) {
+          constraintKind = 'point_distance_x'
+        } else if (Math.abs(ox) > Math.abs(oy) && Math.abs(ox) > 0.001) {
+          constraintKind = 'point_distance_y'
+        }
+      }
+    }
 
     // Clear picks immediately so the next pointer event can't double-fire the
     // dialog, but stay in the dimension tool until OK / Cancel resolves.

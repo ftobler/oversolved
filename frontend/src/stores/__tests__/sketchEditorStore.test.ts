@@ -1420,5 +1420,121 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
     })
+
+    // ─── point_distance mode switching ───
+    // Two-vertex picks with a placementWorld offset switch the constraint kind:
+    //   vertical drag → point_distance_x, horizontal drag → point_distance_y
+
+    it('finalizeDimensionPlacement: two vertices with vertical drag switches to point_distance_x', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+        dimensionCursorWorld: [5, 7],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('10')
+      // Vertical drag (y offset > x offset) → point_distance_x
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        featureId: 'S1', kind: 'point_distance_x',
+        targets: ['vertex:S1:L1:start', 'vertex:S1:L1:end'], value: 10,
+      }))
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: two vertices with horizontal drag switches to point_distance_y', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+        dimensionCursorWorld: [12, 0],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('10')
+      // Horizontal drag (x offset > y offset) → point_distance_y
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        featureId: 'S1', kind: 'point_distance_y',
+        targets: ['vertex:S1:L1:start', 'vertex:S1:L1:end'], value: 10,
+      }))
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: two vertices with no clear direction stays point_distance', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+        // cursor exactly at midpoint: no clear direction
+        dimensionCursorWorld: [5, 0],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('10')
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        featureId: 'S1', kind: 'point_distance',
+      }))
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: two vertices without getSketch stays point_distance', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({
+        dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+        dimensionCursorWorld: [5, 7],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('10')
+      // No getSketch → no point resolution → stays point_distance
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        featureId: 'S1', kind: 'point_distance',
+      }))
+    })
+
+    it('finalizeDimensionPlacement: two vertices without cursorWorld stays point_distance', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+        dimensionCursorWorld: null,
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      dialog.onConfirm('10')
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        featureId: 'S1', kind: 'point_distance',
+      }))
+      setSketchCallback('getSketch', null)
+    })
   })
 })

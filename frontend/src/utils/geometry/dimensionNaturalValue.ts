@@ -18,6 +18,32 @@ import { computeAngleDimension } from '@/components/Geometry3D/dimensions/angleD
  * (computeConstraintRender), so the value here matches what the solver would
  * report after the constraint is added with no value set.
  */
+/**
+ * Resolve the two endpoints of a two-point dimension (point_distance, or its
+ * X/Y variants) from the sketch. Returns [pa, pb] in world coords or null
+ * when either point can't be resolved. Mirrors the point-finding path used
+ * by computeConstraintRender so the values are always consistent.
+ */
+export function resolveDimPoints(
+  kind: string,
+  targets: readonly string[],
+  sketch: Sketch,
+  featureId: string,
+): [[number, number], [number, number]] | null {
+  if (targets.length < 2) return null
+  const c: PartConstraint = { id: '__resolve__', kind }
+  const refs = targets.map(t => parseTarget(t, featureId))
+  c.a = refs[0]
+  c.b = refs[1]
+  const render = computeConstraintRender(c, sketch) as
+    DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | { kind: 'unknown' | string }
+  if (render.kind === 'dim_linear' || render.kind === 'dim_radius' || render.kind === 'dim_diameter') {
+    const r = render as DimLinearRender | DimRadiusRender | DimDiameterRender
+    return [r.p1, r.p2]
+  }
+  return null
+}
+
 export function computeNaturalDimensionValue(
   kind: string,
   targets: readonly string[],

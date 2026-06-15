@@ -353,6 +353,8 @@ impl<'a> Problem<'a> {
             ConstraintKind::Tangent => self.r_tangent(c, x, r),
             ConstraintKind::EqualLength => self.r_equal_length(c, x, r),
             ConstraintKind::PointDistance => self.r_point_distance(c, x, r),
+            ConstraintKind::PointDistanceX => self.r_point_distance_x(c, x, r),
+            ConstraintKind::PointDistanceY => self.r_point_distance_y(c, x, r),
             ConstraintKind::Midpoint => self.r_midpoint(c, x, r),
             ConstraintKind::Concentric => self.r_concentric(c, x, r),
             ConstraintKind::Fixed => self.r_fixed(c, x, r),
@@ -777,6 +779,30 @@ impl<'a> Problem<'a> {
         r.push(dist - value);
     }
 
+    fn r_point_distance_x(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
+        let (Some(a), Some(b), Some(value)) =
+            (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
+        else {
+            return;
+        };
+        let pa = self.point(x, a);
+        let pb = self.point(x, b);
+        let dx = pb[0] - pa[0];
+        r.push(dx.abs() - value);
+    }
+
+    fn r_point_distance_y(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
+        let (Some(a), Some(b), Some(value)) =
+            (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
+        else {
+            return;
+        };
+        let pa = self.point(x, a);
+        let pb = self.point(x, b);
+        let dy = pb[1] - pa[1];
+        r.push(dy.abs() - value);
+    }
+
     fn r_midpoint(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let mid: P2 = if let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Line) {
             let ep = self.params(x, index);
@@ -1073,7 +1099,9 @@ impl<'a> Problem<'a> {
             | ConstraintKind::Angle
             | ConstraintKind::Tangent
             | ConstraintKind::Midpoint
-            | ConstraintKind::RadiusDifference => rows.extend(self.fd_constraint_rows(c, x, n)),
+            | ConstraintKind::RadiusDifference
+            | ConstraintKind::PointDistanceX
+            | ConstraintKind::PointDistanceY => rows.extend(self.fd_constraint_rows(c, x, n)),
         }
     }
 
@@ -1687,6 +1715,78 @@ mod tests {
         assert_eq!(r.len(), 2);
         assert!((r[0] - (-3.0)).abs() < 1e-12);
         assert!((r[1] - (-4.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn point_distance_x_residual_constrains_x_distance() {
+        // Two points at (0,0) and (10,5) with value = 10:
+        // point_distance_x residual = |10-0| - 10 = 0
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 10.0, 5.0],
+            vec![cons_v(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                10.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!(r[0].abs() < 1e-12, "point_distance_x residual {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_x_residual_nonzero_when_wrong() {
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 10.0, 5.0],
+            vec![cons_v(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                7.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - 3.0).abs() < 1e-12, "expected 3, got {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_y_residual_constrains_y_distance() {
+        // Two points at (0,0) and (10,5) with value = 5:
+        // point_distance_y residual = |5-0| - 5 = 0
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 10.0, 5.0],
+            vec![cons_v(
+                ConstraintKind::PointDistanceY,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                5.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!(r[0].abs() < 1e-12, "point_distance_y residual {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_y_residual_nonzero_when_wrong() {
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 10.0, 5.0],
+            vec![cons_v(
+                ConstraintKind::PointDistanceY,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                3.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - 2.0).abs() < 1e-12, "expected 2, got {}", r[0]);
     }
 
     #[test]
