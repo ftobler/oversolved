@@ -2,6 +2,8 @@
 // Invariant validation for sketch editor store state.
 // Uses the 3-tier guard pattern: throw in test, warn in dev, silent in prod.
 
+import type { SelectionDomain } from '@/types/cad'
+
 const devOnly = import.meta.env.DEV
 const testMode = import.meta.env.MODE === 'test'
 
@@ -25,9 +27,9 @@ export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_r
 // ── Selection State Invariants ────
 
 export interface SelectionInvariantState {
-  normalSelection: ReadonlySet<string>
-  chipOwnedSelection: ReadonlySet<string>
-  selectionDomain: string
+  normalSelection: Set<string>
+  chipOwnedSelection: Set<string>
+  selectionDomain: SelectionDomain
 }
 
 const KNOWN_SELECTION_PREFIXES = [
@@ -44,7 +46,7 @@ function isValidSelectionId(id: string): boolean {
   return false
 }
 
-export function deriveSelectionDomain(ids: ReadonlySet<string>): string {
+export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain {
   if (ids.size === 0) return 'sketch_2d'
   let hasSketch = false
   let has3d = false

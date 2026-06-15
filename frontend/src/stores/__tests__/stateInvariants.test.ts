@@ -5,8 +5,8 @@ import type { SketchEditorInvariantState, SelectionInvariantState } from '@/stor
 function defaultSelectionState(): SelectionInvariantState {
   return {
     normalSelection: new Set(),
-    chipOwnedSelection: new Set(),
-    selectionDomain: 'sketch_2d',
+    chipOwnedSelection: new Set<string>(),
+    selectionDomain: 'sketch_2d' as const,
   }
 }
 
@@ -39,7 +39,7 @@ describe('validateSelectionState', () => {
     const state = {
       normalSelection: new Set(['entity:S1:L1', '@edge_0']),
       chipOwnedSelection: new Set(['@edge_0']),
-      selectionDomain: 'mixed',
+      selectionDomain: 'mixed' as const,
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
@@ -47,8 +47,8 @@ describe('validateSelectionState', () => {
   it('throws when selectionDomain does not match normalSelection', () => {
     const state = {
       normalSelection: new Set(['?2;@body_1@extrude1/face/3']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'sketch_2d',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'sketch_2d' as const,
     }
     expect(() => validateSelectionState(state)).toThrow('[invariant] selectionDomain')
   })
@@ -56,8 +56,8 @@ describe('validateSelectionState', () => {
   it('throws when normalSelection contains unrecognized entry', () => {
     const state = {
       normalSelection: new Set(['bad-value']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'mixed',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'mixed' as const,
     }
     expect(() => validateSelectionState(state)).toThrow('[invariant] normalSelection contains unrecognized entry')
   })
@@ -65,8 +65,8 @@ describe('validateSelectionState', () => {
   it('passes with valid entity: prefix entries', () => {
     const state = {
       normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L1:start', 'face:S1:?3;...', 'constraint:S1:c1']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'sketch_2d',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'sketch_2d' as const,
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
@@ -74,8 +74,8 @@ describe('validateSelectionState', () => {
   it('passes with valid @ prefix entries', () => {
     const state = {
       normalSelection: new Set(['@body_1', '@builtin_plane_front']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'plane_3d',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'plane_3d' as const,
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
@@ -83,8 +83,8 @@ describe('validateSelectionState', () => {
   it('passes with valid ? ancestry query entries', () => {
     const state = {
       normalSelection: new Set(['?2;@body_1@extrude1/face/3']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'body_3d',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'body_3d' as const,
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
@@ -99,7 +99,7 @@ describe('repairSelectionState', () => {
     const state = {
       normalSelection: new Set(['entity:S1:L1']),
       chipOwnedSelection: new Set(['@edge_0', '@edge_1']),
-      selectionDomain: 'sketch_2d',
+      selectionDomain: 'sketch_2d' as const,
     }
     const patches = repairSelectionState(state)
     expect(patches).not.toBeNull()
@@ -110,8 +110,8 @@ describe('repairSelectionState', () => {
   it('fixes stale selectionDomain', () => {
     const state = {
       normalSelection: new Set(['?2;@body_1@extrude1/face/3']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'sketch_2d',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'sketch_2d' as const,
     }
     const patches = repairSelectionState(state)
     expect(patches).not.toBeNull()
@@ -123,8 +123,8 @@ describe('repairSelectionState', () => {
     // Since import.meta.env.MODE is 'test' in vitest, we expect filtering.
     const state = {
       normalSelection: new Set(['invalid!']),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'sketch_2d',
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'sketch_2d' as const,
     }
     const patches = repairSelectionState(state)
     expect(patches).not.toBeNull()
@@ -233,8 +233,8 @@ describe('validateSketchEditorState', () => {
       const state = {
         ...defaultState(),
         normalSelection: new Set(['bad-value']),
-        chipOwnedSelection: new Set(),
-        selectionDomain: 'mixed',
+        chipOwnedSelection: new Set<string>(),
+        selectionDomain: 'mixed' as const,
         dimensionPicks: [{ target: 'entity:S1:L1' }],
         activeTool: 'select',
       }
