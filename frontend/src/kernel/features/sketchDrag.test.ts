@@ -123,6 +123,79 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(Math.hypot(ln.start[0] - originLocal[0], ln.start[1] - originLocal[1])).toBeLessThan(CONSTRAINT_TOL)
   })
 
+  // The "sketch 2" topology from the offset-plane snap-back report: a vertical
+  // line whose BODY is coincident (point-on-line) with @builtin_origin, on a
+  // plane offset from the document origin, plus two degenerate projected
+  // source-lines. Guards the FULL round trip (drag preview vs committed hard
+  // solve), where a coordinate-frame divergence surfaces as a snap on release.
+  const ORIGIN_LOCAL: [number, number] = [-5, -10]
+  function originLineFeature(id: string): PartFeature {
+    return {
+      id, kind: 'sketch', label: 'sketch 2', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'GRq', kind: 'line', source: 'some>edge>query' },
+        { id: 'vw8', kind: 'line', source: 'other>edge>query' },
+        { id: 'AflKf', kind: 'line' },
+      ],
+      initial: {
+        GRq: [-5, 3.24, -5, 3.24], vw8: [-5, 3.24, -5, 3.24],
+        AflKf: [-5, 21.95, -5, -10.11],
+      },
+      constraints: [
+        { id: 'c_co', kind: 'coincident', a: '$AflKf', b: '@builtin_origin' },
+        { id: 'c_v', kind: 'vertical', target: '$AflKf' },
+      ],
+    } as unknown as PartFeature
+  }
+  // Mirrors solveSketch's commit path: strip `source` (re-projected/dropped)
+  // before partDocToSketches, thread the document origin in as originLocal.
+  function hardSolveLine(feature: PartFeature): number[] {
+    if (!solveBytes) throw new Error('no solver')
+    const lowered = {
+      ...feature,
+      entities: (feature.entities ?? []).map((e) => ({ ...e, source: undefined })),
+    } as PartFeature
+    const { sketches } = partDocToSketches([lowered], ORIGIN_LOCAL)
+    const { input, layout } = lowerSketch(sketches[0].sketch)
+    const out = decodeOutput(solveBytes(encodeInput(input)))
+    const ln = layout.find((l) => l.id === 'AflKf')!
+    return out.paramsSolved.slice(ln.offset, ln.offset + 4)
+  }
+
+  it('offset-plane vertex drag: preview matches the committed hard solve (no snap-back)', () => {
+    const feature = originLineFeature('s2v')
+    const ctx = prepareDragContext(feature, 'AflKf', 'end', ORIGIN_LOCAL)!
+    expect(ctx).not.toBeNull()
+    let last = solveSketchDrag(ctx, [...ctx.params0], [3, -10])!
+    for (let i = 0; i < 10; i++) last = solveSketchDrag(ctx, last.params, [3, -10])!
+    const preview = last.sketch.AflKf as { start: [number, number]; end: [number, number] }
+
+    const doc = { features: [feature] } as unknown as PartDoc
+    applyMoveVertex(doc, 's2v', 'AflKf', 'end', [3, -10], last.geometry)
+    const solved = hardSolveLine(feature)
+
+    expect(Math.hypot(solved[0] - preview.start[0], solved[1] - preview.start[1])).toBeLessThan(1.0)
+    expect(Math.hypot(solved[2] - preview.end[0], solved[3] - preview.end[1])).toBeLessThan(1.0)
+    // The line stays on the projected origin (x=-5), not the plane local 0.
+    expect(Math.abs(solved[0] - (-5))).toBeLessThan(1.0)
+    expect(Math.abs(solved[2] - (-5))).toBeLessThan(1.0)
+  })
+
+  it('offset-plane edge drag: preview matches the committed hard solve (no snap-back)', () => {
+    const feature = originLineFeature('s2e')
+    const ctx = prepareDragContext(feature, 'AflKf', null, ORIGIN_LOCAL)!
+    const delta: [number, number] = [8, 0]
+    const last = solveSketchDrag(ctx, ctx.params0, delta, delta)!
+    const preview = last.sketch.AflKf as { start: [number, number]; end: [number, number] }
+
+    const doc = { features: [feature] } as unknown as PartDoc
+    applyMoveEntity(doc, 's2e', 'AflKf', delta, last.geometry)
+    const solved = hardSolveLine(feature)
+
+    expect(Math.hypot(solved[0] - preview.start[0], solved[1] - preview.start[1])).toBeLessThan(1.0)
+    expect(Math.abs(solved[0] - (-5))).toBeLessThan(1.0)
+  })
+
   it('returns null for an unknown entity or unmapped vertex', () => {
     const feature = rectSketchFeature('nulls')
     expect(prepareDragContext(feature, 'nonexistent', 'start')).toBeNull()

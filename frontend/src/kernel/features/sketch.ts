@@ -39,6 +39,11 @@ export interface SketchResult {
   status: string
   geometry?: Record<string, number[]>
   features?: Record<string, { status: string }>
+  /** The document origin (0,0,0) expressed in this sketch's local 2D frame.
+   *  Both the hard solve and the drag path need the same value so @builtin_origin
+   *  constraints pin to the same point. Computed once here, consumed by the drag
+   *  path via solveResult.originLocal -- no round-trip recomputation. */
+  originLocal?: [number, number]
   /** For projected entities whose lowered kind differs from the kind declared
    *  at pick time (tilted circle -> ellipse, partial ellipse -> spline): the
    *  resolved kind, so the doc entity can adopt it and its params stay matched. */
@@ -242,6 +247,7 @@ export function solveSketch(
     status,
     geometry,
     features,
+    originLocal,
     topology,
     plane_transform,
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),

@@ -97,6 +97,12 @@ export function useWasmDragSolve(
   const ctx = useMemo(() => {
     if (!featureDef || !dragEntityId) return null
     if (!isSketchSolverReady()) return null
+    // [DRAG-DIAG] temporary: the originLocal the drag preview pins
+    // @builtin_origin to. Compare with the '[DRAG-DIAG] solveSketch' line for
+    // this same feature -- if they differ, the drag and commit use different
+    // coordinate frames (the snap-back).
+    // eslint-disable-next-line no-console
+    console.log('[DRAG-DIAG] dragCtx', featureId, 'originLocal', [originX, originY])
     // For vertex drags, pass the vertex key. For edge drags, pass null.
     return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY])
   }, [featureDef, dragEntityId, dragVertexKey, originX, originY])

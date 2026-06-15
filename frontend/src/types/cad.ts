@@ -643,6 +643,7 @@ export interface SketchData {
   topology?: Topology
   status?: string
   features?: EntityStatus
+  originLocal?: [number, number]
   plane_transform?: PlaneTransform
   plane?: { origin: [number, number, number]; x_axis: [number, number, number]; y_axis: [number, number, number]; normal: [number, number, number] }
   body_id?: string

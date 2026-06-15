@@ -36,7 +36,6 @@ import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 // Utilities
 import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
 import { builtinPlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
-import { frameFromPlaneTransform, projectWorldToFrame } from '@/kernel/types3d'
 
 // Colors
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
@@ -53,6 +52,10 @@ export interface Geometry3DProps {
   activeFeatureId?: string
   plane?: string
   planeTransform?: PlaneTransform
+  /** The document origin expressed in the sketch's local 2D frame. Passed from
+   *  the solve result so both the hard solve and drag preview pin @builtin_origin
+   *  to the same point. When absent (no solve yet), falls back to [0,0]. */
+  originLocal?: [number, number]
   solveStatus?: string
   entityStatus?: EntityStatus
   showDebugHit?: boolean
@@ -60,7 +63,7 @@ export interface Geometry3DProps {
   featureDef?: PartFeature
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, solveStatus, entityStatus, otherSketches, featureDef }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
@@ -71,20 +74,16 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     return undefined
   }, [planeTransform, plane])
 
-  // Document origin (0,0,0) expressed in this sketch's local 2D frame: the drag
-  // preview pins a `@builtin_origin` coincident here instead of the plane's
-  // local (0,0). Nonzero only for a sketch on an offset/projected face;
-  // matches solveSketch's hard-solve projection so the preview does not snap
-  // back on release.
-  const originLocal = useMemo<[number, number]>(() => {
-    if (!resolvedPlaneTransform) return [0, 0]
-    return projectWorldToFrame([0, 0, 0], frameFromPlaneTransform(resolvedPlaneTransform))
-  }, [resolvedPlaneTransform])
+  // Document origin (0,0,0) expressed in this sketch's local 2D frame: the hard
+  // solve computes this from the resolved plane; the solve result carries it so
+  // the drag preview pins @builtin_origin to the exact same point -- no round-
+  // trip through plane_transform, no divergence possible.
+  const dragOrigin = originLocal ?? [0, 0]
 
   // WASM drag solve for vertex drags (runs the real solver per frame with
   // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
   // drags, unmapped vertices, or while the main-thread solver is still loading.
-  const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis, originLocal })
+  const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis, originLocal: dragOrigin })
 
   // During drag on this feature: vertex drags use WASM; edge drags use a simple
   // translation preview (no constraint resolution -- the hard solve handles it

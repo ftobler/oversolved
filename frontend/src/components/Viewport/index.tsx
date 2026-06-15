@@ -558,7 +558,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
           const isActiveFeature = f.id === activeFeatureId
           return (
-            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} otherSketches={isActiveFeature ? combinedOtherSketches : undefined} featureDef={fullFeatureDef} />
+            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} originLocal={solveResult?.originLocal} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} otherSketches={isActiveFeature ? combinedOtherSketches : undefined} featureDef={fullFeatureDef} />
           )
         })}
 
