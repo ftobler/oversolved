@@ -8,7 +8,7 @@ import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
-import { validateSketchEditorState, failLoud } from './stateInvariants'
+import { validateSketchEditorState, failLoud, repairSelectionState } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { ToolId } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
@@ -37,6 +37,18 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
 
 const devOnly = import.meta.env.DEV
 const testMode = import.meta.env.MODE === 'test'
+
+function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<SketchEditorState>) => void): void {
+  const state = get()
+  const patches = repairSelectionState(state)
+  if (patches) {
+    set(patches)
+    const repaired = get()
+    validateSketchEditorState(repaired)
+  } else {
+    validateSketchEditorState(state)
+  }
+}
 
 // Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
 export type { Mutation }
@@ -291,7 +303,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     set({ modeStack: next })
     // When stack becomes empty, validate all transient state is clean
     if (next.length === 0 && (devOnly || testMode)) {
-      validateSketchEditorState(get())
+      validateWithRepair(get, set)
     }
   },
 
@@ -414,7 +426,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
 
     if (devOnly || testMode) {
-      validateSketchEditorState(get())
+      validateWithRepair(get, set)
     }
   },
 
@@ -534,7 +546,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     })
     if (targets.length === 0) return
     onMutation({ type: 'delete', targets })
-    set({ normalSelection: new Set(), hoveredConstraintEntityIds: new Set() })
+    set({ normalSelection: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set(), hoveredConstraintEntityIds: new Set() })
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
@@ -543,7 +555,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   clearDraw: () => {
     set({ drawPoints: [], drawHover: null, drawSnapVertexId: null })
     if (devOnly || testMode) {
-      validateSketchEditorState(get())
+      validateWithRepair(get, set)
     }
   },
 
@@ -657,7 +669,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
     if (field === null) {
       set({ activePickField: null })
-      if (devOnly || testMode) validateSketchEditorState(get())
+      if (devOnly || testMode) validateWithRepair(get, set)
       return
     }
 
@@ -703,7 +715,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     get().pushMode('pick')
 
     if (devOnly || testMode) {
-      validateSketchEditorState(get())
+      validateWithRepair(get, set)
     }
   },
 

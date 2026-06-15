@@ -15,6 +15,8 @@ beforeAll(() => {
 function reset() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    selectionDomain: 'sketch_2d',
     hoveredSelectionId: null,
     isPointerDown: false,
     drag: null,

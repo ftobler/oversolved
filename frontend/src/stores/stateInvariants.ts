@@ -22,7 +22,110 @@ export type DrawingToolKind = 'line' | 'rect' | 'center_rect' | 'circle' | 'arc'
 
 export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse', 'spline', 'point', 'ngon', 'project'])
 
-export interface SketchEditorInvariantState {
+// ── Selection State Invariants ────
+
+export interface SelectionInvariantState {
+  normalSelection: ReadonlySet<string>
+  chipOwnedSelection: ReadonlySet<string>
+  selectionDomain: string
+}
+
+const KNOWN_SELECTION_PREFIXES = [
+  'entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:',
+  '@builtin_', '@body_', '@',
+]
+
+function isValidSelectionId(id: string): boolean {
+  if (id === '') return false
+  for (const p of KNOWN_SELECTION_PREFIXES) {
+    if (id.startsWith(p)) return true
+  }
+  if (id.startsWith('?')) return true
+  return false
+}
+
+export function deriveSelectionDomain(ids: ReadonlySet<string>): string {
+  if (ids.size === 0) return 'sketch_2d'
+  let hasSketch = false
+  let has3d = false
+  let hasPlane = false
+  for (const id of ids) {
+    if (id.startsWith('entity:') || id.startsWith('vertex:') || id.startsWith('face:') || id.startsWith('constraint:') || id.startsWith('dock:') || id.startsWith('isect:')) {
+      hasSketch = true
+    } else if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) {
+      has3d = true
+    } else if (id.startsWith('@')) {
+      hasPlane = true
+    }
+  }
+  if (hasSketch && !has3d && !hasPlane) return 'sketch_2d'
+  if (has3d && !hasSketch && !hasPlane) return 'body_3d'
+  if (hasPlane && !hasSketch && !has3d) return 'plane_3d'
+  return 'mixed'
+}
+
+export function validateSelectionState(state: SelectionInvariantState): void {
+  const { normalSelection, chipOwnedSelection, selectionDomain } = state
+
+  for (const v of chipOwnedSelection) {
+    if (!normalSelection.has(v)) {
+      failLoud(
+        `[invariant] chipOwnedSelection has orphan '${v}' not in normalSelection`,
+      )
+    }
+  }
+
+  const expected = deriveSelectionDomain(normalSelection)
+  if (selectionDomain !== expected) {
+    failLoud(
+      `[invariant] selectionDomain is '${selectionDomain}' but normalSelection yields '${expected}'`,
+    )
+  }
+
+  for (const id of normalSelection) {
+    if (!isValidSelectionId(id)) {
+      failLoud(
+        `[invariant] normalSelection contains unrecognized entry '${id}'`,
+      )
+    }
+  }
+}
+
+export function repairSelectionState(state: SelectionInvariantState): Partial<SelectionInvariantState> | null {
+  const { normalSelection, chipOwnedSelection, selectionDomain } = state
+  const patches: Partial<SelectionInvariantState> = {}
+
+  const repairedChip = new Set(chipOwnedSelection)
+  for (const v of chipOwnedSelection) {
+    if (!normalSelection.has(v)) {
+      repairedChip.delete(v)
+    }
+  }
+  if (repairedChip.size !== chipOwnedSelection.size) {
+    patches.chipOwnedSelection = repairedChip
+  }
+
+  const expectedDomain = deriveSelectionDomain(normalSelection)
+  if (selectionDomain !== expectedDomain) {
+    patches.selectionDomain = expectedDomain
+  }
+
+  if (devOnly || testMode) {
+    const filtered = new Set<string>()
+    for (const id of normalSelection) {
+      if (isValidSelectionId(id)) {
+        filtered.add(id)
+      }
+    }
+    if (filtered.size !== normalSelection.size) {
+      patches.normalSelection = filtered
+    }
+  }
+
+  return Object.keys(patches).length > 0 ? patches : null
+}
+
+export interface SketchEditorInvariantState extends SelectionInvariantState {
   activeTool: string | null
   dimensionPicks: unknown[]
   activePickField: { featureId: string; field: string } | null
@@ -32,6 +135,10 @@ export interface SketchEditorInvariantState {
 }
 
 export function validateSketchEditorState(state: SketchEditorInvariantState): void {
+  // Selection invariants
+  validateSelectionState(state)
+
+  // Tool invariants
   if (state.dimensionPicks.length > 0 && state.activeTool !== 'dimension') {
     failLoud(
       `[invariant] dimensionPicks has ${state.dimensionPicks.length} entries `
