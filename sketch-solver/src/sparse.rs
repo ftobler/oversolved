@@ -223,4 +223,50 @@ mod tests {
         assert!((delta[0] + 1.0 / 3.0).abs() < 1e-6, "δ₀={}", delta[0]);
         assert!((delta[1] + 1.0 / 3.0).abs() < 1e-6, "δ₁={}", delta[1]);
     }
+
+    #[test]
+    fn damped_solve_empty_jac_returns_zeros() {
+        // Zero rows: no equations, delta should be all zeros.
+        let jac: Vec<SparseRow> = vec![];
+        let b = vec![1.0, 2.0];
+        let delta = damped_solve(&jac, 0.1, &b, 2);
+        assert_eq!(delta, vec![0.0, 0.0]);
+    }
+
+    #[test]
+    fn cg_solve_zero_columns_returns_empty() {
+        // n=0: no variables, returns empty delta.
+        let jac: Vec<SparseRow> = vec![vec![]];
+        let delta = cg_solve(&jac, 0.1, &[], &[], 0, 10, 1e-12);
+        assert!(delta.is_empty());
+    }
+
+    #[test]
+    fn cg_solve_zero_jacobian_without_damping_hits_divergence_path() {
+        // J = [[0, 0]]: diag = [0, 0], lambda=0 => A = zero matrix.
+        // p_ap = dot(p, A·p) = 0, triggering the early break in cg_solve.
+        // The returned delta is the initial x (all zeros) regardless of b.
+        let jac = vec![vec![]];
+        let b = vec![5.0, 5.0];
+        let diag = vec![0.0, 0.0];
+        let delta = cg_solve(&jac, 0.0, &diag, &b, 2, 10, 1e-12);
+        assert_eq!(delta, vec![0.0, 0.0], "singular system returns zeros");
+    }
+
+    #[test]
+    fn damped_solve_singular_system_with_damping_succeeds() {
+        // J = [[1, 1], [1, 1]]: rank-deficient (both rows identical).
+        // JᵀJ = [[2, 2], [2, 2]], diag = [2, 2].
+        // With λ=1: A = [[4, 2], [2, 4]] which is invertible.
+        // b = Jᵀr = [1+1, 1+1] = [2, 2] with r = [1, 1].
+        // Solve A·δ = b: δ = [1/3, 1/3].
+        let jac = vec![
+            vec![(0, 1.0), (1, 1.0)],
+            vec![(0, 1.0), (1, 1.0)],
+        ];
+        let b = vec![2.0, 2.0];
+        let delta = damped_solve(&jac, 1.0, &b, 2);
+        assert!((delta[0] - 1.0 / 3.0).abs() < 1e-6, "δ₀={}", delta[0]);
+        assert!((delta[1] - 1.0 / 3.0).abs() < 1e-6, "δ₁={}", delta[1]);
+    }
 }
