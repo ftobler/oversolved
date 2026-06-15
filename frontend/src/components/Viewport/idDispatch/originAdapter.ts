@@ -8,9 +8,4 @@ export const originAdapter = {
   },
 }
 
-/** Clear origin marker hover state. */
-export function clearOriginHover(): void {
-  const s = useSketchEditorStore.getState()
-  s.setHoveredSelectionId(null)
-  s.setHoveredVertex(null, null, null)
-}
+

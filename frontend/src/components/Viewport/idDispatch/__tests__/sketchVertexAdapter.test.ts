@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
-import { sketchVertexAdapter, clearSketchVertexHover } from '../sketchVertexAdapter'
+import { sketchVertexAdapter } from '../sketchVertexAdapter'
 
 try { toolRegistry.register(createDragTool()) } catch { /* already registered */ }
 
@@ -64,12 +64,5 @@ describe('sketchVertexAdapter', () => {
     expect(s.dragPending).toBeNull()
   })
 
-  it('clearSketchVertexHover clears all vertex hover fields', () => {
-    sketchVertexAdapter.onHover('vertex:feat1:arc1:center')
-    clearSketchVertexHover()
-    const s = useSketchEditorStore.getState()
-    expect(s.hoveredVertexId).toBeNull()
-    expect(s.hoveredVertexPosition).toBeNull()
-    expect(s.hoveredSnapKind).toBeNull()
-  })
+
 })

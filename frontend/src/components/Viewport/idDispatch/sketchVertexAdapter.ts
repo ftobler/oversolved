@@ -43,8 +43,4 @@ export const sketchVertexAdapter = {
   },
 }
 
-/** Clear sketch-vertex hover state. */
-export function clearSketchVertexHover(): void {
-  const s = useSketchEditorStore.getState()
-  s.setHoveredVertex(null, null, null)
-}
+

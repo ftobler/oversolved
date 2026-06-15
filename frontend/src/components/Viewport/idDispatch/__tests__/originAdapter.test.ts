@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { originAdapter, clearOriginHover } from '../originAdapter'
+import { originAdapter } from '../originAdapter'
 
 beforeEach(() => {
   useSketchEditorStore.setState({
@@ -21,11 +21,5 @@ describe('originAdapter', () => {
     expect(s.hoveredSnapKind).toBe('vertex')
   })
 
-  it('clearOriginHover clears both hover fields', () => {
-    originAdapter.onHover('@builtin_origin')
-    clearOriginHover()
-    const s = useSketchEditorStore.getState()
-    expect(s.hoveredSelectionId).toBeNull()
-    expect(s.hoveredVertexId).toBeNull()
-  })
+
 })
