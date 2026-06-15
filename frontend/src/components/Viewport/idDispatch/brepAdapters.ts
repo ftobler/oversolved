@@ -29,17 +29,20 @@ export const brepFaceAdapter = {
 }
 
 export const brepEdgeAdapter = {
-  onHover(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.setHoveredSelectionId(entityKey)
-  },
+  onHover: setSelectionIdOnHover,
 }
 
 export const brepVertexAdapter = {
-  onHover(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.setHoveredSelectionId(entityKey)
-  },
+  onHover: setSelectionIdOnHover,
+}
+
+/**
+ * Shared hover handler for adapters that simply set hoveredSelectionId.
+ * Used by brepEdgeAdapter, brepVertexAdapter, planeAdapter, and the
+ * sketch-surface inline handler in useIdBufferPointerDispatch.
+ */
+export function setSelectionIdOnHover(entityKey: string): void {
+  useSketchEditorStore.getState().setHoveredSelectionId(entityKey)
 }
 
 /**

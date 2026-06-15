@@ -1,8 +1,5 @@
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { setSelectionIdOnHover } from './brepAdapters'
 
 export const planeAdapter = {
-  onHover(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.setHoveredSelectionId(entityKey)
-  },
+  onHover: setSelectionIdOnHover,
 }

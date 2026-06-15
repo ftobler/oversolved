@@ -8,7 +8,7 @@ import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
-import { validateSketchEditorState, failLoud, repairSelectionState } from './stateInvariants'
+import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { ToolId } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
@@ -35,9 +35,6 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
   return _sketchCbs[key]
 }
 
-const devOnly = import.meta.env.DEV
-const testMode = import.meta.env.MODE === 'test'
-
 function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<SketchEditorState>) => void): void {
   const state = get()
   const patches = repairSelectionState(state)
@@ -56,26 +53,6 @@ export type { Mutation }
 export type { ActiveTool }
 
 export const getEffectiveTool = (activeTool: ActiveTool): NonNullable<ActiveTool> => activeTool ?? 'drag'
-
-export function deriveSelectionDomain(ids: Set<string>): SelectionDomain {
-  if (ids.size === 0) return 'sketch_2d'
-  let hasSketch = false
-  let has3d = false
-  let hasPlane = false
-  for (const id of ids) {
-    if (id.startsWith('entity:') || id.startsWith('vertex:') || id.startsWith('face:') || id.startsWith('constraint:')) {
-      hasSketch = true
-    } else if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) {
-      has3d = true
-    } else if (id.startsWith('@')) {
-      hasPlane = true
-    }
-  }
-  if (hasSketch && !has3d && !hasPlane) return 'sketch_2d'
-  if (has3d && !hasSketch && !hasPlane) return 'body_3d'
-  if (hasPlane && !hasSketch && !has3d) return 'plane_3d'
-  return 'mixed'
-}
 
 export interface DialogState {
   position: [number, number]

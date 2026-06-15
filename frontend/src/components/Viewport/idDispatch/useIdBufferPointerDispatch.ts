@@ -4,7 +4,7 @@ import { getLivePipeline } from '@/picking'
 import type { ResolvedHit } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dimensionLabelAdapter } from './dimensionLabelAdapter'
-import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover } from './brepAdapters'
+import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover, setSelectionIdOnHover } from './brepAdapters'
 import { sketchEntityAdapter } from './sketchEntityAdapter'
 import { sketchVertexAdapter } from './sketchVertexAdapter'
 import { planeAdapter } from './planeAdapter'
@@ -85,9 +85,7 @@ const hoverAdapters: Record<string, ((entityKey: string) => void) | undefined> =
   [VERTEX_LAYER_NAME]: brepVertexAdapter.onHover,
   [SKETCH_ENTITY_LAYER_NAME]: sketchEntityAdapter.onHover,
   [SKETCH_VERTEX_LAYER_NAME]: sketchVertexAdapter.onHover,
-  [SKETCH_SURFACE_LAYER_NAME]: (entityKey) => {
-    useSketchEditorStore.getState().setHoveredSelectionId(entityKey)
-  },
+  [SKETCH_SURFACE_LAYER_NAME]: setSelectionIdOnHover,
   [PLANE_LAYER_NAME]: planeAdapter.onHover,
   [ORIGIN_LAYER_NAME]: originAdapter.onHover,
   [DIMENSION_LABEL_LAYER_NAME]: undefined,  // handled separately

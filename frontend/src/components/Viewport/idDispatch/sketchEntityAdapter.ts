@@ -1,5 +1,6 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dispatchSketchClick, dispatchDragInitiation } from './dispatchSketchClick'
+import { setSelectionIdOnHover } from './brepAdapters'
 
 /**
  * Parse a sketch entity key like `entity:feat1:line1`
@@ -16,10 +17,7 @@ function parseEntityKey(entityKey: string): { featureId: string; entityId: strin
  * Adapter for the `sketchEntity` ID layer.
  */
 export const sketchEntityAdapter = {
-  onHover(entityKey: string): void {
-    const s = useSketchEditorStore.getState()
-    s.setHoveredSelectionId(entityKey)
-  },
+  onHover: setSelectionIdOnHover,
   onClick(entityKey: string, clientX: number, clientY: number): void {
     const entityKind = useSketchEditorStore.getState().entityKindMap[entityKey]
     dispatchSketchClick(entityKey, entityKind, clientX, clientY)
