@@ -299,3 +299,81 @@ pub fn solve_lm_sparse(
         iters,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_d() -> (Vec<f64>, impl Fn(&[f64]) -> Vec<f64>, impl Fn(&[f64]) -> DMatrix<f64>) {
+        let f = |x: &[f64]| vec![x[0] - 5.0];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 1, &[1.0]);
+        (vec![0.0], f, jac)
+    }
+
+    fn two_d() -> (Vec<f64>, impl Fn(&[f64]) -> Vec<f64>, impl Fn(&[f64]) -> DMatrix<f64>) {
+        let f = |x: &[f64]| vec![x[0] - 3.0, x[1] - 7.0];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
+        (vec![1.0, 2.0], f, jac)
+    }
+
+    #[test]
+    fn solve_lm_converges_1d() {
+        let (x0, f, jac) = one_d();
+        let r = solve_lm(&x0, &f, &jac);
+        assert!((r.x[0] - 5.0).abs() < 1e-6, "x={}", r.x[0]);
+        assert!(r.residual_norm < 1e-4, "res={}", r.residual_norm);
+    }
+
+    #[test]
+    fn solve_lm_converges_2d() {
+        let (x0, f, jac) = two_d();
+        let r = solve_lm(&x0, &f, &jac);
+        assert!((r.x[0] - 3.0).abs() < 1e-6, "x={}", r.x[0]);
+        assert!((r.x[1] - 7.0).abs() < 1e-6, "y={}", r.x[1]);
+        assert!(r.residual_norm < 1e-4, "res={}", r.residual_norm);
+    }
+
+    #[test]
+    fn solve_lm_no_residuals_returns_immediately() {
+        let f = |_: &[f64]| Vec::<f64>::new();
+        let jac = |_: &[f64]| DMatrix::<f64>::zeros(0, 2);
+        let r = solve_lm(&[1.0, 2.0], &f, &jac);
+        assert_eq!(r.iters, 0);
+        assert_eq!(r.x, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn solve_lm_no_params_returns_immediately() {
+        let f = |_: &[f64]| vec![1.0, 2.0];
+        let jac = |_: &[f64]| DMatrix::<f64>::zeros(2, 0);
+        let r = solve_lm(&[], &f, &jac);
+        assert_eq!(r.iters, 0);
+        assert!(r.residual_norm - (1.0_f64 * 1.0 + 2.0 * 2.0).sqrt() < 1e-12);
+    }
+
+    #[test]
+    fn solve_lm_sparse_converges_1d() {
+        let f = |x: &[f64]| vec![x[0] - 5.0];
+        let jac = |_: &[f64]| vec![vec![(0, 1.0)]];
+        let r = solve_lm_sparse(&[0.0], &f, &jac);
+        assert!((r.x[0] - 5.0).abs() < 1e-6, "x={}", r.x[0]);
+        assert!(r.residual_norm < 1e-8);
+    }
+
+    #[test]
+    fn solve_lm_sparse_no_residuals_returns_immediately() {
+        let f = |_: &[f64]| Vec::<f64>::new();
+        let jac = |_: &[f64]| Vec::<Vec<(usize, f64)>>::new();
+        let r = solve_lm_sparse(&[1.0, 2.0], &f, &jac);
+        assert_eq!(r.iters, 0);
+        assert_eq!(r.x, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn solve_lm_sparse_no_params_returns_immediately() {
+        let f = |_: &[f64]| vec![1.0];
+        let jac = |_: &[f64]| vec![vec![]];
+        let r = solve_lm_sparse(&[], &f, &jac);
+        assert_eq!(r.iters, 0);
+    }
+}

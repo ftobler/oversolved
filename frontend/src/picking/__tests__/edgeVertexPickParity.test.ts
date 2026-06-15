@@ -52,7 +52,7 @@ describe('edgeVertexPickParity (structural)', () => {
     const layer = new VertexIdLayer(reg)
     layer.registerBody({ bodyKey: 'cube', vertices, vertexQueries })
 
-    const im = layer.scene.children[0] as import('three').InstancedMesh
+    const im = layer.scene.children[0] as import('three').Points
     const aColor = im.geometry.getAttribute('aColor')
 
     for (let i = 0; i < vertices.length; i++) {
