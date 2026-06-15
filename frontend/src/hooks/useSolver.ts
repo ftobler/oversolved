@@ -115,6 +115,7 @@ export function useSolver(
       status?: string
       features?: Record<string, { status?: string }>
       topology?: import('@/types/cad').Topology
+      originLocal?: [number, number]
       plane_transform?: import('@/types/cad').PlaneTransform
       constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous: boolean }>
       plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }
@@ -165,6 +166,7 @@ export function useSolver(
           status: feature.status,
           ...(constraints && { constraints }),
           ...(entityStatus && { features: entityStatus }),
+          ...(feature.originLocal && { originLocal: feature.originLocal }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
         }
       } else if (feature.plane) {
