@@ -190,10 +190,15 @@ export function resolve3dGeometry(data: Dict, _sourceQuery: string): Resolved3dG
     return { kindH: 'line', data: { start, end } }
   }
   if (dataType === 'vertex') {
-    const x = (data.x as number) ?? 0
-    const y = (data.y as number) ?? 0
-    const z = (data.z as number) ?? 0
-    return { kindH: 'point', data: { point: [x, y, z] } }
+    // B-rep vertices carry coords under `origin` (builder.ts); slash-registry
+    // points use flat x/y/z (postRegister.ts). Read both, else the B-rep shape
+    // falls through to [0,0,0] and projects the document origin.
+    const pt = (data.origin as number[] | undefined) ?? [
+      (data.x as number) ?? 0,
+      (data.y as number) ?? 0,
+      (data.z as number) ?? 0,
+    ]
+    return { kindH: 'point', data: { point: pt } }
   }
   // Fallback: payloads from the slash registry (hole points, etc.)
   if ('x' in data || 'y' in data || 'z' in data) {

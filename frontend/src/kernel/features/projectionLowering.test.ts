@@ -14,9 +14,20 @@ import {
 const XY: PlaneFrame = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
 
 describe('resolve3dGeometry', () => {
-  it('reads a vertex payload as a point', () => {
+  it('reads a flat x/y/z vertex payload as a point', () => {
     const g = resolve3dGeometry({ type: 'vertex', x: 1, y: 2, z: 3 }, '?v')
     expect(g).toEqual({ kindH: 'point', data: { point: [1, 2, 3] } })
+  })
+
+  it('reads a B-rep vertex payload (coords under `origin`) as a point', () => {
+    // builder.ts registers B-rep vertices with `origin: [x,y,z]`, no flat keys.
+    // Regression: this used to fall through to [0,0,0] and project the document
+    // origin, so every picked B-rep vertex landed 100% wrong.
+    const g = resolve3dGeometry(
+      { type: 'vertex', body_id: 'b1', vertex_index: 2, origin: [5, -3, 7] },
+      '?v',
+    )
+    expect(g).toEqual({ kindH: 'point', data: { point: [5, -3, 7] } })
   })
 
   it('reads a line edge', () => {
