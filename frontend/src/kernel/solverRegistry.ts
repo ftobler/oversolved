@@ -31,6 +31,7 @@ import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
 import { solvePlane } from './features/plane'
+import { solveVariable } from './features/variable'
 import { evalFeatureParams, EXPR_FIELDS_BY_KIND } from './evalExpr'
 
 // ── Ported kind set ──────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
   'mirror',
   'delete_body',
   'import_step',
+  'variable',
 ]))
 
 /** Kinds that the TS kernel cannot solve (origin, etc.). */
@@ -117,6 +119,10 @@ const KIND_SOLVER: Record<string, LeafSolver> = {
   mirror: _s(solveMirror),
   delete_body: _s(solveDeleteBody),
   import_step: _s(solveImportStep),
+  // Variables carry no OCC geometry. The builder path short-circuits them in
+  // ``createFeatureSolver`` (passing the live variable context); this entry is
+  // the ``getSolver`` fallback and resolves against an empty context.
+  variable: _s((_oc, _scope, _table, feature: Record<string, unknown>) => solveVariable(feature, {})),
 }
 
 /** Resolve a leaf solver for the given feature kind, or null if unported. */
@@ -206,18 +212,25 @@ export function createFeatureSolver(
     globalRepo: Repository,
     bodyStore: Record<string, Body>,
     featuresById: Record<string, Record<string, unknown>>,
+    variableContext: Record<string, number> = {},
   ) => {
     const kind = feature.kind as string | undefined
     if (!kind) {
       return { status: 'exception', exception: 'feature missing kind' }
+    }
+    // Variables carry no geometry: evaluate their expression against the
+    // accumulated variable context and short-circuit the OCC path entirely.
+    if (kind === 'variable') {
+      return solveVariable(feature, variableContext)
     }
     const solver = KIND_SOLVER[kind]
     if (!solver) {
       return { status: 'exception', exception: `unported feature kind: ${kind}` }
     }
     // Resolve any math-expression params (e.g. distance="50+25") to numbers
-    // before dispatch. The leaf solvers only ever read numbers.
-    const resolved = resolveFeatureExpressions(feature)
+    // before dispatch. Named variables from preceding features supply the
+    // context; the leaf solvers only ever read numbers.
+    const resolved = resolveFeatureExpressions(feature, variableContext)
     if ('exception' in resolved) {
       return { status: 'exception', exception: resolved.exception }
     }

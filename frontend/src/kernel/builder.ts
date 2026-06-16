@@ -28,6 +28,7 @@ export type FeatureSolver = (
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
   featuresById: Record<string, Record<string, unknown>>,
+  variableContext?: Record<string, number>,
 ) => FeatureResult
 
 export interface BuildDeps {
@@ -123,6 +124,21 @@ export interface RebuildValidation {
 const VOLATILE_FEATURE_KEYS = new Set([
   'drag_anchor',
 ])
+
+// Extract a variable feature's published value from its solve result, or null
+// for non-variable features / errored solves. The builder threads these into a
+// `variableContext` so downstream expression fields (e.g. distance="width*2")
+// and later variables resolve named references during the same build.
+function variableValueOf(
+  feature: Record<string, unknown>,
+  result: Record<string, unknown> | undefined,
+): { name: string; value: number } | null {
+  if (feature.kind !== 'variable') return null
+  const value = result?.value
+  if (typeof value !== 'number' || !isFinite(value)) return null
+  const name = String(feature.label ?? feature.id ?? '')
+  return name ? { name, value } : null
+}
 
 function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -713,6 +729,16 @@ export function build(
 
   const featuresById = Object.fromEntries(allFeatures.map((f) => [String(f.id ?? ''), f]))
 
+  // Accumulate named-variable values in feature order. Seed from the restored
+  // clean prefix (those variables are not re-solved this build) so a dirty
+  // downstream feature still resolves a variable defined before the dirty point.
+  const variableContext: Record<string, number> = {}
+  for (let i = 0; i < firstDirty && i < features.length; i++) {
+    const f = features[i]
+    const vv = variableValueOf(f, result[String(f.id ?? '')] as Record<string, unknown> | undefined)
+    if (vv) variableContext[vv.name] = vv.value
+  }
+
   // Checkpoint body meshes, keyed by the body's shape OccHandle and captured in
   // the loop below while the shape is still alive. A downstream feature can
   // release/replace a body's shape handle (e.g. fillet calls `table.release` on
@@ -777,10 +803,12 @@ export function build(
     setCurrentFeatureId(fid)
     try {
       const t0 = performance.now()
-      const featureResult = deps.trySolveFeature(feature, globalRepo, bodyStore, featuresById)
+      const featureResult = deps.trySolveFeature(feature, globalRepo, bodyStore, featuresById, variableContext)
       featureResult.solve_ms = performance.now() - t0
       deps.postRegister(globalRepo, fid, feature, featureResult)
       result[fid] = featureResult
+      const vv = variableValueOf(feature, featureResult)
+      if (vv) variableContext[vv.name] = vv.value
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e)
       result[fid] = { status: 'exception', exception: err, solve_ms: 0 }

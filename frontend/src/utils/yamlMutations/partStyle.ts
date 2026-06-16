@@ -1,5 +1,6 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { findFeature } from './helpers'
+import { isValidVariableName } from '@/kernel/features/variable'
 
 const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
@@ -111,8 +112,21 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
 export function applyRenameFeature(doc: PartDoc, featureId: string, label: string): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
-  if (label.trim()) {
-    feature.label = label.trim()
+  const trimmed = label.trim()
+  // A variable's label is its reference name: enforce identifier validity and
+  // uniqueness, silently rejecting an invalid or colliding rename (MVP: no UI
+  // hint yet). An empty label is also rejected (variables must stay named).
+  if (feature.kind === 'variable') {
+    if (!isValidVariableName(trimmed)) return
+    const collision = (doc.features ?? []).some(
+      f => f.id !== featureId && f.kind === 'variable' && f.label === trimmed,
+    )
+    if (collision) return
+    feature.label = trimmed
+    return
+  }
+  if (trimmed) {
+    feature.label = trimmed
   } else {
     delete feature.label
   }

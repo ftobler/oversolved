@@ -129,6 +129,12 @@ export interface TransformFeatureDef {
   scale_center_from?: string
 }
 
+export interface VariableFeatureDef {
+  expression: NumberOrExpr  // math formula, e.g. "width * 2 + 10" (or a plain number)
+  value?: number            // cached evaluated result (written by the solver, read-only in UI)
+  unit?: string             // optional display hint ("mm", "deg")
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -307,6 +313,7 @@ export interface PartFeature {
   hole?: HoleFeatureDef  // present when kind === 'hole'
   transform?: TransformFeatureDef  // present when kind === 'transform'
   mirror?: MirrorFeatureDef  // present when kind === 'mirror'
+  variable?: VariableFeatureDef  // present when kind === 'variable'
   file_id?: string  // present when kind === 'import_step'
   drag_anchor?: string  // transient solve-only hint: entity just dragged, anchored firmly by the solver
 }
@@ -733,6 +740,8 @@ export type Mutation =
   | { type: 'mirror_entities'; featureId: string; entityIds: string[]; mirrorLineId: string }
   | { type: 'add_mirror'; featureId: string; label?: string }
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
+  | { type: 'add_variable'; featureId: string; label?: string }
+  | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }

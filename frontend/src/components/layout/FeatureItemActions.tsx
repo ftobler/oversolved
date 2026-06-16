@@ -237,6 +237,21 @@ export function FeatureItemActions({
           </button>
         </>
       )}
+      {kind === 'variable' && showEditBtn && (
+        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit variable">
+          <img src={contextEditIcon} alt="Edit" />
+        </button>
+      )}
+      {kind === 'variable' && showExitBtn && (
+        <>
+          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
+            <img src={okIcon} alt="OK" />
+          </button>
+          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
+            <img src={cancelIcon} alt="Cancel" />
+          </button>
+        </>
+      )}
       {kind === 'sketch' && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">

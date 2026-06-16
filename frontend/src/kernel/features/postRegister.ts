@@ -135,6 +135,21 @@ export function postRegister(
 ): void {
   if (featureResult.status === 'exception') return
 
+  // Variable features publish a named scalar. Register it by stable feature id
+  // (`_var_<id>`) and by label so name-based queries resolve. Last registration
+  // under a colliding label wins, matching the "last-wins" shadowing semantics.
+  if (typeof featureResult.value === 'number') {
+    const varName = String(feature.label ?? featureId)
+    const payload = {
+      type: 'variable',
+      value: featureResult.value,
+      expression: featureResult.expression,
+      label: varName,
+    }
+    globalRepo.register('_var_' + featureId, payload)
+    globalRepo.register(varName, payload)
+  }
+
   clearFeatureGeometryRegistrations(globalRepo, featureId)
 
   if (featureResult.geometry !== undefined) {

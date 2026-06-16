@@ -146,6 +146,10 @@ export function describeMutation(m: Mutation): string {
       return `set mirror ${m.field} to ${m.value}`
     case 'mirror_entities':
       return `mirror ${m.entityIds.length} entities in ${m.featureId}`
+    case 'add_variable':
+      return `add variable ${m.label ?? m.featureId}`
+    case 'set_variable_field':
+      return `set variable ${m.field} to ${m.value}`
     case 'reorder_features':
       return `reorder ${m.featureId} to index ${m.toIndex}`
     case 'set_body_visibility':

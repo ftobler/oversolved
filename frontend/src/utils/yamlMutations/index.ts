@@ -64,6 +64,8 @@ export {
   applyMirrorEntities,
   applyAddMirror,
   applySetMirrorField,
+  applyAddVariable,
+  applySetVariableField,
 } from './featureDefs'
 
 export {

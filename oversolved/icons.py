@@ -647,6 +647,24 @@ def feature_plane(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-variable.svg")
+def feature_variable(ctx):
+    # Variable icon: an italic "x" (left) and an "=" sign (right): x = ...
+    # x: two crossing diagonal strokes
+    ctx.move_to(0.14, 0.3)
+    ctx.line_to(0.42, 0.66)
+    ctx.move_to(0.42, 0.3)
+    ctx.line_to(0.14, 0.66)
+    stroke(ctx, 1.5)
+
+    # = : two horizontal strokes
+    ctx.move_to(0.55, 0.43)
+    ctx.line_to(0.86, 0.43)
+    ctx.move_to(0.55, 0.57)
+    ctx.line_to(0.86, 0.57)
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/feature-add-plane.svg")
 def feature_add_plane(ctx):
     # Plane icon scaled to left portion, plus sign in top-right

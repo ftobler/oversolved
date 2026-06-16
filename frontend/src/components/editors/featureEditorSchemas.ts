@@ -243,6 +243,17 @@ export const DELETE_BODY_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+export const VARIABLE_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_variable',
+  subKey: 'variable',
+  defaults: { expression: '0' },
+  fields: [
+    // Plain text (not ExpressionInput): a variable expression may reference other
+    // variables the editor cannot resolve locally, so we must not eval-and-revert.
+    { type: 'text', key: 'expression', label: 'Expression', default: '0' },
+  ],
+}
+
 export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   extrude: EXTRUDE_SCHEMA,
   revolve: REVOLVE_SCHEMA,
@@ -256,4 +267,5 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   array: ARRAY_SCHEMA,
   circular_array: CIRCULAR_ARRAY_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
+  variable: VARIABLE_SCHEMA,
 }

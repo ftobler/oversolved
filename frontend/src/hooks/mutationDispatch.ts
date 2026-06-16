@@ -73,6 +73,8 @@ import {
   applyMirrorEntities,
   applyAddMirror,
   applySetMirrorField,
+  applyAddVariable,
+  applySetVariableField,
   applySetBodyVisibility,
   applySetFeatureSuppression,
 } from '@/utils/yamlMutations'
@@ -234,6 +236,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddMirror(next, m.featureId, m.label),
   set_mirror_field: (next, m) =>
     applySetMirrorField(next, m.featureId, m.field, m.value),
+  add_variable: (next, m) =>
+    applyAddVariable(next, m.featureId, m.label),
+  set_variable_field: (next, m) =>
+    applySetVariableField(next, m.featureId, m.field, m.value),
   reorder_features: (next, m) =>
     applyReorderFeatures(next, m.featureId, m.toIndex),
   reorder_pick_field: (next, m) =>

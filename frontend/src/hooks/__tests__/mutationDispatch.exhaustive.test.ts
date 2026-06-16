@@ -75,6 +75,8 @@ export const ALL_MUTATION_TYPES = [
   'mirror_entities',
   'add_mirror',
   'set_mirror_field',
+  'add_variable',
+  'set_variable_field',
   'reorder_features',
   'reorder_pick_field',
   'set_feature_suppression',

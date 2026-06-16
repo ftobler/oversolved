@@ -22,6 +22,7 @@ import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
 import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
+import featureVariableIcon from '@/assets/icons/feature-variable.svg'
 import featureImportIcon from '@/assets/icons/icon-upload.svg'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 
@@ -58,6 +59,8 @@ const getFeatureIcon = (kind: string | undefined) => {
       return featureTransformIcon
     case 'mirror':
       return featureMirrorIcon
+    case 'variable':
+      return featureVariableIcon
     case 'import_step':
       return featureImportIcon
     default:
@@ -281,20 +284,25 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   className="feature-icon"
                 />
                 {(() => {
-                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'sweep' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' ? solveResults?.[feature.id] : undefined
+                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'sweep' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' || feature.kind === 'variable' ? solveResults?.[feature.id] : undefined
                   const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
                   const hasMeshError = bodyResult?.body_id
                     ? bodies?.[bodyResult.body_id]?.mesh_error : undefined
                   const isError = !!r && ((r as { status?: string }).status !== 'ok' || !!hasMeshError)
                   const errMsg: string = bodyResult?.exception
+                    ?? (r as { exception?: string } | undefined)?.exception
                     ?? (bodyResult?.body_id ? bodies?.[bodyResult.body_id]?.mesh_error : undefined)
                     ?? ''
+                  // Variables surface their solved value inline: `width = 100`.
+                  const varValue = feature.kind === 'variable' && !isError
+                    ? (r as { value?: number } | undefined)?.value : undefined
                   return (
                     <span
                       className={`feature-name${isError ? ' feature-name-error' : ''}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
                       title={errMsg}
                     >
                       {feature.label || feature.id}
+                      {varValue !== undefined ? ` = ${varValue}` : ''}
                     </span>
                   )
                 })()}

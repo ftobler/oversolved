@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch, normalizeSweepPath } from './helpers'
 
@@ -632,4 +632,49 @@ export function applySetMirrorField(
     return
   }
   ;(feat.mirror as unknown as Record<string, unknown>)[field] = value
+}
+
+// ─── Variable ───
+
+/** Replace invalid identifier chars with `_`, prefix leading digits, fallback to `var`. */
+function sanitizeIdentifier(s: string): string {
+  const cleaned = s.replace(/[^A-Za-z0-9_$]/g, '_')
+  // All-underscore (or empty) carries no meaningful name: fall back to `var`.
+  if (!/[A-Za-z0-9$]/.test(cleaned)) return 'var'
+  if (/^[0-9]/.test(cleaned)) return 'var_' + cleaned
+  return cleaned
+}
+
+/** Return `base` sanitized if unused, else append `_2`, `_3`, ... so variable
+ *  labels stay unique (the label IS the downstream reference name). */
+function uniqueVariableName(base: string, existingVars: PartFeature[]): string {
+  const name = sanitizeIdentifier(base) || 'var'
+  const used = new Set(existingVars.map(f => f.label))
+  if (!used.has(name)) return name
+  let counter = 2
+  while (used.has(`${name}_${counter}`)) counter++
+  return `${name}_${counter}`
+}
+
+export function applyAddVariable(doc: PartDoc, featureId: string, label?: string): void {
+  if (!doc.features) doc.features = []
+  const existing = doc.features.filter(f => f.kind === 'variable')
+  const name = uniqueVariableName(label ?? 'var', existing)
+  doc.features.push({
+    id: featureId,
+    kind: 'variable',
+    label: name,
+    variable: { expression: '0' },
+  })
+}
+
+export function applySetVariableField(
+  doc: PartDoc, featureId: string, field: keyof VariableFeatureDef, value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.variable) {
+    warn(`applySetVariableField: feature ${featureId} has no variable`)
+    return
+  }
+  setFeatureField(feature.variable as unknown as Record<string, unknown>, field, value)
 }

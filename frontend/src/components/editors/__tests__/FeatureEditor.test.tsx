@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
-import { EXTRUDE_SCHEMA, FILLET_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 
@@ -229,5 +229,29 @@ describe('FeatureEditor schema lookup', () => {
     render(<FeatureEditor feature={feature} onMutation={vi.fn()} schema={FILLET_SCHEMA} />)
     expect(screen.getByText('Edges')).toBeInTheDocument()
     expect(screen.getByText('Radius')).toBeInTheDocument()
+  })
+})
+
+describe('VARIABLE_SCHEMA', () => {
+  it('has the expected shape', () => {
+    expect(VARIABLE_SCHEMA.mutationPrefix).toBe('set_variable')
+    expect(VARIABLE_SCHEMA.subKey).toBe('variable')
+    expect(VARIABLE_SCHEMA.defaults).toEqual({ expression: '0' })
+    const field = VARIABLE_SCHEMA.fields.find(f => f.key === 'expression')
+    expect(field?.type).toBe('text')
+  })
+
+  it('is registered under the variable kind', () => {
+    expect(EDITOR_SCHEMAS.variable).toBe(VARIABLE_SCHEMA)
+  })
+
+  it('dispatches set_variable_field on expression blur', () => {
+    const onMutation = vi.fn()
+    const feature: PartFeature = { id: 'v1', kind: 'variable', variable: { expression: '0' } }
+    render(<FeatureEditor feature={feature} onMutation={onMutation} schema={VARIABLE_SCHEMA} />)
+    const input = screen.getByDisplayValue('0')
+    fireEvent.change(input, { target: { value: 'width*2' } })
+    fireEvent.blur(input)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_variable_field', featureId: 'v1', field: 'expression', value: 'width*2' })
   })
 })
