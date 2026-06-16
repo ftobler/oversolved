@@ -148,7 +148,7 @@ function planeOnFace(def: Dict, repo: Repository, bodyStore: Dict | null): Frame
 function planeOnFaceEdgeAngle(def: Dict, repo: Repository, bodyStore: Dict | null): Frame3D {
   const faceStr = def.face as string
   const edgeStr = def.edge as string
-  const angle = (def.angle as number) ?? 0.0
+  const angle = Number(def.angle ?? 0.0)
 
   const face = repo.query(faceStr, null, bodyStore) as Dict | null
   if (face === null) throw new Error(`face not found: ${JSON.stringify(faceStr)}`)
