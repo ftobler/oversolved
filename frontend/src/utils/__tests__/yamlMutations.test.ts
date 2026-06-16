@@ -197,6 +197,38 @@ describe('applyAddConstraint', () => {
     expect(added!.a).toBe('$line1start')
     expect(added!.b).toBe('@builtin_origin')
   })
+
+  it('horizontal with two vertices sets a and b refs', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'horizontal', ['vertex:Sketch1:line1:start', 'vertex:Sketch1:line1:end'])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'horizontal' && c.a !== undefined)
+    expect(added).toBeDefined()
+    expect(added!.a).toBe('$line1start')
+    expect(added!.b).toBe('$line1end')
+    expect(added!.target).toBeUndefined()
+  })
+
+  it('vertical with two vertices sets a and b refs', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'vertical', ['vertex:Sketch1:line1:start', 'vertex:Sketch1:line1:end'])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'vertical' && c.a !== undefined)
+    expect(added).toBeDefined()
+    expect(added!.a).toBe('$line1start')
+    expect(added!.b).toBe('$line1end')
+    expect(added!.target).toBeUndefined()
+  })
+
+  it('horizontal with single line target uses target ref', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'horizontal', ['entity:Sketch1:line1'])
+    const constraints = doc.features![0].constraints!
+    const added = constraints.find(c => c.kind === 'horizontal' && c.target !== undefined)
+    expect(added).toBeDefined()
+    expect(added!.target).toBe('$line1')
+    expect(added!.a).toBeUndefined()
+  })
 })
 
 describe('applyAddConstraint midpoint', () => {

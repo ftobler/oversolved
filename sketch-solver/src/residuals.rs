@@ -1419,6 +1419,40 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_a_b_equalizes_y_of_two_points() {
+        // Two points at (0,0) and (5,3). Horizontal a/b residual = pa.y - pb.y = -3.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 5.0, 3.0],
+            vec![cons(
+                ConstraintKind::Horizontal,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - (-3.0)).abs() < 1e-12, "horizontal a/b: {}", r[0]);
+    }
+
+    #[test]
+    fn vertical_a_b_equalizes_x_of_two_points() {
+        // Two points at (0,0) and (5,3). Vertical a/b residual = pa.x - pb.x = -5.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 5.0, 3.0],
+            vec![cons(
+                ConstraintKind::Vertical,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - (-5.0)).abs() < 1e-12, "vertical a/b: {}", r[0]);
+    }
+
+    #[test]
     fn coincident_point_point_residual() {
         // Two points: (1,2) and (4,6). Coincident residual = (dx, dy) = (-3,-4).
         let c = vec![Constraint {
@@ -2070,6 +2104,7 @@ mod tests {
             cons(ConstraintKind::Horizontal, vec![(Target, e_ref(0, Absent))]),
             cons(ConstraintKind::Horizontal, vec![(A, e_ref(0, Start)), (B, e_ref(4, End))]),
             cons(ConstraintKind::Vertical, vec![(Target, e_ref(1, Absent))]),
+            cons(ConstraintKind::Vertical, vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))]),
             cons_v(ConstraintKind::Length, vec![(Target, e_ref(0, Absent))], 5.0),
             cons_v(ConstraintKind::Radius, vec![(Target, e_ref(2, Absent))], 4.0),
             cons_v(ConstraintKind::Diameter, vec![(Target, e_ref(2, Absent))], 8.0),

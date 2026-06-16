@@ -107,7 +107,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Constrains a line segment to be horizontal, or two points to share the same Y coordinate.',
     category: 'geometric',
     hasValue: false,
-    refPattern: 'target',  // single line, or a/b for two points (overloaded)
+    refPattern: 'target',  // single line (target) or two points (a/b) — overloaded
     renderKind: 'symbol_h',
     symbolIcon: 'constraint-horizontal',
     toolbarIcon: 'constraint-horizontal',
@@ -120,7 +120,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Constrains a line segment to be vertical, or two points to share the same X coordinate.',
     category: 'geometric',
     hasValue: false,
-    refPattern: 'target',
+    refPattern: 'target',  // single line (target) or two points (a/b) — overloaded
     renderKind: 'symbol_v',
     symbolIcon: 'constraint-vertical',
     toolbarIcon: 'constraint-vertical',

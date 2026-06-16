@@ -468,6 +468,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       }
     }
 
+    if (kind === 'horizontal' || kind === 'vertical') {
+      if (targets.length === 1) {
+        const entityTargets = targets.filter(t => t.startsWith('entity:'))
+        if (entityTargets.length === 1) {
+          const ek = entityKindMap[entityTargets[0]]
+          if (ek !== undefined && ek !== 'line') {
+            if (devOnly) console.warn(`[sketchEditorStore] applyConstraint(${kind}): single target must be a line, got '${ek}'.`)
+            return
+          }
+        }
+      }
+    }
+
     if (kind === 'midpoint') {
       const entityTargets = targets.filter(t => t.startsWith('entity:'))
       const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
