@@ -2,6 +2,12 @@
 
 export type Point = [number, number]
 
+// A numeric parameter that the user may also enter as a math expression string
+// (e.g. "50+25", "width*2"). Plain numbers are kept for legacy docs and zero
+// overhead; expression strings are resolved to numbers in the solve pipeline
+// (kernel/evalExpr.ts) before the leaf solver runs.
+export type NumberOrExpr = number | string
+
 export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
 
 // Which geometric space the current selection lives in.
@@ -13,7 +19,7 @@ export type ExtrudeTermination = 'blind' | 'up_to'
 
 export interface ExtrudeFeatureDef {
   sketch: string | string[]
-  distance: number
+  distance: NumberOrExpr
   direction?: ExtrudeDirection
   // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
   // referenced by `up_to` (a plane, point, or planar face).
@@ -25,14 +31,14 @@ export interface ExtrudeFeatureDef {
 
 export interface FilletFeatureDef {
   edges: string[]
-  radius: number
+  radius: NumberOrExpr
 }
 
 export interface ChamferFeatureDef {
   edges: string[]
-  distance: number
+  distance: NumberOrExpr
   kind?: 'distance' | 'angle_distance'
-  angle?: number
+  angle?: NumberOrExpr
 }
 
 export interface BooleanFeatureDef {
@@ -47,12 +53,12 @@ export interface ArrayFeatureDef {
   mode?: 'linear' | 'rectangular'
   operation?: 'add' | 'new'
   include_source?: boolean
-  count_x?: number
-  pitch_x?: number
+  count_x?: NumberOrExpr
+  pitch_x?: NumberOrExpr
   direction_x?: [number, number, number]
   direction_x_query?: string
-  count_y?: number
-  pitch_y?: number
+  count_y?: NumberOrExpr
+  pitch_y?: NumberOrExpr
   direction_y?: [number, number, number]
   direction_y_query?: string
 }
@@ -61,8 +67,8 @@ export interface CircularArrayFeatureDef {
   source_body?: string
   operation?: 'add' | 'new'
   include_source?: boolean
-  count?: number
-  step_angle?: number | null
+  count?: NumberOrExpr
+  step_angle?: NumberOrExpr | null
   axis?: string
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
@@ -72,7 +78,7 @@ export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'
 
 export interface RevolveFeatureDef {
   sketch: string | string[]
-  angle: number
+  angle: NumberOrExpr
   direction?: RevolveDirection
   axis?: string
   axis_origin?: [number, number, number]
@@ -94,9 +100,9 @@ export interface DeleteBodyFeatureDef {
 
 export interface HoleFeatureDef {
   sketch: string
-  diameter: number
+  diameter: NumberOrExpr
   depth_mode: 'blind' | 'through_all'
-  depth: number
+  depth: NumberOrExpr
   direction?: 'normal' | 'reverse'
   target?: string
 }
@@ -114,11 +120,11 @@ export interface TransformFeatureDef {
   translation?: [number, number, number]
   translation_from?: string
   translation_to?: string
-  rotation_angle?: number
+  rotation_angle?: NumberOrExpr
   rotation_axis_origin?: [number, number, number]
   rotation_axis_direction?: [number, number, number]
   rotation_axis?: string
-  scale?: number
+  scale?: NumberOrExpr
   scale_center?: [number, number, number]
   scale_center_from?: string
 }
@@ -266,7 +272,7 @@ export interface PartEntityDef {
 export interface PlaneDef {
   mode?: 'offset' | 'three_point' | 'plane_point' | 'line_angle' | 'edge_point' | 'on_face' | 'on_face_edge_angle'
   plane?: string
-  offset?: number
+  offset?: NumberOrExpr
   p1?: string
   p2?: string
   p3?: string
@@ -274,8 +280,8 @@ export interface PlaneDef {
   line?: string
   edge?: string
   face?: string
-  angle?: number
-  rotation?: number
+  angle?: NumberOrExpr
+  rotation?: NumberOrExpr
 }
 
 export interface PartFeature {

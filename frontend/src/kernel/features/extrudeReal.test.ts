@@ -868,4 +868,26 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     expect(m2).toBeDefined()
     if (m2) assertMeshValid(m2)
   })
+
+  // ── Math-expression distance (kernel/evalExpr) ───────────────────────────
+
+  it('extrude distance as an expression string resolves before solve', () => {
+    // "20/4" must evaluate to 5 so the prism reaches z=5, exactly like a
+    // plain numeric distance of 5.
+    const spec = { features: [rectSketchSk('sk1', 10, 8), extrudeSpec('sk1', 'ex1', {})] }
+    ;(spec.features[1] as Record<string, unknown>).distance = '20/4'
+    const result = run(spec)
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
+  })
+
+  it('invalid distance expression surfaces as a feature exception', () => {
+    const spec = { features: [rectSketchSk('sk1', 10, 8), extrudeSpec('sk1', 'ex1', {})] }
+    ;(spec.features[1] as Record<string, unknown>).distance = '2+/'
+    const result = run(spec)
+    expect(res(result, 'ex1').status).toBe('exception')
+    expect(String(res(result, 'ex1').exception)).toContain('2+/')
+  })
 })

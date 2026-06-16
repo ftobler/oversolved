@@ -5,6 +5,7 @@ import {
   unportedKinds,
   getSolver,
   createFeatureSolver,
+  resolveFeatureExpressions,
 } from './solverRegistry'
 import type { FeatureResult } from './builder'
 import type { OccModule } from './occ/occTypes'
@@ -213,5 +214,77 @@ describe('createFeatureSolver', () => {
         featuresById,
       )
     }).toThrow()
+  })
+})
+
+// ── Expression resolution ────────────────────────────────────────────────
+
+describe('resolveFeatureExpressions', () => {
+  it('evaluates a sub-dict expression string to a number', () => {
+    const r = resolveFeatureExpressions({ id: 'e1', kind: 'extrude', extrude: { distance: '100/4' } })
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) {
+      expect((r.feature.extrude as Record<string, unknown>).distance).toBe(25)
+    }
+  })
+
+  it('passes plain numbers through unchanged', () => {
+    const r = resolveFeatureExpressions({ id: 'e1', kind: 'extrude', extrude: { distance: 50 } })
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) {
+      expect((r.feature.extrude as Record<string, unknown>).distance).toBe(50)
+    }
+  })
+
+  it('does not mutate the original feature (keeps the raw expression)', () => {
+    const original = { id: 'e1', kind: 'extrude', extrude: { distance: '2+2' } }
+    resolveFeatureExpressions(original)
+    expect(original.extrude.distance).toBe('2+2')
+  })
+
+  it('returns an exception for an invalid expression', () => {
+    const r = resolveFeatureExpressions({ id: 'e1', kind: 'extrude', extrude: { distance: '2+/' } })
+    expect('exception' in r).toBe(true)
+    if ('exception' in r) expect(r.exception).toContain('2+/')
+  })
+
+  it('resolves a flat feature-level expression (not under the sub-key)', () => {
+    // Some specs carry params flat on the feature; leaf solvers overlay these
+    // over the sub-dict, so they must be evaluated too.
+    const r = resolveFeatureExpressions({ id: 'e1', kind: 'extrude', distance: '50+25' })
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) expect(r.feature.distance).toBe(75)
+  })
+
+  it('resolves feature-level scale for import_step', () => {
+    const r = resolveFeatureExpressions({ id: 's1', kind: 'import_step', scale: '2*3' })
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) expect(r.feature.scale).toBe(6)
+  })
+
+  it('resolves plane definition fields', () => {
+    const r = resolveFeatureExpressions({ id: 'p1', kind: 'plane', definition: { offset: '5+5' } })
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) {
+      expect((r.feature.definition as Record<string, unknown>).offset).toBe(10)
+    }
+  })
+
+  it('leaves kinds without expression fields untouched', () => {
+    const f = { id: 'b1', kind: 'boolean', boolean: { op: 'union' } }
+    const r = resolveFeatureExpressions(f)
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) expect(r.feature).toBe(f)
+  })
+
+  it('resolves with an injected variable context', () => {
+    const r = resolveFeatureExpressions(
+      { id: 'e1', kind: 'extrude', extrude: { distance: 'width*2' } },
+      { width: 7 },
+    )
+    expect('feature' in r).toBe(true)
+    if ('feature' in r) {
+      expect((r.feature.extrude as Record<string, unknown>).distance).toBe(14)
+    }
   })
 })

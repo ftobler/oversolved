@@ -31,6 +31,7 @@ import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
 import { solvePlane } from './features/plane'
+import { evalFeatureParams, EXPR_FIELDS_BY_KIND } from './evalExpr'
 
 // ── Ported kind set ──────────────────────────────────────────────────────
 
@@ -123,6 +124,67 @@ export function getSolver(kind: string): LeafSolver | null {
   return KIND_SOLVER[kind] ?? null
 }
 
+// ── Expression resolution ────────────────────────────────────────────────
+
+/**
+ * Where each kind's expression-capable params live. Most kinds nest them under
+ * `feature[kind]`; `plane` keeps them in `feature.definition`; `import_step`
+ * reads `scale` straight off the feature. An empty string means feature-level.
+ */
+const EXPR_SUBKEY_BY_KIND: Record<string, string> = {
+  extrude: 'extrude',
+  revolve: 'revolve',
+  fillet: 'fillet',
+  chamfer: 'chamfer',
+  hole: 'hole',
+  array: 'array',
+  circular_array: 'circular_array',
+  transform: 'transform',
+  plane: 'definition',
+  import_step: '',
+}
+
+/**
+ * Resolve any expression-string params on a feature to numbers before the leaf
+ * solver runs. Returns a shallow copy with the relevant sub-dict cloned and
+ * evaluated; the original feature (and the document) keeps its raw expression
+ * strings. Plain-number fields are untouched, so legacy docs cost nothing.
+ *
+ * On a failed evaluation the leaf solver is never reached: an `exception`
+ * result is returned carrying the parse message. `context` supplies named
+ * variables (currently empty; the variable table feature will populate it).
+ */
+export function resolveFeatureExpressions(
+  feature: Record<string, unknown>,
+  context: Record<string, number> = {},
+): { feature: Record<string, unknown> } | { exception: string } {
+  const kind = feature.kind as string | undefined
+  if (!kind) return { feature }
+  const exprFields = EXPR_FIELDS_BY_KIND[kind]
+  if (!exprFields) return { feature }
+
+  // Leaf solvers overlay feature-level fields over the sub-dict
+  // (`{ ...sub, ...feature }`), so a param may be stored either flat on the
+  // feature or nested under its sub-key. Evaluate both so neither storage form
+  // silently slips past with an unresolved expression string.
+  const subKey = EXPR_SUBKEY_BY_KIND[kind] ?? ''
+  const copy: Record<string, unknown> = { ...feature }
+  const targets: Record<string, unknown>[] = [copy]
+  if (subKey !== '') {
+    copy[subKey] = { ...(copy[subKey] as Record<string, unknown> | undefined) }
+    targets.push(copy[subKey] as Record<string, unknown>)
+  }
+
+  for (const target of targets) evalFeatureParams(target, exprFields, context)
+
+  for (const target of targets) {
+    const errKey = Object.keys(target).find((k) => k.endsWith('_error'))
+    if (errKey) return { exception: String(target[errKey]) }
+  }
+
+  return { feature: copy }
+}
+
 // ── Builder adapter ──────────────────────────────────────────────────────
 
 /**
@@ -153,7 +215,13 @@ export function createFeatureSolver(
     if (!solver) {
       return { status: 'exception', exception: `unported feature kind: ${kind}` }
     }
+    // Resolve any math-expression params (e.g. distance="50+25") to numbers
+    // before dispatch. The leaf solvers only ever read numbers.
+    const resolved = resolveFeatureExpressions(feature)
+    if ('exception' in resolved) {
+      return { status: 'exception', exception: resolved.exception }
+    }
     // hole.ts takes featuresById as its 7th argument; other solvers ignore it.
-    return solver(oc, scope, table, feature, globalRepo, bodyStore, featuresById)
+    return solver(oc, scope, table, resolved.feature, globalRepo, bodyStore, featuresById)
   }
 }

@@ -1,6 +1,7 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/useFieldPicking'
+import { ExpressionInput } from './widgets/ExpressionInput'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SchemaData = Record<string, any>
@@ -83,8 +84,8 @@ function NumberFieldWidget({
   field, value, arrayData, fid, onMutation, mutationType,
 }: {
   field: NumberFieldDef
-  value: number | undefined
-  arrayData?: number[]
+  value: string | number | undefined
+  arrayData?: (string | number)[]
   fid: string
   onMutation: (m: Mutation) => void
   mutationType: string
@@ -94,17 +95,12 @@ function NumberFieldWidget({
   return (
     <div className="feature-field-row">
       <span className="feature-field-label">{field.label}</span>
-      <input
-        type="number"
-        className="feature-field-input"
-        defaultValue={value ?? dv}
-        min={field.min}
-        onClick={(e) => e.stopPropagation()}
-        onBlur={(e) => {
-          const p = field.parse === 'int' ? parseInt : parseFloat
-          const v = p(e.target.value)
-          if (isNaN(v)) return
-          if (field.validate && !field.validate(v)) return
+      <ExpressionInput
+        value={value ?? dv}
+        ariaLabel={field.label}
+        unit={field.unit}
+        validate={field.validate}
+        onChange={(v) => {
           if (isArraySplice && arrayData) {
             const arr = [...arrayData]
             arr[field.arrayIndex!] = v
@@ -113,9 +109,7 @@ function NumberFieldWidget({
             onMutation({ type: mutationType, featureId: fid, field: field.key, value: v } as Mutation)
           }
         }}
-        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
       />
-      {field.unit && <span className="feature-field-unit">{field.unit}</span>}
     </div>
   )
 }
@@ -286,11 +280,11 @@ export function FeatureEditor({
   const data: SchemaData = schema.normalize ? schema.normalize(raw) : raw
   const mutationType = `${schema.mutationPrefix}_field`
 
-  const arrayFieldData: Record<string, number[]> = {}
+  const arrayFieldData: Record<string, (string | number)[]> = {}
   for (const f of schema.fields) {
     if (f.type === 'number' && f.arrayField != null) {
       const arr = data[f.arrayField]
-      arrayFieldData[f.arrayField] = Array.isArray(arr) ? arr as number[] : []
+      arrayFieldData[f.arrayField] = Array.isArray(arr) ? arr as (string | number)[] : []
     }
   }
 
@@ -308,7 +302,7 @@ export function FeatureEditor({
             return <NumberFieldWidget
               key={field.key}
               field={nf}
-              value={rawVal as number | undefined}
+              value={rawVal as string | number | undefined}
               arrayData={nf.arrayField != null ? arrayFieldData[nf.arrayField] : undefined}
               fid={fid}
               onMutation={onMutation}

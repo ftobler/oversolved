@@ -4,6 +4,7 @@ import { usePickField } from '@/hooks/useFieldPicking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { planeLabel } from '@/components/Geometry3D/utils'
 import { emitAbsoluteSelectionQuery } from '@/utils/query/selectionId'
+import { ExpressionInput } from './widgets/ExpressionInput'
 
 interface PlaneEditorProps {
   feature: PartFeature
@@ -47,16 +48,10 @@ export function PlaneEditor({
   const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (
     <div className="feature-field-row">
       <span className="feature-field-label">{label}</span>
-      <input
-        type="number"
-        className="feature-field-input"
-        defaultValue={def[field] ?? defaultVal}
-        onClick={(e) => e.stopPropagation()}
-        onBlur={(e) => {
-          const v = parseFloat(e.target.value)
-          if (!isNaN(v)) onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: v })
-        }}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } e.stopPropagation() }}
+      <ExpressionInput
+        value={def[field] ?? defaultVal}
+        ariaLabel={label}
+        onChange={(v) => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: v })}
       />
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { evalExpr } from '@/kernel/evalExpr'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import { useClickAfterDragSuppression } from '../useClickAfterDragSuppression'
@@ -59,13 +60,13 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
       label: interaction.promptLabel,
       defaultValue: String(value),
       validate: (input) => {
-        const val = parseFloat(input)
-        if (isNaN(val)) return 'Enter a number'
+        const val = evalExpr(input)
+        if (isNaN(val)) return 'Enter a number or expression'
         if (validatePositive && val <= 0) return 'Must be greater than 0'
         return null
       },
       onConfirm: (input) => {
-        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: parseFloat(input) })
+        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: evalExpr(input) })
       },
     })
   }, [interaction, cid, value, validatePositive, consumeClick])
