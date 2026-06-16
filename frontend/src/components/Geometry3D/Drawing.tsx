@@ -14,8 +14,9 @@ import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
-import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { shouldClearSelectionOnBackplaneClick, resolvePickAtEvent } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 
 export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string; activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -152,15 +153,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
       onPointerDown={e => {
         e.stopPropagation()
         const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
-        if (effectiveTool === 'project') {
-          // [PROJECT-DEBUG] temporary instrumentation for edge-pick bug
-          console.log('[PROJECT-DEBUG] DrawPlane onPointerDown fired', {
-            sanitized: !!sanitized,
-            hoveredSelectionId: useSketchEditorStore.getState().hoveredSelectionId,
-            hasTool: !!toolRegistry.get(effectiveTool)?.handlers.onPointerDown,
-            hasOnMutation: !!onMutation,
-          })
-        }
         if (!sanitized) return
         const [x, y] = sanitized.localPoint
 
@@ -173,11 +165,26 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         if (effectiveTool === 'project') markDrawToolClickConsumed()
 
         const state = useSketchEditorStore.getState()
+        // The project tool picks B-rep / sketch identity to project. Resolve the
+        // ID buffer at THIS click pixel instead of reading the async hover the
+        // move-handler last wrote: hover lags a frame and can hold a different
+        // pixel's hit, which made edge picks flaky. Same resolve seam the
+        // click-selection path uses -- one identity source, no dual path.
+        let pickedSelectionId = state.hoveredSelectionId
+        if (effectiveTool === 'project') {
+          const hit = resolvePickAtEvent(
+            e.nativeEvent as PointerEvent,
+            gl.domElement,
+            gl,
+            getToolAllowedLayers('project') ?? new Set<string>(),
+          )
+          pickedSelectionId = hit?.entityKey ?? null
+        }
         const context: DrawingToolContext = {
           normalSelection: state.normalSelection,
-          hoveredSelectionId: state.hoveredSelectionId,
-          hoveredSourceKind: findEdgeKindForQuery(state.hoveredSelectionId ?? '') ?? null,
-          hoveredFaceEdges: findFaceBoundaryEdges(state.hoveredSelectionId ?? ''),
+          hoveredSelectionId: pickedSelectionId,
+          hoveredSourceKind: findEdgeKindForQuery(pickedSelectionId ?? '') ?? null,
+          hoveredFaceEdges: findFaceBoundaryEdges(pickedSelectionId ?? ''),
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
           hoveredVertexId,

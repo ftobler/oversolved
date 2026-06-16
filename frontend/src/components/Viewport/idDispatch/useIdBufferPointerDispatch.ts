@@ -71,6 +71,29 @@ export function hitToSelectionKey(hit: ResolvedHit): string {
   return hit.entityKey
 }
 
+/**
+ * Resolve the ID buffer synchronously at a pointer event's pixel, filtered to
+ * `allowed` layers. The single resolve seam: the click-selection dispatch and
+ * the project draw tool both call this, so the two can never disagree about
+ * what is under the cursor. (The project tool used to trust the async hover the
+ * move-handler had last written, which lags a frame and can hold a different
+ * pixel's hit -- the dual path that made edge picks flaky.) A miss while the
+ * buffer is mid-rebuild flags `lastClickWasStale` so callers treat it as a
+ * transient transition, not empty space.
+ */
+export function resolvePickAtEvent(
+  e: PointerEvent | MouseEvent,
+  canvas: HTMLCanvasElement,
+  gl: THREE.WebGLRenderer,
+  allowed: ReadonlySet<string>,
+): ResolvedHit | null {
+  const pipeline = getLivePipeline()
+  if (!pipeline || allowed.size === 0) return null
+  const hit = pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
+  if (hit === null && pipeline.isDirty()) lastClickWasStale = true
+  return hit
+}
+
 function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): ReadonlySet<string> {
   if (!b) return a
   const out = new Set<string>()
@@ -104,16 +127,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     }
 
     const resolveSync = (e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement): ResolvedHit | null => {
-      const pipeline = getLivePipeline()
       const gl = glRef.current
-      if (!pipeline || !gl) return null
-      const allowed = computeAllowed()
-      if (allowed.size === 0) return null
-      const hit = pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
-      if (hit === null && pipeline.isDirty()) {
-        lastClickWasStale = true
-      }
-      return hit
+      if (!gl) return null
+      return resolvePickAtEvent(e, canvas, gl, computeAllowed())
     }
 
     const applyHoverHit = (layer: string | null, entityKey: string | null) => {

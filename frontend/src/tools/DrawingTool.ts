@@ -68,15 +68,6 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         context.otherSketches as Record<string, Record<string, Entity>> | undefined,
       )
 
-      if (config.entityKind === 'project') {
-        // [PROJECT-DEBUG] temporary instrumentation for edge-pick bug
-        console.log('[PROJECT-DEBUG] DrawingTool emit', {
-          mutationCount: result.mutations.length,
-          mutations: result.mutations,
-          hasOnMutation: !!context.onMutation,
-          clearTool: result.clearTool,
-        })
-      }
       for (const m of result.mutations) {
         context.onMutation?.(m)
       }
