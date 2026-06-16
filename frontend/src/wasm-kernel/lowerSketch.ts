@@ -73,6 +73,11 @@ export interface SketchInput {
   entities: SketchEntity[]
   initial: Record<string, number[]>
   constraints: Array<Record<string, unknown>>
+  /** Entity ids whose every param must be pinned to its initial value (the
+   *  solver adds an `x[i] - x0[i]` residual per bit). Projected entities live
+   *  here so the LM exploration never nudges them off their projected location.
+   *  See `pinnedMaskFor`. */
+  pinnedEntityIds?: string[]
 }
 
 export interface EntityLayout {
@@ -96,6 +101,28 @@ export interface LowerOptions {
 
 function isRefDict(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * Build the solver's `pinned_mask`: `ceil(nParams / 8)` bytes, LSB-first within
+ * each byte (matching `codec.rs`), with a set bit for every param of every
+ * entity in `pinnedIds`. Returns `[]` (= nothing pinned) when no id matches, so
+ * the non-projection path stays byte-identical to before.
+ */
+export function pinnedMaskFor(layout: EntityLayout[], pinnedIds: Iterable<string>, nParams: number): number[] {
+  const pinned = pinnedIds instanceof Set ? pinnedIds : new Set(pinnedIds)
+  if (pinned.size === 0) return []
+  const mask = new Array(Math.ceil(nParams / 8)).fill(0)
+  let any = false
+  for (const l of layout) {
+    if (!pinned.has(l.id)) continue
+    for (let i = 0; i < l.size; i++) {
+      const bit = l.offset + i
+      mask[bit >> 3] |= 1 << (bit & 7)
+      any = true
+    }
+  }
+  return any ? mask : []
 }
 
 /**
@@ -172,7 +199,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
   const input: FlatInput = {
     entities: flatEntities,
     params,
-    pinnedMask: [],
+    pinnedMask: pinnedMaskFor(layout, sk.pinnedEntityIds ?? [], params.length),
     equalityPins: [],
     constraints,
     options: {

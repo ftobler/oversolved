@@ -196,6 +196,7 @@ function expandSugarConstraints(feature: PartFeature): PartConstraint[] {
 export function partDocToSketches(
   features: PartFeature[] | undefined,
   originLocal: [number, number] = [0, 0],
+  pinnedEntityIds: string[] = [],
 ): ExtractResult {
   const sketches: ExtractedSketch[] = []
   const skipped: SkippedSketch[] = []
@@ -226,6 +227,7 @@ export function partDocToSketches(
       entities: entities.map((e) => ({ id: e.id, kind: e.kind })),
       initial: feature.initial ?? {},
       constraints,
+      pinnedEntityIds,
     }
     sketches.push({ featureId: feature.id, sketch })
   }

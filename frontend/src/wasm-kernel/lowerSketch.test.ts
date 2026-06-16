@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lowerSketch } from './lowerSketch'
+import { lowerSketch, pinnedMaskFor, type EntityLayout } from './lowerSketch'
 import { Kind, Role, Sel } from './codec'
 
 describe('lowerSketch ellipse entity', () => {
@@ -71,5 +71,60 @@ describe('lowerSketch ellipse entity', () => {
     expect(a.ref).toEqual({ kind: 'entity', index: 0, point: Sel.center })
     expect(b.ref).toEqual({ kind: 'entity', index: 0, point: Sel.major })  // code 5
     expect(pd.value).toBe(4)
+  })
+})
+
+describe('pinnedMaskFor (projected-entity pinning)', () => {
+  // Two lines (4 params each) then a circle (3): flat params 0..10, the origin
+  // appended by lowerSketch is irrelevant to the helper which only sees layout.
+  const layout: EntityLayout[] = [
+    { id: 'a', kind: 'line', offset: 0, size: 4 },
+    { id: 'b', kind: 'line', offset: 4, size: 4 },
+    { id: 'c', kind: 'circle', offset: 8, size: 3 },
+  ]
+  const nParams = 11
+
+  it('returns [] when nothing is pinned (byte-identical to the old hardcoded [])', () => {
+    expect(pinnedMaskFor(layout, [], nParams)).toEqual([])
+    // An id that is not in the layout pins nothing.
+    expect(pinnedMaskFor(layout, ['zzz'], nParams)).toEqual([])
+  })
+
+  it('sets one LSB-first bit per param of a pinned entity', () => {
+    // Pin entity 'b' (offset 4, size 4): bits 4,5,6,7 -> high nibble of byte 0.
+    const mask = pinnedMaskFor(layout, ['b'], nParams)
+    expect(mask).toEqual([0b1111_0000, 0b0000_0000])
+  })
+
+  it('pins params spanning a byte boundary', () => {
+    // Pin 'c' (offset 8, size 3): bits 8,9,10 -> low three bits of byte 1.
+    expect(pinnedMaskFor(layout, ['c'], nParams)).toEqual([0b0000_0000, 0b0000_0111])
+  })
+
+  it('ORs multiple pinned entities into the same mask', () => {
+    // 'a' (bits 0..3) + 'c' (bits 8..10).
+    expect(pinnedMaskFor(layout, ['a', 'c'], nParams)).toEqual([0b0000_1111, 0b0000_0111])
+  })
+
+  it('lowerSketch wires pinnedEntityIds into input.pinnedMask', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'p', kind: 'circle' }, { id: 'q', kind: 'line' }],
+      initial: { p: [1, 2, 3], q: [0, 0, 1, 1] },
+      constraints: [],
+      pinnedEntityIds: ['p'],  // circle: bits 0,1,2
+    })
+    // params: circle(3) + line(4) + origin(2) = 9 -> ceil(9/8) = 2 bytes.
+    expect(input.pinnedMask).toEqual([0b0000_0111, 0b0000_0000])
+  })
+
+  it('lowerSketch leaves pinnedMask empty when no ids are pinned', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'p', kind: 'circle' }],
+      initial: { p: [1, 2, 3] },
+      constraints: [],
+    })
+    expect(input.pinnedMask).toEqual([])
   })
 })

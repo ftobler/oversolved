@@ -138,6 +138,12 @@ export function solveSketch(
   // (e.g. a stale ancestry query after the source B-rep changed). They are
   // dropped from the solve so the rest of the sketch still builds.
   const projectionErrors: string[] = []
+  // Projected entities whose params resolved this solve. Their `source` is
+  // stripped so the solver sees ordinary geometry; pinning every one of their
+  // params (via the lowered `pinned_mask`) keeps the LM exploration from nudging
+  // them off the projected location -- the design invariant "a projected entity
+  // is just an entity whose params are pinned".
+  const pinnedIds: string[] = []
 
   if (hasProjections && entities.length > 0) {
     // Resolved params land in `initial` (keyed by entity id) -- the same place
@@ -183,6 +189,7 @@ export function solveSketch(
       }
       if (lowered) {
         loweredEntities.push(lowered)
+        pinnedIds.push(entId)
       } else {
         // Unresolvable projection: drop it rather than leaving a `source` that
         // would make partDocToSketches skip (and the whole sketch throw). The
@@ -201,7 +208,7 @@ export function solveSketch(
   // projected face ("line constrained to origin" bug).
   const originLocal = projectWorldToFrame([0, 0, 0], plane as Frame3D)
   const pf = loweredFeature as unknown as PartFeature
-  const extract = partDocToSketches([pf], originLocal)
+  const extract = partDocToSketches([pf], originLocal, pinnedIds)
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
   }
@@ -324,12 +331,16 @@ export function prepareDragContext(
   try {
     const entities = feature.entities ?? []
     let loweredFeature = feature
+    // Projected entities kept this drag (their last resolved params survive in
+    // `initial`); pinned in the lowered solve so a drag preview never unsticks
+    // them, mirroring the hard solve (solveSketch).
+    const pinnedIds: string[] = []
     if (entities.some((e) => e.source)) {
       const initial = feature.initial ?? {}
       const kept: typeof entities = []
       for (const ent of entities) {
         if (!ent.source) { kept.push(ent); continue }
-        if (initial[ent.id]) kept.push({ ...ent, source: undefined })
+        if (initial[ent.id]) { kept.push({ ...ent, source: undefined }); pinnedIds.push(ent.id) }
       }
       loweredFeature = { ...feature, entities: kept }
     }
@@ -340,7 +351,7 @@ export function prepareDragContext(
     // differ for a sketch on an offset/projected face. The hard solve already
     // does this (solveSketch); without it here the dragged geometry pins to the
     // wrong point and visibly snaps back on release.
-    const extract = partDocToSketches([loweredFeature], originLocal)
+    const extract = partDocToSketches([loweredFeature], originLocal, pinnedIds)
     if (extract.skipped.length || !extract.sketches.length) return null
 
     const { input, layout } = lowerSketch(extract.sketches[0].sketch)
