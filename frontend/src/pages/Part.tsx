@@ -18,6 +18,8 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/core/buildCache'
 import { http, HttpError } from '@/utils/core/httpClient'
+import { getDocumentStore } from '@/stores/documentStore'
+import { hasBackend } from '@/config/capabilities'
 import '@/pages/Part.css'
 
 import PartToolbar from '@/pages/PartToolbar'
@@ -461,7 +463,11 @@ export default function Part() {
   const handleClone = async () => {
     if (!uuid) return
     try {
-      const data = await http.postJson<{ uuid: string }>(`/api/documents/${uuid}/clone`)
+      // Static build has no /clone endpoint; the store's duplicate copies the
+      // document locally.
+      const data = hasBackend
+        ? await http.postJson<{ uuid: string }>(`/api/documents/${uuid}/clone`)
+        : await getDocumentStore().duplicate(uuid)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
       if (e instanceof HttpError) {

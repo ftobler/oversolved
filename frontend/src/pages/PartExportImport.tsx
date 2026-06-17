@@ -5,6 +5,7 @@ import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
 import { http, HttpError } from '@/utils/core/httpClient'
+import { hasBackend } from '@/config/capabilities'
 
 interface PartExportImportProps {
   uuid: string
@@ -39,6 +40,15 @@ const PartExportImport = React.forwardRef<PartExportImportHandle, PartExportImpo
 
     const handleExportDownload = async (format: ExportFormat, tessellation: number) => {
       if (!doc?.features) return
+      // STEP/STL export currently re-solves server-side. In a static build that
+      // endpoint is absent; the local-WASM export path (re-build to a TopoDS
+      // shape + stepShapeToBytes) is the documented remaining work.
+      if (!hasBackend) {
+        notify('STEP/STL export is not yet available in the local build', 'error')
+        setExportTargetBodyId(null)
+        setExportDialogOpen(false)
+        return
+      }
       const endpoint = format === 'step' ? '/api/export/step' : '/api/export/stl'
       const body: Record<string, unknown> = { features: doc.features }
       if (exportTargetBodyId) body.body_id = exportTargetBodyId

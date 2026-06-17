@@ -6,17 +6,12 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { http, HttpError } from '@/utils/core/httpClient'
+import { getDocumentStore, exportBundle, importBundle } from '@/stores/documentStore'
+import type { DocSummary } from '@/stores/documentStore'
+import { hasBackend } from '@/config/capabilities'
 import '@/pages/Documents.css'
 
-interface DocumentMeta {
-  uuid: string
-  name: string
-  created_at: string
-  updated_at: string
-  is_owner: boolean
-  owner_username: string
-  is_public: boolean
-}
+type DocumentMeta = DocSummary
 
 interface TrashDoc {
   uuid: string
@@ -59,14 +54,9 @@ export default function Documents() {
   }
 
   const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
-    const params = new URLSearchParams()
-    params.set('sort', sortToApiParam(sortBy))
-    params.set('filter', filter)
-    if (search) params.set('search', search)
-
-    http.getJson<{ documents: DocumentMeta[] }>(`/api/documents?${params.toString()}`)
-      .then(data => {
-        setDocuments(data.documents || [])
+    getDocumentStore().list({ sort: sortToApiParam(sortBy), filter, search })
+      .then(documents => {
+        setDocuments(documents)
         setError(null)
       })
       .catch(e => {
@@ -88,7 +78,7 @@ export default function Documents() {
     }
 
     try {
-      await http.postJson<{ uuid: string }>('/api/documents', { name: newDocName.trim(), is_public: newDocPublic })
+      await getDocumentStore().create(newDocName.trim(), { is_public: newDocPublic })
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
@@ -105,7 +95,7 @@ export default function Documents() {
 
   const handleDeleteDocument = async (uuid: string) => {
     try {
-      await http.deleteJson(`/api/documents/${uuid}`)
+      await getDocumentStore().remove(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       setError(String(e))
@@ -114,7 +104,7 @@ export default function Documents() {
 
   const handleDuplicate = async (uuid: string) => {
     try {
-      await http.postJson(`/api/documents/${uuid}/duplicate`)
+      await getDocumentStore().duplicate(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       if (e instanceof HttpError) {
@@ -128,8 +118,12 @@ export default function Documents() {
 
   const handleExport = async (uuid: string, name: string) => {
     try {
-      const data = await http.getJson<{ content: string }>(`/api/documents/${uuid}/export`)
-      const blob = new Blob([data.content], { type: 'text/yaml' })
+      // Static build has no /export endpoint: read the document text straight
+      // from the local store and download it.
+      const content = hasBackend
+        ? (await http.getJson<{ content: string }>(`/api/documents/${uuid}/export`)).content
+        : (await getDocumentStore().load(uuid)).content
+      const blob = new Blob([content], { type: 'text/yaml' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -146,9 +140,44 @@ export default function Documents() {
     }
   }
 
+  // Library backup: every listed document into one .oversolved bundle. This is
+  // the static replacement for the admin backup feature; it also works against
+  // the HTTP store (the zip layout is identical to /api/admin/backup).
+  const handleExportAll = async () => {
+    try {
+      const all = await getDocumentStore().list({ filter: 'owned' })
+      if (all.length === 0) {
+        setError('No documents to export')
+        return
+      }
+      const blob = await exportBundle(getDocumentStore(), all.map(d => d.uuid))
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `oversolved-backup-${new Date().toISOString().slice(0, 10)}.oversolved`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''  // allow re-importing the same file
+
+    // A bundle (.oversolved/.zip) round-trips through the active store; a bare
+    // .yaml stays on the single-document import path.
+    if (/\.(oversolved|zip)$/i.test(file.name)) {
+      try {
+        await importBundle(getDocumentStore(), file)
+        fetchDocuments(activeFilter, debouncedSearch)
+      } catch (err) {
+        setError(String(err))
+      }
+      return
+    }
 
     const name = file.name.replace(/\.yaml$/, '').replace(/\.yml$/, '')
     if (!name) {
@@ -158,7 +187,13 @@ export default function Documents() {
 
     try {
       const text = await file.text()
-      await http.postJson('/api/documents/import', { name, content: text })
+      if (hasBackend) {
+        await http.postJson('/api/documents/import', { name, content: text })
+      } else {
+        const store = getDocumentStore()
+        const { uuid } = await store.create(name)
+        await store.save(uuid, { content: text })
+      }
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (err) {
       if (err instanceof HttpError) {
@@ -276,15 +311,18 @@ export default function Documents() {
           <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocPublic(activeFilter === 'public') }} title="Add document">
             <span className="material-icons">add</span>
           </button>
-          <label className="toolbar-btn btn-import" title="Import YAML">
+          <label className="toolbar-btn btn-import" title="Import YAML or .oversolved bundle">
             <input
               type="file"
-              accept=".yaml,.yml"
+              accept=".yaml,.yml,.oversolved,.zip"
               onChange={handleImportFile}
               className="file-upload-input"
             />
             <span className="material-icons">upload</span>
           </label>
+          <button className="toolbar-btn" onClick={handleExportAll} title="Export all as .oversolved bundle">
+            <span className="material-icons">archive</span>
+          </button>
         </div>
       </AppHeader>
 
@@ -300,14 +338,16 @@ export default function Documents() {
               <span className="sidebar-item-label">{item.label}</span>
             </div>
           ))}
-          <div
-            className={`sidebar-item ${isTrashView ? 'active' : ''}`}
-            onClick={() => { if (!isTrashView) { setIsTrashView(true); fetchTrash() } }}
-            title="Trash"
-          >
-            <span className="material-icons sidebar-item-icon">delete_outline</span>
-            <span className="sidebar-item-label">Trash</span>
-          </div>
+          {hasBackend && (
+            <div
+              className={`sidebar-item ${isTrashView ? 'active' : ''}`}
+              onClick={() => { if (!isTrashView) { setIsTrashView(true); fetchTrash() } }}
+              title="Trash"
+            >
+              <span className="material-icons sidebar-item-icon">delete_outline</span>
+              <span className="sidebar-item-label">Trash</span>
+            </div>
+          )}
         </aside>
 
         <div className="documents-main">
@@ -445,7 +485,7 @@ export default function Documents() {
                         <div className="doc-tile-meta">
                           <span className="doc-tile-date">{formatDate(doc.updated_at)}</span>
                            <div className="doc-tile-actions">
-                            {doc.is_owner && (
+                            {hasBackend && doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
                                 onClick={e => {
@@ -458,7 +498,7 @@ export default function Documents() {
                                 <span className="material-icons">share</span>
                               </button>
                             )}
-                            {!doc.is_owner && (
+                            {hasBackend && !doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
                                 onClick={e => {

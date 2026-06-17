@@ -1,0 +1,150 @@
+import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
+import { idbGet, idbGetAll, idbPut, idbDelete } from './idb'
+
+// In a fully local, single-user build there is no account system. Documents are
+// all owned by this browser; the owner label is cosmetic (the documents grid
+// renders `${owner}/${name}`).
+export const LOCAL_OWNER = 'local'
+
+// The on-disk record. Holds the document text, an optional preview, and the
+// sync `meta` envelope alongside the list-grid metadata. Stored as one value
+// per uuid so a single get/put touches everything for a document.
+interface StoredDoc {
+  uuid: string
+  name: string
+  content: string
+  preview_image?: string
+  is_public: boolean
+  created_at: string
+  updated_at: string
+  meta: DocMeta
+}
+
+function newUuid(): string {
+  return crypto.randomUUID()
+}
+
+function toSummary(rec: StoredDoc): DocSummary {
+  return {
+    uuid: rec.uuid,
+    name: rec.name,
+    created_at: rec.created_at,
+    updated_at: rec.updated_at,
+    is_owner: true,
+    owner_username: LOCAL_OWNER,
+    is_public: rec.is_public,
+    meta: rec.meta,
+  }
+}
+
+// IndexedDB-backed store: the default for a static (zero-backend) deployment.
+// Offline is first-class here, not a degraded mode -- this is the full
+// persistence layer when no server is present.
+export class IndexedDbDocumentStore implements DocumentStore {
+  async list(opts: ListOptions = {}): Promise<DocSummary[]> {
+    const all = await idbGetAll<StoredDoc>()
+    let docs = all
+    // Single-user model: 'owned' = everything, 'public' = the public ones,
+    // 'shared' has no meaning locally (always empty).
+    if (opts.filter === 'public') docs = docs.filter(d => d.is_public)
+    else if (opts.filter === 'shared') docs = []
+    if (opts.search) {
+      const needle = opts.search.toLowerCase()
+      docs = docs.filter(d => d.name.toLowerCase().includes(needle))
+    }
+    const sorted = [...docs]
+    if (opts.sort === 'name') {
+      sorted.sort((a, b) => a.name.localeCompare(b.name))
+    } else if (opts.sort === 'modified_asc') {
+      sorted.sort((a, b) => a.meta.updatedAt - b.meta.updatedAt)
+    } else {
+      // default + 'modified': newest first
+      sorted.sort((a, b) => b.meta.updatedAt - a.meta.updatedAt)
+    }
+    return sorted.map(toSummary)
+  }
+
+  async load(id: string): Promise<DocumentPayload> {
+    const rec = await idbGet<StoredDoc>(id)
+    if (!rec) throw new Error(`Document not found: ${id}`)
+    return {
+      content: rec.content,
+      name: rec.name,
+      owner_username: LOCAL_OWNER,
+      permission: 'owner',
+      is_public: rec.is_public,
+      preview_image: rec.preview_image,
+    }
+  }
+
+  async save(id: string, input: SaveInput): Promise<void> {
+    const existing = await idbGet<StoredDoc>(id)
+    const now = Date.now()
+    const prevRev = existing?.meta.rev ?? 0
+    // Sync-readiness rules: bump rev, stamp updatedAt, flag dirty. baseRev is
+    // never touched by a local save -- only a future sync engine sets it.
+    const meta: DocMeta = {
+      id,
+      rev: prevRev + 1,
+      updatedAt: now,
+      dirty: true,
+      baseRev: existing?.meta.baseRev,
+    }
+    const rec: StoredDoc = {
+      uuid: id,
+      name: existing?.name ?? 'Untitled',
+      content: input.content,
+      preview_image: input.preview_image ?? existing?.preview_image,
+      is_public: existing?.is_public ?? false,
+      created_at: existing?.created_at ?? new Date(now).toISOString(),
+      updated_at: new Date(now).toISOString(),
+      meta,
+    }
+    await idbPut(rec)
+  }
+
+  async remove(id: string): Promise<void> {
+    await idbDelete(id)
+  }
+
+  async create(name: string, opts: { is_public?: boolean } = {}): Promise<{ uuid: string }> {
+    const uuid = newUuid()
+    const now = Date.now()
+    const rec: StoredDoc = {
+      uuid,
+      name,
+      content: '',
+      is_public: opts.is_public ?? false,
+      created_at: new Date(now).toISOString(),
+      updated_at: new Date(now).toISOString(),
+      // rev 0 on create; the first save bumps it to 1 (a new doc is a local
+      // change not yet pushed to any server, hence dirty).
+      meta: { id: uuid, rev: 0, updatedAt: now, dirty: true },
+    }
+    await idbPut(rec)
+    return { uuid }
+  }
+
+  async rename(id: string, name: string): Promise<void> {
+    const existing = await idbGet<StoredDoc>(id)
+    if (!existing) throw new Error(`Document not found: ${id}`)
+    await idbPut({ ...existing, name })
+  }
+
+  async duplicate(id: string): Promise<{ uuid: string }> {
+    const src = await idbGet<StoredDoc>(id)
+    if (!src) throw new Error(`Document not found: ${id}`)
+    const { uuid } = await this.create(`${src.name} (copy)`, { is_public: src.is_public })
+    await this.save(uuid, { content: src.content, preview_image: src.preview_image })
+    return { uuid }
+  }
+
+  // Engine-facing primitive (NOT part of DocumentStore). A future sync engine
+  // calls this on push-ack: the document is now in sync with the server.
+  async markSynced(id: string): Promise<void> {
+    const existing = await idbGet<StoredDoc>(id)
+    if (!existing) return
+    const meta: DocMeta = { ...existing.meta, baseRev: existing.meta.rev, dirty: false }
+    await idbPut({ ...existing, meta })
+  }
+}
