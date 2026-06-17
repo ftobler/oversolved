@@ -74,9 +74,11 @@ run_front:
 runb:
     just run_back
 
-# Build the zero-backend bundle (VITE_OVERSOLVED_BACKEND=static): no auth wall,
-# IndexedDB persistence, local-WASM STEP/STL export. Must be built this way --
-# a plain `npm run build` bakes in hasBackend=true and still serves the login.
+# Build the zero-backend deploy: the SAME app bundle as `just frontend-build`,
+# then stamps dist/runtime-config.js with backend=static (no auth wall,
+# IndexedDB persistence, local-WASM STEP/STL export). The flag is read at boot,
+# so the JS bundle is byte-identical to the http build -- only that one config
+# file differs.
 [working-directory: "frontend"]
 buildstatic:
     npm run occ:provision
