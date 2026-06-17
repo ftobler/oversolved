@@ -114,6 +114,12 @@ export interface OccBooleanOp extends OccDisposable {
   Shape(): OccShape
 }
 
+/** BRep_Builder: the low-level builder used to assemble a TopoDS_Compound. */
+export interface OccBRepBuilder extends OccDisposable {
+  MakeCompound(compound: OccShape): void
+  Add(compound: OccShape, shape: OccShape): void
+}
+
 /** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
 export interface OccUnify extends OccDisposable {
   AllowInternalEdges(allow: boolean): void
@@ -473,6 +479,14 @@ export interface OccModule extends OccSpikeModule {
     unifyFaces: boolean,
     concatBSplines: boolean,
   ) => OccUnify
+
+  // --- assembly export: gather disjoint bodies into one compound shape -----
+  // STEP/STL export of a whole assembly writes a single TopoDS_Compound built
+  // from every body's solid. Unlike a boolean fuse this never fails on disjoint
+  // parts, so an assembly of separate solids exports cleanly. In this OCC build
+  // both classes have plain (suffix-free) default constructors.
+  BRep_Builder: new () => OccBRepBuilder
+  TopoDS_Compound: new () => OccShape
 
   // --- 2e: face-profile loop extraction (extrude/revolve from a face) ------
   BRepTools: {

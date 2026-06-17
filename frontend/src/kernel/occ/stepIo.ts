@@ -103,9 +103,10 @@ export function shapeToStlBytes(
   scope: DisposeScope,
   shape: OccShape,
   deflection = 0.1,
+  angularDeflection = 0.1,
 ): Uint8Array {
-  scope.track(new oc.BRepMesh_IncrementalMesh_2(shape, deflection, false, 0.1, false))
-  const raw = readShapeFaces(oc, scope, shape, deflection, 0.1)
+  scope.track(new oc.BRepMesh_IncrementalMesh_2(shape, deflection, false, angularDeflection, false))
+  const raw = readShapeFaces(oc, scope, shape, deflection, angularDeflection)
   const mesh = assembleMesh(raw)
 
   const { vertices, faces } = mesh

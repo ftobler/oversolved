@@ -1,22 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { solveViaWorker, setSolverWorkerForTest, type SolverWorkerLike } from './solverClient'
-import type { SolveRequest, SolveResponse } from './solverProtocol'
+import { solveViaWorker, exportViaWorker, setSolverWorkerForTest, type SolverWorkerLike } from './solverClient'
+import type { SolveResponse, ExportResponse, WorkerRequest } from './solverProtocol'
 
 // A controllable fake Worker: records posted requests and lets the test push
 // responses (or an error) back on demand.
 class FakeWorker implements SolverWorkerLike {
-  onmessage: ((e: { data: SolveResponse }) => void) | null = null
+  onmessage: ((e: { data: SolveResponse | ExportResponse }) => void) | null = null
   onerror: ((e: unknown) => void) | null = null
-  posted: SolveRequest[] = []
+  posted: WorkerRequest[] = []
   terminated = false
 
-  postMessage(msg: SolveRequest): void {
+  postMessage(msg: WorkerRequest): void {
     this.posted.push(msg)
   }
   terminate(): void {
     this.terminated = true
   }
-  reply(res: SolveResponse): void {
+  reply(res: SolveResponse | ExportResponse): void {
     this.onmessage?.({ data: res })
   }
   crash(): void {
@@ -76,6 +76,50 @@ describe('solveViaWorker', () => {
   it('resolves null when no worker can be created', async () => {
     setSolverWorkerForTest(() => null)
     await expect(solveViaWorker({ id: 'd' })).resolves.toBeNull()
+  })
+
+  describe('exportViaWorker', () => {
+    it('posts an export request and resolves the returned bytes', async () => {
+      const p = exportViaWorker({ id: 'd' }, { format: 'step' })
+      expect(fake.posted).toHaveLength(1)
+      const req = fake.posted[0]
+      expect(req.kind).toBe('export')
+      const bytes = new Uint8Array([1, 2, 3])
+      fake.reply({ id: req.id, ok: true, bytes })
+      await expect(p).resolves.toBe(bytes)
+    })
+
+    it('resolves null when the engine produced no body (null bytes)', async () => {
+      const p = exportViaWorker({ id: 'd' }, { format: 'stl' })
+      fake.reply({ id: fake.posted[0].id, ok: true, bytes: null })
+      await expect(p).resolves.toBeNull()
+    })
+
+    it('rejects on an error response', async () => {
+      const p = exportViaWorker({ id: 'd' }, { format: 'step', bodyId: 'x' })
+      fake.reply({ id: fake.posted[0].id, ok: false, error: "body 'x' not found" })
+      await expect(p).rejects.toThrow('not found')
+    })
+
+    it('routes solve and export replies to their own callers on a shared worker', async () => {
+      const solveP = solveViaWorker({ id: 's' })
+      const exportP = exportViaWorker({ id: 'e' }, { format: 'step' })
+      expect(created).toHaveLength(1)  // shared worker, distinct id space
+      const solveReq = fake.posted[0]
+      const exportReq = fake.posted[1]
+      expect(solveReq.id).not.toBe(exportReq.id)
+      const bytes = new Uint8Array([9])
+      fake.reply({ id: exportReq.id, ok: true, bytes })
+      fake.reply({ id: solveReq.id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await expect(exportP).resolves.toBe(bytes)
+      await expect(solveP).resolves.not.toBeNull()
+    })
+
+    it('rejects in-flight exports on a worker crash', async () => {
+      const p = exportViaWorker({ id: 'd' }, { format: 'step' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+    })
   })
 
   it('rejects in-flight solves on a worker crash and respawns a fresh worker next solve', async () => {

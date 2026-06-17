@@ -21,9 +21,43 @@ export interface SolveRequestOptions {
 
 export interface SolveRequest {
   id: number
+  kind?: 'solve'
   spec: Record<string, unknown>
   options: SolveRequestOptions
 }
+
+/** Export options that survive a structured clone. */
+export interface ExportRequestOptions {
+  format: 'step' | 'stl'
+  bodyId?: string | null
+  tessellation?: number
+}
+
+/** Build a document Worker-side and serialise it to STEP/STL bytes. */
+export interface ExportRequest {
+  id: number
+  kind: 'export'
+  spec: Record<string, unknown>
+  options: ExportRequestOptions
+}
+
+/** Either request the Worker can receive; discriminated by `kind`. */
+export type WorkerRequest = SolveRequest | ExportRequest
+
+export interface ExportOkResponse {
+  id: number
+  ok: true
+  /** `null` mirrors exportLocally returning null (OCC.js absent / no body). */
+  bytes: Uint8Array | null
+}
+
+export interface ExportErrResponse {
+  id: number
+  ok: false
+  error: string
+}
+
+export type ExportResponse = ExportOkResponse | ExportErrResponse
 
 /** A BuildResponse with the Worker-only `_build_state` removed. */
 export interface SolvePayload {

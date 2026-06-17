@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { handleSolveRequest, collectTransferables } from './solverWorker'
-import type { SolveRequest } from './solverProtocol'
+import { handleSolveRequest, handleExportRequest, collectTransferables, exportTransferables } from './solverWorker'
+import type { SolveRequest, ExportRequest } from './solverProtocol'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 
 const REQ: SolveRequest = { id: 7, spec: { id: 'doc1' }, options: { rollbackPosition: 2 } }
+
+const EXPORT_REQ: ExportRequest = { id: 9, kind: 'export', spec: { id: 'doc1' }, options: { format: 'step' } }
 
 const DUMMY_STATE: BuildState = { feature_order: ['a'], checkpoints: {} }
 
@@ -63,6 +65,34 @@ describe('handleSolveRequest', () => {
       throw 'plain string'
     })
     expect(res).toEqual({ id: 7, ok: false, error: 'plain string' })
+  })
+})
+
+describe('handleExportRequest', () => {
+  it('returns the engine bytes and marks the buffer transferable', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    let seen: unknown[] = []
+    const res = await handleExportRequest(EXPORT_REQ, async (spec, options) => {
+      seen = [spec, options]
+      return bytes
+    })
+    expect(seen).toEqual([{ id: 'doc1' }, { format: 'step' }])
+    expect(res).toEqual({ id: 9, ok: true, bytes })
+    expect(exportTransferables(res)).toEqual([bytes.buffer])
+  })
+
+  it('forwards a null engine result with no transferables', async () => {
+    const res = await handleExportRequest(EXPORT_REQ, async () => null)
+    expect(res).toEqual({ id: 9, ok: true, bytes: null })
+    expect(exportTransferables(res)).toEqual([])
+  })
+
+  it('catches a throw into an error response', async () => {
+    const res = await handleExportRequest(EXPORT_REQ, async () => {
+      throw new Error('export boom')
+    })
+    expect(res).toEqual({ id: 9, ok: false, error: 'export boom' })
+    expect(exportTransferables(res)).toEqual([])
   })
 })
 

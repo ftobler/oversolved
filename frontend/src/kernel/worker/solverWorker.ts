@@ -15,12 +15,17 @@
  * the host cannot rebuild from the main-thread AST.
  */
 
-import { solveLocally, setOccLoader } from '../solveLocally'
+import { solveLocally, exportLocally, setOccLoader } from '../solveLocally'
 import { loadOccWorker } from '../occ/loadOccWorker'
-import type { SolveRequest, SolveResponse, SolvePayload } from './solverProtocol'
+import type {
+  SolveRequest, SolveResponse, SolvePayload,
+  ExportRequest, ExportResponse, WorkerRequest,
+} from './solverProtocol'
 
 /** The engine signature [[handleSolveRequest]] depends on (production: solveLocally). */
 type SolveEngine = typeof solveLocally
+/** The engine signature [[handleExportRequest]] depends on (production: exportLocally). */
+type ExportEngine = typeof exportLocally
 
 export async function handleSolveRequest(
   req: SolveRequest,
@@ -44,6 +49,28 @@ export async function handleSolveRequest(
   } catch (e) {
     return { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) }
   }
+}
+
+/**
+ * Build + serialise a document to STEP/STL bytes Worker-side. The bytes are the
+ * only payload; their backing buffer is transferred (zero-copy) back. A `null`
+ * result (OCC.js absent or no body) crosses as `bytes: null`.
+ */
+export async function handleExportRequest(
+  req: ExportRequest,
+  exportFn: ExportEngine,
+): Promise<ExportResponse> {
+  try {
+    const bytes = await exportFn(req.spec, req.options)
+    return { id: req.id, ok: true, bytes }
+  } catch (e) {
+    return { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/** The transferable buffer in an export response (for postMessage's transfer arg). */
+export function exportTransferables(res: ExportResponse): Transferable[] {
+  return res.ok && res.bytes ? [res.bytes.buffer] : []
 }
 
 // ─── mesh transfer ───
@@ -120,31 +147,26 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
   return out
 }
 
-// ─── Actor pattern: serializes solve requests ──────────────────────────
+// ─── Actor pattern: serializes solve + export requests ──────────────────
 // The engine (solveLocally) owns mutable cross-solve state (HandleTable +
-// last BuildState). Concurrent solve requests would race on these shared
-// resources. The Actor guarantees sequential access by chaining every
-// request onto the previous one's completion promise.
+// last BuildState), and both solve and export touch the single-threaded OCC
+// module. Concurrent requests would race on these shared resources. The Actor
+// guarantees sequential access by chaining every job onto the previous one's
+// completion promise.
 
-type ActorMessage = { request: SolveRequest; respond: (res: SolveResponse) => void }
-
-class SolveActor {
+class WorkerActor {
   private queue: Promise<void> = Promise.resolve()
 
-  post(msg: ActorMessage): void {
-    this.queue = this.queue.then(() =>
-      handleSolveRequest(msg.request, solveLocally).then((res) =>
-        msg.respond(res),
-      ),
-    )
+  run<T>(job: () => Promise<T>, respond: (res: T) => void): void {
+    this.queue = this.queue.then(() => job().then(respond))
   }
 }
 
 // --- Worker bootstrap (skipped on the main thread / in tests) -------------
 
 interface WorkerCtx {
-  postMessage(message: SolveResponse, transfer: Transferable[]): void
-  onmessage: ((e: MessageEvent<SolveRequest>) => void) | null
+  postMessage(message: SolveResponse | ExportResponse, transfer: Transferable[]): void
+  onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null
 }
 
 function inWorker(): boolean {
@@ -157,11 +179,19 @@ if (inWorker()) {
   // document/window, which do not exist here.
   setOccLoader(loadOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
-  const actor = new SolveActor()
+  const actor = new WorkerActor()
   ctx.onmessage = (e) => {
-    actor.post({
-      request: e.data,
-      respond: (res) => { ctx.postMessage(res, collectTransferables(res)) },
-    })
+    const msg = e.data
+    if (msg.kind === 'export') {
+      actor.run(
+        () => handleExportRequest(msg, exportLocally),
+        (res) => { ctx.postMessage(res, exportTransferables(res)) },
+      )
+    } else {
+      actor.run(
+        () => handleSolveRequest(msg, solveLocally),
+        (res) => { ctx.postMessage(res, collectTransferables(res)) },
+      )
+    }
   }
 }

@@ -19,6 +19,7 @@ import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, rea
 import type { TessMesh } from './occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
 import { copyShape } from './occ/transforms'
+import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
 
@@ -193,6 +194,37 @@ export function extractBrepMetadata(
 }
 
 /**
+ * Wire the builder dependencies for a given OCC module / scope / handle table.
+ * Shared by ``solveLocally`` (persistent cross-solve table) and ``exportLocally``
+ * (ephemeral table) so both build a document through the identical pipeline.
+ */
+function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): BuildDeps {
+  return {
+    trySolveFeature: createFeatureSolver(oc, scope, table),
+    // Registers solved sketch plane/topology (_pt_/_topo_) so downstream
+    // features resolve the profile; the builder handles brep ancestry
+    // separately after tessellation.
+    postRegister,
+    // Seed builtin planes/origin so queries like `@builtin_plane_right`
+    // (mirror plane resolution) resolve as repo elements, mirroring Python's
+    // _init_global_repo.
+    initGlobalRepo,
+    tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
+    extractBrepMetadata: (bodyStore, _repo) => extractBrepMetadata(oc, table, bodyStore),
+    brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(oc, scope, body),
+    brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(oc, scope, body),
+    brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),
+    // Cross-solve checkpoint cache: retain each checkpoint's shape so it
+    // survives a downstream consume/free and into the next build; copy it on
+    // restore so the rebuilt tail consumes an independent shape; evict a
+    // discarded checkpoint's retained shapes by owner.
+    retainCheckpointShape: (h, owner) => table.retain(h, owner),
+    copyBodyShape: (h) => table.register(copyShape(oc, scope, table.get<OccShape>(h))),
+    releaseCheckpoint: (fid) => table.releaseOwner('cp:' + fid),
+  }
+}
+
+/**
  * Solve a document locally through the TS/WASM kernel.
  *
  * Returns the ``BuildResponse`` on success, or ``null`` when OCC.js is not
@@ -235,29 +267,7 @@ export async function solveLocally(
   const prevState = options.prevState !== undefined ? options.prevState : lastBuildState
 
   try {
-    const deps: BuildDeps = {
-      trySolveFeature: createFeatureSolver(oc, scope, table),
-      // Registers solved sketch plane/topology (_pt_/_topo_) so downstream
-      // features resolve the profile; the builder handles brep ancestry
-      // separately after tessellation.
-      postRegister,
-      // Seed builtin planes/origin so queries like `@builtin_plane_right`
-      // (mirror plane resolution) resolve as repo elements, mirroring Python's
-      // _init_global_repo.
-      initGlobalRepo,
-      tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
-      extractBrepMetadata: (bodyStore, _repo) => extractBrepMetadata(oc, table, bodyStore),
-      brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(oc, scope, body),
-      brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(oc, scope, body),
-      brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),
-      // Cross-solve checkpoint cache: retain each checkpoint's shape so it
-      // survives a downstream consume/free and into the next build; copy it on
-      // restore so the rebuilt tail consumes an independent shape; evict a
-      // discarded checkpoint's retained shapes by owner.
-      retainCheckpointShape: (h, owner) => table.retain(h, owner),
-      copyBodyShape: (h) => table.register(copyShape(oc, scope, table.get<OccShape>(h))),
-      releaseCheckpoint: (fid) => table.releaseOwner('cp:' + fid),
-    }
+    const deps = buildDeps(oc, scope, table)
 
     const specForBuild = options.validate
       ? { ...spec, _validate: true }
@@ -276,5 +286,87 @@ export async function solveLocally(
     // builds: build()'s per-checkpoint retain/releaseOwner manages its handles,
     // and the clean-prefix shapes must stay live for the next incremental solve.
     scope.dispose()
+  }
+}
+
+// ─── local STEP/STL export ───
+
+export interface LocalExportOptions {
+  /** Output format. */
+  format: 'step' | 'stl'
+  /** Export this single body; omitted/null exports the whole assembly. */
+  bodyId?: string | null
+  /** STL only: linear deflection knob from the export dialog. STEP ignores it. */
+  tessellation?: number
+}
+
+/**
+ * Resolve the TopoDS shape to export from a completed build. With a ``bodyId``
+ * it returns that body's solid; otherwise it returns the lone body's solid, or
+ * a compound of every body's solid for a multi-body assembly. Mirrors the body
+ * selection of the retired ``/api/export/*`` endpoints, but assembles a compound
+ * (not a boolean fuse) so disjoint parts export cleanly.
+ */
+function resolveExportShape(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  state: BuildState,
+  bodyId: string | null,
+): OccShape | null {
+  const order = state.feature_order
+  if (!order.length) return null
+  // Bodies accumulate across the feature stack, so the last feature's snapshot
+  // is the final body set (deletions already removed). Its shape handles are
+  // retained in `table` until disposeAll, so they are safe to dereference here.
+  const lastCp = state.checkpoints[order[order.length - 1]]
+  if (!lastCp) return null
+  const bodies = lastCp.body_store_snapshot
+  if (bodyId) {
+    const body = bodies[bodyId]
+    if (!body || body.shape == null) {
+      throw new Error(`export: body '${bodyId}' not found`)
+    }
+    return table.get<OccShape>(body.shape)
+  }
+  const solids = Object.values(bodies).filter((b) => b.shape != null)
+  if (solids.length === 0) return null
+  if (solids.length === 1) return table.get<OccShape>(solids[0].shape!)
+  const builder = scope.track(new oc.BRep_Builder())
+  const compound = scope.track(new oc.TopoDS_Compound())
+  builder.MakeCompound(compound)
+  for (const body of solids) builder.Add(compound, table.get<OccShape>(body.shape!))
+  return compound
+}
+
+/**
+ * Build a document and serialise the result to STEP or STL bytes, entirely in
+ * the WASM kernel (no backend round-trip). Returns ``null`` when OCC.js is
+ * unavailable or the document produced no solid body.
+ *
+ * Runs a fresh full build on an ephemeral handle table so it never disturbs
+ * ``solveLocally``'s persistent cross-solve cache.
+ */
+export async function exportLocally(
+  spec: Record<string, unknown>,
+  opts: LocalExportOptions,
+): Promise<Uint8Array | null> {
+  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
+  if (!oc) return null
+
+  const scope = new DisposeScope()
+  const table = new HandleTable({ finalizerGuard: false })
+  try {
+    const response = build(spec, { prevState: null }, buildDeps(oc, scope, table))
+    const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null)
+    if (!shape) return null
+    if (opts.format === 'step') return stepShapeToBytes(oc, scope, shape)
+    // STL deflection params mirror the old server export: linear = tess*2,
+    // angular = tess*0.6. Default to the dialog's 0.5 if no value came through.
+    const tess = opts.tessellation && opts.tessellation > 0 ? opts.tessellation : 0.5
+    return shapeToStlBytes(oc, scope, shape, tess * 2, tess * 0.6)
+  } finally {
+    scope.dispose()
+    table.disposeAll()
   }
 }

@@ -4,8 +4,8 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
-import { http, HttpError } from '@/utils/core/httpClient'
-import { hasBackend } from '@/config/capabilities'
+import { exportViaWorker } from '@/kernel/worker/solverClient'
+import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
 interface PartExportImportProps {
   uuid: string
@@ -40,25 +40,25 @@ const PartExportImport = React.forwardRef<PartExportImportHandle, PartExportImpo
 
     const handleExportDownload = async (format: ExportFormat, tessellation: number) => {
       if (!doc?.features) return
-      // STEP/STL export currently re-solves server-side. In a static build that
-      // endpoint is absent; the local-WASM export path (re-build to a TopoDS
-      // shape + stepShapeToBytes) is the documented remaining work.
-      if (!hasBackend) {
-        notify('STEP/STL export is not yet available in the local build', 'error')
-        setExportTargetBodyId(null)
-        setExportDialogOpen(false)
-        return
-      }
-      const endpoint = format === 'step' ? '/api/export/step' : '/api/export/stl'
-      const body: Record<string, unknown> = { features: doc.features }
-      if (exportTargetBodyId) body.body_id = exportTargetBodyId
-      if (format === 'stl') {
-        body.deflection = tessellation * 2
-        body.angular_deflection = tessellation * 0.6
-      }
+      // Export runs entirely in the WASM kernel (the same builder that solves the
+      // doc), so it works offline / zero-backend with no network round-trip. The
+      // Worker rebuilds the document, resolves the export shape (single body or a
+      // compound of the whole assembly), and serialises it to STEP/STL bytes.
+      const features = doc.features.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+      const spec = { ...doc, ...(uuid ? { id: uuid } : {}), features }
       try {
-        const blob = await http.postBlob(endpoint, body)
-        const filename = format === 'step' ? `${exportDefaultName}.step` : `${exportDefaultName}.stl`
+        const bytes = await exportViaWorker(spec, {
+          format,
+          bodyId: exportTargetBodyId,
+          tessellation,
+        })
+        if (!bytes) {
+          notify('Export failed: no solid geometry to export', 'error')
+          return
+        }
+        const mime = format === 'step' ? 'application/step' : 'model/stl'
+        const filename = `${exportDefaultName}.${format}`
+        const blob = new Blob([bytes as BlobPart], { type: mime })
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
@@ -68,16 +68,12 @@ const PartExportImport = React.forwardRef<PartExportImportHandle, PartExportImpo
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
       } catch (e) {
-        if (e instanceof HttpError) {
-          console.error('Export failed:', e.status, e.body)
-          notify(`Export failed: ${e.body}`, 'error')
-        } else {
-          console.error('Export error:', e)
-          notify(`Export error: ${e}`, 'error')
-        }
+        console.error('Export error:', e)
+        notify(`Export error: ${e instanceof Error ? e.message : e}`, 'error')
+      } finally {
+        setExportTargetBodyId(null)
+        setExportDialogOpen(false)
       }
-      setExportTargetBodyId(null)
-      setExportDialogOpen(false)
     }
 
     return (

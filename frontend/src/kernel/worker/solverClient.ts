@@ -15,12 +15,15 @@
 
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
-import type { SolveRequest, SolveRequestOptions, SolveResponse } from './solverProtocol'
+import type {
+  SolveRequestOptions, SolveResponse,
+  ExportRequestOptions, ExportResponse, WorkerRequest,
+} from './solverProtocol'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
 export interface SolverWorkerLike {
-  postMessage(msg: SolveRequest): void
-  onmessage: ((e: { data: SolveResponse }) => void) | null
+  postMessage(msg: WorkerRequest): void
+  onmessage: ((e: { data: SolveResponse | ExportResponse }) => void) | null
   onerror: ((e: unknown) => void) | null
   terminate(): void
 }
@@ -29,6 +32,11 @@ const EMPTY_BUILD_STATE: BuildState = Object.freeze({ feature_order: [], checkpo
 
 interface Pending {
   resolve: (r: BuildResponse | null) => void
+  reject: (e: unknown) => void
+}
+
+interface ExportPending {
+  resolve: (b: Uint8Array | null) => void
   reject: (e: unknown) => void
 }
 
@@ -47,9 +55,19 @@ let workerFactory: () => SolverWorkerLike | null = defaultFactory
 let worker: SolverWorkerLike | null = null
 let nextId = 1
 const pending = new Map<number, Pending>()
+const exportPending = new Map<number, ExportPending>()
 
-function onMessage(e: { data: SolveResponse }): void {
+function onMessage(e: { data: SolveResponse | ExportResponse }): void {
   const res = e.data
+  // Solve and export share the id counter, so an id lives in exactly one map;
+  // route by whichever request is still in flight for it.
+  const ep = exportPending.get(res.id)
+  if (ep) {
+    exportPending.delete(res.id)
+    if (!res.ok) { ep.reject(new Error(res.error)); return }
+    ep.resolve((res as ExportResponse & { ok: true }).bytes)
+    return
+  }
   const p = pending.get(res.id)
   if (!p) return  // stale or already-settled (e.g. after a crash drained pending)
   pending.delete(res.id)
@@ -57,20 +75,23 @@ function onMessage(e: { data: SolveResponse }): void {
     p.reject(new Error(res.error))
     return
   }
-  if (res.payload === null) {
+  const payload = (res as SolveResponse & { ok: true }).payload
+  if (payload === null) {
     p.resolve(null)
     return
   }
-  p.resolve({ ...res.payload, _build_state: EMPTY_BUILD_STATE })
+  p.resolve({ ...payload, _build_state: EMPTY_BUILD_STATE })
 }
 
 function onError(): void {
   // A hard Worker trap loses the checkpoint cache. Fail every in-flight solve
-  // and drop the Worker; the next solveViaWorker respawns a fresh one that
+  // and export, and drop the Worker; the next request respawns a fresh one that
   // rebuilds from feature 0.
   const err = new Error('solver worker crashed')
   for (const p of pending.values()) p.reject(err)
+  for (const p of exportPending.values()) p.reject(err)
   pending.clear()
+  exportPending.clear()
   worker?.terminate()
   worker = null
 }
@@ -103,6 +124,24 @@ export function solveViaWorker(
   })
 }
 
+/**
+ * Build + serialise a document to STEP/STL bytes on the Worker. Returns the
+ * bytes, or `null` when the Worker can't be created, OCC.js is unavailable, or
+ * the document produced no solid body (caller surfaces an error notice).
+ */
+export function exportViaWorker(
+  spec: Record<string, unknown>,
+  options: ExportRequestOptions,
+): Promise<Uint8Array | null> {
+  const w = ensureWorker()
+  if (!w) return Promise.resolve(null)
+  const id = nextId++
+  return new Promise<Uint8Array | null>((resolve, reject) => {
+    exportPending.set(id, { resolve, reject })
+    w.postMessage({ id, kind: 'export', spec, options })
+  })
+}
+
 /** @internal test-only: inject a fake Worker factory and reset client state. */
 export function setSolverWorkerForTest(
   factory: (() => SolverWorkerLike | null) | null,
@@ -110,6 +149,7 @@ export function setSolverWorkerForTest(
   worker?.terminate()
   worker = null
   pending.clear()
+  exportPending.clear()
   nextId = 1
   workerFactory = factory ?? defaultFactory
 }
