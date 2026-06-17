@@ -34,6 +34,10 @@ icons:
 
 
 [working-directory: "frontend"]
+frontend-install:
+    npm install
+
+[working-directory: "frontend"]
 frontend:
     just icons
     just frontend-lint
