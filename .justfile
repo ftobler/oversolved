@@ -74,6 +74,14 @@ run_front:
 runb:
     just run_back
 
+# Build the zero-backend bundle (VITE_OVERSOLVED_BACKEND=static): no auth wall,
+# IndexedDB persistence, local-WASM STEP/STL export. Must be built this way --
+# a plain `npm run build` bakes in hasBackend=true and still serves the login.
+[working-directory: "frontend"]
+buildstatic:
+    npm run occ:provision
+    npm run build:static
+
 static:
     .venv/bin/python -m oversolved.cli staticserve frontend/dist --host 127.0.0.1 --port 5001
 

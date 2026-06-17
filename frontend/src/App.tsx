@@ -1,5 +1,6 @@
 import { Routes, Route, Link, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { hasBackend } from '@/config/capabilities'
 import Documentation from '@/pages/Documentation'
 import Documents from '@/pages/Documents'
 import Part from '@/pages/Part'
@@ -39,8 +40,10 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+        {/* No backend = no accounts: there is nothing to log into and no reason
+            for a landing page, so both go straight to the documents overview. */}
+        <Route path="/login" element={hasBackend ? <Login /> : <Navigate to="/documents" replace />} />
+        <Route path="/" element={<ProtectedRoute>{hasBackend ? <Home /> : <Navigate to="/documents" replace />}</ProtectedRoute>} />
         <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
         <Route path="/documents/:uuid" element={<ProtectedRoute><Part /></ProtectedRoute>} />
         <Route path="/docs" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
