@@ -70,6 +70,9 @@ run_front:
 runb:
     just run_back
 
+static:
+    .venv/bin/python -m oversolved.cli staticserve frontend/dist --host 127.0.0.1 --port 5001
+
 run_back:
     oversolved run_server --debug
 

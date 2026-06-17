@@ -67,6 +67,35 @@ def _get_db_from_config(args: argparse.Namespace, init_db: bool = True):
     return db
 
 
+def staticserve(args: argparse.Namespace) -> None:
+    """Serve a static directory over HTTP."""
+    from flask import Flask, send_from_directory
+    from waitress import serve
+    from pathlib import Path
+    public_path = Path(args.public).resolve()
+    if not public_path.is_dir():
+        print(f"error: {args.public} is not a directory", file=sys.stderr)
+        sys.exit(1)
+
+    app = Flask(__name__)
+
+    @app.route("/")
+    @app.route("/<path:path>")
+    def serve_static(path="index.html"):
+        requested = (public_path / path).resolve()
+        try:
+            if not requested.is_relative_to(public_path):
+                return "", 404
+        except (OSError, ValueError):
+            return "", 404
+        if requested.exists():
+            return send_from_directory(public_path, path)
+        return send_from_directory(public_path, "index.html")
+
+    print(f"Serving {public_path} on http://{args.host}:{args.port}")
+    serve(app, host=args.host, port=args.port)
+
+
 def run_tasks(args: argparse.Namespace) -> None:
     """Run periodic task checks."""
     from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
@@ -133,6 +162,12 @@ def build_parser() -> argparse.ArgumentParser:
     db_subparsers.add_parser("status", help="Show current schema version and pending migrations")
     db_subparsers.add_parser("upgrade", help="Apply all pending migrations")
     db_subparsers.add_parser("check", help="Exit 1 if pending migrations exist (for CI gates)")
+
+    # staticserve subcommand
+    static_parser = subparsers.add_parser("staticserve", help="Serve a static directory over HTTP")
+    static_parser.add_argument("public", help="Path to the directory to serve")
+    static_parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    static_parser.add_argument("--port", type=int, default=5000, help="Port to bind to (default: 5000)")
 
     # run_tasks subcommand
     tasks_parser = subparsers.add_parser("run_tasks", help="Run periodic task checks")
@@ -215,6 +250,8 @@ def main() -> None:
 
     if args.command == "run_server":
         run_server(args)
+    elif args.command == "staticserve":
+        staticserve(args)
     elif args.command == "run_tasks":
         run_tasks(args)
     elif args.command == "db":
