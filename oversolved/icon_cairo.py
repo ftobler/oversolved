@@ -1,13 +1,14 @@
 import logging
 import math
 import cairo
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 SIZE = 24
-_registry = []
+_registry: list[tuple[str, Callable, float, float, float]] = []
 
 
 def icon(path, angle=0, offset_x=0, offset_y=0):
