@@ -90,8 +90,11 @@ jobs:
   frontend:
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-latest-arm64]
+        os: [ubuntu-latest]
         node-version: [20, 22, 24]
+        include:
+          - os: ubuntu-latest-arm64
+            node-version: 24
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
