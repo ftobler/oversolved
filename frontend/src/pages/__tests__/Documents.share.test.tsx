@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
-import Documents from '@/pages/Documents'
+import { screen, waitFor } from '@testing-library/react'
+import { freshLocalDb, renderDocuments, gotoCloudDomain } from './documentsHarness'
 
+// Sharing lives in the cloud domain (the local library is identity-free), so each
+// test signs in, switches to Cloud, and the fetch stub backs the cloud store.
 describe('Documents share', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    freshLocalDb()
   })
 
   const mockFetch = (docs: Record<string, unknown>[] = []) =>
@@ -37,13 +38,8 @@ describe('Documents share', () => {
       { uuid: 'doc-1', name: 'TestDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: true, owner_username: 'admin' },
     ]))
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByText('admin/TestDoc')).toBeInTheDocument()
@@ -58,13 +54,8 @@ describe('Documents share', () => {
       { uuid: 'doc-1', name: 'SharedDoc', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', is_owner: false, owner_username: 'otheruser' },
     ]))
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByText('otheruser/SharedDoc')).toBeInTheDocument()

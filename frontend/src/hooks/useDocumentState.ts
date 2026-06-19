@@ -26,11 +26,30 @@ export function useDocumentState(
   const [error, setError] = useState<string | null>(null)
   const [permission, setPermission] = useState<string>('owner')
   const [isPublic, setIsPublic] = useState(false)
+  // The store the open document was resolved from (its domain). Edits go back to
+  // the SAME domain, so save/rename target this rather than assuming local home.
+  const storeRef = useRef(backendBundle.documents)
 
   useEffect(() => {
     if (!uuid) return
     queueMicrotask(() => setLoading(true))
-    backendBundle.documents.load(uuid)
+    // Two domains (doc-domain-move): prefer the local home copy, fall back to the
+    // cloud domain when the uuid lives there (e.g. a server document not yet pulled
+    // local). Whichever store answers becomes the save/rename target.
+    const loadFromDomain = async () => {
+      try {
+        const data = await backendBundle.documents.load(uuid)
+        storeRef.current = backendBundle.documents
+        return data
+      } catch (localErr) {
+        const cloud = backendBundle.cloudDocuments
+        if (!cloud) throw localErr
+        const data = await cloud.load(uuid)
+        storeRef.current = cloud
+        return data
+      }
+    }
+    loadFromDomain()
       .then(data => {
         const parsed = (parseYaml(data.content) ?? {}) as PartDoc
         if (!parsed.features || parsed.features.length === 0) {
@@ -62,7 +81,7 @@ export function useDocumentState(
           body.preview_image = dataUrl.split(',')[1]
         }
       }
-      await backendBundle.documents.save(uuid, body)
+      await storeRef.current.save(uuid, body)
       return true
     } catch (e) {
       setError(String(e))
@@ -72,7 +91,7 @@ export function useDocumentState(
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {
-      await backendBundle.documents.rename(uuid, name)
+      await storeRef.current.rename(uuid, name)
       setDocName(name)
       return true
     } catch (e) {

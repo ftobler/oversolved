@@ -23,6 +23,41 @@
   margin-bottom: 25px;
 }
 
+/* Local / Cloud domain switch: sits above the owned/shared/public filters and
+   picks which domain (local IndexedDB vs cloud server) backs the library. */
+.domain-switch {
+  display: flex;
+  gap: 4px;
+  margin-right: 12px;
+  margin-bottom: 8px;
+}
+
+.domain-switch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 0;
+  padding: 4px 8px;
+  border: 1px solid #2a2c33;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: #ccc;
+  user-select: none;
+  font-size: 13px;
+}
+
+.domain-switch-btn:hover {
+  background-color: #141519;
+}
+
+.domain-switch-btn.active {
+  background: #111111;
+  color: #fff;
+  border-color: #3a3d47;
+}
+
 .sidebar-item {
   display: flex;
   align-items: center;

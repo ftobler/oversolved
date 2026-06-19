@@ -39,7 +39,6 @@ const HAS_BACKEND_BASELINE = [
   'components/layout/AppHeader.tsx',
   'contexts/AuthContext.tsx',
   'hooks/useUserPreferences.ts',
-  'pages/Documents.tsx',
   'pages/Part.tsx',
 ]
 

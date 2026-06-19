@@ -9,7 +9,7 @@ import { http, HttpError } from '@/utils/core/httpClient'
 import { exportBundle, importBundle } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
-import { hasBackend } from '@/config/capabilities'
+import { useAuth } from '@/contexts/AuthContext'
 import '@/pages/Documents.css'
 
 type DocumentMeta = DocSummary
@@ -24,6 +24,7 @@ interface TrashDoc {
 }
 
 type SidebarFilter = 'owned' | 'shared' | 'public'
+type Domain = 'local' | 'cloud'
 
 export default function Documents() {
   const [documents, setDocuments] = useState<DocumentMeta[]>([])
@@ -40,8 +41,21 @@ export default function Documents() {
   const [isTrashView, setIsTrashView] = useState(false)
   const [trashDocs, setTrashDocs] = useState<TrashDoc[]>([])
   const [trashLoading, setTrashLoading] = useState(false)
+  const [activeDomain, setActiveDomain] = useState<Domain>('local')
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
+  const { user } = useAuth()
+
+  // The two domains (doc-domain-move). Local is always home; the cloud domain is
+  // additive and present only when this build has a server AND a session is signed
+  // in -- a structural value resolved once, not a per-render backend-flag fork. The
+  // owned/shared/public sub-filter, sharing and trash are all cloud-domain concepts
+  // (the local IndexedDB library is identity-free), so they render only under Cloud.
+  const cloudStore = backendBundle.cloudDocuments
+  const cloudAvailable = cloudStore != null && user != null
+  // Fall back to local if the cloud domain vanishes (sign-out) while it was active.
+  const onCloud = activeDomain === 'cloud' && cloudAvailable
+  const activeStore = onCloud ? cloudStore! : backendBundle.documents
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -55,7 +69,7 @@ export default function Documents() {
   }
 
   const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
-    backendBundle.documents.list({ sort: sortToApiParam(sortBy), filter, search })
+    activeStore.list({ sort: sortToApiParam(sortBy), filter, search })
       .then(documents => {
         setDocuments(documents)
         setError(null)
@@ -63,7 +77,7 @@ export default function Documents() {
       .catch(e => {
         setError(String(e))
       })
-  }, [sortBy])
+  }, [sortBy, activeStore])
 
   useEffect(() => {
     if (prefsLoading) return
@@ -79,7 +93,7 @@ export default function Documents() {
     }
 
     try {
-      await backendBundle.documents.create(newDocName.trim(), { is_public: newDocPublic })
+      await activeStore.create(newDocName.trim(), { is_public: newDocPublic })
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
@@ -96,7 +110,7 @@ export default function Documents() {
 
   const handleDeleteDocument = async (uuid: string) => {
     try {
-      await backendBundle.documents.remove(uuid)
+      await activeStore.remove(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       setError(String(e))
@@ -105,7 +119,7 @@ export default function Documents() {
 
   const handleDuplicate = async (uuid: string) => {
     try {
-      await backendBundle.documents.duplicate(uuid)
+      await activeStore.duplicate(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       if (e instanceof HttpError) {
@@ -119,11 +133,9 @@ export default function Documents() {
 
   const handleExport = async (uuid: string, name: string) => {
     try {
-      // Static build has no /export endpoint: read the document text straight
-      // from the local store and download it.
-      const content = hasBackend
-        ? (await http.getJson<{ content: string }>(`/api/documents/${uuid}/export`)).content
-        : (await backendBundle.documents.load(uuid)).content
+      // Read the document text from whichever domain is active and download it.
+      // Both stores answer load() the same way, so there is no backend fork here.
+      const content = (await activeStore.load(uuid)).content
       const blob = new Blob([content], { type: 'text/yaml' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -146,12 +158,12 @@ export default function Documents() {
   // the HTTP store (the zip layout is identical to /api/admin/backup).
   const handleExportAll = async () => {
     try {
-      const all = await backendBundle.documents.list({ filter: 'owned' })
+      const all = await activeStore.list({ filter: 'owned' })
       if (all.length === 0) {
         setError('No documents to export')
         return
       }
-      const blob = await exportBundle(backendBundle.documents, all.map(d => d.uuid))
+      const blob = await exportBundle(activeStore, all.map(d => d.uuid))
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -172,7 +184,7 @@ export default function Documents() {
     // .yaml stays on the single-document import path.
     if (/\.(oversolved|zip)$/i.test(file.name)) {
       try {
-        await importBundle(backendBundle.documents, file)
+        await importBundle(activeStore, file)
         fetchDocuments(activeFilter, debouncedSearch)
       } catch (err) {
         setError(String(err))
@@ -188,13 +200,10 @@ export default function Documents() {
 
     try {
       const text = await file.text()
-      if (hasBackend) {
-        await http.postJson('/api/documents/import', { name, content: text })
-      } else {
-        const store = backendBundle.documents
-        const { uuid } = await store.create(name)
-        await store.save(uuid, { content: text })
-      }
+      // Import into the active domain's store: create + save round-trips through
+      // either store identically, so no backend fork.
+      const { uuid } = await activeStore.create(name)
+      await activeStore.save(uuid, { content: text })
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (err) {
       if (err instanceof HttpError) {
@@ -263,15 +272,21 @@ export default function Documents() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  const sidebarItems: { label: string; filter: SidebarFilter; icon: string }[] = [
-    { label: 'My Documents', filter: 'owned', icon: 'folder' },
-    // Sharing and public sections are server-side concerns; hide them on the
-    // static build where they are structurally always empty.
-    ...(hasBackend ? [
-      { label: 'Shared with me', filter: 'shared' as SidebarFilter, icon: 'people' },
-      { label: 'Public Documents', filter: 'public' as SidebarFilter, icon: 'public' },
-    ] : []),
-  ]
+  const switchDomain = (d: Domain) => {
+    setActiveDomain(d)
+    setActiveFilter('owned')
+    setIsTrashView(false)
+  }
+
+  // The local library is identity-free, so shared / public have no meaning there;
+  // they (and trash) belong to the cloud domain only.
+  const sidebarItems: { label: string; filter: SidebarFilter; icon: string }[] = onCloud
+    ? [
+        { label: 'My Documents', filter: 'owned', icon: 'folder' },
+        { label: 'Shared with me', filter: 'shared', icon: 'people' },
+        { label: 'Public Documents', filter: 'public', icon: 'public' },
+      ]
+    : [{ label: 'My Documents', filter: 'owned', icon: 'folder' }]
 
   return (
     <div className="documents">
@@ -333,6 +348,26 @@ export default function Documents() {
 
       <div className="documents-layout">
         <aside className="documents-sidebar">
+          {cloudAvailable && (
+            <div className="domain-switch">
+              <button
+                className={`domain-switch-btn ${!onCloud ? 'active' : ''}`}
+                onClick={() => switchDomain('local')}
+                title="Local documents"
+              >
+                <span className="material-icons sidebar-item-icon">computer</span>
+                Local
+              </button>
+              <button
+                className={`domain-switch-btn ${onCloud ? 'active' : ''}`}
+                onClick={() => switchDomain('cloud')}
+                title="Cloud documents"
+              >
+                <span className="material-icons sidebar-item-icon">cloud</span>
+                Cloud
+              </button>
+            </div>
+          )}
           {sidebarItems.map(item => (
             <div
               key={item.filter}
@@ -343,7 +378,7 @@ export default function Documents() {
               <span className="sidebar-item-label">{item.label}</span>
             </div>
           ))}
-          {hasBackend && (
+          {onCloud && (
             <div
               className={`sidebar-item ${isTrashView ? 'active' : ''}`}
               onClick={() => { if (!isTrashView) { setIsTrashView(true); fetchTrash() } }}
@@ -499,7 +534,7 @@ export default function Documents() {
                         <div className="doc-tile-meta">
                           <span className="doc-tile-date">{formatDate(doc.updated_at)}</span>
                            <div className="doc-tile-actions">
-                            {hasBackend && doc.is_owner && (
+                            {onCloud && doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
                                 onClick={e => {
@@ -512,7 +547,7 @@ export default function Documents() {
                                 <span className="material-icons">share</span>
                               </button>
                             )}
-                            {hasBackend && !doc.is_owner && (
+                            {onCloud && !doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
                                 onClick={e => {

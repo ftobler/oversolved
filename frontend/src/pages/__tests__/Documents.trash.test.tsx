@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
-import Documents from '@/pages/Documents'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { freshLocalDb, renderDocuments, gotoCloudDomain } from './documentsHarness'
 
+// Trash is a cloud-domain lifecycle view (the local library has no server-side
+// trash), so each test signs in and switches to the Cloud domain to reach it.
 const authOk = {
   ok: true,
   json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
@@ -17,6 +17,7 @@ const prefsOk = {
 describe('Documents trash', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    freshLocalDb()
     vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
@@ -47,13 +48,8 @@ describe('Documents trash', () => {
   it('shows trash button', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByTitle('Trash')).toBeInTheDocument()
@@ -63,13 +59,8 @@ describe('Documents trash', () => {
   it('clicking trash button shows trash view', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByTitle('Trash')).toBeInTheDocument()
@@ -87,13 +78,8 @@ describe('Documents trash', () => {
       { uuid: 'trash-1', name: 'Deleted Doc', owner_username: 'admin', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
     ]))
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByTitle('Trash')).toBeInTheDocument()
@@ -136,13 +122,8 @@ describe('Documents trash', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByTitle('Trash')).toBeInTheDocument()

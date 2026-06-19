@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { act } from 'react'
-import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
-import Documents from '@/pages/Documents'
+import { freshLocalDb, renderDocuments, gotoCloudDomain } from './documentsHarness'
 
+// After the store-home inversion (doc-domain-move), home is the local IndexedDB
+// library. The owned/shared/public filters, trash and server-side search are
+// cloud-domain concepts, so the cloud-facing tests switch to the Cloud domain
+// where the fetch stub backs the HTTP store.
 const authOk = {
   ok: true,
   json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
@@ -18,6 +20,7 @@ const prefsOk = {
 describe('Documents sidebar', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    freshLocalDb()
     vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
@@ -39,16 +42,11 @@ describe('Documents sidebar', () => {
     })
   }
 
-  it('renders sidebar with three filters and trash', async () => {
+  it('renders cloud-domain filters and trash when signed in', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByText('My Documents')).toBeInTheDocument()
@@ -59,16 +57,25 @@ describe('Documents sidebar', () => {
     expect(screen.getByText('Trash')).toBeInTheDocument()
   })
 
+  it('local domain shows only My Documents, no shared/public/trash', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+
+    renderDocuments()
+
+    await waitFor(() => {
+      expect(screen.getByText('My Documents')).toBeInTheDocument()
+    })
+
+    // Local home is identity-free: sharing/public/trash are absent, not empty.
+    expect(screen.queryByText('Shared with me')).not.toBeInTheDocument()
+    expect(screen.queryByText('Public Documents')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Trash')).not.toBeInTheDocument()
+  })
+
   it('My Documents is active by default', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
 
     await waitFor(() => {
       expect(screen.getByText('My Documents')).toBeInTheDocument()
@@ -82,13 +89,8 @@ describe('Documents sidebar', () => {
     const fetchMock = mockFetch()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByText('Shared with me')).toBeInTheDocument()
@@ -110,13 +112,8 @@ describe('Documents sidebar', () => {
     const fetchMock = mockFetch()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByText('Public Documents')).toBeInTheDocument()
@@ -137,13 +134,7 @@ describe('Documents sidebar', () => {
   it('old filterShared toggle button is not present', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
 
     await waitFor(() => {
       expect(screen.getByText('My Documents')).toBeInTheDocument()
@@ -157,6 +148,7 @@ describe('Documents sidebar', () => {
 describe('Documents search', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    freshLocalDb()
     vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
@@ -182,13 +174,8 @@ describe('Documents search', () => {
     const fetchMock = mockFetch()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search documents...')).toBeInTheDocument()
@@ -212,13 +199,8 @@ describe('Documents search', () => {
     const fetchMock = mockFetch()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search documents...')).toBeInTheDocument()
@@ -244,13 +226,8 @@ describe('Documents search', () => {
     const fetchMock = mockFetch()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search documents...')).toBeInTheDocument()
@@ -293,13 +270,8 @@ describe('Documents search', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
-      <BrowserRouter>
-        <AuthProvider>
-          <Documents />
-        </AuthProvider>
-      </BrowserRouter>
-    )
+    renderDocuments()
+    await gotoCloudDomain()
 
     await waitFor(() => {
       expect(screen.getByText('admin/AlphaDoc')).toBeInTheDocument()
