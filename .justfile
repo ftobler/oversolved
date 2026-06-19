@@ -56,6 +56,10 @@ frontend-test:
 frontend-build:
     npm run build
 
+[working-directory: "frontend"]
+install-npm:
+    npm install
+
 # Full-document WASM parity gate (TS kernel vs Python baseline). Slow, needs
 # OCC.js provisioned, hard-fails on any divergence. Kept out of `just frontend`.
 [working-directory: "frontend"]
@@ -70,6 +74,13 @@ runf:
 [working-directory: "frontend"]
 run_front:
     npm run dev
+
+# Install all dependencies (Python + frontend + wasm tools)
+install:
+    # note cairo needs apt libcairo2-dev
+    .venv/bin/pip install -e ".[dev]"
+    just install-npm
+    just install-wasm
 
 runb:
     just run_back
@@ -90,6 +101,9 @@ static:
 run_back:
     oversolved run_server --debug
 
+
+install-wasm:
+    cargo install wasm-pack
 
 # Build the Rust solver to WASM (web target for frontend + nodejs target for tests)
 wasm:
