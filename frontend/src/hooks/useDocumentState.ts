@@ -32,25 +32,32 @@ export function useDocumentState(
 
   useEffect(() => {
     if (!uuid) return
-    queueMicrotask(() => setLoading(true))
+    // Guard against a superseded load: if the uuid changes while a load is in
+    // flight, a slow prior resolution must not overwrite the newer doc or, worse,
+    // point storeRef at the wrong domain (a later save would target it). Mirrors
+    // the listReqRef guard in Documents.tsx.
+    let cancelled = false
+    queueMicrotask(() => { if (!cancelled) setLoading(true) })
     // Two domains (doc-domain-move): prefer the local home copy, fall back to the
     // cloud domain when the uuid lives there (e.g. a server document not yet pulled
-    // local). Whichever store answers becomes the save/rename target.
-    const loadFromDomain = async () => {
+    // local). Whichever store answers becomes the save/rename target. The resolving
+    // store is committed to storeRef only in the guarded .then below, never inside
+    // this async fn, so a stale load cannot corrupt the save target.
+    const loadFromDomain = async (): Promise<{ data: Awaited<ReturnType<typeof backendBundle.documents.load>>; store: typeof backendBundle.documents }> => {
       try {
         const data = await backendBundle.documents.load(uuid)
-        storeRef.current = backendBundle.documents
-        return data
+        return { data, store: backendBundle.documents }
       } catch (localErr) {
         const cloud = backendBundle.cloudDocuments
         if (!cloud) throw localErr
         const data = await cloud.load(uuid)
-        storeRef.current = cloud
-        return data
+        return { data, store: cloud }
       }
     }
     loadFromDomain()
-      .then(data => {
+      .then(({ data, store }) => {
+        if (cancelled) return
+        storeRef.current = store
         const parsed = (parseYaml(data.content) ?? {}) as PartDoc
         if (!parsed.features || parsed.features.length === 0) {
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
@@ -67,9 +74,11 @@ export function useDocumentState(
         }
       })
       .catch(e => {
+        if (cancelled) return
         setError(String(e))
         setLoading(false)
       })
+    return () => { cancelled = true }
   }, [uuid, solveOnLoad, reSolveRef])
 
   const saveDoc = useCallback(async (uuid: string, document: PartDoc, screenshot?: () => Promise<string | null>) => {
