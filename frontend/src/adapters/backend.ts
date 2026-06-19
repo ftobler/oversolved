@@ -17,11 +17,13 @@ import { backend, type Backend as BackendFlag } from '@/config/capabilities'
 import { createBugReportSink, type BugReportSink } from './telemetry'
 import { createDocsSource, type DocsSource } from './docs'
 import { createSharingAdapter, type SharingAdapter } from './sharing'
+import { createPreferencesAdapter, type PreferencesAdapter } from './preferences'
 
 export interface BackendBundle {
   documents: DocumentStore            // the LOCAL home library: IndexedDB on BOTH builds (doc-domain-move)
   cloudDocuments: DocumentStore | null  // the additive CLOUD domain; null without a server
   telemetry: BugReportSink            // always present (POST with a server, file download without)
+  preferences: PreferencesAdapter     // always present (per-user on the server, localStorage without)
   docs: DocsSource | null             // null without a server to serve the markdown docs
   sharing: SharingAdapter | null      // null without other users to share with
 }
@@ -42,6 +44,7 @@ export function createBackend(
     documents,
     cloudDocuments,
     telemetry: createBugReportSink(flag),
+    preferences: createPreferencesAdapter(flag),
     docs: createDocsSource(flag),
     sharing: createSharingAdapter(flag),
   }

@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// Static build: no backend. Preferences must live in localStorage and never
-// touch the network.
-vi.mock('@/config/capabilities', () => ({ hasBackend: false }))
+// Static build: no backend. Hand the hook the static (localStorage) preferences
+// adapter so it must live in localStorage and never touch the network.
+vi.mock('@/adapters/backend', async () => {
+  const { createPreferencesAdapter } = await import('@/adapters/preferences')
+  return { backendBundle: { preferences: createPreferencesAdapter('static') } }
+})
 
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useUserPreferences } from '../useUserPreferences'

@@ -38,7 +38,6 @@ const HAS_BACKEND_BASELINE = [
   'App.tsx',
   'components/layout/AppHeader.tsx',
   'contexts/AuthContext.tsx',
-  'hooks/useUserPreferences.ts',
   'pages/Part.tsx',
 ]
 
@@ -47,7 +46,6 @@ const HAS_BACKEND_BASELINE = [
 const API_LITERAL_BASELINE = [
   'contexts/AuthContext.tsx',
   'hooks/useRebuildStats.ts',
-  'hooks/useUserPreferences.ts',
   'kernel/solveLocally.ts',  // comment reference to the retired /api/export path
   'pages/AdminPeriodicTasks.tsx',
   'pages/AdminUsers.tsx',
