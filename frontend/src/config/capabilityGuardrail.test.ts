@@ -32,28 +32,38 @@ const ALLOWED_HOME_PREFIXES = [
   'main.tsx',
 ]
 
+// Sanctioned cloud-only seams: views/contexts that exist ONLY when there is a
+// server and never mount on the static build (the auth gatekeeping flow + the
+// admin / account / login pages, all self-guarded behind `user?.`). Their
+// backend coupling is structural, not migration debt -- there is no static
+// behaviour to fold them into, so they are deliberately exempt rather than
+// baselined (decided 2026-06-19, static-build-notes "Auth as a capability": auth
+// is a FLOW, not a port; admin/account pages ride the same reasoning). Unlike
+// the shrink-only baselines below, this list is permanent by design. Keep it
+// tight: a view that ALSO ships on static (Part, Documents) is debt, not a seam.
+const SANCTIONED_SEAMS = [
+  'App.tsx',                       // route wall / redirects (auth gatekeeping)
+  'components/layout/AppHeader.tsx',  // sign-in affordance vs username + logout
+  'contexts/AuthContext.tsx',      // the auth flow itself + /api/auth
+  'pages/AdminPeriodicTasks.tsx',
+  'pages/AdminUsers.tsx',
+  'pages/Backup.tsx',
+  'pages/Login.tsx',
+  'pages/UserProfile.tsx',
+]
+
 // Existing `hasBackend` leaks awaiting migration behind the capability bundle.
 // Remove an entry when its file stops reading the flag.
 const HAS_BACKEND_BASELINE = [
-  'App.tsx',
-  'components/layout/AppHeader.tsx',
-  'contexts/AuthContext.tsx',
   'pages/Part.tsx',
 ]
 
 // Existing raw `/api/...` literals awaiting migration behind an adapter.
 // Remove an entry when its file stops reaching the API path directly.
 const API_LITERAL_BASELINE = [
-  'contexts/AuthContext.tsx',
-  'hooks/useRebuildStats.ts',
   'kernel/solveLocally.ts',  // comment reference to the retired /api/export path
-  'pages/AdminPeriodicTasks.tsx',
-  'pages/AdminUsers.tsx',
-  'pages/Backup.tsx',
   'pages/Documents.tsx',
-  'pages/Login.tsx',
   'pages/Part.tsx',
-  'pages/UserProfile.tsx',
 ]
 
 function sourceFiles(): string[] {
@@ -84,10 +94,16 @@ function isAllowedHome(rel: string): boolean {
   return ALLOWED_HOME_PREFIXES.some(p => rel === p || rel.startsWith(p))
 }
 
+const SANCTIONED_SET = new Set(SANCTIONED_SEAMS)
+
+function isExempt(rel: string): boolean {
+  return isAllowedHome(rel) || SANCTIONED_SET.has(rel)
+}
+
 function offenders(test: (text: string) => boolean): string[] {
   return sourceFiles()
     .map(relPath)
-    .filter(rel => !isAllowedHome(rel))
+    .filter(rel => !isExempt(rel))
     .filter(rel => test(readFileSync(resolve(SRC_DIR, rel), 'utf8')))
     .sort()
 }
@@ -122,5 +138,27 @@ describe('capability-bundle guardrail', () => {
   it('no NEW raw /api/ literal outside the allowed homes', () => {
     const found = offenders(text => text.includes('/api/'))
     assertRatchet(found, API_LITERAL_BASELINE, '/api/')
+  })
+
+  // Sanctioned seams are permanent by design, but the list must not rot: every
+  // entry must still exist AND still carry the backend coupling that justifies
+  // its exemption. A seam that lost its coupling (or was deleted) should drop off
+  // the list, not sit there hiding a future leak in that file.
+  it('every sanctioned seam still exists and still carries backend coupling', () => {
+    const stale = SANCTIONED_SEAMS.filter(rel => {
+      let text: string
+      try {
+        text = readFileSync(resolve(SRC_DIR, rel), 'utf8')
+      } catch {
+        return true  // file gone
+      }
+      return !/\bhasBackend\b/.test(text) && !text.includes('/api/')
+    })
+    expect(
+      stale,
+      `Sanctioned seam(s) no longer exist or no longer touch the backend. ` +
+        `Remove them from SANCTIONED_SEAMS in capabilityGuardrail.test.ts:\n` +
+        stale.join('\n'),
+    ).toEqual([])
   })
 })
