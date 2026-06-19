@@ -75,13 +75,18 @@ runf:
 run_front:
     npm run dev
 
-# Install all dependencies (Python + frontend + wasm tools)
+# Install all dependencies (Python + frontend + wasm tools + opencascade.js)
 install:
     test -d .venv || python3 -m venv .venv
     # note cairo needs apt libcairo2-dev
     .venv/bin/pip install -e ".[dev]"
     just install-npm
     just install-wasm
+    just install-occ
+
+[working-directory: "frontend"]
+install-occ:
+    npm run occ:install
 
 runb:
     just run_back
