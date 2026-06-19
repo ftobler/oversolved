@@ -19,3 +19,29 @@ export async function copyDocument(
   await dest.save(uuid, { content: doc.content, preview_image: doc.preview_image })
   return { uuid }
 }
+
+// markSynced is the engine-facing sync primitive on IndexedDbDocumentStore,
+// deliberately NOT part of the DocumentStore contract. push duck-types it so a
+// store that does not track sync state simply skips the ack.
+interface SyncTrackingStore {
+  markSynced(id: string): Promise<void>
+}
+
+function hasMarkSynced(s: DocumentStore): s is DocumentStore & SyncTrackingStore {
+  return typeof (s as Partial<SyncTrackingStore>).markSynced === 'function'
+}
+
+// Push (local -> cloud): copy the document up, then record the LOCAL doc as
+// synced (baseRev = rev, dirty = false) so it stops reading as a local-only
+// change. The cloud `create` is where server-side ownership attribution attaches;
+// the local home stays identity-free. The local doc is left intact (mirror, not
+// move). Pull (cloud -> local) needs no ack, so call `copyDocument` directly.
+export async function pushDocument(
+  local: DocumentStore,
+  cloud: DocumentStore,
+  id: string,
+): Promise<{ uuid: string }> {
+  const result = await copyDocument(local, cloud, id)
+  if (hasMarkSynced(local)) await local.markSynced(id)
+  return result
+}

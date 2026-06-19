@@ -10,7 +10,7 @@ export { resolveBackend, hasBackend } from '@/config/capabilities'
 export { HttpDocumentStore } from './HttpDocumentStore'
 export { IndexedDbDocumentStore } from './IndexedDbDocumentStore'
 export { exportBundle, importBundle, buildBundleBytes } from './bundle'
-export { copyDocument } from './transfer'
+export { copyDocument, pushDocument } from './transfer'
 
 // Pure factory (testable without touching the env).
 export function createDocumentStore(b: Backend): DocumentStore {

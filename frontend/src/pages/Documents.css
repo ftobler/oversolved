@@ -183,6 +183,10 @@
   color: #ef5350;
 }
 
+.status.notice {
+  color: #66bb6a;
+}
+
 .dialog-component-overlay {
   position: fixed;
   top: 0;

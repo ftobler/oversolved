@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { copyDocument } from '../transfer'
+import { copyDocument, pushDocument } from '../transfer'
 import type { DocumentStore, DocumentPayload, SaveInput, ListOptions, DocSummary } from '../types'
 
 // A throwaway in-memory store. copyDocument speaks only the DocumentStore
@@ -82,5 +82,42 @@ describe('copyDocument', () => {
     const b = new FakeStore('b')
     await expect(copyDocument(a, b, 'nope')).rejects.toThrow(/not found/)
     expect((await b.list()).length).toBe(0)  // nothing partially created in dest
+  })
+})
+
+// A local store that tracks the engine-facing markSynced primitive (as the real
+// IndexedDbDocumentStore does, but it is NOT on the DocumentStore contract).
+class SyncFakeStore extends FakeStore {
+  syncedIds: string[] = []
+  async markSynced(id: string): Promise<void> {
+    this.syncedIds.push(id)
+  }
+}
+
+describe('pushDocument', () => {
+  it('copies local -> cloud and acks the local doc as synced', async () => {
+    const local = new SyncFakeStore('local')
+    const cloud = new FakeStore('cloud')
+    local.seed('l-doc', { content: 'profile: square', name: 'Bracket' })
+
+    const { uuid } = await pushDocument(local, cloud, 'l-doc')
+
+    // The cloud domain gained a fresh copy...
+    const copied = await cloud.load(uuid)
+    expect(copied.content).toBe('profile: square')
+    expect(copied.name).toBe('Bracket')
+    // ...and the local doc was marked synced (push-ack), but left intact.
+    expect(local.syncedIds).toEqual(['l-doc'])
+    expect((await local.load('l-doc')).content).toBe('profile: square')
+  })
+
+  it('skips the ack when the local store does not track sync state', async () => {
+    const local = new FakeStore('local')  // no markSynced
+    const cloud = new FakeStore('cloud')
+    local.seed('l-doc', { content: 'orig', name: 'Orig' })
+
+    const { uuid } = await pushDocument(local, cloud, 'l-doc')
+
+    expect((await cloud.load(uuid)).content).toBe('orig')  // copy still happens, no throw
   })
 })

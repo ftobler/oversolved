@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
 import Dialog from '@/components/dialogs/Dialog'
@@ -6,7 +6,7 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { http, HttpError } from '@/utils/core/httpClient'
-import { exportBundle, importBundle } from '@/stores/documentStore'
+import { exportBundle, importBundle, copyDocument, pushDocument } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
 import { useAuth } from '@/contexts/AuthContext'
@@ -42,6 +42,7 @@ export default function Documents() {
   const [trashDocs, setTrashDocs] = useState<TrashDoc[]>([])
   const [trashLoading, setTrashLoading] = useState(false)
   const [activeDomain, setActiveDomain] = useState<Domain>('local')
+  const [notice, setNotice] = useState<string | null>(null)
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
   const { user } = useAuth()
@@ -62,19 +63,34 @@ export default function Documents() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  // Cross-domain copy confirmation is transient: clear it after a few seconds.
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 4000)
+    return () => clearTimeout(timer)
+  }, [notice])
+
   const sortToApiParam = (sort: DocumentSort): string => {
     if (sort === 'date_newest_first') return 'modified'
     if (sort === 'date_oldest_first') return 'modified_asc'
     return 'name'
   }
 
+  // Guards against a stale list response winning the race: switching domains
+  // fires a new list against the new store, but the previous store's promise (a
+  // slow local IndexedDB read can land after a fast cloud fetch) must not
+  // overwrite it. Only the latest request gets to set state.
+  const listReqRef = useRef(0)
   const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
+    const reqId = ++listReqRef.current
     activeStore.list({ sort: sortToApiParam(sortBy), filter, search })
       .then(documents => {
+        if (reqId !== listReqRef.current) return
         setDocuments(documents)
         setError(null)
       })
       .catch(e => {
+        if (reqId !== listReqRef.current) return
         setError(String(e))
       })
   }, [sortBy, activeStore])
@@ -128,6 +144,30 @@ export default function Documents() {
       } else {
         setError(String(e))
       }
+    }
+  }
+
+  // Cross-domain copy verbs (doc-domain-move slice 4). Both leave the source
+  // intact -- they bridge a mirror across the boundary, they do not move it. The
+  // list is not refetched because the active domain (the one on screen) is
+  // unchanged; only the OTHER domain gains a copy.
+  const handleCopyToCloud = async (uuid: string, name: string) => {
+    if (!cloudStore) return
+    try {
+      await pushDocument(backendBundle.documents, cloudStore, uuid)
+      setNotice(`Copied "${name}" to Cloud`)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleCopyToLocal = async (uuid: string, name: string) => {
+    if (!cloudStore) return
+    try {
+      await copyDocument(cloudStore, backendBundle.documents, uuid)
+      setNotice(`Copied "${name}" to Local`)
+    } catch (e) {
+      setError(String(e))
     }
   }
 
@@ -391,6 +431,7 @@ export default function Documents() {
         </aside>
 
         <div className="documents-main">
+          {notice && <p className="status notice">{notice}</p>}
           <Dialog
             isOpen={showAddForm}
             title="Create New Document"
@@ -575,6 +616,32 @@ export default function Documents() {
                             >
                               <span className="material-icons">content_copy</span>
                             </button>
+                            {!onCloud && cloudAvailable && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleCopyToCloud(doc.uuid, doc.name)
+                                }}
+                                title="Copy to Cloud"
+                              >
+                                <span className="material-icons">cloud_upload</span>
+                              </button>
+                            )}
+                            {onCloud && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleCopyToLocal(doc.uuid, doc.name)
+                                }}
+                                title="Copy to Local"
+                              >
+                                <span className="material-icons">cloud_download</span>
+                              </button>
+                            )}
                             <button
                               className="btn btn-tile-action"
                               onClick={e => {
