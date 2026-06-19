@@ -1,10 +1,18 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import AppHeader from '@/components/layout/AppHeader'
 import '@/pages/Settings.css'
 
 export default function Settings() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+
+  // Account pages exist only for a signed-in user. A guest -- including every
+  // visitor on the static build, where there is no sign-in -- has no settings,
+  // so guard the whole subtree by redirecting rather than rendering an empty
+  // profile form that posts nowhere. Wait out the initial auth restore so a
+  // signed-in reload is not bounced mid-check.
+  if (loading) return null
+  if (!user) return <Navigate to="/documents" replace />
 
   return (
     <div className="settings">

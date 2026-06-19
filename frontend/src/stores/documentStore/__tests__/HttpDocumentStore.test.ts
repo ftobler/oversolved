@@ -104,4 +104,8 @@ describe('HttpDocumentStore', () => {
     expect(init?.method).toBe('POST')
     expect(res).toEqual({ uuid: 'dup-1' })
   })
+
+  it('thumbnailUrl points at the server thumbnail route (no fetch)', () => {
+    expect(store.thumbnailUrl('uuid-1')).toBe('/api/documents/uuid-1/thumbnail')
+  })
 })

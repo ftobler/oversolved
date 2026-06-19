@@ -69,4 +69,9 @@ export interface DocumentStore {
   create(name: string, opts?: { is_public?: boolean }): Promise<{ uuid: string }>
   rename(id: string, name: string): Promise<void>
   duplicate(id: string): Promise<{ uuid: string }>
+  // A network URL the grid can point an <img> at for a thumbnail, or null when
+  // the store has no server-rendered thumbnail (the local store inlines a
+  // base64 preview_image on the summary instead). Keeps the view from hardcoding
+  // an /api path it would otherwise reach past the adapter to build.
+  thumbnailUrl(id: string): string | null
 }

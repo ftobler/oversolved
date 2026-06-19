@@ -7,12 +7,41 @@ import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { http, HttpError, isConnectionError } from '@/utils/core/httpClient'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
-import type { DocSummary } from '@/stores/documentStore'
+import type { DocSummary, DocumentStore } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
 import { useAuth } from '@/contexts/AuthContext'
 import '@/pages/Documents.css'
 
 type DocumentMeta = DocSummary
+
+// Tile thumbnail: prefer the inline base64 preview (local store), else the
+// store's own thumbnail URL (the cloud store's /api path), else a placeholder.
+// The view asks the store for the URL instead of hardcoding /api -- the one spot
+// that used to reach past the adapter.
+function DocTilePreview(
+  { doc, store }: { doc: { uuid: string; name: string; preview_image?: string }; store: DocumentStore },
+) {
+  if (doc.preview_image) {
+    return <img src={`data:image/png;base64,${doc.preview_image}`} alt={doc.name} />
+  }
+  const url = store.thumbnailUrl(doc.uuid)
+  if (!url) return <div className="doc-tile-placeholder" />
+  return (
+    <>
+      <img
+        src={url}
+        alt={doc.name}
+        onError={(e) => {
+          const target = e.target as HTMLImageElement
+          target.style.display = 'none'
+          const next = target.nextElementSibling as HTMLElement
+          if (next) next.style.display = 'block'
+        }}
+      />
+      <div className="doc-tile-placeholder" style={{ display: 'none' }} />
+    </>
+  )
+}
 
 interface TrashDoc {
   uuid: string
@@ -591,17 +620,7 @@ export default function Documents() {
                       <div key={doc.uuid} className="doc-tile">
                         <div className="doc-tile-link">
                           <div className="doc-tile-preview">
-                            <img
-                              src={`/api/documents/${doc.uuid}/thumbnail`}
-                              alt={doc.name}
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement
-                                target.style.display = 'none'
-                                const next = target.nextElementSibling as HTMLElement
-                                if (next) next.style.display = 'block'
-                              }}
-                            />
-                            <div className="doc-tile-placeholder" style={{display: 'none'}} />
+                            <DocTilePreview doc={doc} store={activeStore} />
                           </div>
                           <div className="doc-tile-info">
                             <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
@@ -653,26 +672,7 @@ export default function Documents() {
                     <div key={doc.uuid} className="doc-tile">
                       <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                         <div className="doc-tile-preview">
-                          {doc.preview_image ? (
-                            <img
-                              src={`data:image/png;base64,${doc.preview_image}`}
-                              alt={doc.name}
-                            />
-                          ) : (
-                            <>
-                              <img
-                                src={`/api/documents/${doc.uuid}/thumbnail`}
-                                alt={doc.name}
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement
-                                  target.style.display = 'none'
-                                  const next = target.nextElementSibling as HTMLElement
-                                  if (next) next.style.display = 'block'
-                                }}
-                              />
-                              <div className="doc-tile-placeholder" style={{display: 'none'}} />
-                            </>
-                          )}
+                          <DocTilePreview doc={doc} store={activeStore} />
                         </div>
                         <div className="doc-tile-info">
                           <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>

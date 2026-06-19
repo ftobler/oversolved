@@ -150,6 +150,12 @@ export class IndexedDbDocumentStore implements DocumentStore {
     return { uuid }
   }
 
+  // No server-rendered thumbnail: the grid uses the inline preview_image carried
+  // on each summary instead.
+  thumbnailUrl(): string | null {
+    return null
+  }
+
   // Engine-facing primitive (NOT part of DocumentStore). A future sync engine
   // calls this on push-ack: the document is now in sync with the server.
   async markSynced(id: string): Promise<void> {

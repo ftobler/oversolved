@@ -48,6 +48,7 @@ class FakeStore implements DocumentStore {
     await this.save(uuid, { content: d.content })
     return { uuid }
   }
+  thumbnailUrl(): string | null { return null }
 }
 
 describe('copyDocument', () => {

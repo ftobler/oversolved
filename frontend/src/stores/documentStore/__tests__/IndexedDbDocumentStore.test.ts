@@ -97,6 +97,10 @@ describe('IndexedDbDocumentStore', () => {
       expect(s.meta?.baseRev).toBe(1)  // diverged: rev !== baseRev
     })
 
+    it('thumbnailUrl is null (the grid uses the inline preview_image)', () => {
+      expect(new IndexedDbDocumentStore().thumbnailUrl('any')).toBeNull()
+    })
+
     it('rename bumps rev + re-flags dirty so a synced doc re-diverges', async () => {
       const store = new IndexedDbDocumentStore()
       const { uuid } = await store.create('Doc')
