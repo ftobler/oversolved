@@ -3,7 +3,7 @@ import { BugReporter, type BugReportAttachments } from '@/components/dialogs/Bug
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { bugReportSink } from '@/adapters/telemetry'
+import { backendBundle } from '@/adapters/backend'
 import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
@@ -53,7 +53,7 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
         }))
         report.history = historyItems
       }
-      await bugReportSink.send(report)
+      await backendBundle.telemetry.send(report)
       alert('Bug report submitted successfully!')
       setDebugTab('selection')
     } catch (e) {

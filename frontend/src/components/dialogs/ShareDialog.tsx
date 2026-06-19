@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { HttpError } from '@/utils/core/httpClient'
-import { sharingAdapter, type ShareInfo } from '@/adapters/sharing'
+import { type ShareInfo } from '@/adapters/sharing'
+import { backendBundle } from '@/adapters/backend'
 
 interface ShareDialogProps {
   isOpen: boolean
@@ -20,9 +21,9 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const [error, setError] = useState<string | null>(null)
 
   const fetchShares = useCallback(async () => {
-    if (!isOwner || !sharingAdapter) return
+    if (!isOwner || !backendBundle.sharing) return
     try {
-      const sharesList = await sharingAdapter.listShares(documentUuid)
+      const sharesList = await backendBundle.sharing.listShares(documentUuid)
       setShares(sharesList)
       setLinkSharing(sharesList.some((s: ShareInfo) => s.shared_with_user_id === null))
     } catch (e) {
@@ -42,11 +43,11 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   }, [isOpen, isOwner, documentUuid, fetchShares])
 
   const handleShare = async () => {
-    if (!shareUsername.trim() || !sharingAdapter) return
+    if (!shareUsername.trim() || !backendBundle.sharing) return
     setLoading(true)
     setError(null)
     try {
-      await sharingAdapter.share(documentUuid, { username: shareUsername.trim(), permission: sharePermission })
+      await backendBundle.sharing.share(documentUuid, { username: shareUsername.trim(), permission: sharePermission })
       setShareUsername('')
       fetchShares()
     } catch (e) {
@@ -62,11 +63,11 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   }
 
   const handleRemoveShare = async (username: string | null) => {
-    if (!sharingAdapter) return
+    if (!backendBundle.sharing) return
     setLoading(true)
     setError(null)
     try {
-      await sharingAdapter.unshare(documentUuid, username)
+      await backendBundle.sharing.unshare(documentUuid, username)
       fetchShares()
     } catch (e) {
       setError(String(e))
@@ -105,15 +106,15 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                     checked={linkSharing}
                     disabled={loading}
                     onChange={async (e) => {
-                      if (!sharingAdapter) return
+                      if (!backendBundle.sharing) return
                       const checked = e.target.checked
                       setLinkSharing(checked)
                       setLoading(true)
                       setError(null)
                       try {
                         const updated = checked
-                          ? await sharingAdapter.share(documentUuid, { permission: 'view' })
-                          : await sharingAdapter.unshare(documentUuid)
+                          ? await backendBundle.sharing.share(documentUuid, { permission: 'view' })
+                          : await backendBundle.sharing.unshare(documentUuid)
                         if (updated.shares) {
                           setShares(updated.shares)
                         }
@@ -188,11 +189,11 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                             <select
                               value={share.permission}
                               onChange={async e => {
-                                if (!sharingAdapter) return
+                                if (!backendBundle.sharing) return
                                 setLoading(true)
                                 setError(null)
                                 try {
-                                  await sharingAdapter.share(documentUuid, { username: share.username ?? undefined, permission: e.target.value })
+                                  await backendBundle.sharing.share(documentUuid, { username: share.username ?? undefined, permission: e.target.value })
                                   fetchShares()
                                 } catch (err) {
                                   if (err instanceof HttpError) {

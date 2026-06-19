@@ -4,7 +4,7 @@ import { executeCommand } from '@/stores/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import AppHeader from '@/components/layout/AppHeader'
-import { hasBackend } from '@/config/capabilities'
+import { backendBundle } from '@/adapters/backend'
 
 type StackEntry = { mutation: Mutation }
 
@@ -105,7 +105,7 @@ export default function PartToolbar({
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
       </button>
-      {hasBackend && permission === 'owner' && (
+      {backendBundle.sharing && permission === 'owner' && (
         <button
           className="toolbar-btn"
           aria-label="Share document"

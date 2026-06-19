@@ -1,11 +1,11 @@
 // Sharing capability: handing a document to other users is a PDM (server) job.
 // The HTTP build talks to /api/documents/<uuid>/share*; the static build has no
 // concept of other users (the local IndexedDB library belongs to the device),
-// so the capability is ABSENT -- `sharingAdapter` is null and the share UI does
+// so the capability is ABSENT -- `backendBundle.sharing` is null and the share UI does
 // not exist. Sharing is user-to-user version handover, never an editing
 // dependency (see static-build-notes.md Topic 7).
 import { http } from '@/utils/core/httpClient'
-import { backend, type Backend } from '@/config/capabilities'
+import { type Backend } from '@/config/capabilities'
 
 export interface ShareInfo {
   id: number
@@ -56,10 +56,8 @@ class HttpSharingAdapter implements SharingAdapter {
 }
 
 // Pure factory (testable without touching the env). Null when there is no
-// server to share through.
+// server to share through. Assembled into the `backendBundle` composition root
+// (adapters/backend.ts), not a singleton here.
 export function createSharingAdapter(b: Backend): SharingAdapter | null {
   return b === 'static' ? null : new HttpSharingAdapter()
 }
-
-// Boot-time singleton, chosen from the build flag.
-export const sharingAdapter: SharingAdapter | null = createSharingAdapter(backend)

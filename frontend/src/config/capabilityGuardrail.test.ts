@@ -41,7 +41,6 @@ const HAS_BACKEND_BASELINE = [
   'hooks/useUserPreferences.ts',
   'pages/Documents.tsx',
   'pages/Part.tsx',
-  'pages/PartToolbar.tsx',
 ]
 
 // Existing raw `/api/...` literals awaiting migration behind an adapter.

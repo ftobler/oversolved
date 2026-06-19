@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AppHeader from '@/components/layout/AppHeader'
-import { docsSource } from '@/adapters/docs'
+import { backendBundle } from '@/adapters/backend'
 import '@/pages/Documentation.css'
 
 interface DocFile {
@@ -24,11 +24,11 @@ export default function Documentation() {
   const currentDoc = doc || 'overview'
   const [content, setContent] = useState<string>('')
   const [docFiles, setDocFiles] = useState<DocFile[]>([])
-  const [loading, setLoading] = useState(docsSource !== null)  // false immediately on static
+  const [loading, setLoading] = useState(backendBundle.docs !== null)  // false immediately on static
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const source = docsSource
+    const source = backendBundle.docs
     if (!source) return
     if (docFiles.length === 0) {
       source.list()
@@ -61,7 +61,7 @@ export default function Documentation() {
   }, [docFiles.length])
 
   useEffect(() => {
-    const source = docsSource
+    const source = backendBundle.docs
     if (!source) return  // loading initializes to false on static; nothing to fetch
     source.load(currentDoc)
       .then(content => {
@@ -76,7 +76,7 @@ export default function Documentation() {
       })
   }, [currentDoc])
 
-  if (!docsSource) {
+  if (!backendBundle.docs) {
     return (
       <div className="documentation">
         <AppHeader title="Documentation" />

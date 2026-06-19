@@ -18,7 +18,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/core/buildCache'
 import { http, HttpError } from '@/utils/core/httpClient'
-import { getDocumentStore } from '@/stores/documentStore'
+import { backendBundle } from '@/adapters/backend'
 import { hasBackend } from '@/config/capabilities'
 import '@/pages/Part.css'
 
@@ -466,7 +466,7 @@ export default function Part() {
       // document locally.
       const data = hasBackend
         ? await http.postJson<{ uuid: string }>(`/api/documents/${uuid}/clone`)
-        : await getDocumentStore().duplicate(uuid)
+        : await backendBundle.documents.duplicate(uuid)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
       if (e instanceof HttpError) {

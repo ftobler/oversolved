@@ -2,11 +2,11 @@
 //
 // The HTTP build POSTs the report to the PDM backend; the static (zero-backend)
 // build has no server, so the same report object is serialised to a JSON file
-// the user downloads instead. The debug panel calls `bugReportSink.send(report)`
+// the user downloads instead. The debug panel calls `backendBundle.telemetry.send`
 // and stays ignorant of which transport it got -- absence of a server is a
 // different wiring, not a branch the view carries.
 import { http } from '@/utils/core/httpClient'
-import { backend, type Backend } from '@/config/capabilities'
+import { type Backend } from '@/config/capabilities'
 
 export type BugReport = Record<string, unknown>
 
@@ -35,10 +35,8 @@ class DownloadBugReportSink implements BugReportSink {
   }
 }
 
-// Pure factory (testable without touching the env).
+// Pure factory (testable without touching the env). Assembled into the
+// `backendBundle` composition root (adapters/backend.ts), not a singleton here.
 export function createBugReportSink(b: Backend): BugReportSink {
   return b === 'static' ? new DownloadBugReportSink() : new HttpBugReportSink()
 }
-
-// Boot-time singleton, chosen from the build flag.
-export const bugReportSink: BugReportSink = createBugReportSink(backend)

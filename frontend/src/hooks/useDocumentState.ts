@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, PartFeature } from '@/types/cad'
-import { getDocumentStore } from '@/stores/documentStore'
+import { backendBundle } from '@/adapters/backend'
 
 export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
@@ -30,7 +30,7 @@ export function useDocumentState(
   useEffect(() => {
     if (!uuid) return
     queueMicrotask(() => setLoading(true))
-    getDocumentStore().load(uuid)
+    backendBundle.documents.load(uuid)
       .then(data => {
         const parsed = (parseYaml(data.content) ?? {}) as PartDoc
         if (!parsed.features || parsed.features.length === 0) {
@@ -62,7 +62,7 @@ export function useDocumentState(
           body.preview_image = dataUrl.split(',')[1]
         }
       }
-      await getDocumentStore().save(uuid, body)
+      await backendBundle.documents.save(uuid, body)
       return true
     } catch (e) {
       setError(String(e))
@@ -72,7 +72,7 @@ export function useDocumentState(
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {
-      await getDocumentStore().rename(uuid, name)
+      await backendBundle.documents.rename(uuid, name)
       setDocName(name)
       return true
     } catch (e) {

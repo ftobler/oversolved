@@ -6,9 +6,9 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { http, HttpError } from '@/utils/core/httpClient'
-import { getDocumentStore, exportBundle, importBundle } from '@/stores/documentStore'
+import { exportBundle, importBundle } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
-import { sharingAdapter } from '@/adapters/sharing'
+import { backendBundle } from '@/adapters/backend'
 import { hasBackend } from '@/config/capabilities'
 import '@/pages/Documents.css'
 
@@ -55,7 +55,7 @@ export default function Documents() {
   }
 
   const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
-    getDocumentStore().list({ sort: sortToApiParam(sortBy), filter, search })
+    backendBundle.documents.list({ sort: sortToApiParam(sortBy), filter, search })
       .then(documents => {
         setDocuments(documents)
         setError(null)
@@ -79,7 +79,7 @@ export default function Documents() {
     }
 
     try {
-      await getDocumentStore().create(newDocName.trim(), { is_public: newDocPublic })
+      await backendBundle.documents.create(newDocName.trim(), { is_public: newDocPublic })
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
@@ -96,7 +96,7 @@ export default function Documents() {
 
   const handleDeleteDocument = async (uuid: string) => {
     try {
-      await getDocumentStore().remove(uuid)
+      await backendBundle.documents.remove(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       setError(String(e))
@@ -105,7 +105,7 @@ export default function Documents() {
 
   const handleDuplicate = async (uuid: string) => {
     try {
-      await getDocumentStore().duplicate(uuid)
+      await backendBundle.documents.duplicate(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       if (e instanceof HttpError) {
@@ -123,7 +123,7 @@ export default function Documents() {
       // from the local store and download it.
       const content = hasBackend
         ? (await http.getJson<{ content: string }>(`/api/documents/${uuid}/export`)).content
-        : (await getDocumentStore().load(uuid)).content
+        : (await backendBundle.documents.load(uuid)).content
       const blob = new Blob([content], { type: 'text/yaml' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -146,12 +146,12 @@ export default function Documents() {
   // the HTTP store (the zip layout is identical to /api/admin/backup).
   const handleExportAll = async () => {
     try {
-      const all = await getDocumentStore().list({ filter: 'owned' })
+      const all = await backendBundle.documents.list({ filter: 'owned' })
       if (all.length === 0) {
         setError('No documents to export')
         return
       }
-      const blob = await exportBundle(getDocumentStore(), all.map(d => d.uuid))
+      const blob = await exportBundle(backendBundle.documents, all.map(d => d.uuid))
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -172,7 +172,7 @@ export default function Documents() {
     // .yaml stays on the single-document import path.
     if (/\.(oversolved|zip)$/i.test(file.name)) {
       try {
-        await importBundle(getDocumentStore(), file)
+        await importBundle(backendBundle.documents, file)
         fetchDocuments(activeFilter, debouncedSearch)
       } catch (err) {
         setError(String(err))
@@ -191,7 +191,7 @@ export default function Documents() {
       if (hasBackend) {
         await http.postJson('/api/documents/import', { name, content: text })
       } else {
-        const store = getDocumentStore()
+        const store = backendBundle.documents
         const { uuid } = await store.create(name)
         await store.save(uuid, { content: text })
       }
@@ -519,7 +519,7 @@ export default function Documents() {
                                   e.preventDefault()
                                   e.stopPropagation()
                                   if (window.confirm('Remove this shared document?')) {
-                                    sharingAdapter?.leaveShare(doc.uuid)
+                                    backendBundle.sharing?.leaveShare(doc.uuid)
                                       .then(() => fetchDocuments(activeFilter, debouncedSearch))
                                       .catch(() => undefined)
                                   }

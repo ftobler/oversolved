@@ -1,10 +1,10 @@
 // Documentation capability: the markdown docs are server assets (docs/*.md,
 // served by the Flask backend). The HTTP build reads them from the PDM backend;
 // the static build has no source for them (they are not bundled), so the
-// capability is simply ABSENT -- `docsSource` is null and the docs tab renders a
+// capability is simply ABSENT -- `backendBundle.docs` is null and the docs tab renders a
 // "needs the server build" notice instead of firing a fetch that 404s.
 import { http } from '@/utils/core/httpClient'
-import { backend, type Backend } from '@/config/capabilities'
+import { type Backend } from '@/config/capabilities'
 
 export interface DocsSource {
   list(): Promise<string[]>            // available doc names
@@ -24,10 +24,8 @@ class HttpDocsSource implements DocsSource {
 }
 
 // Pure factory (testable without touching the env). Null when there is no
-// server to serve the docs from.
+// server to serve the docs from. Assembled into the `backendBundle` composition
+// root (adapters/backend.ts), not a singleton here.
 export function createDocsSource(b: Backend): DocsSource | null {
   return b === 'static' ? null : new HttpDocsSource()
 }
-
-// Boot-time singleton, chosen from the build flag.
-export const docsSource: DocsSource | null = createDocsSource(backend)
