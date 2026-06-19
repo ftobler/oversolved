@@ -15,14 +15,18 @@ export interface User {
 interface AuthContextType {
   user: User | null  // null = guest / not signed in; this is the default session
   loading: boolean
+  online: boolean  // is the cloud server reachable right now; only meaningful while signed in
   setUser: (user: User | null) => void
+  setOnline: (online: boolean) => void
   logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  online: true,
   setUser: () => {},
+  setOnline: () => {},
   logout: async () => {},
 })
 
@@ -34,6 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // not-logged-in state (see static-build-notes: guest-first session).
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(hasBackend)
+  // Cloud reachability. Starts optimistic; flips to false when a cloud call hits a
+  // connection error (the document library reports it) or the browser goes offline.
+  // Losing the server while signed in is a deliberate state, not a crash: the app
+  // keeps working on the local library (session-logout-offline).
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
     if (!hasBackend) return  // no server: stay a guest, never touch the network
@@ -45,14 +54,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (!hasBackend) return  // no cloud to lose on a static build
+    // The browser's own connectivity signal is a coarse hint (it means a network
+    // interface returned, not that OUR server is up); a failed cloud call is the
+    // authoritative "offline" report. Coming back online makes the cloud domain
+    // available again -- the switch reappears; the library re-fetches it on the next
+    // domain switch, not eagerly here (if the server is still down the next cloud
+    // list just flips back offline).
+    const goOnline = () => setOnline(true)
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
+
   const logout = async () => {
     if (!hasBackend) return  // nothing to log out of locally
     await http.postJson('/api/auth/logout').catch(() => undefined)
     setUser(null)  // drops the credential only; the local library is untouched
+    setOnline(true)  // reset connectivity for the next sign-in; nothing is cleared
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, logout }}>
+    <AuthContext.Provider value={{ user, loading, online, setUser, setOnline, logout }}>
       {children}
     </AuthContext.Provider>
   )

@@ -43,10 +43,11 @@ function deferred<T>() {
 }
 
 function TestConsumer() {
-  const { user, loading, setUser, logout } = useAuth()
+  const { user, loading, online, setUser, logout } = useAuth()
   return (
     <div>
       <span data-testid="loading">{String(loading)}</span>
+      <span data-testid="online">{String(online)}</span>
       <span data-testid="user">{user ? JSON.stringify(user) : 'null'}</span>
       <button data-testid="logout" onClick={() => logout()}>
         Logout
@@ -173,6 +174,58 @@ describe('AuthContext', () => {
         expect(screen.getByTestId('user').textContent).toBe('null')
       })
       expect(http.postJson).toHaveBeenCalledWith('/api/auth/logout')
+    })
+  })
+
+  // session-logout-offline: cloud reachability is part of the session. It starts
+  // optimistic, the browser's offline/online events flip it, and logout resets it.
+  describe('online / offline', () => {
+    it('starts online', async () => {
+      vi.mocked(http.getJson).mockResolvedValue({ user: testUser })
+      renderAuth()
+      await waitFor(() => {
+        expect(screen.getByTestId('loading').textContent).toBe('false')
+      })
+      expect(screen.getByTestId('online').textContent).toBe('true')
+    })
+
+    it('flips offline then back online on the browser connectivity events', async () => {
+      vi.mocked(http.getJson).mockResolvedValue({ user: testUser })
+      renderAuth()
+      await waitFor(() => {
+        expect(screen.getByTestId('loading').textContent).toBe('false')
+      })
+
+      await act(async () => {
+        window.dispatchEvent(new Event('offline'))
+      })
+      expect(screen.getByTestId('online').textContent).toBe('false')
+
+      await act(async () => {
+        window.dispatchEvent(new Event('online'))
+      })
+      expect(screen.getByTestId('online').textContent).toBe('true')
+    })
+
+    it('logout resets online to true (next sign-in starts clean)', async () => {
+      vi.mocked(http.getJson).mockResolvedValue({ user: testUser })
+      vi.mocked(http.postJson).mockResolvedValue(undefined)
+      renderAuth()
+      await waitFor(() => {
+        expect(screen.getByTestId('loading').textContent).toBe('false')
+      })
+
+      await act(async () => {
+        window.dispatchEvent(new Event('offline'))
+      })
+      expect(screen.getByTestId('online').textContent).toBe('false')
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('logout'))
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('online').textContent).toBe('true')
+      })
     })
   })
 

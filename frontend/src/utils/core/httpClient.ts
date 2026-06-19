@@ -9,6 +9,15 @@ export class HttpError extends Error {
   }
 }
 
+// A request that never reached a response -- server down, network lost, CORS --
+// rejects with a TypeError, not an HttpError. This distinguishes "the cloud is
+// unreachable" (go offline, fall back to local) from "the server answered with an
+// error status" (a real HTTP failure we should surface). Used by the offline
+// fallback in the document library (session-logout-offline).
+export function isConnectionError(e: unknown): boolean {
+  return !(e instanceof HttpError)
+}
+
 async function checkResponse(res: Response): Promise<Response> {
   if (!res.ok) {
     const body = await res.text().catch(() => '')

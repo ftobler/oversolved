@@ -23,8 +23,10 @@ function wrap() {
 }
 
 describe('AppHeader (http / server reachable)', () => {
+  const ada = { id: 1, username: 'ada', email: null, must_change_password: false, is_admin: false, is_active: true }
+
   it('guest sees a Sign in affordance, no username or logout', () => {
-    mockUseAuth.mockReturnValue({ user: null, logout: vi.fn() })
+    mockUseAuth.mockReturnValue({ user: null, online: true, logout: vi.fn() })
     wrap()
     const signIn = screen.getByTitle('Sign in')
     expect(signIn).toBeInTheDocument()
@@ -34,13 +36,22 @@ describe('AppHeader (http / server reachable)', () => {
   })
 
   it('signed-in user sees the account name and a logout button, no Sign in', () => {
-    mockUseAuth.mockReturnValue({
-      user: { id: 1, username: 'ada', email: null, must_change_password: false, is_admin: false, is_active: true },
-      logout: vi.fn(),
-    })
+    mockUseAuth.mockReturnValue({ user: ada, online: true, logout: vi.fn() })
     wrap()
     expect(screen.getByText('ada')).toBeInTheDocument()
     expect(screen.getByTitle('Sign out')).toBeInTheDocument()
     expect(screen.queryByTitle('Sign in')).not.toBeInTheDocument()
+    expect(screen.queryByText('offline')).not.toBeInTheDocument()
+  })
+
+  // session-logout-offline: the server went away mid-session. Still signed in (the
+  // credential is held), so the offline marker shows alongside the account and
+  // logout stays available -- working on the local library.
+  it('signed-in but offline shows an offline marker, keeps name and logout', () => {
+    mockUseAuth.mockReturnValue({ user: ada, online: false, logout: vi.fn() })
+    wrap()
+    expect(screen.getByText('offline')).toBeInTheDocument()
+    expect(screen.getByText('ada')).toBeInTheDocument()
+    expect(screen.getByTitle('Sign out')).toBeInTheDocument()
   })
 })

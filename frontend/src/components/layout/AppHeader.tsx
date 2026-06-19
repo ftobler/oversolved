@@ -12,7 +12,7 @@ interface AppHeaderProps {
 
 export default function AppHeader({ title, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, online, logout } = useAuth()
 
   const handleLogout = async () => {
     // Logout is non-destructive: it drops the cloud credential and drops you back
@@ -42,7 +42,9 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         {/* Three states of one guest-first session:
             - no server reachable  -> "cloud not available" (login impossible here)
             - server, not signed in -> a "Sign in" affordance (the optional upgrade)
-            - server, signed in     -> the account name + a logout button */}
+            - server, signed in     -> the account name + a logout button
+            Signed in but the server went away mid-session is a deliberate offline
+            state, not a crash: an "offline" marker, still on the local library. */}
         {!hasBackend ? (
           <span
             className="cloud-not-available"
@@ -52,6 +54,15 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
           </span>
         ) : user ? (
           <>
+            {!online && (
+              <span
+                className="cloud-offline"
+                title="Cloud unavailable - working on your local library"
+              >
+                <span className="material-icons-outlined">cloud_off</span>
+                offline
+              </span>
+            )}
             <Link to="/settings/profile" className="header-username">{user.username}</Link>
             <button className="toolbar-btn" title="Sign out" onClick={handleLogout}>
               <span className="material-icons-outlined">logout</span>

@@ -5,7 +5,7 @@ import Dialog from '@/components/dialogs/Dialog'
 import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
-import { http, HttpError } from '@/utils/core/httpClient'
+import { http, HttpError, isConnectionError } from '@/utils/core/httpClient'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
@@ -46,18 +46,29 @@ export default function Documents() {
   const [bridgeCount, setBridgeCount] = useState(0)  // 0 = the post-login bridge prompt is hidden
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
-  const { user } = useAuth()
+  const { user, online, setOnline } = useAuth()
 
   // The two domains (doc-domain-move). Local is always home; the cloud domain is
-  // additive and present only when this build has a server AND a session is signed
-  // in -- a structural value resolved once, not a per-render backend-flag fork. The
+  // additive and present only when this build has a server, a session is signed in,
+  // AND the server is reachable -- a structural value, not a per-render backend-flag
+  // fork. Losing any of the three (sign-out or going offline) makes the cloud domain
+  // simply not available, dropping you back to local (session-logout-offline). The
   // owned/shared/public sub-filter, sharing and trash are all cloud-domain concepts
   // (the local IndexedDB library is identity-free), so they render only under Cloud.
   const cloudStore = backendBundle.cloudDocuments
-  const cloudAvailable = cloudStore != null && user != null
-  // Fall back to local if the cloud domain vanishes (sign-out) while it was active.
+  const cloudAvailable = cloudStore != null && user != null && online
+  // Fall back to local if the cloud domain vanishes (sign-out / offline) while active.
   const onCloud = activeDomain === 'cloud' && cloudAvailable
   const activeStore = onCloud ? cloudStore! : backendBundle.documents
+
+  // When the cloud domain disappears (logout or going offline), snap the view back
+  // to a coherent local-only state so no stale cloud filter / trash view lingers.
+  useEffect(() => {
+    if (cloudAvailable) return
+    setActiveDomain('local')
+    setActiveFilter('owned')
+    setIsTrashView(false)
+  }, [cloudAvailable])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -92,9 +103,17 @@ export default function Documents() {
       })
       .catch(e => {
         if (reqId !== listReqRef.current) return
+        // Lost the server mid-session: report offline (drops the cloud domain and
+        // re-fetches against local) instead of stranding the user on a hard error.
+        if (onCloud && isConnectionError(e)) {
+          setOnline(false)
+          setError(null)
+          setNotice('Cloud unavailable. Showing your local documents.')
+          return
+        }
         setError(String(e))
       })
-  }, [sortBy, activeStore])
+  }, [sortBy, activeStore, onCloud, setOnline])
 
   useEffect(() => {
     if (prefsLoading) return
