@@ -33,9 +33,9 @@ class FakeStore implements DocumentStore {
     this.docs.set(id, { name: prev?.name ?? 'Untitled', ...prev, content: input.content, preview_image: input.preview_image })
   }
   async remove(id: string): Promise<void> { this.docs.delete(id) }
-  async create(name: string): Promise<{ uuid: string }> {
+  async create(name: string, opts: { is_public?: boolean } = {}): Promise<{ uuid: string }> {
     const uuid = `${this.tag}-${++this.seq}`
-    this.docs.set(uuid, { content: '', name })
+    this.docs.set(uuid, { content: '', name, is_public: opts.is_public })
     return { uuid }
   }
   async rename(id: string, name: string): Promise<void> {
@@ -63,6 +63,16 @@ describe('copyDocument', () => {
     expect(copied.content).toBe('profile: square')
     expect(copied.name).toBe('Bracket')
     expect(copied.preview_image).toBe('iVBORw0')
+  })
+
+  it('carries the is_public flag across the domain boundary', async () => {
+    const a = new FakeStore('a')
+    const b = new FakeStore('b')
+    a.seed('a-doc', { content: 'x', name: 'Shared', is_public: true })
+
+    const { uuid } = await copyDocument(a, b, 'a-doc')
+
+    expect((await b.load(uuid)).is_public).toBe(true)
   })
 
   it('leaves the source untouched (copy, not move)', async () => {

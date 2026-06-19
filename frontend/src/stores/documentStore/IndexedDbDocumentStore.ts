@@ -129,7 +129,17 @@ export class IndexedDbDocumentStore implements DocumentStore {
   async rename(id: string, name: string): Promise<void> {
     const existing = await idbGet<StoredDoc>(id)
     if (!existing) throw new Error(`Document not found: ${id}`)
-    await idbPut({ ...existing, name })
+    // A rename is a local change like a save: bump rev, restamp updatedAt, flag
+    // dirty so it re-sorts by "modified" and a sync engine pushes it. baseRev
+    // stays put (only an actual sync sets it).
+    const now = Date.now()
+    const meta: DocMeta = {
+      ...existing.meta,
+      rev: existing.meta.rev + 1,
+      updatedAt: now,
+      dirty: true,
+    }
+    await idbPut({ ...existing, name, updated_at: new Date(now).toISOString(), meta })
   }
 
   async duplicate(id: string): Promise<{ uuid: string }> {

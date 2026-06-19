@@ -96,6 +96,19 @@ describe('IndexedDbDocumentStore', () => {
       expect(s.meta?.rev).toBe(2)
       expect(s.meta?.baseRev).toBe(1)  // diverged: rev !== baseRev
     })
+
+    it('rename bumps rev + re-flags dirty so a synced doc re-diverges', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      await store.save(uuid, { content: 'a' })  // rev 1
+      await store.markSynced(uuid)              // dirty=false, baseRev=1
+      await store.rename(uuid, 'Renamed')
+      const [s] = await store.list()
+      expect(s.name).toBe('Renamed')
+      expect(s.meta?.rev).toBe(2)
+      expect(s.meta?.dirty).toBe(true)          // a rename is a pushable change
+      expect(s.meta?.baseRev).toBe(1)
+    })
   })
 
   describe('preview_image in list summaries', () => {

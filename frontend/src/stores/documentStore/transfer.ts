@@ -15,7 +15,7 @@ export async function copyDocument(
   id: string,
 ): Promise<{ uuid: string }> {
   const doc = await src.load(id)  // throws on a missing id, propagated to the caller
-  const { uuid } = await dest.create(doc.name)
+  const { uuid } = await dest.create(doc.name, { is_public: doc.is_public })
   await dest.save(uuid, { content: doc.content, preview_image: doc.preview_image })
   return { uuid }
 }
