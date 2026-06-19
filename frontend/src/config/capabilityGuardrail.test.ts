@@ -61,7 +61,6 @@ const HAS_BACKEND_BASELINE = [
 // Existing raw `/api/...` literals awaiting migration behind an adapter.
 // Remove an entry when its file stops reaching the API path directly.
 const API_LITERAL_BASELINE = [
-  'kernel/solveLocally.ts',  // comment reference to the retired /api/export path
   'pages/Documents.tsx',
   'pages/Part.tsx',
 ]

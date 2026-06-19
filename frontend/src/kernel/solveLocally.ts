@@ -304,7 +304,7 @@ export interface LocalExportOptions {
  * Resolve the TopoDS shape to export from a completed build. With a ``bodyId``
  * it returns that body's solid; otherwise it returns the lone body's solid, or
  * a compound of every body's solid for a multi-body assembly. Mirrors the body
- * selection of the retired ``/api/export/*`` endpoints, but assembles a compound
+ * selection of the retired server-side export endpoints, but assembles a compound
  * (not a boolean fuse) so disjoint parts export cleanly.
  */
 function resolveExportShape(
