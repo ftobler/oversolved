@@ -1,7 +1,8 @@
 // Parity gate for features/shared.ts (phase 2e pure-logic port). Replays the
-// inputs recorded by tests/wasm_harness/gen_features_shared_fixture.py through
-// the TS port and asserts identical outputs (coords within 1e-9). Regenerate the
-// fixture with: .venv/bin/python tests/wasm_harness/gen_features_shared_fixture.py
+// inputs recorded in the frozen featuresShared.json fixture through the TS port
+// and asserts identical outputs (coords within 1e-9). The fixture is a golden
+// snapshot; its generator (gen_features_shared_fixture.py) was deleted with the
+// Python kernel in phase 4d.
 
 import { describe, it, expect } from 'vitest'
 import fixture from '../occ/__fixtures__/featuresShared.json'

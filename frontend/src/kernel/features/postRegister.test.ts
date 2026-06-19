@@ -6,8 +6,8 @@
 // This is the direct parity check for the half the full-doc harness barely
 // exercises (solved-entity slash + topology ancestry, the pick/dimension layer).
 //
-// Regenerate the fixture:
-//   .venv/bin/python tests/wasm_harness/gen_postregister_fixture.py
+// The fixture is a frozen golden snapshot; its generator
+// (gen_postregister_fixture.py) was deleted with the Python kernel in phase 4d.
 
 import { describe, it, expect } from 'vitest'
 import { initGlobalRepo } from '../query'

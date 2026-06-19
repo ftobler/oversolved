@@ -2,7 +2,7 @@
 //
 // Gated real-OCC parity gate for edgeModifier.ts (phase 2f, the fillet/chamfer
 // leaf's brep producer). Rebuilds the same 10-cube as
-// tests/wasm_harness/gen_fillet_fixture.py, picks the same target edge by geom
+// the now-removed gen_fillet_fixture.py, picks the same target edge by geom
 // hash, feeds the same Python-keyed input lineage, applies the modifier, and
 // asserts the output volume, BrepDiff sub-shape counts, and lineage.
 //
@@ -12,8 +12,9 @@
 // the curved fillet face's geom-hash key depends on its OCC-computed normal and
 // diverges across the two builds (curved-face normal divergence accepted in 2b).
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_fillet_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_fillet_fixture.py) was deleted with the Python kernel in
+// phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

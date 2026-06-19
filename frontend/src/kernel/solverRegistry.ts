@@ -1,12 +1,13 @@
 /**
- * Per-doc fallback router for the WASM kernel migration (phase 2g).
+ * Per-doc solvability gate for the WASM kernel.
  *
  * The router checks whether every feature kind in a document has a ported TS
  * solver. If yes, it dispatches locally through the TS kernel; if any unported
- * kind (e.g. `origin`) is present, the doc cannot be solved locally. The router
- * itself is the seam 2g flips default-on: there is no
- * explicit feature flag; the gate is always active and only the kind-set
- * membership determines which path a doc takes.
+ * kind (e.g. `origin`) is present, the doc cannot be solved at all -- the Python
+ * kernel that once served as the fallback was removed in phase 4d, so useSolver
+ * surfaces a "Cannot solve" error instead. There is no explicit feature flag;
+ * the gate is always active and only the kind-set membership decides whether a
+ * doc is solvable.
  *
  * ``createFeatureSolver`` is the key adapter: it wraps the OCC-backed leaf
  * solvers (which take ``(oc, scope, table, …)``) into the builder's pluggable

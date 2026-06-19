@@ -2,13 +2,15 @@
 //
 // Full-document parity test: replays the 20 PartDoc specs from the regression
 // baseline through the TS/WASM kernel (OCC.js + Rust sketch solver) and diffs
-// the output against the canonical Python results.
+// the output against the frozen baseline.
 //
-// This is the single-number gap metric for the WASM migration. Gated — skips
-// entirely when OCC.js or the Rust solver is absent, so CI stays green.
-//
-// Regenerate the baseline:
-//   .venv/bin/python tests/wasm_harness/extract_fixtures.py
+// The baseline (regression-baseline.json) is a golden snapshot of the now-deleted
+// Python kernel's output, captured before phase 4d removed it. The Python kernel
+// and its extractor are gone, so the baseline cannot be regenerated -- this is
+// now a regression gate (live TS/WASM kernel == frozen golden file), not a live
+// old-vs-new comparison. Gated: skips entirely when OCC.js or the Rust solver is
+// absent, so the default CI run stays green (the dedicated parity job installs
+// OCC.js so it does run there).
 //
 // Provision OCC.js:
 //   cd frontend && npm run occ:install
@@ -295,7 +297,7 @@ function tessellateBodies(
 
 // ── Test suite ───────────────────────────────────────────────────────────
 
-describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs Python baseline)', () => {
+describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs frozen baseline)', () => {
   let occMod: OccModule
 
   beforeAll(async () => {
@@ -318,9 +320,10 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
         return
       }
 
-      // Mirror the live router: a doc with any unported kind is sent to Python
-      // (isDocFullyPorted === false), so the TS kernel never sees it. Don't fail
-      // it here -- that would test a path production never takes.
+      // Mirror the live router: a doc with any unported kind is unsolvable
+      // (isDocFullyPorted === false) -- useSolver surfaces a "Cannot solve"
+      // error rather than running the TS kernel. Don't fail it here; that would
+      // test a path production never takes.
       const features = (spec.features as Array<{ kind?: unknown }>) ?? []
       const unported = unportedKinds(features)
       if (unported.size > 0) {

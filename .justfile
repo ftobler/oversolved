@@ -60,7 +60,7 @@ frontend-build:
 install-npm:
     npm install
 
-# Full-document WASM parity gate (TS kernel vs Python baseline). Slow, needs
+# Full-document WASM parity gate (TS kernel vs frozen baseline). Slow, needs
 # OCC.js provisioned, hard-fails on any divergence. Kept out of `just frontend`.
 [working-directory: "frontend"]
 parity:

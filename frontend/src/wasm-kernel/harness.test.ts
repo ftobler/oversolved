@@ -1,9 +1,9 @@
 /**
- * WASM kernel migration: dual-run harness (Phase 0).
+ * WASM kernel migration: baseline structure check (Phase 0).
  *
- * Loads the regression baseline produced by the Python kernel and validates its
- * structure.  In later phases this file will also run the TS/WASM kernel and
- * diff results against the baseline.
+ * Loads the regression baseline (a frozen golden snapshot of the now-removed
+ * Python kernel) and validates its structure.  The live TS/WASM-kernel-vs-baseline
+ * diff lives in occ/fullDocParity.test.ts.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'

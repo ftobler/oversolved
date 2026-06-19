@@ -2,13 +2,14 @@
 //
 // Gated real-OCC parity gate for booleans.ts (phase 2e shard 2): the boolean +
 // history + clean + compose pipeline. Builds the same overlapping boxes as
-// tests/wasm_harness/gen_boolean_fixture.py via the OCC adapter, runs the ported
+// the now-removed gen_boolean_fixture.py via the OCC adapter, runs the ported
 // pipeline, and asserts geometry parity (volume + face/edge/solid counts) plus
 // the BrepDiff classification (new/inherited partition + Python's exact counts).
 //
 // Skips (not fails) when opencascade.js is absent, like the other real-OCC
-// tests. Install with: cd frontend && npm run occ:install. Regenerate the
-// fixture with: .venv/bin/python tests/wasm_harness/gen_boolean_fixture.py
+// tests. Install with: cd frontend && npm run occ:install. The fixture is a
+// frozen golden snapshot; its generator (gen_boolean_fixture.py) was deleted
+// with the Python kernel in phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

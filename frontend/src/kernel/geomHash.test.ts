@@ -12,8 +12,9 @@ import {
 import { sha256Hex } from "./sha256"
 
 // The cross-language hash parity gate for phase 2c: every digest the TS kernel
-// computes must match the Python kernel byte-for-byte. The fixture is generated
-// by tests/wasm_harness/gen_geomhash_fixture.py.
+// computes must match the Python kernel byte-for-byte. The fixture is a frozen
+// golden snapshot; its generator gen_geomhash_fixture.py was removed with the
+// Python kernel in phase 4d.
 
 describe("sha256Hex", () => {
   it("matches known FIPS-180-4 vectors", () => {

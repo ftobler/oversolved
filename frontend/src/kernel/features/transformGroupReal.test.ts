@@ -3,12 +3,13 @@
 // Gated real-OCC parity gate for the transform-group leaves (array.ts +
 // transformMirror.ts): array / circular_array / transform / mirror. Rebuilds the
 // same source box body (+ registered mirror plane) as
-// tests/wasm_harness/gen_transform_fixture.py, runs the matching solver, and
+// the now-removed gen_transform_fixture.py, runs the matching solver, and
 // asserts the result dict + the post-op body store (per body: volume,
 // created_by, modified_by) match Python.
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_transform_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_transform_fixture.py) was deleted with the Python kernel in
+// phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'

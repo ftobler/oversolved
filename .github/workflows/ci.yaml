@@ -173,11 +173,11 @@ jobs:
           wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
-  # Full-document parity gate (WASM migration phase 4b). Runs the TS kernel
-  # (OCC.js + Rust sketch solver) against the Python regression baseline and
-  # hard-fails on any divergence. This is the enforced "old kernel == new kernel"
-  # proof required before phase 4d (kill daemon). Heavy: OCC.js ~66 MB download
-  # + WASM compile.
+  # Full-document parity gate. Runs the TS kernel (OCC.js + Rust sketch solver)
+  # against the frozen regression baseline (a golden snapshot of the now-deleted
+  # Python kernel) and hard-fails on any divergence. The Python kernel was removed
+  # in phase 4d, so this is a post-migration regression gate, not a live
+  # old-vs-new comparison. Heavy: OCC.js ~66 MB download + WASM compile.
   parity:
     runs-on: ubuntu-latest
     env:

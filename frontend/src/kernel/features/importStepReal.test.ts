@@ -2,12 +2,13 @@
 //
 // Gated real-OCC parity gate for the import_step leaf (features/importStep.ts +
 // occ/stepIo.ts). Feeds the same base64 STEP box as
-// tests/wasm_harness/gen_importstep_fixture.py through solveImportStep at scale 1
+// the now-removed gen_importstep_fixture.py through solveImportStep at scale 1
 // and scale 2, and asserts the result dict + imported body volume match Python.
 // Exercises the emscripten-FS STEP read path (write/export is deferred to phase 3).
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_importstep_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_importstep_fixture.py) was deleted with the Python kernel
+// in phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'

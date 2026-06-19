@@ -2,12 +2,13 @@
 //
 // Gated real-OCC parity gate for the hole leaf (features/hole.ts). Rebuilds the
 // same target box body + sketch plane + point XY entries as
-// tests/wasm_harness/gen_hole_fixture.py, runs solveHole for a blind two-hole
+// the now-removed gen_hole_fixture.py, runs solveHole for a blind two-hole
 // case, a through-all case, and a partial-skip case, and asserts the result dict
 // plus the drilled body volume match Python.
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_hole_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_hole_fixture.py) was deleted with the Python kernel in
+// phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'

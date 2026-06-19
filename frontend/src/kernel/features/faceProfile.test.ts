@@ -1,7 +1,9 @@
 // Always-on parity gate for the OCC-free `$sketch` path of collectExtrudeLoops
-// (features/faceProfile.ts). Replays tests/wasm_harness/gen_faceprofile_fixture.py
-// and asserts the loops + plane + returned sketch id + registered top-face
-// elements match Python (coords within 1e-9). No OCC needed on this path.
+// (features/faceProfile.ts). Replays the frozen faceProfile golden fixture
+// (its generator gen_faceprofile_fixture.py was removed with the Python kernel
+// in phase 4d) and asserts the loops + plane + returned sketch id + registered
+// top-face elements match the baseline (coords within 1e-9). No OCC needed on
+// this path.
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'

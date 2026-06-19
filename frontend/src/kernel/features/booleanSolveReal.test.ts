@@ -2,13 +2,14 @@
 //
 // Gated real-OCC parity gate for the boolean leaf (features/boolean.ts). Rebuilds
 // the same target + tool box bodies as
-// tests/wasm_harness/gen_boolean_solve_fixture.py, runs solveBoolean for
+// the now-removed gen_boolean_solve_fixture.py, runs solveBoolean for
 // union / subtract / intersect / keep-tools / subtract-split, and asserts the
 // result dict plus the post-op body store (per body: volume, created_by,
 // modified_by) match Python.
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_boolean_solve_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_boolean_solve_fixture.py) was deleted with the Python
+// kernel in phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'

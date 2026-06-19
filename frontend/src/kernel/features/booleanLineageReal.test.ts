@@ -2,15 +2,16 @@
 //
 // Gated real-OCC parity gate for booleanLineage.ts (phase 2e shard 3). Builds
 // the same overlapping boxes + geometry-derived lineage as
-// tests/wasm_harness/gen_boolean_lineage_fixture.py, runs the ported boolean +
+// the now-removed gen_boolean_lineage_fixture.py, runs the ported boolean +
 // lineage transfer, and asserts the resulting face_lineage / edge_lineage match
 // Python exactly (token lists sorted, since edge token order is adjacency-walk
 // dependent and semantically a set).
 //
 // The output face-hash keys are recomputed by the port from its own OCC face
 // reads, so a pass also confirms geom-hash parity end to end. Skips when
-// opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_boolean_lineage_fixture.py
+// opencascade.js is absent. The fixture is a frozen golden snapshot; its
+// generator (gen_boolean_lineage_fixture.py) was deleted with the Python kernel
+// in phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'

@@ -2,7 +2,7 @@
 //
 // Gated real-OCC parity gate for prismLineage.ts (phase 2f, the extrude leaf's
 // brep producer): extrudeProfileWithLineage. Feeds the same profile loops as
-// tests/wasm_harness/gen_extrude_fixture.py through the TS port and asserts the
+// the now-removed gen_extrude_fixture.py through the TS port and asserts the
 // produced solid volume + the face/edge lineage match Python.
 //
 // edge_lineage is asserted EXACTLY (keys + sorted values): edge geometry hashes
@@ -14,8 +14,9 @@
 // The edge map -- whose stable keys carry the face tokens via adjacency -- pins
 // down WHICH face each token landed on, so the two assertions together are tight.
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_extrude_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_extrude_fixture.py) was deleted with the Python kernel in
+// phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

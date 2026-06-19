@@ -4,7 +4,8 @@
 // (features/faceProfile.ts): `@feat/face/N`. Builds a box body, resolves face 0
 // via the slash form against an empty repo (the geom-hash lookup misses, so the
 // literal index 0 is used), and asserts the loops + plane equal the box[0]
-// reference recorded for faceLoops (tests/wasm_harness/gen_faceloops_fixture.py).
+// reference recorded for faceLoops (the frozen faceLoops.json snapshot; its
+// generator gen_faceloops_fixture.py was removed in phase 4d).
 //
 // Skips when opencascade.js is absent.
 

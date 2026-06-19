@@ -1,9 +1,9 @@
 /**
  * Refcounted handle table for OCC.js shapes that outlive a single operation.
  *
- * The Python kernel gets memory management for free: `_copy_shape`
- * (`builder.py`) makes a `BRepBuilderAPI_Copy` per checkpoint and CPython
- * refcounts evict it when the last dict drops it. OCC.js has no such net.
+ * The Python kernel got memory management for free: `_copy_shape`
+ * (`builder.py`) made a `BRepBuilderAPI_Copy` per checkpoint and CPython
+ * refcounts evicted it when the last dict dropped it. OCC.js has no such net.
  * Every `TopoDS_Shape` handle stored in a checkpoint must be `.delete()`d
  * exactly once, after the last checkpoint referencing it is evicted, and
  * never before (shapes are shared across checkpoints via lineage/ancestry,

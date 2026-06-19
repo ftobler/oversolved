@@ -2,7 +2,7 @@
 //
 // Gated real-OCC parity gate for revolveProfileWithLineage (phase 2f, the revolve
 // leaf's brep producer). Feeds the same profile loops + axis + angle as
-// tests/wasm_harness/gen_revolve_fixture.py through the TS port and asserts the
+// the now-removed gen_revolve_fixture.py through the TS port and asserts the
 // produced solid volume + the face/edge lineage match Python.
 //
 // Same assertion split as the extrude gate: edge_lineage EXACTLY (keys + sorted
@@ -10,8 +10,9 @@
 // face_lineage as the sorted token-multiset (cylindrical-wall geom-hash keys
 // depend on the OCC-computed normal and diverge across the two builds).
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_revolve_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_revolve_fixture.py) was deleted with the Python kernel in
+// phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

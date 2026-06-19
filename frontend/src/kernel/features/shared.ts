@@ -5,8 +5,8 @@
 //
 //   - Pure logic: profile-loop assembly, direction resolution, body/merge-target
 //     resolution, top-face registration, direction/axis queries. No OCC. Ported
-//     here, gated byte-for-byte against the Python functions (see
-//     features/shared.test.ts + tests/wasm_harness/gen_features_shared_fixture.py).
+//     here, gated byte-for-byte against a frozen snapshot of the Python
+//     functions' output (see features/shared.test.ts).
 //   - OCC-backed lineage: _apply_body_operation + _transfer_boolean_lineage +
 //     _resolve_face_profile. These call boolean ops, solid exploration, and
 //     face-geometry reads; they land in a later 2e shard against the OCC adapter.

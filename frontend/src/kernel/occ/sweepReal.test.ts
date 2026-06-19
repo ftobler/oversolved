@@ -2,7 +2,7 @@
 //
 // Gated real-OCC parity gate for sweepProfileWithLineage (phase 2f, the sweep
 // leaf's brep producer). Rebuilds the same spine edges (line/arc) as
-// tests/wasm_harness/gen_sweep_fixture.py via the TS adapters, sweeps the same
+// the now-removed gen_sweep_fixture.py via the TS adapters, sweeps the same
 // square profile, and asserts the produced solid volume + face/edge lineage.
 //
 // edge_lineage is asserted EXACTLY for every case. face_lineage is asserted
@@ -10,8 +10,9 @@
 // token-multiset for the arc spine (curved lateral faces -> geom-hash key
 // divergence, as in extrude/revolve).
 //
-// Skips when opencascade.js is absent. Regenerate:
-//   .venv/bin/python tests/wasm_harness/gen_sweep_fixture.py
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// its generator (gen_sweep_fixture.py) was deleted with the Python kernel in
+// phase 4d.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
