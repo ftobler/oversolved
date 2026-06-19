@@ -33,6 +33,7 @@ function toSummary(rec: StoredDoc): DocSummary {
     is_owner: true,
     owner_username: LOCAL_OWNER,
     is_public: rec.is_public,
+    preview_image: rec.preview_image,
     meta: rec.meta,
   }
 }

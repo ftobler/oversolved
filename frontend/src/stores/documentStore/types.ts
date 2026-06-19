@@ -32,6 +32,7 @@ export interface DocSummary {
   is_owner: boolean
   owner_username: string
   is_public: boolean
+  preview_image?: string  // base64 PNG, set by IDB store; HTTP store leaves it undefined
   meta?: DocMeta
 }
 

@@ -97,4 +97,31 @@ describe('IndexedDbDocumentStore', () => {
       expect(s.meta?.baseRev).toBe(1)  // diverged: rev !== baseRev
     })
   })
+
+  describe('preview_image in list summaries', () => {
+    it('summary carries preview_image after save with one', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Widget')
+      await store.save(uuid, { content: 'x', preview_image: 'abc123' })
+      const [s] = await store.list()
+      expect(s.preview_image).toBe('abc123')
+    })
+
+    it('summary has no preview_image when none saved', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Widget')
+      await store.save(uuid, { content: 'x' })
+      const [s] = await store.list()
+      expect(s.preview_image).toBeUndefined()
+    })
+
+    it('preview_image persists across saves that omit it', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Widget')
+      await store.save(uuid, { content: 'a', preview_image: 'img1' })
+      await store.save(uuid, { content: 'b' })  // no preview_image
+      const [s] = await store.list()
+      expect(s.preview_image).toBe('img1')
+    })
+  })
 })

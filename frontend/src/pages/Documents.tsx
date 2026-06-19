@@ -465,17 +465,26 @@ export default function Documents() {
                     <div key={doc.uuid} className="doc-tile">
                       <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                         <div className="doc-tile-preview">
-                          <img
-                            src={`/api/documents/${doc.uuid}/thumbnail`}
-                            alt={doc.name}
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement
-                              target.style.display = 'none'
-                              const next = target.nextElementSibling as HTMLElement
-                              if (next) next.style.display = 'block'
-                            }}
-                          />
-                          <div className="doc-tile-placeholder" style={{display: 'none'}} />
+                          {doc.preview_image ? (
+                            <img
+                              src={`data:image/png;base64,${doc.preview_image}`}
+                              alt={doc.name}
+                            />
+                          ) : (
+                            <>
+                              <img
+                                src={`/api/documents/${doc.uuid}/thumbnail`}
+                                alt={doc.name}
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = 'none'
+                                  const next = target.nextElementSibling as HTMLElement
+                                  if (next) next.style.display = 'block'
+                                }}
+                              />
+                              <div className="doc-tile-placeholder" style={{display: 'none'}} />
+                            </>
+                          )}
                         </div>
                         <div className="doc-tile-info">
                           <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
