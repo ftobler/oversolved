@@ -115,6 +115,14 @@ wasm:
 rust-lint:
     cd sketch-solver && cargo clippy -- -D warnings
 
+# Remove build artifacts (keeps .venv and node_modules)
+clean:
+    find . -type d \( -name __pycache__ -o -name .pytest_cache -o -name .mypy_cache -o -name .ruff_cache \) -exec rm -rf {} + 2>/dev/null; true
+    find . -name '*.pyc' -delete
+    rm -rf *.egg-info dist build
+    rm -rf sketch-solver/pkg sketch-solver/pkg-node
+    rm -rf frontend/dist frontend/public/wasm
+
 
 set shell := ["bash", "-cu"]
 run:
