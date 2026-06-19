@@ -6,7 +6,7 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { http, HttpError } from '@/utils/core/httpClient'
-import { exportBundle, importBundle, copyDocument, pushDocument } from '@/stores/documentStore'
+import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
 import { useAuth } from '@/contexts/AuthContext'
@@ -43,6 +43,7 @@ export default function Documents() {
   const [trashLoading, setTrashLoading] = useState(false)
   const [activeDomain, setActiveDomain] = useState<Domain>('local')
   const [notice, setNotice] = useState<string | null>(null)
+  const [bridgeCount, setBridgeCount] = useState(0)  // 0 = the post-login bridge prompt is hidden
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
   const { user } = useAuth()
@@ -169,6 +170,77 @@ export default function Documents() {
     } catch (e) {
       setError(String(e))
     }
+  }
+
+  // Cross-domain MOVE (doc-domain-move slice 5): copy across, then delete the
+  // source. Destructive on the source side, so confirm first; the active list is
+  // refetched because the moved tile leaves the domain on screen (unlike copy).
+  const handleMoveToCloud = async (uuid: string, name: string) => {
+    if (!cloudStore) return
+    if (!window.confirm(`Move "${name}" to Cloud? It will be removed from Local.`)) return
+    try {
+      await moveDocument(backendBundle.documents, cloudStore, uuid)
+      setNotice(`Moved "${name}" to Cloud`)
+      fetchDocuments(activeFilter, debouncedSearch)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const handleMoveToLocal = async (uuid: string, name: string) => {
+    if (!cloudStore) return
+    if (!window.confirm(`Move "${name}" to Local? It will be removed from Cloud.`)) return
+    try {
+      await moveDocument(cloudStore, backendBundle.documents, uuid)
+      setNotice(`Moved "${name}" to Local`)
+      fetchDocuments(activeFilter, debouncedSearch)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  // Bulk push the whole local library up to the cloud (doc-domain-move slice 5).
+  // Drives both the toolbar "Sync all" verb and the post-login bridge prompt's
+  // "Copy all". Only unsynced docs move (markSynced clears dirty), so it is safe to
+  // re-run. Both sides stay intact -- it mirrors, never moves.
+  const handleSyncAll = async () => {
+    if (!cloudStore) return
+    setBridgeCount(0)  // dismiss the bridge prompt if this came from it
+    try {
+      const { pushed } = await syncAllDocuments(backendBundle.documents, cloudStore)
+      setNotice(
+        pushed.length > 0
+          ? `Synced ${pushed.length} document${pushed.length === 1 ? '' : 's'} to Cloud`
+          : 'Everything is already in sync',
+      )
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  // Post-login bridge prompt (doc-domain-move slice 5 / static-build-notes "you have
+  // two domains now -- copy local -> cloud?"). When the cloud domain first becomes
+  // available (sign-in), offer once to mirror the local library up. An OFFER, both
+  // sides left intact; dismissing changes nothing. sessionStorage keeps it to one
+  // prompt per tab session so a reload that restores the session does not nag.
+  const prevCloudAvailable = useRef(cloudAvailable)
+  useEffect(() => {
+    const was = prevCloudAvailable.current
+    prevCloudAvailable.current = cloudAvailable
+    if (was || !cloudAvailable) return
+    if (sessionStorage.getItem('docDomainBridgeSeen')) return
+    backendBundle.documents.list({ filter: 'owned' })
+      .then(local => {
+        if (local.length === 0) return
+        sessionStorage.setItem('docDomainBridgeSeen', '1')
+        setBridgeCount(local.length)
+      })
+      .catch(() => undefined)
+  }, [cloudAvailable])
+
+  const dismissBridge = () => {
+    sessionStorage.setItem('docDomainBridgeSeen', '1')
+    setBridgeCount(0)
   }
 
   const handleExport = async (uuid: string, name: string) => {
@@ -383,6 +455,11 @@ export default function Documents() {
           <button className="toolbar-btn" onClick={handleExportAll} title="Export all as .oversolved bundle">
             <span className="material-icons">archive</span>
           </button>
+          {!onCloud && cloudAvailable && (
+            <button className="toolbar-btn" onClick={handleSyncAll} title="Sync all to Cloud">
+              <span className="material-icons">cloud_sync</span>
+            </button>
+          )}
         </div>
       </AppHeader>
 
@@ -432,6 +509,17 @@ export default function Documents() {
 
         <div className="documents-main">
           {notice && <p className="status notice">{notice}</p>}
+          {bridgeCount > 0 && (
+            <div className="status bridge-prompt">
+              <span>
+                You're signed in. Copy your {bridgeCount} local document{bridgeCount === 1 ? '' : 's'} to Cloud?
+              </span>
+              <span className="bridge-prompt-actions">
+                <button className="btn" onClick={handleSyncAll}>Copy all</button>
+                <button className="btn btn-clear-search" onClick={dismissBridge}>Dismiss</button>
+              </span>
+            </div>
+          )}
           <Dialog
             isOpen={showAddForm}
             title="Create New Document"
@@ -629,6 +717,19 @@ export default function Documents() {
                                 <span className="material-icons">cloud_upload</span>
                               </button>
                             )}
+                            {!onCloud && cloudAvailable && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleMoveToCloud(doc.uuid, doc.name)
+                                }}
+                                title="Move to Cloud"
+                              >
+                                <span className="material-icons">drive_file_move</span>
+                              </button>
+                            )}
                             {onCloud && (
                               <button
                                 className="btn btn-tile-action"
@@ -640,6 +741,19 @@ export default function Documents() {
                                 title="Copy to Local"
                               >
                                 <span className="material-icons">cloud_download</span>
+                              </button>
+                            )}
+                            {onCloud && doc.is_owner && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={e => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleMoveToLocal(doc.uuid, doc.name)
+                                }}
+                                title="Move to Local"
+                              >
+                                <span className="material-icons">drive_file_move</span>
                               </button>
                             )}
                             <button

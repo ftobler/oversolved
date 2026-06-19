@@ -117,3 +117,131 @@ describe('Documents cross-domain copy', () => {
     expect(screen.queryByTitle('Copy to Local')).not.toBeInTheDocument()
   })
 })
+
+// doc-domain-move slice 5: move (copy + delete source), bulk sync-all, and the
+// post-login bridge prompt.
+describe('Documents cross-domain move + sync-all', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    freshLocalDb()
+    sessionStorage.clear()  // the bridge prompt is one-shot per tab session
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  // A signed-in session that answers the push round-trip (create + save).
+  function pushFetchMock() {
+    return vi.fn((url: string, init?: RequestInit): Promise<Response> => {
+      if (url === '/api/auth/me') return Promise.resolve(authOk)
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
+      if (url === '/api/documents' && init?.method === 'POST') return Promise.resolve(res({ uuid: 'cloud-new' }))
+      if (url.startsWith('/api/documents/') && init?.method === 'PUT') return Promise.resolve(res({}))
+      return Promise.resolve(res({ documents: [] }))
+    })
+  }
+
+  it('Move to Cloud pushes the tile up then removes the local source', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const local = getLocalStore()
+    const { uuid } = await local.create('Bracket')
+    await local.save(uuid, { content: 'profile: square' })
+
+    const fetchMock = pushFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDocuments()
+
+    const moveBtn = await screen.findByTitle('Move to Cloud')
+    fireEvent.click(moveBtn)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/documents', expect.objectContaining({ method: 'POST' }))
+      expect(fetchMock).toHaveBeenCalledWith('/api/documents/cloud-new', expect.objectContaining({ method: 'PUT' }))
+    })
+
+    // Destructive on the source side: the local doc is gone after the move.
+    await waitFor(async () => {
+      expect((await local.list()).length).toBe(0)
+    })
+  })
+
+  it('Move to Cloud does nothing when the confirm is declined', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const local = getLocalStore()
+    const { uuid } = await local.create('Bracket')
+    await local.save(uuid, { content: 'profile: square' })
+
+    const fetchMock = pushFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDocuments()
+
+    const moveBtn = await screen.findByTitle('Move to Cloud')
+    fireEvent.click(moveBtn)
+
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/documents', expect.objectContaining({ method: 'POST' }))
+    expect((await local.list()).length).toBe(1)  // source untouched
+  })
+
+  it('Sync all pushes every local document up to the cloud', async () => {
+    const local = getLocalStore()
+    const a = await local.create('A'); await local.save(a.uuid, { content: 'a' })
+    const b = await local.create('B'); await local.save(b.uuid, { content: 'b' })
+
+    const fetchMock = pushFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDocuments()
+
+    const syncBtn = await screen.findByTitle('Sync all to Cloud')
+    fireEvent.click(syncBtn)
+
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter(
+        ([url, init]) => url === '/api/documents' && (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(posts.length).toBe(2)  // one create per local doc
+    })
+  })
+
+  it('post-login bridge prompt offers to copy the local library up, then Copy all syncs', async () => {
+    const local = getLocalStore()
+    const a = await local.create('A'); await local.save(a.uuid, { content: 'a' })
+
+    const fetchMock = pushFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDocuments()
+
+    // The prompt surfaces once the session resolves (cloud domain becomes available).
+    const copyAll = await screen.findByText('Copy all')
+    expect(screen.getByText(/Copy your 1 local document to Cloud/)).toBeInTheDocument()
+
+    fireEvent.click(copyAll)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/documents', expect.objectContaining({ method: 'POST' }))
+    })
+    // The prompt dismisses itself after acting.
+    await waitFor(() => expect(screen.queryByText('Copy all')).not.toBeInTheDocument())
+  })
+
+  it('the bridge prompt does not appear for a guest (no cloud domain)', async () => {
+    const local = getLocalStore()
+    const x = await local.create('Solo'); await local.save(x.uuid, { content: 'x' })
+
+    const fetchMock = vi.fn((url: string): Promise<Response> => {
+      if (url === '/api/auth/me') return Promise.resolve(res({}, false, 401))
+      if (url === '/api/users/me/preferences') return Promise.resolve(res({}, false, 401))
+      return Promise.resolve(res({ documents: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDocuments()
+
+    await waitFor(() => expect(screen.getByText('local/Solo')).toBeInTheDocument())
+    expect(screen.queryByText('Copy all')).not.toBeInTheDocument()
+  })
+})

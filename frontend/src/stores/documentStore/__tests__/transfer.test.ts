@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { copyDocument, pushDocument } from '../transfer'
-import type { DocumentStore, DocumentPayload, SaveInput, ListOptions, DocSummary } from '../types'
+import { copyDocument, pushDocument, moveDocument, syncAllDocuments } from '../transfer'
+import type { DocumentStore, DocumentPayload, SaveInput, ListOptions, DocSummary, DocMeta } from '../types'
 
 // A throwaway in-memory store. copyDocument speaks only the DocumentStore
 // contract, so a fake is enough to prove it is store-agnostic -- no IndexedDB or
@@ -119,5 +119,94 @@ describe('pushDocument', () => {
     const { uuid } = await pushDocument(local, cloud, 'l-doc')
 
     expect((await cloud.load(uuid)).content).toBe('orig')  // copy still happens, no throw
+  })
+})
+
+describe('moveDocument', () => {
+  it('copies into dest then removes the source', async () => {
+    const a = new FakeStore('a')
+    const b = new FakeStore('b')
+    a.seed('a-doc', { content: 'profile: square', name: 'Bracket' })
+
+    const { uuid } = await moveDocument(a, b, 'a-doc')
+
+    // The copy landed in dest...
+    expect((await b.load(uuid)).content).toBe('profile: square')
+    // ...and the source is gone (destructive on the source side, unlike copy).
+    await expect(a.load('a-doc')).rejects.toThrow(/not found/)
+    expect((await a.list()).length).toBe(0)
+  })
+
+  it('does not remove the source when the copy fails (missing id)', async () => {
+    const a = new FakeStore('a')
+    const b = new FakeStore('b')
+    a.seed('keep', { content: 'orig', name: 'Keep' })
+
+    await expect(moveDocument(a, b, 'nope')).rejects.toThrow(/not found/)
+    // The unrelated source doc is untouched; nothing was removed mid-flight.
+    expect((await a.load('keep')).content).toBe('orig')
+    expect((await b.list()).length).toBe(0)
+  })
+})
+
+// A meta-tracking store: list() surfaces a DocMeta with a dirty flag, and
+// markSynced clears it -- mirroring IndexedDbDocumentStore, so syncAllDocuments'
+// dirty filter can be exercised.
+class MetaFakeStore extends FakeStore {
+  meta = new Map<string, DocMeta>()
+  syncedIds: string[] = []
+  seedMeta(id: string, payload: DocumentPayload, dirty: boolean) {
+    this.seed(id, payload)
+    this.meta.set(id, { id, rev: 1, updatedAt: 0, dirty, baseRev: dirty ? undefined : 1 })
+  }
+  async list(opts?: ListOptions): Promise<DocSummary[]> {
+    const base = await super.list(opts)
+    return base.map(s => ({ ...s, meta: this.meta.get(s.uuid) }))
+  }
+  async markSynced(id: string): Promise<void> {
+    this.syncedIds.push(id)
+    const m = this.meta.get(id)
+    if (m) this.meta.set(id, { ...m, dirty: false, baseRev: m.rev })
+  }
+}
+
+describe('syncAllDocuments', () => {
+  it('pushes only the dirty (unsynced) local docs and acks each', async () => {
+    const local = new MetaFakeStore('local')
+    const cloud = new FakeStore('cloud')
+    local.seedMeta('dirty-1', { content: 'a', name: 'A' }, true)
+    local.seedMeta('clean-1', { content: 'b', name: 'B' }, false)
+    local.seedMeta('dirty-2', { content: 'c', name: 'C' }, true)
+
+    const { pushed } = await syncAllDocuments(local, cloud)
+
+    expect(pushed.sort()).toEqual(['dirty-1', 'dirty-2'])
+    expect(local.syncedIds.sort()).toEqual(['dirty-1', 'dirty-2'])
+    const cloudNames = (await cloud.list()).map(d => d.name).sort()
+    expect(cloudNames).toEqual(['A', 'C'])  // the already-clean doc was skipped
+  })
+
+  it('is idempotent: a second run pushes nothing once everything is synced', async () => {
+    const local = new MetaFakeStore('local')
+    const cloud = new FakeStore('cloud')
+    local.seedMeta('d', { content: 'a', name: 'A' }, true)
+
+    await syncAllDocuments(local, cloud)
+    const second = await syncAllDocuments(local, cloud)
+
+    expect(second.pushed).toEqual([])
+    expect((await cloud.list()).length).toBe(1)  // no duplicate from the re-run
+  })
+
+  it('treats a store with no meta tracking as always-dirty (pushes everything)', async () => {
+    const local = new FakeStore('local')  // list() returns no meta
+    const cloud = new FakeStore('cloud')
+    local.seed('x', { content: 'a', name: 'A' })
+    local.seed('y', { content: 'b', name: 'B' })
+
+    const { pushed } = await syncAllDocuments(local, cloud)
+
+    expect(pushed.length).toBe(2)
+    expect((await cloud.list()).length).toBe(2)
   })
 })

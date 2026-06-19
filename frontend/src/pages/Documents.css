@@ -187,6 +187,23 @@
   color: #66bb6a;
 }
 
+.status.bridge-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #ccc;
+  background: rgba(102, 187, 106, 0.08);
+  border: 1px solid rgba(102, 187, 106, 0.3);
+  border-radius: 6px;
+}
+
+.bridge-prompt-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .dialog-component-overlay {
   position: fixed;
   top: 0;

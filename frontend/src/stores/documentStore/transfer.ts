@@ -45,3 +45,40 @@ export async function pushDocument(
   if (hasMarkSynced(local)) await local.markSynced(id)
   return result
 }
+
+// Move across the domain boundary = copy, then delete the source. Destructive on
+// the source side (unlike copy/push), so the UI gates it behind a confirm. The copy
+// runs first and throws on a missing id BEFORE any dest mutation, so a failed copy
+// never removes the source; only once the copy has landed is the source removed.
+// Direction-agnostic like copyDocument -- it moves either way across the boundary.
+export async function moveDocument(
+  src: DocumentStore,
+  dest: DocumentStore,
+  id: string,
+): Promise<{ uuid: string }> {
+  const result = await copyDocument(src, dest, id)
+  await src.remove(id)
+  return result
+}
+
+// Bulk push: mirror every local document that has unsynced local changes up to the
+// cloud, acking each. The "sync all" counterpart to the per-doc push verb -- both
+// coexist (the git-push analogy in static-build-notes). Selection uses the DocMeta
+// dirty flag (set on save, cleared by markSynced), so a doc already mirrored is
+// skipped and a re-run pushes nothing new. A store that does not track meta has no
+// dirty flag -> treated as always-dirty (push everything). It cannot yet UPDATE an
+// existing cloud doc in place (no cross-store identity map), so a re-edited doc
+// lands as a new cloud copy; in-place update waits on the real sync engine.
+export async function syncAllDocuments(
+  local: DocumentStore,
+  cloud: DocumentStore,
+): Promise<{ pushed: string[] }> {
+  const summaries = await local.list({ filter: 'owned' })
+  const pushed: string[] = []
+  for (const s of summaries) {
+    if (s.meta && !s.meta.dirty) continue  // already mirrored, nothing to push
+    await pushDocument(local, cloud, s.uuid)
+    pushed.push(s.uuid)
+  }
+  return { pushed }
+}
