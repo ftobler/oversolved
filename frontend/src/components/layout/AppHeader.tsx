@@ -1,6 +1,7 @@
 import { useNavigate, Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { hasBackend } from '@/config/capabilities'
 import '@/components/layout/AppHeader.css'
 
 interface AppHeaderProps {
@@ -35,13 +36,22 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         <Link to="/docs" className="toolbar-btn" title="Documentation">
           <span className="material-icons-outlined">help</span>
         </Link>
-        {user && (
-          <>
-            <Link to="/settings/profile" className="header-username">{user.username}</Link>
-            <button className="toolbar-btn" title="Sign out" onClick={handleLogout}>
-              <span className="material-icons-outlined">logout</span>
-            </button>
-          </>
+        {hasBackend ? (
+          user && (
+            <>
+              <Link to="/settings/profile" className="header-username">{user.username}</Link>
+              <button className="toolbar-btn" title="Sign out" onClick={handleLogout}>
+                <span className="material-icons-outlined">logout</span>
+              </button>
+            </>
+          )
+        ) : (
+          <span
+            className="cloud-not-available"
+            title="Sign-in requires the server build"
+          >
+            cloud not available
+          </span>
         )}
       </div>
     </header>
