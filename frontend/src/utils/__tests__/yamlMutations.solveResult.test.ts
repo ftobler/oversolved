@@ -87,4 +87,89 @@ describe('applyGeometryToFeature', () => {
     const proj = doc.features!.find(f => f.id === 'sk1')!.entities!.find(e => e.id === 'proj1')!
     expect(proj.kind).toBe('ellipse')
   })
+
+  it('returns false when projectionErrors is absent', () => {
+    const doc = makeDoc()
+    const changed = applyGeometryToFeature(doc, 'sk1', {}, new Set())
+    expect(changed).toBe(false)
+  })
+
+  it('returns false when projectionErrors is empty', () => {
+    const doc = makeDoc()
+    const changed = applyGeometryToFeature(doc, 'sk1', {}, new Set(), undefined, [])
+    expect(changed).toBe(false)
+  })
+
+  it('removes a failed projected entity from the feature', () => {
+    const doc = makeDoc()
+    const changed = applyGeometryToFeature(doc, 'sk1', {}, new Set(), undefined, ['proj1'])
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    expect(changed).toBe(true)
+    // proj1 had a source field -> removed; line1 (no source) stays
+    expect(feat.entities!.map(e => e.id)).toEqual(['line1'])
+  })
+
+  it('does not remove entities without a source field even if listed in projectionErrors', () => {
+    const doc = makeDoc()
+    applyGeometryToFeature(doc, 'sk1', {}, new Set(), undefined, ['line1'])
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    // line1 has no source -> not treated as a projected entity -> kept
+    expect(feat.entities!.map(e => e.id)).toContain('line1')
+  })
+
+  it('drops constraints that reference a removed projected entity', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [
+          { id: 'line1', kind: 'line' },
+          { id: 'proj1', kind: 'ellipse', source: '?edge;ellipse' },
+        ],
+        constraints: [
+          { id: 'c_keep', kind: 'horizontal', target: '$line1' },
+          { id: 'c_drop_a', kind: 'coincident', a: '$line1end', b: '$proj1start' },
+          { id: 'c_drop_b', kind: 'length', target: '$proj1' },
+        ],
+      }],
+    }
+    applyGeometryToFeature(doc, 'sk1', {}, new Set(), undefined, ['proj1'])
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const ids = feat.constraints!.map(c => c.id)
+    expect(ids).toContain('c_keep')
+    expect(ids).not.toContain('c_drop_a')
+    expect(ids).not.toContain('c_drop_b')
+  })
+
+  it('drops constraints that reference a removed entity via refs array', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [
+          { id: 'line1', kind: 'line' },
+          { id: 'proj1', kind: 'ellipse', source: '?edge;ellipse' },
+          { id: 'line2', kind: 'line' },
+          { id: 'line3', kind: 'line' },
+        ],
+        constraints: [
+          { id: 'c_keep', kind: 'ngon', refs: ['$line1', '$line2', '$line3'] },
+          { id: 'c_drop', kind: 'ngon', refs: ['$line1', '$proj1', '$line3'] },
+        ],
+      }],
+    }
+    applyGeometryToFeature(doc, 'sk1', {}, new Set(), undefined, ['proj1'])
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const ids = feat.constraints!.map(c => c.id)
+    expect(ids).toContain('c_keep')
+    expect(ids).not.toContain('c_drop')
+  })
+
+  it('returns false when none of the errored entities have a source field', () => {
+    const doc = makeDoc()
+    const changed = applyGeometryToFeature(doc, 'sk1', {}, new Set(), undefined, ['line1'])
+    expect(changed).toBe(false)
+  })
 })

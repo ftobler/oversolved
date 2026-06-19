@@ -108,7 +108,7 @@ export function useSolver(
   const requestIdRef = useRef(0)
   const cancelledRef = useRef(false)
 
-  const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number) => {
+  const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number): { cloned: PartDoc; hadCleanup: boolean } => {
     const result = data.result as Record<string, {
       geometry?: Record<string, number[]>
       resolved_kinds?: Record<string, string>
@@ -122,22 +122,20 @@ export function useSolver(
       body_id?: string
       exception?: string
       solve_ms?: number
+      projection_errors?: string[]
     }>
 
     const cloned: PartDoc = structuredClone(d)
+    let hadCleanup = false
     const results: Record<string, SketchData> = {}
-    // [PROJECT-DEBUG] temporary instrumentation for edge-pick bug
-    for (const [id, feature] of Object.entries(result)) {
-      const pe = (feature as { projection_errors?: string[] }).projection_errors
-      if (pe && pe.length) console.log('[PROJECT-DEBUG] solve dropped projections', { feature: id, projection_errors: pe })
-    }
     for (const [id, feature] of Object.entries(result)) {
       const featureDef = (cloned.features ?? []).find(f => f.id === id)
       if (feature.geometry) {
         const superfluousIds = feature.constraints
           ? new Set(Object.entries(feature.constraints).filter(([, c]) => c.superfluous).map(([cid]) => cid))
           : new Set<string>()
-        applyGeometryToFeature(cloned, id, feature.geometry, superfluousIds, feature.resolved_kinds)
+        const cleaned = applyGeometryToFeature(cloned, id, feature.geometry, superfluousIds, feature.resolved_kinds, feature.projection_errors)
+        if (cleaned) hadCleanup = true
         const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
         const astPosById = new Map(
           (featureDef?.constraints ?? [])
@@ -221,12 +219,13 @@ export function useSolver(
     if (solveTimeMs !== undefined) {
       setSolveTime(solveTimeMs)
     }
+    return { cloned, hadCleanup }
   }, [setCodeText, modeRef, docRef, setDoc])
 
-  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number) => {
+  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number): { cloned: PartDoc; hadCleanup: boolean } | null => {
     // Stale-guard: if a newer reSolve has been issued, discard this response.
-    if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return
-    applySolveResult(d, data, solveTimeMs)
+    if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return null
+    const solveResult = applySolveResult(d, data, solveTimeMs)
     // Single dispatch — the reducer transitions the world atomically.
     // If the solve was requested with a pick_boundary the response carries
     // pick_bodies (or {} when the checkpoint was unavailable), so the
@@ -239,11 +238,12 @@ export function useSolver(
     } else {
       dispatchWorld({ type: 'SET_WORLD', world: { status: 'full', bodies: data.bodies ?? {} } })
     }
+    return solveResult
   }, [applySolveResult])
 
   const reSolve = useCallback(async (
     d: PartDoc,
-    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } },
+    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _isCleanupReSolve?: boolean },
   ) => {
     setSolving(true)
     setSolveTime(null)
@@ -344,10 +344,18 @@ export function useSolver(
       // pick_boundary was requested, pick_bodies (the "before" state). The TS
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
-      applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs, currentRequestId)
+      const buildResult = applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs, currentRequestId)
       if (!firstSolveDone.current && onFirstSolve) {
         firstSolveDone.current = true
         setTimeout(onFirstSolve, 0)
+      }
+      // One-shot re-solve after dangling-projection cleanup: projection_errors
+      // caused stale entities to be removed from the doc; re-solve with the
+      // cleaned doc so the solver sees the reduced entity set. Not triggered on
+      // the cleanup re-solve itself to prevent infinite recursion.
+      if (buildResult?.hadCleanup && !opts?._isCleanupReSolve) {
+        await reSolve(buildResult.cloned, { ...opts, _isCleanupReSolve: true })
+        return  // inner call handles setSolving(false) via finally
       }
       if (!cancelledRef.current) setSolving(false)
     } catch (e) {
