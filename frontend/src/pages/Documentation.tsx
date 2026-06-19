@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AppHeader from '@/components/layout/AppHeader'
 import { http } from '@/utils/core/httpClient'
+import { hasBackend } from '@/config/capabilities'
 import '@/pages/Documentation.css'
 
 interface DocFile {
@@ -12,12 +13,10 @@ interface DocFile {
 }
 
 function extractLabel(name: string, content: string): string {
-  // Try to extract first h1 heading from markdown
   const match = content.match(/^#\s+(.+?)$/m)
   if (match && match[1]) {
     return match[1].trim()
   }
-  // Fallback to formatted filename
   return name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
@@ -26,16 +25,15 @@ export default function Documentation() {
   const currentDoc = doc || 'overview'
   const [content, setContent] = useState<string>('')
   const [docFiles, setDocFiles] = useState<DocFile[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(hasBackend)  // false immediately on static
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Fetch list of docs and their content to extract labels
+    if (!hasBackend) return
     if (docFiles.length === 0) {
       http.getJson<{ docs: string[] }>('/api/docs')
         .then(data => {
           const names = data.docs || []
-          // Fetch content for all docs to extract labels
           Promise.all(
             names.map((name: string) =>
               http.getJson<{ name: string; content: string }>(`/api/docs/${name}`)
@@ -51,7 +49,6 @@ export default function Documentation() {
             })
             .catch(e => {
               console.error('Failed to fetch docs:', e)
-              // Fallback: just use names without content
               const files = names.map((name: string) => ({
                 name,
                 label: extractLabel(name, ''),
@@ -64,6 +61,7 @@ export default function Documentation() {
   }, [docFiles.length])
 
   useEffect(() => {
+    if (!hasBackend) return  // loading initializes to false on static; nothing to fetch
     http.getJson<{ content: string }>(`/api/docs/${currentDoc}`)
       .then(data => {
         setContent(data.content)
@@ -76,6 +74,19 @@ export default function Documentation() {
         setLoading(false)
       })
   }, [currentDoc])
+
+  if (!hasBackend) {
+    return (
+      <div className="documentation">
+        <AppHeader title="Documentation" />
+        <div className="doc-container">
+          <main className="doc-content">
+            <p className="error">Documentation is not available on the local build. Start the server to access docs.</p>
+          </main>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="documentation">
