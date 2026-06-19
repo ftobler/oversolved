@@ -209,10 +209,14 @@ export function useSolver(
       }
     }
     setFeatureTimings(timings)
-    setSolveRawResult(stringifyYaml(data.result))
     setDoc(cloned)
     docRef.current = cloned
+    // The result dump only feeds the code tab's read-only pane. Serialize it
+    // lazily (and as JSON, the native shape of the JS result object) only when
+    // that tab is open, instead of on every solve. The document codeText stays
+    // YAML -- that is the editable input representation.
     if (modeRef.current === 'code') {
+      setSolveRawResult(JSON.stringify(data.result, null, 2))
       setCodeText(stringifyYaml(cloned))
     }
     setSolveError(null)
