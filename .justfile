@@ -77,6 +77,7 @@ run_front:
 
 # Install all dependencies (Python + frontend + wasm tools)
 install:
+    test -d .venv || python3 -m venv .venv
     # note cairo needs apt libcairo2-dev
     .venv/bin/pip install -e ".[dev]"
     just install-npm
@@ -122,6 +123,12 @@ clean:
     rm -rf *.egg-info dist build
     rm -rf sketch-solver/pkg sketch-solver/pkg-node
     rm -rf frontend/dist frontend/public/wasm
+
+# Remove everything above plus venv and node_modules
+deepclean:
+    just clean
+    rm -rf .venv
+    rm -rf frontend/node_modules
 
 
 set shell := ["bash", "-cu"]
