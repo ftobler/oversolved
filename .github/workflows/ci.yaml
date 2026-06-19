@@ -126,6 +126,17 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      # The wasm-kernel/*.test.ts solver-boundary tests self-skip when the Rust
+      # solver build (pkg-node) is absent. Build it here so `vitest run` actually
+      # exercises them instead of silently skipping (matches the local `just wasm`
+      # + `just frontend` flow). The build is identical across the Node matrix.
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build WASM solver (nodejs for vitest)
+        run: wasm-pack build --target nodejs --out-dir pkg-node --release
+        working-directory: sketch-solver
+
       - name: npm test (vitest)
         run: npx vitest run
         working-directory: frontend
@@ -191,6 +202,13 @@ jobs:
 
       - name: Install OCC.js (opt-in, not a package.json dep)
         run: npm run occ:install
+        working-directory: frontend
+
+      # Defense-in-depth: pkg-node is already built above, so run the solver
+      # boundary tests here too. Keeps them covered even if the wasm build is
+      # ever dropped from the `frontend` job. OCC.js is not needed for these.
+      - name: Solver boundary tests (wasm-kernel)
+        run: npx vitest run src/wasm-kernel
         working-directory: frontend
 
       - name: Parity gate (hard-fail)
