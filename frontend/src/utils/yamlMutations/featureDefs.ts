@@ -277,11 +277,16 @@ export function applyRemoveSweepPath(doc: PartDoc, featureId: string, index: num
 export function applyAddImportStep(
   doc: PartDoc,
   featureId: string,
-  fileId: string,
+  fileId?: string,
   label?: string,
+  fileData?: string,
 ): void {
   if (!doc.features) doc.features = []
-  const feature: PartFeature = { id: featureId, kind: 'import_step', file_id: fileId }
+  const feature: PartFeature = { id: featureId, kind: 'import_step' }
+  // file_data (inline base64, browser-read) is the working path the WASM kernel
+  // parses; file_id is the legacy upload handle kept for back-compat.
+  if (fileData) feature.file_data = fileData
+  if (fileId) feature.file_id = fileId
   if (label) feature.label = label
   doc.features.push(feature)
 }

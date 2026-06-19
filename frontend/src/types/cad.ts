@@ -314,7 +314,8 @@ export interface PartFeature {
   transform?: TransformFeatureDef  // present when kind === 'transform'
   mirror?: MirrorFeatureDef  // present when kind === 'mirror'
   variable?: VariableFeatureDef  // present when kind === 'variable'
-  file_id?: string  // present when kind === 'import_step'
+  file_id?: string  // legacy upload handle (kind === 'import_step'); superseded by file_data
+  file_data?: string  // inline base64 STEP bytes (kind === 'import_step'); read in-browser, parsed by the WASM kernel
   drag_anchor?: string  // transient solve-only hint: entity just dragged, anchored firmly by the solver
 }
 
@@ -708,7 +709,7 @@ export type Mutation =
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
   | { type: 'add_sweep_path'; featureId: string; pathQuery: string }
   | { type: 'remove_sweep_path'; featureId: string; index: number }
-  | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
+  | { type: 'add_import_step'; featureId: string; fileId?: string; fileData?: string; label?: string }
   | { type: 'add_fillet'; featureId: string; label?: string }
   | { type: 'add_chamfer'; featureId: string; label?: string }
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }

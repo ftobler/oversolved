@@ -871,6 +871,15 @@ describe('applyAddImportStep', () => {
     expect(doc.features![0].label).toBe('My Part')
   })
 
+  it('stores inline file_data (browser-read, no upload handle)', () => {
+    const doc: PartDoc = { features: [] }
+    applyAddImportStep(doc, 'f1', undefined, 'My Part', 'SVNPLTEwMzAz')
+    expect(doc.features![0]).toMatchObject({
+      id: 'f1', kind: 'import_step', file_data: 'SVNPLTEwMzAz', label: 'My Part',
+    })
+    expect(doc.features![0].file_id).toBeUndefined()
+  })
+
   it('initialises features array when absent', () => {
     const doc: PartDoc = {}
     applyAddImportStep(doc, 'f1', 'abc123.step')

@@ -384,17 +384,33 @@ export default function Part() {
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
-      const form = new FormData()
-      form.append('file', file)
-      const data = await http.postForm<{ file_id?: string }>('/api/upload', form).catch(() => null)
-      if (!data?.file_id) return
+      // Read the STEP bytes in-browser and inline them as base64 file_data; the
+      // WASM kernel (occ/stepIo) parses them directly, so import needs no server
+      // round-trip and works identically offline.
+      let fileData: string
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = () => reject(reader.error ?? new Error('file read failed'))
+          reader.readAsDataURL(file)
+        })
+        fileData = dataUrl.split(',')[1] ?? ''
+      } catch {
+        setError('Failed to read STEP file')
+        return
+      }
+      if (!fileData) {
+        setError('STEP file is empty')
+        return
+      }
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
       setRollbackForNewFeature(features)
-      handleMutation({ type: 'add_import_step', featureId, fileId: data.file_id, label })
+      handleMutation({ type: 'add_import_step', featureId, fileData, label })
     }
     input.click()
-  }, [handleMutation, features])
+  }, [handleMutation, features, setError])
 
   const handleExportStep = useCallback(() => {
     exportImportRef.current?.openExport(null, docName || 'export')

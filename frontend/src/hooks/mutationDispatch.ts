@@ -171,7 +171,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_sweep_path: (next, m) =>
     applyRemoveSweepPath(next, m.featureId, m.index),
   add_import_step: (next, m) =>
-    applyAddImportStep(next, m.featureId, m.fileId, m.label),
+    applyAddImportStep(next, m.featureId, m.fileId, m.label, m.fileData),
   add_fillet: (next, m) =>
     applyAddFillet(next, m.featureId, m.label),
   add_chamfer: (next, m) =>
