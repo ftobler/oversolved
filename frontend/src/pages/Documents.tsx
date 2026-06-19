@@ -264,8 +264,12 @@ export default function Documents() {
 
   const sidebarItems: { label: string; filter: SidebarFilter; icon: string }[] = [
     { label: 'My Documents', filter: 'owned', icon: 'folder' },
-    { label: 'Shared with me', filter: 'shared', icon: 'people' },
-    { label: 'Public Documents', filter: 'public', icon: 'public' },
+    // Sharing and public sections are server-side concerns; hide them on the
+    // static build where they are structurally always empty.
+    ...(hasBackend ? [
+      { label: 'Shared with me', filter: 'shared' as SidebarFilter, icon: 'people' },
+      { label: 'Public Documents', filter: 'public' as SidebarFilter, icon: 'public' },
+    ] : []),
   ]
 
   return (

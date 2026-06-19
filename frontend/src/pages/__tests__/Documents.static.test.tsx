@@ -6,7 +6,7 @@ vi.mock('@/config/capabilities', () => ({ hasBackend: false, backend: 'static' }
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import Documents from '@/pages/Documents'
@@ -30,6 +30,20 @@ function wrap() {
     </BrowserRouter>
   )
 }
+
+describe('Documents sidebar (static build)', () => {
+  it('hides Shared-with-me and Public Documents sections', async () => {
+    wrap()
+    await waitFor(() => expect(screen.getByText('My Documents')).toBeInTheDocument())
+    expect(screen.queryByText('Shared with me')).not.toBeInTheDocument()
+    expect(screen.queryByText('Public Documents')).not.toBeInTheDocument()
+  })
+
+  it('shows the My Documents section', async () => {
+    wrap()
+    await waitFor(() => expect(screen.getByText('My Documents')).toBeInTheDocument())
+  })
+})
 
 describe('Documents preview tile (static build)', () => {
   it('renders a data: URL img when preview_image is present in the summary', async () => {
