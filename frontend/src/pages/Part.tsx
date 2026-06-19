@@ -104,7 +104,6 @@ export default function Part() {
     solveResults,
     featureTimings,
     solving,
-    solveTime,
     solveError,
     setSolveError,
     solveResult,
@@ -713,7 +712,6 @@ export default function Part() {
         codeText={codeText}
         setCodeText={setCodeText}
         solving={solving}
-        solveTime={solveTime}
         solveResult={solveResult}
         handleRun={handleRun}
         solveError={solveError}

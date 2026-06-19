@@ -12,12 +12,18 @@ interface RebuildButtonProps {
   validation?: RebuildValidation | null
 }
 
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
 export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled, validation }: RebuildButtonProps) {
   const [isButtonHovered, setIsButtonHovered] = useState(false)
   const [isPopoverHovered, setIsPopoverHovered] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isVisible = isButtonHovered || isPopoverHovered
+  const totalMs = Object.values(featureTimings).reduce((sum, ms) => sum + ms, 0)
 
   const cancelHide = useCallback(() => {
     if (hideTimerRef.current) {
@@ -36,6 +42,9 @@ export function RebuildButton({ featureTimings, features, onClick, isLoading, di
 
   return (
     <div className="rebuild-button-container">
+      {totalMs > 0 && (
+        <span className="rebuild-time-label">{formatMs(totalMs)}</span>
+      )}
       <button
         className="rebuild-button"
         onClick={onClick}

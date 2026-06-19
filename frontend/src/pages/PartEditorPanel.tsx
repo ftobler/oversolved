@@ -34,7 +34,6 @@ interface PartEditorPanelProps {
   codeText: string
   setCodeText: (v: string) => void
   solving: boolean
-  solveTime: number | null
   solveResult: string | null
   handleRun: () => void
   solveError: string | null
@@ -58,7 +57,7 @@ export default function PartEditorPanel({
   rightPanel,
   mode, setMode,
   codeText, setCodeText,
-  solving, solveTime, solveResult,
+  solving, solveResult,
   handleRun,
   solveError, setSolveError,
   error, setError,
@@ -96,7 +95,6 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Run" onClick={handleRun} disabled={solving}>
                 <img src={toolbarPlayIcon} alt="Run" />
               </button>
-              {solveTime !== null && <span className="solve-time">{solveTime}ms</span>}
               <div className="toolbar-separator" />
               <button className="editor-btn" title="Copy code" onClick={() => navigator.clipboard.writeText(codeText)}>
                 <img src={toolbarCopyCodeIcon} alt="Copy code" />
