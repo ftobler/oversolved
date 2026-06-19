@@ -50,7 +50,10 @@ describe('Documents offline + logout transitions', () => {
     // The view drops back to local: a friendly notice, the local doc, and the cloud
     // domain switch is gone (cloud is no longer available).
     await screen.findByText('Cloud unavailable. Showing your local documents.')
-    expect(screen.getByText('local/LocalDoc')).toBeInTheDocument()
+    // The local list re-renders asynchronously (IndexedDB read) after the domain
+    // resets, so wait for the tile rather than asserting synchronously -- a plain
+    // getByText races the re-render and is flaky under CI timing.
+    await screen.findByText('local/LocalDoc')
     await waitFor(() => {
       expect(screen.queryByTitle('Cloud documents')).not.toBeInTheDocument()
     })
@@ -83,7 +86,8 @@ describe('Documents offline + logout transitions', () => {
     await waitFor(() => {
       expect(screen.queryByTitle('Cloud documents')).not.toBeInTheDocument()
     })
-    expect(screen.getByText('local/LocalDoc')).toBeInTheDocument()
+    // Same async-local-list race as above: wait for the tile.
+    await screen.findByText('local/LocalDoc')
     expect((await local.load(uuid)).content).toBe('x')
   })
 })
