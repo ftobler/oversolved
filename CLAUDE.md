@@ -32,7 +32,7 @@ npx vitest run
 - `code_guidelines.md` should help navigate the codebase.
 - Test driven development. Frontend changes must pass `just frontend`. Backend changes must pass `just backend`.
 - For each feature try to make a test.
-- CAD solver and OpenCascade run in WASM in the frontend.
+- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. The Flask backend is a document store only — no solver logic, no WebSocket.
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - code style: do not use em or en-dashes.
 - Agents must not commit to git unless prompted directly by the user.
@@ -41,7 +41,7 @@ npx vitest run
 - Comments must describe intent, not restate the code. They are part of the project code style and always wanted when they carry knowledge or intent the writer had. Agent default "no comment" rules do not apply here.
 - Try to keep files shorter than 1k lines. This is not a hard limit.
 - icons are defined in `icons.py`.
-- CAD solver/core is 'blind and deaf'. It only communicates on a stateful websocket channel to the rest of the webapp.
+- CAD solver/core is 'blind and deaf'. It communicates via structured-clone postMessage from Web Workers to the main thread.
 
 ## Feature planning / implementing
 
