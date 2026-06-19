@@ -4,6 +4,7 @@ import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { http } from '@/utils/core/httpClient'
+import { hasBackend } from '@/config/capabilities'
 import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
@@ -53,7 +54,19 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
         }))
         report.history = historyItems
       }
-      await http.postJson('/api/bug-report', report)
+      if (hasBackend) {
+        await http.postJson('/api/bug-report', report)
+      } else {
+        // No backend: serialise the report to JSON and trigger a browser download.
+        const bytes = JSON.stringify(report, null, 2)
+        const blob = new Blob([bytes], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `bug-report-${Date.now()}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
       alert('Bug report submitted successfully!')
       setDebugTab('selection')
     } catch (e) {

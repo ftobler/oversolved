@@ -732,7 +732,7 @@ export default function Part() {
         handleRightClick={handleRightClick}
         rightPanel={
           <PartDebugPanel
-            debugOpen={debugOpen && !!user?.is_admin}
+            debugOpen={debugOpen && (!hasBackend || !!user?.is_admin)}
           />
         }
       >
@@ -745,7 +745,7 @@ export default function Part() {
         <p>Copyright 2026 - Oversolved</p>
         <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         <div className="debug-buttons">
-          {user?.is_admin && (
+          {(!hasBackend || user?.is_admin) && (
             <button
               className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
               title="Toggle debug panel (F2)"
