@@ -3,8 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AppHeader from '@/components/layout/AppHeader'
-import { http } from '@/utils/core/httpClient'
-import { hasBackend } from '@/config/capabilities'
+import { docsSource } from '@/adapters/docs'
 import '@/pages/Documentation.css'
 
 interface DocFile {
@@ -25,18 +24,19 @@ export default function Documentation() {
   const currentDoc = doc || 'overview'
   const [content, setContent] = useState<string>('')
   const [docFiles, setDocFiles] = useState<DocFile[]>([])
-  const [loading, setLoading] = useState(hasBackend)  // false immediately on static
+  const [loading, setLoading] = useState(docsSource !== null)  // false immediately on static
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!hasBackend) return
+    const source = docsSource
+    if (!source) return
     if (docFiles.length === 0) {
-      http.getJson<{ docs: string[] }>('/api/docs')
-        .then(data => {
-          const names = data.docs || []
+      source.list()
+        .then(names => {
           Promise.all(
-            names.map((name: string) =>
-              http.getJson<{ name: string; content: string }>(`/api/docs/${name}`)
+            names.map(name =>
+              source.load(name)
+                .then(content => ({ name, content }))
                 .catch(() => ({ name, content: '' }))
             )
           )
@@ -61,10 +61,11 @@ export default function Documentation() {
   }, [docFiles.length])
 
   useEffect(() => {
-    if (!hasBackend) return  // loading initializes to false on static; nothing to fetch
-    http.getJson<{ content: string }>(`/api/docs/${currentDoc}`)
-      .then(data => {
-        setContent(data.content)
+    const source = docsSource
+    if (!source) return  // loading initializes to false on static; nothing to fetch
+    source.load(currentDoc)
+      .then(content => {
+        setContent(content)
         setLoading(false)
         setError(null)
       })
@@ -75,7 +76,7 @@ export default function Documentation() {
       })
   }, [currentDoc])
 
-  if (!hasBackend) {
+  if (!docsSource) {
     return (
       <div className="documentation">
         <AppHeader title="Documentation" />

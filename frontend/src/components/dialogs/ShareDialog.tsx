@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { http, HttpError } from '@/utils/core/httpClient'
-
-interface ShareInfo {
-  id: number
-  username: string | null
-  permission: string
-  shared_with_user_id: number | null
-}
+import { HttpError } from '@/utils/core/httpClient'
+import { sharingAdapter, type ShareInfo } from '@/adapters/sharing'
 
 interface ShareDialogProps {
   isOpen: boolean
@@ -26,10 +20,9 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const [error, setError] = useState<string | null>(null)
 
   const fetchShares = useCallback(async () => {
-    if (!isOwner) return
+    if (!isOwner || !sharingAdapter) return
     try {
-      const data = await http.getJson<{ shares: ShareInfo[] }>(`/api/documents/${documentUuid}/shares`)
-      const sharesList = data.shares || []
+      const sharesList = await sharingAdapter.listShares(documentUuid)
       setShares(sharesList)
       setLinkSharing(sharesList.some((s: ShareInfo) => s.shared_with_user_id === null))
     } catch (e) {
@@ -49,11 +42,11 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   }, [isOpen, isOwner, documentUuid, fetchShares])
 
   const handleShare = async () => {
-    if (!shareUsername.trim()) return
+    if (!shareUsername.trim() || !sharingAdapter) return
     setLoading(true)
     setError(null)
     try {
-      await http.postJson(`/api/documents/${documentUuid}/share`, { username: shareUsername.trim(), permission: sharePermission })
+      await sharingAdapter.share(documentUuid, { username: shareUsername.trim(), permission: sharePermission })
       setShareUsername('')
       fetchShares()
     } catch (e) {
@@ -69,18 +62,11 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   }
 
   const handleRemoveShare = async (username: string | null) => {
+    if (!sharingAdapter) return
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`/api/documents/${documentUuid}/share`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(username ? { username } : {}),
-      })
-      if (!response.ok) {
-        const data = await response.json() as { error?: string }
-        throw new Error(data.error || 'Failed to remove share')
-      }
+      await sharingAdapter.unshare(documentUuid, username)
       fetchShares()
     } catch (e) {
       setError(String(e))
@@ -119,26 +105,15 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                     checked={linkSharing}
                     disabled={loading}
                     onChange={async (e) => {
+                      if (!sharingAdapter) return
                       const checked = e.target.checked
                       setLinkSharing(checked)
                       setLoading(true)
                       setError(null)
                       try {
-                        let updated: { shares?: ShareInfo[] }
-                        if (checked) {
-                          updated = await http.postJson<{ shares?: ShareInfo[] }>(`/api/documents/${documentUuid}/share`, { permission: 'view' })
-                        } else {
-                          const response = await fetch(`/api/documents/${documentUuid}/share`, {
-                            method: 'DELETE',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({}),
-                          })
-                          if (!response.ok) {
-                            const data = await response.json() as { error?: string }
-                            throw new Error(data.error || 'Failed to update link sharing')
-                          }
-                          updated = await response.json() as { shares?: ShareInfo[] }
-                        }
+                        const updated = checked
+                          ? await sharingAdapter.share(documentUuid, { permission: 'view' })
+                          : await sharingAdapter.unshare(documentUuid)
                         if (updated.shares) {
                           setShares(updated.shares)
                         }
@@ -213,10 +188,11 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                             <select
                               value={share.permission}
                               onChange={async e => {
+                                if (!sharingAdapter) return
                                 setLoading(true)
                                 setError(null)
                                 try {
-                                  await http.postJson(`/api/documents/${documentUuid}/share`, { username: share.username, permission: e.target.value })
+                                  await sharingAdapter.share(documentUuid, { username: share.username ?? undefined, permission: e.target.value })
                                   fetchShares()
                                 } catch (err) {
                                   if (err instanceof HttpError) {

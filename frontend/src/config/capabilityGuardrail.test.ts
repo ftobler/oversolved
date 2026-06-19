@@ -39,17 +39,14 @@ const HAS_BACKEND_BASELINE = [
   'components/layout/AppHeader.tsx',
   'contexts/AuthContext.tsx',
   'hooks/useUserPreferences.ts',
-  'pages/Documentation.tsx',
   'pages/Documents.tsx',
   'pages/Part.tsx',
-  'pages/PartDebugPanel.tsx',
   'pages/PartToolbar.tsx',
 ]
 
 // Existing raw `/api/...` literals awaiting migration behind an adapter.
 // Remove an entry when its file stops reaching the API path directly.
 const API_LITERAL_BASELINE = [
-  'components/dialogs/ShareDialog.tsx',
   'contexts/AuthContext.tsx',
   'hooks/useRebuildStats.ts',
   'hooks/useUserPreferences.ts',
@@ -57,11 +54,9 @@ const API_LITERAL_BASELINE = [
   'pages/AdminPeriodicTasks.tsx',
   'pages/AdminUsers.tsx',
   'pages/Backup.tsx',
-  'pages/Documentation.tsx',
   'pages/Documents.tsx',
   'pages/Login.tsx',
   'pages/Part.tsx',
-  'pages/PartDebugPanel.tsx',
   'pages/UserProfile.tsx',
 ]
 

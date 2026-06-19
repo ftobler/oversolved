@@ -8,6 +8,7 @@ import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { http, HttpError } from '@/utils/core/httpClient'
 import { getDocumentStore, exportBundle, importBundle } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
+import { sharingAdapter } from '@/adapters/sharing'
 import { hasBackend } from '@/config/capabilities'
 import '@/pages/Documents.css'
 
@@ -518,7 +519,7 @@ export default function Documents() {
                                   e.preventDefault()
                                   e.stopPropagation()
                                   if (window.confirm('Remove this shared document?')) {
-                                    http.deleteJson(`/api/documents/${doc.uuid}/share`)
+                                    sharingAdapter?.leaveShare(doc.uuid)
                                       .then(() => fetchDocuments(activeFilter, debouncedSearch))
                                       .catch(() => undefined)
                                   }
