@@ -1,5 +1,5 @@
-import { Routes, Route, Link, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
 import Documentation from '@/pages/Documentation'
 import Documents from '@/pages/Documents'
@@ -13,45 +13,25 @@ import AdminPeriodicTasks from '@/pages/AdminPeriodicTasks'
 import Settings from '@/pages/Settings'
 import '@/App.css'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
-  if (loading) return null
-  if (!user) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
-
-function Home() {
-  return (
-    <div className="landing">
-      <div className="landing-logo">Oversolved</div>
-      <p className="landing-tagline">Browser-based mechanical CAD</p>
-      <nav className="landing-nav">
-        <Link to="/documents">Documents</Link>
-        <Link to="/docs">Documentation</Link>
-      </nav>
-      <footer className="landing-footer">
-        Copyright 2026
-      </footer>
-    </div>
-  )
-}
-
 function App() {
   return (
     <AuthProvider>
       <Routes>
-        {/* No backend = no accounts: there is nothing to log into and no reason
-            for a landing page, so both go straight to the documents overview. */}
+        {/* Guest-first: no wall. A fresh visitor lands straight on the documents
+            library (the local IndexedDB home) and can create/export with no
+            account. Login is an optional upgrade, reachable only on the server
+            build; on static it is impossible, so /login bounces to /documents.
+            Account-only pages (settings/admin/profile) self-guard internally. */}
         <Route path="/login" element={hasBackend ? <Login /> : <Navigate to="/documents" replace />} />
-        <Route path="/" element={<ProtectedRoute>{hasBackend ? <Home /> : <Navigate to="/documents" replace />}</ProtectedRoute>} />
-        <Route path="/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
-        <Route path="/documents/:uuid" element={<ProtectedRoute><Part /></ProtectedRoute>} />
-        <Route path="/docs" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
-        <Route path="/docs/:doc" element={<ProtectedRoute><Documentation /></ProtectedRoute>} />
-        <Route path="/registry" element={<ProtectedRoute><Registry /></ProtectedRoute>} />
+        <Route path="/" element={<Navigate to="/documents" replace />} />
+        <Route path="/documents" element={<Documents />} />
+        <Route path="/documents/:uuid" element={<Part />} />
+        <Route path="/docs" element={<Documentation />} />
+        <Route path="/docs/:doc" element={<Documentation />} />
+        <Route path="/registry" element={<Registry />} />
         <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
         <Route path="/admin/users" element={<Navigate to="/settings/admin" replace />} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
+        <Route path="/settings" element={<Settings />}>
           <Route path="profile" element={<UserProfile />} />
           <Route path="backup" element={<Backup />} />
           <Route path="admin" element={<AdminUsers />} />

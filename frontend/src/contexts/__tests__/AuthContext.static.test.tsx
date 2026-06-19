@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// Static build: no auth endpoint. The provider must surface a local user
-// immediately so the ProtectedRoute wall never blocks the app, and must not
-// hit the network.
+// Static build: no auth endpoint. The session is guest-first (user === null) and
+// must NOT hit the network -- static IS the not-logged-in state, so it simply
+// stays a guest forever. No synthetic local user any more.
 vi.mock('@/config/capabilities', () => ({ hasBackend: false }))
 
 import { render, screen, waitFor } from '@testing-library/react'
@@ -18,9 +18,9 @@ describe('AuthContext (static / no backend)', () => {
     globalThis.fetch = vi.fn(() => { throw new Error('network must not be hit in static mode') }) as unknown as typeof fetch
   })
 
-  it('provides a local user with no network call', async () => {
+  it('stays a guest (no user) with no network call', async () => {
     render(<AuthProvider><Probe /></AuthProvider>)
-    await waitFor(() => expect(screen.getByText('user:local')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('user:none')).toBeInTheDocument())
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 })

@@ -3,18 +3,6 @@ import type { ReactNode } from 'react'
 import { http } from '@/utils/core/httpClient'
 import { hasBackend } from '@/config/capabilities'
 
-// In a static (zero-backend) build there is no account system. The app runs as
-// a single local user so the auth wall never blocks access; login/logout are
-// no-ops. Offline is first-class, not a degraded mode.
-const LOCAL_USER: User = {
-  id: 0,
-  username: 'local',
-  email: null,
-  must_change_password: false,
-  is_admin: false,
-  is_active: true,
-}
-
 export interface User {
   id: number
   username: string
@@ -25,7 +13,7 @@ export interface User {
 }
 
 interface AuthContextType {
-  user: User | null
+  user: User | null  // null = guest / not signed in; this is the default session
   loading: boolean
   setUser: (user: User | null) => void
   logout: () => Promise<void>
@@ -39,11 +27,18 @@ const AuthContext = createContext<AuthContextType>({
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(hasBackend ? null : LOCAL_USER)
+  // One session concept, guest by default. There is no synthetic local user: the
+  // app is fully functional as a guest (null). Signing in only ADDS the cloud
+  // domain on top, it is never a wall. On a zero-backend build there is no server
+  // to sign in to, so the session simply stays guest forever -- static IS the
+  // not-logged-in state (see static-build-notes: guest-first session).
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(hasBackend)
 
   useEffect(() => {
-    if (!hasBackend) return  // static build: local user, no auth endpoint to hit
+    if (!hasBackend) return  // no server: stay a guest, never touch the network
+    // Restore an existing cloud session if the browser already holds one; a
+    // 401/failure just means "still a guest", not an error.
     http.getJson<{ user: User }>('/api/auth/me')
       .then(data => setUser(data.user))
       .catch(() => setUser(null))
@@ -53,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     if (!hasBackend) return  // nothing to log out of locally
     await http.postJson('/api/auth/logout').catch(() => undefined)
-    setUser(null)
+    setUser(null)  // drops the credential only; the local library is untouched
   }
 
   return (

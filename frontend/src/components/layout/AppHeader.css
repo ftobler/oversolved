@@ -89,6 +89,28 @@
   color: #fff;
 }
 
+.header-login {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #888;
+  font-size: 13px;
+  padding: 8px 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.header-login:hover {
+  background: #222;
+  color: #fff;
+}
+
+.header-login .material-icons-outlined {
+  font-size: 18px;
+}
+
 .doc-name {
   margin: 0;
   font-size: 16px;
