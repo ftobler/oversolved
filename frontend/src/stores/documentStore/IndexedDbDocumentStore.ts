@@ -151,8 +151,9 @@ export class IndexedDbDocumentStore implements DocumentStore {
   }
 
   // No server-rendered thumbnail: the grid uses the inline preview_image carried
-  // on each summary instead.
-  thumbnailUrl(): string | null {
+  // on each summary instead. Keeps the interface's (id) signature so callers pass
+  // the id uniformly across stores.
+  thumbnailUrl(_id: string): string | null {
     return null
   }
 
