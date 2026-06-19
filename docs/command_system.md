@@ -62,7 +62,7 @@ Initialized in `tools/index.ts` via `initializeTools()`.
 
 All buttons route through `executeCommand(name)` — no direct store calls. Components for entity tools, constraint tools, dimension, drag, rectangles, construction toggle, and reset viewport.
 
-### Click Dispatch (`Geometry3D/useToolClickDispatch.ts`)
+### Click Dispatch (`Viewport/idDispatch/dispatchSketchClick.ts`)
 
 Routes pointer clicks from sketch geometry through the tool registry:
 - Gets effective tool from store
@@ -76,7 +76,7 @@ Document-snapshot-based: deep-clones current doc on each mutation, pushes onto u
 
 Preview system: `startPreviewMode()` suppresses undo entries; `commitPreview()` creates a single undo entry; `cancelPreview()` restores original doc.
 
-All mutation functions are pure operations in `yamlMutations.ts`. Labels in `mutationDescriptions.ts`.
+All mutation functions are pure operations in `utils/yamlMutations/`. Labels in `mutationDescriptions.ts`.
 
 ### Registry Page (`Registry.tsx`)
 

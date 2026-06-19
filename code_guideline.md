@@ -256,15 +256,20 @@ export function dispatchKey(e: KeyboardEvent): boolean
 
 ### Migration System
 
-**Location:** `oversolved/app.py::_register_migrations()`
+**Location:** `oversolved/migrations/` (one file per migration, auto-discovered by `discover_and_register()` and applied on startup).
 
 **Rule:** Each migration runs exactly once on startup. Track version in `schema_version` table.
 
 ```python
-def migration_002_add_metadata_column(db: Database):
-    db.execute("ALTER TABLE documents ADD COLUMN metadata LONGTEXT")
+# oversolved/migrations/m002_add_preview_image.py
+from oversolved.db import Database
 
-db.register_migration(2, 'add_metadata_column', migration_002_add_metadata_column)
+VERSION = 2
+NAME = "add_preview_image"
+
+
+def apply(database: Database) -> None:
+    database.execute("ALTER TABLE documents ADD COLUMN preview_image BYTEA")
 ```
 
 ### Geometry Mapping

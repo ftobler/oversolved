@@ -61,8 +61,9 @@ element's query.
 - **Line division** (implemented): a sketch surface split from a same-ancestry
   sibling by a line (e.g. a circle cut by a line) carries `cls_ld_<lineid>_p|n`,
   the side of each shared bounding line taken in a canonical direction. A stable
-  alternative to the positional `surface:N` index. Stamped in `topology.py` and
-  registered on the surface element's payload.
+  alternative to the positional `surface:N` index. Stamped in
+  `frontend/src/kernel/topologyDecorate.ts` and registered on the surface
+  element's payload.
 - **Circle containment** (investigated, not needed): concentric regions do not
   share ancestry -- a disk and the ring around it are each identified by their
   own bounding circle (`{@sk/inner}` vs `{@sk/outer}`; the hole circle is in the

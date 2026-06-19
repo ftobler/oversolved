@@ -4,13 +4,14 @@ This module provides shared hooks for viewport interaction.
 
 ## Files
 
-### index.ts
+### useAlignmentSnapEffect.ts
 
-Re-exports `useDynamicSelectionPositions` from `snapHooks`.
+Hook for snap detection and alignment during drag/draw operations.
 
-### snapHooks.ts, useAlignmentSnapEffect.ts
+### useSelectionPointerUpCleanup.ts
 
-Hooks for snap detection and alignment during drag/draw operations.
+Pointer-up safety net that clears leftover/stuck drag state so the camera
+recovers (e.g. when a document load remounts the DragPlane mid-gesture).
 
 ## Single Source of Truth
 

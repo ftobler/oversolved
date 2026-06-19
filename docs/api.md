@@ -1,13 +1,13 @@
 # Oversolved API
 
-Flask-based REST + WebSocket API for the Oversolved CAD application.
+Flask-based REST API for the Oversolved CAD application.
 
 ## Architecture
 
 ```
 oversolved/
 ├── app.py                  # Flask application factory and config
-├── db.py                   # Database abstraction layer + migrations
+├── db/                     # Database abstraction layer (connection, stores, migrations)
 ├── cli.py                  # Unified CLI entry point (run_server / db / run_tasks)
 ├── periodic_tasks.py       # Scheduled cleanup tasks
 ├── blueprints/

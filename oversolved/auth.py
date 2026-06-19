@@ -1,4 +1,4 @@
-"""Shared authentication logic for HTTP and WebSocket handlers."""
+"""Shared authentication logic for HTTP handlers."""
 
 from dataclasses import dataclass
 from oversolved.db import Database, SessionStore, UserStore

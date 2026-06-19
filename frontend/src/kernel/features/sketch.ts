@@ -1,6 +1,6 @@
 /**
- * Port of ``_solve_sketch`` / ``_dispatch_sketch`` (solver_features_sketch.py):
- * the sketch constraint solver backed by the Rust WASM kernel.
+ * The sketch constraint solver, backed by the Rust WASM kernel
+ * (originally ported from the ``_solve_sketch`` / ``_dispatch_sketch`` backend).
  *
  * Takes a sketch feature in the live PartDoc format (``$``-ref constraints,
  * optional ``source`` on projected entities, ``center_rect`` sugar) and lowers
@@ -11,8 +11,8 @@
  * The WASM binary is loaded asynchronously once (``initSketchSolver()``) and
  * cached; the actual ``solveSketch`` call is synchronous. When the binary is
  * unavailable (not provisioned under ``/wasm/``), ``solveSketch`` throws so the
- * builder's try/catch returns a clean exception — the caller can then fall back
- * to the Python daemon.
+ * builder's try/catch returns a clean exception (the browser kernel is the only
+ * solver; there is no backend fallback).
  *
  * Projected entities and center_rect sugar are not yet lowered; sketches
  * containing them throw a descriptive error.

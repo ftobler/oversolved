@@ -41,7 +41,7 @@ npm install
 ```bash
 oversolved run_server --debug                # Flask dev server on :5000
 oversolved run_server                         # waitress production on :5000
-oversolved run_server --db-path /tmp/my.db    # custom SQLite path
+oversolved run_server --db-type sqlite --db-path /tmp/my.db   # SQLite at custom path
 ```
 
 ### Frontend Dev Server (HMR, separate terminal)
@@ -61,34 +61,48 @@ just run_front  # frontend dev server
 
 ## Database
 
-SQLite is the default (`oversolved.db`). Migrations run automatically on first request.
+Two backends are supported: `postgres` (default) and `sqlite`. Migrations run
+automatically on startup. For SQLite, pass `--db-type sqlite` (default file
+`oversolved.db`, override with `--db-path`).
 
-### MariaDB (Production)
+### PostgreSQL (default)
+
+A dev-only Postgres server is provided via Docker Compose:
 
 ```bash
-mysql -u root -p -e "CREATE DATABASE oversolved;"
-mysql -u root -p -e "GRANT ALL ON oversolved.* TO 'oversolved'@'localhost';"
-oversolved run_server --db-type mariadb --db-host localhost --db-user oversolved --db-password mypassword --db-name oversolved
+docker compose -f docker-compose-postgres.yml up -d
+```
+
+It matches the default DSN (`postgresql://oversolved:oversolved@localhost:5432/oversolved`).
+Override with `--db-dsn` or the `OVERSOLVED_DB_DSN` env var:
+
+```bash
+oversolved run_server --db-dsn postgresql://user:pass@host:5432/dbname
 ```
 
 ### CLI
 
 ```bash
-oversolved db --db-type sqlite status    # current version + pending migrations
-oversolved db --db-type sqlite upgrade   # apply pending
-oversolved db --db-type sqlite check     # exit 1 if pending (CI)
+oversolved db status    # current version + pending migrations
+oversolved db upgrade   # apply pending
+oversolved db check     # exit 1 if pending (CI)
 ```
 
-All `--db-*` flags work with these subcommands.
+These default to `--db-type postgres`; add `--db-type sqlite --db-path ...` for SQLite.
 
 ## Testing
 
 ```bash
-pytest tests/ -v                           # backend (in-memory SQLite, no setup)
+pytest tests/ -v                           # backend (needs Postgres; see below)
 cd frontend && npx vitest run               # frontend
 mypy oversolved/ tests/ && flake8 oversolved/ tests/   # backend lint
 cd frontend && npm run lint                 # frontend lint
 ```
+
+Backend tests create an isolated PostgreSQL database per test (dropped
+afterward), so a Postgres server must be reachable. Start the dev server with
+`docker compose -f docker-compose-postgres.yml up -d`, or point tests at another
+server via the `TEST_DB_DSN` env var.
 
 ## Troubleshooting
 
