@@ -36,7 +36,7 @@ interface ResolvedConstraint {
   pos?: [number, number]
 }
 
-/** Convert flat array format (from AST initial or server solve) to UI Sketch format.
+/** Convert flat array format (from AST initial or solver output) to UI Sketch format.
  *  Ensures all entities are present in result, defaulting to zero-params if missing. */
 export function unflattenGeometry(
   flat: Record<string, number[]> | undefined,

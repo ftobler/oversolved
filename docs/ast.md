@@ -70,6 +70,18 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
   operation: new
 ```
 
+### sweep
+
+```yaml
+- id: sw1
+  kind: sweep
+  sweep:
+    sketch: "$sk1"               # profile ref (or list)
+    path: "@sk2/spine"           # path ref (or list)
+    operation: add               # new | add | cut
+    merge_target: "@body_ex1"    # optional
+```
+
 ### fillet / chamfer
 
 ```yaml
@@ -131,9 +143,37 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
   kind: array
   array:
     source_body: "extrude1"
-    mode: linear                 # linear | rectangular | rotational
+    mode: linear                 # linear | rectangular
     count_x: 3
     pitch_x: 20.0
+```
+
+### circular_array
+
+A rotational array is its own feature kind (not a `mode` of `array`):
+
+```yaml
+- id: carr1
+  kind: circular_array
+  circular_array:
+    source_body: "extrude1"
+    count: 4
+    step_angle: 90.0             # optional; defaults to 360 / count
+    axis: "@sk1/axisLine"        # query; or axis_origin + axis_direction
+    operation: new               # new | add
+    include_source: true
+```
+
+### mirror
+
+```yaml
+- id: mir1
+  kind: mirror
+  mirror:
+    body: "@body_ex1"
+    plane: "@builtin_plane_front"   # query; required
+    keep_original: true             # false replaces the source in place
+    merge: true                     # fuse mirror into source when keep_original
 ```
 
 ### delete_body / import_step
@@ -152,7 +192,15 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
   scale: 1.0
 ```
 
-## Sketch Entities
+### variable
+
+```yaml
+- id: width
+  kind: variable
+  label: width                   # the variable name (must be a valid identifier)
+  variable:
+    expression: "10 + 2"         # number or formula; evaluated against earlier variables
+```
 
 | kind | params | meaning |
 |------|--------|---------|
@@ -160,6 +208,8 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 | `line` | `[x1, y1, x2, y2]` | start, end |
 | `circle` | `[cx, cy, r]` | center, radius |
 | `arc` | `[cx, cy, r, a0, a1]` | center, radius, start angle (deg), end angle (deg) |
+| `ellipse` | `[cx, cy, a, b, theta]` | center, semi-major (a>=b>=0), semi-minor, major-axis rotation (deg) |
+| `spline` | `[x1, y1, x2, y2, x3, y3, x4, y4]` | cubic Bezier: P1/P4 on-curve endpoints, P2/P3 control points |
 | `center_rect` | compound (expanded to 4 lines) | xy, size |
 
 Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
@@ -183,8 +233,11 @@ Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"exter
 | `tangent` | Line perpendicular to radius |
 | `equal_length` | Length difference |
 | `point_distance` | Distance minus value |
+| `point_distance_x` | X-component of point-to-point distance minus value |
+| `point_distance_y` | Y-component of point-to-point distance minus value |
 | `midpoint` | Point at midpoint of line |
 | `concentric` | Center-delta x and y |
+| `radius_difference` | Difference of two radii minus value |
 | `fixed` | Params pinned to initial |
 
 ## Query Syntax
@@ -197,7 +250,7 @@ Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"exter
 
 Sub suffixes: `start`, `end`, `center`, `xy`. Ancestry types: `solid`, `face`, `flatface`, `cylinderface`, `edge`, `straightedge`, `vertex`.
 
-Geometric classifiers (`@pos`, `@neg`, `@inner`, `@outer`, `@north`, `@south`, `@east`, `@west`) are a planned mechanism to disambiguate topology elements sharing ancestry. Not implemented: no classifier field exists on `AncestryQuery` and the parser does not extract one. See `docs/query.md`.
+Geometric classifiers disambiguate topology elements that share ancestry. They are minted `@cls_*` tokens that ride the ancestry id list (no grammar change), not a separate suffix: cardinal/axial (`@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn`) and line-division (`cls_ld_<lineid>_p|n`). See `docs/query.md` for the resolution tiers.
 
 ## Built-in Planes
 
@@ -211,9 +264,10 @@ Shorthands `"Front"`, `"Top"`, `"Right"` also recognized.
 
 ## Constraint Status
 
-Determined from Jacobian rank at the solution:
-- **fully_constrained** — no free DOF (beyond 3 rigid-body DOF)
-- **underconstrained** — Jacobian rank < n_params - 3
+Determined from Jacobian rank at the solution (no rigid-body DOF allowance: a
+point pinned at the origin still leaves a removable rotation DOF):
+- **fully_constrained** — Jacobian rank reaches the parameter count (rank == n_params)
+- **underconstrained** — Jacobian rank < n_params
 - **overconstrained** — final residual loss > 1e-4
 
 ## Frontend Adapter Note

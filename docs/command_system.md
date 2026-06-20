@@ -90,7 +90,7 @@ Main page: uses `usePartDoc()`, builds command entries via `buildCommandEntries(
 
 - **`set_tool_*`** — activate tools (dispatch via shortcuts from `ENTITY_SHORTCUTS` / `CORE_KEYBINDINGS`)
 - **`apply_*`** — apply constraints (dispatch via `CONSTRAINT_SHORTCUTS`)
-- **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `toggle_sketch_plane_visibility`, `cancel_draw`, `cancel_plane_selection`, `add_extrude`, `add_hole`, `add_transform`
+- **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `toggle_sketch_plane_visibility`, `toggle_plane_visibility`, `cancel_draw`, `cancel_pick`, `apply_offset`, `add_extrude`, `add_hole`, `add_transform`
 
 ## Keybindings
 

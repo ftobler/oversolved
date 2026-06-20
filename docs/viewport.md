@@ -5,10 +5,10 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 ## Component Tree (render order)
 
 ```
-<Canvas> (antialias, logarithmicDepthBuffer, background #111)
-  <OrthographicCamera makeDefault />       (pos [20,20,100], zoom 200, near=-10, far=1000)
+<Canvas orthographic camera={INITIAL_CAMERA}> (antialias, logarithmicDepthBuffer, background #111)
+                                           (camera: pos [20,20,100], zoom 80, near=-10, far=1000)
   <SceneController />                       (OrbitControls + CubeGizmo per-frame)
-  <CameraLight />                           (ambient + directional following camera)
+  <Environment /> + <EnvLight />           (IBL env map; EnvLight rotates the env to follow the camera)
   <OriginMarker />                          (builtin origin dot)
   <ReferencePlane /> x3                     (Front, Top, Right)
   <UserDefinedPlane /> xN                   (user-defined sketch planes)
@@ -111,8 +111,8 @@ Hit geometry: entities via cylinder per segment (8px radius), vertices via spher
 
 ## Rendering Pipeline
 
-- R3F render loop drives all rendering. Per-frame `useFrame`: scene controller, camera light, Body3D vertex scaling, dot/hit geometry pixel scaling, origin billboarding.
-- Render order constants: DEFAULT=0, GHOST=1, EDITING=10, HIGHLIGHT=999 (in `partColors.ts`).
+- R3F render loop drives all rendering. Per-frame `useFrame`: scene controller, env light, Body3D vertex scaling, dot/hit geometry pixel scaling, origin billboarding.
+- Render order constants: DEFAULT=0, EDITING=10, HIGHLIGHT=999 (in `partColors.ts`).
 - Screenshot capture: imperative `gl.render(scene, camera)`, `captureScreenshotForSaving` renders at 1/4 resolution scaled to max 512px.
 - Colors defined in `partColors.ts` (body: mint green, sketch: blue/white/red, selected: orange, etc.).
 - Body meshes use `meshPhysicalMaterial` (roughness 0.7 by default) with `vertexColors` for per-face coloring.
@@ -136,7 +136,7 @@ The Zustand store never directly modifies sketch data — it dispatches through 
 
 ## Snap System
 
-Snap priority during drag: vertex snap (20px) → entity snap (8px) → no snap (raw position). Dynamic selection feeds alignment snap detection (~15 degree tolerance). The `snapRegistry` defines allowed snap targets per drag type.
+Snap priority during drag: vertex snap (20px) → entity snap (8px) → no snap (raw position). Dynamic selection feeds alignment snap detection (~10 degree tolerance). The `snapRegistry` defines allowed snap targets per drag type.
 
 Body snap projection (`bodySnapProjection.ts`): projects 3D body vertices/edges onto active sketch plane, injected with `__body__` prefix (no constraints generated for body-snap targets).
 
@@ -150,4 +150,4 @@ Body snap projection (`bodySnapProjection.ts`): projects 3D body vertices/edges 
 | `DRAG_SNAP_VERTEX_RADIUS_PX` | 20 |
 | `DRAG_SNAP_ENTITY_RADIUS_PX` | 8 |
 | `CLICK_THRESHOLD_PX` | 4 |
-| `ALIGNMENT_TOLERANCE_DEG` | 15 |
+| `ALIGNMENT_TOLERANCE_DEG` | 10 |
