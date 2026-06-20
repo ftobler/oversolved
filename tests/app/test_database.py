@@ -234,6 +234,29 @@ class TestSessionStore:
     def test_find_nonexistent(self, session_store):
         assert session_store.find("no-such-token") is None
 
+    def test_find_returns_none_for_expired_session(self, session_store, user_id):
+        """find() must not return a session whose expiry is in the past."""
+        from datetime import datetime, timedelta, timezone
+        past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        self._insert_session(session_store, user_id, "stale-tok", past)
+        assert session_store.find("stale-tok") is None
+
+    def test_find_treats_naive_expiry_as_utc(self, session_store, user_id):
+        """A stored expiry without a tz offset is interpreted as UTC, not rejected.
+
+        Guards legacy/migrated rows whose expires_at lacks an offset: a future
+        naive timestamp must still resolve to a valid session.
+        """
+        from datetime import datetime, timedelta, timezone
+        naive_future = (
+            datetime.now(timezone.utc) + timedelta(days=1)
+        ).replace(tzinfo=None).isoformat()
+        assert "+" not in naive_future  # no offset, i.e. naive
+        self._insert_session(session_store, user_id, "naive-tok", naive_future)
+        session = session_store.find("naive-tok")
+        assert session is not None
+        assert session["user_id"] == user_id
+
     def test_delete(self, session_store, user_id):
         token = session_store.create(user_id)
         session_store.delete(token)
