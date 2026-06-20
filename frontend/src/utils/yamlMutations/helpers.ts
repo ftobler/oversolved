@@ -41,22 +41,14 @@ export function uniqueConstraintId(constraints: PartConstraint[], kind: string):
   return id
 }
 
-export function normalizeExtrudeSketch(sketch: string | string[]): string[] {
-  if (Array.isArray(sketch)) return sketch
-  return sketch ? [sketch] : []
+// Coerce a feature ref field (single query, list, or empty) into a query list.
+function normalizeRefList(ref: string | string[] | undefined): string[] {
+  if (Array.isArray(ref)) return ref
+  return ref ? [ref] : []
 }
 
-export function normalizeRevolveSketch(sketch: string | string[]): string[] {
-  if (Array.isArray(sketch)) return sketch
-  return sketch ? [sketch] : []
-}
-
-export function normalizeSweepSketch(sketch: string | string[]): string[] {
-  if (Array.isArray(sketch)) return sketch
-  return sketch ? [sketch] : []
-}
-
-export function normalizeSweepPath(path: string | string[] | undefined): string[] {
-  if (Array.isArray(path)) return path
-  return path ? [path] : []
-}
+// Named aliases kept so call sites read by feature (extrude/revolve/sweep).
+export const normalizeExtrudeSketch = normalizeRefList
+export const normalizeRevolveSketch = normalizeRefList
+export const normalizeSweepSketch = normalizeRefList
+export const normalizeSweepPath = normalizeRefList
