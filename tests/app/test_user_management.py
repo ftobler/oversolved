@@ -319,6 +319,76 @@ class TestProfile:
         data = json.loads(me_resp.data)
         assert data["user"]["email"] == "admin_new@example.com"
 
+    def test_update_profile_requires_json(self, admin_client):
+        """PUT with a non-JSON body is rejected before any field is read."""
+        response = admin_client.put(
+            "/api/users/me", data="not json", content_type="text/plain"
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "INVALID_CONTENT_TYPE"
+
+    def test_update_username(self, admin_client):
+        """A non-empty username is trimmed and persisted."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"username": "  renamed_admin  "}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        me = json.loads(admin_client.get("/api/auth/me").data)
+        assert me["user"]["username"] == "renamed_admin"
+
+    def test_change_password_requires_current(self, admin_client):
+        """Supplying new_password without current_password is rejected."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"new_password": "newpassword123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "current password" in json.loads(response.data)["error"].lower()
+
+    def test_change_password_weak_new(self, admin_client):
+        """A new password shorter than the minimum length is rejected."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"current_password": "admin", "new_password": "short"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "VALIDATION_ERROR"
+
+    def test_change_password_wrong_current(self, admin_client):
+        """An incorrect current_password blocks the change."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps(
+                {"current_password": "wrongpass", "new_password": "newpassword123"}
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "incorrect" in json.loads(response.data)["error"].lower()
+
+    def test_change_password_success(self, app, admin_client):
+        """A valid password change persists and lets the user log in anew."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps(
+                {"current_password": "admin", "new_password": "newpassword123"}
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        fresh = app.test_client()
+        login = fresh.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "newpassword123"}),
+            content_type="application/json",
+        )
+        assert login.status_code == 200
+
 
 class TestAdminCreateUserWithEmail:
     """Tests for admin user creation with email."""
@@ -433,6 +503,24 @@ class TestUserPreferences:
     def test_get_preferences_requires_auth(self, client):
         response = client.get("/api/users/me/preferences")
         assert response.status_code == 401
+
+    def test_update_preferences_requires_json(self, admin_client):
+        """PUT preferences with a non-JSON body is rejected."""
+        response = admin_client.put(
+            "/api/users/me/preferences", data="x", content_type="text/plain"
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "INVALID_CONTENT_TYPE"
+
+    def test_update_preferences_missing_value(self, admin_client):
+        """An empty document_sort is rejected as required."""
+        response = admin_client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": "   "}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "required" in json.loads(response.data)["error"].lower()
 
 
 class TestBackupEndpoint:
