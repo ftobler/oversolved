@@ -776,3 +776,75 @@ class TestDocumentStorePublicAccess:
 
         doc_store.set_public(uuid, False)
         assert doc_store.has_permission(uuid, other_id, "view") is False
+
+
+class TestDocumentStoreMisc:
+    """Coverage for the less-trodden DocumentStore branches."""
+
+    def test_create_with_uuid(self, doc_store, user_id):
+        doc_store.create_with_uuid("fixed-uuid-1234", "Imported", user_id)
+        doc = doc_store.retrieve("fixed-uuid-1234")
+        assert doc is not None
+        assert doc["name"] == "Imported"
+        assert doc["owner_id"] == user_id
+        assert doc["content"] == ""
+
+    def test_update_no_fields_returns_false(self, doc_store, user_id):
+        uuid = doc_store.create("Doc", user_id)
+        assert doc_store.update(uuid) is False
+
+    def test_update_only_unknown_fields_returns_false(self, doc_store, user_id):
+        uuid = doc_store.create("Doc", user_id)
+        # No allowed keys survive the whitelist, so nothing is written.
+        assert doc_store.update(uuid, bogus="x", owner_id=999) is False
+        assert doc_store.retrieve(uuid)["owner_id"] == user_id
+
+    def test_update_known_field(self, doc_store, user_id):
+        uuid = doc_store.create("Doc", user_id)
+        assert doc_store.update(uuid, name="Renamed") is True
+        assert doc_store.retrieve(uuid)["name"] == "Renamed"
+
+    def test_duplicate_copies_content_keeping_owner(self, doc_store, user_id):
+        uuid = doc_store.create("Original", user_id)
+        doc_store.store_content(uuid, "version: 1\n")
+
+        new_uuid = doc_store.duplicate(uuid, "Copy")
+        assert new_uuid is not None
+        assert new_uuid != uuid
+        copy = doc_store.retrieve(new_uuid)
+        assert copy["name"] == "Copy"
+        assert copy["owner_id"] == user_id  # duplicate keeps the source owner
+        assert copy["content"] == "version: 1\n"
+
+    def test_duplicate_nonexistent_returns_none(self, doc_store):
+        assert doc_store.duplicate("no-such-uuid", "Copy") is None
+
+    def test_unshare_public_revokes_access(self, doc_store, user_store):
+        owner_id = user_store.create("misc_owner", "hash")
+        other_id = user_store.create("misc_other", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.set_public(uuid, True)
+        assert doc_store.has_permission(uuid, other_id, "view") is True
+
+        doc_store.unshare_public(uuid)
+        assert doc_store.has_permission(uuid, other_id, "view") is False
+
+    def test_get_shares_includes_public_link(self, doc_store, user_store):
+        owner_id = user_store.create("share_owner", "hash")
+        other_id = user_store.create("share_other", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+
+        doc_store.share_document(uuid, other_id, "edit")
+        doc_store.set_public(uuid, True)
+
+        shares = doc_store.get_shares(uuid)
+        user_shares = [s for s in shares if s["shared_with_user_id"] == other_id]
+        public_shares = [s for s in shares if s["shared_with_user_id"] is None]
+        assert len(user_shares) == 1
+        assert user_shares[0]["permission"] == "edit"
+        assert len(public_shares) == 1
+        assert public_shares[0]["permission"] == "view"
+
+    def test_get_permission_nonexistent_returns_none(self, doc_store, user_id):
+        assert doc_store.get_permission("no-such-uuid", user_id) is None
