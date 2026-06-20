@@ -122,3 +122,46 @@ class TestHttpDeactivatedUserBlocked:
     def test_active_user_still_allowed(self, app, authed_client):
         r = authed_client.get("/api/documents")
         assert r.status_code == 200
+
+
+class TestLoginValidation:
+    """Cover the early request-validation branches of POST /api/auth/login."""
+
+    def test_login_rejects_non_json(self, app):
+        client = app.test_client()
+        r = client.post("/api/auth/login", data="admin", content_type="text/plain")
+        assert r.status_code == 400
+        assert json.loads(r.data)["code"] == "INVALID_CONTENT_TYPE"
+
+    def test_login_requires_password(self, app):
+        client = app.test_client()
+        r = client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin"}),
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+        assert json.loads(r.data)["code"] == "BAD_REQUEST"
+
+    def test_login_requires_credential(self, app):
+        client = app.test_client()
+        r = client.post(
+            "/api/auth/login",
+            data=json.dumps({"password": "admin"}),
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+        assert json.loads(r.data)["code"] == "BAD_REQUEST"
+
+
+class TestMeRoute:
+    """Cover the session-resolution branches of GET /api/auth/me."""
+
+    def test_me_with_invalid_session_cookie(self, app):
+        client = app.test_client()
+        # A present-but-unknown token resolves to no session, not no token,
+        # so this exercises the SessionStore.find() miss branch specifically.
+        client.set_cookie("session_token", "bogus-token")
+        r = client.get("/api/auth/me")
+        assert r.status_code == 401
+        assert json.loads(r.data)["error"] == "Invalid or expired session"
