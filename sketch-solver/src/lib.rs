@@ -228,4 +228,72 @@ mod tests {
         assert!(input.is_pinned(2));
         assert!(!input.is_pinned(8)); // out of range -> false
     }
+
+    #[test]
+    fn pinned_mask_bit_count_counts_set_bits_in_range() {
+        let input = Input {
+            pinned_mask: vec![0b0000_0101],
+            ..Default::default()
+        };
+        // bits 0 and 2 set within the first three params.
+        assert_eq!(input.pinned_mask_bit_count(3), 2);
+    }
+
+    #[test]
+    fn pinned_mask_bit_count_ignores_bits_beyond_n_params() {
+        // A slack-padded byte: bits 0, 5, 6, 7 are set but only the first two
+        // params exist. The doc contract says the high bits must not be counted.
+        let input = Input {
+            pinned_mask: vec![0b1110_0001],
+            ..Default::default()
+        };
+        assert_eq!(input.pinned_mask_bit_count(2), 1);
+    }
+
+    #[test]
+    fn pinned_mask_bit_count_spans_multiple_bytes() {
+        // bit 0 in byte 0, bit 1 (param 9) in byte 1 -> two pinned params.
+        let input = Input {
+            pinned_mask: vec![0b0000_0001, 0b0000_0010],
+            ..Default::default()
+        };
+        assert_eq!(input.pinned_mask_bit_count(10), 2);
+        // Narrowing n_params past the second byte's bit drops it again.
+        assert_eq!(input.pinned_mask_bit_count(9), 1);
+    }
+
+    #[test]
+    fn pinned_mask_bit_count_zero_params_is_zero() {
+        let input = Input {
+            pinned_mask: vec![0b1111_1111],
+            ..Default::default()
+        };
+        assert_eq!(input.pinned_mask_bit_count(0), 0);
+    }
+
+    #[test]
+    fn status_codes_match_backend() {
+        assert_eq!(Status::FullyConstrained.to_u8(), 0);
+        assert_eq!(Status::Underconstrained.to_u8(), 1);
+        assert_eq!(Status::Overconstrained.to_u8(), 2);
+    }
+
+    #[test]
+    fn all_kind_codes_round_trip() {
+        let kinds = [
+            Kind::Line,
+            Kind::Circle,
+            Kind::Arc,
+            Kind::Point,
+            Kind::Ellipse,
+            Kind::Spline,
+        ];
+        for (code, kind) in kinds.iter().enumerate() {
+            assert_eq!(kind.to_u8() as usize, code);
+            assert_eq!(Kind::from_u8(code as u8), Some(*kind));
+        }
+        // Anything past the defined range is rejected.
+        assert_eq!(Kind::from_u8(6), None);
+        assert_eq!(Kind::from_u8(u8::MAX), None);
+    }
 }
