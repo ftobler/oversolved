@@ -14,6 +14,8 @@
  * table.
  */
 
+import type { OccShape, OccListOfShape } from './occTypes'
+
 /** Anything OCC.js (or a test double) hands back that owns native memory. */
 export interface Disposable {
   delete(): void
@@ -81,4 +83,15 @@ export function withScope<T>(fn: (scope: DisposeScope) => T): T {
   } finally {
     scope.dispose()
   }
+}
+
+/** Drain a TopTools_ListOfShape into an array (Size/First_1/RemoveFirst). */
+export function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
+  const out: OccShape[] = []
+  const n = list.Size()
+  for (let i = 0; i < n; i++) {
+    out.push(scope.track(list.First_1()))
+    list.RemoveFirst()
+  }
+  return out
 }

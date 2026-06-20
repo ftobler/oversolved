@@ -16,8 +16,8 @@
  * builder keeps the scope open across the lineage transfer that reads them.
  */
 
-import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccListOfShape, OccHistory } from './occTypes'
+import { drainList, type DisposeScope } from './disposeScope'
+import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import type { BrepDiff } from '../types3d'
 
 export type BooleanOp = 'cut' | 'fuse' | 'common'
@@ -33,17 +33,6 @@ function emptyDiff(): BrepDiff {
     modified_input_edges: [],
     deleted_input_edges: [],
   }
-}
-
-/** Drain a TopTools_ListOfShape into a JS array (no iterator binding exists). */
-function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
-  const out: OccShape[] = []
-  const n = list.Size()
-  for (let i = 0; i < n; i++) {
-    out.push(scope.track(list.First_1()))
-    list.RemoveFirst()
-  }
-  return out
 }
 
 /** All sub-shapes of `shape` of the given enum kind, as IsSame-comparable handles. */

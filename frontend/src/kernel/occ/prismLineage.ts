@@ -9,7 +9,7 @@
 // BRepPrimAPI_MakePrism.Generated() (the lineage sharp edge), drained via
 // Size/First_1/RemoveFirst like every other list in this build (no iterator binding).
 
-import type { DisposeScope } from './disposeScope'
+import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccListOfShape } from './occTypes'
 import type { PlaneLike } from '../features/shared'
 import {
@@ -48,17 +48,6 @@ function pointsMatch(a: number[], b: number[]): boolean {
     Math.abs(a[1] - b[1]) < POINT_TOL &&
     Math.abs(a[2] - b[2]) < POINT_TOL
   )
-}
-
-/** Drain a TopTools_ListOfShape into an array (Size/First_1/RemoveFirst). */
-function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
-  const out: OccShape[] = []
-  const n = list.Size()
-  for (let i = 0; i < n; i++) {
-    out.push(scope.track(list.First_1()))
-    list.RemoveFirst()
-  }
-  return out
 }
 
 function faceGh(oc: OccModule, scope: DisposeScope, face: OccShape): string {

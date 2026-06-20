@@ -9,8 +9,8 @@
 // input-face preimage), so the builder's @created_by rewrite attributes them to the modifying
 // feature.
 
-import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccListOfShape, OccEdgeModifierMaker } from './occTypes'
+import { drainList, type DisposeScope } from './disposeScope'
+import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
 import { faceCentroid, faceNormal, faceArea, edgeToGeom } from './primitives'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import type { BrepDiff } from '../types3d'
@@ -37,17 +37,6 @@ function emptyDiff(): BrepDiff {
     modified_input_edges: [],
     deleted_input_edges: [],
   }
-}
-
-/** Drain a TopTools_ListOfShape into an array (Size/First_1/RemoveFirst). */
-function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
-  const out: OccShape[] = []
-  const n = list.Size()
-  for (let i = 0; i < n; i++) {
-    out.push(scope.track(list.First_1()))
-    list.RemoveFirst()
-  }
-  return out
 }
 
 function faceGh(oc: OccModule, scope: DisposeScope, face: OccShape): string {
