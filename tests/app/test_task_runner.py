@@ -3,6 +3,7 @@
 import argparse
 import pytest
 from datetime import datetime, timedelta, timezone
+from oversolved.cli import _positive_int, _validate_db_args, build_parser
 from oversolved.db import Database, PostgreSQLConnection, PeriodicTaskStore
 from oversolved.periodic_tasks import (
     TaskScheduler,
@@ -329,3 +330,91 @@ class TestRunTasksClosesDbOnce:
         args = argparse.Namespace(force_task="document.empty_trash", loop=False)
         cli.run_tasks(args)
         assert closes["n"] == 1
+
+
+class TestPositiveInt:
+    """_positive_int is the argparse type used for --interval."""
+
+    def test_accepts_positive(self):
+        assert _positive_int("60") == 60
+        assert _positive_int("1") == 1
+
+    def test_rejects_zero(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive_int("0")
+
+    def test_rejects_negative(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive_int("-5")
+
+    def test_rejects_non_numeric(self):
+        with pytest.raises(ValueError):
+            _positive_int("abc")
+
+    def test_wired_into_parser_rejects_zero(self):
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["run_tasks", "--interval", "0"])
+
+
+class TestValidateDbArgs:
+    """_validate_db_args builds the DB config dict and guards required args."""
+
+    def test_postgres_with_explicit_dsn(self, monkeypatch):
+        monkeypatch.delenv("OVERSOLVED_DB_DSN", raising=False)
+        args = build_parser().parse_args(
+            ["run_server", "--db-type", "postgres", "--db-dsn", "postgresql://explicit"]
+        )
+        config = _validate_db_args(args)
+        assert config["DB_TYPE"] == "postgres"
+        assert config["DB_DSN"] == "postgresql://explicit"
+        assert config["DEBUG"] is False
+        assert "DB_PATH" not in config
+
+    def test_postgres_falls_back_to_env_dsn(self, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_DB_DSN", "postgresql://from-env")
+        args = build_parser().parse_args(["run_server", "--db-type", "postgres"])
+        config = _validate_db_args(args)
+        assert config["DB_DSN"] == "postgresql://from-env"
+
+    def test_explicit_dsn_takes_precedence_over_env(self, monkeypatch):
+        monkeypatch.setenv("OVERSOLVED_DB_DSN", "postgresql://from-env")
+        args = build_parser().parse_args(
+            ["run_server", "--db-type", "postgres", "--db-dsn", "postgresql://explicit"]
+        )
+        config = _validate_db_args(args)
+        assert config["DB_DSN"] == "postgresql://explicit"
+
+    def test_postgres_without_dsn_exits(self, monkeypatch, capsys):
+        monkeypatch.delenv("OVERSOLVED_DB_DSN", raising=False)
+        args = build_parser().parse_args(["run_server", "--db-type", "postgres"])
+        with pytest.raises(SystemExit) as exc:
+            _validate_db_args(args)
+        assert exc.value.code == 1
+        assert "db-dsn" in capsys.readouterr().out.lower()
+
+    def test_sqlite_uses_db_path(self, monkeypatch):
+        monkeypatch.delenv("OVERSOLVED_DB_DSN", raising=False)
+        args = build_parser().parse_args(
+            ["run_server", "--db-type", "sqlite", "--db-path", "/tmp/over.db"]
+        )
+        config = _validate_db_args(args)
+        assert config["DB_TYPE"] == "sqlite"
+        assert config["DB_PATH"] == "/tmp/over.db"
+        assert "DB_DSN" not in config
+
+    def test_debug_defaults_false_when_absent(self, monkeypatch):
+        # The `db` subcommand has no --debug flag, exercising the getattr default.
+        monkeypatch.delenv("OVERSOLVED_DB_DSN", raising=False)
+        args = build_parser().parse_args(["db", "--db-type", "sqlite"])
+        assert not hasattr(args, "debug")
+        config = _validate_db_args(args)
+        assert config["DEBUG"] is False
+
+    def test_debug_flag_propagates(self, monkeypatch):
+        monkeypatch.delenv("OVERSOLVED_DB_DSN", raising=False)
+        args = build_parser().parse_args(
+            ["run_server", "--db-type", "postgres", "--db-dsn", "postgresql://x", "--debug"]
+        )
+        config = _validate_db_args(args)
+        assert config["DEBUG"] is True
