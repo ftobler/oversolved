@@ -95,4 +95,57 @@ mod tests {
         let q = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 0.0, std::f64::consts::FRAC_PI_2);
         assert!((q[0] - 1.0).abs() < 1e-12 && (q[1] - 3.0).abs() < 1e-12);
     }
+
+    #[test]
+    fn ellipse_point_at_rotated_90_degrees() {
+        // theta=90 swaps the axes: the major axis now points +y. At phi=0 the
+        // semi-major endpoint sits directly above the center; at phi=pi/2 the
+        // semi-minor endpoint sits to its left.
+        let major = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 90.0, 0.0);
+        assert!((major[0] - 1.0).abs() < 1e-9 && (major[1] - 5.0).abs() < 1e-9);
+        let minor = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 90.0, std::f64::consts::FRAC_PI_2);
+        assert!((minor[0] - 0.0).abs() < 1e-9 && (minor[1] - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ellipse_point_at_rotated_45_degrees() {
+        // Semi-major endpoint (phi=0) of a 45-degree-rotated ellipse lands on the
+        // diagonal at distance a from the center: (a*cos45, a*sin45).
+        let p = ellipse_point_at([0.0, 0.0], 2.0, 1.0, 45.0, 0.0);
+        let d = 2.0 * std::f64::consts::FRAC_1_SQRT_2;
+        assert!((p[0] - d).abs() < 1e-9 && (p[1] - d).abs() < 1e-9);
+    }
+
+    #[test]
+    fn split_bezier_at_preserves_endpoints_and_seam() {
+        let c: BezierCtrl = [[0.0, 0.0], [1.0, 2.0], [2.0, -1.0], [3.0, 1.0]];
+        let t = 0.3;
+        let (left, right) = split_bezier_at(&c, t);
+        // Outer endpoints are the parent's; the inner seam is C0-continuous and
+        // equals the parent evaluated at t.
+        assert_eq!(left[0], c[0]);
+        assert_eq!(right[3], c[3]);
+        assert_eq!(left[3], right[0]);
+        let seam = bez_at(&c, t);
+        assert!((left[3][0] - seam[0]).abs() < 1e-12);
+        assert!((left[3][1] - seam[1]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn split_bezier_halves_reparameterize_the_parent() {
+        let c: BezierCtrl = [[0.0, 0.0], [1.0, 2.0], [2.0, -1.0], [3.0, 1.0]];
+        let t = 0.4;
+        let (left, right) = split_bezier_at(&c, t);
+        for k in 0..=10 {
+            let s = k as f64 / 10.0;
+            // Left half over local s maps to parent param s*t.
+            let gl = bez_at(&left, s);
+            let wl = bez_at(&c, s * t);
+            assert!((gl[0] - wl[0]).abs() < 1e-12 && (gl[1] - wl[1]).abs() < 1e-12);
+            // Right half over local s maps to parent param t + s*(1-t).
+            let gr = bez_at(&right, s);
+            let wr = bez_at(&c, t + s * (1.0 - t));
+            assert!((gr[0] - wr[0]).abs() < 1e-12 && (gr[1] - wr[1]).abs() < 1e-12);
+        }
+    }
 }
