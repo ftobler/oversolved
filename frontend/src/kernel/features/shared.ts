@@ -33,6 +33,23 @@ function pymod(x: number, m: number): number {
   return ((x % m) + m) % m
 }
 
+/**
+ * Sorted, deduped entity ids referenced by a surface's ancestry query, or `[]`
+ * if the query is absent/non-ancestry/unparsable. Dedup mirrors Python's
+ * frozenset, since parseAncestry can repeat ids.
+ */
+export function surfaceEntityIds(surface: Dict): string[] {
+  const query = (surface.query as string) ?? ''
+  if (!query.startsWith('?')) return []
+  let ids: string[]
+  try {
+    ;[ids] = parseAncestry(query)
+  } catch {
+    return []
+  }
+  return [...new Set(ids.filter((i) => i.startsWith('@') && i.includes('/')))].sort()
+}
+
 // ─── Profile loops ───
 
 /**

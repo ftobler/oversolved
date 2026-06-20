@@ -13,7 +13,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
-import { sketchToWorld2d, extractProfileLoops, type PlaneLike } from './shared'
+import { sketchToWorld2d, extractProfileLoops, surfaceEntityIds, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
 import { makeLineEdge, makeArcEdge, type Vec3 } from '../occ/primitives'
@@ -25,19 +25,6 @@ export interface SweepResult {
   [key: string]: unknown
   status: string
   body_id: string
-}
-
-/** Structural (non-index) entity tokens of a `?...` surface query, sorted. */
-function surfaceEntityIds(surface: Dict): string[] {
-  const query = (surface.query as string) ?? ''
-  if (!query.startsWith('?')) return []
-  let ids: string[]
-  try {
-    ;[ids] = parseAncestry(query)
-  } catch {
-    return []
-  }
-  return [...new Set(ids.filter((i) => i.startsWith('@') && i.includes('/')))].sort()
 }
 
 /**

@@ -13,11 +13,10 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { parseAncestry } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, type PlaneLike } from './shared'
+import { resolveDirection, surfaceEntityIds, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
@@ -30,23 +29,6 @@ export interface ExtrudeResult {
   [key: string]: unknown
   status: string
   body_id: string
-}
-
-/**
- * Structural (non-index) entity tokens of a surface query (mirrors
- * `_surface_entity_ids`), sorted. Only `?...` ancestry queries carry them.
- */
-function surfaceEntityIds(surface: Dict): string[] {
-  const query = (surface.query as string) ?? ''
-  if (!query.startsWith('?')) return []
-  let ids: string[]
-  try {
-    ;[ids] = parseAncestry(query)
-  } catch {
-    return []
-  }
-  // Dedup like Python's frozenset (parseAncestry can repeat ids) before sorting.
-  return [...new Set(ids.filter((i) => i.startsWith('@') && i.includes('/')))].sort()
 }
 
 function fuse(oc: OccModule, scope: DisposeScope, a: OccShape, b: OccShape): OccShape {
