@@ -479,4 +479,43 @@ describe('Measurement Selection and Evaluation', () => {
       expect(r).toEqual(['plane distance: 10.00 mm'])
     })
   })
+
+  describe('23. selection-string parsing edge cases', () => {
+    it('ignores ids that are neither entity, vertex, plane, nor a 3D ref', () => {
+      // A junk id falls through the else-continue and only L1 is measured.
+      const result = computeMeasurements(sel('garbage', entity('L1')), sketch)
+      expect(result).toEqual(['[LINE] 5.00 mm'])
+    })
+
+    it('skips an entity selection with an empty entity id', () => {
+      const result = computeMeasurements(sel('entity:S1:', entity('L1')), sketch)
+      expect(result).toEqual(['[LINE] 5.00 mm'])
+    })
+
+    it('skips a selection that references a missing sketch entity', () => {
+      const result = computeMeasurements(sel(entity('GHOST'), entity('L1')), sketch)
+      expect(result).toEqual(['[LINE] 5.00 mm'])
+    })
+  })
+
+  describe('24. point entities selected as whole entities', () => {
+    it('classifies a whole-entity point as a point (lone point has no measurement)', () => {
+      const result = computeMeasurements(sel(entity('P1')), sketch)
+      expect(result).toEqual([])
+    })
+
+    it('measures the distance between two whole-entity points', () => {
+      // P1 (0,0) and P2 (3,4) selected as entities -> point-point distance.
+      const result = computeMeasurements(sel(entity('P1'), entity('P2')), sketch)
+      expect(result).toEqual(['dist: 5.00 mm'])
+    })
+  })
+
+  describe('25. no measurement match', () => {
+    it('reports a "No match" summary for an unmeasurable combination', () => {
+      // line + circle matches no single/pair/plane rule -> the count summary.
+      const result = computeMeasurements(sel(entity('L1'), entity('C1')), sketch)
+      expect(result).toEqual(['No match for 1x line, 1x circle'])
+    })
+  })
 })
