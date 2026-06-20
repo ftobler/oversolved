@@ -107,4 +107,30 @@ mod tests {
     fn solve_bytes_rejects_garbage() {
         assert!(solve_bytes(&[0, 1, 2, 3]).is_err());
     }
+
+    // detect_topology_bytes is the topology twin of solve_bytes and the exact
+    // entry the WASM/Node boundary calls. The codec module tests decode/encode
+    // in isolation; these exercise the full byte-in/byte-out wiring once.
+    #[test]
+    fn detect_topology_bytes_round_trips_a_square() {
+        let input = serde_json::json!([
+            ["a", {"start": [0.0, 0.0], "end": [2.0, 0.0]}],
+            ["b", {"start": [2.0, 0.0], "end": [2.0, 2.0]}],
+            ["c", {"start": [2.0, 2.0], "end": [0.0, 2.0]}],
+            ["d", {"start": [0.0, 2.0], "end": [0.0, 0.0]}],
+        ]);
+        let bytes = serde_json::to_vec(&input).expect("encode input");
+
+        let out_bytes = detect_topology_bytes(&bytes).expect("detect topology");
+        let v: serde_json::Value = serde_json::from_slice(&out_bytes).expect("decode output");
+
+        assert_eq!(v["surfaces"].as_array().unwrap().len(), 1);
+        assert_eq!(v["edges"].as_array().unwrap().len(), 4);
+        assert_eq!(v["edges"][0]["kind"], serde_json::json!("line"));
+    }
+
+    #[test]
+    fn detect_topology_bytes_rejects_garbage() {
+        assert!(detect_topology_bytes(&[0, 1, 2, 3]).is_err());
+    }
 }
