@@ -275,3 +275,145 @@ impl Constraint {
         self.refs.iter().any(|(r, _)| *r == role)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The u8 codes are a stable wire contract (see the doc comments). These
+    // round-trip tests pin every variant so an accidental renumber fails loudly
+    // instead of silently reinterpreting a constraint on the codec boundary.
+
+    #[test]
+    fn point_selector_roundtrips_and_pins_codes() {
+        let all = [
+            (PointSelector::Absent, 0),
+            (PointSelector::Start, 1),
+            (PointSelector::End, 2),
+            (PointSelector::Center, 3),
+            (PointSelector::Xy, 4),
+            (PointSelector::Major, 5),
+            (PointSelector::MajorNeg, 6),
+            (PointSelector::Minor, 7),
+            (PointSelector::MinorNeg, 8),
+            (PointSelector::C1, 9),
+            (PointSelector::C2, 10),
+        ];
+        for (sel, code) in all {
+            assert_eq!(sel.to_u8(), code);
+            assert_eq!(PointSelector::from_u8(code), Some(sel));
+        }
+        assert_eq!(PointSelector::from_u8(11), None);
+        assert_eq!(PointSelector::from_u8(255), None);
+    }
+
+    #[test]
+    fn point_selector_is_present_only_for_non_absent() {
+        assert!(!PointSelector::Absent.is_present());
+        assert!(PointSelector::Start.is_present());
+        assert!(PointSelector::C2.is_present());
+    }
+
+    #[test]
+    fn ref_role_roundtrips_and_pins_codes() {
+        let all = [
+            (RefRole::Target, 0),
+            (RefRole::A, 1),
+            (RefRole::B, 2),
+            (RefRole::Line, 3),
+            (RefRole::Arc, 4),
+            (RefRole::Point, 5),
+            (RefRole::PointA, 6),
+            (RefRole::PointB, 7),
+        ];
+        for (role, code) in all {
+            assert_eq!(role.to_u8(), code);
+            assert_eq!(RefRole::from_u8(code), Some(role));
+        }
+        assert_eq!(RefRole::from_u8(8), None);
+    }
+
+    #[test]
+    fn axis_roundtrips_and_filters() {
+        let all = [(Axis::X, 0), (Axis::Y, 1), (Axis::Both, 2)];
+        for (axis, code) in all {
+            assert_eq!(axis.to_u8(), code);
+            assert_eq!(Axis::from_u8(code), Some(axis));
+        }
+        assert_eq!(Axis::from_u8(3), None);
+
+        assert!(Axis::X.includes_x() && !Axis::X.includes_y());
+        assert!(!Axis::Y.includes_x() && Axis::Y.includes_y());
+        assert!(Axis::Both.includes_x() && Axis::Both.includes_y());
+    }
+
+    #[test]
+    fn constraint_kind_roundtrips_for_all_19_kinds() {
+        // Walks 0..=18 exhaustively: every code maps to a kind and back, and the
+        // count is exactly 19 (guards against a kind added without a code).
+        let mut count = 0;
+        for code in 0u8..=18 {
+            let kind = ConstraintKind::from_u8(code).expect("0..=18 must be valid");
+            assert_eq!(kind.to_u8(), code);
+            count += 1;
+        }
+        assert_eq!(count, 19);
+        assert_eq!(ConstraintKind::from_u8(19), None);
+        assert_eq!(ConstraintKind::from_u8(u8::MAX), None);
+    }
+
+    #[test]
+    fn constraint_kind_helper_reads_kind_code() {
+        let c = Constraint {
+            kind_code: ConstraintKind::Tangent.to_u8(),
+            ..Default::default()
+        };
+        assert_eq!(c.kind(), Some(ConstraintKind::Tangent));
+
+        let bad = Constraint {
+            kind_code: 200,
+            ..Default::default()
+        };
+        assert_eq!(bad.kind(), None);
+    }
+
+    #[test]
+    fn ref_for_and_has_role_select_by_role() {
+        let a = Ref::Entity {
+            index: 0,
+            point: PointSelector::Start,
+        };
+        let b = Ref::External { x: 1.5, y: -2.0 };
+        let c = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: vec![(RefRole::A, a), (RefRole::B, b)],
+            ..Default::default()
+        };
+
+        assert!(c.has_role(RefRole::A));
+        assert!(c.has_role(RefRole::B));
+        assert!(!c.has_role(RefRole::Target));
+
+        assert_eq!(c.ref_for(RefRole::A), Some(a));
+        assert_eq!(c.ref_for(RefRole::B), Some(b));
+        assert_eq!(c.ref_for(RefRole::Target), None);
+    }
+
+    #[test]
+    fn ref_for_returns_first_match_on_duplicate_role() {
+        let first = Ref::Entity {
+            index: 1,
+            point: PointSelector::End,
+        };
+        let second = Ref::Entity {
+            index: 2,
+            point: PointSelector::Center,
+        };
+        let c = Constraint {
+            kind_code: ConstraintKind::EqualLength.to_u8(),
+            refs: vec![(RefRole::A, first), (RefRole::A, second)],
+            ..Default::default()
+        };
+        assert_eq!(c.ref_for(RefRole::A), Some(first));
+    }
+}
