@@ -589,4 +589,160 @@ mod tests {
         bytes[0] ^= 0xff;
         assert!(matches!(decode_input(&bytes), Err(CodecError::BadMagic)));
     }
+
+    // The fixed-size input header (see module docs): magic, four counts, two
+    // u8 flags, and the drag anchor. The first entity/constraint record starts
+    // right after it, which is what the corruption offsets below rely on.
+    const HEADER_LEN: usize = 26;
+
+    fn one_entity_input() -> Input {
+        Input {
+            entities: vec![Entity {
+                kind: Kind::Line,
+                param_offset: 0,
+            }],
+            params_initial: Vec::new(),
+            pinned_mask: Vec::new(),
+            equality_pins: Vec::new(),
+            constraints: Vec::new(),
+            options: Options::default(),
+        }
+    }
+
+    fn one_entity_ref_constraint_input() -> Input {
+        Input {
+            entities: Vec::new(),
+            params_initial: Vec::new(),
+            pinned_mask: Vec::new(),
+            equality_pins: Vec::new(),
+            constraints: vec![Constraint {
+                kind_code: 0,
+                refs: vec![(
+                    RefRole::Target,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Absent,
+                    },
+                )],
+                ..Default::default()
+            }],
+            options: Options::default(),
+        }
+    }
+
+    #[test]
+    fn empty_buffer_is_unexpected_eof() {
+        // Not even the magic u32 can be read.
+        assert!(matches!(decode_input(&[]), Err(CodecError::UnexpectedEof)));
+        assert!(matches!(decode_output(&[]), Err(CodecError::UnexpectedEof)));
+    }
+
+    #[test]
+    fn truncated_input_is_unexpected_eof() {
+        let bytes = encode_input(&sample_input());
+        // Dropping the final byte leaves the last constraint record short.
+        let truncated = &bytes[..bytes.len() - 1];
+        assert!(matches!(
+            decode_input(truncated),
+            Err(CodecError::UnexpectedEof)
+        ));
+    }
+
+    #[test]
+    fn bad_entity_kind_rejected() {
+        let mut bytes = encode_input(&one_entity_input());
+        assert!(decode_input(&bytes).is_ok());
+        // First entity record begins with its u8 kind code.
+        bytes[HEADER_LEN] = 0xff;
+        assert!(matches!(decode_input(&bytes), Err(CodecError::BadKind(_))));
+    }
+
+    #[test]
+    fn bad_ref_role_rejected() {
+        let mut bytes = encode_input(&one_entity_ref_constraint_input());
+        assert!(decode_input(&bytes).is_ok());
+        // Constraint layout: kind_code, n_refs, then per ref [role, ref_type, ...].
+        bytes[HEADER_LEN + 2] = 0xff;
+        assert!(matches!(
+            decode_input(&bytes),
+            Err(CodecError::BadRefRole(_))
+        ));
+    }
+
+    #[test]
+    fn bad_ref_type_rejected() {
+        let mut bytes = encode_input(&one_entity_ref_constraint_input());
+        assert!(decode_input(&bytes).is_ok());
+        // ref_type sits right after the role byte; only 0 and 1 are defined.
+        bytes[HEADER_LEN + 3] = 0xff;
+        assert!(matches!(
+            decode_input(&bytes),
+            Err(CodecError::BadRefType(0xff))
+        ));
+    }
+
+    #[test]
+    fn bad_point_selector_rejected() {
+        let mut bytes = encode_input(&one_entity_ref_constraint_input());
+        assert!(decode_input(&bytes).is_ok());
+        // For an entity ref the point selector follows role and ref_type.
+        bytes[HEADER_LEN + 4] = 0xff;
+        assert!(matches!(
+            decode_input(&bytes),
+            Err(CodecError::BadPointSelector(_))
+        ));
+    }
+
+    #[test]
+    fn bad_axis_rejected() {
+        let input = Input {
+            entities: Vec::new(),
+            params_initial: Vec::new(),
+            pinned_mask: Vec::new(),
+            equality_pins: Vec::new(),
+            constraints: vec![Constraint {
+                kind_code: 0,
+                axis: Some(Axis::X),
+                ..Default::default()
+            }],
+            options: Options::default(),
+        };
+        let mut bytes = encode_input(&input);
+        assert!(decode_input(&bytes).is_ok());
+        // With no refs the record is kind_code, n_refs(0), flags(has_axis), axis.
+        bytes[HEADER_LEN + 3] = 0xff;
+        assert!(matches!(decode_input(&bytes), Err(CodecError::BadAxis(_))));
+    }
+
+    #[test]
+    fn output_bad_magic_rejected() {
+        let out = Output {
+            params_solved: vec![1.0],
+            entity_status: vec![0],
+            overall_status: 0,
+            vertex_freedom: Vec::new(),
+            diagnostics: Diagnostics::default(),
+        };
+        let mut bytes = encode_output(&out);
+        bytes[0] ^= 0xff;
+        assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
+    }
+
+    #[test]
+    fn truncated_output_is_unexpected_eof() {
+        let out = Output {
+            params_solved: vec![1.0, 2.0],
+            entity_status: vec![0, 1],
+            overall_status: 0,
+            vertex_freedom: vec![1.0],
+            diagnostics: Diagnostics::default(),
+        };
+        let bytes = encode_output(&out);
+        // Cut into the trailing f64 diagnostics so a take(8) runs off the end.
+        let truncated = &bytes[..bytes.len() - 1];
+        assert!(matches!(
+            decode_output(truncated),
+            Err(CodecError::UnexpectedEof)
+        ));
+    }
 }
