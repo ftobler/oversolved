@@ -266,6 +266,41 @@ class TestForceTask:
         result = scheduler.force_run_task("nonexistent", db)
         assert result["status"] == "error"
 
+    def test_force_task_failure_records_error(self, db, task_store):
+        """A task that raises during force_run is reported and recorded as error."""
+        scheduler = TaskScheduler()
+        scheduler.register_task(FakeTask(task_key="test.fail", fail=True))
+
+        result = scheduler.force_run_task("test.fail", db)
+        assert result["status"] == "error"
+        assert "Intentional failure" in result["error"]
+
+        rec = next(t for t in task_store.find_all() if t["task_key"] == "test.fail")
+        assert rec["last_run_status"] == "error"
+        assert rec["last_run_at"] is not None
+
+
+class TestPeriodicTaskBranches:
+    """Cover small, otherwise-unexercised branches of the periodic framework."""
+
+    def test_base_run_not_implemented(self):
+        """The abstract-ish base run() must signal it has no implementation."""
+        task = PeriodicTask(name="Base", task_key="base", schedule="0 2 * * *")
+        with pytest.raises(NotImplementedError):
+            task.run(None)  # type: ignore[arg-type]
+
+    def test_cron_next_five_parts_but_invalid_values(self):
+        """A 5-field expression with out-of-range values is rejected by croniter."""
+        with pytest.raises(ValueError, match="Invalid cron expression"):
+            _cron_next("99 99 99 99 99", datetime(2025, 6, 1, 10, 0, 0))
+
+    def test_is_task_due_naive_last_run_treated_as_utc(self):
+        """A naive last_run_at string is interpreted as UTC rather than crashing."""
+        naive = (
+            datetime.now(timezone.utc) - timedelta(days=2)
+        ).replace(tzinfo=None).isoformat()
+        assert is_task_due(naive, "0 2 * * *") is True
+
 
 class TestCliArgs:
     def test_cli_entry_parse_args(self):

@@ -290,6 +290,28 @@ class TestPeriodicTasks:
         assert result["deleted_count"] == 0
         assert doc_store.retrieve(uuid) is not None
 
+    def test_empty_trash_task_partial_on_delete_error(
+        self, db, doc_store, user_store, task_store, monkeypatch
+    ):
+        """If a permanent delete fails, the doc is reported in errors and the
+        overall status degrades to 'partial' instead of raising."""
+        uid = user_store.create("testuser3", "hash", email="test3@example.com")
+        uuid = doc_store.create("Doomed Doc", uid)
+        old_date = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
+        doc_store.update(uuid, deleted_at=old_date)
+
+        def _boom(self, doc_uuid):
+            raise RuntimeError("delete blew up")
+
+        monkeypatch.setattr(DocumentStore, "permanently_delete", _boom)
+
+        result = EmptyTrashTask().run(db)
+        assert result["status"] == "partial"
+        assert result["deleted_count"] == 0
+        assert len(result["errors"]) == 1
+        assert result["errors"][0]["uuid"] == uuid
+        assert "delete blew up" in result["errors"][0]["error"]
+
     def test_task_scheduler_register_and_force_run(self, db, task_store):
         scheduler = TaskScheduler()
         scheduler.register_task(EmptyTrashTask())
