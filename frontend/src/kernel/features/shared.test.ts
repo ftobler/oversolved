@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import fixture from '../occ/__fixtures__/featuresShared.json'
-import { Repository } from '../query'
+import { Repository, makeAncestryQuery } from '../query'
 import type { Body, BrepDiff } from '../types3d'
 import {
   tessellateEdge,
@@ -18,6 +18,7 @@ import {
   brepDiffIsEmpty,
   resolveDirectionQuery,
   resolveAxisQuery,
+  surfaceEntityIds,
   type PlaneLike,
 } from './shared'
 
@@ -151,6 +152,53 @@ describe('resolveBody parity', () => {
   }
 })
 
+describe('resolveBody fallback resolution paths', () => {
+  it('resolves a "?"-ancestry ref via its @body_ ancestor', () => {
+    const store = makeStore({ body_1: 'extrude1' })
+    // A viewport ancestry query carries the body as an "@body_<id>" ancestor.
+    const ref = makeAncestryQuery(['@body_1', '@extrude1'], 'face')
+    expect(resolveBody(ref, store).id).toBe('body_1')
+  })
+
+  it('resolves a colon-prefixed viewport ref via the created_by feature', () => {
+    const store = makeStore({ body_1: 'extrude1' })
+    // "face:<feat>:<query>" -> the middle token resolves through created_by.
+    expect(resolveBody('face:extrude1:whatever', store).id).toBe('body_1')
+  })
+
+  it('throws when a malformed "?"-ancestry ref cannot be parsed', () => {
+    const store = makeStore({ body_1: 'extrude1' })
+    // parseAncestry throws on a bad header; the catch falls through to the error.
+    expect(() => resolveBody('?3;ab', store)).toThrow(/body not found/)
+  })
+
+  it('throws when a colon-prefixed ref matches no body at all', () => {
+    const store = makeStore({ body_1: 'extrude1' })
+    // The middle token matches no key, prefix, or created_by -> fall through.
+    expect(() => resolveBody('face:nomatch:x', store)).toThrow(/body not found/)
+  })
+})
+
+describe('surfaceEntityIds', () => {
+  it('returns [] for a surface with no ancestry query', () => {
+    expect(surfaceEntityIds({ query: '@sketch1/line1' })).toEqual([])
+    expect(surfaceEntityIds({})).toEqual([])
+  })
+
+  it('returns [] for a malformed "?"-query', () => {
+    expect(surfaceEntityIds({ query: '?3;ab' })).toEqual([])
+  })
+
+  it('returns sorted, deduped "@feat/entity" ids and drops the rest', () => {
+    // Keeps only ids that start with "@" AND contain "/"; dedups and sorts.
+    const query = makeAncestryQuery(
+      ['@sk1/line2', '@sk1/line1', '@sk1/line1', '@body_1', 'plain'],
+      'face',
+    )
+    expect(surfaceEntityIds({ query })).toEqual(['@sk1/line1', '@sk1/line2'])
+  })
+})
+
 describe('resolveMergeTargets parity', () => {
   for (const c of f.resolve_merge_targets) {
     it(c.name as string, () => {
@@ -249,4 +297,13 @@ describe('resolveAxisQuery parity', () => {
       expectClose(direction, exp.direction, 'direction')
     })
   }
+
+  it('returns the fallbacks when a resolved edge has a degenerate direction', () => {
+    // start == end -> zero-length direction -> normalize fails -> fall back even
+    // though the query itself resolved to a registered element.
+    const repo = repoWith({ a1: { start: [1, 2, 3], end: [1, 2, 3] } }, {})
+    const [origin, direction] = resolveAxisQuery('@a1', repo, [9, 9, 9], [0, 1, 0])
+    expect(origin).toEqual([9, 9, 9])
+    expect(direction).toEqual([0, 1, 0])
+  })
 })
