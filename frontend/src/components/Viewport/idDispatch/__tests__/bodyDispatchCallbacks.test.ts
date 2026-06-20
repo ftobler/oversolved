@@ -1,0 +1,224 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import {
+  registerBodyCallbacks,
+  findEdgeKindForQuery,
+  findBodyForFaceQuery,
+  findFaceBoundaryEdges,
+  clearAllBodyHover,
+  resetBodyCallbacksForTest,
+  type BodyDispatchCallbacks,
+} from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import type { Mesh3D } from '@/types/cad'
+
+// The id-buffer dispatcher resolves a picked face/edge query back to the owning
+// Body3D through this module-level registry. The registry is process-global, so
+// every test resets it first; the store is exercised directly (no mocks) per the
+// project's "Zustand works directly" rule.
+
+function makeMesh(over: Partial<Mesh3D> = {}): Mesh3D {
+  return {
+    vertices: new Float32Array([0, 0, 0]),
+    faces: new Uint32Array([0, 0, 0]),
+    face_queries: ['faceQ0', 'faceQ1'],
+    ...over,
+  }
+}
+
+function makeCallbacks(over: Partial<BodyDispatchCallbacks> = {}): BodyDispatchCallbacks {
+  return {
+    featureId: 'extrude1',
+    bodyId: 'body_1',
+    mesh: makeMesh(),
+    edgeQueries: ['edgeQ0', 'edgeQ1'],
+    edgeKinds: ['line', 'arc'],
+    vertexQueries: ['vtxQ0'],
+    updateFaceGeometryForQuery: vi.fn(),
+    clearFaceGeometry: vi.fn(),
+    ...over,
+  }
+}
+
+beforeEach(() => {
+  resetBodyCallbacksForTest()
+  const s = useSketchEditorStore.getState()
+  s.setHoveredSelectionId(null)
+  s.setHoveredFaceGeometry(null, null)
+})
+
+describe('registerBodyCallbacks', () => {
+  it('registers the body so its queries become resolvable', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    expect(findBodyForFaceQuery('faceQ1')?.index).toBe(1)
+    expect(findEdgeKindForQuery('edgeQ1')).toBe('arc')
+  })
+
+  it('returns an unregister fn that removes the body', () => {
+    const unregister = registerBodyCallbacks('b1', makeCallbacks())
+    unregister()
+    expect(findBodyForFaceQuery('faceQ0')).toBeNull()
+    expect(findEdgeKindForQuery('edgeQ0')).toBeUndefined()
+  })
+
+  it('unregister clears hover state when this body owns the hovered query', () => {
+    const cb = makeCallbacks()
+    const unregister = registerBodyCallbacks('b1', cb)
+    const s = useSketchEditorStore.getState()
+    s.setHoveredSelectionId('faceQ0')
+    s.setHoveredFaceGeometry([0, 0, 1], [1, 2, 3])
+
+    unregister()
+
+    const after = useSketchEditorStore.getState()
+    expect(after.hoveredSelectionId).toBeNull()
+    expect(after.hoveredFaceNormal).toBeNull()
+    expect(after.hoveredFaceCenter).toBeNull()
+  })
+
+  it('unregister leaves hover untouched when another body owns the hover', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    const s = useSketchEditorStore.getState()
+    s.setHoveredSelectionId('someOtherBodyQuery')
+
+    const unregister = registerBodyCallbacks('b2', makeCallbacks({
+      mesh: makeMesh({ face_queries: ['otherFace'] }),
+      edgeQueries: ['otherEdge'],
+      vertexQueries: ['otherVtx'],
+    }))
+    unregister()  // b2 does not own 'someOtherBodyQuery'
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('someOtherBodyQuery')
+  })
+
+  // The ownership check is `face_queries?.includes(h) ?? edgeQueries?.includes(h)
+  // ?? vertexQueries?.includes(h) ?? false`. Because `??` only falls through on a
+  // nullish left side, a present `face_queries` (even when it does not contain the
+  // hovered id) decides the result, and the edge/vertex arms are reached only when
+  // the earlier arrays are absent.
+  it('unregister clears a hovered edge query when face_queries is absent', () => {
+    const cb = makeCallbacks({ mesh: makeMesh({ face_queries: undefined }) })
+    const unregister = registerBodyCallbacks('b1', cb)
+    useSketchEditorStore.getState().setHoveredSelectionId('edgeQ0')
+    unregister()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
+  it('unregister clears a hovered vertex query when face and edge arrays are absent', () => {
+    const cb = makeCallbacks({ mesh: makeMesh({ face_queries: undefined }), edgeQueries: undefined })
+    const unregister = registerBodyCallbacks('b1', cb)
+    useSketchEditorStore.getState().setHoveredSelectionId('vtxQ0')
+    unregister()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
+  it('a superseded unregister is a no-op (does not delete the live registration)', () => {
+    const first = makeCallbacks()
+    const unregisterFirst = registerBodyCallbacks('b1', first)
+    // Same key re-registered with a different callback object (e.g. a re-render).
+    registerBodyCallbacks('b1', makeCallbacks({ edgeKinds: ['circle', 'circle'] }))
+    // The stale unregister must not evict the current registration.
+    unregisterFirst()
+    expect(findEdgeKindForQuery('edgeQ0')).toBe('circle')
+  })
+})
+
+describe('findEdgeKindForQuery', () => {
+  it('returns undefined for an unknown query', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    expect(findEdgeKindForQuery('nope')).toBeUndefined()
+  })
+
+  it('returns undefined when the body has no edgeKinds parallel array', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ edgeKinds: undefined }))
+    expect(findEdgeKindForQuery('edgeQ0')).toBeUndefined()
+  })
+
+  it('searches across multiple registered bodies', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    registerBodyCallbacks('b2', makeCallbacks({
+      edgeQueries: ['farEdge'],
+      edgeKinds: ['spline'],
+    }))
+    expect(findEdgeKindForQuery('farEdge')).toBe('spline')
+  })
+})
+
+describe('findBodyForFaceQuery', () => {
+  it('returns the owning body and the face index', () => {
+    const cb = makeCallbacks()
+    registerBodyCallbacks('b1', cb)
+    const hit = findBodyForFaceQuery('faceQ0')
+    expect(hit?.body).toBe(cb)
+    expect(hit?.index).toBe(0)
+  })
+
+  it('returns null when no body owns the query', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    expect(findBodyForFaceQuery('ghost')).toBeNull()
+  })
+
+  it('returns null when a body mesh has no face_queries', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ mesh: makeMesh({ face_queries: undefined }) }))
+    expect(findBodyForFaceQuery('faceQ0')).toBeNull()
+  })
+})
+
+describe('findFaceBoundaryEdges', () => {
+  it('maps each boundary edge to its source and resolved kind', () => {
+    registerBodyCallbacks('b1', makeCallbacks({
+      mesh: makeMesh({
+        face_queries: ['faceQ0'],
+        face_edge_queries: [['edgeQ1', 'edgeQ0']],
+      }),
+    }))
+    expect(findFaceBoundaryEdges('faceQ0')).toEqual([
+      { source: 'edgeQ1', kind: 'arc' },
+      { source: 'edgeQ0', kind: 'line' },
+    ])
+  })
+
+  it("falls back to 'line' when an edge source is not a registered edge", () => {
+    registerBodyCallbacks('b1', makeCallbacks({
+      mesh: makeMesh({
+        face_queries: ['faceQ0'],
+        face_edge_queries: [['unregisteredEdge']],
+      }),
+    }))
+    expect(findFaceBoundaryEdges('faceQ0')).toEqual([{ source: 'unregisteredEdge', kind: 'line' }])
+  })
+
+  it('returns null when the face carries no boundary edge queries', () => {
+    registerBodyCallbacks('b1', makeCallbacks({
+      mesh: makeMesh({ face_queries: ['faceQ0'], face_edge_queries: [[]] }),
+    }))
+    expect(findFaceBoundaryEdges('faceQ0')).toBeNull()
+  })
+
+  it('returns null when the face_edge_queries entry is missing', () => {
+    registerBodyCallbacks('b1', makeCallbacks({
+      mesh: makeMesh({ face_queries: ['faceQ0'] }),  // no face_edge_queries
+    }))
+    expect(findFaceBoundaryEdges('faceQ0')).toBeNull()
+  })
+
+  it('returns null when the query matches no registered face', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    expect(findFaceBoundaryEdges('ghostFace')).toBeNull()
+  })
+})
+
+describe('clearAllBodyHover', () => {
+  it('calls clearFaceGeometry on every registered body', () => {
+    const a = makeCallbacks()
+    const b = makeCallbacks({ mesh: makeMesh({ face_queries: ['x'] }) })
+    registerBodyCallbacks('b1', a)
+    registerBodyCallbacks('b2', b)
+    clearAllBodyHover()
+    expect(a.clearFaceGeometry).toHaveBeenCalledTimes(1)
+    expect(b.clearFaceGeometry).toHaveBeenCalledTimes(1)
+  })
+
+  it('is a no-op with no registered bodies', () => {
+    expect(() => clearAllBodyHover()).not.toThrow()
+  })
+})
