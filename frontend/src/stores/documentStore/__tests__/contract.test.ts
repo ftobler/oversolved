@@ -96,6 +96,18 @@ function mountFakeServer(): () => void {
       return respond(200, { uuid })
     }
 
+    const clone = path.match(/^\/api\/documents\/([^/]+)\/clone$/)
+    if (clone && method === 'POST') {
+      const src = docs.get(clone[1])
+      if (!src) return respond(404)
+      const uuid = crypto.randomUUID()
+      docs.set(uuid, {
+        ...src, uuid, name: `${src.name} (Clone)`,
+        created_at: stamp(), updated_at: stamp(),
+      })
+      return respond(200, { uuid })
+    }
+
     const one = path.match(/^\/api\/documents\/([^/]+)$/)
     if (one) {
       const id = one[1]
@@ -221,6 +233,15 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     const dup = await store.load(dupId)
     expect(dup.content).toBe('shape')
     expect(dup.name).toBe('Original (copy)')
+    expect(await store.list()).toHaveLength(2)
+  })
+
+  it('clone copies content into a fresh document', async () => {
+    const { uuid } = await store.create('Original')
+    await store.save(uuid, { content: 'shape' })
+    const { uuid: cloneId } = await store.clone(uuid)
+    expect(cloneId).not.toBe(uuid)
+    expect((await store.load(cloneId)).content).toBe('shape')
     expect(await store.list()).toHaveLength(2)
   })
 

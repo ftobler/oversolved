@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveBackend, backend, hasBackend } from '../capabilities'
+import { resolveBackend, backend, hasBackend, debugToolsUnrestricted } from '../capabilities'
 
 describe('capabilities.resolveBackend', () => {
   it('opts into static only on the explicit flag, defaults to http', () => {
@@ -16,5 +16,10 @@ describe('capabilities.resolveBackend', () => {
     expect(window.__OVERSOLVED_BACKEND__).toBeUndefined()
     expect(backend).toBe('http')
     expect(hasBackend).toBe(true)
+  })
+
+  it('gates debug tooling to admins on the server build (unrestricted only on static)', () => {
+    // Default test env is the http backend, so debug tools are admin-gated.
+    expect(debugToolsUnrestricted).toBe(false)
   })
 })

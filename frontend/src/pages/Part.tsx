@@ -17,9 +17,8 @@ import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/core/buildCache'
-import { http, HttpError } from '@/utils/core/httpClient'
-import { backendBundle } from '@/adapters/backend'
-import { hasBackend } from '@/config/capabilities'
+import { HttpError } from '@/utils/core/httpClient'
+import { debugToolsUnrestricted } from '@/config/capabilities'
 import '@/pages/Part.css'
 
 import PartToolbar from '@/pages/PartToolbar'
@@ -116,6 +115,7 @@ export default function Part() {
     handleRedo,
     saveDoc,
     renameDoc,
+    cloneDoc,
     docName,
     ownerUsername,
     bodies,
@@ -478,11 +478,7 @@ export default function Part() {
   const handleClone = async () => {
     if (!uuid) return
     try {
-      // Static build has no /clone endpoint; the store's duplicate copies the
-      // document locally.
-      const data = hasBackend
-        ? await http.postJson<{ uuid: string }>(`/api/documents/${uuid}/clone`)
-        : await backendBundle.documents.duplicate(uuid)
+      const data = await cloneDoc(uuid)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
       if (e instanceof HttpError) {
@@ -746,7 +742,7 @@ export default function Part() {
         handleRightClick={handleRightClick}
         rightPanel={
           <PartDebugPanel
-            debugOpen={debugOpen && (!hasBackend || !!user?.is_admin)}
+            debugOpen={debugOpen && (debugToolsUnrestricted || !!user?.is_admin)}
           />
         }
       >
@@ -759,7 +755,7 @@ export default function Part() {
         <p>Copyright 2026 - Oversolved</p>
         <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         <div className="debug-buttons">
-          {(!hasBackend || user?.is_admin) && (
+          {(debugToolsUnrestricted || user?.is_admin) && (
             <button
               className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
               title="Toggle debug panel (F2)"

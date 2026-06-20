@@ -32,3 +32,10 @@ export const backend: Backend = resolveBackend(
 // rebuild stats) are absent -- not broken -- when this is false. Callers gate
 // on it rather than hitting error paths.
 export const hasBackend = backend === 'http'
+
+// Debug tooling (the F2 panel + footer button) is admin-gated on the server
+// build but open to EVERYONE on the static build -- a local-only build has no
+// privileged users, it is your own machine. Views ask this named capability
+// rather than re-deriving the rule from `hasBackend` (which the capability-bundle
+// guardrail bans in views).
+export const debugToolsUnrestricted = backend === 'static'

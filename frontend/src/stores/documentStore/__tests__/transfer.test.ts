@@ -48,6 +48,9 @@ class FakeStore implements DocumentStore {
     await this.save(uuid, { content: d.content })
     return { uuid }
   }
+  async clone(id: string): Promise<{ uuid: string }> {
+    return this.duplicate(id)
+  }
   thumbnailUrl(): string | null { return null }
 }
 

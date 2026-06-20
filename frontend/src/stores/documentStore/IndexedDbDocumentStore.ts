@@ -150,6 +150,11 @@ export class IndexedDbDocumentStore implements DocumentStore {
     return { uuid }
   }
 
+  // No other owners on a local device, so cloning is just a local copy.
+  async clone(id: string): Promise<{ uuid: string }> {
+    return this.duplicate(id)
+  }
+
   // No server-rendered thumbnail: the grid uses the inline preview_image carried
   // on each summary instead. Keeps the interface's (id) signature so callers pass
   // the id uniformly across stores.

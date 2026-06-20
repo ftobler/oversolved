@@ -52,18 +52,14 @@ const SANCTIONED_SEAMS = [
   'pages/UserProfile.tsx',
 ]
 
-// Existing `hasBackend` leaks awaiting migration behind the capability bundle.
-// Remove an entry when its file stops reading the flag.
-const HAS_BACKEND_BASELINE = [
-  'pages/Part.tsx',
-]
+// `hasBackend` leaks awaiting migration behind the capability bundle. EMPTY:
+// every non-sanctioned view/hook now asks a named capability instead of the raw
+// flag. A new leak fails the ratchet; keep this empty by migrating, not baselining.
+const HAS_BACKEND_BASELINE: string[] = []
 
-// Existing raw `/api/...` literals awaiting migration behind an adapter.
-// Remove an entry when its file stops reaching the API path directly.
-const API_LITERAL_BASELINE = [
-  'pages/Documents.tsx',
-  'pages/Part.tsx',
-]
+// Raw `/api/...` literals awaiting migration behind an adapter. EMPTY: all view
+// backend access now routes through the document store / capability adapters.
+const API_LITERAL_BASELINE: string[] = []
 
 function sourceFiles(): string[] {
   const out: string[] = []

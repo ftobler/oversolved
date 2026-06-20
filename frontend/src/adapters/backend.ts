@@ -17,6 +17,7 @@ import { backend, type Backend as BackendFlag } from '@/config/capabilities'
 import { createBugReportSink, type BugReportSink } from './telemetry'
 import { createDocsSource, type DocsSource } from './docs'
 import { createSharingAdapter, type SharingAdapter } from './sharing'
+import { createTrashAdapter, type TrashAdapter } from './trash'
 import { createPreferencesAdapter, type PreferencesAdapter } from './preferences'
 
 export interface BackendBundle {
@@ -26,6 +27,7 @@ export interface BackendBundle {
   preferences: PreferencesAdapter     // always present (per-user on the server, localStorage without)
   docs: DocsSource | null             // null without a server to serve the markdown docs
   sharing: SharingAdapter | null      // null without other users to share with
+  trash: TrashAdapter | null          // null without a server-side soft-delete lifecycle
 }
 
 // Pure factory (testable without touching the env). The stores are passed in
@@ -47,6 +49,7 @@ export function createBackend(
     preferences: createPreferencesAdapter(flag),
     docs: createDocsSource(flag),
     sharing: createSharingAdapter(flag),
+    trash: createTrashAdapter(flag),
   }
 }
 

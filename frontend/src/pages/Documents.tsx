@@ -5,10 +5,11 @@ import Dialog from '@/components/dialogs/Dialog'
 import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
-import { http, HttpError, isConnectionError } from '@/utils/core/httpClient'
+import { HttpError, isConnectionError } from '@/utils/core/httpClient'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
 import type { DocSummary, DocumentStore } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
+import type { TrashDoc } from '@/adapters/trash'
 import { useAuth } from '@/contexts/AuthContext'
 import '@/pages/Documents.css'
 
@@ -41,15 +42,6 @@ function DocTilePreview(
       <div className="doc-tile-placeholder" style={{ display: 'none' }} />
     </>
   )
-}
-
-interface TrashDoc {
-  uuid: string
-  name: string
-  deleted_at: string
-  created_at: string
-  owner_id: number
-  owner_username: string
 }
 
 type SidebarFilter = 'owned' | 'shared' | 'public'
@@ -315,7 +307,7 @@ export default function Documents() {
 
   // Library backup: every listed document into one .oversolved bundle. This is
   // the static replacement for the admin backup feature; it also works against
-  // the HTTP store (the zip layout is identical to /api/admin/backup).
+  // the HTTP store (the zip layout matches the server-side admin backup).
   const handleExportAll = async () => {
     try {
       const all = await activeStore.list({ filter: 'owned' })
@@ -376,10 +368,10 @@ export default function Documents() {
   }
 
   const fetchTrash = useCallback(async () => {
+    if (!backendBundle.trash) return  // trash is a cloud-domain-only capability
     setTrashLoading(true)
     try {
-      const data = await http.getJson<{ documents: TrashDoc[] }>('/api/documents/trash')
-      setTrashDocs(data.documents || [])
+      setTrashDocs(await backendBundle.trash.list())
     } catch (e) {
       setError(String(e))
     } finally {
@@ -389,7 +381,7 @@ export default function Documents() {
 
   const handleRecover = async (uuid: string) => {
     try {
-      await http.postJson(`/api/documents/${uuid}/recover`)
+      await backendBundle.trash?.recover(uuid)
       fetchTrash()
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
@@ -407,7 +399,7 @@ export default function Documents() {
       return
     }
     try {
-      await http.deleteJson(`/api/documents/${uuid}/trash`)
+      await backendBundle.trash?.purge(uuid)
       fetchTrash()
     } catch (e) {
       if (e instanceof HttpError) {

@@ -105,6 +105,15 @@ describe('HttpDocumentStore', () => {
     expect(res).toEqual({ uuid: 'dup-1' })
   })
 
+  it('clone issues POST /api/documents/:id/clone', async () => {
+    const fetchFn = mockFetch({ uuid: 'clone-1' })
+    const res = await store.clone('uuid-1')
+    const { url, init } = lastCall(fetchFn)
+    expect(url).toBe('/api/documents/uuid-1/clone')
+    expect(init?.method).toBe('POST')
+    expect(res).toEqual({ uuid: 'clone-1' })
+  })
+
   it('thumbnailUrl points at the server thumbnail route (no fetch)', () => {
     expect(store.thumbnailUrl('uuid-1')).toBe('/api/documents/uuid-1/thumbnail')
   })
