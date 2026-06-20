@@ -1,5 +1,9 @@
 """Unit tests for RebuildTimeStore."""
 
+from unittest.mock import patch
+
+import pytest
+
 from oversolved.db import Database, SQLiteConnection, RebuildTimeStore
 
 
@@ -32,6 +36,15 @@ class TestRebuildTimeStore:
         assert rows[0][1] == 150
         assert rows[0][2] == 3
 
+    def test_record_rolls_back_and_reraises_on_failure(self):
+        """A failed insert (missing table) rolls back and propagates the error."""
+        db = Database(SQLiteConnection(":memory:"))  # no rebuild_times table
+        store = RebuildTimeStore(db)
+        with patch.object(db, "rollback", wraps=db.rollback) as rollback:
+            with pytest.raises(Exception):
+                store.record("doc-x", 100, 2)
+        assert rollback.called
+
     def test_compute_stats_empty_returns_zeros(self):
         db = _make_db()
         store = RebuildTimeStore(db)
@@ -63,6 +76,28 @@ class TestRebuildTimeStore:
             store.record("doc-slow", duration, 1)
         stats = store.compute_stats("doc-slow")
         assert stats["trend"] == "slower"
+
+    def test_compute_stats_single_record(self):
+        """One record: odd-count median equals the value and trend stays None."""
+        db = _make_db()
+        store = RebuildTimeStore(db)
+        store.record("doc-one", 175, 1)
+        stats = store.compute_stats("doc-one")
+        assert stats["rebuild_count"] == 1
+        assert stats["last_duration_ms"] == 175
+        assert stats["median_ms"] == 175.0
+        assert stats["min_ms"] == 175
+        assert stats["max_ms"] == 175
+        assert stats["trend"] is None
+
+    def test_compute_stats_trend_stable_when_similar(self):
+        """Recent and older averages within 10 percent gives trend='stable'."""
+        db = _make_db()
+        store = RebuildTimeStore(db)
+        for duration in [100, 101, 99, 100, 102, 98, 100, 101, 99, 100]:
+            store.record("doc-stable", duration, 1)
+        stats = store.compute_stats("doc-stable")
+        assert stats["trend"] == "stable"
 
     def test_history_returns_newest_first(self):
         db = _make_db()
