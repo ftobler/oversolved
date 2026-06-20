@@ -10,7 +10,7 @@ import {
 
 /** Unit tests for the typed query classes introduced in query.ts.
  * Tests are pure TypeScript -- no solver, no Repository.
- * Ported from tests/kernel/test_query_types.py */
+ * Ported from the removed tests/kernel/test_query_types.py */
 
 describe("LocalQuery parse subpoints", () => {
   it("parses $line1end", () =>

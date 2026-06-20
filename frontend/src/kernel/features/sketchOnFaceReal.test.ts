@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Port of tests/kernel/test_sketch_on_face.py (Phase 4c).
+// Ported from the removed tests/kernel/test_sketch_on_face.py (Phase 4c).
 // Seven integration tests that drive sketch-on-face resolution through build():
 // plane resolution, centroid, normal, post-fuse face placement, boolean-cut
 // partial rebuild, multi-profile face resolution, and centroid-drift normal

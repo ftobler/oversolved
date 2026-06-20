@@ -461,7 +461,7 @@ describe('validateIncremental', () => {
   })
 })
 
-// ─── Ported from tests/kernel/test_builder_partial_rebuild.py ───
+// ─── Ported from the removed tests/kernel/test_builder_partial_rebuild.py ───
 
 describe('checkpoint isolation', () => {
   it('result mutation does not corrupt cached checkpoint', () => {
@@ -743,7 +743,7 @@ describe('rollback transitions', () => {
   })
 })
 
-// ─── Ported from tests/kernel/test_builder.py (not already covered) ───
+// ─── Ported from the removed tests/kernel/test_builder.py (not already covered) ───
 
 describe('pickBoundary edge cases', () => {
   it('pickBoundary=0 should not return pick_bodies', () => {
@@ -796,7 +796,7 @@ describe('robustness', () => {
   })
 })
 
-// ─── Ported from tests/kernel/test_builder_partial_rebuild.py (remaining) ───
+// ─── Ported from the removed tests/kernel/test_builder_partial_rebuild.py (remaining) ───
 
 describe('clean prefix reuse', () => {
   it('_build_state is a separate key that can be removed', () => {

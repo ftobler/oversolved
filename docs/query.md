@@ -6,7 +6,7 @@ The solver uses queries to reference geometry. A query is a string (or typed obj
 
 - **Feature IDs**: user-assigned in the YAML document, never change.
 - **Element IDs within a feature**: user-assigned at creation. Sub-element suffixes (`start`, `end`, `center`, `xy`) identify sub-portions.
-- **Auto-generated topology IDs**: `secrets.token_urlsafe(9)` → 12-char base64url, assigned during `register_ancestor`.
+- **Auto-generated topology IDs**: `genId()` → `el_<base36 counter>` (e.g. `el_0`, `el_1a`), assigned during `registerAncestor`.
 
 There are two element-key conventions, one per repository:
 
@@ -21,7 +21,7 @@ There are two element-key conventions, one per repository:
 | `@<FEAT>/<ELE>/<SUB>` | Absolute | Cross-feature lookup by slash-separated key `feat + "/" + ele + "/" + sub`. |
 | `?<H,L>;<idA><idB>[:TYPE]` | Ancestry | Ancestry-based query with hex-encoded lengths and optional type filter. |
 
-Dispatched by `parse_query()` first character. Sub suffixes require a non-alphanumeric character before them to avoid false matches (e.g. `sketch_start` ≠ `sketch_` + `start`).
+Dispatched by `Repository.query()` on the first character. Sub suffixes require a non-alphanumeric character before them to avoid false matches (e.g. `sketch_start` ≠ `sketch_` + `start`).
 
 ## Geometry Types
 
@@ -89,10 +89,10 @@ Frontend: Three.js `faceIndex` → `triangle_to_face` → B-rep face number → 
 
 ## Repository Resolution
 
-`Repository.query(query_str, context, body_store)`:
+`Repository.query(queryStr, context, bodyStore, currentFeatureId)`:
 
-- **`$` (local)**: requires `context`. Looks up `self.elements[context + eid + sub]`.
-- **`@` (absolute)**: looks up `self.elements[feature_id + eid + sub]`.
+- **`$` (local)**: requires `context`. Looks up `this.elements[context + eid + sub]`.
+- **`@` (absolute)**: looks up `this.elements[feature_id + eid + sub]`.
 - **`?` (ancestry)**: finds elements whose registered ancestor set is a **subset** of the query's set (`registered ⊆ query`). If `type_restriction` given, filters to exact type matches first, then attempts type coercion. Raises `AmbiguousQueryError` if multiple candidates match.
 
 ### Type Coercion

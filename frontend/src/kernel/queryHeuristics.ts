@@ -1,4 +1,4 @@
-// Port of oversolved/kernel/query_heuristics.py. Heuristic scoring layer for the
+// Ported from the removed Python kernel (oversolved/kernel/query_heuristics.py). Heuristic scoring layer for the
 // recursive ancestral query resolver. Resolution is three-valued: Resolved (one
 // winner), Ambiguous (multiple plausible), Unresolved (none). All knobs live in
 // HeuristicConfig (data, not magic numbers).

@@ -1,4 +1,4 @@
-// Port of the profile-loop helpers oversolved/kernel/profile_loops.py exposes
+// Ported from the profile-loop helpers the removed oversolved/kernel/profile_loops.py exposed
 // to topology.ts: arc sampling, polygon point list, area-weighted centroid.
 // Only the slice topology needs is ported here.
 

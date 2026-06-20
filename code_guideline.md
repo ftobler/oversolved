@@ -118,13 +118,15 @@ onClick={() => executeCommand('apply_horizontal')}
 
 ### ID Generation
 
-**Rule:** Generate unique IDs using base64url encoding.
+**Rule:** Generate unique IDs as random base64url (`randomId` in
+`frontend/src/utils/yamlMutations/helpers.ts`).
 
-```python
-import os, base64
-
-def generate_feature_id(length=18):
-    return base64.urlsafe_b64encode(os.urandom(length)).rstrip(b'=').decode()
+```ts
+export function randomId(bytes: number): string {
+  const arr = new Uint8Array(bytes)
+  crypto.getRandomValues(arr)
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
 ```
 
 - Features: 18 bytes (24 char base64url)
@@ -132,22 +134,25 @@ def generate_feature_id(length=18):
 
 ### Query Syntax
 
-**Format:** `$<ELE>`, `@<FEAT>`, `?A,B;<ids>:<TYPE>@<CLASSIFIER>`
+**Format:** `$<ELE>`, `@<FEAT>`, `?<hex-lengths>;<ids>[:<TYPE>]`
 
-**Classifiers:**
-- `@pos` / `@neg` — positive/negative side of line
-- `@inner` / `@outer` — inside/outside circle
-- `@north` / `@south` / `@east` / `@west` — cardinal directions
+**Classifiers** (edit-stable tie-break tier; minted `@cls_*` tokens that ride the
+ancestry id list, not a separate suffix):
+- `@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn` — which end of the
+  body AABB an element sits past, per world axis (cardinal/axial)
+- `cls_ld_<lineid>_p|n` — side of a shared bounding line for a sketch surface split
+  from a same-ancestry sibling (line division)
+
+See `docs/query.md` for the full resolution tiers.
 
 ### Ancestry Lists
 
-**Format:** `?A,B;<idA><idB>` where A,B are hex lengths
+**Format:** `?<hex-lengths>;<idA><idB>` where the hex lengths prefix the
+concatenated ids.
 
-**Disambiguation:**
-```python
-surface1_query = "?5;@sketch_1circle:face@inner"  # inside
-surface2_query = "?5;@sketch_1circle:face@outer"  # outside
-```
+**Disambiguation:** sibling surfaces sharing ancestry are split by appending the
+line-division classifier token to the id list, e.g. `@cls_ld_<lineid>_p` for one
+side and `@cls_ld_<lineid>_n` for the other.
 
 ## 6. Icon Guidelines
 
@@ -203,8 +208,8 @@ drawall()  # Required at end
 |---------|--------|
 | `apply_horizontal` | Constrain to horizontal |
 | `apply_vertical` | Constrain to vertical |
-| `apply_equal` | Equal length constraint |
-| `apply_perpendicular` | Perpendicular constraint |
+| `apply_equal_length` | Equal length constraint |
+| `apply_normal` | Normal (perpendicular) constraint |
 
 ### Utility Commands
 
@@ -274,7 +279,7 @@ def apply(database: Database) -> None:
 
 ### Geometry Mapping
 
-**Location:** `frontend/src/utils/geometryMapping.ts`
+**Location:** `frontend/src/utils/geometry/geometryMapping.ts`
 
 - Convert flat array format to UI Sketch format
 - Resolve query strings to entity references

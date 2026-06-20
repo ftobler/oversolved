@@ -65,9 +65,13 @@ The backend does not participate in solver computation.
 
 ## Import / Export
 
-- `POST /api/upload` — upload .step/.stp/.iges/.igs (multipart)
-- `POST /api/export/step` — export as STEP `{features, body_id?}`
-- `POST /api/export/stl` — export as STL `{features, body_id?, deflection?, angular_deflection?}`
+STEP/IGES import runs in the browser (the frontend reads the file bytes directly);
+it does not round-trip through the server. The endpoints below are legacy/stubs:
+
+- `POST /api/upload` — legacy multipart upload of .step/.stp/.iges/.igs to the server
+  uploads dir. Still present but no longer used by the frontend.
+- `POST /api/export/step` — stub; returns 503 (the solver kernel runs in the browser).
+- `POST /api/export/stl` — stub; returns 503 (the solver kernel runs in the browser).
 
 ## Admin (require admin)
 

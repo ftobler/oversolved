@@ -1,4 +1,4 @@
-// Port of oversolved/kernel/geom_hash.py. Stable face/edge/vertex identity from
+// Ported from the removed Python kernel (oversolved/kernel/geom_hash.py). Stable face/edge/vertex identity from
 // geometry attributes rounded to 4 decimals. Cross-language byte-exact hash
 // parity with Python is the phase 2c gate: the dual-run fixture diffs these
 // outputs against hashlib, so the float formatting below must reproduce

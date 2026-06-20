@@ -28,7 +28,7 @@ Singleton `ToolRegistry` class: `register(tool)`, `get(id)`, `byCategory(categor
 
 Tools implement `ToolHandlers`: `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerOver`, `onPointerOut`, `onClick`.
 
-Tool IDs: `select`, `dimension`, `line`, `rect`, `center_rect`, `circle`, `arc`, `point`, `rectangle`, `center_rectangle`, `project`, `drag`, `constraint`.
+Tool IDs: `select`, `dimension`, `drag`, the entity tools `line`, `circle`, `arc`, `ellipse`, `point`, `project`, `spline`, the compound drawing tools `rect`, `center_rect`, `ngon`, and one constraint tool per constraint kind.
 
 ### Snap & Measurement Registries (`snapRegistry.ts`, `measurementRegistry.ts`)
 
@@ -98,7 +98,7 @@ Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`bac
 
 Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `p` (parallel), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed).
 
-Entity shortcuts: `l` (line), `o` (circle), `a` (arc), `j` (project).
+Entity shortcuts: `l` (line), `o` (circle), `a` (arc), `s` (spline), `j` (project).
 
 ## Conventions
 

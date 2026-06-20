@@ -1,4 +1,4 @@
-// Port of oversolved/kernel/query.py. The element-geometry query engine:
+// Ported from the removed Python kernel (oversolved/kernel/query.py). The element-geometry query engine:
 // typed Query parsing/emission plus the live ancestry resolver (Repository).
 //
 // frozenset semantics: Python keys `ancestral` by a frozenset of ancestor ids

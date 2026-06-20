@@ -1,5 +1,5 @@
-// Port of the face/edge query-building helpers in
-// oversolved/kernel/geometry_tessellation.py (_build_face_query, _face_tokens,
+// Ported from the face/edge query-building helpers in the removed Python kernel
+// (oversolved/kernel/geometry_tessellation.py: _build_face_query, _face_tokens,
 // _edge_lineage_tokens). These bridge the geom-hash identity (shard 1) and the
 // ancestry query format (shard 2) at the tessellation boundary; phase 2b left
 // face_data carrying geometry only and deferred this wiring to 2c.

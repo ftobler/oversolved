@@ -1,4 +1,4 @@
-// Port of the OCC-free logic in oversolved/kernel/solver_features_shared.py.
+// Ported from the OCC-free logic in the removed Python kernel (oversolved/kernel/solver_features_shared.py).
 //
 // solver_features_shared.py is the central machinery the leaf feature solvers
 // (extrude/revolve/boolean/fillet/...) call into. It splits into two halves:

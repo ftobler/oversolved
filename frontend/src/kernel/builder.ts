@@ -1,4 +1,4 @@
-// Port of oversolved/kernel/builder.py.
+// Ported from the removed Python kernel (oversolved/kernel/builder.py).
 //
 // Orchestrates the feature-stack solve loop with dirty detection, checkpoint
 // cache, and incremental rebuild. Feature solvers are injected via a registry so

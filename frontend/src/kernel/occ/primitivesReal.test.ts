@@ -135,7 +135,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   // ─────────────────────────────────────────────────────────
-  // Ported from tests/kernel/test_ocp_tool_shapes.py
+  // Ported from the removed tests/kernel/test_ocp_tool_shapes.py
 
   /** Create a 1x1 square face in the XY plane via makeFaceFromWire. */
   function makeUnitSquareFace(occ2: OccModule, scope: DisposeScope): OccShape {

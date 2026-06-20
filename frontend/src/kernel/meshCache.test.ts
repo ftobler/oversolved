@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Port of tests/kernel/test_mesh_cache.py (10 test functions).
+// Ported from the removed tests/kernel/test_mesh_cache.py (10 test functions).
 // Cross-solve mesh cache: clean prefix, cache hit/miss, pick bodies,
 // fallback, parallel determinism.
 //

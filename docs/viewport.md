@@ -78,7 +78,7 @@ Selection IDs: `entity:<feat>:<eid>`, `vertex:<feat>:<eid>:<key>`, `constraint:<
 
 ### Layer 4: Tool Layer
 
-Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `onPointerDown`, `onPointerMove`, `onPointerUp`). Registered: select, dimension, line, rect, center_rect, circle, arc, point, project, drag.
+Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `onPointerDown`, `onPointerMove`, `onPointerUp`). Registered: select, dimension, drag, line, circle, arc, ellipse, point, project, spline, rect, center_rect, ngon, and one constraint tool per constraint kind.
 
 - **Drag**: threshold-based initiation, vertex/entity/alignment snap via `dragLogic.ts`, creates YAML mutation on release
 - **Draw**: inserts geometry via DrawPlane, snap to vertices/entities, preview rendering
