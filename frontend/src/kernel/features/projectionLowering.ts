@@ -11,6 +11,7 @@
  */
 
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
+import { dot as dot3, sub as sub3, cross as cross3 } from './vec3'
 
 type Dict = Record<string, unknown>
 
@@ -31,18 +32,6 @@ export interface Resolved3dGeometry {
 export interface ProjectedParams {
   kind: string
   params: number[]
-}
-
-function dot3(a: number[], b: number[]): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-function sub3(a: number[], b: number[]): number[] {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-function cross3(a: number[], b: number[]): number[] {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
 function len3(a: number[]): number {

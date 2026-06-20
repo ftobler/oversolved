@@ -10,9 +10,10 @@ import { getPoint3d } from '../query'
 import type { Body, Frame3D } from '../types3d'
 import { normalToFrame } from '../types3d'
 import type { PlaneLike } from './shared'
+import type { Vec3 } from './vec3'
+import { sub, dot, cross } from './vec3'
 
 type Dict = Record<string, unknown>
-type Vec3 = [number, number, number]
 
 export interface PlaneResult {
   status: string
@@ -20,22 +21,6 @@ export interface PlaneResult {
 }
 
 // ── Vector helpers ───────────────────────────────────────────────────────
-
-function sub(a: number[], b: number[]): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-function dot(a: number[], b: number[]): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-function cross(a: number[], b: number[]): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ]
-}
 
 function norm(v: number[]): number {
   return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])

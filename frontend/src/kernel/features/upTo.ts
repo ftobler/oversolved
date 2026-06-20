@@ -14,6 +14,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import type { Vec3 } from '../occ/primitives'
 import { makePrism } from '../occ/primitives'
+import { dot, cross } from './vec3'
 import { booleanWithHistory } from '../occ/booleans'
 import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
 
@@ -26,14 +27,6 @@ export interface CutPlane {
 
 /** Reach used for the over-length prism and the trimming half-space (model units). */
 export const UP_TO_REACH = 1e4
-
-function dot(a: number[], b: number[]): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-function cross(a: number[], b: number[]): Vec3 {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
 
 function normalize(v: number[]): Vec3 {
   const l = Math.hypot(v[0], v[1], v[2])
