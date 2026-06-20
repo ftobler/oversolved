@@ -317,6 +317,58 @@ class TestSessionStore:
         # Oldest should be deleted
         assert session_store.find(tokens[0]) is None
 
+    @staticmethod
+    def _insert_session(session_store, user_id, token, expires_at):
+        """Insert a session row directly with a controlled expiry timestamp."""
+        import hashlib
+        from datetime import datetime, timezone
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
+        with session_store.db.transaction():
+            session_store.db.execute(
+                "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                (token_hash, user_id, expires_at, now),
+            )
+        return token_hash
+
+    @staticmethod
+    def _row_count(session_store, token_hash):
+        cursor = session_store.db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE token_hash = ?", (token_hash,)
+        )
+        return cursor.fetchone()[0]
+
+    def test_cleanup_expired_deletes_expired_keeps_valid(self, session_store, user_id):
+        from datetime import datetime, timedelta, timezone
+        past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        expired_hash = self._insert_session(session_store, user_id, "expired-tok", past)
+        valid_hash = self._insert_session(session_store, user_id, "valid-tok", future)
+
+        session_store.cleanup_expired()
+
+        # cleanup_expired must physically delete the row, not merely hide it like find().
+        assert self._row_count(session_store, expired_hash) == 0
+        assert self._row_count(session_store, valid_hash) == 1
+
+    def test_cleanup_expired_is_noop_when_none_expired(self, session_store, user_id):
+        token = session_store.create(user_id)
+        session_store.cleanup_expired()
+        assert session_store.find(token) is not None
+
+    def test_cleanup_expired_spans_all_users(self, session_store, user_store):
+        from datetime import datetime, timedelta, timezone
+        past = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        uid_a = user_store.create("expA", "hash")
+        uid_b = user_store.create("expB", "hash")
+        hash_a = self._insert_session(session_store, uid_a, "a-tok", past)
+        hash_b = self._insert_session(session_store, uid_b, "b-tok", past)
+
+        session_store.cleanup_expired()
+
+        assert self._row_count(session_store, hash_a) == 0
+        assert self._row_count(session_store, hash_b) == 0
+
 
 class TestSessionCleanupIntegration:
     """Integration tests: login endpoint creates only one session per user."""
