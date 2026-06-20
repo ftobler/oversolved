@@ -74,6 +74,36 @@ describe("edge hashes match Python", () => {
       /arc edge missing/,
     )
   })
+
+  // Absent geometry fields fall back to Python int literals ("0"/"1"), which
+  // str(round(int, 4)) renders without a decimal point -- distinct from a present
+  // [0,0,0] (rendered "0.0"). These goldens are computed independently with Node's
+  // crypto against the documented fallback token strings, so they cross-check the
+  // project sha256 as well as the fallback branches.
+  describe("absent-field fallbacks use Python int literals, not floats", () => {
+    it("circle with no center -> '0|0|0', not '0.0|0.0|0.0'", () => {
+      // tokens: circle|2.5|0|0|0  (radius present, center absent)
+      expect(edgeGeometryHash({ kind: "circle", radius: 2.5 })).toBe("gedge_f2481a56e3e6eb47")
+    })
+
+    it("arc with no axis/x_axis -> '0|0|1' / '1|0|0'", () => {
+      // tokens: arc|3.0|1.0|2.0|3.0|0.0|90.0|0|0|1|1|0|0  (axis + x_axis absent)
+      expect(
+        edgeGeometryHash({
+          kind: "arc",
+          radius: 3.0,
+          center: [1, 2, 3],
+          angle_start_deg: 0,
+          angle_end_deg: 90,
+        }),
+      ).toBe("gedge_601f9d84573e555e")
+    })
+
+    it("ellipse with no center/axis/x_axis -> integer-literal fallbacks", () => {
+      // tokens: ellipse|4.0|2.0|0|0|0|0|0|1|1|0|0|0|0
+      expect(edgeGeometryHash({ kind: "ellipse", a: 4, b: 2 })).toBe("gedge_ba9595948e7e560c")
+    })
+  })
 })
 
 describe("vertex hashes match Python", () => {
