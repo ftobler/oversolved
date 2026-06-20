@@ -53,6 +53,36 @@ describe('queryLabel', () => {
       const q = '?2;?!:flatface'
       expect(queryLabel(q, features)).toBe(q)
     })
+
+    it('returns Face for a cylinderface restriction', () => {
+      // @extrude1face0 = 14 chars → hex "e"
+      const q = '?e;@extrude1face0:cylinderface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('returns Edge for a bare "edge" restriction', () => {
+      // @fillet2edge0 = 13 chars → hex "d"
+      const q = '?d;@fillet2edge0:edge'
+      expect(queryLabel(q, features)).toBe('Edge of Fillet 2')
+    })
+
+    it('falls back to "Entity" for an unrecognized type restriction', () => {
+      // @extrude1face0 = 14 chars → hex "e"; ":wibble" is not a known type.
+      const q = '?e;@extrude1face0:wibble'
+      expect(queryLabel(q, features)).toBe('Entity of My Extrude')
+    })
+
+    it('falls back to "Entity" when no type restriction is present', () => {
+      // @extrude1face0 = 14 chars → hex "e"; no ":type" suffix at all.
+      const q = '?e;@extrude1face0'
+      expect(queryLabel(q, features)).toBe('Entity of My Extrude')
+    })
+
+    it('uses the bare feature ID when the ancestry feature is not in the list', () => {
+      // @ghost1face0 = 12 chars → hex "c"; "ghost1" is not a known feature.
+      const q = '?c;@ghost1face0:flatface'
+      expect(queryLabel(q, features)).toBe('Face of ghost1')
+    })
   })
 
   describe('absolute queries', () => {
@@ -73,6 +103,12 @@ describe('queryLabel', () => {
     it('returns part label from partLabels map keyed by bare body ID', () => {
       const partLabels = { body_ex1: 'Part 3' }
       expect(queryLabel('@body_ex1', features, partLabels)).toBe('Part 3')
+    })
+
+    it('falls back to the full-query key when the bare body ID is absent', () => {
+      // Only the full query string is present in the map, not the parsed featureId.
+      const partLabels = { '@body_ex1': 'Part Q' }
+      expect(queryLabel('@body_ex1', features, partLabels)).toBe('Part Q')
     })
   })
 
