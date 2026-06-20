@@ -95,10 +95,11 @@ runb:
 # then stamps dist/runtime-config.js with backend=static (no auth wall,
 # IndexedDB persistence, local-WASM STEP/STL export). The flag is read at boot,
 # so the JS bundle is byte-identical to the http build -- only that one config
-# file differs.
+# file differs. Like `frontend-build`, this assumes public/occ + public/wasm are
+# already provisioned by `just install` (occ:provision needs the --no-save
+# opencascade.js dep, so it belongs to install, not every build).
 [working-directory: "frontend"]
 buildstatic:
-    npm run occ:provision
     npm run build:static
 
 static:
