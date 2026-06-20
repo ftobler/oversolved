@@ -20,13 +20,34 @@ interface RecTrsf {
 
 function makeFake(): OccModule {
   class Vec {
-    constructor(public x: number, public y: number, public z: number) {}
+    x: number
+    y: number
+    z: number
+    constructor(x: number, y: number, z: number) {
+      this.x = x
+      this.y = y
+      this.z = z
+    }
   }
   class Pnt {
-    constructor(public x: number, public y: number, public z: number) {}
+    x: number
+    y: number
+    z: number
+    constructor(x: number, y: number, z: number) {
+      this.x = x
+      this.y = y
+      this.z = z
+    }
   }
   class Dir {
-    constructor(public x: number, public y: number, public z: number) {}
+    x: number
+    y: number
+    z: number
+    constructor(x: number, y: number, z: number) {
+      this.x = x
+      this.y = y
+      this.z = z
+    }
   }
   class Ax1 {
     origin: number[]
