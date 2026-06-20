@@ -68,4 +68,20 @@ describe('solveVariable', () => {
     expect(r.status).toBe('exception')
     expect(String(r.exception)).toContain('Duplicate')
   })
+
+  it('falls back to feature.id as the name when label is absent', () => {
+    // No label -> the id is used as the variable name (label ?? id).
+    expect(solveVariable({ id: 'depth', kind: 'variable', variable: { expression: '5' } })).toEqual({
+      status: 'ok',
+      value: 5,
+      expression: '5',
+    })
+  })
+
+  it('treats a feature with neither label nor id as an invalid (empty) name', () => {
+    // label ?? id ?? '' -> '' -> fails the identifier check.
+    const r = solveVariable({ kind: 'variable', variable: { expression: '5' } })
+    expect(r.status).toBe('exception')
+    expect(String(r.exception)).toContain('Invalid variable name')
+  })
 })
