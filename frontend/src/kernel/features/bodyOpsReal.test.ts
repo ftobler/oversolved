@@ -136,8 +136,10 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
 
   describe('edge cases (ported from test_apply_body_operation.py)', () => {
     it('cut fails when there is no intersection', () => {
-      /** Two disjoint boxes: cutting one from the other should fail because
-       *  there is no intersection. Port of test_cut_operation_fails_when_no_intersection. */
+      /**
+       * Two disjoint boxes: cutting one from the other should fail because there is no
+       * intersection.
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       const bodyStore: Record<string, Body> = {}
@@ -165,10 +167,11 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
     })
 
     it('add with disjoint body creates a separate body (not a compound)', () => {
-      /** Two disjoint boxes: adding a new tool when a target exists should
-       *  create a SEPARATE body (not a compound). The tool doesn't touch the
-       *  target, so it becomes an independent part. Port of
-       *  test_add_with_disjoint_body_creates_separate_part. */
+      /**
+       * Two disjoint boxes: adding a new tool when a target exists should create a SEPARATE
+       * body (not a compound). The tool doesn't touch the target, so it becomes an independent
+       * part.
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       const bodyStore: Record<string, Body> = {}
@@ -201,9 +204,10 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
     })
 
     it('cut that bisects a body into two disconnected solids creates split bodies', () => {
-      /** A cut shape that completely bisects the target into two disconnected
-       *  solids should produce two body entries in the store (not a compound).
-       *  Port of test_cut_splits_body_into_two. */
+      /**
+       * A cut shape that completely bisects the target into two disconnected solids should
+       * produce two body entries in the store (not a compound).
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       const bodyStore: Record<string, Body> = {}

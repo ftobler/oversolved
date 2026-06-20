@@ -1,19 +1,18 @@
 /**
- * Port of `solver_registry._post_register`: after a feature solves, register its
- * solved state into the repo so downstream features can resolve it.
+ * After a feature solves, register its solved state into the repo so downstream features can
+ * resolve it.
  *
- * Two halves run here:
- * 1. Profile extraction (the MVP slice, commit `5598813`): plane (`_pt_<id>`) and
- *    topology (`_topo_<id>`) so extrude/revolve/hole can build the profile.
- * 2. Query resolution (this shard): solved-entity slash registration
- *    (`@feature/entity/...`) plus topology surface/edge/vertex ancestry, so
- *    picks/dimensions resolve into solved sketch geometry. The hole leaf reads
- *    a point's `<sketch>/<eid>/xy` element straight out of (1)'s slash registry.
+ * Two halves run here: 1. Profile extraction (the MVP slice, commit `5598813`): plane
+ * (`_pt_<id>`) and topology (`_topo_<id>`) so extrude/revolve/hole can build the profile. 2.
+ * Query resolution (this shard): solved-entity slash registration (`@feature/entity/...`) plus
+ * topology surface/edge/vertex ancestry, so picks/dimensions resolve into solved sketch
+ * geometry. The hole leaf reads a point's `<sketch>/<eid>/xy` element straight out of (1)'s
+ * slash registry.
  *
- * Deferred follow-on: area re-id (`match_area_reid` + `_apply_area_reid`), which
- * keeps area picks edit-stable across topology-changing edits (line -> arc). The
- * full-doc parity harness always rebuilds from scratch, so prev surfaces are
- * empty and re-id never fires there; it only matters in the live incremental path.
+ * Deferred follow-on: area re-id (`match_area_reid` + `_apply_area_reid`), which keeps area
+ * picks edit-stable across topology-changing edits (line -> arc). The full-doc parity harness
+ * always rebuilds from scratch, so prev surfaces are empty and re-id never fires there; it only
+ * matters in the live incremental path.
  */
 
 import type { Repository } from '../query'
@@ -212,9 +211,8 @@ export function clearFeatureGeometryRegistrations(globalRepo: Repository, featur
 }
 
 /**
- * Register solved geometry under slash query paths (`@feature/entity/sub`).
- * Port of `_register_solved_geometry_slash`. Accepts flat-param arrays (the
- * solver's output) or rich dicts. The hole leaf reads point `/xy` from here.
+ * Register solved geometry under slash query paths (`@feature/entity/sub`). Accepts flat-param
+ * arrays (the solver's output) or rich dicts. The hole leaf reads point `/xy` from here.
  */
 function registerSolvedGeometrySlash(
   globalRepo: Repository,

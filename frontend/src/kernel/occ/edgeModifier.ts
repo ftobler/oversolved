@@ -1,15 +1,13 @@
-// Port of the edge-modifier slice of geometry_features.py + ocp_ops.py:
-// `_apply_edge_modifier`, `_extract_edge_modifier_lineage`, `ocp_edge_modifier_diff`,
-// and the public `apply_fillet_with_lineage` / `apply_chamfer_with_lineage`. This
-// is the OCC adapter the fillet/chamfer leaf (features/filletChamfer.ts) calls to
-// round/bevel a set of edges on a solid, transfer the pre-op lineage through the
-// operation, and produce the BrepDiff.
+// `_apply_edge_modifier`, `_extract_edge_modifier_lineage`, `ocp_edge_modifier_diff`, and the
+// public `apply_fillet_with_lineage` / `apply_chamfer_with_lineage`. This is the OCC adapter
+// the fillet/chamfer leaf (features/filletChamfer.ts) calls to round/bevel a set of edges on a
+// solid, transfer the pre-op lineage through the operation, and produce the BrepDiff.
 //
-// Lineage is keyed by copy-stable geometry hash (gface_/gedge_), per
-// lineage-stable-keying.md. The modifier history (IsDeleted/Modified/Generated)
-// drives both the lineage transfer and the diff classification; the fillet faces
-// generated from modified edges land in new_faces (no input-face preimage), so
-// the builder's @created_by rewrite attributes them to the modifying feature.
+// Lineage is keyed by copy-stable geometry hash (gface_/gedge_), per lineage-stable-keying.md.
+// The modifier history (IsDeleted/Modified/Generated) drives both the lineage transfer and the
+// diff classification; the fillet faces generated from modified edges land in new_faces (no
+// input-face preimage), so the builder's @created_by rewrite attributes them to the modifying
+// feature.
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccListOfShape, OccEdgeModifierMaker } from './occTypes'

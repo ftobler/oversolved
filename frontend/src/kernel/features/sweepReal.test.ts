@@ -185,8 +185,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   }
 
   it('basic sweep produces a valid body with mesh', () => {
-    /** A rectangle profile swept along a straight path produces a valid body.
-     *  Port of test_sweep_status_ok. */
+    /** A rectangle profile swept along a straight path produces a valid body. */
     const result = run({
       features: [
         rectSketch('prof', 2, 3, '@builtin_plane_front'),
@@ -202,9 +201,10 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   })
 
   it('straight sweep bbox is correct box dimensions', () => {
-    /** A 2x3 profile on the front plane swept 5 units along the Top-plane path
-     *  (running along world -z) produces a box spanning x[0,2] y[0,3] z[-5,0].
-     *  Port of test_sweep_straight_bbox_is_box. */
+    /**
+     * A 2x3 profile on the front plane swept 5 units along the Top-plane path (running along
+     * world -z) produces a box spanning x[0,2] y[0,3] z[-5,0].
+     */
     const result = run({
       features: [
         rectSketch('prof', 2, 3, '@builtin_plane_front'),
@@ -229,8 +229,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   })
 
   it('polyline path sweeps without error', () => {
-    /** An L-shaped two-segment path sweeps without error. Port of
-     *  test_sweep_polyline_path. */
+    /** An L-shaped two-segment path sweeps without error. */
     const result = run({
       features: [
         rectSketch('prof', 1, 1, '@builtin_plane_front'),
@@ -245,9 +244,10 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   })
 
   it('arc path sweeps without error', () => {
-    /** A quarter-circle arc path (<=180 deg) sweeps without error. Profile on
-     *  Right plane so its normal lines up with the arc's starting tangent.
-     *  Port of test_sweep_arc_path. */
+    /**
+     * A quarter-circle arc path (<=180 deg) sweeps without error. Profile on Right plane so its
+     * normal lines up with the arc's starting tangent.
+     */
     const result = run({
       features: [
         rectSketch('prof', 1, 1, '@builtin_plane_right'),
@@ -310,8 +310,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   })
 
   it('cut sweep removes volume from existing body', () => {
-    /** A cut sweep subtracts material from an existing body. Port of
-     *  test_sweep_cut_removes_volume. */
+    /** A cut sweep subtracts material from an existing body. */
     const result = run({
       features: [
         rectSketch('base', 6, 6, '@builtin_plane_front'),

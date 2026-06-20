@@ -1,11 +1,10 @@
-// Port of `_solve_sweep` (solver_features_brep.py): the sweep leaf. It resolves
-// the profile to 2D loops (face profiles are not supported for sweep), resolves
-// the path reference to an ordered chain of world-space spine edges, sweeps the
-// profile's outer boundary along the spine with per-entity lineage, and applies
-// the body operation. Includes the path-collection helpers (_path_ref_to_sketch_id,
-// _order_edges_into_chain, _collect_path_edges). Spine arcs are built from their
-// exact in-plane angle data (spineArcEdge), chain-forward, with the joints snapped
-// so the wire assembles regardless of solver-level endpoint precision.
+// The sweep leaf. It resolves the profile to 2D loops (face profiles are not supported for
+// sweep), resolves the path reference to an ordered chain of world-space spine edges, sweeps
+// the profile's outer boundary along the spine with per-entity lineage, and applies the body
+// operation. Includes the path-collection helpers (_path_ref_to_sketch_id,
+// _order_edges_into_chain, _collect_path_edges). Spine arcs are built from their exact in-plane
+// angle data (spineArcEdge), chain-forward, with the joints snapped so the wire assembles
+// regardless of solver-level endpoint precision.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

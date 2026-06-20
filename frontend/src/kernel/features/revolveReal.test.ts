@@ -110,7 +110,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   }
 
   it('basic revolve produces a body with mesh', () => {
-    /** A rectangle [1,0]-[3,1] revolved 360° around Y-axis. Port of test_revolve_status_ok. */
+    /** A rectangle [1,0]-[3,1] revolved 360° around Y-axis. */
     const result = run({
       version: 1, kind: 'part',
       features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 })],
@@ -121,7 +121,6 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve result includes body_id field', () => {
-    /** Port of test_revolve_has_body_id. */
     const result = run({
       version: 1, kind: 'part',
       features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 })],
@@ -130,7 +129,6 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('nested UI format ({revolve: {sketch, angle}}) works', () => {
-    /** Port of test_revolve_nested_ui_format. */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -144,7 +142,6 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve cut removes volume from base body', () => {
-    /** Port of test_revolve_cut_removes_volume. */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -158,7 +155,6 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve operation=new creates a separate body', () => {
-    /** Port of test_revolve_new_creates_new_body. */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -171,10 +167,10 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('merge_target fuses revolve into an existing body', () => {
-    /** When a revolve specifies merge_target pointing to a body created by an
-     *  earlier feature, the new revolve fuses into that target instead of
-     *  creating a separate body. Port of revolve merge_target scenarios from
-     *  test_revolve_merge_target.py. */
+    /**
+     * When a revolve specifies merge_target pointing to a body created by an earlier feature,
+     * the new revolve fuses into that target instead of creating a separate body.
+     */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -203,8 +199,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('reverse direction negates the revolve angle', () => {
-    /** direction=reverse negates the angle, producing a mirror shape.
-     *  Port of test_revolve_reverse_direction. */
+    /** direction=reverse negates the angle, producing a mirror shape. */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -217,8 +212,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('symmetric direction revolves half angle each way', () => {
-    /** direction=symmetric revolves half the angle each way and fuses
-     *  the two halves. Port of test_revolve_symmetric_direction. */
+    /** direction=symmetric revolves half the angle each way and fuses the two halves. */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -231,8 +225,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve cylinder spans expected bbox dimensions', () => {
-    /** Rectangle [1,0]-[3,1] revolved 360° around Y axis spans x/z
-     *  roughly [-3,3] and y [0,1]. Port of test_revolve_bbox_cylinder. */
+    /** Rectangle [1,0]-[3,1] revolved 360° around Y axis spans x/z roughly [-3,3] and y [0,1]. */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -258,8 +251,10 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve with two profile sketches produces one body', () => {
-    /** Two independent rectangle sketches revolved together around the same
-     *  axis produce a single body. Port of test_revolve_sketch_list_two_profiles. */
+    /**
+     * Two independent rectangle sketches revolved together around the same axis produce a
+     * single body.
+     */
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -277,9 +272,10 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve from sketch surface query (circle profile)', () => {
-    /** A circle sketch revolved around Y-axis, referenced via an ancestry
-     *  surface query (?@sk1/c1surface:0@sk1:flatface) instead of a plain
-     *  sketch ref ($sk1). Port of test_revolve_from_sketch_surface_query. */
+    /**
+     * A circle sketch revolved around Y-axis, referenced via an ancestry surface query
+     * (?@sk1/c1surface:0@sk1:flatface) instead of a plain sketch ref ($sk1).
+     */
     const surfaceQuery = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
     const result = run({
       version: 1, kind: 'part',

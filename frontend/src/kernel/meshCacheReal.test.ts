@@ -58,9 +58,10 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('incremental build after last-feature edit produces valid output', () => {
-    /** Editing only the last feature triggers an incremental rebuild. All
-     *  features must still produce ok status and valid meshes. Port of
-     *  test_incremental_build_passes_three_layer_validation. */
+    /**
+     * Editing only the last feature triggers an incremental rebuild. All features must still
+     * produce ok status and valid meshes.
+     */
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -81,8 +82,7 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('fillet edit incremental rebuild produces valid output', () => {
-    /** Incremental rebuild after fillet radius edit must work. Port of
-     *  test_fillet_edit_passes_three_layer_validation. */
+    /** Incremental rebuild after fillet radius edit must work. */
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -104,8 +104,7 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('pick_bodies served from checkpoint', () => {
-    /** pick_bodies must be present and populated from checkpoint snapshots.
-     *  Port of test_pick_bodies_served_from_checkpoint. */
+    /** pick_bodies must be present and populated from checkpoint snapshots. */
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -124,9 +123,10 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('upstream edit incremental rebuild produces valid output', () => {
-    /** Editing feature 0 (first_dirty==0) triggers a full rebuild via
-     *  the incremental path. All features must still be ok. Port of
-     *  test_upstream_edit_full_retessellation. */
+    /**
+     * Editing feature 0 (first_dirty==0) triggers a full rebuild via the incremental path. All
+     * features must still be ok.
+     */
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),

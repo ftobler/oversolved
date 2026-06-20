@@ -48,9 +48,10 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
   })
 
   it('edit exit rebuild — downstream features re-solved after param edit', () => {
-    /** sk1 → ex1 → fillet: mutate ex1 distance, rebuild full, downstream fillet
-     *  must be re-solved and still produce valid output.
-     *  Port of test_rollback_edit_exit_rebuilds_downstream. */
+    /**
+     * sk1 → ex1 → fillet: mutate ex1 distance, rebuild full, downstream fillet must be
+     * re-solved and still produce valid output.
+     */
     // Use index-based edge queries so the fillet resolves correctly even after
     // the extrude distance changes (hash-based queries become stale).
     const spec = { features: [

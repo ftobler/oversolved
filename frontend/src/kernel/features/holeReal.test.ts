@@ -101,8 +101,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
 
   describe('hole inline cases (ported from test_hole_feature.py)', () => {
     it('reverse direction drills from opposite side', () => {
-      /** Hole with direction='reverse' drills from opposite side of the target.
-       *  Port of test_hole_reverse_direction. */
+      /** Hole with direction='reverse' drills from opposite side of the target. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -131,8 +130,10 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     })
 
     it('no target defaults to first body in store', () => {
-      /** When the hole spec omits a target, the hole defaults to the first body
-       *  in the body store. Port of test_hole_no_target_defaults_to_first_body. */
+      /**
+       * When the hole spec omits a target, the hole defaults to the first body in the body
+       * store.
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -162,9 +163,10 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     })
 
     it('partial rebuild reuses body after hole edit', () => {
-      /** After editing a hole parameter (e.g. depth) and rebuilding, the body
-       *  from the clean prefix should be reused with the hole re-drilled.
-       *  Port of test_partial_rebuild_after_hole. */
+      /**
+       * After editing a hole parameter (e.g. depth) and rebuilding, the body from the clean
+       * prefix should be reused with the hole re-drilled.
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {

@@ -1,10 +1,9 @@
-// Port of solver_plane.py's `_solve_plane`: the datum-plane leaf. Seven modes
-// build a 3D frame (offset, three_point, plane_point, line_angle, on_face,
-// on_face_edge_angle, edge_point), an optional in-plane rotation is applied,
-// and the resulting frame is registered under the feature id so downstream
-// sketches resolve their plane through it (mirrors the bare-id register Python
-// did in `_solve_plane`). The result carries `plane`; the frontend derives the
-// plane_transform from it (useSolver.applySolveResult).
+// The datum-plane leaf. Seven modes build a 3D frame (offset, three_point, plane_point,
+// line_angle, on_face, on_face_edge_angle, edge_point), an optional in-plane rotation is
+// applied, and the resulting frame is registered under the feature id so downstream sketches
+// resolve their plane through it (mirrors the bare-id register Python did in `_solve_plane`).
+// The result carries `plane`; the frontend derives the plane_transform from it
+// (useSolver.applySolveResult).
 
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'

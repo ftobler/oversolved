@@ -1,21 +1,16 @@
-// Port of `_apply_body_operation` (solver_features_shared.py): the central
-// add/cut/new body-store dispatch every leaf brep producer (extrude, revolve,
-// hole, ...) calls after building its tool shape. Mirrors the Python branch
-// structure exactly.
+// The central add/cut/new body-store dispatch every leaf brep producer (extrude, revolve,
+// hole,...) calls after building its tool shape. Mirrors the Python branch structure exactly.
 //
-// Ownership contract (the TS-specific part Python gets from GC):
-//   - `toolShape` is a raw OccShape the CALLER owns (built in the caller's
-//     scope). This function never registers the tool itself; for "new"/separate
-//     bodies it registers the extracted SOLIDS (detached from `scope`) and the
-//     caller disposes the tool afterwards.
-//   - Shapes that become a body's `.shape` are registered in the HandleTable
-//     (refcount 1, owner = the body's creating feature) and detached from
-//     `scope` so the scope's dispose() does not double-free them. When an
-//     existing body's shape is replaced (cut/add), its old handle is released.
-//   - `body.brep_diff`'s sub-shape handles are tracked in `scope`; they are read
-//     by the lineage transfer here, then remain valid only while `scope` is
-//     open. The builder keeps `scope` open across post-boolean ancestry
-//     registration (the same lifetime the diff already had in 2d's design).
+// Ownership contract (the TS-specific part Python gets from GC): - `toolShape` is a raw
+// OccShape the CALLER owns (built in the caller's scope). This function never registers the
+// tool itself; for "new"/separate bodies it registers the extracted SOLIDS (detached from
+// `scope`) and the caller disposes the tool afterwards. - Shapes that become a body's `.shape`
+// are registered in the HandleTable (refcount 1, owner = the body's creating feature) and
+// detached from `scope` so the scope's dispose() does not double-free them. When an existing
+// body's shape is replaced (cut/add), its old handle is released. - `body.brep_diff`'s
+// sub-shape handles are tracked in `scope`; they are read by the lineage transfer here, then
+// remain valid only while `scope` is open. The builder keeps `scope` open across post-boolean
+// ancestry registration (the same lifetime the diff already had in 2d's design).
 
 import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

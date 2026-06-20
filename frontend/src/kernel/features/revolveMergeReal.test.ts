@@ -77,7 +77,6 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('add with merge_target fuses to specific body', () => {
-    /** Port of test_revolve_add_with_merge_target_fuses_to_specific_body. */
     const doc = twoBodies()
     doc.features.push(rectSketchAt('sk2', 2, 1, 2))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))
@@ -89,8 +88,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('add fail with island shape when merge_target set', () => {
-    /** Non-overlapping revolve with merge_target fails with island error.
-     *  Port of test_revolve_add_fails_with_island_shape_when_merge_target_set. */
+    /** Non-overlapping revolve with merge_target fails with island error. */
     const doc = bodyA()
     doc.features.push(rectSketchAt('sk2', 2, 1, 20))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))
@@ -100,7 +98,6 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('add with nonexistent merge_target fails', () => {
-    /** Port of test_revolve_add_with_merge_target_nonexistent_body_fails. */
     const doc = bodyA()
     doc.features.push(rectSketchAt('sk2', 2, 1, 2))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_nonexistent' }))
@@ -109,7 +106,6 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('cut with merge_target cuts specific body', () => {
-    /** Port of test_revolve_cut_with_merge_target_cuts_specific_body. */
     const doc = twoBodies()
     doc.features.push(rectSketchAt('sk2', 2, 0.5, 1))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'cut', mergeTarget: '@body_rev0' }))
@@ -120,7 +116,6 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('cut with no intersection fails', () => {
-    /** Port of test_revolve_cut_fails_when_no_intersection. */
     const doc = twoBodies()
     doc.features.push(rectSketchAt('sk2', 2, 1, 50))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'cut' }))
@@ -129,7 +124,6 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('cut with nonexistent merge_target fails', () => {
-    /** Port of test_revolve_cut_merge_target_nonexistent_body_fails. */
     const doc = twoBodies()
     doc.features.push(rectSketchAt('sk2', 2, 0.5, 1))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'cut', mergeTarget: '@body_nonexistent' }))
@@ -138,14 +132,12 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('new creates independent body', () => {
-    /** Port of test_revolve_new_creates_independent_body. */
     const r = h.run(bodyA())
     expect(h.res(r, 'rev0').status).toBe('ok')
     expect(h.res(r, 'rev0').operation).toBe('new')
   })
 
   it('merge_target preserved in feature spec', () => {
-    /** Port of test_revolve_merge_target_preserved_across_rebuild. */
     const doc = bodyA()
     doc.features.push(rectSketchAt('sk2', 1, 1, 2))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))

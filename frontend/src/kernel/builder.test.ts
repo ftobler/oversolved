@@ -219,9 +219,8 @@ describe('build with mock solvers', () => {
   })
 
   it('pick_bodies carry real tessellated meshes from the checkpoint', () => {
-    // Port of Python _shape_tess_cache / _checkpoint_bodies_out behaviour: a
-    // body that exists at the pick checkpoint must come back with real
-    // mesh/edge geometry (collision for picking), not an empty placeholder.
+// A body that exists at the pick checkpoint must come back with real mesh/edge geometry
+// (collision for picking), not an empty placeholder.
     let created = false
     const deps = makeDeps({
       trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
@@ -418,10 +417,11 @@ describe('validateIncremental', () => {
   })
 
   it('catches corrupted body_store created_by at L3', () => {
-    /** Corrupting a body's created_by in the incremental state triggers a level-3
-     *  failure. This is the control test: verifies the comparator catches
-     *  body_store drift. Without this, a bug in _diffRepoSnapshot could silently
-     *  swallow corruption. Port of test_rebuild_equivalence_corrupt_created_by_fails. */
+    /**
+     * Corrupting a body's created_by in the incremental state triggers a level-3 failure. This
+     * is the control test: verifies the comparator catches body_store drift. Without this, a
+     * bug in _diffRepoSnapshot could silently swallow corruption.
+     */
     const deps = makeDeps({
       trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
         bodyStore['body_ex1'] = {
@@ -461,13 +461,13 @@ describe('validateIncremental', () => {
   })
 })
 
-// ─── Ported from the removed tests/kernel/test_builder_partial_rebuild.py ───
 
 describe('checkpoint isolation', () => {
   it('result mutation does not corrupt cached checkpoint', () => {
-    /** Mutating the returned result dict must not affect the checkpoint
-     *  used by the next partial rebuild. Port of
-     *  test_result_mutation_does_not_corrupt_checkpoint. */
+    /**
+     * Mutating the returned result dict must not affect the checkpoint used by the next partial
+     * rebuild.
+     */
     const deps = makeDeps({
       trySolveFeature: (feature): FeatureResult => ({ status: 'ok', solved: feature.id }),
     })
@@ -490,9 +490,10 @@ describe('checkpoint isolation', () => {
   })
 
   it('checkpoint result is a deep copy, not the same object as the returned result', () => {
-    /** The checkpoint stores an independent copy so the caller cannot
-     *  corrupt the cache by mutating the returned dict. Port of
-     *  test_checkpoint_result_is_independent_copy. */
+    /**
+     * The checkpoint stores an independent copy so the caller cannot corrupt the cache by
+     * mutating the returned dict.
+     */
     const deps = makeDeps()
     const r = build(
       { features: [{ id: 'sk1', kind: 'sketch' }] },
@@ -508,9 +509,10 @@ describe('checkpoint isolation', () => {
 
 describe('feature insert / delete', () => {
   it('removes deleted feature from result and checkpoints', () => {
-    /** [sk1, sk2, sk3] -> [sk1, sk2]: sk3 absent from result and
-     *  checkpoints, feature_order updated. Port of
-     *  test_builder_dirty_on_feature_remove. */
+    /**
+     * [sk1, sk2, sk3] -> [sk1, sk2]: sk3 absent from result and checkpoints, feature_order
+     * updated.
+     */
     const deps = makeDeps({
       trySolveFeature: (feature): FeatureResult => ({ status: 'ok', solved: feature.id }),
     })
@@ -537,10 +539,11 @@ describe('feature insert / delete', () => {
   })
 
   it('inserts a feature mid-stack and re-solves downstream', () => {
-    /** [sk1, sk3] -> [sk1, sk2, sk3]: sk2 checkpoint created, sk3
-     *  re-solved. sk3 result unchanged because its spec didn't change,
-     *  but it goes through the solve loop because its index shifted.
-     *  Port of test_builder_dirty_on_feature_insert. */
+    /**
+     * [sk1, sk3] -> [sk1, sk2, sk3]: sk2 checkpoint created, sk3 re-solved. sk3 result
+     * unchanged because its spec didn't change, but it goes through the solve loop because its
+     * index shifted.
+     */
     const deps = makeDeps({
       trySolveFeature: (feature): FeatureResult => ({ status: 'ok', solved: feature.id }),
     })
@@ -579,9 +582,7 @@ const makeTrackerDeps = () => makeDeps({
 
 describe('rollback transitions', () => {
   it('feature_order always contains the full feature list', () => {
-    /** BuildState.feature_order includes all features regardless of
-     *  rollback_position. Port of
-     *  test_rollback_state_feature_order_always_contains_full_list. */
+    /** BuildState.feature_order includes all features regardless of rollback_position. */
     const features = [
       { id: 'sk1', kind: 'sketch' },
       { id: 'sk2', kind: 'sketch' },
@@ -594,8 +595,7 @@ describe('rollback transitions', () => {
   })
 
   it('only solves features up to rollback_position', () => {
-    /** rollback_position=2 on a 4-feature stack only solves the first
-     *  two. Port of test_rollback_mid_stack_only_solves_active_features. */
+    /** rollback_position=2 on a 4-feature stack only solves the first two. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -613,9 +613,7 @@ describe('rollback transitions', () => {
   })
 
   it('decreasing rollback reuses checkpoints for active features', () => {
-    /** Decreasing rollback from 3 to 2 reuses checkpoints for features
-     *  before the cut. Port of
-     *  test_rollback_decrease_uses_prev_state_checkpoints. */
+    /** Decreasing rollback from 3 to 2 reuses checkpoints for features before the cut. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -635,8 +633,7 @@ describe('rollback transitions', () => {
   })
 
   it('increasing rollback solves newly included features', () => {
-    /** Increasing rollback from 2 to 3 solves the newly included
-     *  feature. Port of test_rollback_increase_solves_newly_active_features. */
+    /** Increasing rollback from 2 to 3 solves the newly included feature. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -652,9 +649,10 @@ describe('rollback transitions', () => {
   })
 
   it('editing a feature beyond rollback does not dirty active features', () => {
-    /** Editing a feature past the rollback position does not invalidate
-     *  checkpoints for features before it. Port of
-     *  test_edit_suppressed_feature_does_not_invalidate_active_checkpoints. */
+    /**
+     * Editing a feature past the rollback position does not invalidate checkpoints for features
+     * before it.
+     */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -678,9 +676,7 @@ describe('rollback transitions', () => {
   })
 
   it('full build after partial rollback reuses all checkpoints', () => {
-    /** After a rollback=2 build, solving the full stack reuses
-     *  checkpoints for sk1 and ex1. Port of
-     *  test_rollback_full_after_partial_reuses_all_checkpoints. */
+    /** After a rollback=2 build, solving the full stack reuses checkpoints for sk1 and ex1. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -702,8 +698,7 @@ describe('rollback transitions', () => {
   })
 
   it('same rollback position twice produces identical results', () => {
-    /** Solving at the same rollback position twice is stable.
-     *  Port of test_rollback_same_position_twice_is_stable. */
+    /** Solving at the same rollback position twice is stable. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -718,9 +713,7 @@ describe('rollback transitions', () => {
   })
 
   it('undo/redo oscillation reuses checkpoints correctly each way', () => {
-    /** Simulate undo/redo: rollback 3->2->3 reuses checkpoints
-     *  correctly each way. Port of
-     *  test_rollback_oscillation_undo_redo. */
+    /** Simulate undo/redo: rollback 3->2->3 reuses checkpoints correctly each way. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -743,11 +736,8 @@ describe('rollback transitions', () => {
   })
 })
 
-// ─── Ported from the removed tests/kernel/test_builder.py (not already covered) ───
-
 describe('pickBoundary edge cases', () => {
   it('pickBoundary=0 should not return pick_bodies', () => {
-    /** Port of test_pick_boundary_zero_returns_no_pick_bodies. */
     const deps = makeDeps()
     const r = build(
       { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'ex1', kind: 'extrude' }] },
@@ -758,7 +748,6 @@ describe('pickBoundary edge cases', () => {
   })
 
   it('pickBoundary out of range should not return pick_bodies', () => {
-    /** Port of test_pick_boundary_out_of_range_returns_no_pick_bodies. */
     const deps = makeDeps()
     const r = build(
       { features: [{ id: 'sk1', kind: 'sketch' }] },
@@ -771,8 +760,7 @@ describe('pickBoundary edge cases', () => {
 
 describe('repo serialization', () => {
   it('repoFromSnapshot deduplicates elements with identical payloads', () => {
-    /** Two elements with identical payloads under the same ancestral key
-     *  get collapsed. Port of test_dedupe_repo_collapses_duplicate_payloads. */
+    /** Two elements with identical payloads under the same ancestral key get collapsed. */
     const payload = { type: 'flatface', body_id: 'b1' }
     const key = canonical(['@ex1face0', '@ex1'])
     const snapshot = {
@@ -789,20 +777,18 @@ describe('repo serialization', () => {
 
 describe('robustness', () => {
   it('features without id do not crash the build', () => {
-    /** Features missing the 'id' key must not crash with KeyError.
-     *  Port of test_features_by_id_missing_key. */
+    /** Features missing the 'id' key must not crash with KeyError. */
     const r = build({ features: [{}] }, {}, makeDeps())
     expect(r.result).toBeDefined()
   })
 })
 
-// ─── Ported from the removed tests/kernel/test_builder_partial_rebuild.py (remaining) ───
-
 describe('clean prefix reuse', () => {
   it('_build_state is a separate key that can be removed', () => {
-    /** _build_state exists on the raw build() result and can be
-     *  popped without affecting the rest of the response.
-     *  Port of test_build_state_is_separate_key. */
+    /**
+     * _build_state exists on the raw build() result and can be popped without affecting the
+     * rest of the response.
+     */
     const r = build({ features: [{ id: 'sk1', kind: 'sketch' }] }, {}, makeDeps())
     expect('_build_state' in r).toBe(true)
     const copy = { ...r }
@@ -811,8 +797,7 @@ describe('clean prefix reuse', () => {
   })
 
   it('unchanged feature list reuses all checkpoints', () => {
-    /** [sk1, sk2] -> [sk1, sk2] unchanged: all checkpoints are
-     *  reused from cache. Port of test_builder_clean_unchanged_list. */
+    /** [sk1, sk2] -> [sk1, sk2] unchanged: all checkpoints are reused from cache. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -829,9 +814,10 @@ describe('clean prefix reuse', () => {
 
 describe('edge cases', () => {
   it('rollback_position=0 followed by full build succeeds', () => {
-    /** Build with rollback_position=0 returns empty state;
-     *  subsequent build with features does a full rebuild.
-     *  Port of test_rollback_zero_cascade_full_rebuild. */
+    /**
+     * Build with rollback_position=0 returns empty state; subsequent build with features does a
+     * full rebuild.
+     */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -847,8 +833,7 @@ describe('edge cases', () => {
   })
 
   it('corrupted checkpoint missing body_id does not crash rebuild', () => {
-    /** Missing body_id in body_store_snapshot should not crash.
-     *  Port of test_corrupted_checkpoint_missing_body_id. */
+    /** Missing body_id in body_store_snapshot should not crash. */
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -870,9 +855,10 @@ describe('edge cases', () => {
   })
 
   it('GC removes ancestry entries for removed features', () => {
-    /** After rebuilding with fewer features, the final repo snapshot
-     *  has no entries for removed features.
-     *  Port of test_builder_gc_after_feature_remove. */
+    /**
+     * After rebuilding with fewer features, the final repo snapshot has no entries for removed
+     * features.
+     */
     const deps = makeDeps({
       trySolveFeature: (feature, repo): FeatureResult => {
         repo.registerAncestor([ref(feature.id as string)], { type: 'sketch', feature_id: feature.id })

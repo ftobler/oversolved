@@ -1,12 +1,11 @@
-// Port of `_solve_boolean` (solver_features_boolean.py): the explicit boolean
-// leaf (union / subtract / intersect of whole bodies, vs the implicit cut/add an
-// extrude does). It resolves a target body and a list of tool bodies, folds each
-// tool into the target via booleanWithDiff, removes consumed tools, and (for
-// subtract) splits any disconnected result solids into extra bodies.
+// The explicit boolean leaf (union / subtract / intersect of whole bodies, vs the implicit
+// cut/add an extrude does). It resolves a target body and a list of tool bodies, folds each
+// tool into the target via booleanWithDiff, removes consumed tools, and (for subtract) splits
+// any disconnected result solids into extra bodies.
 //
-// Unlike bodyOps' cut/add this does NOT transfer per-entity lineage: the target
-// keeps its (now partly stale) lineage dicts, matching Python's single-op-history
-// behaviour. Only the LAST tool's brep_diff is retained.
+// Unlike bodyOps' cut/add this does NOT transfer per-entity lineage: the target keeps its (now
+// partly stale) lineage dicts, matching Python's single-op-history behaviour. Only the LAST
+// tool's brep_diff is retained.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

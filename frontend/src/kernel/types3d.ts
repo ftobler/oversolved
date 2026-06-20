@@ -1,5 +1,3 @@
-// Port of oversolved/kernel/types3d.py
-// Kernel-side 3D data structures used by the builder and B-rep system.
 
 import type { OccHandle } from './occ/handleTable'
 

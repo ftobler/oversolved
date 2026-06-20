@@ -114,8 +114,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
 
   describe('boolean inline cases (ported from test_boolean.py)', () => {
     it('multiple tools are all consumed', () => {
-      /** Boolean with two tools should consume both.
-       *  Port of test_boolean_multiple_tools. */
+      /** Boolean with two tools should consume both. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {

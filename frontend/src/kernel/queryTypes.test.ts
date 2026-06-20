@@ -8,9 +8,10 @@ import {
   makeAncestryQuery,
 } from "./query"
 
-/** Unit tests for the typed query classes introduced in query.ts.
- * Tests are pure TypeScript -- no solver, no Repository.
- * Ported from the removed tests/kernel/test_query_types.py */
+/**
+ * Unit tests for the typed query classes introduced in query.ts. Tests are pure TypeScript --
+ * no solver, no Repository.
+ */
 
 describe("LocalQuery parse subpoints", () => {
   it("parses $line1end", () =>

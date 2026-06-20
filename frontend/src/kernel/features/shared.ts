@@ -1,19 +1,16 @@
-// Ported from the OCC-free logic in the removed Python kernel (oversolved/kernel/solver_features_shared.py).
-//
 // solver_features_shared.py is the central machinery the leaf feature solvers
 // (extrude/revolve/boolean/fillet/...) call into. It splits into two halves:
 //
-//   - Pure logic: profile-loop assembly, direction resolution, body/merge-target
-//     resolution, top-face registration, direction/axis queries. No OCC. Ported
-//     here, gated byte-for-byte against a frozen snapshot of the Python
-//     functions' output (see features/shared.test.ts).
-//   - OCC-backed lineage: _apply_body_operation + _transfer_boolean_lineage +
-//     _resolve_face_profile. These call boolean ops, solid exploration, and
-//     face-geometry reads; they land in a later 2e shard against the OCC adapter.
+// - Pure logic: profile-loop assembly, direction resolution, body/merge-target resolution,
+// top-face registration, direction/axis queries. No OCC. Ported here, gated byte-for-byte
+// against a frozen snapshot of the Python functions' output (see features/shared.test.ts). -
+// OCC-backed lineage: _apply_body_operation + _transfer_boolean_lineage +
+// _resolve_face_profile. These call boolean ops, solid exploration, and face-geometry reads;
+// they land in a later 2e shard against the OCC adapter.
 //
-// Plane representation: Python distinguishes a Frame3D object from a plain plane
-// dict via isinstance, but the two branches compute identical geometry. In TS
-// both satisfy [[PlaneLike]], so the branch collapses to one path.
+// Plane representation: Python distinguishes a Frame3D object from a plain plane dict via
+// isinstance, but the two branches compute identical geometry. In TS both satisfy
+// [[PlaneLike]], so the branch collapses to one path.
 
 import type { Body, BrepDiff, Frame3D } from '../types3d'
 import type { Repository } from '../query'

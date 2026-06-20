@@ -1,20 +1,16 @@
-// Port of `_transfer_boolean_lineage` (solver_features_shared.py): rebuild a
-// body's per-face and per-edge lineage after a boolean op.
+// Rebuild a body's per-face and per-edge lineage after a boolean op.
 //
-// Pre-boolean, the target body and tool carry per-entity lineage tokens keyed by
-// face geometry hash. After the boolean the OCC handles change, so those keys go
-// stale. This re-derives them geometrically:
-//   - inherited output faces (target lineage survives) match against the
-//     pre-boolean target faces; copy the target body's tokens.
-//   - new output faces (introduced by the tool) match against the tool faces;
-//     copy the tool's tokens.
-//   - edge_lineage is rebuilt from face_lineage via edge->face adjacency.
+// Pre-boolean, the target body and tool carry per-entity lineage tokens keyed by face geometry
+// hash. After the boolean the OCC handles change, so those keys go stale. This re-derives them
+// geometrically: - inherited output faces (target lineage survives) match against the
+// pre-boolean target faces; copy the target body's tokens. - new output faces (introduced by
+// the tool) match against the tool faces; copy the tool's tokens. - edge_lineage is rebuilt
+// from face_lineage via edge->face adjacency.
 //
-// Lineage is keyed by face_geometry_hash (see lineage-stable-keying.md), so we
-// match on geometry, not the copy-fragile subshape hash. The edge->face
-// adjacency is built face-by-face: opencascade.js@1.1.1 lacks
-// TopTools_IndexedDataMapOfShapeListOfShape, so Python's MapShapesAndAncestors
-// path is unavailable.
+// Lineage is keyed by face_geometry_hash (see lineage-stable-keying.md), so we match on
+// geometry, not the copy-fragile subshape hash. The edge->face adjacency is built face-by-face:
+// opencascade.js@1.1.1 lacks TopTools_IndexedDataMapOfShapeListOfShape, so Python's
+// MapShapesAndAncestors path is unavailable.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

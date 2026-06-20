@@ -1,11 +1,10 @@
-// Port of solver_features_fillet_chamfer.py: the fillet/chamfer leaf pair. It
-// routes each edge query to the body that owns it (the @body_<id> token is only a
-// hint -- geometry wins), resolves the queries to OCC edges via a per-body edge
-// index, applies the modifier with lineage, and updates the body store in place.
+// The fillet/chamfer leaf pair. It routes each edge query to the body that owns it (the
+// @body_<id> token is only a hint -- geometry wins), resolves the queries to OCC edges via a
+// per-body edge index, applies the modifier with lineage, and updates the body store in place.
 //
-// The OCC modifier producer lives in occ/edgeModifier.ts. Edge resolution mirrors
-// the Python three-tier scheme: exact ancestry-query match -> geometry-hash match
-// (ignoring a stale @body token) -> face query (all edges of a face).
+// The OCC modifier producer lives in occ/edgeModifier.ts. Edge resolution mirrors the Python
+// three-tier scheme: exact ancestry-query match -> geometry-hash match (ignoring a stale @body
+// token) -> face query (all edges of a face).
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'

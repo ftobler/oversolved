@@ -1,8 +1,7 @@
-// Port of solver_features_array.py + solver_features_circular_array.py: the
-// linear/rectangular array and circular array leaves. Both build a list of
-// gp_Trsf instance transforms, copy the source body through each, and either fuse
-// the copies into the source (operation "add") or spawn one new body per copy
-// (operation "new"). Shared instance-application logic lives in `applyArray`.
+// The linear/rectangular array and circular array leaves. Both build a list of gp_Trsf instance
+// transforms, copy the source body through each, and either fuse the copies into the source
+// (operation "add") or spawn one new body per copy (operation "new"). Shared
+// instance-application logic lives in `applyArray`.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'

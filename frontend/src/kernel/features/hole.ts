@@ -1,12 +1,11 @@
-// Port of `_solve_hole` (solver_features_hole.py): the hole leaf. For each point
-// entity in the referenced sketch it drills a cylinder (blind depth or
-// through-all) and boolean-cuts it from the target body. Composite of the cut
-// boolean + cylinder primitive.
+// The hole leaf. For each point entity in the referenced sketch it drills a cylinder (blind
+// depth or through-all) and boolean-cuts it from the target body. Composite of the cut boolean
+// + cylinder primitive.
 //
-// through_all sizes the cylinder from the target's AABB. The stock OCC build has
-// no Bnd_Box, so the span comes from the solid's B-rep vertices; since the
-// cylinder only needs to fully penetrate the body, an exact silhouette extent is
-// unnecessary and the cut result matches Python's Bnd_Box-sized cylinder.
+// through_all sizes the cylinder from the target's AABB. The stock OCC build has no Bnd_Box, so
+// the span comes from the solid's B-rep vertices; since the cylinder only needs to fully
+// penetrate the body, an exact silhouette extent is unnecessary and the cut result matches
+// Python's Bnd_Box-sized cylinder.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

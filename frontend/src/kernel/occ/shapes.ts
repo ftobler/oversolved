@@ -1,10 +1,8 @@
 /**
- * Port of the `cadquery_ops.py` helper set plus the body-building orchestration.
- * Pure geometry helpers (triangle area, face sort key) live here, and the
- * make-a-body entry points (`buildBox`, `buildCylinder`, `buildExtrudedProfile`)
- * compose `primitives.ts` and register the produced solid in the
- * [[HandleTable]]. This module never touches OCC.js types directly; that is
- * primitives.ts's job.
+ * Pure geometry helpers (triangle area, face sort key) live here, and the make-a-body entry
+ * points (`buildBox`, `buildCylinder`, `buildExtrudedProfile`) compose `primitives.ts` and
+ * register the produced solid in the [[HandleTable]]. This module never touches OCC.js types
+ * directly; that is primitives.ts's job.
  */
 
 import { DisposeScope } from './disposeScope'

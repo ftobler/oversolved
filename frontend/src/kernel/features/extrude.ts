@@ -1,13 +1,12 @@
-// Port of `_solve_extrude` (solver_features_brep.py): the extrude leaf, the
-// simplest brep producer and the first phase-2f feature. It resolves each
-// profile reference to 2D loops (or a body face), builds the tool solid with
-// per-entity lineage, and applies the body operation (add / cut / new).
+// The extrude leaf, the simplest brep producer and the first phase-2f feature. It resolves each
+// profile reference to 2D loops (or a body face), builds the tool solid with per-entity
+// lineage, and applies the body operation (add / cut / new).
 //
-// This is the wiring layer: collectExtrudeLoops (faceProfile.ts), resolveDirection
-// (shared.ts), extrudeProfileWithLineage (occ/prismLineage.ts), and
-// applyBodyOperation (bodyOps.ts) do the work. Like every OCC-backed leaf it
-// takes (oc, scope, table) ahead of the Python (feature, globalRepo, bodyStore)
-// signature; the caller owns `scope` and disposes it after ancestry registration.
+// This is the wiring layer: collectExtrudeLoops (faceProfile.ts), resolveDirection (shared.ts),
+// extrudeProfileWithLineage (occ/prismLineage.ts), and applyBodyOperation (bodyOps.ts) do the
+// work. Like every OCC-backed leaf it takes (oc, scope, table) ahead of the Python (feature,
+// globalRepo, bodyStore) signature; the caller owns `scope` and disposes it after ancestry
+// registration.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

@@ -126,8 +126,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Rectangular array ──
 
     it('rectangular 2x2 array add', () => {
-      /** 2x2 array with pitch 15 in X and Y, include_source=true.
-       *  Port of test_rectangular_2x2. */
+      /** 2x2 array with pitch 15 in X and Y, include_source=true. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -160,8 +159,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Circular array: new operation (split bodies) ──
 
     it('circular_array new operation creates split bodies', () => {
-      /** operation=new creates 4 split bodies (source + 3 copies).
-       *  Port of test_rotational_new_operation. */
+      /** operation=new creates 4 split bodies (source + 3 copies). */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -194,8 +192,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Circular array: no source ──
 
     it('circular_array include_source=false produces count copies', () => {
-      /** include_source=false should still produce count distinct copies.
-       *  Port of test_rotational_no_source. */
+      /** include_source=false should still produce count distinct copies. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -223,8 +220,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Circular array: explicit step_angle ──
 
     it('circular_array with explicit step_angle', () => {
-      /** Explicit step_angle=45 with count=4 produces correct spacing.
-       *  Port of test_rotational_step_angle. */
+      /** Explicit step_angle=45 with count=4 produces correct spacing. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -251,8 +247,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Circular array: 5 instances (even spacing bug reproduction) ──
 
     it('circular_array 5 instances evenly spaced', () => {
-      /** 5 instances evenly spaced -- reproduces bug report where fuse of
-       *  coincident faces used to fail. Port of test_rotational_5_instances. */
+      /**
+       * 5 instances evenly spaced -- reproduces bug report where fuse of coincident faces used
+       * to fail.
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -278,8 +276,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Circular array: linear count=1 with source ──
 
     it('linear count=1 with include_source=true equals source shape', () => {
-      /** count=1 with include_source=true -- no crash, body unchanged.
-       *  Port of test_linear_count_1. */
+      /** count=1 with include_source=true -- no crash, body unchanged. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -306,8 +303,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ── Linear count=1 no source ──
 
     it('linear count=1 with include_source=false produces 1 transformed copy', () => {
-      /** count=1 with include_source=false produces 1 copy at pitch offset.
-       *  Port of test_linear_count_1_no_source. */
+      /** count=1 with include_source=false produces 1 copy at pitch offset. */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {

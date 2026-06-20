@@ -65,8 +65,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet single edge via build pipeline', () => {
-    /** A single edge fillet on an extruded box produces a valid mesh.
-     *  Port of test_fillet_single_edge. */
+    /** A single edge fillet on an extruded box produces a valid mesh. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
@@ -78,7 +77,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet multiple edges via build pipeline', () => {
-    /** Two edge fillet works. Port of test_fillet_multiple_edges. */
+    /** Two edge fillet works. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0], eq[1]], radius: 1 })
@@ -90,7 +89,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet updates body mesh vertex count', () => {
-    /** Fillet adds tessellation detail. Port of test_fillet_updates_body. */
+    /** Fillet adds tessellation detail. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = h.run(spec)
     const vertsBefore = (h.body(rBefore, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
@@ -104,8 +103,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet roundtrip via edge queries from build output', () => {
-    /** Edge queries emitted by the build are consumed back as fillet input.
-     *  Port of test_fillet_roundtrip_via_edge_queries. */
+    /** Edge queries emitted by the build are consumed back as fillet input. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
     const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
@@ -116,7 +114,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('chamfer single edge via build pipeline', () => {
-    /** Chamfer on an extruded box. Port of test_chamfer_single_edge. */
+    /** Chamfer on an extruded box. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 1 })
@@ -126,7 +124,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('chamfer updates body mesh vertex count', () => {
-    /** Chamfer adds tessellation detail. Port of test_chamfer_updates_body. */
+    /** Chamfer adds tessellation detail. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = h.run(spec)
     const vertsBefore = (h.body(rBefore, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
@@ -140,7 +138,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('chamfer chain after extrude', () => {
-    /** Extrude then chamfer. Port of test_chamfer_chain_after_extrude. */
+    /** Extrude then chamfer. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 1 })
@@ -152,8 +150,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet partial when some edges unresolvable', () => {
-    /** One resolvable + one missing edge → partial status, body still filleted.
-     *  Port of test_fillet_partial_when_some_edges_unresolvable. */
+    /** One resolvable + one missing edge → partial status, body still filleted. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
     const validQ = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
@@ -165,9 +162,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet then chamfer on same body', () => {
-    /** Sequential fillet+chamfer on the same extruded box. Edge indices shift
-     *  after fillet; use legacy index-form queries to reference surviving edges.
-     *  Port of test_fillet_then_chamfer. */
+    /**
+     * Sequential fillet+chamfer on the same extruded box. Edge indices shift after fillet; use
+     * legacy index-form queries to reference surviving edges.
+     */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: ['?body_ex1:edge:0'], radius: 1 })
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: ['?body_ex1:edge:4'], distance: 0.5 })
@@ -178,8 +176,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet respects edge list — single edge < all edges vertex count', () => {
-    /** Single-edge fillet produces fewer vertices than an all-12-edge fillet.
-     *  Port of test_fillet_respects_edge_list. */
+    /** Single-edge fillet produces fewer vertices than an all-12-edge fillet. */
     const r1 = h.run(fullRectExtrudeSpec(10, 10, 5))
     const eq = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
     const spec1 = fullRectExtrudeSpec(10, 10, 5)
@@ -198,8 +195,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('multiple sequential fillet features', () => {
-    /** Two fillet features in sequence on the same body. Port of
-     *  test_multiple_fillet_features. */
+    /** Two fillet features in sequence on the same body. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
     const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
@@ -216,8 +212,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet stale body token follows geometry', () => {
-    /** A stale @body token must not misroute the fillet — geometry wins.
-     *  Port of test_fillet_follows_geometry_when_body_token_stale. */
+    /** A stale @body token must not misroute the fillet — geometry wins. */
     // Two disjoint boxes
     const spec = { features: [
       { ...rectSketch('skA', 10, 10, '@builtin_plane_top'), initial: { bottom: [0, 0, 10, 0], right: [10, 0, 10, 10], top: [10, 10, 0, 10], left: [0, 10, 0, 0] }, constraints: rectSketch('skA', 10, 10, '@builtin_plane_top').constraints },
@@ -237,8 +232,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet asymmetry delete — unrelated body delete keeps fillet ok', () => {
-    /** Deleting an unrelated body must not break a fillet. Port of
-     *  test_fillet_asymmetry_delete_upstream_extrude. */
+    /** Deleting an unrelated body must not break a fillet. */
     // Build two independent boxes, then add fillet on second
     const skB = { ...rectSketch('skB', 10, 10, '@builtin_plane_top'), initial: { bottom: [30, 0, 40, 0], right: [40, 0, 40, 10], top: [40, 10, 30, 10], left: [30, 10, 30, 0] }, constraints: rectSketch('skB', 10, 10, '@builtin_plane_top').constraints }
     const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 5, direction: 'normal', operation: 'new' }
@@ -257,8 +251,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet all edges missing is hard exception', () => {
-    /** If no edges resolve, the fillet hard-fails with 'no edges resolved'.
-     *  Port of test_fillet_all_edges_missing_is_hard_exception. */
+    /** If no edges resolve, the fillet hard-fails with 'no edges resolved'. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     spec.features.push({ id: 'fil', kind: 'fillet', edges: ['?body_nonexistent:edge:0'], radius: 1 })
     const r = h.run(spec)
@@ -267,9 +260,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet fails on stale gedge hash', () => {
-    /** A hash-only query with a bogus @gedge_ hash must not silently
-     *  fillet the wrong edge via body-scoped fallback. Port of
-     *  test_fillet_fails_on_stale_gedge_hash. */
+    /**
+     * A hash-only query with a bogus @gedge_ hash must not silently fillet the wrong edge via
+     * body-scoped fallback.
+     */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
     const q = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
@@ -283,8 +277,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet populates brepDiff on the modified body', () => {
-    /** After fillet, the body checkpoint must carry a non-null brep_diff.
-     *  Port of brep diff feature coverage expectation. */
+    /** After fillet, the body checkpoint must carry a non-null brep_diff. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })

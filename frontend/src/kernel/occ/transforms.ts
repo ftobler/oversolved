@@ -1,9 +1,7 @@
-// Port of the transform slice of ocp_ops.py + geometry_features.py +
-// cadquery_ops.py: gp_Trsf construction (translation / rotation / mirror / scale),
-// `apply_transform_shape` (compose scale -> rotation -> translation), and
-// `transform_copy`. These back the array / circular_array / transform / mirror
-// leaves. Every trsf is built fresh in the caller's scope; transformCopy returns
-// a raw shape the caller owns.
+// Gp_Trsf construction (translation / rotation / mirror / scale), `apply_transform_shape`
+// (compose scale -> rotation -> translation), and `transform_copy`. These back the array /
+// circular_array / transform / mirror leaves. Every trsf is built fresh in the caller's scope;
+// transformCopy returns a raw shape the caller owns.
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccTrsf } from './occTypes'

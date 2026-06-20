@@ -1,14 +1,11 @@
-// Port of the face-profile resolution chain in solver_features_shared.py:
-// `_resolve_face_index_via_hash`, `_extract_loops_from_occ_face`,
-// `_resolve_face_profile`, `_collect_extrude_loops`. This is the routing layer
-// the extrude/revolve leaves call to turn a profile reference (a `$sketch`, a
-// body face `@feat/face/N`, or an ancestral surface query) into 2D loops + the
-// plane to build on. The OCC face->loops work lives in occ/faceLoops.ts; the
-// pure surface-loop assembly is extractProfileLoops (features/shared.ts).
+// `_resolve_face_index_via_hash`, `_extract_loops_from_occ_face`, `_resolve_face_profile`,
+// `_collect_extrude_loops`. This is the routing layer the extrude/revolve leaves call to turn a
+// profile reference (a `$sketch`, a body face `@feat/face/N`, or an ancestral surface query)
+// into 2D loops + the plane to build on. The OCC face->loops work lives in occ/faceLoops.ts;
+// the pure surface-loop assembly is extractProfileLoops (features/shared.ts).
 //
-// Body shapes are HandleTable handles, so the OCC-backed branches resolve them
-// via the table; the topo-surface branches (`@`/`?` against stored sketch
-// topology) are pure and need no OCC.
+// Body shapes are HandleTable handles, so the OCC-backed branches resolve them via the table;
+// the topo-surface branches (`@`/`?` against stored sketch topology) are pure and need no OCC.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

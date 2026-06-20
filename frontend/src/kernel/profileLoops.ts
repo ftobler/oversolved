@@ -1,6 +1,5 @@
-// Ported from the profile-loop helpers the removed oversolved/kernel/profile_loops.py exposed
-// to topology.ts: arc sampling, polygon point list, area-weighted centroid.
-// Only the slice topology needs is ported here.
+// Arc sampling, polygon point list, area-weighted centroid. Only the slice topology needs is
+// ported here.
 
 import { TOL_NEAR_ZERO_AREA } from "./solverConstants"
 

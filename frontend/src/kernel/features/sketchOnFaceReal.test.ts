@@ -1,10 +1,8 @@
 // @vitest-environment node
 //
-// Ported from the removed tests/kernel/test_sketch_on_face.py (Phase 4c).
-// Seven integration tests that drive sketch-on-face resolution through build():
-// plane resolution, centroid, normal, post-fuse face placement, boolean-cut
-// partial rebuild, multi-profile face resolution, and centroid-drift normal
-// fallback.
+// Seven integration tests that drive sketch-on-face resolution through build(): plane
+// resolution, centroid, normal, post-fuse face placement, boolean-cut partial rebuild,
+// multi-profile face resolution, and centroid-drift normal fallback.
 //
 // Skips when opencascade.js or the Rust sketch solver is absent.
 
@@ -177,10 +175,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     setSketchSolver(solveBytes)
   })
 
-  /**
-   * Extrude produces face_queries in the mesh.
-   * Port of `test_extrude_has_face_queries`.
-   */
+  /** Extrude produces face_queries in the mesh. */
   it('extrude has face_queries', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
@@ -197,7 +192,6 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    * Sketch with plane set to a 3D face ancestry query resolves without error.
    *
    * The sketch should have a valid plane whose normal matches the face normal.
-   * Port of `test_sketch_on_face_via_ancestry_query`.
    */
   it('sketch on face via ancestry query', () => {
     const scope = new DisposeScope()
@@ -247,10 +241,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     }
   })
 
-  /**
-   * Sketch on face -> extrude builds without exception (round-trip).
-   * Port of `test_sketch_on_face_round_trip_second_extrude`.
-   */
+  /** Sketch on face -> extrude builds without exception (round-trip). */
   it('sketch on face round-trip second extrude', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
@@ -287,17 +278,13 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   })
 
   /**
-   * Sketch plane must resolve correctly when the face was picked from a
-   * post-fuse render.
+   * Sketch plane must resolve correctly when the face was picked from a post-fuse render.
    *
-   * Sequence: sk1 -> ex1 (5mm) -> sk2 (plane = face) -> ex2 (fuse, 2mm on top)
-   * User picks the top face at z=7 from the post-fuse render.
-   * sk2 is then added with that face query as plane.
+   * Sequence: sk1 -> ex1 (5mm) -> sk2 (plane = face) -> ex2 (fuse, 2mm on top) User picks the
+   * top face at z=7 from the post-fuse render. sk2 is then added with that face query as plane.
    * Full build: sk1 -> ex1 -> sk2 -> ex2
    *
-   * sk2 must land at z=7, not at whichever pre-fuse face happens to share
-   * the same index.
-   * Port of `test_sketch_plane_resolves_from_post_fuse_face`.
+   * sk2 must land at z=7, not at whichever pre-fuse face happens to share the same index.
    */
   it('sketch plane resolves from post-fuse face', () => {
     const scope = new DisposeScope()
@@ -361,10 +348,9 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   /**
    * Sketch placed on a face of a body that was later modified by a boolean cut.
    *
-   * Regression test: after ex2 cuts into ex1's body, the face centroids change.
-   * A subsequent partial rebuild must not raise AmbiguousQueryError because stale
-   * face registrations (S1 geometry) co-exist with updated ones (S3 geometry).
-   * Port of `test_sketch_on_face_after_boolean_cut_partial_rebuild`.
+   * Regression test: after ex2 cuts into ex1's body, the face centroids change. A subsequent
+   * partial rebuild must not raise AmbiguousQueryError because stale face registrations (S1
+   * geometry) co-exist with updated ones (S3 geometry).
    */
   it('sketch on face after boolean cut partial rebuild', () => {
     const scope = new DisposeScope()
@@ -476,12 +462,10 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   /**
    * Sketch on a flat end-cap of a multi-profile, filleted body must resolve.
    *
-   * Regression for bugreports/sketch_2_fail: two circles extruded into one body
-   * share identical face ancestry (both circles land in every face's profile
-   * set), so the two opposite-facing end-caps are distinguishable only by the
-   * face geom-hash. The query must resolve on the first build and survive a
-   * second from-scratch rebuild.
-   * Port of `test_sketch_on_filleted_multi_profile_face_resolves`.
+   * Regression for bugreports/sketch_2_fail: two circles extruded into one body share identical
+   * face ancestry (both circles land in every face's profile set), so the two opposite-facing
+   * end-caps are distinguishable only by the face geom-hash. The query must resolve on the
+   * first build and survive a second from-scratch rebuild.
    */
   it('sketch on multi-profile body face resolves on two rebuilds', () => {
     const scope = new DisposeScope()
@@ -546,14 +530,12 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   /**
    * A reshaped face (centroid drifts, normal preserved) still resolves.
    *
-   * The face query carries two geometry tokens: the precise gface_
-   * (centroid+normal) and an orientation-only gnormal_ fallback. When the body
-   * is edited so the picked end-cap moves -- its centroid drifts but its normal
-   * is unchanged -- the precise hash goes stale, and the resolver must fall back
-   * to the normal hash. Among the two opposite-facing end-caps of this
-   * two-circle body the normal is unique, so it must resolve to the moved face
-   * (and never to the opposite cap).
-   * Port of `test_sketch_plane_follows_face_when_centroid_drifts_via_normal_fallback`.
+   * The face query carries two geometry tokens: the precise gface_ (centroid+normal) and an
+   * orientation-only gnormal_ fallback. When the body is edited so the picked end-cap moves --
+   * its centroid drifts but its normal is unchanged -- the precise hash goes stale, and the
+   * resolver must fall back to the normal hash. Among the two opposite-facing end-caps of this
+   * two-circle body the normal is unique, so it must resolve to the moved face (and never to
+   * the opposite cap).
    */
   it('sketch plane follows face when centroid drifts via normal fallback', () => {
     const scope = new DisposeScope()

@@ -1,18 +1,13 @@
 /**
- * Port of the `geometry_tessellation.py` mesh core (`solid_to_mesh` /
- * `_tessellate_and_assemble_faces` / `_sort_shape_faces` /
- * `_append_face_triangles`).
+ * Iterates a solid's faces, tessellates each one (cadquery-exact, see `tessellateFace`),
+ * computes per-face centroid/normal/area/surface type, sorts faces flat-before-curved by
+ * (normal, centroid) so a later curved feature can never shift a flat face's index, and
+ * assembles the flat vertex/triangle arrays plus `triangle_to_face`.
  *
- * Iterates a solid's faces, tessellates each one (cadquery-exact, see
- * `tessellateFace`), computes per-face centroid/normal/area/surface type, sorts
- * faces flat-before-curved by (normal, centroid) so a later curved feature can
- * never shift a flat face's index, and assembles the flat vertex/triangle
- * arrays plus `triangle_to_face`.
- *
- * SCOPE: this is the geometry half. The ancestry `face_queries` and the
- * spatial `classifiers` that `_build_face_query` attaches depend on geom_hash /
- * the query system (phase 2c) and are deliberately NOT emitted here; `face_data`
- * carries the geometry only. The mesh geometry is the phase-2b dual-run gate.
+ * SCOPE: this is the geometry half. The ancestry `face_queries` and the spatial `classifiers`
+ * that `_build_face_query` attaches depend on geom_hash / the query system (phase 2c) and are
+ * deliberately NOT emitted here; `face_data` carries the geometry only. The mesh geometry is
+ * the phase-2b dual-run gate.
  */
 
 import { DisposeScope } from './disposeScope'

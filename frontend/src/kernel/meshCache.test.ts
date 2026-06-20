@@ -1,18 +1,15 @@
 // @vitest-environment node
 //
-// Ported from the removed tests/kernel/test_mesh_cache.py (10 test functions).
-// Cross-solve mesh cache: clean prefix, cache hit/miss, pick bodies,
-// fallback, parallel determinism.
+// Cross-solve mesh cache: clean prefix, cache hit/miss, pick bodies, fallback, parallel
+// determinism.
 //
-// Tests 1–6, 10 require full OCC-backed feature solvers (sketch, extrude,
-// fillet, boolean) not yet ported to TS, plus real solid_to_mesh for
-// unittest.mock-style counting. They will be ported when the leaf feature
-// solvers land (phase 2e/2f).
+// Tests 1–6, 10 require full OCC-backed feature solvers (sketch, extrude, fillet, boolean) not
+// yet ported to TS, plus real solid_to_mesh for unittest.mock-style counting. They will be
+// ported when the leaf feature solvers land (phase 2e/2f).
 //
-// Test 3 (pick_bodies served from checkpoint) and test 8 (stale buildstate
-// without bodies_snapshot) are already covered by builder.test.ts:
-//   - "supports pick_boundary returning pick_bodies" (L196)
-//   - "re-tessellates pick_bodies when bodies_snapshot is empty" (L295)
+// Test 3 (pick_bodies served from checkpoint) and test 8 (stale buildstate without
+// bodies_snapshot) are already covered by builder.test.ts: - "supports pick_boundary returning
+// pick_bodies" (L196) - "re-tessellates pick_bodies when bodies_snapshot is empty" (L295)
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from './builder'
@@ -54,10 +51,8 @@ function makeBody(id: string, createdBy: string): Body {
 // ─── Test 9: checkpoint bodies_snapshot is populated — regression guard ───
 
 /**
- * After any build (full or incremental), every non-suppressed checkpoint
- * must carry a bodies_snapshot whose keys match body_store_snapshot keys.
- *
- * Port of test_checkpoint_bodies_snapshot_populated.
+ * After any build (full or incremental), every non-suppressed checkpoint must carry a
+ * bodies_snapshot whose keys match body_store_snapshot keys.
  */
 describe('checkpoint bodies_snapshot populated', () => {
   it('every non-suppressed checkpoint has matching bodies_snapshot keys', () => {
@@ -139,11 +134,7 @@ describe('checkpoint bodies_snapshot populated', () => {
 
 // ─── Test 7: parallel mesh deterministic ───
 
-/**
- * Meshing with in_parallel=True vs False yields identical geometry.
- *
- * Port of test_parallel_mesh_deterministic.
- */
+/** Meshing with in_parallel=True vs False yields identical geometry. */
 describe.skipIf(!oc)('parallel mesh deterministic (OCC.js)', () => {
   let occ: OccModule
 

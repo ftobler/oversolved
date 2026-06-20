@@ -1,6 +1,5 @@
-// Port of `_solve_delete_body` (solver_features_delete.py): removes a body from
-// the store. A `?...` query resolves to a body (or a dict carrying body_id);
-// otherwise the ref resolves directly. The TS port also releases the body's
+// Removes a body from the store. A `?...` query resolves to a body (or a dict carrying
+// body_id); otherwise the ref resolves directly. The TS port also releases the body's
 // HandleTable handle (Python relies on GC).
 
 import type { DisposeScope } from '../occ/disposeScope'

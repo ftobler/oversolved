@@ -1,6 +1,5 @@
-// Port of `_solve_import_step` (solver_features_import.py): decodes base64 STEP
-// data, reads it into a shape (optionally scaled), and registers a new body. The
-// STEP parse itself lives in occ/stepIo.ts.
+// Decodes base64 STEP data, reads it into a shape (optionally scaled), and registers a new
+// body. The STEP parse itself lives in occ/stepIo.ts.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'

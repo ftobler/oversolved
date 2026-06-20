@@ -1,5 +1,3 @@
-// Ported from the slices of the removed oversolved/kernel/solver_constants.py the TS kernel
-// needs (topology tolerances + builtin planes/origin for the global repository).
 // Kept narrow on purpose; grows as further phases need more constants.
 
 export const TOL_LOOP_CLOSURE = 1e-6

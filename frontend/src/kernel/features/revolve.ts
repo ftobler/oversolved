@@ -1,13 +1,12 @@
-// Port of `_solve_revolve` (solver_features_brep.py): the revolve leaf, analogous
-// to extrude but sweeping each profile around an axis. It resolves each profile to
-// 2D loops (or a body face), resolves the revolve axis (a stored origin/direction
-// plus an optional `axis` query that flips to agree with the stored direction),
-// builds the tool solid with per-entity lineage, and applies the body operation.
+// The revolve leaf, analogous to extrude but sweeping each profile around an axis. It resolves
+// each profile to 2D loops (or a body face), resolves the revolve axis (a stored
+// origin/direction plus an optional `axis` query that flips to agree with the stored
+// direction), builds the tool solid with per-entity lineage, and applies the body operation.
 //
-// The axis logic here is revolve-specific and does NOT go through shared.ts's
-// resolveAxisQuery: _solve_revolve flips the queried axis to match the feature's
-// stored direction (so re-solving a flipped edge does not reverse the body), which
-// resolveAxisQuery (used by circular_array) deliberately omits.
+// The axis logic here is revolve-specific and does NOT go through shared.ts's resolveAxisQuery:
+// _solve_revolve flips the queried axis to match the feature's stored direction (so re-solving
+// a flipped edge does not reverse the body), which resolveAxisQuery (used by circular_array)
+// deliberately omits.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

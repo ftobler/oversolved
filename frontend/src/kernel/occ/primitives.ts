@@ -1,19 +1,16 @@
 /**
- * Port of `ocp_ops.py` (the make-a-body + tessellation slice): the thin OCC.js
- * adapter. Per the migration plan this is the ONLY module that touches OCC.js
+ * The thin OCC.js adapter. Per the migration plan this is the ONLY module that touches OCC.js
  * types directly; everything above it (shapes.ts, tessellation.ts) calls these.
  *
- * Every function takes a [[DisposeScope]] and tracks its transient OCC objects
- * (points, dirs, builders, adaptors) in it. Functions that produce a shape the
- * caller keeps return it WITHOUT tracking it, so the caller decides its
- * lifetime (typically `HandleTable.register`); the scope still owns the builder
- * that made it. This mirrors the spike's proven ownership pattern.
+ * Every function takes a [[DisposeScope]] and tracks its transient OCC objects (points, dirs,
+ * builders, adaptors) in it. Functions that produce a shape the caller keeps return it WITHOUT
+ * tracking it, so the caller decides its lifetime (typically `HandleTable.register`); the scope
+ * still owns the builder that made it. This mirrors the spike's proven ownership pattern.
  *
- * Overload suffixes and arities were verified against opencascade.js@1.1.1
- * (OCC 7.5); see the migration notes. Out-parameter APIs (BRepTools.UVBounds,
- * BRepGProp_Face.Normal) do not marshal in emscripten, so UV bounds come from
- * BRepAdaptor_Surface's First/Last parameter accessors and the normal from
- * BRepLProp_SLProps, both direct-return.
+ * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCC 7.5); see the
+ * migration notes. Out-parameter APIs (BRepTools.UVBounds, BRepGProp_Face.Normal) do not
+ * marshal in emscripten, so UV bounds come from BRepAdaptor_Surface's First/Last parameter
+ * accessors and the normal from BRepLProp_SLProps, both direct-return.
  */
 
 import type { DisposeScope } from './disposeScope'

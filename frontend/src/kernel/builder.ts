@@ -1,9 +1,6 @@
-// Ported from the removed Python kernel (oversolved/kernel/builder.py).
-//
-// Orchestrates the feature-stack solve loop with dirty detection, checkpoint
-// cache, and incremental rebuild. Feature solvers are injected via a registry so
-// this module is testable with mock solvers before the real leaf features are
-// ported (2e/2f).
+// Orchestrates the feature-stack solve loop with dirty detection, checkpoint cache, and
+// incremental rebuild. Feature solvers are injected via a registry so this module is testable
+// with mock solvers before the real leaf features are ported (2e/2f).
 
 import { sha256Hex } from './sha256'
 import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'

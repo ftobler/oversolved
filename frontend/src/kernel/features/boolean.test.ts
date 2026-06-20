@@ -59,8 +59,7 @@ describe('solveBoolean guard paths', () => {
   })
 
   it('throws when target body does not exist', () => {
-    /** Target body that does not exist should raise.
-     *  Port of test_boolean_target_not_found. */
+    /** Target body that does not exist should raise. */
     expect(() =>
       solveBoolean(oc, scope, table, {
         id: 'b', boolean: { operation: 'union', target: '@body_missing', tools: ['body_u0'] },

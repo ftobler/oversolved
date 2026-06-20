@@ -59,9 +59,10 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('partial rebuild restores body mesh from clean prefix', () => {
-    /** After a full build, changing a later feature triggers a partial rebuild
-     *  that must restore the clean-prefix body from the previous checkpoint.
-     *  Port of test_partial_rebuild_restores_brep_face_ancestry_queries. */
+    /**
+     * After a full build, changing a later feature triggers a partial rebuild that must restore
+     * the clean-prefix body from the previous checkpoint.
+     */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 3 })
     const spec = { features: [sk1, ex1] }
@@ -84,8 +85,10 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('partial rebuild only resolves dirty features', () => {
-    /** When only sk2 changes in a [sk1, sk2] stack, sk1 is restored from cache
-     *  and not re-solved. Port of test_partial_rebuild_only_resolves_dirty. */
+    /**
+     * When only sk2 changes in a [sk1, sk2] stack, sk1 is restored from cache and not
+     * re-solved.
+     */
     const sk1 = rectSketch('sk1', 10, 10, { label: 'original' })
     const sk2 = rectSketch('sk2', 5, 5, { label: 'original' })
     const spec = { features: [sk1, sk2] }
@@ -102,10 +105,10 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('partial rebuild with extrude chain after fuse works', () => {
-    /** A sketch placed on a B-rep face, then extruded (fused), followed by
-     *  sketch modification and partial rebuild must not cause
-     *  AmbiguousQueryError. Port of
-     *  test_partial_rebuild_sketch_on_face_after_fuse_no_ambiguous_query. */
+    /**
+     * A sketch placed on a B-rep face, then extruded (fused), followed by sketch modification
+     * and partial rebuild must not cause AmbiguousQueryError.
+     */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const r1 = h.run({ features: [sk1, ex1] })
@@ -135,9 +138,10 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('checkpoint face ancestry uses pre-fuse geometry after undo', () => {
-    /** Checkpoint for ex1 must report its own (pre-fuse) face positions when a
-     *  later fuse is undone. Port of
-     *  test_checkpoint_face_ancestry_uses_pre_fuse_geometry_after_undo. */
+    /**
+     * Checkpoint for ex1 must report its own (pre-fuse) face positions when a later fuse is
+     * undone.
+     */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const rBase = h.run({ features: [sk1, ex1] })
@@ -166,8 +170,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('body addition in dirty range succeeds', () => {
-    /** Insert a new sketch between sk1 and ex1; ex1 is re-solved but still ok.
-     *  Port of test_body_addition_in_dirty_range. */
+    /** Insert a new sketch between sk1 and ex1; ex1 is re-solved but still ok. */
     const sk1 = rectSketch('sk1', 5, 3)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const spec = { features: [sk1, ex1] }
@@ -181,8 +184,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('partial rebuild preserves shape identity', () => {
-    /** After partial rebuild, unchanged feature's body.shape is the same handle.
-     *  Port of test_partial_rebuild_preserves_shape_identity. */
+    /** After partial rebuild, unchanged feature's body.shape is the same handle. */
     const sk1 = rectSketch('sk1', 5, 3)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const spec = { features: [sk1, ex1] }
@@ -198,8 +200,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('inserting a feature mid-stack triggers rebuild of later features', () => {
-    /** [sk1, ex1] → [sk1, sk2, ex1, ex2]: sk1 reused, all later rebuilt.
-     *  Port of test_partial_rebuild_add_sketch_mid_stack. */
+    /** [sk1, ex1] → [sk1, sk2, ex1, ex2]: sk1 reused, all later rebuilt. */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const r1 = h.run({ features: [sk1, ex1] })
@@ -218,9 +219,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('reusing state does not duplicate brep face ancestry', () => {
-    /** Rebuilding from the same cached state twice must not duplicate face
-     *  ancestry entries. Port of
-     *  test_partial_rebuild_reusing_state_does_not_duplicate_brep_face_ancestry. */
+    /** Rebuilding from the same cached state twice must not duplicate face ancestry entries. */
     const spec = { features: [rectSketch('sk1', 10, 10), extrudeSpec('sk1', 'ex1', { distance: 5 })] }
     const r1 = h.run(spec)
     const r2 = h.run(spec, { prevState: r1._build_state })
@@ -235,8 +234,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('rollback mid-stack only solves active features', () => {
-    /** rollbackPosition=2 on a 4-feature stack only solves the first two.
-     *  Port of test_rollback_mid_stack_only_solves_active_features. */
+    /** rollbackPosition=2 on a 4-feature stack only solves the first two. */
     const spec = { features: [
       rectSketch('sk1', 5, 3),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -253,8 +251,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('feature reorder triggers rebuild of all changed features', () => {
-    /** [sk1, ex1, sk2] → [sk1, sk2, ex1]: all after index 0 rebuilt.
-     *  Port of test_partial_rebuild_feature_reordered. */
+    /** [sk1, ex1, sk2] → [sk1, sk2, ex1]: all after index 0 rebuilt. */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const sk2 = rectSketch('sk2', 3, 3, { plane: '@builtin_plane_right' })
@@ -269,8 +266,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('feature deletion triggers rebuild of later features', () => {
-    /** [sk1, ex1, sk2] → [sk1, ex1]: sk2 removed, ex1 checkpoint reused.
-     *  Port of test_partial_rebuild_feature_deleted. */
+    /** [sk1, ex1, sk2] → [sk1, ex1]: sk2 removed, ex1 checkpoint reused. */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const sk2 = rectSketch('sk2', 3, 3, { plane: '@builtin_plane_right' })
@@ -285,8 +281,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('feature insertion triggers rebuild of later features', () => {
-    /** [sk1, ex1] → [sk1, sk2, ex1]: sk2 inserted, sk1 reused, ex1 rebuilt.
-     *  Port of test_partial_rebuild_feature_inserted. */
+    /** [sk1, ex1] → [sk1, sk2, ex1]: sk2 inserted, sk1 reused, ex1 rebuilt. */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const spec = { features: [sk1, ex1] }
@@ -300,8 +295,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('fillet before its extrude must fail', () => {
-    /** A fillet placed before its body's extrude must hard-fail.
-     *  Port of test_fillet_before_its_extrude_must_fail. */
+    /** A fillet placed before its body's extrude must hard-fail. */
     const sk = rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' })
     const r0 = h.run({ features: [sk, extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
     const q = (h.body(r0, 'body_exB').edge_queries as string[])[0]
@@ -310,8 +304,10 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('delete sketch cascades to extrude and fillet', () => {
-    /** Deleting a sketch must fail its own extrude+fillet while independent
-     *  features continue to work. Port of test_delete_sketch_cascades_to_extrude_and_fillet. */
+    /**
+     * Deleting a sketch must fail its own extrude+fillet while independent features continue to
+     * work.
+     */
     const skA = rectSketch('skA', 10, 10, { plane: '@builtin_plane_top' })
     const skB = { ...rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' }),
       initial: { bottom: [30, 0, 40, 0], right: [40, 0, 40, 10], top: [40, 10, 30, 10], left: [30, 10, 30, 0] },

@@ -27,8 +27,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
   })
 
   it('cut mesh has more faces than the original box (new interior faces)', () => {
-    /** A box cut by a smaller box gains new interior faces from the cut
-     *  cavity. Port of test_mesh_face_queries_have_correct_created_by_after_cut. */
+    /** A box cut by a smaller box gains new interior faces from the cut cavity. */
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
     try {

@@ -525,8 +525,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect((resultB as Payload)["face_index"]).toBe(1)
   })
 
-  /** Edge hashes populate byGeomHash, not ancestral keys.
-   *  Ported from Python's test_edge_registration_has_hash_tag. */
+  /** Edge hashes populate byGeomHash, not ancestral keys. */
   it("edge geom hash populates byGeomHash not ancestral", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -545,8 +544,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     }
   })
 
-  /** Vertex hashes populate byGeomHash, not ancestral keys.
-   *  Ported from Python's test_vetex_registration_has_gvertex_tag. */
+  /** Vertex hashes populate byGeomHash, not ancestral keys. */
   it("vertex geom hash populates byGeomHash not ancestral", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -566,9 +564,10 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
   })
 })
 
-/** Face registrations have >=3 structural tags (positional /face tag, feature ref, body ref).
- *  The geom hash lives in by_geom_hash, not in the ancestral key itself.
- *  Ported from Python's test_face_registration_has_4_tags. */
+/**
+ * Face registrations have >=3 structural tags (positional /face tag, feature ref, body ref).
+ * The geom hash lives in by_geom_hash, not in the ancestral key itself.
+ */
 describe("face registration structural tags", () => {
   it("face registration key has at least 3 structural tags", () => {
     const repo = new Repository()
@@ -642,9 +641,10 @@ describe("geometric classifier predicates", () => {
   })
 })
 
-/** Port of Python's classifier-resolution tier tests: spatial classifier tokens
- *  survive edits, resolve gracefully against contradictory input, and stay
- *  consistent between query emission and element registration. */
+/**
+ * Spatial classifier tokens survive edits, resolve gracefully against contradictory input, and
+ * stay consistent between query emission and element registration.
+ */
 describe("classifier tier resolution", () => {
   it("contradictory classifiers do not zero a hash-resolvable query", () => {
     const repo = new Repository()

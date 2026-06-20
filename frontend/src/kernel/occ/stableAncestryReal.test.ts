@@ -190,8 +190,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face hashes are registered in repo byGeomHash after extrude', () => {
-    /** Face hashes appear in by_geom_hash in the repo snapshot. Port of
-     *  test_face_registration_has_hash_tag. */
+    /** Face hashes appear in by_geom_hash in the repo snapshot. */
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -201,7 +200,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('edge hashes are registered in repo byGeomHash after extrude', () => {
-    /** Edge hashes appear in by_geom_hash. Port of test_edge_registration_has_hash_tag. */
+    /** Edge hashes appear in by_geom_hash. */
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -211,7 +210,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('vertex hashes are registered in repo byGeomHash after extrude', () => {
-    /** Vertex hashes appear in by_geom_hash. Port of test_vetex_registration_has_gvertex_tag. */
+    /** Vertex hashes appear in by_geom_hash. */
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -221,8 +220,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face registrations have at least 3 structural tags', () => {
-    /** Each face registration key must have >=3 structural tags
-     *  (index, feature, body). Port of test_face_registration_has_4_tags. */
+    /** Each face registration key must have >=3 structural tags (index, feature, body). */
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -242,8 +240,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('old 3-tag query still resolves against repo', () => {
-    /** Legacy queries with just index-tag + feature + body still resolve.
-     *  Port of test_old_3tag_query_still_resolves. */
+    /** Legacy queries with just index-tag + feature + body still resolve. */
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const mesh = (r.bodies as Record<string, { mesh?: { face_queries?: string[] } }>)['body_ex1']?.mesh
     const faceQueries = mesh?.face_queries ?? []
@@ -266,8 +263,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face hashes are stable across identical builds', () => {
-    /** Same spec built twice produces identical face hashes. Port of
-     *  test_hash_stable_across_same_builds. */
+    /** Same spec built twice produces identical face hashes. */
     const r1 = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const r2 = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp1 = lastCheckpoint(r1)
@@ -282,8 +278,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('some face hashes survive fillet unchanged', () => {
-    /** Fillet introduces new faces but unchanged ones keep their hash. Port of
-     *  test_hash_shared_across_fillet. */
+    /** Fillet introduces new faces but unchanged ones keep their hash. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)
@@ -301,8 +296,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('fillet introduces new face hashes', () => {
-    /** Fillet adds cylindrical faces with new hashes. Port of
-     *  test_new_face_hashes_appear_after_fillet. */
+    /** Fillet adds cylindrical faces with new hashes. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)
@@ -320,7 +314,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('fillet increases total face count', () => {
-    /** Fillet adds cylindrical faces. Port of test_fillet_introduces_more_faces. */
+    /** Fillet adds cylindrical faces. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)
@@ -337,8 +331,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face payload includes created_by field', () => {
-    /** Every face element in the repo must have created_by set. Port of
-     *  test_registered_face_payload_has_created_by. */
+    /** Every face element in the repo must have created_by set. */
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()

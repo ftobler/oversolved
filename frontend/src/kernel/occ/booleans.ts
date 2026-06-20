@@ -1,24 +1,19 @@
 /**
- * Port of the OCC boolean + history + clean machinery (the `ocp_ops.py`
- * `ocp_boolean_with_history` / `ocp_clean_with_history` /
- * `ocp_compose_diff_through_clean` slice, plus the `cadquery_ops.py`
- * `boolean_*_with_diff` wrappers). This is the BrepDiff producer the 2e lineage
- * transfer consumes: it classifies each output sub-shape as inherited (target
- * lineage survives) or new (introduced by the tool), so ancestry registration
- * tags new faces with the cutting feature rather than the body's creator.
+ * This is the BrepDiff producer the 2e lineage transfer consumes: it classifies each output
+ * sub-shape as inherited (target lineage survives) or new (introduced by the tool), so ancestry
+ * registration tags new faces with the cutting feature rather than the body's creator.
  *
- * opencascade.js@1.1.1 quirks pinned here (probed against the real build):
- *   - history.Modified() returns a TopTools_ListOfShape with no iterator binding;
- *     drain via Size()/First_1()/RemoveFirst() (the same sharp edge as the spike).
- *   - TopTools_IndexedDataMapOfShapeListOfShape / TopExp.MapShapesAndAncestors's
- *     map type are absent, so edge->face adjacency (the edge_lineage rebuild) is
- *     built face-by-face in the lineage shard, not via the indexed map.
+ * opencascade.js@1.1.1 quirks pinned here (probed against the real build): - history.Modified()
+ * returns a TopTools_ListOfShape with no iterator binding; drain via
+ * Size()/First_1()/RemoveFirst() (the same sharp edge as the spike). -
+ * TopTools_IndexedDataMapOfShapeListOfShape / TopExp.MapShapesAndAncestors's map type are
+ * absent, so edge->face adjacency (the edge_lineage rebuild) is built face-by-face in the
+ * lineage shard, not via the indexed map.
  *
- * Like primitives.ts, every function takes a DisposeScope and tracks its
- * transients there. The returned result shape is NOT tracked (the caller owns
- * its lifetime); the BrepDiff's sub-shape handles are tracked in the passed
- * scope and are valid only while that scope is alive -- the builder keeps the
- * scope open across the lineage transfer that reads them.
+ * Like primitives.ts, every function takes a DisposeScope and tracks its transients there. The
+ * returned result shape is NOT tracked (the caller owns its lifetime); the BrepDiff's sub-shape
+ * handles are tracked in the passed scope and are valid only while that scope is alive -- the
+ * builder keeps the scope open across the lineage transfer that reads them.
  */
 
 import type { DisposeScope } from './disposeScope'

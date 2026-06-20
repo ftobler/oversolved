@@ -1,15 +1,13 @@
-// Port of the extrude brep producer in geometry_tessellation.py:
 // `sketch_loops_to_face`, `_entity_to_occ_edge_map`, `_build_prism_lineage_map`,
 // `extrude_profile_with_lineage`. This is the OCC adapter the extrude leaf
-// (features/extrude.ts) calls to turn 2D profile loops into a solid plus the
-// per-face / per-edge lineage keyed by copy-stable geometry hash.
+// (features/extrude.ts) calls to turn 2D profile loops into a solid plus the per-face /
+// per-edge lineage keyed by copy-stable geometry hash.
 //
-// Lineage keying mirrors lineage-stable-keying.md: faces/edges are keyed by
-// their geometry hash, not the copy-fragile OCC subshape hash, so the tokens
-// survive the shape copies the build pipeline does. The profile-edge -> lateral
-// face association comes from BRepPrimAPI_MakePrism.Generated() (the lineage
-// sharp edge), drained via Size/First_1/RemoveFirst like every other list in
-// this build (no iterator binding).
+// Lineage keying mirrors lineage-stable-keying.md: faces/edges are keyed by their geometry
+// hash, not the copy-fragile OCC subshape hash, so the tokens survive the shape copies the
+// build pipeline does. The profile-edge -> lateral face association comes from
+// BRepPrimAPI_MakePrism.Generated() (the lineage sharp edge), drained via
+// Size/First_1/RemoveFirst like every other list in this build (no iterator binding).
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccListOfShape } from './occTypes'

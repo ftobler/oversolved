@@ -1,11 +1,11 @@
-// Ported from the removed Python kernel (oversolved/kernel/query.py). The element-geometry query engine:
-// typed Query parsing/emission plus the live ancestry resolver (Repository).
+// The element-geometry query engine: typed Query parsing/emission plus the live ancestry
+// resolver (Repository).
 //
-// frozenset semantics: Python keys `ancestral` by a frozenset of ancestor ids
-// and tests subset/superset containment hot in the drag loop. JS Set is not a
-// value type and cannot be a Map key, so each entry stores both the Set (for
-// containment) and a canonical sorted-join string (the Map key, deduping
-// permutations exactly as frozenset does). See queryHeuristics.ts for scoring.
+// frozenset semantics: Python keys `ancestral` by a frozenset of ancestor ids and tests
+// subset/superset containment hot in the drag loop. JS Set is not a value type and cannot be a
+// Map key, so each entry stores both the Set (for containment) and a canonical sorted-join
+// string (the Map key, deduping permutations exactly as frozenset does). See queryHeuristics.ts
+// for scoring.
 
 import {
   Outcome,

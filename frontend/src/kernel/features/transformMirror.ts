@@ -1,8 +1,7 @@
-// Port of solver_features_transform_mirror.py: the transform and mirror leaves.
-// transform composes a scale/rotation/translation (with query-driven translation,
-// rotation axis, and scale center) and either replaces the source body or spawns a
-// new one. mirror reflects the source across a queried plane and either replaces,
-// merges (union), or spawns a new body.
+// The transform and mirror leaves. transform composes a scale/rotation/translation (with
+// query-driven translation, rotation axis, and scale center) and either replaces the source
+// body or spawns a new one. mirror reflects the source across a queried plane and either
+// replaces, merges (union), or spawns a new body.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'

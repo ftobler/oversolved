@@ -1,16 +1,12 @@
 /**
- * Port of the OCC face-profile loop extraction (`ocp_ops.py`
- * `ocp_extract_face_loops` + `_extract_occ_face` / `_compute_face_plane` /
- * `_collect_face_wires` / `_build_loop_from_wire`). Given a solid and a sorted
- * face index, returns the face's 2D boundary loops (outer + holes) in the face's
- * own plane parameter space, plus the plane frame -- the input the extrude /
+ * Given a solid and a sorted face index, returns the face's 2D boundary loops (outer + holes)
+ * in the face's own plane parameter space, plus the plane frame -- the input the extrude /
  * revolve "from an existing planar face" path needs.
  *
- * opencascade.js@1.1.1 specifics (probed): the wire explorer is
- * `BRepTools_WireExplorer_3(wire, face)` (the `_2` form takes only the wire);
- * the face PCurve is `BRepAdaptor_Curve2d_2(edge, face)`; `BRepTools.OuterWire`
- * is the static (no `_s` suffix in this build). Faces are picked from the same
- * `_face_sort_key` order Python uses (flat-before-curved, then normal, then
+ * opencascade.js@1.1.1 specifics (probed): the wire explorer is `BRepTools_WireExplorer_3(wire,
+ * face)` (the `_2` form takes only the wire); the face PCurve is `BRepAdaptor_Curve2d_2(edge,
+ * face)`; `BRepTools.OuterWire` is the static (no `_s` suffix in this build). Faces are picked
+ * from the same `_face_sort_key` order Python uses (flat-before-curved, then normal, then
  * centroid), so the index matches the rest of the kernel.
  */
 
