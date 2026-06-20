@@ -52,6 +52,12 @@ describe("faceTokens / edgeLineageTokens parity", () => {
     expect(edgeLineageTokens(t.edge_hit.edge, t.edge_hit.edge_lineage)).toEqual(t.edge_hit.expected))
   it("edge_null_lineage", () =>
     expect(edgeLineageTokens(t.edge_null_lineage.edge, null)).toEqual(t.edge_null_lineage.expected))
+  it("edge_miss -> [] (hash absent from a non-null lineage map)", () =>
+    expect(
+      edgeLineageTokens({ kind: "line", start: [0, 0, 0], end: [1, 0, 0] }, {
+        gedge_unrelatedkey: ["@somewhere"],
+      }),
+    ).toEqual([]))
   it("edge_hash_raises -> [] (missing arc fields swallowed)", () =>
     expect(edgeLineageTokens(t.edge_hash_raises.edge, t.edge_hash_raises.edge_lineage)).toEqual(
       t.edge_hash_raises.expected,
