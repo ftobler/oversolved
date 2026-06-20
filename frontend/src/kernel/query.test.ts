@@ -30,6 +30,7 @@ import {
   Outcome,
   DEFAULT_HEURISTIC_CONFIG,
   scoreOverlap,
+  scoreGeometryLeaf,
   pickBest,
   weightFor,
 } from "./queryHeuristics"
@@ -1948,6 +1949,63 @@ describe("pickBest", () => {
     const [outcome, winner] = pickBest([], DEFAULT_HEURISTIC_CONFIG)
     expect(outcome).toBe(Outcome.UNRESOLVED)
     expect(winner).toBeNull()
+  })
+})
+
+describe("scoreGeometryLeaf", () => {
+  const cfg = DEFAULT_HEURISTIC_CONFIG
+
+  /** A null hint on either side is treated as a non-penalty (perfect score). */
+  it("null hints incur no penalty", () => {
+    expect(scoreGeometryLeaf(null, { x: 1 }, cfg)).toBe(1.0)
+    expect(scoreGeometryLeaf({ x: 1 }, null, cfg)).toBe(1.0)
+    expect(scoreGeometryLeaf(null, null, cfg)).toBe(1.0)
+  })
+
+  /** With no keys shared between the hints there is nothing to agree on. */
+  it("no shared keys scores zero", () => {
+    expect(scoreGeometryLeaf({ x: 1 }, { y: 2 }, cfg)).toBe(0.0)
+    expect(scoreGeometryLeaf({}, {}, cfg)).toBe(0.0)
+  })
+
+  /** Numbers within the relative tolerance count as a match, beyond it do not. */
+  it("numeric comparison honours the relative tolerance", () => {
+    // 0.5 / 100 = 0.005 <= 0.01 default tolerance.
+    expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, cfg)).toBe(1.0)
+    // 2 / 100 = 0.02 > 0.01.
+    expect(scoreGeometryLeaf({ r: 100 }, { r: 102 }, cfg)).toBe(0.0)
+  })
+
+  /** Two near-zero magnitudes are equal regardless of relative difference. */
+  it("treats both-near-zero values as matching", () => {
+    expect(scoreGeometryLeaf({ x: 0 }, { x: 0 }, cfg)).toBe(1.0)
+    expect(scoreGeometryLeaf({ x: 1e-13 }, { x: -1e-13 }, cfg)).toBe(1.0)
+  })
+
+  /** Non-numeric values fall back to strict equality. */
+  it("non-numeric values compare by equality", () => {
+    expect(scoreGeometryLeaf({ kind: "arc" }, { kind: "arc" }, cfg)).toBe(1.0)
+    expect(scoreGeometryLeaf({ kind: "arc" }, { kind: "line" }, cfg)).toBe(0.0)
+  })
+
+  /** Null/undefined leaf values match only when both sides are absent. */
+  it("null and undefined leaf values match only when both absent", () => {
+    expect(scoreGeometryLeaf({ x: null }, { x: null }, cfg)).toBe(1.0)
+    expect(scoreGeometryLeaf({ x: undefined }, { x: undefined }, cfg)).toBe(1.0)
+    expect(scoreGeometryLeaf({ x: null }, { x: 5 }, cfg)).toBe(0.0)
+  })
+
+  /** Score is the fraction of shared keys that agree; absent keys are ignored. */
+  it("scores the fraction of agreeing shared keys", () => {
+    // x agrees (numeric), y disagrees, z is not shared and ignored.
+    expect(scoreGeometryLeaf({ x: 1, y: 2, z: 9 }, { x: 1, y: 3 }, cfg)).toBe(0.5)
+  })
+
+  /** A tighter tolerance from config rejects a difference a looser one accepts. */
+  it("respects a custom geometryLeafTolerance", () => {
+    const strict: HeuristicConfig = { ...cfg, geometryLeafTolerance: 0.001 }
+    expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, strict)).toBe(0.0)
+    expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, cfg)).toBe(1.0)
   })
 })
 
