@@ -21,7 +21,6 @@ class TestBlueprintRegistration:
         "/api/users/me",
         "/api/documents",
         "/api/upload",
-        "/api/export",
         "/api/admin",
         "/api/bug-report",
         "/api/docs",
@@ -70,12 +69,18 @@ class TestBlueprintRegistration:
         rules = [rule.rule for rule in app.url_map.iter_rules()]
         assert "/api/documents/<doc_id>/rebuild-stats" in rules
 
-    def test_upload_export_routes_registered(self, app):
-        """Upload and export blueprint routes exist."""
+    def test_upload_route_registered(self, app):
+        """Upload blueprint route exists."""
         rules = [rule.rule for rule in app.url_map.iter_rules()]
         assert "/api/upload" in rules
-        assert "/api/export/step" in rules
-        assert "/api/export/stl" in rules
+
+    def test_export_routes_absent(self, app):
+        """STEP/STL export runs in the browser WASM solver, not the backend.
+        The backend export routes were vestigial 503 stubs left over from the
+        old Python solver daemon (commit 5f3bfc66) and must not come back."""
+        rules = [rule.rule for rule in app.url_map.iter_rules()]
+        assert "/api/export/step" not in rules
+        assert "/api/export/stl" not in rules
 
     def test_docs_routes_registered(self, app):
         """Documentation blueprint routes exist."""

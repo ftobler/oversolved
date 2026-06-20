@@ -33,24 +33,6 @@ class TestUnauthenticatedAccess:
         response = client.post("/api/upload")
         assert response.status_code == 401
 
-    def test_export_step_rejected(self, client):
-        """POST /api/export/step without session should return 401."""
-        response = client.post(
-            "/api/export/step",
-            data=json.dumps({"features": []}),
-            content_type="application/json",
-        )
-        assert response.status_code == 401
-
-    def test_export_stl_rejected(self, client):
-        """POST /api/export/stl without session should return 401."""
-        response = client.post(
-            "/api/export/stl",
-            data=json.dumps({"features": []}),
-            content_type="application/json",
-        )
-        assert response.status_code == 401
-
     def test_me_rejected(self, client):
         """GET /api/auth/me without session should return 401."""
         response = client.get("/api/auth/me")

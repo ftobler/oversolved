@@ -41,25 +41,3 @@ def upload_file():
         return api_error("Invalid file extension", "BAD_REQUEST", 400)
     f.save(os.path.join(upload_dir, file_id))
     return jsonify({"file_id": file_id})
-
-
-@upload_export_bp.route("/api/export/step", methods=["POST"])
-@require_auth
-@require_csrf
-def export_step():
-    data = request.get_json(silent=True)
-    if not data or "features" not in data:
-        return api_error("features required", "BAD_REQUEST", 400)
-
-    return api_error("solver kernel not available", "SERVICE_UNAVAILABLE", 503)
-
-
-@upload_export_bp.route("/api/export/stl", methods=["POST"])
-@require_auth
-@require_csrf
-def export_stl():
-    data = request.get_json(silent=True)
-    if not data or "features" not in data:
-        return api_error("features required", "BAD_REQUEST", 400)
-
-    return api_error("solver kernel not available", "SERVICE_UNAVAILABLE", 503)
