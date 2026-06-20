@@ -1799,6 +1799,88 @@ mod tests {
     }
 
     #[test]
+    fn midpoint_line_form_constrains_point_to_segment_center() {
+        // Line [0,0 -> 4,2] has midpoint (2,1). A point sitting there is feasible
+        // in both axes; the big-jac test only checks this branch's derivative, not
+        // the residual value, so this pins the formula direction (pt - mid).
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Point, 4)],
+            vec![0.0, 0.0, 4.0, 2.0, 2.0, 1.0],
+            vec![cons(
+                ConstraintKind::Midpoint,
+                vec![
+                    (RefRole::Line, e_ref(0, PointSelector::Absent)),
+                    (RefRole::Point, e_ref(1, PointSelector::Xy)),
+                ],
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 2);
+        assert!(r[0].abs() < 1e-12 && r[1].abs() < 1e-12, "on-center {:?}", r);
+
+        // Move the point to (5,7): residual = (5-2, 7-1) = (3, 6).
+        let mut x = p.x0.clone();
+        x[4] = 5.0;
+        x[5] = 7.0;
+        let r = p.residuals(&x);
+        assert!((r[0] - 3.0).abs() < 1e-12 && (r[1] - 6.0).abs() < 1e-12, "off-center {:?}", r);
+    }
+
+    #[test]
+    fn midpoint_point_pair_form_uses_average_of_two_points() {
+        // PointA (0,0) + PointB (10,4) -> midpoint (5,2). The point-pair branch
+        // (RefRole::PointA/PointB) is exercised by no other test.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2), ent(Kind::Point, 4)],
+            vec![0.0, 0.0, 10.0, 4.0, 5.0, 5.0],
+            vec![cons(
+                ConstraintKind::Midpoint,
+                vec![
+                    (RefRole::PointA, e_ref(0, PointSelector::Xy)),
+                    (RefRole::PointB, e_ref(1, PointSelector::Xy)),
+                    (RefRole::Point, e_ref(2, PointSelector::Xy)),
+                ],
+            )],
+        );
+        let p = Problem::new(&inp);
+        // Point is at (5,5); midpoint is (5,2) -> residual (0, 3).
+        let r = p.residuals(&p.x0.clone());
+        assert_eq!(r.len(), 2);
+        assert!(r[0].abs() < 1e-12 && (r[1] - 3.0).abs() < 1e-12, "point-pair {:?}", r);
+    }
+
+    #[test]
+    fn midpoint_axis_filter_emits_only_the_selected_component() {
+        // Line midpoint (2,1), point at (5,7). Axis::X keeps only the x row (3),
+        // Axis::Y keeps only the y row (6). The axis-restricted branches have no
+        // other coverage.
+        let make = |axis: Axis| Constraint {
+            kind_code: ConstraintKind::Midpoint.to_u8(),
+            refs: vec![
+                (RefRole::Line, e_ref(0, PointSelector::Absent)),
+                (RefRole::Point, e_ref(1, PointSelector::Xy)),
+            ],
+            axis: Some(axis),
+            ..Default::default()
+        };
+        let entities = vec![ent(Kind::Line, 0), ent(Kind::Point, 4)];
+        let params = vec![0.0, 0.0, 4.0, 2.0, 5.0, 7.0];
+
+        let inp_x = input(entities.clone(), params.clone(), vec![make(Axis::X)]);
+        let px = Problem::new(&inp_x);
+        let rx = px.residuals(&px.x0.clone());
+        assert_eq!(rx.len(), 1);
+        assert!((rx[0] - 3.0).abs() < 1e-12, "axis-x {:?}", rx);
+
+        let inp_y = input(entities, params, vec![make(Axis::Y)]);
+        let py = Problem::new(&inp_y);
+        let ry = py.residuals(&py.x0.clone());
+        assert_eq!(ry.len(), 1);
+        assert!((ry[0] - 6.0).abs() < 1e-12, "axis-y {:?}", ry);
+    }
+
+    #[test]
     fn spline_point_resolves_start_end_midpoint() {
         // Cubic Bezier P1(0,0) P2(0,3) P3(3,3) P4(3,0).
         let inp = input(
