@@ -99,7 +99,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     })
   }
 
-  describe('hole inline cases (ported from test_hole_feature.py)', () => {
+  describe('hole inline cases', () => {
     it('reverse direction drills from opposite side', () => {
       /** Hole with direction='reverse' drills from opposite side of the target. */
       const scope = new DisposeScope()

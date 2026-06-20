@@ -134,7 +134,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
     run(fx.add_fuse, 'add', { withTarget: true, mergeTarget: 'body_t' })
   })
 
-  describe('edge cases (ported from test_apply_body_operation.py)', () => {
+  describe('edge cases', () => {
     it('cut fails when there is no intersection', () => {
       /**
        * Two disjoint boxes: cutting one from the other should fail because there is no

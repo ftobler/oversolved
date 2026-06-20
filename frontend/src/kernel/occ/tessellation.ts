@@ -362,8 +362,8 @@ function bodyFrameFromPoints(points: Vec3[]): { center: Vec3; half: Vec3 } {
   }
 }
 
-/** One point standing in for an edge when classifying its position (port of
- * `_edge_representative_point`): line midpoint, circle/arc center, spline middle. */
+/** One point standing in for an edge when classifying its position:
+ * line midpoint, circle/arc center, spline middle. */
 function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
   if (ed.kind === 'line') {
     return [(ed.start[0] + ed.end[0]) / 2, (ed.start[1] + ed.end[1]) / 2, (ed.start[2] + ed.end[2]) / 2]
@@ -381,7 +381,7 @@ function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
 
 /**
  * Unique edge geometry of a solid, sorted into deterministic indices, plus the
- * per-edge ancestry `edge_queries` (port of `solid_to_edges`). Queries are
+ * per-edge ancestry `edge_queries`. Queries are
  * emitted only when `createdBy` is set; the geom-hash token they carry is what
  * the fillet/chamfer resolver matches a picked edge against.
  */
@@ -501,9 +501,9 @@ export function solidToFaceEdgeQueries(
 }
 
 /**
- * Unique B-rep vertices of a solid plus per-vertex ancestry `vertex_queries`
- * (port of `solid_to_vertices`). Python does not sort vertices, so the order
- * follows OCC iteration; callers that need geometry parity compare as a set.
+ * Unique B-rep vertices of a solid plus per-vertex ancestry `vertex_queries`.
+ * Vertices are not sorted, so the order follows OCC iteration; callers that
+ * need geometry parity compare as a set.
  */
 export function solidToVertices(
   oc: OccModule,

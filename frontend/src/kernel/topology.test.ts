@@ -508,7 +508,7 @@ describe.skipIf(!topologyAvailable)("detectTopology degenerate geometry", () => 
   })
 })
 
-// ─── Phase 2 line-division classifiers (ported from test_classifier_resolution.py) ───
+// ─── Phase 2 line-division classifiers ───
 
 describe.skipIf(!topologyAvailable)("line-division classifiers", () => {
   it("split circle gets line-division classifiers per half", () => {

@@ -122,7 +122,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     }
   }
 
-  describe('array inline cases (ported from test_array.py)', () => {
+  describe('array inline cases', () => {
     // ── Rectangular array ──
 
     it('rectangular 2x2 array add', () => {

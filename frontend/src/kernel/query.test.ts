@@ -1213,7 +1213,7 @@ describe("repoFromSnapshot", () => {
   })
 })
 
-// ─── Ancestral registry lifecycle (ported from test_ancestral_registry_lifecycle.py) ───
+// ─── Ancestral registry lifecycle ───
 
 /** Tests for the ancestral registry lifecycle: re-registration, GC, reset on
  * geometry changes. Exercised via _evict_ancestry_and_register, postRegister,
@@ -1375,7 +1375,7 @@ describe("ancestral registry lifecycle", () => {
   })
 })
 
-// ─── Plane/point type helpers (ported from test_query_standardization.py) ───
+// ─── Plane/point type helpers ───
 
 describe("isPlaneType", () => {
   it("accepts plane and face types", () => {
@@ -1457,8 +1457,7 @@ describe("resolvePlaneEarly", () => {
   })
 })
 
-// ─── B-rep vertex / face integration (ported from test_query_standardization.py,
-//      requires OCC build pipeline — skipped in this suite) ───
+// ─── B-rep vertex / face integration (requires OCC build pipeline — skipped in this suite) ───
 
 describe("makeAncestryQuery construction details", () => {
   /** Result starts with '?' and ends with ':face'. */

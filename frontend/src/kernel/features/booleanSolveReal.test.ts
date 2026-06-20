@@ -112,7 +112,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
     })
   }
 
-  describe('boolean inline cases (ported from test_boolean.py)', () => {
+  describe('boolean inline cases', () => {
     it('multiple tools are all consumed', () => {
       /** Boolean with two tools should consume both. */
       const scope = new DisposeScope()

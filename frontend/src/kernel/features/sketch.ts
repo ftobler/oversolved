@@ -1,6 +1,5 @@
 /**
- * The sketch constraint solver, backed by the Rust WASM kernel
- * (originally ported from the ``_solve_sketch`` / ``_dispatch_sketch`` backend).
+ * The sketch constraint solver, backed by the Rust WASM kernel.
  *
  * Takes a sketch feature in the live PartDoc format (``$``-ref constraints,
  * optional ``source`` on projected entities, ``center_rect`` sugar) and lowers
@@ -222,7 +221,7 @@ export function solveSketch(
   const status = STATUS_NAME[out.overallStatus]
 
   // Reconstruct per-entity geometry and status maps, plus rich geometry for
-  // topology detection (port of _geometry_from_array).
+  // topology detection.
   const geometry: Record<string, number[]> = {}
   const features: Record<string, { status: string }> = {}
   const richGeom: Record<string, Record<string, unknown>> = {}

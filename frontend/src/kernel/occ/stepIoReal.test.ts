@@ -70,7 +70,7 @@ describe.skipIf(!oc)('stepShapeToBytes (real OCC)', () => {
   })
 })
 
-// ─── STL export (ported from test_geometry_shape_to_stl.py) ───
+// ─── STL export ───
 
 describe.skipIf(!oc)('shapeToStlBytes (real OCC)', () => {
   let occ: OccModule

@@ -40,9 +40,8 @@ export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
 }
 
 /**
- * Builtin planes as feature-result entries (port of `_BUILTIN_PLANE_RESULTS`).
- * `build()` merges these into the result dict so a doc's planes are addressable,
- * mirroring `builder.py`. The `type` key is dropped, matching Python.
+ * Builtin planes as feature-result entries. `build()` merges these into the
+ * result dict so a doc's planes are addressable. The `type` key is dropped.
  */
 export const BUILTIN_PLANE_RESULTS: Record<string, Record<string, unknown>> = Object.fromEntries(
   Object.entries(BUILTIN_PLANES).map(([name, plane]) => {
@@ -51,7 +50,7 @@ export const BUILTIN_PLANE_RESULTS: Record<string, Record<string, unknown>> = Ob
   }),
 )
 
-// ─── Plane/point type helpers (port of solver_constants + solver_plane) ───
+// ─── Plane/point type helpers ───
 
 export const PLANE_TYPES = new Set(["plane", "face", "flatface"])
 export const POINT_TYPES = new Set(["point", "vertex"])

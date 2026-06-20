@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // Gated real-OCC parity tests for stable ancestry — geometry hash stability
-// across builds and edits (ported from test_stable_ancestry.py). Verifies that
+// across builds and edits. Verifies that
 // face/edge geometry hashes are identical when the same shape is built twice,
 // and that a fillet operation changes face hashes while inherited ones stay.
 //

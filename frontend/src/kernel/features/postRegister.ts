@@ -54,8 +54,8 @@ function isDict(v: unknown): v is Dict {
 }
 
 /**
- * Resolve a sketch's plane query to a plane frame (port of
- * `_resolve_sketch_plane`). Handles builtin planes (`builtin_plane_*`, bare
+ * Resolve a sketch's plane query to a plane frame. Handles builtin planes
+ * (`builtin_plane_*`, bare
  * `Front`/`Top`/`Right`), plane features already registered as `_pt_<id>`,
  * and ancestry queries (`?...:flatface`) resolved through the repository
  * (face elements carry `origin`/`normal`/`x_axis`/`y_axis`).
@@ -88,7 +88,7 @@ export function resolveSketchPlane(
   return front
 }
 
-/** Rich geometry for one solved entity (port of `_geometry_from_array`). */
+/** Rich geometry for one solved entity. */
 export function enrichSketchEntity(kind: string, ep: number[]): Dict {
   const rad = (deg: number): number => (deg * Math.PI) / 180
   if (kind === 'line') return { start: [ep[0], ep[1]], end: [ep[2], ep[3]] }
@@ -178,8 +178,7 @@ export function postRegister(
 }
 
 /**
- * Remove all geometry registrations previously made for a feature (port of
- * `_clear_feature_geometry_registrations`). Prevents ghost references when
+ * Remove all geometry registrations previously made for a feature. Prevents ghost references when
  * entities are deleted and the feature is re-solved. Clears ancestral entries
  * keyed by the bare `@feature_id` tag (topology) or whose payload carries
  * `sketch_id == feature_id` (entity params), then the direct slash elements.
@@ -292,10 +291,9 @@ function payloadEqual(a: unknown, b: unknown): boolean {
 
 /**
  * Register an ancestral payload, skipping when an identical payload already
- * lives under the key (port of Python's `if any(elements.get(eid) == payload):
- * continue` dedup invariant, solver_registry.py:19-26). Without the skip,
- * re-solves churn element ids unnecessarily; the exact-key evict still prevents
- * accumulation, but matching Python keeps the registry stable across solves.
+ * lives under the key. Without the skip, re-solves churn element ids
+ * unnecessarily; the exact-key evict still prevents accumulation, but the
+ * dedup keeps the registry stable across solves.
  */
 function registerAncestralDeduped(
   globalRepo: Repository,
@@ -309,7 +307,7 @@ function registerAncestralDeduped(
   evictAncestryAndRegister(globalRepo, ids, payload)
 }
 
-/** Transform 2D sketch coordinates into 3D world space (port of `_sketch_to_world_2d`). */
+/** Transform 2D sketch coordinates into 3D world space. */
 function sketchToWorld2d(xy: number[], plane: PlaneLike): number[] {
   const { x_axis, y_axis, origin } = plane
   const [u, v] = xy
@@ -321,8 +319,7 @@ function sketchToWorld2d(xy: number[], plane: PlaneLike): number[] {
 }
 
 /**
- * Register each topology surface as a face-typed plane (port of
- * `_register_topology_surfaces`). Classifiers stay off the ancestral key (the
+ * Register each topology surface as a face-typed plane. Classifiers stay off the ancestral key (the
  * resolver scores them in a separate tier) and ride on the payload instead.
  */
 function registerTopologySurfaces(globalRepo: Repository, topology: Dict, plane: PlaneLike): void {
@@ -350,7 +347,7 @@ function registerTopologySurfaces(globalRepo: Repository, topology: Dict, plane:
   }
 }
 
-/** Register each topology edge with its ancestry query (port of `_register_topology_edges`). */
+/** Register each topology edge with its ancestry query. */
 function registerTopologyEdges(globalRepo: Repository, topology: Dict, plane: PlaneLike): void {
   for (const edge of (topology.edges as Dict[]) ?? []) {
     const query = edge.query as string | undefined
@@ -373,7 +370,7 @@ function registerTopologyEdges(globalRepo: Repository, topology: Dict, plane: Pl
   }
 }
 
-/** Register each topology vertex with its ancestry query (port of `_register_topology_vertices`). */
+/** Register each topology vertex with its ancestry query. */
 function registerTopologyVertices(
   globalRepo: Repository,
   topology: Dict,
@@ -394,7 +391,7 @@ function registerTopologyVertices(
   }
 }
 
-/** Register the sketch feature itself as a sketch-feature entity (port of `_register_sketch_feature`). */
+/** Register the sketch feature itself as a sketch-feature entity. */
 function registerSketchFeature(globalRepo: Repository, featureId: string, featureResult: Dict): void {
   if (!featureId || featureResult.topology === undefined) return
   globalRepo.registerAncestor([ref(featureId)], { type: 'sketch-feature', feature_id: featureId })

@@ -35,12 +35,9 @@ interface BodyOutput {
   mesh?: FaceMesh
 }
 
-// ════════════════════════════════════════════════════════════════════
-// Helper functions (ports of Python test helpers in test_sketch_on_face.py
-// and solver_helpers.py)
-// ════════════════════════════════════════════════════════════════════
+// ─── Helper functions ───
 
-/** Fully-constrained rectangle sketch spec (port of `rect_sketch_spec`). */
+/** Fully-constrained rectangle sketch spec. */
 function rectSketchSpec(
   w = 10, h = 10, sketchId = 'sk1', plane = '@builtin_plane_front',
 ): Dict {
@@ -75,7 +72,7 @@ function rectSketchSpec(
   }
 }
 
-/** Single extrude feature spec (port of `extrude_spec`). */
+/** Single extrude feature spec. */
 function extrudeSpec(
   sketchId: string,
   extrudeId: string,
@@ -94,8 +91,7 @@ function extrudeSpec(
 }
 
 /**
- * Complete spec: one fully-constrained rect sketch + one extrude
- * (port of `full_rect_extrude_spec`).
+ * Complete spec: one fully-constrained rect sketch + one extrude.
  */
 function fullRectExtrudeSpec(w = 10, h = 10, d = 5, direction = 'normal'): Dict {
   const sk = rectSketchSpec(w, h)
@@ -103,14 +99,13 @@ function fullRectExtrudeSpec(w = 10, h = 10, d = 5, direction = 'normal'): Dict 
   return { features: [sk, ex] }
 }
 
-/** Doc with a single rect extrude: sketch sk1, extrude ex1 (port of `_extrude_doc`). */
+/** Doc with a single rect extrude: sketch sk1, extrude ex1. */
 function extrudeDoc(): Dict {
   return fullRectExtrudeSpec(10, 10, 5)
 }
 
 /**
- * Return the first face query from the first body in a build result
- * (port of `_face_query_from_build`).
+ * Return the first face query from the first body in a build result.
  */
 function faceQueryFromBuild(r: BuildResponse): string | null {
   const bodies = (r.bodies as Record<string, BodyOutput>) ?? {}

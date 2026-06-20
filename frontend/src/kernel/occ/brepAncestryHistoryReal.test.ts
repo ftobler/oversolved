@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // Gated real-OCC tests for brep ancestry history — tessellation after boolean
-// operations (ported from test_brep_ancestry_history.py). After a boolean cut,
+// operations. After a boolean cut,
 // the tessellated mesh must have face_data with the expected face count and
 // edge/vertex queries that reflect the combined geometry.
 //

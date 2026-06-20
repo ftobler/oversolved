@@ -18,7 +18,7 @@ const EPS = 1e-9
 type Pt = number[]
 type Geom = Record<string, unknown>
 
-/** The decorated area-builder output (port of the former topology.ts type). */
+/** The decorated area-builder output. */
 export interface TopologyDict {
   intersection_points: Record<string, { x: number; y: number }>
   vertices: Record<string, { x: number; y: number }>

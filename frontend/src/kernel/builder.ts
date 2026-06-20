@@ -906,8 +906,7 @@ export function build(
     }
   }
 
-  // Builtin planes are always addressable in the result (port of builder.py's
-  // final `result.update(_BUILTIN_PLANE_RESULTS)`).
+  // Builtin planes are always addressable in the result.
   Object.assign(result, BUILTIN_PLANE_RESULTS)
 
   const response: BuildResponse = {
