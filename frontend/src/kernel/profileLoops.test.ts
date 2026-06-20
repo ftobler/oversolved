@@ -2,7 +2,7 @@
 // extrude leaf (phase 2f): loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
-import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, arcSamplePoints, loopPts, type LoopEdge } from './profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, arcSamplePoints, ellipseArcSamplePoints, loopPts, type LoopEdge } from './profileLoops'
 import { extractProfileLoops } from './features/shared'
 
 const square = (s: number): LoopEdge[] => [
@@ -517,6 +517,17 @@ describe('loopCentroid', () => {
     // The diameter midpoint (circle center) is y=0; the fix must move off it.
     expect(cy).toBeGreaterThan(0.5)
   })
+
+  it('returns the first point for a degenerate (zero-area) collinear loop', () => {
+    // Three collinear points have ~0 signed area, so the area-weighted centroid is
+    // undefined; the helper falls back to the first vertex rather than dividing by 0.
+    const loop: LoopEdge[] = [
+      { kind: 'line', start: [5, 5] },
+      { kind: 'line', start: [6, 5] },
+      { kind: 'line', start: [7, 5] },
+    ]
+    expect(loopCentroid(loop)).toEqual([5, 5])
+  })
 })
 
 describe('arcSamplePoints', () => {
@@ -536,6 +547,55 @@ describe('arcSamplePoints', () => {
   it('returns empty array for arc without center', () => {
     const e: LoopEdge = { kind: 'arc', radius: 1.0 }
     expect(arcSamplePoints(e, 1)).toEqual([])
+  })
+
+  it('samples a clockwise arc the long way around (ccw=false swaps endpoints)', () => {
+    // ccw=false swaps a0/a1 so 0->90 deg is traversed the long way; the single
+    // midpoint lands at 225 deg (third quadrant), not the short-arc 45 deg.
+    const pts = arcSamplePoints(arcEdge(0, 0, 1, 0, 90, false), 1)
+    expect(pts).toHaveLength(1)
+    expect(pts[0][0]).toBeCloseTo(Math.cos((5 * Math.PI) / 4), 9)
+    expect(pts[0][1]).toBeCloseTo(Math.sin((5 * Math.PI) / 4), 9)
+  })
+})
+
+describe('ellipseArcSamplePoints', () => {
+  it('returns empty array for a non-ellipse_arc edge', () => {
+    expect(ellipseArcSamplePoints({ kind: 'arc', center: [0, 0], radius: 1 }, 1)).toEqual([])
+  })
+
+  it('returns empty array for an ellipse_arc without center', () => {
+    expect(ellipseArcSamplePoints({ kind: 'ellipse_arc', a: 4, b: 2 }, 1)).toEqual([])
+  })
+
+  it('samples a CCW elliptical arc interior point on the semi-axes', () => {
+    // center origin, a=4 b=2, theta=0, 0->90 deg CCW: the midpoint sits at phi=45 deg.
+    const e: LoopEdge = { kind: 'ellipse_arc', center: [0, 0], a: 4, b: 2, theta: 0, angle_start_deg: 0, angle_end_deg: 90, ccw: true }
+    const pts = ellipseArcSamplePoints(e, 1)
+    expect(pts).toHaveLength(1)
+    expect(pts[0][0]).toBeCloseTo(4 * Math.cos(Math.PI / 4), 9)
+    expect(pts[0][1]).toBeCloseTo(2 * Math.sin(Math.PI / 4), 9)
+  })
+
+  it('takes the long way for a CW elliptical arc (ccw=false unwraps backwards)', () => {
+    // Same 0->90 deg span but CW: p1 -= 2pi, so the midpoint is at phi=-135 deg
+    // (third quadrant), distinct from the CCW short-arc point.
+    const e: LoopEdge = { kind: 'ellipse_arc', center: [0, 0], a: 4, b: 2, theta: 0, angle_start_deg: 0, angle_end_deg: 90, ccw: false }
+    const pts = ellipseArcSamplePoints(e, 1)
+    expect(pts).toHaveLength(1)
+    expect(pts[0][0]).toBeLessThan(0)
+    expect(pts[0][1]).toBeLessThan(0)
+  })
+
+  it('applies the theta rotation to the sampled points', () => {
+    // theta=90 deg rotates local (ax, ay) by a quarter turn: with cr=0, sr=1 the
+    // 45 deg sample maps to [center - ay, center + ax].
+    const e: LoopEdge = { kind: 'ellipse_arc', center: [0, 0], a: 4, b: 2, theta: 90, angle_start_deg: 0, angle_end_deg: 90, ccw: true }
+    const pts = ellipseArcSamplePoints(e, 1)
+    const ax = 4 * Math.cos(Math.PI / 4)
+    const ay = 2 * Math.sin(Math.PI / 4)
+    expect(pts[0][0]).toBeCloseTo(-ay, 9)
+    expect(pts[0][1]).toBeCloseTo(ax, 9)
   })
 })
 
@@ -559,6 +619,14 @@ describe('loopPts', () => {
     expect(pts).toHaveLength(4)
     expect(pts[0]).toEqual([0, 0])
     expect(pts[2][1]).toBeGreaterThan(0)  // the curve bulges off the chord
+  })
+
+  it('densely samples a self-closing spline (start == end) as its own loop', () => {
+    // A spline whose start coincides with its end is a standalone closed loop, so
+    // loopPts must give it the dense (>=16) sampling, like a full ellipse.
+    const closed: LoopEdge = { kind: 'spline', start: [0, 0], end: [0, 0], c1: [4, 4], c2: [-4, 4] }
+    const pts = loopPts([closed])  // default arcSamples=1
+    expect(pts.length).toBeGreaterThanOrEqual(16)
   })
 
   it('samples a full ellipse edge as a closed polygon', () => {
