@@ -1413,7 +1413,7 @@ mod tests {
         ];
         let inp = input(vec![ent(Kind::Line, 0)], vec![0.0, 0.0, 10.0, 1.0], c);
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert!((r[0] - 1.0).abs() < 1e-12, "horizontal: {}", r[0]);
         assert!((r[1] - (101.0_f64.sqrt() - 10.0)).abs() < 1e-12, "length: {}", r[1]);
     }
@@ -1430,7 +1430,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - (-3.0)).abs() < 1e-12, "horizontal a/b: {}", r[0]);
     }
@@ -1447,7 +1447,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - (-5.0)).abs() < 1e-12, "vertical a/b: {}", r[0]);
     }
@@ -1475,7 +1475,7 @@ mod tests {
             c,
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
         assert!((r[0] - (-3.0)).abs() < 1e-12);
         assert!((r[1] - (-4.0)).abs() < 1e-12);
@@ -1506,7 +1506,7 @@ mod tests {
             c,
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - 3.0).abs() < 1e-12, "residual: {}", r[0]);
     }
@@ -1530,7 +1530,7 @@ mod tests {
         }];
         let inp = input(vec![ent(Kind::Line, 0)], vec![0.0, 0.0, 0.0, 10.0], c);
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1, "point-on-line is one row, not point-to-point's two");
         assert!((r[0] - (-3.0)).abs() < 1e-12, "residual: {}", r[0]);
     }
@@ -1555,7 +1555,7 @@ mod tests {
             c,
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         let expected = 7.0 / (10.0_f64).sqrt() - 2.5;
         assert!((r[0] - expected).abs() < 1e-12, "residual: {}, expected: {}", r[0], expected);
@@ -1586,7 +1586,7 @@ mod tests {
             c,
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         // centre (0,0) to horizontal line y=2: distance = 2, radius = 2 => zero
         assert!(r[0].abs() < 1e-12, "horizontal line y=2 tangent to arc r=2: {}", r[0]);
@@ -1613,7 +1613,7 @@ mod tests {
             c,
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - 1.0).abs() < 1e-12, "offset 1: {}", r[0]);
     }
@@ -1649,7 +1649,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!(r[0].abs() < 1e-12, "major vertex on ellipse: {}", r[0]);
 
@@ -1680,7 +1680,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert!(r[0].abs() < 1e-12, "rotated major vertex: {}", r[0]);
     }
 
@@ -1720,7 +1720,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
         assert!((r[0] - (-3.0)).abs() < 1e-12);
         assert!((r[1] - (-4.0)).abs() < 1e-12);
@@ -1740,7 +1740,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!(r[0].abs() < 1e-12, "point_distance_x residual {}", r[0]);
     }
@@ -1757,7 +1757,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - 3.0).abs() < 1e-12, "expected 3, got {}", r[0]);
     }
@@ -1776,7 +1776,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!(r[0].abs() < 1e-12, "point_distance_y residual {}", r[0]);
     }
@@ -1793,7 +1793,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - 2.0).abs() < 1e-12, "expected 2, got {}", r[0]);
     }
@@ -1815,7 +1815,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
         assert!(r[0].abs() < 1e-12 && r[1].abs() < 1e-12, "on-center {:?}", r);
 
@@ -1845,7 +1845,7 @@ mod tests {
         );
         let p = Problem::new(&inp);
         // Point is at (5,5); midpoint is (5,2) -> residual (0, 3).
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
         assert!(r[0].abs() < 1e-12 && (r[1] - 3.0).abs() < 1e-12, "point-pair {:?}", r);
     }
@@ -1913,7 +1913,7 @@ mod tests {
             )],
         );
         let p = Problem::new(&inp);
-        let r = p.residuals(&p.x0.clone());
+        let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!(r[0].abs() < 1e-6, "on-curve residual {}", r[0]);
 
@@ -2074,7 +2074,7 @@ mod tests {
             let cons_tan = cons(ConstraintKind::Tangent, ab(e_ref(0, abs), e_ref(1, abs)));
             let inp = input(make(), params(), vec![cons_tan]);
             let p = Problem::new(&inp);
-            let r = p.residuals(&p.x0.clone());
+            let r = p.residuals(&p.x0);
             assert_eq!(r.len(), 1);
             assert!((r[0] - 5.0).abs() < 1e-12, "circle tangent: {}", r[0]);
         }
