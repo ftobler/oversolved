@@ -64,7 +64,7 @@ install-npm:
 # OCC.js provisioned, hard-fails on any divergence. Kept out of `just frontend`.
 [working-directory: "frontend"]
 parity:
-    npm run occ:install
+    just install-occ
     npm run test:parity
 
 
@@ -87,6 +87,7 @@ install:
 [working-directory: "frontend"]
 install-occ:
     npm run occ:install
+    npm run occ:provision
 
 runb:
     just run_back
