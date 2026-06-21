@@ -472,8 +472,8 @@ impl<'a> Problem<'a> {
                 Ref::Entity { index, .. } => index,
                 _ => return,
             };
-            let ea = self.params(x, a_idx).to_vec();
-            let eb = self.params(x, b_index.unwrap()).to_vec();
+            let ea = self.params(x, a_idx);
+            let eb = self.params(x, b_index.unwrap());
             let da = [ea[2] - ea[0], ea[3] - ea[1]];
             let db = [eb[2] - eb[0], eb[3] - eb[1]];
             r.push(da[0] * db[1] - da[1] * db[0]);
