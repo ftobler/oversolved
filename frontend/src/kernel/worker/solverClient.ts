@@ -16,8 +16,8 @@
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 import type {
-  SolveRequestOptions, SolveResponse,
-  ExportRequestOptions, ExportResponse, WorkerRequest,
+  SolveRequestOptions, SolveResponse, SolveOkResponse,
+  ExportRequestOptions, ExportResponse, ExportOkResponse, WorkerRequest,
 } from './solverProtocol'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
@@ -30,13 +30,14 @@ export interface SolverWorkerLike {
 
 const EMPTY_BUILD_STATE: BuildState = Object.freeze({ feature_order: [], checkpoints: {} })
 
-interface Pending {
-  resolve: (r: BuildResponse | null) => void
-  reject: (e: unknown) => void
-}
+/** Successful response carrying the value to extract for an in-flight request. */
+type OkResponse = SolveOkResponse | ExportOkResponse
 
-interface ExportPending {
-  resolve: (b: Uint8Array | null) => void
+// One in-flight request. `resolve` already closes over the per-request extractor
+// (solve fills `_build_state`, export pulls bytes), so the shared dispatcher in
+// `onMessage` stays request-shape agnostic.
+interface Pending {
+  resolve: (res: OkResponse) => void
   reject: (e: unknown) => void
 }
 
@@ -54,20 +55,11 @@ function defaultFactory(): SolverWorkerLike | null {
 let workerFactory: () => SolverWorkerLike | null = defaultFactory
 let worker: SolverWorkerLike | null = null
 let nextId = 1
+// Solve and export share the id counter, so an id lives in exactly one entry.
 const pending = new Map<number, Pending>()
-const exportPending = new Map<number, ExportPending>()
 
 function onMessage(e: { data: SolveResponse | ExportResponse }): void {
   const res = e.data
-  // Solve and export share the id counter, so an id lives in exactly one map;
-  // route by whichever request is still in flight for it.
-  const ep = exportPending.get(res.id)
-  if (ep) {
-    exportPending.delete(res.id)
-    if (!res.ok) { ep.reject(new Error(res.error)); return }
-    ep.resolve((res as ExportResponse & { ok: true }).bytes)
-    return
-  }
   const p = pending.get(res.id)
   if (!p) return  // stale or already-settled (e.g. after a crash drained pending)
   pending.delete(res.id)
@@ -75,23 +67,16 @@ function onMessage(e: { data: SolveResponse | ExportResponse }): void {
     p.reject(new Error(res.error))
     return
   }
-  const payload = (res as SolveResponse & { ok: true }).payload
-  if (payload === null) {
-    p.resolve(null)
-    return
-  }
-  p.resolve({ ...payload, _build_state: EMPTY_BUILD_STATE })
+  p.resolve(res)
 }
 
 function onError(): void {
-  // A hard Worker trap loses the checkpoint cache. Fail every in-flight solve
-  // and export, and drop the Worker; the next request respawns a fresh one that
-  // rebuilds from feature 0.
+  // A hard Worker trap loses the checkpoint cache. Fail every in-flight request
+  // and drop the Worker; the next request respawns a fresh one that rebuilds
+  // from feature 0.
   const err = new Error('solver worker crashed')
   for (const p of pending.values()) p.reject(err)
-  for (const p of exportPending.values()) p.reject(err)
   pending.clear()
-  exportPending.clear()
   worker?.terminate()
   worker = null
 }
@@ -107,6 +92,24 @@ function ensureWorker(): SolverWorkerLike | null {
 }
 
 /**
+ * Post a request to the Worker and resolve once its reply arrives. `extract`
+ * pulls the caller's value out of the successful response. Resolves `null` when
+ * no Worker can be created (caller surfaces "local solver unavailable").
+ */
+function sendRequest<T>(
+  buildMsg: (id: number) => WorkerRequest,
+  extract: (res: OkResponse) => T,
+): Promise<T | null> {
+  const w = ensureWorker()
+  if (!w) return Promise.resolve(null)
+  const id = nextId++
+  return new Promise<T | null>((resolve, reject) => {
+    pending.set(id, { resolve: (res) => resolve(extract(res)), reject })
+    w.postMessage(buildMsg(id))
+  })
+}
+
+/**
  * Solve a document on the Worker. Returns the `BuildResponse` on success, or
  * `null` when the Worker can't be created or OCC.js is unavailable inside it
  * (caller surfaces "local solver unavailable").
@@ -115,13 +118,13 @@ export function solveViaWorker(
   spec: Record<string, unknown>,
   options: SolveRequestOptions = {},
 ): Promise<BuildResponse | null> {
-  const w = ensureWorker()
-  if (!w) return Promise.resolve(null)
-  const id = nextId++
-  return new Promise<BuildResponse | null>((resolve, reject) => {
-    pending.set(id, { resolve, reject })
-    w.postMessage({ id, spec, options })
-  })
+  return sendRequest(
+    (id) => ({ id, spec, options }),
+    (res) => {
+      const payload = (res as SolveOkResponse).payload
+      return payload === null ? null : { ...payload, _build_state: EMPTY_BUILD_STATE }
+    },
+  )
 }
 
 /**
@@ -133,13 +136,10 @@ export function exportViaWorker(
   spec: Record<string, unknown>,
   options: ExportRequestOptions,
 ): Promise<Uint8Array | null> {
-  const w = ensureWorker()
-  if (!w) return Promise.resolve(null)
-  const id = nextId++
-  return new Promise<Uint8Array | null>((resolve, reject) => {
-    exportPending.set(id, { resolve, reject })
-    w.postMessage({ id, kind: 'export', spec, options })
-  })
+  return sendRequest(
+    (id) => ({ id, kind: 'export', spec, options }),
+    (res) => (res as ExportOkResponse).bytes,
+  )
 }
 
 /** @internal test-only: inject a fake Worker factory and reset client state. */
@@ -149,7 +149,6 @@ export function setSolverWorkerForTest(
   worker?.terminate()
   worker = null
   pending.clear()
-  exportPending.clear()
   nextId = 1
   workerFactory = factory ?? defaultFactory
 }
