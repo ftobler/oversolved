@@ -17,6 +17,7 @@
 
 import { HandleTable } from './handleTable'
 import { extractErrorMessage } from '../errors'
+import { inWorker } from '../inWorker'
 import { extrudeSquareAndTessellate, type ExtrudeOptions, type MeshResult } from './spikeBuild'
 import { loadOccWeb } from './loadOccWeb'
 import type { OccSpikeModule } from './occTypes'
@@ -79,11 +80,6 @@ export async function runBuilderCommand(
 interface WorkerCtx {
   postMessage(message: BuilderResponse): void
   onmessage: ((e: MessageEvent<BuilderRequest>) => void) | null
-}
-
-function inWorker(): boolean {
-  const g = globalThis as { WorkerGlobalScope?: unknown }
-  return typeof g.WorkerGlobalScope !== 'undefined' && globalThis instanceof (g.WorkerGlobalScope as never)
 }
 
 if (inWorker()) {

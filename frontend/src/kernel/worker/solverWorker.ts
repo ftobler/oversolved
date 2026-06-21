@@ -17,6 +17,7 @@
 
 import { solveLocally, exportLocally, setOccLoader } from '../solveLocally'
 import { extractErrorMessage } from '../errors'
+import { inWorker } from '../inWorker'
 import { loadOccWorker } from '../occ/loadOccWorker'
 import type {
   SolveRequest, SolveResponse, SolvePayload,
@@ -168,11 +169,6 @@ class WorkerActor {
 interface WorkerCtx {
   postMessage(message: SolveResponse | ExportResponse, transfer: Transferable[]): void
   onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null
-}
-
-function inWorker(): boolean {
-  const g = globalThis as { WorkerGlobalScope?: unknown }
-  return typeof g.WorkerGlobalScope !== 'undefined' && globalThis instanceof (g.WorkerGlobalScope as never)
 }
 
 if (inWorker()) {
