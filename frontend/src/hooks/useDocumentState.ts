@@ -3,6 +3,7 @@ import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { backendBundle } from '@/adapters/backend'
+import { dropDeadAxisConstraints } from '@/utils/yamlMutations'
 
 export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
@@ -62,6 +63,9 @@ export function useDocumentState(
         if (!parsed.features || parsed.features.length === 0) {
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
         }
+        // Self-heal stale documents authored before whole-entity axis constraints
+        // were rejected at creation time. See dropDeadAxisConstraints.
+        dropDeadAxisConstraints(parsed)
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)

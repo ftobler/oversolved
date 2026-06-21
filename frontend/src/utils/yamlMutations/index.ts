@@ -21,6 +21,7 @@ export {
   applyAddNgon,
   applyAddOffset,
   applySetFeaturePlane,
+  dropDeadAxisConstraints,
 } from './sketch'
 
 export {

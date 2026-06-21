@@ -34,6 +34,49 @@ function _refsDeletedEntity(c: PartConstraint, deletedIds: Set<string>): boolean
   return false
 }
 
+// True when a local ref resolves to a single point: a `point` entity referenced
+// bare, or a vertex sub-point of another entity (a line end, an arc center, ...).
+// Cross-sketch (`@`) refs are out of scope and treated as valid. Used to spot the
+// two-point form of horizontal/vertical, whose operands must both be points.
+function _isPointOperand(ref: unknown, kindById: Map<string, string>): boolean {
+  if (typeof ref !== 'string') return false
+  if (ref.startsWith('@')) return true
+  if (!ref.startsWith('$')) return false
+  const bare = ref.slice(1)
+  if (kindById.get(bare) === 'point') return true
+  for (const key of VERTEX_POINT_KEYS) {
+    if (bare.length > key.length && bare.endsWith(key)) {
+      const eid = bare.slice(0, -key.length)
+      if (kindById.has(eid)) return true
+    }
+  }
+  return false
+}
+
+// Self-cleanup for stale documents: drop horizontal/vertical constraints whose
+// two-point (a/b) form references a whole non-point entity (e.g. a circle or an
+// extra line picked up alongside the real target). Such an operand resolves to a
+// single sub-point, so the residual is degenerate and already satisfied -- the
+// line never turns axis-aligned and a stray symbol floats on the canvas. These
+// can no longer be authored (applyAddConstraint rejects them) but documents from
+// before that fix may still carry them. Returns the number removed.
+// See bugreports/weird_constraint_20260621_214037.md.
+export function dropDeadAxisConstraints(doc: PartDoc): number {
+  let removed = 0
+  for (const feature of doc.features ?? []) {
+    if (!feature.constraints) continue
+    const kindById = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
+    const before = feature.constraints.length
+    feature.constraints = feature.constraints.filter(c => {
+      if (c.kind !== 'horizontal' && c.kind !== 'vertical') return true
+      if (c.a === undefined || c.b === undefined) return true  // single-line target form
+      return _isPointOperand(c.a, kindById) && _isPointOperand(c.b, kindById)
+    })
+    removed += before - feature.constraints.length
+  }
+  return removed
+}
+
 // midpoint needs specific keys depending on selection:
 //   entity + vertex  → line: $entity,  point: $vertex
 //   3 vertices       → point_a: $v1, point_b: $v2, point: $v3

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature } from '@/utils/yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature, dropDeadAxisConstraints } from '@/utils/yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -1047,5 +1047,83 @@ describe('applyReorderFeatures', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [] }
     applyReorderFeatures(doc, 'sketch1', 0)
     expect(doc.features).toHaveLength(0)
+  })
+})
+
+describe('dropDeadAxisConstraints', () => {
+  // Mirrors the stale doc in bugreports/weird_constraint_20260621_214037.md: a
+  // vertical whose a/b operands are a whole circle and a whole line. Each resolves
+  // to a single sub-point, so the constraint is degenerate and must be pruned.
+  const docWithDeadVertical = (): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [
+      {
+        id: 'Sketch1',
+        kind: 'sketch',
+        initial: { line1: [0, 0, 10, 0], circ1: [5, 5, 3], pt1: [1, 2], pt2: [3, 4] },
+        entities: [
+          { id: 'line1', kind: 'line' },
+          { id: 'circ1', kind: 'circle' },
+          { id: 'pt1', kind: 'point' },
+          { id: 'pt2', kind: 'point' },
+        ],
+        constraints: [
+          { id: 'c_dead', kind: 'vertical', a: '$circ1', b: '$line1' },
+        ],
+      },
+    ],
+  })
+
+  it('removes a vertical between two whole entities', () => {
+    const doc = docWithDeadVertical()
+    const removed = dropDeadAxisConstraints(doc)
+    expect(removed).toBe(1)
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
+  it('removes a horizontal whose single operand is a whole entity', () => {
+    const doc = docWithDeadVertical()
+    doc.features![0].constraints = [
+      { id: 'c_dead', kind: 'horizontal', a: '$circ1', b: '$pt1' },
+    ]
+    expect(dropDeadAxisConstraints(doc)).toBe(1)
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
+  it('keeps a valid two-point vertical (point entity + line endpoint)', () => {
+    const doc = docWithDeadVertical()
+    doc.features![0].constraints = [
+      { id: 'c_ok', kind: 'vertical', a: '$pt1', b: '$line1start' },
+    ]
+    expect(dropDeadAxisConstraints(doc)).toBe(0)
+    expect(doc.features![0].constraints).toHaveLength(1)
+  })
+
+  it('keeps a valid two-point vertical between two point entities', () => {
+    const doc = docWithDeadVertical()
+    doc.features![0].constraints = [
+      { id: 'c_ok', kind: 'vertical', a: '$pt1', b: '$pt2' },
+    ]
+    expect(dropDeadAxisConstraints(doc)).toBe(0)
+    expect(doc.features![0].constraints).toHaveLength(1)
+  })
+
+  it('keeps the single-line target form (no a/b)', () => {
+    const doc = docWithDeadVertical()
+    doc.features![0].constraints = [
+      { id: 'c_ok', kind: 'horizontal', target: '$line1' },
+    ]
+    expect(dropDeadAxisConstraints(doc)).toBe(0)
+    expect(doc.features![0].constraints).toHaveLength(1)
+  })
+
+  it('leaves non-axis constraints untouched', () => {
+    const doc = docWithDeadVertical()
+    doc.features![0].constraints = [
+      { id: 'c_coin', kind: 'coincident', a: '$circ1', b: '$line1' },
+    ]
+    expect(dropDeadAxisConstraints(doc)).toBe(0)
+    expect(doc.features![0].constraints).toHaveLength(1)
   })
 })
