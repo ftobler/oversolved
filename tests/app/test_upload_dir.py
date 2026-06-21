@@ -26,6 +26,14 @@ def test_get_upload_dir_defaults_to_package_uploads(monkeypatch):
     assert get_upload_dir() == expected
 
 
+def test_fallback_default_path(monkeypatch):
+    """Without the env var the result ends in 'uploads' and is absolute."""
+    monkeypatch.delenv("OVERSOLVED_UPLOAD_DIR", raising=False)
+    result = get_upload_dir()
+    assert os.path.basename(result) == "uploads"
+    assert os.path.isabs(result)
+
+
 def test_get_upload_dir_prefers_app_config(pg_dsn, tmp_path, monkeypatch):
     """Inside an app context the configured upload_dir wins over the env var."""
     from oversolved.app import create_app
