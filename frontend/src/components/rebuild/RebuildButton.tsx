@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import rebuildIcon from '@/assets/icons/context-rebuild.svg'
 import { RebuildTimingPopover } from '@/components/rebuild/RebuildTimingPopover'
+import { formatMs } from '@/components/rebuild/formatMs'
 import type { PartFeature, RebuildValidation } from '@/types/cad'
 
 interface RebuildButtonProps {
@@ -10,11 +11,6 @@ interface RebuildButtonProps {
   isLoading?: boolean
   disabled?: boolean
   validation?: RebuildValidation | null
-}
-
-function formatMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(2)}s`
 }
 
 export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled, validation }: RebuildButtonProps) {

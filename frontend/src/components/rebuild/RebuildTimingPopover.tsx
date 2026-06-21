@@ -1,4 +1,5 @@
 import type { PartFeature, RebuildValidation } from '@/types/cad'
+import { formatMs } from '@/components/rebuild/formatMs'
 
 interface RebuildTimingPopoverProps {
   featureTimings: Record<string, number>
@@ -21,11 +22,6 @@ function validationBadge(v: RebuildValidation) {
 
 export function RebuildTimingPopover({ featureTimings, features, isVisible, onMouseEnter, onMouseLeave, validation }: RebuildTimingPopoverProps) {
   if (!isVisible) return null
-
-  const formatMs = (ms: number) => {
-    if (ms < 1000) return `${Math.round(ms)}ms`
-    return `${(ms / 1000).toFixed(2)}s`
-  }
 
   const entries = features
     .filter(f => f.id in featureTimings)
