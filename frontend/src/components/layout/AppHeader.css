@@ -142,12 +142,17 @@
   background: none;
   border: none;
   font-family: inherit;
-  cursor: pointer;
   text-align: left;
 }
 
-.doc-name:hover {
+/* Hover/pointer only on the editable button variant (PartToolbar's rename
+   trigger). The plain <h2> title (Documents overview) shares the class but is
+   not interactive, so the hover affordance there was just confusing. */
+button.doc-name {
+  cursor: pointer;
+}
+
+button.doc-name:hover {
   background: #222;
   color: #fff;
-  cursor: pointer;
 }
