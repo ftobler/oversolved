@@ -429,14 +429,19 @@ impl<'a> Problem<'a> {
         r.push(vx * nx + vy * ny - value);
     }
 
+    /// True when the ref denotes a single point: an external reference, an
+    /// entity with an explicit point selector, or a Point-kind entity.
+    fn ref_is_point(&self, r: &Ref) -> bool {
+        match r {
+            Ref::External { .. } => true,
+            Ref::Entity { point, index } => point.is_present() || self.kind_of(*index) == Kind::Point,
+        }
+    }
+
     fn r_coincident(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let (Some(a_ref), Some(b_ref)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
             return;
         };
-        let a_external = matches!(a_ref, Ref::External { .. });
-        let b_external = matches!(b_ref, Ref::External { .. });
-        let a_point_present = matches!(a_ref, Ref::Entity { point, .. } if point.is_present());
-        let b_point_present = matches!(b_ref, Ref::Entity { point, .. } if point.is_present());
         let a_kind = match a_ref {
             Ref::Entity { index, .. } => Some(self.kind_of(index)),
             _ => None,
@@ -453,18 +458,9 @@ impl<'a> Problem<'a> {
             Ref::Entity { index, .. } => Some(index),
             _ => None,
         };
-        // "Denotes a single point": an external point, an entity referenced with
-        // an explicit point selector, or a point entity. Used so the curve-locus
-        // point-on-curve branches fire regardless of operand order -- e.g. a
-        // coincident between a line and the document origin (an external point)
-        // reads as point-on-line, not as pinning the line's start endpoint.
-        let b_is_point =
-            b_external || b_point_present || b_kind == Some(Kind::Point);
 
-        if !a_external
-            && !b_external
-            && !a_point_present
-            && !b_point_present
+        if !self.ref_is_point(&a_ref)
+            && !self.ref_is_point(&b_ref)
             && a_kind == Some(Kind::Line)
             && b_kind == Some(Kind::Line)
         {
@@ -484,55 +480,48 @@ impl<'a> Problem<'a> {
                 (0.0, 1.0)
             };
             r.push((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny);
-        } else if !b_external && !b_point_present && b_kind == Some(Kind::Line) {
+        } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Line) {
             let pa = self.point(x, a_ref);
             let ep_b = self.params(x, b_index.unwrap());
             let (dx, dy) = (ep_b[2] - ep_b[0], ep_b[3] - ep_b[1]);
             let n = (dx * dx + dy * dy).sqrt();
             let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
             r.push((pa[0] - ep_b[0]) * nx + (pa[1] - ep_b[1]) * ny);
-        } else if !b_external
-            && !b_point_present
+        } else if !self.ref_is_point(&b_ref)
             && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc))
         {
             let pa = self.point(x, a_ref);
             let ep_b = self.params(x, b_index.unwrap());
             let dist = ((pa[0] - ep_b[0]).powi(2) + (pa[1] - ep_b[1]).powi(2)).sqrt();
             r.push(dist - ep_b[2]);
-        } else if !b_external && !b_point_present && b_kind == Some(Kind::Ellipse) {
-            // Point-on-ellipse: the conic equation in the ellipse's local frame.
-            // ep_b = [cx, cy, a, b, theta_deg]; rotate the offset into the axis
-            // frame, then evaluate (u/a)^2 + (v/b)^2 - 1.
+        } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Ellipse) {
             let pa = self.point(x, a_ref);
             let ep_b = self.params(x, b_index.unwrap());
             r.push(ellipse_point_residual(pa, ep_b));
-        } else if !b_external && !b_point_present && b_kind == Some(Kind::Spline) {
-            // Point-on-spline: signed perpendicular distance to the closest
-            // point on the cubic Bezier, mirroring the point-on-line row.
+        } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Spline) {
             let pa = self.point(x, a_ref);
             let ep_b = self.params(x, b_index.unwrap());
             r.push(spline_point_residual(pa, ep_b));
-        } else if !a_external && !a_point_present && a_kind == Some(Kind::Line) && b_is_point {
+        } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Line) && self.ref_is_point(&b_ref) {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             let (dx, dy) = (ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]);
             let n = (dx * dx + dy * dy).sqrt();
             let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
             r.push((pa[0] - ep_a[0]) * nx + (pa[1] - ep_a[1]) * ny);
-        } else if !a_external
-            && !a_point_present
+        } else if !self.ref_is_point(&a_ref)
             && (a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc))
-            && b_is_point
+            && self.ref_is_point(&b_ref)
         {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             let dist = ((pa[0] - ep_a[0]).powi(2) + (pa[1] - ep_a[1]).powi(2)).sqrt();
             r.push(dist - ep_a[2]);
-        } else if !a_external && !a_point_present && a_kind == Some(Kind::Ellipse) && b_is_point {
+        } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Ellipse) && self.ref_is_point(&b_ref) {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             r.push(ellipse_point_residual(pa, ep_a));
-        } else if !a_external && !a_point_present && a_kind == Some(Kind::Spline) && b_is_point {
+        } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Spline) && self.ref_is_point(&b_ref) {
             let pa = self.point(x, b_ref);
             let ep_a = self.params(x, a_index.unwrap());
             r.push(spline_point_residual(pa, ep_a));
@@ -1289,10 +1278,6 @@ impl<'a> Problem<'a> {
         let (Some(a_ref), Some(b_ref)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
             return false;
         };
-        let a_external = matches!(a_ref, Ref::External { .. });
-        let b_external = matches!(b_ref, Ref::External { .. });
-        let a_point = matches!(a_ref, Ref::Entity { point, .. } if point.is_present());
-        let b_point = matches!(b_ref, Ref::Entity { point, .. } if point.is_present());
         let a_kind = match a_ref {
             Ref::Entity { index, .. } => Some(self.kind_of(index)),
             _ => None,
@@ -1301,29 +1286,21 @@ impl<'a> Problem<'a> {
             Ref::Entity { index, .. } => Some(self.kind_of(index)),
             _ => None,
         };
-        // Mirrors `r_coincident`'s `b_is_point`: external, explicit point
-        // selector, or a point entity all denote a single point.
-        let b_is_point = b_external || b_point || b_kind == Some(Kind::Point);
-        let branch1 = !a_external
-            && !b_external
-            && !a_point
-            && !b_point
-            && a_kind == Some(Kind::Line)
-            && b_kind == Some(Kind::Line);
-        let branch2 = !b_external && !b_point && b_kind == Some(Kind::Line);
-        let branch3 = !b_external
-            && !b_point
-            && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc));
-        let branch4 = !b_external && !b_point && b_kind == Some(Kind::Ellipse);
-        let branch5 = !b_external && !b_point && b_kind == Some(Kind::Spline);
-        let branch2b = !a_external && !a_point && a_kind == Some(Kind::Line) && b_is_point;
-        let branch3b = !a_external
-            && !a_point
-            && (a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc))
-            && b_is_point;
-        let branch4b = !a_external && !a_point && a_kind == Some(Kind::Ellipse) && b_is_point;
-        let branch5b = !a_external && !a_point && a_kind == Some(Kind::Spline) && b_is_point;
-        !(branch1 || branch2 || branch3 || branch4 || branch5 || branch2b || branch3b || branch4b || branch5b)
+        !(
+            // curve-curve: both are non-point entities of recognized curve kind
+            (!self.ref_is_point(&a_ref) && !self.ref_is_point(&b_ref)
+                && a_kind == Some(Kind::Line) && b_kind == Some(Kind::Line))
+            // point-on-curve: B is a curve, A is a point
+            || (!self.ref_is_point(&b_ref)
+                && (b_kind == Some(Kind::Line)
+                    || b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc)
+                    || b_kind == Some(Kind::Ellipse) || b_kind == Some(Kind::Spline)))
+            // point-on-curve (reversed): A is a curve, B is a point
+            || (!self.ref_is_point(&a_ref) && self.ref_is_point(&b_ref)
+                && (a_kind == Some(Kind::Line)
+                    || a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc)
+                    || a_kind == Some(Kind::Ellipse) || a_kind == Some(Kind::Spline)))
+        )
     }
 
     fn jac_fixed(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
