@@ -854,8 +854,10 @@ impl<'a> Problem<'a> {
     // The fallback keeps correctness trivially (it IS finite differences) while
     // the common cheap constraints avoid the O(2N) full-FD cost.
 
-    /// Jacobian of the full stacked residual at `x` (m rows x `n` params).
-    pub fn jacobian(&self, x: &[f64], n: usize) -> DMatrix<f64> {
+    /// Dense rows of the full stacked Jacobian: one row per residual (constraint
+    /// rows from `jac_one`) followed by the pin and equality-pin rows. Shared by
+    /// both the dense and sparse Jacobian builders.
+    fn jacobian_rows(&self, x: &[f64], n: usize) -> Vec<Vec<f64>> {
         let mut rows: Vec<Vec<f64>> = Vec::new();
         for c in self.constraints {
             self.jac_one(c, x, n, &mut rows);
@@ -870,7 +872,12 @@ impl<'a> Problem<'a> {
             row[i] = 1.0;
             rows.push(row);
         }
+        rows
+    }
 
+    /// Jacobian of the full stacked residual at `x` (m rows x `n` params).
+    pub fn jacobian(&self, x: &[f64], n: usize) -> DMatrix<f64> {
+        let rows = self.jacobian_rows(x, n);
         let m = rows.len();
         let mut j = DMatrix::<f64>::zeros(m, n);
         for (r_i, row) in rows.iter().enumerate() {
@@ -884,22 +891,7 @@ impl<'a> Problem<'a> {
     /// Sparse Jacobian: each row as `(col_index, value)` pairs for nonzero entries.
     /// Builds the same row set as `jacobian` but converts to sparse representation.
     pub fn jacobian_sparse(&self, x: &[f64], n: usize) -> Vec<SparseRow> {
-        let mut dense_rows: Vec<Vec<f64>> = Vec::new();
-        for c in self.constraints {
-            self.jac_one(c, x, n, &mut dense_rows);
-        }
-        for &i in &self.pinned_indices {
-            let mut row = vec![0.0; n];
-            row[i] = 1.0;
-            dense_rows.push(row);
-        }
-        for &(i, _) in &self.equality_pins {
-            let mut row = vec![0.0; n];
-            row[i] = 1.0;
-            dense_rows.push(row);
-        }
-
-        dense_rows
+        self.jacobian_rows(x, n)
             .into_iter()
             .map(|row| {
                 row.into_iter()
