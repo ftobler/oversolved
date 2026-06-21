@@ -143,10 +143,6 @@ impl Verts {
         self.map.insert(k.clone(), [pt[0], pt[1]]);
         k
     }
-    /// Insert-or-update.
-    fn set(&mut self, k: String, v: Vec2) {
-        self.map.insert(k, v);
-    }
     fn get(&self, k: &str) -> Vec2 {
         self.map.get(k).copied().unwrap_or_else(|| panic!("vertex {k} not found"))
     }
