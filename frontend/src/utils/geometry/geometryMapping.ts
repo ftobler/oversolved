@@ -208,36 +208,22 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   }
   const kind = resolved.kind
 
-  if (kind === 'horizontal') {
+  // horizontal/vertical share the same anchoring; only the glyph differs.
+  if (kind === 'horizontal' || kind === 'vertical') {
+    const sym = kind === 'horizontal' ? 'symbol_h' : 'symbol_v'
     if (resolved.a && resolved.b) {
       const pa = geomPoint(sketch, resolved.a)
       const pb = geomPoint(sketch, resolved.b)
       if (!pa || !pb) return { kind: 'unknown' }
       const at: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: 'symbol_h', at, entity: resolved.a.entity, entities: [resolved.a.entity, resolved.b.entity] }
+      return { kind: sym, at, entity: resolved.a.entity, entities: [resolved.a.entity, resolved.b.entity] }
     }
     const eid = resolved.target?.entity
     if (!eid) return { kind: 'unknown' }
     const e = sketch[eid] as LineSegment | Arc
     if (!e || !('start' in e) || !('end' in e)) return { kind: 'unknown' }
     const at: Point = [(e.start[0] + e.end[0]) / 2, (e.start[1] + e.end[1]) / 2]
-    return { kind: 'symbol_h', at, entity: eid }
-  }
-
-  if (kind === 'vertical') {
-    if (resolved.a && resolved.b) {
-      const pa = geomPoint(sketch, resolved.a)
-      const pb = geomPoint(sketch, resolved.b)
-      if (!pa || !pb) return { kind: 'unknown' }
-      const at: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: 'symbol_v', at, entity: resolved.a.entity, entities: [resolved.a.entity, resolved.b.entity] }
-    }
-    const eid = resolved.target?.entity
-    if (!eid) return { kind: 'unknown' }
-    const e = sketch[eid] as LineSegment | Arc
-    if (!e || !('start' in e) || !('end' in e)) return { kind: 'unknown' }
-    const at: Point = [(e.start[0] + e.end[0]) / 2, (e.start[1] + e.end[1]) / 2]
-    return { kind: 'symbol_v', at, entity: eid }
+    return { kind: sym, at, entity: eid }
   }
 
   if (kind === 'length') {
