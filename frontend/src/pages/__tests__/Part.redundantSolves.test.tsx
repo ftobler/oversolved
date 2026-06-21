@@ -7,7 +7,7 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
-import { invalidateAllCache } from '@/utils/core/buildCache'
+
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -41,7 +41,6 @@ describe('Part - eliminate redundant solves', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    await invalidateAllCache()
   })
 
   function mockFetch() {

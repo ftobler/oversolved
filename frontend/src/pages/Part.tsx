@@ -16,7 +16,6 @@ import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
-import { invalidateDocCache } from '@/utils/core/buildCache'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { debugToolsUnrestricted } from '@/config/capabilities'
 import '@/pages/Part.css'
@@ -191,7 +190,6 @@ export default function Part() {
     if (!uuid || !docRef.current) return
     setIsRebuilding(true)
     try {
-      await invalidateDocCache(uuid)
       // Opt into validation: the kernel will do a parallel fresh full rebuild
       // and surface a diff in `validation` so the popover can render the badge.
       await reSolve(docRef.current, { validate: true })
