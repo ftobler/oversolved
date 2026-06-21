@@ -29,12 +29,6 @@ export interface VertexBodyRegistration {
   vertexQueries: ReadonlyArray<string>
 }
 
-interface BodyRecord {
-  mesh: THREE.Points
-  geometry: THREE.BufferGeometry
-  allocatedIds: number[]
-}
-
 const VERT_SHADER = `
   attribute vec3 aColor;
   varying vec3 vColor;
@@ -61,13 +55,12 @@ function buildVertexIdMaterial(): THREE.ShaderMaterial {
   })
 }
 
-export class VertexIdLayer extends IdLayerBase {
+export class VertexIdLayer extends IdLayerBase<THREE.Points> {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
 
-  private bodies = new Map<string, BodyRecord>()
   private material = buildVertexIdMaterial()
 
   constructor(registry: IdRegistry, _config?: VertexIdLayerConfig) {
@@ -118,17 +111,6 @@ export class VertexIdLayer extends IdLayerBase {
     this.scene.add(mesh)
     this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
   }
-
-  unregisterBody(bodyKey: string): void {
-    const rec = this.bodies.get(bodyKey)
-    if (!rec) return
-    this.scene.remove(rec.mesh)
-    rec.geometry.dispose()
-    for (const id of rec.allocatedIds) this.registry.free(id)
-    this.bodies.delete(bodyKey)
-  }
-
-  bodyCount(): number { return this.bodies.size }
 
   dispose(): void {
     for (const key of [...this.bodies.keys()]) this.unregisterBody(key)

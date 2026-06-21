@@ -34,18 +34,42 @@ export interface IdLayer {
 }
 
 /**
+ * One registered body's GPU resources, owned by the base. `M` is the concrete
+ * object type a layer draws (Mesh for faces, LineSegments for edges, Points
+ * for vertices).
+ */
+export interface IdLayerBodyRecord<M extends THREE.Object3D = THREE.Object3D> {
+  mesh: M
+  geometry: THREE.BufferGeometry
+  allocatedIds: number[]
+}
+
+/**
  * Convenience base: owns a registry reference + a private Scene that
  * concrete layers populate. Subclasses implement the actual registration
  * surface (e.g. FaceIdLayer.registerBody).
  */
-export abstract class IdLayerBase implements IdLayer {
+export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> implements IdLayer {
   abstract readonly name: string
   abstract readonly priority: number
   abstract readonly zPolicy: LayerZPolicy
   readonly scene: THREE.Scene = new THREE.Scene()
 
   protected registry: IdRegistry
+  protected bodies = new Map<string, IdLayerBodyRecord<M>>()
   constructor(registry: IdRegistry) { this.registry = registry }
+
+  unregisterBody(bodyKey: string): void {
+    const rec = this.bodies.get(bodyKey)
+    if (!rec) return
+    this.scene.remove(rec.mesh)
+    rec.geometry.dispose()
+    for (const id of rec.allocatedIds) this.registry.free(id)
+    this.bodies.delete(bodyKey)
+  }
+
+  /** Test helper: number of registered bodies. */
+  bodyCount(): number { return this.bodies.size }
 
   abstract dispose(): void
 }

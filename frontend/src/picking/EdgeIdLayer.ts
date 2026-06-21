@@ -46,12 +46,6 @@ export interface EdgeBodyRegistration {
   edgeQueries: ReadonlyArray<string>
 }
 
-interface BodyRecord {
-  mesh: THREE.LineSegments
-  geometry: THREE.BufferGeometry
-  allocatedIds: number[]
-}
-
 const VERT_SHADER = `
   attribute vec3 aColor;
   uniform float uDepthBias;
@@ -91,13 +85,12 @@ function buildXrayMaterialFrom(base: THREE.ShaderMaterial): THREE.ShaderMaterial
   return m
 }
 
-export class EdgeIdLayer extends IdLayerBase {
+export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
 
-  private bodies = new Map<string, BodyRecord>()
   private material: THREE.ShaderMaterial
   private xrayMaterial: THREE.ShaderMaterial
   private xrayEnabled = false
@@ -190,17 +183,6 @@ export class EdgeIdLayer extends IdLayerBase {
     this.scene.add(mesh)
     this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
   }
-
-  unregisterBody(bodyKey: string): void {
-    const rec = this.bodies.get(bodyKey)
-    if (!rec) return
-    this.scene.remove(rec.mesh)
-    rec.geometry.dispose()
-    for (const id of rec.allocatedIds) this.registry.free(id)
-    this.bodies.delete(bodyKey)
-  }
-
-  bodyCount(): number { return this.bodies.size }
 
   dispose(): void {
     for (const key of [...this.bodies.keys()]) this.unregisterBody(key)
