@@ -121,48 +121,37 @@ fn arc_tangent(a_rad: f64, ccw: bool) -> Vec2 {
 // ─── Vertex registry ───
 
 struct Verts {
-    list: Vec<(String, Vec2)>,
+    map: HashMap<String, Vec2>,
 }
 impl Verts {
     fn new() -> Self {
-        Verts { list: Vec::new() }
+        Verts { map: HashMap::new() }
     }
     fn clone_verts(&self) -> Verts {
         Verts {
-            list: self.list.clone(),
+            map: self.map.clone(),
         }
     }
     /// Merge a point into the pool, returning its `_vN` id (mirrors `vid`).
     fn vid(&mut self, pt: Vec2) -> String {
-        for (k, v) in &self.list {
+        for (k, v) in &self.map {
             if (v[0] - pt[0]).powi(2) + (v[1] - pt[1]).powi(2) < MERGE * MERGE {
                 return k.clone();
             }
         }
-        let k = format!("_v{}", self.list.len());
-        self.list.push((k.clone(), [pt[0], pt[1]]));
+        let k = format!("_v{}", self.map.len());
+        self.map.insert(k.clone(), [pt[0], pt[1]]);
         k
     }
-    /// Insert-or-update (Map.set semantics, keeping insertion position).
+    /// Insert-or-update.
     fn set(&mut self, k: String, v: Vec2) {
-        for e in &mut self.list {
-            if e.0 == k {
-                e.1 = v;
-                return;
-            }
-        }
-        self.list.push((k, v));
+        self.map.insert(k, v);
     }
     fn get(&self, k: &str) -> Vec2 {
-        for (kk, v) in &self.list {
-            if kk == k {
-                return *v;
-            }
-        }
-        panic!("vertex {k} not found");
+        self.map.get(k).copied().unwrap_or_else(|| panic!("vertex {k} not found"))
     }
     fn keys(&self) -> HashSet<String> {
-        self.list.iter().map(|(k, _)| k.clone()).collect()
+        self.map.keys().cloned().collect()
     }
 }
 
@@ -1309,9 +1298,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     for (k, v) in arc_splits {
         splits.insert(k, v);
     }
-    for (k, v) in &arc_verts.list {
-        verts.set(k.clone(), *v);
-    }
+    verts.map.extend(arc_verts.map.drain());
 
     for (eid, e) in &cls.splines {
         splits.insert(
@@ -1366,8 +1353,8 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
 
     let mut intersection_points: Vec<(String, Vec2)> = Vec::new();
     let mut vertices: Vec<(String, Vec2)> = Vec::new();
-    for (k, v) in &verts.list {
-        if !endpoint_vids.contains(k) {
+    for (k, v) in &verts.map {
+        if !endpoint_vids.contains(k.as_str()) {
             intersection_points.push((k.clone(), *v));
         }
         vertices.push((k.clone(), *v));
