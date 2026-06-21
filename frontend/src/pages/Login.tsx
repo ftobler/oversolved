@@ -64,6 +64,11 @@ export default function Login() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        {/* Guest-first: signing in is an optional cloud upgrade, never a wall.
+            This skips it and drops straight into the local library. */}
+        <button className="login-guest-btn" type="button" onClick={() => navigate('/documents')}>
+          Continue without signing in
+        </button>
       </div>
     </div>
   )

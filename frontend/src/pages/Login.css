@@ -78,3 +78,19 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.login-guest-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.login-guest-btn:hover {
+  color: #ccc;
+}
