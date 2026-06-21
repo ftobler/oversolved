@@ -1,11 +1,9 @@
-import { useRef, useCallback } from 'react'
+import { useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
-import { useThree, useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w } from '@/components/sketch/sketch_helpers'
 import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
+import { useDimLabelScale } from './useDimLabelScale'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
@@ -20,14 +18,10 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
 }) {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged   } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
-  const meshRef = useRef<THREE.Mesh>(null)
+  const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   // p1 = center, p2 = edge point; r is the circle/arc radius.
   const [cx, cy] = dim.p1
@@ -150,14 +144,10 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
 }) {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
-  const meshRef = useRef<THREE.Mesh>(null)
+  const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   // p1 and p2 are the two endpoints of the diameter; center is their midpoint.
   const anchorX = (dim.p1[0] + dim.p2[0]) / 2, anchorY = (dim.p1[1] + dim.p2[1]) / 2

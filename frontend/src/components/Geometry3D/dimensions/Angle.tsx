@@ -1,11 +1,10 @@
-import { useRef, useCallback } from 'react'
+import { useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
-import { useThree, useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w, sampleArc } from '@/components/sketch/sketch_helpers'
+import { sampleArc } from '@/components/sketch/sketch_helpers'
 import { Arrowhead, ArcTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
+import { useDimLabelScale } from './useDimLabelScale'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
@@ -21,14 +20,10 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 }) {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
   const activeDragPos = useActiveLabelDrag(cid)
-  const meshRef = useRef<THREE.Mesh>(null)
+  const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (meshRef.current) meshRef.current.scale.setScalar(30 * p2w(camera))
-  })
 
   // Label offset relative to the arc vertex. While dragging, the vertex is the
   // anchor stored at pointer-down; otherwise it is recomputed below, so convert
