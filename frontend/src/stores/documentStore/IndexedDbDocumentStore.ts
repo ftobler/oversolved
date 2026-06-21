@@ -118,7 +118,7 @@ export class IndexedDbDocumentStore implements DocumentStore {
   async remove(id: string): Promise<void> {
     const existing = await idbGet<StoredDoc>(id)
     if (!existing || existing.deleted_at) return
-    await idbPut({ ...existing, deleted_at: new Date().toISOString() })
+    await idbPut({ ...existing, deleted_at: new Date(Date.now()).toISOString() })
   }
 
   async create(name: string, opts: { is_public?: boolean } = {}): Promise<{ uuid: string }> {
