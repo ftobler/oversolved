@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { http } from '@/utils/core/httpClient'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import '@/pages/UserProfile.css'
+import '@/pages/adminSettings.css'
 
 export default function Backup() {
   const { user } = useAuth()
