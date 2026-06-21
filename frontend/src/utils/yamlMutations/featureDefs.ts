@@ -323,50 +323,46 @@ export function applyAddChamfer(
   doc.features.push(feature)
 }
 
-export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.fillet) {
-    warn(`applyAddFilletEdge: feature ${featureId} has no fillet`)
+// fillet and chamfer both carry an identical `edges: string[]` list, so the
+// add/remove edge logic is shared across both kinds. `fn` keeps the original
+// caller name in the diagnostic so the warning still points at the public entry.
+function toggleEdge(doc: PartDoc, featureId: string, edgeQuery: string, kind: 'fillet' | 'chamfer', fn: string): void {
+  const sub = findFeature(doc, featureId)?.[kind]
+  if (!sub) {
+    warn(`${fn}: feature ${featureId} has no ${kind}`)
     return
   }
-  const idx = feature.fillet.edges.indexOf(edgeQuery)
+  const idx = sub.edges.indexOf(edgeQuery)
   if (idx >= 0) {
-    feature.fillet.edges.splice(idx, 1)
+    sub.edges.splice(idx, 1)
   } else {
-    feature.fillet.edges.push(edgeQuery)
+    sub.edges.push(edgeQuery)
   }
+}
+
+function removeEdgeAt(doc: PartDoc, featureId: string, index: number, kind: 'fillet' | 'chamfer', fn: string): void {
+  const sub = findFeature(doc, featureId)?.[kind]
+  if (!sub) {
+    warn(`${fn}: feature ${featureId} has no ${kind}`)
+    return
+  }
+  sub.edges.splice(index, 1)
+}
+
+export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
+  toggleEdge(doc, featureId, edgeQuery, 'fillet', 'applyAddFilletEdge')
 }
 
 export function applyRemoveFilletEdge(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.fillet) {
-    warn(`applyRemoveFilletEdge: feature ${featureId} has no fillet`)
-    return
-  }
-  feature.fillet.edges.splice(index, 1)
+  removeEdgeAt(doc, featureId, index, 'fillet', 'applyRemoveFilletEdge')
 }
 
 export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.chamfer) {
-    warn(`applyAddChamferEdge: feature ${featureId} has no chamfer`)
-    return
-  }
-  const idx = feature.chamfer.edges.indexOf(edgeQuery)
-  if (idx >= 0) {
-    feature.chamfer.edges.splice(idx, 1)
-  } else {
-    feature.chamfer.edges.push(edgeQuery)
-  }
+  toggleEdge(doc, featureId, edgeQuery, 'chamfer', 'applyAddChamferEdge')
 }
 
 export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.chamfer) {
-    warn(`applyRemoveChamferEdge: feature ${featureId} has no chamfer`)
-    return
-  }
-  feature.chamfer.edges.splice(index, 1)
+  removeEdgeAt(doc, featureId, index, 'chamfer', 'applyRemoveChamferEdge')
 }
 
 // ─── Boolean ───
