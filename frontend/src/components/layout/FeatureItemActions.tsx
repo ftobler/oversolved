@@ -5,6 +5,27 @@ import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 
+// Feature kinds that expose edit (and, while editing, OK/Cancel) buttons, keyed
+// to the word used in the edit tooltip. `sketch` is the lone exception: it edits
+// via onEnterEditSketch rather than onEnterEditFeature (handled below).
+const EDIT_LABELS: Record<string, string> = {
+  sketch: 'sketch',
+  plane: 'plane',
+  extrude: 'extrude',
+  revolve: 'revolve',
+  sweep: 'sweep',
+  fillet: 'fillet',
+  chamfer: 'chamfer',
+  boolean: 'boolean',
+  array: 'array',
+  circular_array: 'circular array',
+  delete_body: 'delete body',
+  hole: 'hole',
+  transform: 'transform',
+  mirror: 'mirror',
+  variable: 'variable',
+}
+
 interface FeatureItemActionsProps {
   featureKind: string | undefined
   featureId: string
@@ -45,224 +66,24 @@ export function FeatureItemActions({
   const showVisBtn = !isEditing
   const kind = featureKind
 
+  const editLabel = kind ? EDIT_LABELS[kind] : undefined
+  // Built-in planes (the default origin planes) are not editable.
+  const canEdit = editLabel !== undefined && (kind !== 'plane' || !isBuiltIn)
+
   return (
     <div className="feature-item-actions">
-      {kind === 'sketch' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={() => onEnterEditSketch(featureId)} title="Edit sketch">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'plane' && !isBuiltIn && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit plane">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'extrude' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit extrude">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'revolve' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit revolve">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'revolve' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
+      {canEdit && showEditBtn && (
+        kind === 'sketch' ? (
+          <button className="feature-edit-btn" onClick={() => onEnterEditSketch(featureId)} title="Edit sketch">
+            <img src={contextEditIcon} alt="Edit" />
           </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
+        ) : (
+          <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title={`Edit ${editLabel}`}>
+            <img src={contextEditIcon} alt="Edit" />
           </button>
-        </>
+        )
       )}
-      {kind === 'sweep' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit sweep">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'sweep' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'fillet' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit fillet">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'fillet' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'chamfer' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit chamfer">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'chamfer' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'boolean' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit boolean">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'boolean' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'array' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit array">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'array' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'circular_array' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit circular array">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'circular_array' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'delete_body' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit delete body">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'delete_body' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'hole' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit hole">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'hole' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'transform' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit transform">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'transform' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'mirror' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit mirror">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'mirror' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'extrude' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'variable' && showEditBtn && (
-        <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title="Edit variable">
-          <img src={contextEditIcon} alt="Edit" />
-        </button>
-      )}
-      {kind === 'variable' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'sketch' && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
-      )}
-      {kind === 'plane' && !isBuiltIn && showExitBtn && (
+      {canEdit && showExitBtn && (
         <>
           <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
             <img src={okIcon} alt="OK" />
