@@ -49,13 +49,17 @@ function loadWebModule(base: string): Promise<WebModule | null> {
   return moduleCache
 }
 
-export function loadSolverWasm(base: string = DEFAULT_BASE): Promise<SolveBytes | null> {
-  return loadWebModule(base).then((m) => m?.solve_sketch_bytes ?? null)
+function loadWasmExport<T extends keyof WebModule>(key: T, base: string = DEFAULT_BASE): Promise<WebModule[T] | null> {
+  return loadWebModule(base).then((m) => m?.[key] ?? null)
+}
+
+export function loadSolverWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> {
+  return loadWasmExport('solve_sketch_bytes', base)
 }
 
 /** Browser loader for the Rust area builder (`detect_topology_bytes`). */
-export function loadTopologyWasm(base: string = DEFAULT_BASE): Promise<TopologyBytes | null> {
-  return loadWebModule(base).then((m) => m?.detect_topology_bytes ?? null)
+export function loadTopologyWasm(base = DEFAULT_BASE): Promise<TopologyBytes | null> {
+  return loadWasmExport('detect_topology_bytes', base)
 }
 
 /** Reset the memoized loader (tests / hot-reload). */
