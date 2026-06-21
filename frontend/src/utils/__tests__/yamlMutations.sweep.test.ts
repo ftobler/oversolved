@@ -7,8 +7,7 @@ import {
   applyRemoveSweepProfile,
   applyAddSweepPath,
   applyRemoveSweepPath,
-  normalizeSweepSketch,
-  normalizeSweepPath,
+  normalizeRefList,
 } from '@/utils/yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
@@ -41,17 +40,21 @@ describe('add_sweep', () => {
   })
 })
 
-describe('normalizeSweepSketch', () => {
+describe('normalizeRefList', () => {
   it('returns array unchanged', () => {
-    expect(normalizeSweepSketch(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
+    expect(normalizeRefList(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
   })
 
   it('wraps non-empty string in array', () => {
-    expect(normalizeSweepSketch('$sk1')).toEqual(['$sk1'])
+    expect(normalizeRefList('$sk1')).toEqual(['$sk1'])
   })
 
   it('returns empty array for empty string', () => {
-    expect(normalizeSweepSketch('')).toEqual([])
+    expect(normalizeRefList('')).toEqual([])
+  })
+
+  it('returns empty array for undefined', () => {
+    expect(normalizeRefList(undefined)).toEqual([])
   })
 })
 
@@ -92,21 +95,6 @@ describe('remove_sweep_profile', () => {
   it('does nothing if sweep is undefined', () => {
     const doc: PartDoc = { features: [{ id: 'sw1', kind: 'sketch' }] }
     expect(() => applyRemoveSweepProfile(doc, 'sw1', 0)).not.toThrow()
-  })
-})
-
-describe('normalizeSweepPath', () => {
-  it('returns array unchanged', () => {
-    expect(normalizeSweepPath(['$p1', '$p2'])).toEqual(['$p1', '$p2'])
-  })
-
-  it('wraps a non-empty string in an array', () => {
-    expect(normalizeSweepPath('$p1')).toEqual(['$p1'])
-  })
-
-  it('returns empty array for empty string or undefined', () => {
-    expect(normalizeSweepPath('')).toEqual([])
-    expect(normalizeSweepPath(undefined)).toEqual([])
   })
 })
 

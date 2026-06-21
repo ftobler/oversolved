@@ -1,6 +1,6 @@
 import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
-import { warn, round, findFeature, randomId, normalizeExtrudeSketch, normalizeRevolveSketch, normalizeSweepSketch, normalizeSweepPath } from './helpers'
+import { warn, round, findFeature, randomId, normalizeRefList } from './helpers'
 
 // ─── Set Feature Field (generic) ───
 
@@ -115,7 +115,7 @@ export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQu
     warn(`applyAddExtrudeProfile: feature ${featureId} has no extrude`)
     return
   }
-  const current = normalizeExtrudeSketch(feature.extrude.sketch)
+  const current = normalizeRefList(feature.extrude.sketch)
   const idx = current.indexOf(sketchQuery)
   if (idx >= 0) {
     current.splice(idx, 1)
@@ -131,7 +131,7 @@ export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index
     warn(`applyRemoveExtrudeProfile: feature ${featureId} has no extrude`)
     return
   }
-  const current = normalizeExtrudeSketch(feature.extrude.sketch)
+  const current = normalizeRefList(feature.extrude.sketch)
   current.splice(index, 1)
   feature.extrude.sketch = current
 }
@@ -166,7 +166,7 @@ export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQu
     warn(`applyAddRevolveProfile: feature ${featureId} has no revolve`)
     return
   }
-  const current = normalizeRevolveSketch(feature.revolve.sketch)
+  const current = normalizeRefList(feature.revolve.sketch)
   const idx = current.indexOf(sketchQuery)
   if (idx >= 0) {
     current.splice(idx, 1)
@@ -182,7 +182,7 @@ export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index
     warn(`applyRemoveRevolveProfile: feature ${featureId} has no revolve`)
     return
   }
-  const current = normalizeRevolveSketch(feature.revolve.sketch)
+  const current = normalizeRefList(feature.revolve.sketch)
   current.splice(index, 1)
   feature.revolve.sketch = current
 }
@@ -224,7 +224,7 @@ export function applyAddSweepProfile(doc: PartDoc, featureId: string, sketchQuer
     warn(`applyAddSweepProfile: feature ${featureId} has no sweep`)
     return
   }
-  const current = normalizeSweepSketch(feature.sweep.sketch)
+  const current = normalizeRefList(feature.sweep.sketch)
   const idx = current.indexOf(sketchQuery)
   if (idx >= 0) {
     current.splice(idx, 1)
@@ -240,7 +240,7 @@ export function applyRemoveSweepProfile(doc: PartDoc, featureId: string, index: 
     warn(`applyRemoveSweepProfile: feature ${featureId} has no sweep`)
     return
   }
-  const current = normalizeSweepSketch(feature.sweep.sketch)
+  const current = normalizeRefList(feature.sweep.sketch)
   current.splice(index, 1)
   feature.sweep.sketch = current
 }
@@ -251,7 +251,7 @@ export function applyAddSweepPath(doc: PartDoc, featureId: string, pathQuery: st
     warn(`applyAddSweepPath: feature ${featureId} has no sweep`)
     return
   }
-  const current = normalizeSweepPath(feature.sweep.path)
+  const current = normalizeRefList(feature.sweep.path)
   const idx = current.indexOf(pathQuery)
   if (idx >= 0) {
     current.splice(idx, 1)
@@ -267,7 +267,7 @@ export function applyRemoveSweepPath(doc: PartDoc, featureId: string, index: num
     warn(`applyRemoveSweepPath: feature ${featureId} has no sweep`)
     return
   }
-  const current = normalizeSweepPath(feature.sweep.path)
+  const current = normalizeRefList(feature.sweep.path)
   current.splice(index, 1)
   feature.sweep.path = current
 }

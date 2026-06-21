@@ -5,7 +5,7 @@ import {
   applySetRevolveField,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
-  normalizeRevolveSketch,
+  normalizeRefList,
 } from '@/utils/yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
@@ -48,21 +48,21 @@ describe('add_revolve', () => {
   })
 })
 
-describe('normalizeRevolveSketch', () => {
+describe('normalizeRefList', () => {
   it('returns array unchanged', () => {
-    expect(normalizeRevolveSketch(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
+    expect(normalizeRefList(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
   })
 
   it('wraps non-empty string in array', () => {
-    expect(normalizeRevolveSketch('$sk1')).toEqual(['$sk1'])
+    expect(normalizeRefList('$sk1')).toEqual(['$sk1'])
   })
 
   it('returns empty array for empty string', () => {
-    expect(normalizeRevolveSketch('')).toEqual([])
+    expect(normalizeRefList('')).toEqual([])
   })
 
   it('returns empty array for empty array', () => {
-    expect(normalizeRevolveSketch([])).toEqual([])
+    expect(normalizeRefList([])).toEqual([])
   })
 })
 

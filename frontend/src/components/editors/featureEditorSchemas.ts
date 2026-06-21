@@ -1,9 +1,6 @@
 import type { FeatureEditorSchema } from './FeatureEditor'
 import {
-  normalizeExtrudeSketch,
-  normalizeRevolveSketch,
-  normalizeSweepSketch,
-  normalizeSweepPath,
+  normalizeRefList,
 } from '@/utils/yamlMutations'
 import { resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 
@@ -38,7 +35,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_extrude',
   subKey: 'extrude',
   defaults: { sketch: [], distance: 10, direction: 'normal' },
-  normalize: (raw) => ({ ...raw, sketch: normalizeExtrudeSketch(raw.sketch) }),
+  normalize: (raw) => ({ ...raw, sketch: normalizeRefList(raw.sketch) }),
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_extrude_profile', addValueKey: 'sketchQuery',
@@ -65,7 +62,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_revolve',
   subKey: 'revolve',
   defaults: { sketch: [], angle: 360 },
-  normalize: (raw) => ({ ...raw, sketch: normalizeRevolveSketch(raw.sketch) }),
+  normalize: (raw) => ({ ...raw, sketch: normalizeRefList(raw.sketch) }),
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_revolve_profile', addValueKey: 'sketchQuery',
@@ -86,7 +83,7 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_sweep',
   subKey: 'sweep',
   defaults: { sketch: [], path: [] },
-  normalize: (raw) => ({ ...raw, sketch: normalizeSweepSketch(raw.sketch), path: normalizeSweepPath(raw.path) }),
+  normalize: (raw) => ({ ...raw, sketch: normalizeRefList(raw.sketch), path: normalizeRefList(raw.path) }),
   fields: [
     { type: 'pick', key: 'path', label: 'Path', multi: true,
       addMutationType: 'add_sweep_path', addValueKey: 'pathQuery',

@@ -42,13 +42,7 @@ export function uniqueConstraintId(constraints: PartConstraint[], kind: string):
 }
 
 // Coerce a feature ref field (single query, list, or empty) into a query list.
-function normalizeRefList(ref: string | string[] | undefined): string[] {
+export function normalizeRefList(ref: string | string[] | undefined): string[] {
   if (Array.isArray(ref)) return ref
   return ref ? [ref] : []
 }
-
-// Named aliases kept so call sites read by feature (extrude/revolve/sweep).
-export const normalizeExtrudeSketch = normalizeRefList
-export const normalizeRevolveSketch = normalizeRefList
-export const normalizeSweepSketch = normalizeRefList
-export const normalizeSweepPath = normalizeRefList

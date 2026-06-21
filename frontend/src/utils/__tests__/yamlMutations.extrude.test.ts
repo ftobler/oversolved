@@ -6,7 +6,7 @@ import {
   applySetExtrudeField,
   applyAddExtrudeProfile,
   applyRemoveExtrudeProfile,
-  normalizeExtrudeSketch,
+  normalizeRefList,
 } from '@/utils/yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
@@ -48,21 +48,21 @@ describe('add_extrude', () => {
   })
 })
 
-describe('normalizeExtrudeSketch', () => {
+describe('normalizeRefList', () => {
   it('returns array unchanged', () => {
-    expect(normalizeExtrudeSketch(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
+    expect(normalizeRefList(['$sk1', '$sk2'])).toEqual(['$sk1', '$sk2'])
   })
 
   it('wraps non-empty string in array', () => {
-    expect(normalizeExtrudeSketch('$sk1')).toEqual(['$sk1'])
+    expect(normalizeRefList('$sk1')).toEqual(['$sk1'])
   })
 
   it('returns empty array for empty string', () => {
-    expect(normalizeExtrudeSketch('')).toEqual([])
+    expect(normalizeRefList('')).toEqual([])
   })
 
   it('returns empty array for empty array', () => {
-    expect(normalizeExtrudeSketch([])).toEqual([])
+    expect(normalizeRefList([])).toEqual([])
   })
 })
 
