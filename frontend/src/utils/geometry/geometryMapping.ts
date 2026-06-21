@@ -8,6 +8,7 @@ import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 import { ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
@@ -112,15 +113,13 @@ export function unflattenGeometry(
   return result
 }
 
-const KNOWN_POINTS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'] as const
-
 /** Resolve a query string (e.g. "$line1" or "$arc1start") to an {entity, point?} ref.
  *  Tries known sub-element suffixes first, then falls back to a bare entity lookup. */
 function resolveQueryRef(q: string | undefined, sketch: Sketch): { entity: string; point?: string } | null {
   if (!q) return null
   if (!q.startsWith('$')) return null
   const local = q.slice(1)
-  for (const pt of KNOWN_POINTS) {
+  for (const pt of VERTEX_POINT_KEYS) {
     if (local.length > pt.length && local.endsWith(pt)) {
       const eid = local.slice(0, -pt.length)
       if (sketch[eid]) return { entity: eid, point: pt }

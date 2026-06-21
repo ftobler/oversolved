@@ -1,4 +1,5 @@
 import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
@@ -15,7 +16,7 @@ function _refMatchesDeleted(ref: unknown, deletedIds: Set<string>): boolean {
     if (bare === eid) return true
     if (bare.startsWith(eid)) {
       const suffix = bare.slice(eid.length)
-      if (['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'].includes(suffix)) return true
+      if ((VERTEX_POINT_KEYS as readonly string[]).includes(suffix)) return true
     }
   }
   return false

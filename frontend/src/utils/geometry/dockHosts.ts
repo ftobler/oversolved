@@ -13,9 +13,7 @@
 // dependency-free so it ports to Rust as a clean lift.
 
 import type { PartConstraint, PartEntityDef } from '@/types/cad'
-
-/** Vertex keys a constraint operand may carry; matches partDocToSketches KNOWN_POINTS. */
-const VERTEX_KEYS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'] as const
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 
 export interface DockHost {
   hostId: string
@@ -40,7 +38,7 @@ function refEntityId(ref: unknown, knownIds: Set<string>): string | null {
   if (typeof ref !== 'string' || !ref.startsWith('$')) return null
   const bare = ref.slice(1)
   if (knownIds.has(bare)) return bare
-  for (const key of VERTEX_KEYS) {
+  for (const key of VERTEX_POINT_KEYS) {
     if (bare.length > key.length && bare.endsWith(key)) {
       const eid = bare.slice(0, -key.length)
       if (knownIds.has(eid)) return eid

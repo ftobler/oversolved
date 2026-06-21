@@ -16,6 +16,7 @@
  */
 
 import type { PartConstraint, PartFeature } from '@/types/cad'
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import type { SketchInput } from './lowerSketch'
 
 export interface ExtractedSketch {
@@ -33,7 +34,6 @@ export interface ExtractResult {
   skipped: SkippedSketch[]
 }
 
-const KNOWN_POINTS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'] as const
 const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
 
 /**
@@ -68,7 +68,7 @@ function resolveLocal(
     if (q === '@builtin_origin') return { external_xy: [...originLocal] }
     if (!q.startsWith('$')) return null
     const local = q.slice(1)
-    for (const pt of KNOWN_POINTS) {
+    for (const pt of VERTEX_POINT_KEYS) {
       if (local.length > pt.length && local.endsWith(pt)) {
         const eid = local.slice(0, -pt.length)
         if (entityIds.has(eid)) return { entity: eid, point: pt }

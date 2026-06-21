@@ -4,8 +4,7 @@
 // selection and tells the caller how to reconnect the clones (miter the meeting
 // point of two offset lines, carry tangency over to arcs). Node-unit-testable.
 
-/** Vertex keys a constraint ref can name. Matches partDocToSketches KNOWN_POINTS. */
-const VERTEX_KEYS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'] as const
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 
 export interface VertexRef {
   entityId: string
@@ -36,7 +35,7 @@ export function parseVertexRef(ref: unknown, knownIds: Set<string>): VertexRef |
   // than one (eid, key) split lands on a known id (possible only with adversarial
   // ids), prefer the longest eid (shortest key) so the match is order-independent.
   let best: VertexRef | null = null
-  for (const key of VERTEX_KEYS) {
+  for (const key of VERTEX_POINT_KEYS) {
     if (bare.length > key.length && bare.endsWith(key)) {
       const eid = bare.slice(0, -key.length)
       if (knownIds.has(eid) && (!best || eid.length > best.entityId.length)) {
