@@ -13,47 +13,44 @@
  */
 
 import type { OccModule } from './occTypes'
+import { memoizedLoad } from './memoizedLoad'
 
 const DEFAULT_BASE = '/occ/'
 
-let cached: Promise<OccModule | null> | null = null
+const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> => {
+  try {
+    const resp = await fetch(`${base}opencascade.wasm.js`)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${base}opencascade.wasm.js`)
+    const text = await resp.text()
+
+    // The artifact is already an ES module (`export default opencascade`),
+    // so import it straight off a blob URL — no DOM, no export-stripping.
+    const blob = new Blob([text], { type: 'text/javascript' })
+    const blobUrl = URL.createObjectURL(blob)
+    let factory: ((opts: unknown) => Promise<OccModule>) | undefined
+    try {
+      const mod = (await import(/* @vite-ignore */ blobUrl)) as {
+        default?: (opts: unknown) => Promise<OccModule>
+      }
+      factory = mod.default
+    } finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+    if (!factory) return null
+
+    return await factory({
+      locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
+    })
+  } catch (e) {
+    // Non-fatal: the caller falls back to "local solver unavailable".
+    console.error('[loadOccWorker] error:', e)
+    return null
+  }
+})
 
 export function loadOccWorker(base: string = DEFAULT_BASE): Promise<OccModule | null> {
-  if (cached) return cached
-  cached = (async () => {
-    try {
-      const resp = await fetch(`${base}opencascade.wasm.js`)
-      if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${base}opencascade.wasm.js`)
-      const text = await resp.text()
-
-      // The artifact is already an ES module (`export default opencascade`),
-      // so import it straight off a blob URL — no DOM, no export-stripping.
-      const blob = new Blob([text], { type: 'text/javascript' })
-      const blobUrl = URL.createObjectURL(blob)
-      let factory: ((opts: unknown) => Promise<OccModule>) | undefined
-      try {
-        const mod = (await import(/* @vite-ignore */ blobUrl)) as {
-          default?: (opts: unknown) => Promise<OccModule>
-        }
-        factory = mod.default
-      } finally {
-        URL.revokeObjectURL(blobUrl)
-      }
-      if (!factory) return null
-
-      return await factory({
-        locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
-      })
-    } catch (e) {
-      // Non-fatal: the caller falls back to "local solver unavailable".
-      console.error('[loadOccWorker] error:', e)
-      return null
-    }
-  })()
-  return cached
+  return occWorker.load(base)
 }
 
 /** Reset the memoized module (tests / hot-reload). */
-export function resetOccWorker(): void {
-  cached = null
-}
+export const resetOccWorker = occWorker.reset

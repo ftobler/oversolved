@@ -1,0 +1,19 @@
+/**
+ * Memoize an async loader so its work runs at most once: the first `load` call
+ * invokes `loader` (with that call's args) and caches the returned promise;
+ * later calls return the cached promise and ignore their args. `reset` clears
+ * the cache for tests and hot-reload.
+ *
+ * Collapses the per-loader `let cached` / `if (cached) return cached` /
+ * `cached = (async () => ...)()` / `reset()` boilerplate the OCC module loaders
+ * each carried.
+ */
+export function memoizedLoad<A extends unknown[], T>(
+  loader: (...args: A) => Promise<T | null>,
+): { load: (...args: A) => Promise<T | null>; reset: () => void } {
+  let cached: Promise<T | null> | null = null
+  return {
+    load: (...args: A) => (cached ??= loader(...args)),
+    reset: () => { cached = null },
+  }
+}

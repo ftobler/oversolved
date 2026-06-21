@@ -31,39 +31,34 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { OccModule } from './occTypes'
+import { memoizedLoad } from './memoizedLoad'
 
 type OccFactory = (config: {
   wasmBinary: Uint8Array
   locateFile: (p: string) => string
 }) => Promise<OccModule>
 
-let cached: Promise<OccModule | null> | null = null
+const occ = memoizedLoad(async (): Promise<OccModule | null> => {
+  try {
+    const require = createRequire(import.meta.url)
+    const distPath = require.resolve('opencascade.js/dist/opencascade.wasm.js')
+    const wasmPath = distPath.replace(/\.js$/, '.wasm')
+    const src = readFileSync(distPath, 'utf8').replace(
+      /export default opencascade;\s*$/,
+      'module.exports = opencascade;',
+    )
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'occjs-'))
+    const cjsPath = path.join(dir, 'opencascade.cjs')
+    writeFileSync(cjsPath, src)
+    const factory = require(cjsPath) as OccFactory
+    const wasmBinary = readFileSync(wasmPath)
+    return await factory({ wasmBinary, locateFile: (p) => p })
+  } catch {
+    return null
+  }
+})
 
-export function loadOcc(): Promise<OccModule | null> {
-  if (cached) return cached
-  cached = (async () => {
-    try {
-      const require = createRequire(import.meta.url)
-      const distPath = require.resolve('opencascade.js/dist/opencascade.wasm.js')
-      const wasmPath = distPath.replace(/\.js$/, '.wasm')
-      const src = readFileSync(distPath, 'utf8').replace(
-        /export default opencascade;\s*$/,
-        'module.exports = opencascade;',
-      )
-      const dir = mkdtempSync(path.join(os.tmpdir(), 'occjs-'))
-      const cjsPath = path.join(dir, 'opencascade.cjs')
-      writeFileSync(cjsPath, src)
-      const factory = require(cjsPath) as OccFactory
-      const wasmBinary = readFileSync(wasmPath)
-      return await factory({ wasmBinary, locateFile: (p) => p })
-    } catch {
-      return null
-    }
-  })()
-  return cached
-}
+export const loadOcc = occ.load
 
 /** Reset the memoized module (tests / hot-reload). */
-export function resetOcc(): void {
-  cached = null
-}
+export const resetOcc = occ.reset
