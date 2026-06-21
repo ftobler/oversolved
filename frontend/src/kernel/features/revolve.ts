@@ -9,6 +9,7 @@
 // deliberately omits.
 
 import type { DisposeScope } from '../occ/disposeScope'
+import { extractErrorMessage } from '../errors'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
@@ -121,7 +122,7 @@ export function solveRevolve(
     try {
       resolved = collectExtrudeLoops(oc, scope, table, sketchRef, featureId, 0.0, globalRepo, bodyStore)
     } catch (exc) {
-      profileErrors.push(exc instanceof Error ? exc.message : String(exc))
+      profileErrors.push(extractErrorMessage(exc))
       continue
     }
     if (resolved.face !== null) {

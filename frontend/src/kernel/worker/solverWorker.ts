@@ -16,6 +16,7 @@
  */
 
 import { solveLocally, exportLocally, setOccLoader } from '../solveLocally'
+import { extractErrorMessage } from '../errors'
 import { loadOccWorker } from '../occ/loadOccWorker'
 import type {
   SolveRequest, SolveResponse, SolvePayload,
@@ -47,7 +48,7 @@ export async function handleSolveRequest(
     }
     return { id: req.id, ok: true, payload }
   } catch (e) {
-    return { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) }
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
   }
 }
 
@@ -64,7 +65,7 @@ export async function handleExportRequest(
     const bytes = await exportFn(req.spec, req.options)
     return { id: req.id, ok: true, bytes }
   } catch (e) {
-    return { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) }
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
   }
 }
 

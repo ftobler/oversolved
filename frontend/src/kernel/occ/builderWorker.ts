@@ -16,6 +16,7 @@
  */
 
 import { HandleTable } from './handleTable'
+import { extractErrorMessage } from '../errors'
 import { extrudeSquareAndTessellate, type ExtrudeOptions, type MeshResult } from './spikeBuild'
 import { loadOccWeb } from './loadOccWeb'
 import type { OccSpikeModule } from './occTypes'
@@ -69,7 +70,7 @@ export async function runBuilderCommand(
         return { id: req.id, ok: false, error: `unknown command: ${(req as { cmd: string }).cmd}` }
     }
   } catch (e) {
-    return { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) }
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
   }
 }
 

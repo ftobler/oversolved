@@ -10,6 +10,7 @@
 // Size/First_1/RemoveFirst like every other list in this build (no iterator binding).
 
 import { drainList, type DisposeScope } from './disposeScope'
+import { extractErrorMessage } from '../errors'
 import type { OccModule, OccShape, OccSubShape, OccListOfShape } from './occTypes'
 import type { PlaneLike } from '../features/shared'
 import {
@@ -519,7 +520,7 @@ export function sweepProfileWithLineage(
     }
   }
   if (lastError !== null) {
-    const msg = lastError instanceof Error ? lastError.message : String(lastError)
+    const msg = extractErrorMessage(lastError)
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)
   }
   if (!solid!) throw new Error('sweep: could not build a solid from the swept shell')

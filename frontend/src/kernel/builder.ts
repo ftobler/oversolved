@@ -3,6 +3,7 @@
 // with mock solvers before the real leaf features are ported (2e/2f).
 
 import { sha256Hex } from './sha256'
+import { extractErrorMessage } from './errors'
 import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'
 import { faceGeometryHash, faceNormalHash, edgeGeometryHash, vertexGeometryHash, isGeomKeyedLineage } from './geomHash'
 import { faceTokens, edgeLineageTokens } from './faceQuery'
@@ -807,7 +808,7 @@ export function build(
       const vv = variableValueOf(feature, featureResult)
       if (vv) variableContext[vv.name] = vv.value
     } catch (e) {
-      const err = e instanceof Error ? e.message : String(e)
+      const err = extractErrorMessage(e)
       result[fid] = { status: 'exception', exception: err, solve_ms: 0 }
     } finally {
       setCurrentFeatureId(null)
