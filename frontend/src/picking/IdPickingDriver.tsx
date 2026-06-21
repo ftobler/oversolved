@@ -3,8 +3,6 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
 import { setLivePipeline } from './IdPipelineContext'
-import { subscribePipelineToPartEditor } from './dirtyInvalidation'
-
 interface IdPickingDriverProps {
   /** External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync. */
   onReady?: (pipeline: IdPipeline) => void
@@ -72,14 +70,6 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     const db = getRenderSize(gl, sizeWidth, sizeHeight)
     pipeline.resize(db.width, db.height)
   })
-
-  // The B-rep inert-predicate and the sketch-entity / sketch-surface /
-  // plane / origin ID layers are all registered from per-component hooks
-  // (useFaceIdRegistration, useSketchIdRegistration, etc.) that call
-  // pipeline.markDirty() in their setup and cleanup effects. No additional
-  // store-level dirty marks are needed — they would fire before React has
-  // committed the new geometry layers.
-  useEffect(() => subscribePipelineToPartEditor(pipeline), [pipeline])
 
   // Camera-change detection. Compare the camera's world matrix every frame
   // against the snapshot from the previous frame. A change marks the
