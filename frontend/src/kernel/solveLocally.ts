@@ -65,9 +65,7 @@ export function setOccLoader(loader: () => Promise<OccModule | null>): void {
 export function setSolveLocalsForTest(
   loader: (() => Promise<OccModule | null>) | null,
 ): void {
-  occLoaderOverride = loader
-  occModule = null
-  occLoading = null
+  setOccLoader(loader)
   resetLocalSolveCache()
 }
 
