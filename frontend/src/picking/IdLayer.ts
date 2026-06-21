@@ -44,6 +44,11 @@ export interface IdLayerBodyRecord<M extends THREE.Object3D = THREE.Object3D> {
   allocatedIds: number[]
 }
 
+// Module-level so a given (layer, query) collision warns at most once across the
+// whole session. Keys are namespaced by `this.name`, so face and edge layers
+// never alias even though they now share this set.
+const _warnedDuplicates = new Set<string>()
+
 /**
  * Convenience base: owns a registry reference + a private Scene that
  * concrete layers populate. Subclasses implement the actual registration
@@ -70,6 +75,30 @@ export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> imp
 
   /** Test helper: number of registered bodies. */
   bodyCount(): number { return this.bodies.size }
+
+  /** Drop every registered body's GPU resources; call from a subclass `dispose`
+   *  before disposing the layer's own materials. */
+  protected disposeBodies(): void {
+    for (const key of [...this.bodies.keys()]) this.unregisterBody(key)
+  }
+
+  /**
+   * Dev-only diagnostic: warn once when two primitives in the same body resolve
+   * to the same query string (their selection IDs would not be unique).
+   * `seenInBody` is true once at least one distinct primitive has been allocated
+   * in the current body; `noun` is the singular primitive name (e.g. "face").
+   */
+  protected warnDuplicateQuery(query: string, seenInBody: boolean, bodyKey: string, label: string, noun: string): void {
+    if (import.meta.env.MODE === 'production') return
+    const dedupKey = `${this.name}\x00${query}`
+    if (this.registry.lookupKey(this.name, query) !== undefined && seenInBody && !_warnedDuplicates.has(dedupKey)) {
+      _warnedDuplicates.add(dedupKey)
+      console.warn(
+        `[${label}] Two ${noun}s share the same query string in ${bodyKey}. ` +
+        `query="${query}". Selection IDs will not be unique.`
+      )
+    }
+  }
 
   abstract dispose(): void
 }

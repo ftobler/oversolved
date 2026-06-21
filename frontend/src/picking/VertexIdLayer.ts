@@ -113,7 +113,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points> {
   }
 
   dispose(): void {
-    for (const key of [...this.bodies.keys()]) this.unregisterBody(key)
+    this.disposeBodies()
     this.material.dispose()
   }
 }

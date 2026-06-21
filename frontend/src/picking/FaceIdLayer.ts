@@ -4,8 +4,6 @@ import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
 import { FACE_LAYER_NAME } from './layerNames'
 
-const _warnedDuplicates = new Set<string>()
-
 /**
  * Concrete ID layer for B-rep faces.
  *
@@ -101,16 +99,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
 
       let rgb = faceIdCache.get(faceIdx)
       if (!rgb) {
-        if (import.meta.env.MODE !== 'production') {
-          const dedupKey = `${this.name}\x00${query}`
-          if (this.registry.lookupKey(this.name, query) !== undefined && faceIdCache.size > 0 && !_warnedDuplicates.has(dedupKey)) {
-            _warnedDuplicates.add(dedupKey)
-            console.warn(
-              `[FaceIdLayer] Two faces share the same query string in ${reg.bodyKey}. ` +
-              `query="${query}". Selection IDs will not be unique.`
-            )
-          }
-        }
+        this.warnDuplicateQuery(query, faceIdCache.size > 0, reg.bodyKey, 'FaceIdLayer', 'face')
         const id = this.registry.allocate(this.name, query)
         allocatedIds.push(id)
         rgb = idToRGBNormalized(id)
@@ -137,7 +126,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
   }
 
   dispose(): void {
-    for (const key of [...this.bodies.keys()]) this.unregisterBody(key)
+    this.disposeBodies()
     this.material.dispose()
   }
 }
