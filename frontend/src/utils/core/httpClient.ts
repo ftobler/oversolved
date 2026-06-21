@@ -9,6 +9,17 @@ export class HttpError extends Error {
   }
 }
 
+// Turn a thrown request error into a user-facing message: prefer the server's
+// JSON `error` field on an HttpError, fall back to the given default, and
+// stringify anything else (network errors, etc.).
+export function parseHttpError(e: unknown, fallback: string): string {
+  if (e instanceof HttpError) {
+    const parsed = JSON.parse(e.body || '{}') as { error?: string }
+    return parsed.error || fallback
+  }
+  return String(e)
+}
+
 // A request that never reached a response -- server down, network lost, CORS --
 // rejects with a TypeError, not an HttpError. This distinguishes "the cloud is
 // unreachable" (go offline, fall back to local) from "the server answered with an

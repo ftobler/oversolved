@@ -5,7 +5,7 @@ import Dialog from '@/components/dialogs/Dialog'
 import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
-import { HttpError, isConnectionError } from '@/utils/core/httpClient'
+import { isConnectionError, parseHttpError } from '@/utils/core/httpClient'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
 import type { DocSummary, DocumentStore } from '@/stores/documentStore'
@@ -159,12 +159,7 @@ export default function Documents() {
       setAddError(null)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setAddError(parsed.error || 'Failed to create document')
-      } else {
-        setAddError(String(e))
-      }
+      setAddError(parseHttpError(e, 'Failed to create document'))
     }
   }
 
@@ -182,12 +177,7 @@ export default function Documents() {
       await activeStore.duplicate(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to duplicate document')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to duplicate document'))
     }
   }
 
@@ -294,12 +284,7 @@ export default function Documents() {
       const blob = new Blob([content], { type: 'text/yaml' })
       downloadBlob(blob, `${name}.yaml`)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to export document')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to export document'))
     }
   }
 
@@ -351,12 +336,7 @@ export default function Documents() {
       await activeStore.save(uuid, { content: text })
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (err) {
-      if (err instanceof HttpError) {
-        const parsed = JSON.parse(err.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to import document')
-      } else {
-        setError(String(err))
-      }
+      setError(parseHttpError(err, 'Failed to import document'))
     }
   }
 
@@ -384,12 +364,7 @@ export default function Documents() {
       fetchTrash(activeDomain)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to recover document')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to recover document'))
     }
   }
 
@@ -401,12 +376,7 @@ export default function Documents() {
       await activeTrash?.purge(uuid)
       fetchTrash(activeDomain)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to delete document')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to delete document'))
     }
   }
 

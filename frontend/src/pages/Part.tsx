@@ -17,7 +17,7 @@ import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { invalidateDocCache } from '@/utils/core/buildCache'
-import { HttpError } from '@/utils/core/httpClient'
+import { parseHttpError } from '@/utils/core/httpClient'
 import { debugToolsUnrestricted } from '@/config/capabilities'
 import '@/pages/Part.css'
 
@@ -481,12 +481,7 @@ export default function Part() {
       const data = await cloneDoc(uuid)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to clone document')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to clone document'))
     }
   }
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import Dialog from '@/components/dialogs/Dialog'
-import { http, HttpError } from '@/utils/core/httpClient'
+import { http, parseHttpError } from '@/utils/core/httpClient'
 import '@/pages/AdminUsers.css'
 
 interface UserRecord {
@@ -47,12 +47,7 @@ export default function AdminUsers() {
       setUsers(data.users || [])
       setError(null)
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to fetch users')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to fetch users'))
     } finally {
       setLoading(false)
     }
@@ -73,12 +68,7 @@ export default function AdminUsers() {
       setShowCreateForm(false)
       fetchUsers()
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setFormError(parsed.error || 'Failed to create user')
-      } else {
-        setFormError(String(e))
-      }
+      setFormError(parseHttpError(e, 'Failed to create user'))
     }
   }
 
@@ -96,12 +86,7 @@ export default function AdminUsers() {
       setEditingUser(null)
       fetchUsers()
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setFormError(parsed.error || 'Failed to update user')
-      } else {
-        setFormError(String(e))
-      }
+      setFormError(parseHttpError(e, 'Failed to update user'))
     }
   }
 
@@ -113,12 +98,7 @@ export default function AdminUsers() {
       await http.deleteJson(`/api/admin/users/${u.id}`)
       fetchUsers()
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to delete user')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to delete user'))
     }
   }
 
@@ -134,12 +114,7 @@ export default function AdminUsers() {
       setResetPassword('')
       fetchUsers()
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setFormError(parsed.error || 'Failed to reset password')
-      } else {
-        setFormError(String(e))
-      }
+      setFormError(parseHttpError(e, 'Failed to reset password'))
     }
   }
 

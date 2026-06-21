@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import type { User } from '@/contexts/AuthContext'
-import { http, HttpError } from '@/utils/core/httpClient'
+import { http, parseHttpError } from '@/utils/core/httpClient'
 import '@/pages/Login.css'
 
 export default function Login() {
@@ -26,12 +26,7 @@ export default function Login() {
       setUser(data.user)
       navigate('/documents')
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Login failed')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Login failed'))
     } finally {
       setSubmitting(false)
     }
