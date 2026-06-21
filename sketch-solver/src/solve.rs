@@ -94,7 +94,8 @@ pub fn solve_sketch(input: &Input) -> Output {
         Status::FullyConstrained
     };
 
-    let x_final = result.x.clone();
+    // `result.x` is not read again, so move it instead of cloning.
+    let x_final = result.x;
 
     let params_solved: Vec<f32> = x_final.iter().map(|&v| v as f32).collect();
 
