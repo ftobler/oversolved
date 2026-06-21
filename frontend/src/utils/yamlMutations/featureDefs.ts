@@ -109,31 +109,50 @@ export function applyAddExtrude(
   doc.features.push(feature)
 }
 
-export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applyAddExtrudeProfile: feature ${featureId} has no extrude`)
-    return
+// extrude/revolve/sweep each store their profile (and the sweep its path) as a
+// `string | string[]` ref-list. The toggle (add-or-remove-by-value) and the
+// remove-by-index logic is identical across all of them; only the sub-feature
+// key and the field differ. `fn` keeps the public caller name in the warning so
+// it still points at the original entry point.
+type RefListKind = 'extrude' | 'revolve' | 'sweep'
+type RefListField = 'sketch' | 'path'
+
+function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: string): Record<RefListField, string | string[]> | undefined {
+  const sub = findFeature(doc, featureId)?.[kind]
+  if (!sub) {
+    warn(`${fn}: feature ${featureId} has no ${kind}`)
+    return undefined
   }
-  const current = normalizeRefList(feature.extrude.sketch)
-  const idx = current.indexOf(sketchQuery)
+  return sub as unknown as Record<RefListField, string | string[]>
+}
+
+function toggleRef(doc: PartDoc, featureId: string, kind: RefListKind, field: RefListField, query: string, fn: string): void {
+  const sub = refListSub(doc, featureId, kind, fn)
+  if (!sub) return
+  const current = normalizeRefList(sub[field])
+  const idx = current.indexOf(query)
   if (idx >= 0) {
     current.splice(idx, 1)
   } else {
-    current.push(sketchQuery)
+    current.push(query)
   }
-  feature.extrude.sketch = current
+  sub[field] = current
+}
+
+function removeRefAt(doc: PartDoc, featureId: string, kind: RefListKind, field: RefListField, index: number, fn: string): void {
+  const sub = refListSub(doc, featureId, kind, fn)
+  if (!sub) return
+  const current = normalizeRefList(sub[field])
+  current.splice(index, 1)
+  sub[field] = current
+}
+
+export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  toggleRef(doc, featureId, 'extrude', 'sketch', sketchQuery, 'applyAddExtrudeProfile')
 }
 
 export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applyRemoveExtrudeProfile: feature ${featureId} has no extrude`)
-    return
-  }
-  const current = normalizeRefList(feature.extrude.sketch)
-  current.splice(index, 1)
-  feature.extrude.sketch = current
+  removeRefAt(doc, featureId, 'extrude', 'sketch', index, 'applyRemoveExtrudeProfile')
 }
 
 // ─── Revolve ───
@@ -161,30 +180,11 @@ export function applyAddRevolve(
 }
 
 export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applyAddRevolveProfile: feature ${featureId} has no revolve`)
-    return
-  }
-  const current = normalizeRefList(feature.revolve.sketch)
-  const idx = current.indexOf(sketchQuery)
-  if (idx >= 0) {
-    current.splice(idx, 1)
-  } else {
-    current.push(sketchQuery)
-  }
-  feature.revolve.sketch = current
+  toggleRef(doc, featureId, 'revolve', 'sketch', sketchQuery, 'applyAddRevolveProfile')
 }
 
 export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applyRemoveRevolveProfile: feature ${featureId} has no revolve`)
-    return
-  }
-  const current = normalizeRefList(feature.revolve.sketch)
-  current.splice(index, 1)
-  feature.revolve.sketch = current
+  removeRefAt(doc, featureId, 'revolve', 'sketch', index, 'applyRemoveRevolveProfile')
 }
 
 // ─── Sweep ───
@@ -219,57 +219,19 @@ export function applyAddSweep(
 }
 
 export function applyAddSweepProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.sweep) {
-    warn(`applyAddSweepProfile: feature ${featureId} has no sweep`)
-    return
-  }
-  const current = normalizeRefList(feature.sweep.sketch)
-  const idx = current.indexOf(sketchQuery)
-  if (idx >= 0) {
-    current.splice(idx, 1)
-  } else {
-    current.push(sketchQuery)
-  }
-  feature.sweep.sketch = current
+  toggleRef(doc, featureId, 'sweep', 'sketch', sketchQuery, 'applyAddSweepProfile')
 }
 
 export function applyRemoveSweepProfile(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.sweep) {
-    warn(`applyRemoveSweepProfile: feature ${featureId} has no sweep`)
-    return
-  }
-  const current = normalizeRefList(feature.sweep.sketch)
-  current.splice(index, 1)
-  feature.sweep.sketch = current
+  removeRefAt(doc, featureId, 'sweep', 'sketch', index, 'applyRemoveSweepProfile')
 }
 
 export function applyAddSweepPath(doc: PartDoc, featureId: string, pathQuery: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.sweep) {
-    warn(`applyAddSweepPath: feature ${featureId} has no sweep`)
-    return
-  }
-  const current = normalizeRefList(feature.sweep.path)
-  const idx = current.indexOf(pathQuery)
-  if (idx >= 0) {
-    current.splice(idx, 1)
-  } else {
-    current.push(pathQuery)
-  }
-  feature.sweep.path = current
+  toggleRef(doc, featureId, 'sweep', 'path', pathQuery, 'applyAddSweepPath')
 }
 
 export function applyRemoveSweepPath(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.sweep) {
-    warn(`applyRemoveSweepPath: feature ${featureId} has no sweep`)
-    return
-  }
-  const current = normalizeRefList(feature.sweep.path)
-  current.splice(index, 1)
-  feature.sweep.path = current
+  removeRefAt(doc, featureId, 'sweep', 'path', index, 'applyRemoveSweepPath')
 }
 
 // ─── Import Step ───
