@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useState } from 'react'
 import { BugReporter, type BugReportAttachments } from '@/components/dialogs/BugReporter'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -21,11 +21,11 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
   const redoStack = usePartEditorStore(s => s.redoStack) as UndoEntry[]
   const doc = usePartEditorStore(s => s.doc)
 
-  const [debugTab, setDebugTab] = React.useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
-  const [bugReportForm, setBugReportForm] = React.useState({ title: '', description: '' })
-  const [bugReporting, setBugReporting] = React.useState(false)
-  const [bugReportError, setBugReportError] = React.useState<string | null>(null)
-  const [bugReportAttachments, setBugReportAttachments] = React.useState<BugReportAttachments>({
+  const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
+  const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
+  const [bugReporting, setBugReporting] = useState(false)
+  const [bugReportError, setBugReportError] = useState<string | null>(null)
+  const [bugReportAttachments, setBugReportAttachments] = useState<BugReportAttachments>({
     ast: true,
     selection: true,
     history: true,

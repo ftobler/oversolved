@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { forwardRef, useState, useImperativeHandle } from 'react'
 import ExportDialog from '@/components/dialogs/ExportDialog'
 import ShareDialog from '@/components/dialogs/ShareDialog'
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
@@ -20,17 +20,17 @@ export interface PartExportImportHandle {
   openShare: () => void
 }
 
-const PartExportImport = React.forwardRef<PartExportImportHandle, PartExportImportProps>(
+const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProps>(
   function PartExportImport({ uuid, docName, ownerUsername, permission }, ref) {
     const doc = usePartEditorStore(s => s.doc)
     const notify = useNotify()
 
-    const [exportDialogOpen, setExportDialogOpen] = React.useState(false)
-    const [exportTargetBodyId, setExportTargetBodyId] = React.useState<string | null>(null)
-    const [exportDefaultName, setExportDefaultName] = React.useState('export')
-    const [shareDocOpen, setShareDocOpen] = React.useState(false)
+    const [exportDialogOpen, setExportDialogOpen] = useState(false)
+    const [exportTargetBodyId, setExportTargetBodyId] = useState<string | null>(null)
+    const [exportDefaultName, setExportDefaultName] = useState('export')
+    const [shareDocOpen, setShareDocOpen] = useState(false)
 
-    React.useImperativeHandle(ref, () => ({
+    useImperativeHandle(ref, () => ({
       openExport: (bodyId, defaultName) => {
         setExportTargetBodyId(bodyId ?? null)
         setExportDefaultName(defaultName ?? 'export')
