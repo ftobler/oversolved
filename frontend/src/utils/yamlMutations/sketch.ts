@@ -218,6 +218,24 @@ export function applyAddConstraint(
       warn('applyAddConstraint: unrecognized midpoint target combination', targets)
       return
     }
+  } else if (kind === 'horizontal' || kind === 'vertical') {
+    // Overloaded: one line -> `target` (make the line axis-aligned); two points
+    // -> `a`/`b` (share a coordinate). The a/b form is only meaningful for two
+    // points: a whole-entity operand (a circle or extra line picked up alongside
+    // the real target) resolves to a single sub-point and yields a degenerate
+    // residual that is often already satisfied, so the line never turns vertical.
+    // Reject that combination instead of authoring a dead constraint.
+    // See bugreports/vertical_constraint_20260621_102915.md.
+    if (targets.length >= 2) {
+      if (targets[0].startsWith('entity:') || targets[1].startsWith('entity:')) {
+        warn(`applyAddConstraint: ${kind} needs one line or two points, got`, targets)
+        return
+      }
+      c.a = pt(targets[0])
+      c.b = pt(targets[1])
+    } else if (targets.length === 1) {
+      c.target = pt(targets[0])
+    }
   } else if (kind === 'coincident' || targets.length >= 2) {
     c.a = pt(targets[0])
     c.b = pt(targets[1])

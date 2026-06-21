@@ -229,6 +229,25 @@ describe('applyAddConstraint', () => {
     expect(added!.target).toBe('$line1')
     expect(added!.a).toBeUndefined()
   })
+
+  // Regression: bugreports/vertical_constraint_20260621_102915.md. A vertical
+  // applied with a circle picked up alongside the line authored `a: circle,
+  // b: line`, whose a/b residual (circle.center.x == line.start.x) was already
+  // satisfied, so the line never turned vertical. Two whole entities are not two
+  // points: the constraint must be rejected, not authored as a dead a/b.
+  it('vertical with two whole entities is rejected (not authored as a/b)', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:circ1', 'entity:Sketch1:line1'])
+    const constraints = doc.features![0].constraints!
+    expect(constraints.find(c => c.kind === 'vertical')).toBeUndefined()
+  })
+
+  it('horizontal with an entity in the a/b slot is rejected', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'horizontal', ['vertex:Sketch1:line1:start', 'entity:Sketch1:circ1'])
+    const constraints = doc.features![0].constraints!
+    expect(constraints.find(c => c.kind === 'horizontal' && c.a !== undefined)).toBeUndefined()
+  })
 })
 
 describe('applyAddConstraint midpoint', () => {
