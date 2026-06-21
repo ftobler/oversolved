@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'public/wasm']),  // public/wasm holds wasm-bindgen generated .d.ts files
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
