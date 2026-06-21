@@ -3,9 +3,7 @@ import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity } from '@/types/cad'
 import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds, groupConstraintsByEntity } from '@/components/sketch/sketch_helpers'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
-import { LinearDimension } from './Linear'
-import { RadiusDimension, DiameterDimension } from './Radial'
-import { AngleDimension } from './Angle'
+import { renderDimension } from './renderDimension'
 
 // ─── Constraint symbol tile (read-only, used by Sketch3D / Visualizer) ───
 
@@ -66,19 +64,9 @@ export function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOv
         const url = getIconUrl(r.kind)
         if (!url) continue
         symbolIcons.push({ url, key: cid })
-      } else if (r.kind === 'dim_linear') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} />)
-      } else if (r.kind === 'dim_radius') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<RadiusDimension key={cid} cid={cid} dim={dim} />)
-      } else if (r.kind === 'dim_diameter') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; value: number; pos?: [number, number] }
-        dimElements.push(<DiameterDimension key={cid} cid={cid} dim={dim} />)
-      } else if (r.kind === 'dim_angle') {
-        const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; p3: [number, number]; p4: [number, number]; value: number; pos?: [number, number] }
-        if (!dim.p3 || !dim.p4) continue
-        dimElements.push(<AngleDimension key={cid} cid={cid} dim={dim} />)
+      } else {
+        const el = renderDimension(cid, r, dimOffset)
+        if (el) dimElements.push(el)
       }
     }
 

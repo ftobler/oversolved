@@ -24,10 +24,16 @@ vi.mock('@/components/sketch/sketch_helpers', async (importOriginal) => {
   }
 })
 
-vi.mock('@/components/Geometry3D/dimensions', () => ({
+vi.mock('@/components/Geometry3D/dimensions/Linear', () => ({
   LinearDimension: () => <div data-testid="linear-dim" />,
+}))
+
+vi.mock('@/components/Geometry3D/dimensions/Radial', () => ({
   RadiusDimension: () => <div data-testid="radius-dim" />,
   DiameterDimension: () => <div data-testid="diameter-dim" />,
+}))
+
+vi.mock('@/components/Geometry3D/dimensions/Angle', () => ({
   AngleDimension: () => <div data-testid="angle-dim" />,
 }))
 
