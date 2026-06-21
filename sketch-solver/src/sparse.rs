@@ -53,7 +53,7 @@ fn sparse_transpose_matvec(jac: &[SparseRow], v: &[f64], n: usize) -> Vec<f64> {
 }
 
 /// (JᵀJ)·v computed as Jᵀ(J·v) — never forms the dense JᵀJ matrix.
-#[allow(dead_code)]
+#[cfg(test)]
 fn jtj_matvec(jac: &[SparseRow], v: &[f64], n: usize) -> Vec<f64> {
     let jv = sparse_matvec(jac, v);
     sparse_transpose_matvec(jac, &jv, n)
