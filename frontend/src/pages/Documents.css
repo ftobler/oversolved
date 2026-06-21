@@ -68,6 +68,13 @@
   background-color: #141519;
 }
 
+/* The sign-in entry is a Link, not a div: drop the default anchor styling so it
+   matches the surrounding sidebar items. */
+.sidebar-item-login {
+  text-decoration: none;
+  color: #ccc;
+}
+
 .sidebar-item.active {
   background: #111111;
   color: #fff;

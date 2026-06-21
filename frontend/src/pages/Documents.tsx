@@ -546,12 +546,23 @@ export default function Documents() {
         <aside className="documents-sidebar">
           <div className="sidebar-section-label">Local</div>
           {localEntries.map(renderEntry)}
-          {cloudAvailable && (
+          {cloudAvailable ? (
             <>
               <div className="sidebar-section-label">Cloud</div>
               {cloudEntries.map(renderEntry)}
             </>
-          )}
+          ) : cloudStore && !user ? (
+            // A cloud domain exists in this build but you are a guest: offer to
+            // sign in right where the Cloud section would otherwise be, so the
+            // upgrade is one click from the library, not just the header.
+            <>
+              <div className="sidebar-section-label">Cloud</div>
+              <Link to="/login" className="sidebar-item sidebar-item-login" title="Sign in to Cloud">
+                <span className="material-icons sidebar-item-icon">login</span>
+                <span className="sidebar-item-label">Sign in to Cloud</span>
+              </Link>
+            </>
+          ) : null}
         </aside>
 
         <div className="documents-main">
