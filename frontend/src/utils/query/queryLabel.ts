@@ -14,10 +14,6 @@ function entityTypeFromRestriction(typeRestriction: string | undefined): string 
   return 'Entity'
 }
 
-function findFeature(featureId: string, features: PartFeature[]): PartFeature | undefined {
-  return features.find(f => f.id === featureId)
-}
-
 export function queryLabel(
   query: string,
   features: PartFeature[],
@@ -39,7 +35,7 @@ export function queryLabel(
           if (partLabels[query]) return partLabels[query]!
         }
 
-        const feature = findFeature(parsed.featureId, features)
+        const feature = features.find(f => f.id === parsed.featureId)
         if (feature) return feature.label || feature.id
 
         return parsed.featureId
@@ -51,7 +47,7 @@ export function queryLabel(
         const entityType = entityTypeFromRestriction(parsed.typeRestriction)
 
         if (featureId) {
-          const feature = findFeature(featureId, features)
+          const feature = features.find(f => f.id === featureId)
           if (feature) return `${entityType} of ${feature.label || feature.id}`
           return `${entityType} of ${featureId}`
         }
