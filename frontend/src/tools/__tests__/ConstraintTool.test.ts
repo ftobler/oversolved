@@ -149,17 +149,6 @@ describe('ConstraintTool', () => {
     })
   })
 
-  describe('onPointerDown', () => {
-    it('returns null', () => {
-      const tool = createConstraintTool({ constraintKind: 'horizontal', requiresSelection: 1 })
-      const context = createMockContext()
-
-      const result = tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
-
-      expect(result).toBeNull()
-    })
-  })
-
   describe('tool properties', () => {
     it('has constraint category', () => {
       const tool = createConstraintTool({ constraintKind: 'coincident', requiresSelection: 2 })

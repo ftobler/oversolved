@@ -14,10 +14,6 @@ export interface SelectionTool extends Tool {
 
 export function createSelectionTool(): SelectionTool {
   const handlers: ToolHandlers<SelectionToolContext> = {
-    onPointerDown: () => {
-      return null
-    },
-
     onClick: (_e, _worldPt, context) => {
       const hoverId = context.hoveredSelectionId
       if (hoverId) {

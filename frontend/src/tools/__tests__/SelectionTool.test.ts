@@ -21,17 +21,6 @@ function createMockContext(overrides: Partial<SelectionToolContext> = {}): Selec
 }
 
 describe('SelectionTool', () => {
-  describe('onPointerDown', () => {
-    it('returns null (selection does not initiate drag)', () => {
-      const tool = createSelectionTool()
-      const context = createMockContext()
-
-      const result = tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
-
-      expect(result).toBeNull()
-    })
-  })
-
   describe('onClick', () => {
     it('toggles element in normal selection when clicked', () => {
       const tool = createSelectionTool()

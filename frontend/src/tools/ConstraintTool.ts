@@ -19,10 +19,6 @@ export function createConstraintTool(config: ConstraintToolConfig): ConstraintTo
   const constraintDef = CONSTRAINT_BY_KIND.get(config.constraintKind)
 
   const handlers: ToolHandlers<ConstraintToolContext> = {
-    onPointerDown: () => {
-      return null
-    },
-
     onPointerUp: (_e, _worldPt, _drag, context) => {
       const selectionArray = Array.from(context.normalSelection)
       if (selectionArray.length < config.requiresSelection) {
