@@ -2,7 +2,6 @@
 export const COLOR_BODY_DEFAULT  = '#6ab59b'
 export const PART_COLOR_PALETTE = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8', '#FFE29B', '#000000', '#222222',  '#444444', '#666666', '#888888', '#AAAAAA', '#CCCCCC', '#EEEEEE', '#FFFFFF']  // extended palette with more grayscale options
 export const COLOR_BODY_EDGE     = '#eeeeee'
-export const COLOR_BODY_HOVER    = '#91ccb7'
 export const COLOR_BODY_SELECTED = '#b5a16a'
 export const COLOR_BODY_EDGE_SEL = '#ffffff'
 export const DEFAULT_PART_ROUGHNESS = 0.7
