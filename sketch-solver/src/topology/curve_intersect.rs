@@ -419,16 +419,12 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         (Curve::Line { p0: a0, p1: a1 }, Curve::Line { p0: b0, p1: b1 }) => {
             push(line_line(*a0, *a1, *b0, *b1), &mut hits);
         }
-        (Curve::Line { p0, p1 }, Curve::Circle { c, r }) => {
+        (Curve::Line { p0, p1 }, Curve::Circle { c, r })
+        | (Curve::Circle { c, r }, Curve::Line { p0, p1 }) => {
             push(line_circle(*p0, *p1, *c, *r), &mut hits);
         }
-        (Curve::Circle { c, r }, Curve::Line { p0, p1 }) => {
-            push(line_circle(*p0, *p1, *c, *r), &mut hits);
-        }
-        (Curve::Line { p0, p1 }, Curve::Ellipse { c, a, b, theta }) => {
-            push(line_ellipse(*p0, *p1, *c, *a, *b, *theta), &mut hits);
-        }
-        (Curve::Ellipse { c, a, b, theta }, Curve::Line { p0, p1 }) => {
+        (Curve::Line { p0, p1 }, Curve::Ellipse { c, a, b, theta })
+        | (Curve::Ellipse { c, a, b, theta }, Curve::Line { p0, p1 }) => {
             push(line_ellipse(*p0, *p1, *c, *a, *b, *theta), &mut hits);
         }
         (Curve::Circle { c: ac, r: ar }, Curve::Circle { c: bc, r: br }) => {
