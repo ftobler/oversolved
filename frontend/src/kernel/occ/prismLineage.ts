@@ -151,7 +151,62 @@ function buildEllipseArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLik
   return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, a, b, u0, u1)
 }
 
-function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: LoopEdge[]): OccShape {
+// Endpoint snapping (gap < this) bridges solver-precision joint mismatches; a
+// genuinely open loop sits far above it and still fails loudly in makeWire.
+const JOINT_SNAP_TOL = 1e-3
+
+// Edges whose OCC endpoints are pinned to an analytic curve (center+radius+angle
+// for arcs, the eccentric-angle frame for ellipse arcs): a neighbouring joint
+// cannot pull them off that curve, so at a joint they win and the free edge moves.
+const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc'])
+
+function jointDist(a: number[], b: number[]): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1])
+}
+
+/**
+ * Reconcile each loop joint so adjacent edges share an exact endpoint before they
+ * become OCC edges. The solver can leave a circle whose radius/center misses a
+ * shared vertex by ~1e-7 (just over OCC's confusion tolerance), so the arc's
+ * on-curve endpoint and the line's vertex endpoint disagree and makeWire silently
+ * drops the arc. We snap the FREE side (line/spline, whose endpoint follows its
+ * stored coords) onto the ANCHORED side (arc/ellipse, pinned to its curve); when
+ * both sides are free we collapse them together. Joints already wider than
+ * JOINT_SNAP_TOL are left for makeWire to reject. Returns cloned edges; the
+ * caller's loop dicts (shared with the stored topology) are never mutated.
+ */
+function snapLoopJoints(loop: LoopEdge[]): LoopEdge[] {
+  const out: LoopEdge[] = loop.map((e) => {
+    const c: LoopEdge = { ...e }
+    if (Array.isArray(e['start'])) c['start'] = [...(e['start'] as number[])]
+    if (Array.isArray(e['end'])) c['end'] = [...(e['end'] as number[])]
+    return c
+  })
+  if (out.length < 2) return out
+  const isAnchored = (e: LoopEdge): boolean => ANCHORED_KINDS.has(e['kind'] as string)
+  for (let i = 0; i < out.length; i++) {
+    const a = out[i]
+    const b = out[(i + 1) % out.length]
+    const aEnd = a['end'] as number[] | undefined
+    const bStart = b['start'] as number[] | undefined
+    if (!Array.isArray(aEnd) || !Array.isArray(bStart)) continue
+    if (jointDist(aEnd, bStart) > JOINT_SNAP_TOL) continue
+    const aAnchored = isAnchored(a)
+    const bAnchored = isAnchored(b)
+    if (aAnchored && bAnchored) continue  // both pinned to a curve: nothing we can move
+    if (aAnchored) {
+      b['start'] = [...aEnd]
+    } else if (bAnchored) {
+      a['end'] = [...bStart]
+    } else {
+      b['start'] = [...aEnd]  // free/free: collapse b's start onto a's end
+    }
+  }
+  return out
+}
+
+function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop: LoopEdge[]): OccShape {
+  const loop = snapLoopJoints(rawLoop)
   const circle = fullCircleOf(loop)
   if (circle !== null) return makeWire(oc, scope, [buildArcEdge(oc, scope, plane, circle)])
   // A full ellipse is a single closed boundary edge -> one ellipse-edge wire.
