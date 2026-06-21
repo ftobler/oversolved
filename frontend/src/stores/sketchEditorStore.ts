@@ -10,7 +10,7 @@ import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoint
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
-import type { ToolId } from '@/registry/toolRegistry'
+import type { ToolId, ToolContext } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 
 // Callbacks dispatched from pure-layer store actions back into React state.
@@ -233,6 +233,24 @@ interface SketchEditorState {
   setActivePickField: (field: ActivePickField | null, opts?: { seed?: boolean }) => void
 }
 
+// Snapshot the current state into the ToolContext a tool lifecycle hook expects.
+// pushMode/popMode close over get() so they always reach the live store.
+function buildToolContext(get: () => SketchEditorState): ToolContext {
+  const s = get()
+  return {
+    normalSelection: s.normalSelection,
+    hoveredSelectionId: s.hoveredSelectionId,
+    isPointerDown: s.isPointerDown,
+    activeFeatureId: s.activeFeatureId,
+    hoveredVertexId: s.hoveredVertexId,
+    hoveredVertexPosition: s.hoveredVertexPosition,
+    hoveredSnapKind: s.hoveredSnapKind,
+    onMutation: _sketchCbs.onMutation,
+    pushMode: (kind: string) => get().pushMode(kind),
+    popMode: (expectedKind?: string) => get().popMode(expectedKind),
+  }
+}
+
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectionDomain: 'sketch_2d',
@@ -341,19 +359,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (prevTool) {
       const prev = toolRegistry.get(prevTool as ToolId)
       if (prev) {
-        const s = get()
-        prev.deactivate({
-          normalSelection: s.normalSelection,
-          hoveredSelectionId: s.hoveredSelectionId,
-          isPointerDown: s.isPointerDown,
-          activeFeatureId: s.activeFeatureId,
-          hoveredVertexId: s.hoveredVertexId,
-          hoveredVertexPosition: s.hoveredVertexPosition,
-          hoveredSnapKind: s.hoveredSnapKind,
-          onMutation: _sketchCbs.onMutation,
-          pushMode: (kind: string) => get().pushMode(kind),
-          popMode: (expectedKind?: string) => get().popMode(expectedKind),
-        })
+        prev.deactivate(buildToolContext(get))
       }
     }
 
@@ -394,19 +400,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (tool) {
       const next = toolRegistry.get(tool as ToolId)
       if (next) {
-        const s = get()
-        next.activate({
-          normalSelection: s.normalSelection,
-          hoveredSelectionId: s.hoveredSelectionId,
-          isPointerDown: s.isPointerDown,
-          activeFeatureId: s.activeFeatureId,
-          hoveredVertexId: s.hoveredVertexId,
-          hoveredVertexPosition: s.hoveredVertexPosition,
-          hoveredSnapKind: s.hoveredSnapKind,
-          onMutation: _sketchCbs.onMutation,
-          pushMode: (kind: string) => get().pushMode(kind),
-          popMode: (expectedKind?: string) => get().popMode(expectedKind),
-        })
+        next.activate(buildToolContext(get))
       }
     }
 
@@ -689,19 +683,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       if (top === `tool:${prevTool}`) {
         const prev = toolRegistry.get(prevTool as ToolId)
         if (prev) {
-          const s = get()
-          prev.deactivate({
-            normalSelection: s.normalSelection,
-            hoveredSelectionId: s.hoveredSelectionId,
-            isPointerDown: s.isPointerDown,
-            activeFeatureId: s.activeFeatureId,
-            hoveredVertexId: s.hoveredVertexId,
-            hoveredVertexPosition: s.hoveredVertexPosition,
-            hoveredSnapKind: s.hoveredSnapKind,
-            onMutation: _sketchCbs.onMutation,
-            pushMode: (kind: string) => get().pushMode(kind),
-            popMode: (expectedKind?: string) => get().popMode(expectedKind),
-          })
+          prev.deactivate(buildToolContext(get))
         }
       }
     }
