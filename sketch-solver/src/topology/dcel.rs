@@ -877,6 +877,17 @@ fn add_curve_intersections(tagged: &[Tagged], splits: &mut HashMap<String, Vec<S
     }
 }
 
+// Push one geometric edge as its two opposing half-edges (v0->v1 and v1->v0),
+// tagging both with the owning entity id. Shared by every curve kind in
+// build_half_edge_graph, which differ only in how they derive `eg`.
+fn push_half_edge_pair(hes: &mut Vec<HalfEdge>, he_eid: &mut Vec<String>, eid: &str, v0: &str, v1: &str, eg: EdgeGeom) {
+    let r = rev(&eg);
+    hes.push((v0.to_string(), v1.to_string(), eg));
+    hes.push((v1.to_string(), v0.to_string(), r));
+    he_eid.push(eid.to_string());
+    he_eid.push(eid.to_string());
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_half_edge_graph(
     lines: &[(String, InputEntity)],
@@ -907,11 +918,7 @@ fn build_half_edge_graph(
             seen_lines.insert(key);
             seen_lines.insert(rkey);
             let eg = line_eg(e, *t0, *t1);
-            let r = rev(&eg);
-            hes.push((v0.clone(), v1.clone(), eg));
-            hes.push((v1.clone(), v0.clone(), r));
-            he_eid.push(eid.clone());
-            he_eid.push(eid.clone());
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
@@ -924,11 +931,7 @@ fn build_half_edge_graph(
                 continue;
             }
             let eg = arc_eg(e, *a0, *a1, true);
-            let r = rev(&eg);
-            hes.push((v0.clone(), v1.clone(), eg));
-            hes.push((v1.clone(), v0.clone(), r));
-            he_eid.push(eid.clone());
-            he_eid.push(eid.clone());
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
@@ -949,11 +952,7 @@ fn build_half_edge_graph(
                 a1 += TWO_PI;
             }
             let eg = arc_eg(e, *a0, a1, true);
-            let r = rev(&eg);
-            hes.push((v0.clone(), v1.clone(), eg));
-            hes.push((v1.clone(), v0.clone(), r));
-            he_eid.push(eid.clone());
-            he_eid.push(eid.clone());
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
@@ -974,11 +973,7 @@ fn build_half_edge_graph(
                 a1 += TWO_PI;
             }
             let eg = ellipse_arc_eg(e, *a0, a1, true);
-            let r = rev(&eg);
-            hes.push((v0.clone(), v1.clone(), eg));
-            hes.push((v1.clone(), v0.clone(), r));
-            he_eid.push(eid.clone());
-            he_eid.push(eid.clone());
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
@@ -999,11 +994,7 @@ fn build_half_edge_graph(
             } else {
                 sub_spline_eg(&subdivide_bezier(&ctrl, *t0, *t1))
             };
-            let r = rev(&eg);
-            hes.push((v0.clone(), v1.clone(), eg));
-            hes.push((v1.clone(), v0.clone(), r));
-            he_eid.push(eid.clone());
-            he_eid.push(eid.clone());
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
