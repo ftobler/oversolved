@@ -661,8 +661,8 @@ impl<'a> Problem<'a> {
             });
             return;
         }
-        let line_ep = self.params(x, line_idx).to_vec();
-        let arc_ep = self.params(x, arc_idx).to_vec();
+        let line_ep = self.params(x, line_idx);
+        let arc_ep = self.params(x, arc_idx);
         let mut line_dir = [line_ep[2] - line_ep[0], line_ep[3] - line_ep[1]];
         let norm = (line_dir[0] * line_dir[0] + line_dir[1] * line_dir[1])
             .sqrt()
@@ -1158,8 +1158,8 @@ impl<'a> Problem<'a> {
         if self.kind_of(ai) != Kind::Line || self.kind_of(bi) != Kind::Line {
             return;
         }
-        let ea = self.params(x, ai).to_vec();
-        let eb = self.params(x, bi).to_vec();
+        let ea = self.params(x, ai);
+        let eb = self.params(x, bi);
         let da = [ea[2] - ea[0], ea[3] - ea[1]];
         let db = [eb[2] - eb[0], eb[3] - eb[1]];
         let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
@@ -1214,8 +1214,8 @@ impl<'a> Problem<'a> {
         if ka != Kind::Line || kb != Kind::Line {
             return;
         }
-        let ea = self.params(x, ai).to_vec();
-        let eb = self.params(x, bi).to_vec();
+        let ea = self.params(x, ai);
+        let eb = self.params(x, bi);
         let na = ((ea[2] - ea[0]).powi(2) + (ea[3] - ea[1]).powi(2)).sqrt();
         let nb = ((eb[2] - eb[0]).powi(2) + (eb[3] - eb[1]).powi(2)).sqrt();
         let mut row = vec![0.0; n];
