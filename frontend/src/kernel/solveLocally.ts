@@ -55,7 +55,7 @@ let occLoaderOverride: (() => Promise<OccModule | null>) | null = null
  * Install the OCC loader. The Worker bootstrap calls this with the DOM-free
  * worker loader; without it the main-thread loadOccWeb is used.
  */
-export function setOccLoader(loader: () => Promise<OccModule | null>): void {
+export function setOccLoader(loader: (() => Promise<OccModule | null>) | null): void {
   occLoaderOverride = loader
   occModule = null
   occLoading = null

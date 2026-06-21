@@ -130,23 +130,26 @@ function packBodies(bodies: Record<string, unknown>): Record<string, unknown> {
   return out
 }
 
-function pushBodyBuffers(bodies: Record<string, unknown> | undefined, out: Transferable[]): void {
-  if (!bodies) return
+/** The transferable ArrayBuffers from a single body-dict (for postMessage's transfer arg). */
+function collectBodyBuffers(bodies: Record<string, unknown> | undefined): Transferable[] {
+  if (!bodies) return []
+  const out: Transferable[] = []
   for (const body of Object.values(bodies)) {
     const mesh = (body as { mesh?: Record<string, unknown> })?.mesh
     if (!mesh) continue
     if (mesh.vertices instanceof Float32Array) out.push(mesh.vertices.buffer)
     if (mesh.faces instanceof Uint32Array) out.push(mesh.faces.buffer)
   }
+  return out
 }
 
 /** The transferable ArrayBuffers in a packed response (for postMessage's transfer arg). */
 export function collectTransferables(res: SolveResponse): Transferable[] {
   if (!res.ok || !res.payload) return []
-  const out: Transferable[] = []
-  pushBodyBuffers(res.payload.bodies, out)
-  pushBodyBuffers(res.payload.pick_bodies, out)
-  return out
+  return [
+    ...collectBodyBuffers(res.payload.bodies),
+    ...collectBodyBuffers(res.payload.pick_bodies),
+  ]
 }
 
 // ─── Actor pattern: serializes solve + export requests ──────────────────
