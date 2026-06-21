@@ -620,17 +620,18 @@ impl<'a> Problem<'a> {
     }
 
     fn r_tangent(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (line_ref, arc_ref) = if c.has_role(RefRole::Line) && c.has_role(RefRole::Arc) {
-            (c.ref_for(RefRole::Line).unwrap(), c.ref_for(RefRole::Arc).unwrap())
-        } else {
-            let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
-                return;
+        let (line_ref, arc_ref) =
+            if let (Some(lr), Some(ar)) = (c.ref_for(RefRole::Line), c.ref_for(RefRole::Arc)) {
+                (lr, ar)
+            } else {
+                let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
+                    return;
+                };
+                match a {
+                    Ref::Entity { index, .. } if self.kind_of(index) == Kind::Line => (a, b),
+                    _ => (b, a),
+                }
             };
-            match a {
-                Ref::Entity { index, .. } if self.kind_of(index) == Kind::Line => (a, b),
-                _ => (b, a),
-            }
-        };
         let (line_idx, arc_idx, arc_pt) = match (line_ref, arc_ref) {
             (
                 Ref::Entity { index: li, .. },
