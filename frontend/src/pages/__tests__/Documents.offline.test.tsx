@@ -82,10 +82,12 @@ describe('Documents offline + logout transitions', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }))
     })
-    // Back to guest-with-local-only: cloud switch gone, local doc untouched.
+    // Back to guest-with-local-only: the cloud-domain entries are gone (replaced by
+    // the sidebar sign-in affordance), the local doc untouched.
     await waitFor(() => {
-      expect(screen.queryByText('Cloud')).not.toBeInTheDocument()
+      expect(screen.queryByText('My Documents')).not.toBeInTheDocument()
     })
+    expect(screen.getByTitle('Sign in to Cloud')).toBeInTheDocument()
     // Same async-local-list race as above: wait for the tile.
     await screen.findByText('local/LocalDoc')
     expect((await local.load(uuid)).content).toBe('x')

@@ -82,8 +82,9 @@ describe('Documents sidebar', () => {
     })
     expect(screen.getByText('Local Trash')).toBeInTheDocument()
 
-    // No cloud session: the Cloud section and its identity-bound items are absent.
-    expect(screen.queryByText('Cloud')).not.toBeInTheDocument()
+    // No cloud session: the identity-bound cloud entries are absent. A "Sign in to
+    // Cloud" affordance takes their place on a server build (see
+    // Documents.signin.test.tsx), so assert on the entries, not the "Cloud" label.
     expect(screen.queryByText('My Documents')).not.toBeInTheDocument()
     expect(screen.queryByText('Shared with me')).not.toBeInTheDocument()
     expect(screen.queryByText('Public Documents')).not.toBeInTheDocument()
