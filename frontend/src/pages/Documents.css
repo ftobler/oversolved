@@ -399,7 +399,8 @@
   margin-left: auto;
 }
 
-.btn-tile-action {
+.btn-tile-action,
+.btn-delete-tile {
   flex-shrink: 0;
   background: transparent;
   color: #555;
@@ -414,15 +415,18 @@
   cursor: pointer;
 }
 
-.doc-tile:hover .btn-tile-action {
+.doc-tile:hover .btn-tile-action,
+.doc-tile:hover .btn-delete-tile {
   color: #888;
 }
 
-.btn-tile-action:hover {
+.btn-tile-action:hover,
+.btn-delete-tile:hover {
   background: rgba(0, 0, 0, 0.8);
 }
 
-.btn-tile-action .material-icons {
+.btn-tile-action .material-icons,
+.btn-delete-tile .material-icons {
   font-size: 16px;
   width: 16px;
   height: 16px;
@@ -453,35 +457,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
-}
-
-.btn-delete-tile {
-  flex-shrink: 0;
-  background: transparent;
-  color: #555;
-  border: none;
-  border-radius: 4px;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.doc-tile:hover .btn-delete-tile {
-  color: #888;
-}
-
-.btn-delete-tile:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-
-.btn-delete-tile .material-icons {
-  font-size: 16px;
-  width: 16px;
-  height: 16px;
 }
 
 .toolbar-btn {
