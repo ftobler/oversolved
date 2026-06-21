@@ -1,3 +1,18 @@
+// Shared tail for the two body-ref resolvers: collapse a `body:`/`@.../`
+// selection to a single feature segment, then coerce any bare `@ref` into the
+// canonical `@body_<...>` form. Inputs that match no branch pass through.
+function normalizeBodyRef(ref: string): string {
+  if (ref.startsWith('body:')) {
+    ref = '@' + ref.slice(5)
+  } else if (ref.startsWith('@') && ref.includes('/')) {
+    ref = '@' + ref.slice(1).split('/')[0]
+  }
+  if (ref.startsWith('@') && !ref.startsWith('@body_')) {
+    ref = '@body_' + ref.slice(1)
+  }
+  return ref
+}
+
 /**
  * Convert a viewport selection ID to a body reference suitable for the solver.
  *
@@ -10,16 +25,7 @@ export function resolveBodyPickRef(id: string): string {
   if (id.startsWith('face:')) {
     return id.split(':').slice(2).join(':')
   }
-  let ref = id
-  if (id.startsWith('body:')) {
-    ref = '@' + id.slice(5)
-  } else if (id.startsWith('@') && id.includes('/')) {
-    ref = '@' + id.slice(1).split('/')[0]
-  }
-  if (ref.startsWith('@') && !ref.startsWith('@body_')) {
-    ref = '@body_' + ref.slice(1)
-  }
-  return ref
+  return normalizeBodyRef(id)
 }
 
 /**
@@ -29,18 +35,10 @@ export function resolveBodyPickRef(id: string): string {
  * through. Shared by ExtrudeEditor and RevolveEditor.
  */
 export function resolveBodyMergeRef(id: string): string {
-  let bodyRef = id
-  if (id.startsWith('body:')) {
-    bodyRef = '@' + id.slice(5)
-  } else if (id.startsWith('?')) {
-    bodyRef = '@body_' + id.slice(1).split('/')[0]
-  } else if (id.startsWith('@') && id.includes('/')) {
-    bodyRef = '@' + id.slice(1).split('/')[0]
+  if (id.startsWith('?')) {
+    return '@body_' + id.slice(1).split('/')[0]
   }
-  if (bodyRef.startsWith('@') && !bodyRef.startsWith('@body_')) {
-    bodyRef = '@body_' + bodyRef.slice(1)
-  }
-  return bodyRef
+  return normalizeBodyRef(id)
 }
 
 /**
