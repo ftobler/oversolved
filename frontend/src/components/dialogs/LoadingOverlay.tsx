@@ -1,4 +1,5 @@
 import { useSolverStore } from '@/stores/solverStore'
+import { Spinner } from '@/components/shared/Spinner'
 import '@/components/dialogs/LoadingOverlay.css'
 
 interface LoadingOverlayProps {
@@ -14,17 +15,7 @@ export default function LoadingOverlay({ isDocumentLoading = false }: LoadingOve
       <div className="loading-overlay-content">
         <div className="md3-spinner-container">
           <div className="md3-spinner-rotator">
-            <svg className="md3-spinner-svg" viewBox="0 0 48 48">
-              <circle
-                className="md3-spinner-path"
-                cx="24"
-                cy="24"
-                r="18"
-                fill="none"
-                strokeWidth="4"
-                strokeLinecap="round"
-              />
-            </svg>
+            <Spinner className="md3-spinner-svg" circleClassName="md3-spinner-path" />
           </div>
         </div>
       </div>

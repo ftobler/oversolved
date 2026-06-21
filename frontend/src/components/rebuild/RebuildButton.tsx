@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import rebuildIcon from '@/assets/icons/context-rebuild.svg'
 import { RebuildTimingPopover } from '@/components/rebuild/RebuildTimingPopover'
 import { formatMs } from '@/components/rebuild/formatMs'
+import { Spinner } from '@/components/shared/Spinner'
 import type { PartFeature, RebuildValidation } from '@/types/cad'
 
 interface RebuildButtonProps {
@@ -54,16 +55,7 @@ export function RebuildButton({ featureTimings, features, onClick, isLoading, di
         onMouseLeave={scheduleHide}
       >
         {isLoading ? (
-          <svg className="rebuild-spinner" viewBox="0 0 48 48">
-            <circle
-              cx="24"
-              cy="24"
-              r="18"
-              fill="none"
-              strokeWidth="4"
-              strokeLinecap="round"
-            />
-          </svg>
+          <Spinner className="rebuild-spinner" />
         ) : (
           <img src={rebuildIcon} alt="Rebuild" />
         )}
