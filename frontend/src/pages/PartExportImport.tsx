@@ -5,6 +5,7 @@ import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
 import { exportViaWorker } from '@/kernel/worker/solverClient'
+import { downloadBlob } from '@/utils/core/downloadBlob'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
 interface PartExportImportProps {
@@ -59,14 +60,7 @@ const PartExportImport = React.forwardRef<PartExportImportHandle, PartExportImpo
         const mime = format === 'step' ? 'application/step' : 'model/stl'
         const filename = `${exportDefaultName}.${format}`
         const blob = new Blob([bytes as BlobPart], { type: mime })
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
+        downloadBlob(blob, filename)
       } catch (e) {
         console.error('Export error:', e)
         notify(`Export error: ${e instanceof Error ? e.message : e}`, 'error')

@@ -6,6 +6,7 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { HttpError, isConnectionError } from '@/utils/core/httpClient'
+import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
 import type { DocSummary, DocumentStore } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
@@ -291,12 +292,7 @@ export default function Documents() {
       // Both stores answer load() the same way, so there is no backend fork here.
       const content = (await activeStore.load(uuid)).content
       const blob = new Blob([content], { type: 'text/yaml' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${name}.yaml`
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, `${name}.yaml`)
     } catch (e) {
       if (e instanceof HttpError) {
         const parsed = JSON.parse(e.body || '{}') as { error?: string }
@@ -318,12 +314,7 @@ export default function Documents() {
         return
       }
       const blob = await exportBundle(activeStore, all.map(d => d.uuid))
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `oversolved-backup-${new Date().toISOString().slice(0, 10)}.oversolved`
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, `oversolved-backup-${new Date().toISOString().slice(0, 10)}.oversolved`)
     } catch (e) {
       setError(String(e))
     }

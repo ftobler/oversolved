@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { http } from '@/utils/core/httpClient'
+import { downloadBlob } from '@/utils/core/downloadBlob'
 import '@/pages/UserProfile.css'
 
 export default function Backup() {
@@ -21,14 +22,7 @@ export default function Backup() {
     setLoadingDownload(true)
     try {
       const blob = await http.getBlob('/api/admin/backup')
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `backup-${new Date().toISOString().split('T')[0]}.zip`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      downloadBlob(blob, `backup-${new Date().toISOString().split('T')[0]}.zip`)
     } catch (e) {
       alert(`Error: ${String(e)}`)
     } finally {
