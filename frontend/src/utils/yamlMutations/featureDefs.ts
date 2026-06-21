@@ -4,49 +4,37 @@ import { warn, round, findFeature, randomId, normalizeRefList } from './helpers'
 
 // ─── Set Feature Field (generic) ───
 
-export function applySetExtrudeField(doc: PartDoc, featureId: string, field: keyof ExtrudeFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.extrude) {
-    warn(`applySetExtrudeField: feature ${featureId} has no extrude`)
+// Shared body for the `applySet<Kind>Field` mutators that warn when the
+// sub-feature is absent and clear-on-empty via setFeatureField. `kind` is the
+// sub-feature key (which also reads as the word in the warning); `fn` keeps the
+// public caller name in the diagnostic.
+function applySetSubFeatureField(doc: PartDoc, featureId: string, kind: keyof PartFeature, field: string, value: unknown, fn: string): void {
+  const sub = findFeature(doc, featureId)?.[kind]
+  if (!sub) {
+    warn(`${fn}: feature ${featureId} has no ${kind}`)
     return
   }
-  setFeatureField(feature.extrude as unknown as Record<string, unknown>, field, value)
+  setFeatureField(sub as unknown as Record<string, unknown>, field, value)
+}
+
+export function applySetExtrudeField(doc: PartDoc, featureId: string, field: keyof ExtrudeFeatureDef, value: unknown): void {
+  applySetSubFeatureField(doc, featureId, 'extrude', field, value, 'applySetExtrudeField')
 }
 
 export function applySetRevolveField(doc: PartDoc, featureId: string, field: keyof RevolveFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.revolve) {
-    warn(`applySetRevolveField: feature ${featureId} has no revolve`)
-    return
-  }
-  setFeatureField(feature.revolve as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'revolve', field, value, 'applySetRevolveField')
 }
 
 export function applySetFilletField(doc: PartDoc, featureId: string, field: keyof FilletFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.fillet) {
-    warn(`applySetFilletField: feature ${featureId} has no fillet`)
-    return
-  }
-  setFeatureField(feature.fillet as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'fillet', field, value, 'applySetFilletField')
 }
 
 export function applySetChamferField(doc: PartDoc, featureId: string, field: keyof ChamferFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.chamfer) {
-    warn(`applySetChamferField: feature ${featureId} has no chamfer`)
-    return
-  }
-  setFeatureField(feature.chamfer as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'chamfer', field, value, 'applySetChamferField')
 }
 
 export function applySetBooleanField(doc: PartDoc, featureId: string, field: keyof BooleanFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.boolean) {
-    warn(`applySetBooleanField: feature ${featureId} has no boolean`)
-    return
-  }
-  setFeatureField(feature.boolean as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'boolean', field, value, 'applySetBooleanField')
 }
 
 export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof ArrayFeatureDef, value: unknown): void {
@@ -190,12 +178,7 @@ export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index
 // ─── Sweep ───
 
 export function applySetSweepField(doc: PartDoc, featureId: string, field: keyof SweepFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.sweep) {
-    warn(`applySetSweepField: feature ${featureId} has no sweep`)
-    return
-  }
-  setFeatureField(feature.sweep as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'sweep', field, value, 'applySetSweepField')
 }
 
 export function applyAddSweep(
@@ -427,12 +410,7 @@ export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: s
 }
 
 export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.circular_array) {
-    warn(`applySetCircularArrayField: feature ${featureId} has no circular_array`)
-    return
-  }
-  setFeatureField(feature.circular_array as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'circular_array', field, value, 'applySetCircularArrayField')
 }
 
 // ─── Delete Body ───
@@ -634,10 +612,5 @@ export function applyAddVariable(doc: PartDoc, featureId: string, label?: string
 export function applySetVariableField(
   doc: PartDoc, featureId: string, field: keyof VariableFeatureDef, value: unknown,
 ): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.variable) {
-    warn(`applySetVariableField: feature ${featureId} has no variable`)
-    return
-  }
-  setFeatureField(feature.variable as unknown as Record<string, unknown>, field, value)
+  applySetSubFeatureField(doc, featureId, 'variable', field, value, 'applySetVariableField')
 }
