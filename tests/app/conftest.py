@@ -1,10 +1,13 @@
 """Shared test fixtures for Flask app tests."""
 
+import json
 import os
 import uuid
 import pytest
 import psycopg2
 from urllib.parse import urlparse, urlunparse
+
+from oversolved.app import create_app
 
 _DEFAULT_BASE_DSN = "postgresql://oversolved:oversolved@localhost:5432/oversolved"
 _BASE_DSN = os.environ.get("TEST_DB_DSN", _DEFAULT_BASE_DSN)
@@ -45,3 +48,35 @@ def pg_dsn():
         )
         cur.execute(f"DROP DATABASE {test_db}")
     conn.close()
+
+
+@pytest.fixture
+def app(pg_dsn, monkeypatch):
+    """Create a test Flask app backed by a fresh PostgreSQL database."""
+    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
+    return create_app(
+        {
+            "DB_TYPE": "postgres",
+            "TESTING": True,
+            "DB_DSN": pg_dsn,
+        }
+    )
+
+
+@pytest.fixture
+def client(app):
+    """Create an unauthenticated test client."""
+    return app.test_client()
+
+
+@pytest.fixture
+def authed_client(app):
+    """Create a test client logged in as admin."""
+    client = app.test_client()
+    response = client.post(
+        "/api/auth/login",
+        data=json.dumps({"username": "admin", "password": "admin"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    return client

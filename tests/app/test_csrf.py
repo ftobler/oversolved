@@ -1,16 +1,7 @@
 """Tests for CSRF protection (Origin/Referer check)."""
 
-import pytest
 from flask import Flask, jsonify
-from oversolved.app import create_app
 from oversolved.blueprints import require_csrf
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    test_app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-    return test_app
 
 
 class TestRequireCsrfDecorator:

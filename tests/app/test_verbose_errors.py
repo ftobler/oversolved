@@ -1,28 +1,8 @@
 """Tests for verbose error message reduction."""
 
 import json
-import pytest
-from oversolved.app import create_app
 from PIL import Image
 from io import BytesIO
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    return create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-
-
-@pytest.fixture
-def authed_client(app):
-    """Return a test client that is already logged in as admin."""
-    client = app.test_client()
-    client.post(
-        "/api/auth/login",
-        data=json.dumps({"username": "admin", "password": "admin"}),
-        content_type="application/json",
-    )
-    return client
 
 
 class TestVerboseUploadErrors:

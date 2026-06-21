@@ -1,20 +1,6 @@
 """Tests for HTTP security headers."""
 
-import pytest
 from oversolved.app import create_app
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    test_app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-    return test_app
-
-
-@pytest.fixture
-def client(app):
-    return app.test_client()
-
 
 REQUIRED_HEADERS = {
     "X-Content-Type-Options": "nosniff",

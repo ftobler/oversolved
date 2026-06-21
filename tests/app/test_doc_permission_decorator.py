@@ -4,7 +4,6 @@ import json
 import pytest
 import psycopg2
 from werkzeug.security import generate_password_hash
-from oversolved.app import create_app
 from oversolved.db import Database, PostgreSQLConnection
 
 
@@ -14,24 +13,6 @@ def _make_db(pg_dsn):
     discover_and_register(database)
     database.init()
     return database
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    return create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-
-
-@pytest.fixture
-def authed_client(app):
-    client = app.test_client()
-    r = client.post(
-        "/api/auth/login",
-        data=json.dumps({"username": "admin", "password": "admin"}),
-        content_type="application/json",
-    )
-    assert r.status_code == 200
-    return client
 
 
 def _create_user(app, username, password):

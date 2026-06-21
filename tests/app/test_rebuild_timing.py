@@ -1,7 +1,6 @@
 """Tests for rebuild timing tracking and stats endpoint."""
 
 import json
-import pytest
 from oversolved.db import PostgreSQLConnection, Database
 
 
@@ -10,36 +9,6 @@ def _get_db(app):
     db = Database(PostgreSQLConnection(app.config["DB_DSN"]))
     db.init()
     return db
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    from oversolved.app import create_app
-
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    test_app = create_app({
-        "DB_TYPE": "postgres",
-        "TESTING": True,
-        "DB_DSN": pg_dsn,
-    })
-    return test_app
-
-
-@pytest.fixture
-def client(app):
-    return app.test_client()
-
-
-@pytest.fixture
-def authed_client(app):
-    client = app.test_client()
-    response = client.post(
-        "/api/auth/login",
-        data=json.dumps({"username": "admin", "password": "admin"}),
-        content_type="application/json",
-    )
-    assert response.status_code == 200
-    return client
 
 
 class TestRebuildTimeTracking:

@@ -8,22 +8,7 @@ and a read failure.
 
 import pathlib
 
-import pytest
-
-from oversolved.app import create_app
 from oversolved.blueprints import docs as docs_mod
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    return create_app(
-        {
-            "DB_TYPE": "postgres",
-            "TESTING": True,
-            "DB_DSN": pg_dsn,
-        }
-    )
 
 
 def test_get_doc_rejects_traversal(app):

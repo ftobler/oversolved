@@ -2,7 +2,6 @@
 
 import json
 import pytest
-from oversolved.app import create_app
 from oversolved.blueprints.auth import (
     _login_limiter,
     _LOGIN_RATE_LIMIT, _LOGIN_RATE_WINDOW,
@@ -14,18 +13,6 @@ def clear_rate_limit_state():
     """Reset rate limit state before each test."""
     _login_limiter.reset()
     yield
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    test_app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-    return test_app
-
-
-@pytest.fixture
-def client(app):
-    return app.test_client()
 
 
 def _bad_login(client, username="attacker", remote_addr="127.0.0.1"):

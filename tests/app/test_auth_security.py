@@ -1,28 +1,6 @@
 """Tests for unauthenticated endpoint access."""
 
 import json
-import pytest
-from oversolved.app import create_app
-
-
-@pytest.fixture
-def app(pg_dsn, monkeypatch):
-    """Create a test Flask app backed by a fresh PostgreSQL database."""
-    monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
-    test_app = create_app(
-        {
-            "DB_TYPE": "postgres",
-            "TESTING": True,
-            "DB_DSN": pg_dsn,
-        }
-    )
-    return test_app
-
-
-@pytest.fixture
-def client(app):
-    """Create an unauthenticated test client."""
-    return app.test_client()
 
 
 class TestUnauthenticatedAccess:
