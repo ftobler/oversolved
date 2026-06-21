@@ -935,47 +935,35 @@ fn build_half_edge_graph(
         }
     }
 
-    for (eid, e) in circles {
-        let spl = dedup(splits.get(eid).unwrap_or(&empty));
-        if spl.len() < 2 {
-            continue;
-        }
-        for k in 0..spl.len() {
-            let (a0, v0) = &spl[k];
-            let nxt = &spl[(k + 1) % spl.len()];
-            let mut a1 = nxt.0;
-            let v1 = &nxt.1;
-            if v0 == v1 {
+    // Circles and ellipses split the same way around a closed loop; only the
+    // per-segment geometry constructor differs.
+    let closed_arc_pass = |entities: &[(String, InputEntity)],
+                           eg_fn: fn(&InputEntity, f64, f64, bool) -> EdgeGeom,
+                           hes: &mut Vec<HalfEdge>,
+                           he_eid: &mut Vec<String>| {
+        for (eid, e) in entities {
+            let spl = dedup(splits.get(eid).unwrap_or(&empty));
+            if spl.len() < 2 {
                 continue;
             }
-            if a1 <= *a0 {
-                a1 += TWO_PI;
+            for k in 0..spl.len() {
+                let (a0, v0) = &spl[k];
+                let nxt = &spl[(k + 1) % spl.len()];
+                let mut a1 = nxt.0;
+                let v1 = &nxt.1;
+                if v0 == v1 {
+                    continue;
+                }
+                if a1 <= *a0 {
+                    a1 += TWO_PI;
+                }
+                let eg = eg_fn(e, *a0, a1, true);
+                push_half_edge_pair(hes, he_eid, eid, v0, v1, eg);
             }
-            let eg = arc_eg(e, *a0, a1, true);
-            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
-    }
-
-    for (eid, e) in ellipses {
-        let spl = dedup(splits.get(eid).unwrap_or(&empty));
-        if spl.len() < 2 {
-            continue;
-        }
-        for k in 0..spl.len() {
-            let (a0, v0) = &spl[k];
-            let nxt = &spl[(k + 1) % spl.len()];
-            let mut a1 = nxt.0;
-            let v1 = &nxt.1;
-            if v0 == v1 {
-                continue;
-            }
-            if a1 <= *a0 {
-                a1 += TWO_PI;
-            }
-            let eg = ellipse_arc_eg(e, *a0, a1, true);
-            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
-        }
-    }
+    };
+    closed_arc_pass(circles, arc_eg, &mut hes, &mut he_eid);
+    closed_arc_pass(ellipses, ellipse_arc_eg, &mut hes, &mut he_eid);
 
     for (eid, e) in splines {
         let spl = dedup(splits.get(eid).unwrap_or(&empty));
