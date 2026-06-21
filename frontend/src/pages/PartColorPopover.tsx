@@ -18,6 +18,37 @@ interface InnerProps extends PartColorPopoverProps {
   popover: { bodyId: string; position: [number, number] }
 }
 
+const formatPercent = (val: number): string => `${(val * 100).toFixed(0)}%`
+
+// One 0..1 material slider row (opacity / metalness / roughness / transmission).
+function MaterialSlider({
+  label,
+  value,
+  onChange,
+  display = formatPercent,
+}: {
+  label: string
+  value: number
+  onChange: (val: number) => void
+  display?: (val: number) => string
+}) {
+  return (
+    <div className="part-color-popover-row">
+      <span className="part-color-popover-label">{label}</span>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="part-slider"
+      />
+      <span className="part-slider-value">{display(value)}</span>
+    </div>
+  )
+}
+
 // Separate inner component so `key={bodyId}` re-mounts with fresh draft state
 function PartColorPopoverInner({
   popover,
@@ -107,74 +138,39 @@ function PartColorPopoverInner({
           placeholder="#RRGGBB"
         />
       </div>
-      <div className="part-color-popover-row">
-        <span className="part-color-popover-label">Opacity</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={transparencyDraft}
-          onChange={(e) => {
-            const val = parseFloat(e.target.value)
-            setTransparencyDraft(val)
-            onTransparencySet(popover.bodyId, val)
-          }}
-          className="part-slider"
-        />
-        <span className="part-slider-value">{((1 - transparencyDraft) * 100).toFixed(0)}%</span>
-      </div>
-      <div className="part-color-popover-row">
-        <span className="part-color-popover-label">Metalness</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={metalnessDraft}
-          onChange={(e) => {
-            const val = parseFloat(e.target.value)
-            setMetalnessDraft(val)
-            onMetalnessSet(popover.bodyId, val)
-          }}
-          className="part-slider"
-        />
-        <span className="part-slider-value">{(metalnessDraft * 100).toFixed(0)}%</span>
-      </div>
-      <div className="part-color-popover-row">
-        <span className="part-color-popover-label">Roughness</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={roughnessDraft}
-          onChange={(e) => {
-            const val = parseFloat(e.target.value)
-            setRoughnessDraft(val)
-            onRoughnessSet(popover.bodyId, val)
-          }}
-          className="part-slider"
-        />
-        <span className="part-slider-value">{(roughnessDraft * 100).toFixed(0)}%</span>
-      </div>
-      <div className="part-color-popover-row">
-        <span className="part-color-popover-label">Transmission</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={transmissionDraft}
-          onChange={(e) => {
-            const val = parseFloat(e.target.value)
-            setTransmissionDraft(val)
-            onTransmissionSet(popover.bodyId, val)
-          }}
-          className="part-slider"
-        />
-        <span className="part-slider-value">{(transmissionDraft * 100).toFixed(0)}%</span>
-      </div>
+      <MaterialSlider
+        label="Opacity"
+        value={transparencyDraft}
+        onChange={(val) => {
+          setTransparencyDraft(val)
+          onTransparencySet(popover.bodyId, val)
+        }}
+        display={(val) => `${((1 - val) * 100).toFixed(0)}%`}
+      />
+      <MaterialSlider
+        label="Metalness"
+        value={metalnessDraft}
+        onChange={(val) => {
+          setMetalnessDraft(val)
+          onMetalnessSet(popover.bodyId, val)
+        }}
+      />
+      <MaterialSlider
+        label="Roughness"
+        value={roughnessDraft}
+        onChange={(val) => {
+          setRoughnessDraft(val)
+          onRoughnessSet(popover.bodyId, val)
+        }}
+      />
+      <MaterialSlider
+        label="Transmission"
+        value={transmissionDraft}
+        onChange={(val) => {
+          setTransmissionDraft(val)
+          onTransmissionSet(popover.bodyId, val)
+        }}
+      />
       <div className="part-color-swatches">
         {PART_COLOR_PALETTE.map(c => (
           <button
