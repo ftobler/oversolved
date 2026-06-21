@@ -1112,96 +1112,93 @@ fn circle_arcs(cx: f64, cy: f64, r: f64, eid: &str) -> Vec<BoundaryEdge> {
     ]
 }
 
-fn build_standalone_surfaces(circles: &[(String, InputEntity)], splits: &HashMap<String, Vec<Split>>) -> Vec<SurfaceOut> {
+// A whole closed curve becomes its own face only when nothing subdivides it.
+// `max_keep` is the largest split count that still counts as "undivided"; each
+// entity that passes maps to its boundary loop (or `None` to skip).
+fn build_standalone<F>(
+    entities: &[(String, InputEntity)],
+    splits: &HashMap<String, Vec<Split>>,
+    max_keep: usize,
+    mut boundary_of: F,
+) -> Vec<SurfaceOut>
+where
+    F: FnMut(&str, &InputEntity) -> Option<Vec<BoundaryEdge>>,
+{
     let empty: Vec<Split> = Vec::new();
     let mut surfaces = Vec::new();
-    for (eid, e) in circles {
-        if dedup(splits.get(eid).unwrap_or(&empty)).len() >= 2 {
+    for (eid, e) in entities {
+        if dedup(splits.get(eid).unwrap_or(&empty)).len() > max_keep {
             continue;
         }
-        let cx = e.center.unwrap()[0];
-        let cy = e.center.unwrap()[1];
-        let r = e.radius.unwrap();
-        surfaces.push(SurfaceOut {
-            boundary: circle_arcs(cx, cy, r, eid),
-            face_entity_ids: vec![eid.clone()],
-            holes: vec![],
-        });
+        if let Some(boundary) = boundary_of(eid, e) {
+            surfaces.push(SurfaceOut {
+                boundary,
+                face_entity_ids: vec![eid.clone()],
+                holes: vec![],
+            });
+        }
     }
     surfaces
 }
 
+fn build_standalone_surfaces(circles: &[(String, InputEntity)], splits: &HashMap<String, Vec<Split>>) -> Vec<SurfaceOut> {
+    build_standalone(circles, splits, 1, |eid, e| {
+        let cx = e.center.unwrap()[0];
+        let cy = e.center.unwrap()[1];
+        let r = e.radius.unwrap();
+        Some(circle_arcs(cx, cy, r, eid))
+    })
+}
+
 fn build_standalone_ellipses(ellipses: &[(String, InputEntity)], splits: &HashMap<String, Vec<Split>>) -> Vec<SurfaceOut> {
-    let empty: Vec<Split> = Vec::new();
-    let mut surfaces = Vec::new();
     let mut seen: Vec<[f64; 5]> = Vec::new();
-    for (eid, e) in ellipses {
-        if dedup(splits.get(eid).unwrap_or(&empty)).len() >= 2 {
-            continue;
-        }
+    build_standalone(ellipses, splits, 1, move |eid, e| {
         let a = e.a.unwrap();
         let b = e.b.unwrap();
         // A degenerate ellipse (near-zero semi-axis) bounds no area; never a face.
         if a.abs() < MERGE || b.abs() < MERGE {
-            continue;
+            return None;
         }
         let c = e.center.unwrap();
         let theta = e.theta.unwrap_or(0.0);
         let key = [c[0], c[1], a, b, theta];
         if seen.iter().any(|k| k.iter().zip(key.iter()).all(|(v, w)| (v - w).abs() < MERGE)) {
-            continue;
+            return None;
         }
         seen.push(key);
-        let boundary = vec![BoundaryEdge {
+        Some(vec![BoundaryEdge {
             geom: EdgeGeom::Ellipse {
                 center: [c[0], c[1]],
                 a,
                 b,
                 theta,
             },
-            id: Some(eid.clone()),
+            id: Some(eid.to_string()),
             start_vertex: None,
             end_vertex: None,
-        }];
-        surfaces.push(SurfaceOut {
-            boundary,
-            face_entity_ids: vec![eid.clone()],
-            holes: vec![],
-        });
-    }
-    surfaces
+        }])
+    })
 }
 
 fn build_standalone_splines(splines: &[(String, InputEntity)], splits: &HashMap<String, Vec<Split>>, verts: &mut Verts) -> Vec<SurfaceOut> {
-    let empty: Vec<Split> = Vec::new();
-    let mut surfaces = Vec::new();
-    for (eid, e) in splines {
-        if dedup(splits.get(eid).unwrap_or(&empty)).len() > 2 {
-            continue;
-        }
+    build_standalone(splines, splits, 2, |eid, e| {
         let v0 = verts.vid(e.start.unwrap());
         let v1 = verts.vid(e.end.unwrap());
         if v0 != v1 {
-            continue; // open spline: only closes a loop with other edges
+            return None; // open spline: only closes a loop with other edges
         }
-        let boundary = vec![BoundaryEdge {
+        Some(vec![BoundaryEdge {
             geom: EdgeGeom::Spline {
                 start: e.start.unwrap(),
                 end: e.end.unwrap(),
                 c1: e.c1.unwrap(),
                 c2: e.c2.unwrap(),
             },
-            id: Some(eid.clone()),
+            id: Some(eid.to_string()),
             start_vertex: Some(v0.clone()),
             end_vertex: Some(v1),
-        }];
-        surfaces.push(SurfaceOut {
-            boundary,
-            face_entity_ids: vec![eid.clone()],
-            holes: vec![],
-        });
-    }
-    surfaces
+        }])
+    })
 }
 
 /// Fold nested loops into the sketch-area model via `subdivide_loops`: every loop
