@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useReducer } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
@@ -19,23 +19,13 @@ const SKETCH_KINDS = new Set(['sketch', 'plane'])
  * - `'full'` — normal mode, no pick bodies (compile-time absent from type)
  * - `'editing'` — feature edit mode, both worlds active
  *
- * The reducer below guarantees that pickBodies can never be set or read
- * outside the `'editing'` variant. Any code that accesses `world.pickBodies`
- * without first narrowing `world.status === 'editing'` is a type error.
+ * The union guarantees that pickBodies can never be set or read outside the
+ * `'editing'` variant. Any code that accesses `world.pickBodies` without first
+ * narrowing `world.status === 'editing'` is a type error.
  */
 export type WorldState =
   | { status: 'full'; bodies: Record<string, BodyResult> }
   | { status: 'editing'; bodies: Record<string, BodyResult>; pickBodies: Record<string, BodyResult> }
-
-type WorldAction =
-  | { type: 'SET_WORLD'; world: WorldState }
-
-function worldReducer(_state: WorldState, action: WorldAction): WorldState {
-  switch (action.type) {
-    case 'SET_WORLD':
-      return action.world
-  }
-}
 
 export function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
@@ -93,9 +83,9 @@ export function useSolver(
   const [solveResults, setSolveResults] = useState<Record<string, SketchData>>({})
   // Single state atom for the dual-world invariant: the body geometry in
   // normal mode vs. the pair (bodies + pickBodies) during feature editing.
-  // The reducer enforces at compile time that pickBodies only exists inside
-  // the 'editing' variant — accessing it on 'full' is a type error.
-  const [world, dispatchWorld] = useReducer(worldReducer, { status: 'full', bodies: {} })
+  // The WorldState union enforces at compile time that pickBodies only exists
+  // inside the 'editing' variant — accessing it on 'full' is a type error.
+  const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {} })
   const bodies: Record<string, BodyResult> = world.bodies
   const pickBodies: Record<string, BodyResult> = world.status === 'editing' ? world.pickBodies : {}
   const [solving, setSolving] = useState(false)
@@ -230,7 +220,7 @@ export function useSolver(
     // Stale-guard: if a newer reSolve has been issued, discard this response.
     if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return null
     const solveResult = applySolveResult(d, data, solveTimeMs)
-    // Single dispatch — the reducer transitions the world atomically.
+    // Single set — the world transitions atomically.
     // If the solve was requested with a pick_boundary the response carries
     // pick_bodies (or {} when the checkpoint was unavailable), so the
     // world enters 'editing'. Otherwise it goes to 'full' and pickBodies
@@ -238,9 +228,9 @@ export function useSolver(
     const store = usePartEditorStore.getState()
     const wasEditing = store.pickBoundary !== null
     if (wasEditing && data.pick_bodies !== undefined) {
-      dispatchWorld({ type: 'SET_WORLD', world: { status: 'editing', bodies: data.bodies ?? {}, pickBodies: data.pick_bodies } })
+      setWorld({ status: 'editing', bodies: data.bodies ?? {}, pickBodies: data.pick_bodies })
     } else {
-      dispatchWorld({ type: 'SET_WORLD', world: { status: 'full', bodies: data.bodies ?? {} } })
+      setWorld({ status: 'full', bodies: data.bodies ?? {} })
     }
     return solveResult
   }, [applySolveResult])
@@ -302,7 +292,7 @@ export function useSolver(
       if (solveFeatures.length === 0) {
         if (isStale()) return
         setSolveResults({})
-        dispatchWorld({ type: 'SET_WORLD', world: { status: 'full', bodies: {} } })
+        setWorld({ status: 'full', bodies: {} })
         setSolveError(null)
         if (!firstSolveDone.current && onFirstSolve) {
           firstSolveDone.current = true
@@ -388,13 +378,13 @@ export function useSolver(
 
   // Subscribe to pickBoundary cleared -> drop pickBodies so the viewport
   // doesn't keep rendering them after an exit/cancel. Reads the current
-  // world via ref so the dispatch keeps the latest bodies.
+  // world via ref so the update keeps the latest bodies.
   const worldRef = useRef(world)
   worldRef.current = world
   useEffect(() => {
     return usePartEditorStore.subscribe((state, prev) => {
       if (prev.pickBoundary !== null && state.pickBoundary === null) {
-        dispatchWorld({ type: 'SET_WORLD', world: { status: 'full', bodies: worldRef.current.bodies } })
+        setWorld({ status: 'full', bodies: worldRef.current.bodies })
       }
     })
   }, [])
