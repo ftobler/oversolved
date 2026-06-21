@@ -52,7 +52,7 @@ describe('Documents trash', () => {
     await gotoCloudDomain()
 
     await waitFor(() => {
-      expect(screen.getByTitle('Trash')).toBeInTheDocument()
+      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
     })
   })
 
@@ -63,10 +63,10 @@ describe('Documents trash', () => {
     await gotoCloudDomain()
 
     await waitFor(() => {
-      expect(screen.getByTitle('Trash')).toBeInTheDocument()
+      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByTitle('Trash'))
+    fireEvent.click(screen.getByTitle('My Trash'))
 
     await waitFor(() => {
       expect(screen.getByText('Trash is empty.')).toBeInTheDocument()
@@ -82,10 +82,10 @@ describe('Documents trash', () => {
     await gotoCloudDomain()
 
     await waitFor(() => {
-      expect(screen.getByTitle('Trash')).toBeInTheDocument()
+      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByTitle('Trash'))
+    fireEvent.click(screen.getByTitle('My Trash'))
 
     await waitFor(() => {
       expect(screen.getByText('admin/Deleted Doc')).toBeInTheDocument()
@@ -126,10 +126,10 @@ describe('Documents trash', () => {
     await gotoCloudDomain()
 
     await waitFor(() => {
-      expect(screen.getByTitle('Trash')).toBeInTheDocument()
+      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByTitle('Trash'))
+    fireEvent.click(screen.getByTitle('My Trash'))
 
     await waitFor(() => {
       expect(screen.getByText('admin/Deleted Doc')).toBeInTheDocument()

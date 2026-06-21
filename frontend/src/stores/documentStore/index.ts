@@ -1,13 +1,14 @@
 import type { DocumentStore } from './types'
+import type { TrashAdapter } from '@/adapters/trash'
 import { backend } from '@/config/capabilities'
 import { HttpDocumentStore } from './HttpDocumentStore'
-import { IndexedDbDocumentStore } from './IndexedDbDocumentStore'
+import { IndexedDbDocumentStore, IndexedDbTrashAdapter } from './IndexedDbDocumentStore'
 
 export type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
 export type { Backend } from '@/config/capabilities'
 export { resolveBackend, hasBackend } from '@/config/capabilities'
 export { HttpDocumentStore } from './HttpDocumentStore'
-export { IndexedDbDocumentStore } from './IndexedDbDocumentStore'
+export { IndexedDbDocumentStore, IndexedDbTrashAdapter } from './IndexedDbDocumentStore'
 export { exportBundle, importBundle, buildBundleBytes } from './bundle'
 export { copyDocument, pushDocument, moveDocument, syncAllDocuments } from './transfer'
 
@@ -28,4 +29,13 @@ export function getCloudStore(): DocumentStore | null {
   if (backend !== 'http') return null  // no server in this build -> no cloud domain, ever
   if (!cloudInstance) cloudInstance = new HttpDocumentStore()
   return cloudInstance
+}
+
+// The local Trash is the recover/purge face of the local IndexedDB soft delete.
+// It exists on BOTH builds because the local home library always exists.
+let localTrashInstance: TrashAdapter | null = null
+
+export function getLocalTrash(): TrashAdapter {
+  if (!localTrashInstance) localTrashInstance = new IndexedDbTrashAdapter()
+  return localTrashInstance
 }

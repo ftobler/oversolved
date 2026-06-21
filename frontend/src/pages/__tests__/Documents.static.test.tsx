@@ -32,16 +32,19 @@ function wrap() {
 }
 
 describe('Documents sidebar (static build)', () => {
-  it('hides Shared-with-me and Public Documents sections', async () => {
+  it('hides the whole Cloud section (no server, no identity)', async () => {
     wrap()
-    await waitFor(() => expect(screen.getByText('My Documents')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+    expect(screen.queryByText('Cloud')).not.toBeInTheDocument()
+    expect(screen.queryByText('My Documents')).not.toBeInTheDocument()
     expect(screen.queryByText('Shared with me')).not.toBeInTheDocument()
     expect(screen.queryByText('Public Documents')).not.toBeInTheDocument()
   })
 
-  it('shows the My Documents section', async () => {
+  it('shows the Local section with documents and trash', async () => {
     wrap()
-    await waitFor(() => expect(screen.getByText('My Documents')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+    expect(screen.getByText('Local Trash')).toBeInTheDocument()
   })
 })
 

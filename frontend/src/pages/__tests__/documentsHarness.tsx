@@ -29,11 +29,12 @@ export function renderDocuments() {
   )
 }
 
-// Switch to the Cloud domain, which appears once the signed-in session resolves.
+// Switch to the Cloud domain. The Cloud section (with its "My Documents" entry)
+// appears once the signed-in session resolves; clicking it picks the cloud domain.
 // The cloud store is HTTP-backed, so the suites' fetch stubs back it.
 export async function gotoCloudDomain() {
-  const cloudBtn = await screen.findByTitle('Cloud documents')
+  const cloudDocs = await screen.findByText('My Documents')
   await act(async () => {
-    fireEvent.click(cloudBtn)
+    fireEvent.click(cloudDocs)
   })
 }

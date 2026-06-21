@@ -23,39 +23,31 @@
   margin-bottom: 25px;
 }
 
-/* Local / Cloud domain switch: sits above the owned/shared/public filters and
-   picks which domain (local IndexedDB vs cloud server) backs the library. */
-.domain-switch {
-  display: flex;
-  gap: 4px;
-  margin-right: 12px;
-  margin-bottom: 8px;
-}
-
-.domain-switch-btn {
+/* Section divider grouping the sidebar items by domain (Local / Cloud). Renders
+   as "Local ────" -- a small uppercase label with a rule trailing on each side. */
+.sidebar-section-label {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: 1 1 0;
-  padding: 4px 8px;
-  border: 1px solid #2a2c33;
-  border-radius: 4px;
-  background: transparent;
-  cursor: pointer;
-  color: #ccc;
+  gap: 8px;
+  margin: 12px 12px 4px;
+  color: #666;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   user-select: none;
-  font-size: 13px;
 }
 
-.domain-switch-btn:hover {
-  background-color: #141519;
+.sidebar-section-label::before,
+.sidebar-section-label::after {
+  content: '';
+  flex: 1 1 0;
+  height: 1px;
+  background: #2a2c33;
 }
 
-.domain-switch-btn.active {
-  background: #111111;
-  color: #fff;
-  border-color: #3a3d47;
+.sidebar-section-label::before {
+  flex: 0 0 8px;
 }
 
 .sidebar-item {

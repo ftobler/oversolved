@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
+import { IndexedDbDocumentStore, IndexedDbTrashAdapter } from '../IndexedDbDocumentStore'
 import { resetDbConnection } from '../idb'
 
 // IDB-specific behavior only. The shared CRUD / filter / search contract lives
@@ -112,6 +112,77 @@ describe('IndexedDbDocumentStore', () => {
       expect(s.meta?.rev).toBe(2)
       expect(s.meta?.dirty).toBe(true)          // a rename is a pushable change
       expect(s.meta?.baseRev).toBe(1)
+    })
+  })
+
+  describe('local trash (soft delete)', () => {
+    it('remove soft-deletes: it leaves the library list but load rejects', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Bracket')
+      await store.save(uuid, { content: 'body' })
+      await store.remove(uuid)
+      expect(await store.list()).toEqual([])
+      await expect(store.load(uuid)).rejects.toThrow()
+    })
+
+    it('trash lists soft-deleted docs, newest deletion first', async () => {
+      const now = vi.spyOn(Date, 'now')
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const a = await store.create('Older')
+      const b = await store.create('Newer')
+      now.mockReturnValue(1000)
+      await store.remove(a.uuid)
+      now.mockReturnValue(2000)
+      await store.remove(b.uuid)
+      const listed = await trash.list()
+      expect(listed.map(d => d.name)).toEqual(['Newer', 'Older'])
+      expect(listed[0].owner_username).toBe('local')
+      expect(listed[0].deleted_at).not.toBe('')
+      now.mockRestore()
+    })
+
+    it('trash carries the preview_image so the grid can render a thumbnail', async () => {
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const { uuid } = await store.create('Widget')
+      await store.save(uuid, { content: 'x', preview_image: 'img42' })
+      await store.remove(uuid)
+      const [d] = await trash.list()
+      expect(d.preview_image).toBe('img42')
+    })
+
+    it('recover lifts the tombstone: the doc returns to the library, leaves the trash', async () => {
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const { uuid } = await store.create('Bracket')
+      await store.save(uuid, { content: 'body' })
+      await store.remove(uuid)
+      await trash.recover(uuid)
+      expect((await store.list()).map(s => s.name)).toEqual(['Bracket'])
+      expect(await trash.list()).toEqual([])
+      expect((await store.load(uuid)).content).toBe('body')  // content preserved through the round trip
+    })
+
+    it('purge hard-deletes: gone from both the trash and the library for good', async () => {
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const { uuid } = await store.create('Bracket')
+      await store.remove(uuid)
+      await trash.purge(uuid)
+      expect(await trash.list()).toEqual([])
+      await trash.recover(uuid)  // nothing to recover, a no-op
+      expect(await store.list()).toEqual([])
+    })
+
+    it('removing an already-trashed doc is a no-op (no second tombstone)', async () => {
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const { uuid } = await store.create('Bracket')
+      await store.remove(uuid)
+      const first = (await trash.list())[0].deleted_at
+      await store.remove(uuid)
+      expect((await trash.list())[0].deleted_at).toBe(first)
     })
   })
 

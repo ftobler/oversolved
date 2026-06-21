@@ -1,4 +1,5 @@
 import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
+import type { TrashAdapter, TrashDoc } from '@/adapters/trash'
 import { idbGet, idbGetAll, idbPut, idbDelete } from './idb'
 
 // In a fully local, single-user build there is no account system. Documents are
@@ -18,6 +19,10 @@ interface StoredDoc {
   created_at: string
   updated_at: string
   meta: DocMeta
+  // Soft-delete tombstone (local trash). Set by remove(), cleared by recover();
+  // a record with this set is hidden from list()/load() but kept on disk so the
+  // local Trash view can list, recover or permanently purge it.
+  deleted_at?: string
 }
 
 function newUuid(): string {
@@ -44,7 +49,8 @@ function toSummary(rec: StoredDoc): DocSummary {
 export class IndexedDbDocumentStore implements DocumentStore {
   async list(opts: ListOptions = {}): Promise<DocSummary[]> {
     const all = await idbGetAll<StoredDoc>()
-    let docs = all
+    // Soft-deleted documents live on in the Trash, never in the library list.
+    let docs = all.filter(d => !d.deleted_at)
     // Single-user model: 'owned' = everything, 'public' = the public ones,
     // 'shared' has no meaning locally (always empty).
     if (opts.filter === 'public') docs = docs.filter(d => d.is_public)
@@ -67,7 +73,9 @@ export class IndexedDbDocumentStore implements DocumentStore {
 
   async load(id: string): Promise<DocumentPayload> {
     const rec = await idbGet<StoredDoc>(id)
-    if (!rec) throw new Error(`Document not found: ${id}`)
+    // A trashed record is gone as far as the library is concerned: load rejects
+    // just as if it were hard-deleted (the shared store contract expects this).
+    if (!rec || rec.deleted_at) throw new Error(`Document not found: ${id}`)
     return {
       content: rec.content,
       name: rec.name,
@@ -104,8 +112,13 @@ export class IndexedDbDocumentStore implements DocumentStore {
     await idbPut(rec)
   }
 
+  // Soft delete: stamp a tombstone and keep the record so the local Trash can
+  // recover or purge it. A missing record is a no-op (already gone). This mirrors
+  // the cloud store, whose remove() is a server-side soft delete feeding its Trash.
   async remove(id: string): Promise<void> {
-    await idbDelete(id)
+    const existing = await idbGet<StoredDoc>(id)
+    if (!existing || existing.deleted_at) return
+    await idbPut({ ...existing, deleted_at: new Date().toISOString() })
   }
 
   async create(name: string, opts: { is_public?: boolean } = {}): Promise<{ uuid: string }> {
@@ -169,5 +182,46 @@ export class IndexedDbDocumentStore implements DocumentStore {
     if (!existing) return
     const meta: DocMeta = { ...existing.meta, baseRev: existing.meta.rev, dirty: false }
     await idbPut({ ...existing, meta })
+  }
+}
+
+function toTrashDoc(rec: StoredDoc): TrashDoc {
+  return {
+    uuid: rec.uuid,
+    name: rec.name,
+    deleted_at: rec.deleted_at ?? '',
+    created_at: rec.created_at,
+    owner_id: 0,
+    owner_username: LOCAL_OWNER,
+    preview_image: rec.preview_image,
+  }
+}
+
+// Local trash: the recover/purge side of the IndexedDB store's soft delete. It
+// reads the same object store as IndexedDbDocumentStore -- the records the store
+// tombstoned with remove() are exactly what this lists. Implements the same
+// TrashAdapter contract the cloud (HTTP) trash does, so the Trash view is one
+// piece of UI driven by whichever adapter the active domain provides.
+export class IndexedDbTrashAdapter implements TrashAdapter {
+  async list(): Promise<TrashDoc[]> {
+    const all = await idbGetAll<StoredDoc>()
+    return all
+      .filter(d => d.deleted_at)
+      .sort((a, b) => (b.deleted_at ?? '').localeCompare(a.deleted_at ?? ''))  // newest deletion first
+      .map(toTrashDoc)
+  }
+
+  // Lift the tombstone: the document returns to the library at its prior place.
+  async recover(id: string): Promise<void> {
+    const rec = await idbGet<StoredDoc>(id)
+    if (!rec || !rec.deleted_at) return
+    const restored = { ...rec }
+    delete restored.deleted_at
+    await idbPut(restored)
+  }
+
+  // The soft delete's hard end: drop the record for good.
+  async purge(id: string): Promise<void> {
+    await idbDelete(id)
   }
 }

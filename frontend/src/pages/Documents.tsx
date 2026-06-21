@@ -367,11 +367,17 @@ export default function Documents() {
     }
   }
 
-  const fetchTrash = useCallback(async () => {
-    if (!backendBundle.trash) return  // trash is a cloud-domain-only capability
+  // Trash is a per-domain capability: the cloud trash is server-side, the local
+  // trash is the IndexedDB soft delete's other half. The Trash view is one piece
+  // of UI driven by whichever adapter the active domain provides.
+  const activeTrash = onCloud ? backendBundle.trash : backendBundle.localTrash
+
+  const fetchTrash = useCallback(async (domain: Domain) => {
+    const adapter = domain === 'cloud' ? backendBundle.trash : backendBundle.localTrash
+    if (!adapter) return
     setTrashLoading(true)
     try {
-      setTrashDocs(await backendBundle.trash.list())
+      setTrashDocs(await adapter.list())
     } catch (e) {
       setError(String(e))
     } finally {
@@ -381,8 +387,8 @@ export default function Documents() {
 
   const handleRecover = async (uuid: string) => {
     try {
-      await backendBundle.trash?.recover(uuid)
-      fetchTrash()
+      await activeTrash?.recover(uuid)
+      fetchTrash(activeDomain)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       if (e instanceof HttpError) {
@@ -399,8 +405,8 @@ export default function Documents() {
       return
     }
     try {
-      await backendBundle.trash?.purge(uuid)
-      fetchTrash()
+      await activeTrash?.purge(uuid)
+      fetchTrash(activeDomain)
     } catch (e) {
       if (e instanceof HttpError) {
         const parsed = JSON.parse(e.body || '{}') as { error?: string }
@@ -424,21 +430,52 @@ export default function Documents() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  const switchDomain = (d: Domain) => {
-    setActiveDomain(d)
-    setActiveFilter('owned')
-    setIsTrashView(false)
+  // One flat sidebar of items grouped under "Local" / "Cloud" dividers, replacing
+  // the old Local/Cloud toggle: a click picks BOTH the domain and the view (a
+  // filter, or the domain's Trash) in one go. The local home is identity-free, so
+  // shared / public have no meaning there -- only its own documents and trash.
+  type SidebarEntry =
+    | { domain: Domain; label: string; icon: string; filter: SidebarFilter }
+    | { domain: Domain; label: string; icon: string; trash: true }
+
+  const localEntries: SidebarEntry[] = [
+    { domain: 'local', label: 'Local Documents', icon: 'computer', filter: 'owned' },
+    { domain: 'local', label: 'Local Trash', icon: 'delete_outline', trash: true },
+  ]
+  const cloudEntries: SidebarEntry[] = [
+    { domain: 'cloud', label: 'My Documents', icon: 'folder', filter: 'owned' },
+    { domain: 'cloud', label: 'Shared with me', icon: 'people', filter: 'shared' },
+    { domain: 'cloud', label: 'Public Documents', icon: 'public', filter: 'public' },
+    { domain: 'cloud', label: 'My Trash', icon: 'delete_outline', trash: true },
+  ]
+
+  const isEntryActive = (e: SidebarEntry): boolean => {
+    if (e.domain !== activeDomain) return false
+    return 'trash' in e ? isTrashView : !isTrashView && activeFilter === e.filter
   }
 
-  // The local library is identity-free, so shared / public have no meaning there;
-  // they (and trash) belong to the cloud domain only.
-  const sidebarItems: { label: string; filter: SidebarFilter; icon: string }[] = onCloud
-    ? [
-        { label: 'My Documents', filter: 'owned', icon: 'folder' },
-        { label: 'Shared with me', filter: 'shared', icon: 'people' },
-        { label: 'Public Documents', filter: 'public', icon: 'public' },
-      ]
-    : [{ label: 'My Documents', filter: 'owned', icon: 'folder' }]
+  const selectEntry = (e: SidebarEntry) => {
+    setActiveDomain(e.domain)
+    if ('trash' in e) {
+      setIsTrashView(true)
+      fetchTrash(e.domain)
+    } else {
+      setIsTrashView(false)
+      setActiveFilter(e.filter)
+    }
+  }
+
+  const renderEntry = (e: SidebarEntry) => (
+    <div
+      key={`${e.domain}-${e.label}`}
+      className={`sidebar-item ${isEntryActive(e) ? 'active' : ''}`}
+      onClick={() => selectEntry(e)}
+      title={e.label}
+    >
+      <span className="material-icons sidebar-item-icon">{e.icon}</span>
+      <span className="sidebar-item-label">{e.label}</span>
+    </div>
+  )
 
   return (
     <div className="documents">
@@ -505,45 +542,13 @@ export default function Documents() {
 
       <div className="documents-layout">
         <aside className="documents-sidebar">
+          <div className="sidebar-section-label">Local</div>
+          {localEntries.map(renderEntry)}
           {cloudAvailable && (
-            <div className="domain-switch">
-              <button
-                className={`domain-switch-btn ${!onCloud ? 'active' : ''}`}
-                onClick={() => switchDomain('local')}
-                title="Local documents"
-              >
-                <span className="material-icons sidebar-item-icon">computer</span>
-                Local
-              </button>
-              <button
-                className={`domain-switch-btn ${onCloud ? 'active' : ''}`}
-                onClick={() => switchDomain('cloud')}
-                title="Cloud documents"
-              >
-                <span className="material-icons sidebar-item-icon">cloud</span>
-                Cloud
-              </button>
-            </div>
-          )}
-          {sidebarItems.map(item => (
-            <div
-              key={item.filter}
-              className={`sidebar-item ${!isTrashView && activeFilter === item.filter ? 'active' : ''}`}
-              onClick={() => { setIsTrashView(false); setActiveFilter(item.filter) }}
-            >
-              <span className="material-icons sidebar-item-icon">{item.icon}</span>
-              <span className="sidebar-item-label">{item.label}</span>
-            </div>
-          ))}
-          {onCloud && (
-            <div
-              className={`sidebar-item ${isTrashView ? 'active' : ''}`}
-              onClick={() => { if (!isTrashView) { setIsTrashView(true); fetchTrash() } }}
-              title="Trash"
-            >
-              <span className="material-icons sidebar-item-icon">delete_outline</span>
-              <span className="sidebar-item-label">Trash</span>
-            </div>
+            <>
+              <div className="sidebar-section-label">Cloud</div>
+              {cloudEntries.map(renderEntry)}
+            </>
           )}
         </aside>
 

@@ -14,6 +14,7 @@ export interface TrashDoc {
   created_at: string
   owner_id: number
   owner_username: string
+  preview_image?: string  // inline base64 PNG (local trash); the HTTP trash leaves it undefined
 }
 
 export interface TrashAdapter {

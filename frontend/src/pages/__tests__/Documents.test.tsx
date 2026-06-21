@@ -42,47 +42,83 @@ describe('Documents sidebar', () => {
     })
   }
 
-  it('renders cloud-domain filters and trash when signed in', async () => {
+  it('renders the Local section and, when signed in, the Cloud section', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
     renderDocuments()
-    await gotoCloudDomain()
 
+    // The local section is always present (the local home library always exists).
+    await waitFor(() => {
+      expect(screen.getByText('Local Documents')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Local Trash')).toBeInTheDocument()
+
+    // The cloud section appears once the signed-in session resolves.
     await waitFor(() => {
       expect(screen.getByText('My Documents')).toBeInTheDocument()
     })
-
     expect(screen.getByText('Shared with me')).toBeInTheDocument()
     expect(screen.getByText('Public Documents')).toBeInTheDocument()
-    expect(screen.getByText('Trash')).toBeInTheDocument()
+    expect(screen.getByText('My Trash')).toBeInTheDocument()
+
+    // Both section dividers are rendered.
+    expect(screen.getByText('Local')).toBeInTheDocument()
+    expect(screen.getByText('Cloud')).toBeInTheDocument()
   })
 
-  it('local domain shows only My Documents, no shared/public/trash', async () => {
-    vi.stubGlobal('fetch', mockFetch())
+  it('offline / signed-out shows only the Local section', async () => {
+    // /api/auth/me fails -> no signed-in user -> the cloud domain never appears.
+    const fetchMock = vi.fn((url: string): Promise<Response> => {
+      if (url === '/api/auth/me') return Promise.resolve({ ok: false, status: 401 } as Response)
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     renderDocuments()
 
     await waitFor(() => {
-      expect(screen.getByText('My Documents')).toBeInTheDocument()
+      expect(screen.getByText('Local Documents')).toBeInTheDocument()
     })
+    expect(screen.getByText('Local Trash')).toBeInTheDocument()
 
-    // Local home is identity-free: sharing/public/trash are absent, not empty.
+    // No cloud session: the Cloud section and its identity-bound items are absent.
+    expect(screen.queryByText('Cloud')).not.toBeInTheDocument()
+    expect(screen.queryByText('My Documents')).not.toBeInTheDocument()
     expect(screen.queryByText('Shared with me')).not.toBeInTheDocument()
     expect(screen.queryByText('Public Documents')).not.toBeInTheDocument()
-    expect(screen.queryByTitle('Trash')).not.toBeInTheDocument()
   })
 
-  it('My Documents is active by default', async () => {
+  it('Local Documents is active by default', async () => {
     vi.stubGlobal('fetch', mockFetch())
 
     renderDocuments()
 
     await waitFor(() => {
-      expect(screen.getByText('My Documents')).toBeInTheDocument()
+      expect(screen.getByText('Local Documents')).toBeInTheDocument()
     })
 
-    const myDocs = screen.getByText('My Documents').closest('.sidebar-item')
-    expect(myDocs).toHaveClass('active')
+    const localDocs = screen.getByText('Local Documents').closest('.sidebar-item')
+    expect(localDocs).toHaveClass('active')
+  })
+
+  it('clicking Local Trash opens the local trash view', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+
+    renderDocuments()
+
+    await waitFor(() => {
+      expect(screen.getByText('Local Trash')).toBeInTheDocument()
+    })
+
+    const localTrash = screen.getByText('Local Trash').closest('.sidebar-item')!
+    fireEvent.click(localTrash)
+
+    expect(localTrash).toHaveClass('active')
+    // Empty local trash on a fresh db (await the async trash list resolving).
+    await waitFor(() => {
+      expect(screen.getByText('Trash is empty.')).toBeInTheDocument()
+    })
   })
 
   it('clicking Shared with me changes active filter and fetches with filter=shared', async () => {

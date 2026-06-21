@@ -55,7 +55,7 @@ describe('Documents offline + logout transitions', () => {
     // getByText races the re-render and is flaky under CI timing.
     await screen.findByText('local/LocalDoc')
     await waitFor(() => {
-      expect(screen.queryByTitle('Cloud documents')).not.toBeInTheDocument()
+      expect(screen.queryByText('Cloud')).not.toBeInTheDocument()
     })
   })
 
@@ -75,7 +75,7 @@ describe('Documents offline + logout transitions', () => {
     renderDocuments()
 
     // Signed in: the cloud domain switch is present.
-    await screen.findByTitle('Cloud documents')
+    await screen.findByText('My Documents')
 
     fireEvent.click(screen.getByTitle('Sign out'))
 
@@ -84,7 +84,7 @@ describe('Documents offline + logout transitions', () => {
     })
     // Back to guest-with-local-only: cloud switch gone, local doc untouched.
     await waitFor(() => {
-      expect(screen.queryByTitle('Cloud documents')).not.toBeInTheDocument()
+      expect(screen.queryByText('Cloud')).not.toBeInTheDocument()
     })
     // Same async-local-list race as above: wait for the tile.
     await screen.findByText('local/LocalDoc')

@@ -12,7 +12,7 @@
 //   - static build -> documents = IndexedDB, telemetry = download; docs/sharing
 //     absent (no server to serve docs from, no other users to share with).
 import type { DocumentStore } from '@/stores/documentStore'
-import { getLocalStore, getCloudStore } from '@/stores/documentStore'
+import { getLocalStore, getCloudStore, getLocalTrash } from '@/stores/documentStore'
 import { backend, type Backend as BackendFlag } from '@/config/capabilities'
 import { createBugReportSink, type BugReportSink } from './telemetry'
 import { createDocsSource, type DocsSource } from './docs'
@@ -27,7 +27,8 @@ export interface BackendBundle {
   preferences: PreferencesAdapter     // always present (per-user on the server, localStorage without)
   docs: DocsSource | null             // null without a server to serve the markdown docs
   sharing: SharingAdapter | null      // null without other users to share with
-  trash: TrashAdapter | null          // null without a server-side soft-delete lifecycle
+  trash: TrashAdapter | null          // the CLOUD trash; null without a server-side soft-delete lifecycle
+  localTrash: TrashAdapter            // the LOCAL trash; always present (the local home library always exists)
 }
 
 // Pure factory (testable without touching the env). The stores are passed in
@@ -41,6 +42,7 @@ export function createBackend(
   flag: BackendFlag,
   documents: DocumentStore,
   cloudDocuments: DocumentStore | null,
+  localTrash: TrashAdapter,
 ): BackendBundle {
   return {
     documents,
@@ -50,8 +52,11 @@ export function createBackend(
     docs: createDocsSource(flag),
     sharing: createSharingAdapter(flag),
     trash: createTrashAdapter(flag),
+    localTrash,
   }
 }
 
 // Boot-time singleton, assembled once from the build flag. Views import this.
-export const backendBundle: BackendBundle = createBackend(backend, getLocalStore(), getCloudStore())
+export const backendBundle: BackendBundle = createBackend(
+  backend, getLocalStore(), getCloudStore(), getLocalTrash(),
+)
