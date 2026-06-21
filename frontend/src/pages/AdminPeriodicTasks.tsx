@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAdminGuard } from '@/hooks/useAdminGuard'
 import { http, parseHttpError } from '@/utils/core/httpClient'
 import '@/pages/AdminPeriodicTasks.css'
 
@@ -19,13 +20,11 @@ export default function AdminPeriodicTasks() {
   const [error, setError] = useState<string | null>(null)
   const [runningTask, setRunningTask] = useState<string | null>(null)
 
+  const isAdmin = useAdminGuard(user, navigate)
+
   useEffect(() => {
-    if (!user?.is_admin) {
-      navigate('/documents')
-      return
-    }
-    fetchTasks()
-  }, [user, navigate])
+    if (isAdmin) fetchTasks()
+  }, [isAdmin])
 
   const fetchTasks = async () => {
     setLoading(true)
@@ -62,9 +61,7 @@ export default function AdminPeriodicTasks() {
   }
 
 
-  if (!user?.is_admin) {
-    return null
-  }
+  if (!isAdmin) return null
 
   return (
     <div className="admin-periodic-tasks">

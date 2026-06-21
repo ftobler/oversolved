@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAdminGuard } from '@/hooks/useAdminGuard'
 import Dialog from '@/components/dialogs/Dialog'
 import { http, parseHttpError } from '@/utils/core/httpClient'
 import '@/pages/AdminUsers.css'
@@ -32,13 +33,11 @@ export default function AdminUsers() {
   const [resetPassword, setResetPassword] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
+  const isAdmin = useAdminGuard(user, navigate)
+
   useEffect(() => {
-    if (!user?.is_admin) {
-      navigate('/documents')
-      return
-    }
-    fetchUsers()
-  }, [user, navigate])
+    if (isAdmin) fetchUsers()
+  }, [isAdmin])
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -124,9 +123,7 @@ export default function AdminUsers() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  if (!user?.is_admin) {
-    return null
-  }
+  if (!isAdmin) return null
 
   return (
     <div className="admin-users">
