@@ -767,40 +767,33 @@ impl<'a> Problem<'a> {
         r.push((ra - rb).abs() - value);
     }
 
+    /// Resolve the A/B point pair and target value shared by the point-distance
+    /// constraints. `None` when any ref or the value is absent.
+    fn point_pair_value(&self, c: &Constraint, x: &[f64]) -> Option<(P2, P2, f64)> {
+        let (a, b, value) = (c.ref_for(RefRole::A)?, c.ref_for(RefRole::B)?, c.value?);
+        Some((self.point(x, a), self.point(x, b), value))
+    }
+
     fn r_point_distance(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (Some(a), Some(b), Some(value)) =
-            (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
-        else {
+        let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
             return;
         };
-        let pa = self.point(x, a);
-        let pb = self.point(x, b);
         let dist = ((pb[0] - pa[0]).powi(2) + (pb[1] - pa[1]).powi(2)).sqrt();
         r.push(dist - value);
     }
 
     fn r_point_distance_x(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (Some(a), Some(b), Some(value)) =
-            (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
-        else {
+        let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
             return;
         };
-        let pa = self.point(x, a);
-        let pb = self.point(x, b);
-        let dx = pb[0] - pa[0];
-        r.push(dx.abs() - value);
+        r.push((pb[0] - pa[0]).abs() - value);
     }
 
     fn r_point_distance_y(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (Some(a), Some(b), Some(value)) =
-            (c.ref_for(RefRole::A), c.ref_for(RefRole::B), c.value)
-        else {
+        let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
             return;
         };
-        let pa = self.point(x, a);
-        let pb = self.point(x, b);
-        let dy = pb[1] - pa[1];
-        r.push(dy.abs() - value);
+        r.push((pb[1] - pa[1]).abs() - value);
     }
 
     fn r_midpoint(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
