@@ -44,6 +44,17 @@ describe('useUserPreferences', () => {
     expect(result.current.preferences.document_sort).toBe('date_newest_first')
   })
 
+  it('does not fetch cloud preferences for a guest (signedIn=false)', async () => {
+    const mockFetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response))
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { result } = renderHook(() => useUserPreferences(false))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(result.current.preferences.document_sort).toBe('date_newest_first')
+  })
+
   it('updatePreference calls PUT and updates local state', async () => {
     const mockFetch = vi.fn((url: string, init?: RequestInit) => {
       if (init?.method === 'PUT') {

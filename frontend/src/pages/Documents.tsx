@@ -65,9 +65,11 @@ export default function Documents() {
   const [activeDomain, setActiveDomain] = useState<Domain>('local')
   const [notice, setNotice] = useState<string | null>(null)
   const [bridgeCount, setBridgeCount] = useState(0)  // 0 = the post-login bridge prompt is hidden
-  const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences()
-  const sortBy = preferences.document_sort
   const { user, online, setOnline } = useAuth()
+  // Guest sort lives on defaults only; the cloud preferences load is gated on a
+  // signed-in session so a guest never fires a doomed 401 request.
+  const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences(!!user)
+  const sortBy = preferences.document_sort
 
   // The two domains (doc-domain-move). Local is always home; the cloud domain is
   // additive and present only when this build has a server, a session is signed in,
