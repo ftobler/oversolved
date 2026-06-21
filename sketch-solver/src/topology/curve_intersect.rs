@@ -415,6 +415,13 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         }
     };
 
+    // Every scanned crossing is symmetric: scan one operand against the other's
+    // conic residual. `scanned_is_a` picks which operand carries the parameter.
+    let scan_conic = |scanned_is_a: bool, hits: &mut Vec<Hit>| {
+        let (scanned, other) = if scanned_is_a { (a, b) } else { (b, a) };
+        scan_with(scanned, scanned_is_a, conic_residual(other), hits);
+    };
+
     // Bezier-vs-line is symmetric: identical crossing math, only the (t_a, t_b)
     // assignment flips depending on which operand is the bezier. `line` is the
     // line operand; segment params outside [0, 1] are off the finite segment.
@@ -445,15 +452,9 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         (Curve::Circle { c: ac, r: ar }, Curve::Circle { c: bc, r: br }) => {
             push(circle_circle(*ac, *ar, *bc, *br), &mut hits);
         }
-        (Curve::Circle { .. }, Curve::Ellipse { .. }) => {
-            scan_with(b, false, conic_residual(a), &mut hits); // scan the ellipse, circle residual
-        }
-        (Curve::Ellipse { .. }, Curve::Circle { .. }) => {
-            scan_with(a, true, conic_residual(b), &mut hits);
-        }
-        (Curve::Ellipse { .. }, Curve::Ellipse { .. }) => {
-            scan_with(a, true, conic_residual(b), &mut hits);
-        }
+        (Curve::Circle { .. }, Curve::Ellipse { .. }) => scan_conic(false, &mut hits),
+        (Curve::Ellipse { .. }, Curve::Circle { .. }) => scan_conic(true, &mut hits),
+        (Curve::Ellipse { .. }, Curve::Ellipse { .. }) => scan_conic(true, &mut hits),
         (Curve::Bezier { p0, c1, c2, p3 }, Curve::Line { p0: l0, p1: l1 }) => {
             bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, b, true, &mut hits);
         }
@@ -461,10 +462,10 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
             bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, a, false, &mut hits);
         }
         (Curve::Bezier { .. }, Curve::Circle { .. }) | (Curve::Bezier { .. }, Curve::Ellipse { .. }) => {
-            scan_with(a, true, conic_residual(b), &mut hits);
+            scan_conic(true, &mut hits)
         }
         (Curve::Circle { .. }, Curve::Bezier { .. }) | (Curve::Ellipse { .. }, Curve::Bezier { .. }) => {
-            scan_with(b, false, conic_residual(a), &mut hits);
+            scan_conic(false, &mut hits)
         }
         (Curve::Bezier { p0: ap0, c1: ac1, c2: ac2, p3: ap3 }, Curve::Bezier { p0: bp0, c1: bc1, c2: bc2, p3: bp3 }) => {
             hits.extend(bezier_bezier([*ap0, *ac1, *ac2, *ap3], [*bp0, *bc1, *bc2, *bp3]));
