@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/components/sketch/sketch_helpers'
+import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/components/sketch/sketch_helpers'
 import { LinearDimension, RadiusDimension, DiameterDimension, AngleDimension } from '@/components/Geometry3D/dimensions'
 import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
@@ -70,12 +70,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
   const showConstraintTiles = useSketchEditorStore(s => s.showConstraintTiles)
   const dimOffset = extent * 0.1
 
-  const byEntity: Record<string, [string, Constraints[string]][]> = {}
-  for (const [id, c] of Object.entries(constraints)) {
-    const eid = (c.render as { entity?: string }).entity || 'default'
-    if (!byEntity[eid]) byEntity[eid] = []
-    byEntity[eid].push([id, c])
-  }
+  const byEntity = groupConstraintsByEntity(constraints)
 
   const symbolElements: React.ReactNode[] = []
   const dimElements: React.ReactNode[] = []

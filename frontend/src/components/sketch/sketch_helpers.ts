@@ -1,11 +1,22 @@
 import * as THREE from 'three'
-import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, Point } from '@/types/cad'
+import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, Point, Constraints } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { RENDER_KIND_TO_ICON } from '@/registry'
 
 /** Check if all values in a tuple are finite numbers. */
 export function allFinite(...vals: number[]): boolean {
   return vals.every(v => Number.isFinite(v))
+}
+
+/** Group constraints by the entity their render block targets ('default' if none). */
+export function groupConstraintsByEntity(constraints: Constraints): Record<string, [string, Constraints[string]][]> {
+  const byEntity: Record<string, [string, Constraints[string]][]> = {}
+  for (const [id, c] of Object.entries(constraints)) {
+    const eid = (c.render as { entity?: string }).entity || 'default'
+    if (!byEntity[eid]) byEntity[eid] = []
+    byEntity[eid].push([id, c])
+  }
+  return byEntity
 }
 
 /** Convert a 2D Point to a 3D tuple, or return null if any value is NaN/non-finite. */

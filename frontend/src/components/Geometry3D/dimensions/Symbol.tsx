@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity } from '@/types/cad'
-import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds } from '@/components/sketch/sketch_helpers'
+import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds, groupConstraintsByEntity } from '@/components/sketch/sketch_helpers'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { LinearDimension } from './Linear'
 import { RadiusDimension, DiameterDimension } from './Radial'
@@ -48,12 +48,7 @@ interface ConstraintOverlaysProps {
 export function ConstraintOverlays({ constraints, sketch, extent }: ConstraintOverlaysProps) {
   const dimOffset = extent * 0.1
 
-  const byEntity: Record<string, [string, Constraints[string]][]> = {}
-  for (const [id, c] of Object.entries(constraints)) {
-    const eid = (c.render as { entity?: string }).entity || 'default'
-    if (!byEntity[eid]) byEntity[eid] = []
-    byEntity[eid].push([id, c])
-  }
+  const byEntity = groupConstraintsByEntity(constraints)
 
   const symbolElements: React.ReactNode[] = []
   const dimElements: React.ReactNode[] = []
