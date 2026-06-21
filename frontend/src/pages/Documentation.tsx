@@ -21,9 +21,11 @@ function extractLabel(name: string, content: string): string {
 
 export default function Documentation() {
   const { doc } = useParams<{ doc?: string }>()
-  const currentDoc = doc || 'overview'
   const [content, setContent] = useState<string>('')
   const [docFiles, setDocFiles] = useState<DocFile[]>([])
+  // No doc in the URL: land on the first available doc rather than a hardcoded
+  // name (there is no guaranteed "overview" file). Empty until the list loads.
+  const currentDoc = doc || docFiles[0]?.name || ''
   const [loading, setLoading] = useState(backendBundle.docs !== null)  // false immediately on static
   const [error, setError] = useState<string | null>(null)
 
@@ -63,6 +65,7 @@ export default function Documentation() {
   useEffect(() => {
     const source = backendBundle.docs
     if (!source) return  // loading initializes to false on static; nothing to fetch
+    if (!currentDoc) return  // list not loaded yet; no doc to fetch
     source.load(currentDoc)
       .then(content => {
         setContent(content)
