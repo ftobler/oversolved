@@ -1064,15 +1064,13 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
         });
     }
 
-    // twin invariant: i ^ 1.
-    let mut i = 0;
-    while i < hes.len() {
-        let t = i ^ 1;
-        if !(hes[i].0 == hes[t].1 && hes[i].1 == hes[t].0) {
-            panic!("half-edge twin invariant violated");
-        }
-        i += 2;
-    }
+    debug_assert!(
+        (0..hes.len()).step_by(2).all(|i| {
+            let t = i ^ 1;
+            hes[i].0 == hes[t].1 && hes[i].1 == hes[t].0
+        }),
+        "half-edge twin invariant violated"
+    );
 
     let mut next_he: HashMap<usize, usize> = HashMap::new();
     for outs in out_map.values() {
