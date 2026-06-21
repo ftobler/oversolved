@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { Topology, PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix } from './idRegistrationUtils'
+import { planeTransformKey } from './planeTransformKey'
 import { tessellateBoundary } from '@/kernel/topologyBoundary'
 
 /**
@@ -49,10 +50,7 @@ export function useSketchSurfaceIdRegistration(params: {
   const pipeline = useIdPipeline()
   const { featureId, topology, planeTransform, enabled = true } = params
 
-  const planeKey = useMemo(() => {
-    if (!planeTransform) return 'identity'
-    return planeTransform.rotation.join(',') + '|' + planeTransform.origin.join(',')
-  }, [planeTransform])
+  const planeKey = useMemo(() => planeTransformKey(planeTransform), [planeTransform])
 
   useEffect(() => {
     if (!enabled) return

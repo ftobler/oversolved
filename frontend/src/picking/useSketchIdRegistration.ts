@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { Sketch, PlaneTransform, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint, Topology } from '@/types/cad'
+import { planeTransformKey } from './planeTransformKey'
 import { getEntityKind } from '@/types/cad'
 import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
@@ -178,10 +179,7 @@ export function useSketchIdRegistration(params: {
 
   // Build a stable matrix key from planeTransform so the hook re-runs when
   // the plane changes but not just because the prop reference shifts.
-  const planeKey = useMemo(() => {
-    if (!planeTransform) return 'identity'
-    return planeTransform.rotation.join(',') + '|' + planeTransform.origin.join(',')
-  }, [planeTransform])
+  const planeKey = useMemo(() => planeTransformKey(planeTransform), [planeTransform])
 
   // Constraint-backed coincident clusters: hide partner vertices so pick matches
   // the deduped render. Keyed off the constraints object identity.
