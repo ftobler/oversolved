@@ -681,31 +681,13 @@ impl<'a> Problem<'a> {
             let tn = (tan[0] * tan[0] + tan[1] * tan[1]).sqrt().max(1e-12);
             let (tx, ty) = (tan[0] / tn, tan[1] / tn);
             r.push(line_dir[0] * ty - line_dir[1] * tx);
-        } else if self.kind_of(arc_idx) == Kind::Circle {
-            if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
-                let contact = if pinned_pt == PointSelector::End {
-                    [line_ep[0], line_ep[1]]
-                } else {
-                    [line_ep[2], line_ep[3]]
-                };
-                let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
-                r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
-            } else {
-                // Perpendicular distance from circle center to the infinite line
-                // equals the radius -- the line body is tangent without pinning a
-                // specific endpoint to the circle.
-                let (cx, cy) = (arc_ep[0], arc_ep[1]);
-                let num = (cx - line_ep[0]) * line_dir[1]
-                    - (cy - line_ep[1]) * line_dir[0];
-                r.push(num.abs() - arc_ep[2]);
-            }
-        } else if self.kind_of(arc_idx) == Kind::Arc {
-            // Arc: same two paths as circle. If a coincident maps a line endpoint
-            // to the arc, the contact is pinned and we measure perpendicularity of
-            // the line direction against the arc's radial direction at that
-            // endpoint. Otherwise the line is tangent to the arc's underlying
-            // circle: distance from arc centre to the infinite line equals the
-            // radius.
+        } else if matches!(self.kind_of(arc_idx), Kind::Circle | Kind::Arc) {
+            // Line tangent to a circle or arc (identical math: an arc reuses its
+            // underlying circle). If a coincident maps a line endpoint to the
+            // curve, the contact is pinned and we measure perpendicularity of the
+            // line direction against the radial direction at that endpoint.
+            // Otherwise the line body is tangent to the circle: perpendicular
+            // distance from the centre to the infinite line equals the radius.
             if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
                 let contact = if pinned_pt == PointSelector::End {
                     [line_ep[0], line_ep[1]]
