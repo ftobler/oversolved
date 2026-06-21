@@ -415,6 +415,21 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         }
     };
 
+    // Bezier-vs-line is symmetric: identical crossing math, only the (t_a, t_b)
+    // assignment flips depending on which operand is the bezier. `line` is the
+    // line operand; segment params outside [0, 1] are off the finite segment.
+    let bezier_line_hits = |p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2, line: &Curve, bezier_is_a: bool, hits: &mut Vec<Hit>| {
+        for t in bezier_line(p0, c1, c2, p3, l0, l1) {
+            let p = bezier_at(p0, c1, c2, p3, t);
+            let lp = param_of(line, p);
+            if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
+                continue;
+            }
+            let (t_a, t_b) = if bezier_is_a { (t, lp) } else { (lp, t) };
+            hits.push(Hit { point: p, t_a, t_b });
+        }
+    };
+
     match (a, b) {
         (Curve::Line { p0: a0, p1: a1 }, Curve::Line { p0: b0, p1: b1 }) => {
             push(line_line(*a0, *a1, *b0, *b1), &mut hits);
@@ -440,26 +455,10 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
             scan_with(a, true, conic_residual(b), &mut hits);
         }
         (Curve::Bezier { p0, c1, c2, p3 }, Curve::Line { p0: l0, p1: l1 }) => {
-            let ts = bezier_line(*p0, *c1, *c2, *p3, *l0, *l1);
-            for t in ts {
-                let p = bezier_at(*p0, *c1, *c2, *p3, t);
-                let lp = param_of(b, p);
-                if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
-                    continue; // crossing the infinite line, not the segment
-                }
-                hits.push(Hit { point: p, t_a: t, t_b: lp });
-            }
+            bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, b, true, &mut hits);
         }
         (Curve::Line { p0: l0, p1: l1 }, Curve::Bezier { p0, c1, c2, p3 }) => {
-            let ts = bezier_line(*p0, *c1, *c2, *p3, *l0, *l1);
-            for t in ts {
-                let p = bezier_at(*p0, *c1, *c2, *p3, t);
-                let lp = param_of(a, p);
-                if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
-                    continue;
-                }
-                hits.push(Hit { point: p, t_a: lp, t_b: t });
-            }
+            bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, a, false, &mut hits);
         }
         (Curve::Bezier { .. }, Curve::Circle { .. }) | (Curve::Bezier { .. }, Curve::Ellipse { .. }) => {
             scan_with(a, true, conic_residual(b), &mut hits);
