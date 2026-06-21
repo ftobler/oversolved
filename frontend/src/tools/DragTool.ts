@@ -3,6 +3,7 @@ import type { Point } from '@/types/cad'
 import { shouldActivateDrag, computeDragMutation } from '@/components/Geometry3D/dragLogic'
 import { getLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
+import { toolModeHandlers } from '@/tools/toolMode'
 
 export interface DragToolContext extends ToolContext {
   drag: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; currentWorld: Point; startClient: [number, number] } | null
@@ -111,9 +112,7 @@ export function createDragTool(): DragTool {
     dragModes: ['vertex', 'edge', 'dim_label'],
     showInToolbar: true,
 
-    activate: (context) => { context.pushMode('tool:drag') },
-
-    deactivate: (context) => { context.popMode('tool:drag') },
+    ...toolModeHandlers('drag'),
 
     handlers,
   }

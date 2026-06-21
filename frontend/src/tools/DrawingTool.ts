@@ -5,6 +5,7 @@ import type { SnapKind } from '@/registry'
 import { computeDrawClick } from '@/components/Geometry3D/drawLogic'
 import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
 import { randomId } from '@/utils/yamlMutations'
+import { toolModeHandlers } from '@/tools/toolMode'
 
 export interface DrawingToolContext extends ToolContext {
   drawPoints: Point[]
@@ -103,9 +104,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
     paramCount,
     showInToolbar: entityDef?.showInToolbar ?? true,
 
-    activate: (context) => { context.pushMode('tool:' + config.entityKind) },
-
-    deactivate: (context) => { context.popMode('tool:' + config.entityKind) },
+    ...toolModeHandlers(config.entityKind),
 
     handlers,
   }

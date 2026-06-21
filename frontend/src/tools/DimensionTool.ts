@@ -1,5 +1,6 @@
 import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 import type { DimensionPick } from '@/registry'
+import { toolModeHandlers } from '@/tools/toolMode'
 
 export interface DimensionToolContext extends ToolContext {
   hoveredEntityKind: string | null
@@ -46,9 +47,7 @@ export function createDimensionTool(): DimensionTool {
     category: 'dimension' as const,
     showInToolbar: true,
 
-    activate: (context) => { context.pushMode('tool:dimension') },
-
-    deactivate: (context) => { context.popMode('tool:dimension') },
+    ...toolModeHandlers('dimension'),
 
     handlers,
   }

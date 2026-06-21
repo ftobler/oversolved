@@ -1,4 +1,5 @@
 import type { Tool, ToolCategory, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
+import { toolModeHandlers } from '@/tools/toolMode'
 
 export interface SelectionToolContext extends ToolContext {
   hoveredSelectionId: string | null
@@ -34,9 +35,7 @@ export function createSelectionTool(): SelectionTool {
     supportsMulti: true,
     showInToolbar: true,
 
-    activate: (context) => { context.pushMode('tool:select') },
-
-    deactivate: (context) => { context.popMode('tool:select') },
+    ...toolModeHandlers('select'),
 
     handlers,
   }

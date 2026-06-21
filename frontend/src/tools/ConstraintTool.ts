@@ -1,5 +1,6 @@
 import type { Tool, ToolContext, ToolHandlers, ToolId } from '@/registry/toolRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry'
+import { toolModeHandlers } from '@/tools/toolMode'
 
 export type ConstraintToolContext = ToolContext
 
@@ -53,9 +54,7 @@ export function createConstraintTool(config: ConstraintToolConfig): ConstraintTo
     requiresSelection: config.requiresSelection,
     showInToolbar: constraintDef?.showInToolbar ?? false,
 
-    activate: (context) => { context.pushMode('tool:' + config.constraintKind) },
-
-    deactivate: (context) => { context.popMode('tool:' + config.constraintKind) },
+    ...toolModeHandlers(config.constraintKind),
 
     handlers,
   }
