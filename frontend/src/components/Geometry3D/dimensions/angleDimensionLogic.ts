@@ -14,8 +14,9 @@ export interface AngleDimGeometry {
   labelAngleDeg: number
   labelX: number
   labelY: number
+  // Always true now that the wedge is chosen to contain the label; kept as an
+  // invariant the tests assert (the label never falls outside its own wedge).
   isInside: boolean
-  extendFromStart: boolean
   // True when the chosen wedge subtends the supplement (180 - theta) rather than
   // theta itself. The two lines' four rays carve the plane into four quadrants:
   // two subtend theta (the stored constraint value) and two subtend 180 - theta.
@@ -31,12 +32,6 @@ function shorterSpan(a0: number, a1: number): number {
   let s = (((a1 - a0) % 360) + 360) % 360
   if (s > 180) s -= 360
   return s
-}
-
-/** Unsigned angular distance between two angles in degrees, in [0, 180]. */
-function angDiff(a: number, b: number): number {
-  const d = (((a - b) % 360) + 360) % 360
-  return Math.min(d, 360 - d)
 }
 
 /** The two lines cross at the vertex and emit four rays: dirA, dirB and their
@@ -155,7 +150,5 @@ export function computeAngleDimension(
   const rel = (((labelAngleDeg - a0deg) % 360) + 360) % 360
   const isInside = arcSpan >= 0 ? rel <= arcSpan : rel >= 360 + arcSpan
 
-  const extendFromStart = !isInside && angDiff(labelAngleDeg, a0deg) < angDiff(labelAngleDeg, a1deg)
-
-  return { vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, extendFromStart, isSupplement }
+  return { vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, isSupplement }
 }

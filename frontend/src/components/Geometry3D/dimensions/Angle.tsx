@@ -3,7 +3,7 @@ import { Line, Html } from '@react-three/drei'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { angleDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import { sampleArc } from '@/components/sketch/sketch_helpers'
-import { Arrowhead, ArcTail, ExtensionLine } from './primitives'
+import { Arrowhead, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import { useDimLabelScale } from './useDimLabelScale'
 import type { DimInteraction } from './useDimInteraction'
@@ -49,7 +49,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
     ? [draggedPos[0] - base.vx, draggedPos[1] - base.vy]
     : dim.pos
   const {
-    vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, extendFromStart, isSupplement,
+    vx, vy, arcR, a0deg, a1deg, arcSpan, labelX, labelY, isSupplement,
   } = computeAngleDimension(dim.p1, dim.p2, dim.p3, dim.p4, effectivePos)
 
   // The constraint stores the angle between the two lines (theta). When the
@@ -93,13 +93,6 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   }
   const witnessAStart = radialWitnessStart(dim.p1[0], dim.p1[1], dim.p2[0], dim.p2[1], angle1)
   const witnessBStart = radialWitnessStart(dim.p3[0], dim.p3[1], dim.p4[0], dim.p4[1], angle2)
-
-  // Outside: draw a solid arc extension from the nearer arc endpoint to the label.
-  const extArcPts = isInside ? null : sampleArc(
-    vx, vy, arcR,
-    extendFromStart ? a0deg : a1deg,
-    labelAngleDeg,
-  )
 
   // Arc tangent directions at each endpoint (unit tangent in arc travel direction).
   // Forward tangent at angle th: (-sin(th), cos(th)) * sign where sign = +1 CCW, -1 CW.
@@ -151,27 +144,11 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       {/* Arc spanning the angle */}
       <Line points={arcPts} color={color} lineWidth={1} depthTest={false} />
 
-      {isInside ? (
-        // Inside: arrows tangent to arc at endpoints, pointing OUTWARD (away from span)
-        // |<---arc-X-arc--->|
-        <>
-          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] + tanStartInX, arcStartPt[1] + tanStartInY]} color={color} />
-          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   + tanEndInX,   arcEndPt[1]   + tanEndInY  ]} color={color} />
-        </>
-      ) : (
-        // Outside: solid arc extension from nearest endpoint to label,
-        // arrows tangent to arc at endpoints pointing INTO the span
-        // X---arc extension---|---arc---|
-        <>
-          {extArcPts && extArcPts.length >= 2 && (
-            <Line points={extArcPts} color={color} lineWidth={1} depthTest={false} />
-          )}
-          <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] - tanStartInX, arcStartPt[1] - tanStartInY]} color={color} />
-          <ArcTail cx={vx} cy={vy} radius={arcR} startAngleDeg={a0deg} sign={-arcSign} color={color} />
-          <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   - tanEndInX,   arcEndPt[1]   - tanEndInY  ]} color={color} />
-          <ArcTail cx={vx} cy={vy} radius={arcR} startAngleDeg={a1deg} sign={arcSign} color={color} />
-        </>
-      )}
+      {/* Arrows tangent to the arc at its endpoints, pointing OUTWARD (away from
+          the span). The label always lands inside its own wedge, so there is no
+          off-wedge case to draw a leader for. |<---arc-X-arc--->| */}
+      <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] + tanStartInX, arcStartPt[1] + tanStartInY]} color={color} />
+      <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   + tanEndInX,   arcEndPt[1]   + tanEndInY  ]} color={color} />
 
       {/* Interaction hit area */}
       {!isDragged && (
