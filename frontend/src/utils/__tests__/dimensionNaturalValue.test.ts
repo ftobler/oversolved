@@ -4,6 +4,7 @@ import {
   resolveDimPoints,
   computeAnchorRelativePos,
   computeDimensionSign,
+  computeAnglePlacementIsSupplement,
   linearDimensionSign,
   lineDistanceSign,
   angleDimensionSign,
@@ -103,6 +104,30 @@ describe('resolveDimPoints', () => {
     const sk = makeSketch()
     // An angle render resolves but is not dim_linear/radius/diameter -> null.
     expect(resolveDimPoints('angle', ['entity:S1:L1', 'entity:S1:L2'], sk, FID)).toBeNull()
+  })
+})
+
+describe('computeAnglePlacementIsSupplement', () => {
+  // L1 along +x (0 deg), L2 along +y (90 deg), crossing at the origin. The two
+  // theta wedges subtend the 90 deg; placing the label off them subtends the
+  // supplement (here also 90, but the wedge identity is what matters: the
+  // creation prompt must show 180 - theta there to match the live preview).
+  const ANGLE = ['entity:S1:L1', 'entity:S1:L2']
+
+  it('is false for a label in a theta quadrant (between +x and +y)', () => {
+    const sk = makeSketch()
+    expect(computeAnglePlacementIsSupplement(ANGLE, sk, FID, [4, 4])).toBe(false)
+  })
+
+  it('is true for a label dragged into a supplement quadrant (+x / -y)', () => {
+    const sk = makeSketch()
+    expect(computeAnglePlacementIsSupplement(ANGLE, sk, FID, [4, -4])).toBe(true)
+  })
+
+  it('is false without a placement point or for non-angle geometry', () => {
+    const sk = makeSketch()
+    expect(computeAnglePlacementIsSupplement(ANGLE, sk, FID, null)).toBe(false)
+    expect(computeAnglePlacementIsSupplement(['entity:S1:NX', 'entity:S1:L2'], sk, FID, [4, -4])).toBe(false)
   })
 })
 

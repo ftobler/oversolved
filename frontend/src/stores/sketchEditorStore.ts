@@ -6,7 +6,7 @@ import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
-import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
+import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -618,8 +618,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const naturalValue = sketch
       ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId)
       : null
-    const defaultValue = naturalValue !== null
-      ? (Number.isInteger(naturalValue) ? String(naturalValue) : naturalValue.toFixed(2))
+    // An angle label placed in a supplement quadrant shows (and edits against)
+    // 180 - theta. The constraint still stores theta, but the dialog must
+    // pre-fill and commit the displayed supplement so the prompt matches the
+    // live preview label. The transform is its own inverse (used both to
+    // display and to encode back). Mirrors AngleDimension's encodeValue hook.
+    const isSupplement = (constraintKind === 'angle' && sketch)
+      ? computeAnglePlacementIsSupplement(targets, sketch, featureId, placementWorld)
+      : false
+    const toDisplay = (v: number) => isSupplement ? 180 - v : v
+    const displayedNatural = naturalValue !== null ? toDisplay(naturalValue) : null
+    const defaultValue = displayedNatural !== null
+      ? (Number.isInteger(displayedNatural) ? String(displayedNatural) : displayedNatural.toFixed(2))
       : undefined
 
     get().openDialog({
@@ -636,9 +646,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         // Accepting the rounded default unchanged commits the exact measured
         // value, so an already-satisfied dimension is not nudged by the
         // display rounding. Any edit commits the typed value.
+        // The displayed (supplement-adjusted) value is encoded back to the
+        // stored theta via the self-inverse 180 - v before commit.
         const value = (naturalValue !== null && input === defaultValue)
           ? naturalValue
-          : parseFloat(input)
+          : toDisplay(parseFloat(input))
         // The pos written by the placement click anchors the dim label where
         // the user clicked instead of the renderer's default offset. Compute
         // it relative to the dim's natural anchor so the LinearDimension /

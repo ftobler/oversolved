@@ -235,3 +235,27 @@ export function computeAnchorRelativePos(
   }
   return null
 }
+
+/**
+ * True when an angle dimension placed at `world` lands in a supplement quadrant,
+ * where the label shows (and edits against) 180 - theta rather than the stored
+ * theta. Mirrors AngleDimension's `isSupplement`, so the creation dialog can
+ * pre-fill and commit the same value the live preview label displays. Returns
+ * false for non-angle kinds or when geometry / placement can't be resolved.
+ */
+export function computeAnglePlacementIsSupplement(
+  targets: readonly string[],
+  sketch: Sketch,
+  featureId: string,
+  world: readonly [number, number] | null,
+): boolean {
+  if (!world) return false
+  const refs = targets.map(t => parseTarget(t, featureId))
+  const c: PartConstraint = { id: '__supplement__', kind: 'angle', a: refs[0], b: refs[1] }
+  const render = computeConstraintRender(c, sketch) as DimAngleRender | { kind: string }
+  if (render.kind !== 'dim_angle') return false
+  const r = render as DimAngleRender
+  const base = computeAngleDimension(r.p1, r.p2, r.p3, r.p4)
+  const pos: [number, number] = [world[0] - base.vx, world[1] - base.vy]
+  return computeAngleDimension(r.p1, r.p2, r.p3, r.p4, pos).isSupplement
+}
