@@ -29,8 +29,6 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       type: 'set_constraint_sign', featureId: interaction.featureId, constraintId: cid, sign: -current,
     })
   }, [interaction, cid, dim.p1, dim.p2, dim.p3, dim.p4])
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
-    useDimInteraction(cid, dim.value, interaction, false, onFlip)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
@@ -51,8 +49,19 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
     ? [draggedPos[0] - base.vx, draggedPos[1] - base.vy]
     : dim.pos
   const {
-    vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, extendFromStart,
+    vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, extendFromStart, isSupplement,
   } = computeAngleDimension(dim.p1, dim.p2, dim.p3, dim.p4, effectivePos)
+
+  // The constraint stores the angle between the two lines (theta). When the
+  // label sits in a supplement quadrant the arc subtends 180 - theta, so the
+  // label shows that and editing it stores 180 - entered. The transform is its
+  // own inverse, so the same function serves both directions.
+  const supplementOf = useCallback((v: number) => 180 - v, [])
+  const displayedValue = isSupplement ? supplementOf(dim.value) : dim.value
+  const encodeValue = isSupplement ? supplementOf : undefined
+
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+    useDimInteraction(cid, displayedValue, interaction, false, onFlip, encodeValue)
 
   // Arc endpoint ray directions (radians) for arrowhead tangents.
   const angle1 = a0deg * (Math.PI / 180)
@@ -102,7 +111,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   const tanStartInX = -Math.sin(a0r) * arcSign, tanStartInY = Math.cos(a0r) * arcSign
   const tanEndInX   =  Math.sin(a1r) * arcSign, tanEndInY   = -Math.cos(a1r) * arcSign
 
-  const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
+  const label = `${displayedValue % 1 === 0 ? displayedValue : displayedValue.toFixed(1)}°`
 
   useDimensionLabelIdRegistration({
     constraintId: cid,

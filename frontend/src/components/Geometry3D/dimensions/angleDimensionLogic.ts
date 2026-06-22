@@ -16,6 +16,12 @@ export interface AngleDimGeometry {
   labelY: number
   isInside: boolean
   extendFromStart: boolean
+  // True when the chosen wedge subtends the supplement (180 - theta) rather than
+  // theta itself. The two lines' four rays carve the plane into four quadrants:
+  // two subtend theta (the stored constraint value) and two subtend 180 - theta.
+  // Placing the label in a supplement quadrant must display, and edit against,
+  // 180 - value, the actual angle drawn there.
+  isSupplement: boolean
 }
 
 const RAD = Math.PI / 180
@@ -33,19 +39,44 @@ function angDiff(a: number, b: number): number {
   return Math.min(d, 360 - d)
 }
 
-/** The two lines subtend a directed angle (span from dirA to dirB). A wedge of
- *  that magnitude fits in exactly two opposite places: the pair (dirA, dirB) and
- *  its vertical-angle opposite (dirA+180, dirB+180). The other two wedges are the
- *  supplement (180 - theta) and must never be chosen, or the arc would not match
- *  the dimension value. Pick whichever of the two valid wedges has its bisector
- *  nearer the target direction. */
-function chooseWedge(dirA: number, dirB: number, target: number): { a0: number; a1: number } {
-  const span = shorterSpan(dirA, dirB)
-  const bis = dirA + span / 2
-  if (angDiff(bis, target) <= angDiff(bis + 180, target)) {
-    return { a0: dirA, a1: dirB }
+/** The two lines cross at the vertex and emit four rays: dirA, dirB and their
+ *  +180 twins. Those rays carve the plane into four wedges; adjacent rays always
+ *  belong to different lines (the rays of two crossing lines interleave). Pick the
+ *  wedge that brackets the `target` direction so the label can land in any of the
+ *  four quadrants. `a0` is always the line-A ray and `a1` the line-B ray bounding
+ *  the wedge, so the witness lines stay matched to their segments. `isSupplement`
+ *  marks the two wedges that subtend 180 - theta instead of theta. */
+function chooseWedge(
+  dirA: number, dirB: number, target: number,
+): { a0: number; a1: number; isSupplement: boolean } {
+  const norm = (a: number) => (((a % 360) + 360) % 360)
+  // Ray order matters: 0,2 are line A; 1,3 are line B. The matched theta wedges
+  // are bounded by {0,1} and {2,3}; the other two adjacencies are supplements.
+  const rays = [dirA, dirB, dirA + 180, dirB + 180]
+  const t = norm(target)
+  // lo = the ray at or immediately clockwise of the target (smallest CCW step
+  // from ray to target).
+  let loi = 0
+  let loBest = Infinity
+  for (let i = 0; i < 4; i++) {
+    const d = norm(t - rays[i])
+    if (d < loBest) { loBest = d; loi = i }
   }
-  return { a0: dirA + 180, a1: dirB + 180 }
+  // hi = the next ray counter-clockwise from lo (smallest positive step), so the
+  // target sits in the wedge (lo, hi) and lo != hi.
+  let hii = 0
+  let hiBest = Infinity
+  for (let i = 0; i < 4; i++) {
+    if (i === loi) continue
+    const d = norm(rays[i] - rays[loi])
+    if (d < hiBest) { hiBest = d; hii = i }
+  }
+  const isA = (i: number) => i === 0 || i === 2
+  const a0 = isA(loi) ? rays[loi] : rays[hii]
+  const a1 = isA(loi) ? rays[hii] : rays[loi]
+  const [p0, p1] = loi < hii ? [loi, hii] : [hii, loi]
+  const isTheta = (p0 === 0 && p1 === 1) || (p0 === 2 && p1 === 3)
+  return { a0, a1, isSupplement: !isTheta }
 }
 
 /** Compute angular dimension geometry.
@@ -90,14 +121,15 @@ export function computeAngleDimension(
   const geoRayA = Math.atan2(midAy - vy, midAx - vx) / RAD
   const geoRayB = Math.atan2(midBy - vy, midBx - vx) / RAD
 
-  let a0deg: number, a1deg: number, arcR: number, labelAngleDeg: number
+  let a0deg: number, a1deg: number, arcR: number, labelAngleDeg: number, isSupplement: boolean
   if (pos) {
-    // User-placed label: snap to whichever of the two valid theta-wedges the
-    // label points at, so it can be moved to either of its two homes.
+    // User-placed label: snap to whichever of the four wedges the label points
+    // at, so it can be dragged into any quadrant around the crossing.
     const labelAngle = Math.atan2(pos[1], pos[0]) / RAD
     const w = chooseWedge(dirA, dirB, labelAngle)
     a0deg = w.a0
     a1deg = w.a1
+    isSupplement = w.isSupplement
     arcR = Math.hypot(pos[0], pos[1]) || 1e-6
     labelAngleDeg = labelAngle
   } else {
@@ -107,6 +139,7 @@ export function computeAngleDimension(
     const w = chooseWedge(dirA, dirB, geoTarget)
     a0deg = w.a0
     a1deg = w.a1
+    isSupplement = w.isSupplement
     const dA = Math.hypot(midAx - vx, midAy - vy)
     const dB = Math.hypot(midBx - vx, midBy - vy)
     arcR = Math.min(dA, dB) || 1e-6
@@ -124,5 +157,5 @@ export function computeAngleDimension(
 
   const extendFromStart = !isInside && angDiff(labelAngleDeg, a0deg) < angDiff(labelAngleDeg, a1deg)
 
-  return { vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, extendFromStart }
+  return { vx, vy, arcR, a0deg, a1deg, arcSpan, labelAngleDeg, labelX, labelY, isInside, extendFromStart, isSupplement }
 }

@@ -23,6 +23,10 @@ export function useDimInteraction(
   // When provided (directional dims only), the edit dialog shows a "Flip side"
   // button that runs this handler to swap the dimension's orientation sign.
   onFlip?: () => void,
+  // Maps the value the user edits (what the label shows) back to the value
+  // stored on the constraint. Identity by default; angle dims placed in a
+  // supplement quadrant pass `v => 180 - v` so editing 180-theta stores theta.
+  encodeValue?: (displayed: number) => number,
 ) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
   const drag = useSketchEditorStore(s => s.drag)
@@ -74,11 +78,13 @@ export function useDimInteraction(
         return null
       },
       onConfirm: (input) => {
-        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: evalExpr(input) })
+        const edited = evalExpr(input)
+        const stored = encodeValue ? encodeValue(edited) : edited
+        getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: stored })
       },
       ...(onFlip && { extraAction: { label: 'Flip side', onClick: onFlip } }),
     })
-  }, [interaction, cid, value, validatePositive, consumeClick, onFlip])
+  }, [interaction, cid, value, validatePositive, consumeClick, onFlip, encodeValue])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = reset
 

@@ -41,25 +41,77 @@ describe('computeAngleDimension', () => {
     expect(g.isInside).toBe(true)
   })
 
-  it('marks the label outside when dragged off the wedge for a small angle', () => {
+  it('selects the supplement when the label is dragged off a thin theta wedge', () => {
+    // Vertex near (95,0); the theta wedge is only ~3 degrees. A label off that
+    // sliver now lands in the wide supplement wedge (the arc the user is aiming
+    // at), instead of trailing a leader back to the 3-degree arc as before.
     const A: [[number, number], [number, number]] = [[0, 5], [20, 3.9518444143]]
     const B: [[number, number], [number, number]] = [[0, 0], [20, 0]]
-    // Vertex is near (95,0); offset places the label well off the 3-degree wedge.
     const g = computeAngleDimension(A[0], A[1], B[0], B[1], [-40, 30])
-    expect(g.isInside).toBe(false)
+    expect(g.isSupplement).toBe(true)
+    expect(g.isInside).toBe(true)
+    expect(Math.abs(g.arcSpan)).toBeCloseTo(177, 0)
   })
 
-  it('always renders the theta-wedge, never its supplement, for any label direction', () => {
-    // 30-degree angle: lines along 0 and 30 degrees from the origin.
-    const A: [[number, number], [number, number]] = [[0, 0], [10, 0]]
-    const B: [[number, number], [number, number]] = [[0, 0], [Math.cos(Math.PI / 6) * 10, Math.sin(Math.PI / 6) * 10]]
-    // Sweep the label all the way around; the wedge magnitude must stay ~30,
-    // never flip to the 150-degree supplement.
-    for (let deg = 0; deg < 360; deg += 15) {
-      const r = 5
-      const pos: [number, number] = [r * Math.cos((deg * Math.PI) / 180), r * Math.sin((deg * Math.PI) / 180)]
-      const g = computeAngleDimension(A[0], A[1], B[0], B[1], pos)
-      expect(Math.abs(g.arcSpan)).toBeCloseTo(30, 6)
+  // 30-degree angle used by the quadrant tests: lines along 0 and 30 degrees.
+  const A30: [[number, number], [number, number]] = [[0, 0], [10, 0]]
+  const B30: [[number, number], [number, number]] = [[0, 0], [Math.cos(Math.PI / 6) * 10, Math.sin(Math.PI / 6) * 10]]
+  const at = (deg: number, r = 5): [number, number] =>
+    [r * Math.cos((deg * Math.PI) / 180), r * Math.sin((deg * Math.PI) / 180)]
+
+  it('renders the theta wedge when the label points between the lines', () => {
+    // Label at 15deg sits in the 0..30 wedge: span ~30, not a supplement.
+    const g = computeAngleDimension(A30[0], A30[1], B30[0], B30[1], at(15))
+    expect(Math.abs(g.arcSpan)).toBeCloseTo(30, 6)
+    expect(g.isSupplement).toBe(false)
+    expect(g.isInside).toBe(true)
+  })
+
+  it('renders the supplement wedge when the label is dragged past a line', () => {
+    // Label at 105deg sits in the 30..180 wedge: span ~150, flagged supplement.
+    const g = computeAngleDimension(A30[0], A30[1], B30[0], B30[1], at(105))
+    expect(Math.abs(g.arcSpan)).toBeCloseTo(150, 6)
+    expect(g.isSupplement).toBe(true)
+    expect(g.isInside).toBe(true)
+  })
+
+  it('reaches all four quadrants, two theta and two supplement', () => {
+    // One label direction inside each of the four wedges around the crossing.
+    const probes: Array<[number, boolean]> = [
+      [15, false],   // 0..30   theta
+      [105, true],   // 30..180 supplement
+      [195, false],  // 180..210 theta
+      [285, true],   // 210..360 supplement
+    ]
+    for (const [deg, supplement] of probes) {
+      const g = computeAngleDimension(A30[0], A30[1], B30[0], B30[1], at(deg))
+      expect(g.isInside).toBe(true)
+      expect(g.isSupplement).toBe(supplement)
+      expect(Math.abs(g.arcSpan)).toBeCloseTo(supplement ? 150 : 30, 6)
+    }
+  })
+
+  it('keeps a0 on line A and a1 on line B in every quadrant (witnesses stay matched)', () => {
+    // a0deg must always be a line-A ray (0 or 180 mod 180) and a1deg a line-B ray
+    // (30 or 210 -> 30 mod 180), so each witness line tracks its own segment.
+    const mod180 = (a: number) => (((a % 180) + 180) % 180)
+    for (let deg = 5; deg < 360; deg += 10) {
+      const g = computeAngleDimension(A30[0], A30[1], B30[0], B30[1], at(deg))
+      expect(mod180(g.a0deg)).toBeCloseTo(0, 6)
+      expect(mod180(g.a1deg)).toBeCloseTo(30, 6)
+    }
+  })
+
+  it('lets a 90-degree X be dimensioned on all four sides', () => {
+    // The X from the bug report: strokes top-left->bottom-right and
+    // bottom-left->top-right. All four quadrants subtend 90, so the label must
+    // be placeable up, down, left and right (previously only two were allowed).
+    const A: [[number, number], [number, number]] = [[-1, 1], [1, -1]]
+    const B: [[number, number], [number, number]] = [[-1, -1], [1, 1]]
+    for (const deg of [0, 90, 180, 270]) {
+      const g = computeAngleDimension(A[0], A[1], B[0], B[1], at(deg))
+      expect(g.isInside).toBe(true)
+      expect(Math.abs(g.arcSpan)).toBeCloseTo(90, 6)
     }
   })
 
