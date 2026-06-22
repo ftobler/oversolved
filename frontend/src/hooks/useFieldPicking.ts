@@ -12,6 +12,11 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
  * the selection so the chip's sync effect re-populates chip-owned items.
  * Single-pick fields auto-close after one pick; `multi` fields stay open.
  *
+ * Re-clicking an already-picked element toggles it out of `normalSelection`
+ * (the viewport click path is symmetric). A chip-owned id that has dropped out
+ * of `normalSelection` is that toggle-off, so we call `onUnpick(selectionId)`
+ * to let the editor dispatch the matching remove mutation.
+ *
  * Returns `{ isPicking, toggle }`: `toggle` activates this field (clearing any
  * other active field) or deactivates it if already active.
  */
@@ -19,9 +24,10 @@ export function usePickField(
   featureId: string,
   field: string,
   onPick: (selectionId: string) => void,
-  opts?: { multi?: boolean },
+  opts?: { multi?: boolean; onUnpick?: (selectionId: string) => void },
 ): { isPicking: boolean; toggle: () => void } {
   const multi = opts?.multi ?? false
+  const onUnpick = opts?.onUnpick
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isPicking = activePickField?.featureId === featureId && activePickField?.field === field
@@ -37,7 +43,20 @@ export function usePickField(
         return
       }
     }
-  }, [normalSelection, isPicking, onPick, multi])
+    // No new pick: a chip-owned id missing from normalSelection is a re-click
+    // toggle-off, so remove it from the chip.
+    if (!onUnpick) return
+    for (const id of s.chipOwnedSelection) {
+      if (!s.normalSelection.has(id)) {
+        onUnpick(id)
+        // Mirror the onPick path: empty both selection sets so the unstable
+        // callback identity can't re-fire this remove before the async re-solve
+        // updates `values` and the chip's sync effect repopulates the survivors.
+        s.clearNormalSelection()
+        return
+      }
+    }
+  }, [normalSelection, isPicking, onPick, onUnpick, multi])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()

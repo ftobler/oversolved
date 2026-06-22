@@ -27,7 +27,7 @@ function mountPickField(
   featureId: string,
   field: string,
   onPick: (id: string) => void,
-  opts?: { multi?: boolean },
+  opts?: { multi?: boolean; onUnpick?: (id: string) => void },
 ) {
   function Spy() {
     const { isPicking, toggle } = usePickField(featureId, field, onPick, opts)
@@ -142,6 +142,46 @@ describe('usePickField — consumer (Layer 2)', () => {
       useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
     })
     expect(onPick).not.toHaveBeenCalled()
+  })
+})
+
+describe('usePickField — re-click toggles off (unpick)', () => {
+  it('re-clicking an already-picked item fires onUnpick with that id', () => {
+    const onPick = vi.fn()
+    const onUnpick = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'edges', multi: true })
+      useSketchEditorStore.getState().syncChipSelection(['?body_ex1/edge/0', '?body_ex1/edge/1'])
+    })
+    mountPickField('sk1', 'edges', onPick, { multi: true, onUnpick })
+
+    // Re-click edge/0 -> the viewport toggle removes it from normalSelection.
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/edge/0')
+    })
+
+    expect(onUnpick).toHaveBeenCalledWith('?body_ex1/edge/0')
+    expect(onUnpick).toHaveBeenCalledTimes(1)
+    expect(onPick).not.toHaveBeenCalled()
+    // Both selection sets are emptied until the chip re-syncs from fresh values.
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
+  })
+
+  it('does not fire onUnpick when no field option is supplied', () => {
+    const onPick = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'edges', multi: true })
+      useSketchEditorStore.getState().syncChipSelection(['?body_ex1/edge/0'])
+    })
+    mountPickField('sk1', 'edges', onPick, { multi: true })
+
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/edge/0')
+    })
+    expect(onPick).not.toHaveBeenCalled()
+    // Without an onUnpick handler the chip-owned mirror is left untouched.
+    expect(useSketchEditorStore.getState().chipOwnedSelection.has('?body_ex1/edge/0')).toBe(true)
   })
 })
 
