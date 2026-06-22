@@ -122,6 +122,14 @@ jobs:
         run: npm run build
         working-directory: frontend
 
+      # Exercise the zero-backend deploy build. The JS bundle is byte-identical
+      # to `npm run build`; this only adds the runtime-config stamp, so running
+      # it once (Node 24, x64) is enough to catch a broken writeRuntimeConfig.
+      - name: npm build:static
+        if: matrix.node-version == 24 && matrix.os == 'ubuntu-latest'
+        run: npm run build:static
+        working-directory: frontend
+
       - name: npm lint
         run: npm run lint
         working-directory: frontend
