@@ -15,7 +15,15 @@ export interface DimInteraction {
   promptLabel: string
 }
 
-export function useDimInteraction(cid: string, value: number, interaction: DimInteraction | undefined, validatePositive = true) {
+export function useDimInteraction(
+  cid: string,
+  value: number,
+  interaction: DimInteraction | undefined,
+  validatePositive = true,
+  // When provided (directional dims only), the edit dialog shows a "Flip side"
+  // button that runs this handler to swap the dimension's orientation sign.
+  onFlip?: () => void,
+) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
   const drag = useSketchEditorStore(s => s.drag)
   const [hovered, setHovered] = useState(false)
@@ -68,8 +76,9 @@ export function useDimInteraction(cid: string, value: number, interaction: DimIn
       onConfirm: (input) => {
         getSketchCallback('onMutation')?.({ type: 'set_constraint_value', featureId: interaction.featureId, constraintId: cid, value: evalExpr(input) })
       },
+      ...(onFlip && { extraAction: { label: 'Flip side', onClick: onFlip } }),
     })
-  }, [interaction, cid, value, validatePositive, consumeClick])
+  }, [interaction, cid, value, validatePositive, consumeClick, onFlip])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = reset
 

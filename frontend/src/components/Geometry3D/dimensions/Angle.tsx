@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { angleDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import { sampleArc } from '@/components/sketch/sketch_helpers'
 import { Arrowhead, ArcTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
@@ -18,7 +19,18 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction, false)
+  // Angle dimensions carry an orientation sign (which handedness the value
+  // pins). The edit dialog's Flip side button swaps it; the current handedness
+  // is read from the rendered line directions, so flipping just negates it.
+  const onFlip = useCallback(() => {
+    if (!interaction) return
+    const current = angleDimensionSign(dim.p1, dim.p2, dim.p3, dim.p4)
+    getSketchCallback('onMutation')?.({
+      type: 'set_constraint_sign', featureId: interaction.featureId, constraintId: cid, sign: -current,
+    })
+  }, [interaction, cid, dim.p1, dim.p2, dim.p3, dim.p4])
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+    useDimInteraction(cid, dim.value, interaction, false, onFlip)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)

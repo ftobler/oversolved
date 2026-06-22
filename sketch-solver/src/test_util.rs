@@ -52,6 +52,24 @@ pub fn cons_v(kind: ConstraintKind, refs: Vec<(RefRole, Ref)>, value: f64) -> Co
     }
 }
 
+/// A dimension constraint carrying both a value and an orientation `sign`
+/// (`+1.0` / `-1.0`), for the directional dimensions (distance_x/y,
+/// line_distance, angle).
+pub fn cons_vs(
+    kind: ConstraintKind,
+    refs: Vec<(RefRole, Ref)>,
+    value: f64,
+    sign: f64,
+) -> Constraint {
+    Constraint {
+        kind_code: kind.to_u8(),
+        refs,
+        value: Some(value),
+        sign: Some(sign),
+        ..Default::default()
+    }
+}
+
 pub fn c_target(kind: ConstraintKind, index: u32, point: PointSelector) -> Constraint {
     Constraint {
         kind_code: kind.to_u8(),

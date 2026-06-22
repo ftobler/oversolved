@@ -1,12 +1,9 @@
 //! Sketch constraint solver crate (WASM kernel migration, phase 1).
 //!
-//! Phase 1.0 vertical slice: the flat typed-array I/O codec, the constraint
-//! residual builders ported from `solver_residuals.py`, a hand-rolled
-//! Levenberg-Marquardt driver with a 3-point finite-difference Jacobian, and the
-//! rank / status / per-entity-status / vertex-freedom analysis ported from
-//! `solver.py`. It is correct on the trivial sketches the unit tests cover; it is
-//! deliberately *not* optimized (no analytic Jacobian, no zero-copy decode, no
-//! drag fast-path) and is not yet wired across the wasm-bindgen boundary.
+//! It comprises the flat typed-array I/O codec, the constraint residual
+//! builders, a hand-rolled Levenberg-Marquardt driver with analytic and
+//! finite-difference Jacobians, and the rank / status / per-entity-status /
+//! vertex-freedom analysis.
 //!
 //! Design invariants the implementation keeps (from `feature/wasm-kernel-migration.md`):
 //!   - No JS callbacks during a solve; no OCC.js access. The crate does not
@@ -147,7 +144,7 @@ impl Input {
     }
 }
 
-/// Per-entity and overall constraint status (mirrors the Python solver strings).
+/// Per-entity and overall constraint status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     FullyConstrained,

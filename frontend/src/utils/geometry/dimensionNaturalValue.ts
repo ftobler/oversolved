@@ -86,6 +86,85 @@ export function computeNaturalDimensionValue(
 }
 
 /**
+ * Orientation sign (+1 / -1) for a directional dimension, derived from the
+ * current geometry so that the constraint authored at +value already holds at
+ * the side the user drew (creation never mirrors the sketch). Returns null for
+ * non-directional kinds (length / radius / diameter / euclidean
+ * point_distance), which have no side.
+ *
+ *   point_distance_x -> sign of (b.x - a.x)
+ *   point_distance_y -> sign of (b.y - a.y)
+ *   angle            -> sign of the directed cross product dirA x dirB, matching
+ *                       the Rust residual's signed `atan2(cross, dot)`.
+ *
+ * A zero / near-zero measure resolves to +1 (an arbitrary but stable default;
+ * the side is indeterminate when the points coincide on that axis).
+ */
+export function computeDimensionSign(
+  kind: string,
+  targets: readonly string[],
+  sketch: Sketch,
+  featureId: string,
+): number | null {
+  const c: PartConstraint = { id: '__sign__', kind }
+  const refs = targets.map(t => parseTarget(t, featureId))
+  c.a = refs[0]
+  c.b = refs[1]
+  return dimensionSignFromConstraint(c, sketch)
+}
+
+/**
+ * Same as `computeDimensionSign` but reads the operand refs straight off an
+ * existing constraint, via the render path so the side matches what the
+ * dimension is drawn against.
+ */
+export function dimensionSignFromConstraint(
+  c: PartConstraint,
+  sketch: Sketch,
+): number | null {
+  if (c.kind === 'point_distance_x' || c.kind === 'point_distance_y') {
+    const render = computeConstraintRender(c, sketch) as DimLinearRender | { kind: string }
+    if (render.kind !== 'dim_linear') return null
+    const r = render as DimLinearRender
+    return linearDimensionSign(c.kind, r.p1, r.p2)
+  }
+  if (c.kind === 'angle') {
+    const render = computeConstraintRender(c, sketch) as DimAngleRender | { kind: string }
+    if (render.kind !== 'dim_angle') return null
+    const r = render as DimAngleRender
+    return angleDimensionSign(r.p1, r.p2, r.p3, r.p4)
+  }
+  return null
+}
+
+// ─── Pure sign-from-geometry helpers ───
+// Shared by the creation path (constraint + sketch) and the live flip button
+// (which already holds the rendered dim geometry). The current side is the sign
+// of the signed measure; flipping is just negating the result.
+
+/** Current side of an axis distance: sign of (b - a) along x (or y). +1/-1. */
+export function linearDimensionSign(
+  kind: string,
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+): number {
+  const d = kind === 'point_distance_y' ? p2[1] - p1[1] : p2[0] - p1[0]
+  return d < 0 ? -1 : 1
+}
+
+/** Current handedness of an angle: sign of the directed cross dirA x dirB,
+ *  matching the solver's signed `atan2(cross, dot)`. +1/-1. */
+export function angleDimensionSign(
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+  p3: readonly [number, number],
+  p4: readonly [number, number],
+): number {
+  const cross = (p2[0] - p1[0]) * (p4[1] - p3[1]) - (p2[1] - p1[1]) * (p4[0] - p3[0])
+  return cross < 0 ? -1 : 1
+}
+
+/**
  * Convert an absolute world-space placement point to the anchor-relative
  * offset (`pos`) expected by the dim renderers. Each renderer interprets
  * `pos` relative to its dim-specific anchor:

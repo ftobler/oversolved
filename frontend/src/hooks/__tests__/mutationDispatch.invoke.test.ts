@@ -89,6 +89,14 @@ describe('mutationHandlers forward sketch mutations', () => {
     expect(feature(doc, 'S1')!.constraints!.find(c => c.id === 'k1')!.pos).toEqual([3, 4])
   })
 
+  it('set_constraint_sign sets the orientation sign (normalized to +/-1)', () => {
+    const doc = sketchDoc()
+    mutationHandlers.set_constraint_sign(doc, {
+      type: 'set_constraint_sign', featureId: 'S1', constraintId: 'k1', sign: -3,
+    })
+    expect(feature(doc, 'S1')!.constraints!.find(c => c.id === 'k1')!.sign).toBe(-1)
+  })
+
   it('add_entity appends an entity with the given id', () => {
     const doc = sketchDoc()
     mutationHandlers.add_entity(doc, {

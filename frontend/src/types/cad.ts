@@ -261,6 +261,12 @@ export interface PartConstraint {
   x?: number
   y?: number
   axis?: string
+  // Orientation selector for directional dimensions (point_distance_x/y,
+  // line_distance, angle): +1 or -1. Picks which side / handedness the signed
+  // measure must match, keeping `value` non-negative. Absent = legacy
+  // side-agnostic (absolute) behavior. Flipped by dragging the label across the
+  // measured geometry or via the dimension dialog's flip button.
+  sign?: number
   // Dimension label position — 2D offset in sketch space relative to the
   // constraint's anchor point (midpoint of measured points for linear dims,
   // center for radius/diameter, vertex for angle).  When absent the renderer
@@ -672,9 +678,10 @@ export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_entity'; featureId: string; entityId: string; delta: Point; solvedGeometry?: Record<string, number[]> }
-  | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number; pos?: Point }
+  | { type: 'add_constraint'; featureId: string; kind: string; targets: string[]; value?: number; pos?: Point; sign?: number }
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
+  | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string }
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string }

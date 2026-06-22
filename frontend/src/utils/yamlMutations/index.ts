@@ -10,6 +10,7 @@ export {
   applyDeleteElements,
   applySetConstraintValue,
   applySetConstraintPos,
+  applySetConstraintSign,
   applyAddEntity,
   applyAddProjectedEntity,
   applyAddEntityWithConstraint,

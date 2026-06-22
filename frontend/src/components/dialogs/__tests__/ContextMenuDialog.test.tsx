@@ -59,4 +59,32 @@ describe('ContextMenuDialog validation', () => {
     fireEvent.change(input, { target: { value: '3' } })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+
+  it('renders the extra action (Flip side) and runs it without validation, then closes', () => {
+    const onConfirm = vi.fn()
+    const onFlip = vi.fn()
+    useSketchEditorStore.setState({
+      pendingDialog: {
+        position: [0, 0],
+        label: 'Dimension value',
+        defaultValue: '10',
+        validate: () => 'always invalid',  // proves the flip path skips validation
+        onConfirm,
+        extraAction: { label: 'Flip side', onClick: onFlip },
+      },
+    })
+    render(<ContextMenuDialog />)
+
+    fireEvent.click(screen.getByText('Flip side'))
+
+    expect(onFlip).toHaveBeenCalledTimes(1)
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+  })
+
+  it('omits the extra action button when none is provided', () => {
+    openWith(vi.fn())
+    render(<ContextMenuDialog />)
+    expect(screen.queryByText('Flip side')).not.toBeInTheDocument()
+  })
 })

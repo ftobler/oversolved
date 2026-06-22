@@ -246,6 +246,7 @@ export function applyAddConstraint(
   targets: string[],
   value?: number,
   pos?: [number, number],
+  sign?: number,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
@@ -288,6 +289,7 @@ export function applyAddConstraint(
   }
   if (value !== undefined) c.value = value
   if (pos !== undefined) c.pos = pos
+  if (sign !== undefined) c.sign = sign
   feature.constraints.push(c)
 }
 
@@ -364,6 +366,20 @@ export function applySetConstraintPos(
   if (!feature?.constraints) return
   const c = feature.constraints.find(c => c.id === constraintId)
   if (c) c.pos = [round(pos[0]), round(pos[1])]
+}
+
+/** Set the orientation sign (+1 / -1) of a directional dimension. Normalized to
+ *  +1/-1 so a stray magnitude can never leak into the residual scaling. */
+export function applySetConstraintSign(
+  doc: PartDoc,
+  featureId: string,
+  constraintId: string,
+  sign: number,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.constraints) return
+  const c = feature.constraints.find(c => c.id === constraintId)
+  if (c) c.sign = sign < 0 ? -1 : 1
 }
 
 export function applyAddEntity(

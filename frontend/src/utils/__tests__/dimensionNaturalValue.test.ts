@@ -3,6 +3,9 @@ import {
   computeNaturalDimensionValue,
   resolveDimPoints,
   computeAnchorRelativePos,
+  computeDimensionSign,
+  linearDimensionSign,
+  angleDimensionSign,
 } from '@/utils/geometry/dimensionNaturalValue'
 import type { Sketch } from '@/types/cad'
 
@@ -133,5 +136,48 @@ describe('computeAnchorRelativePos', () => {
   it('returns null for unresolvable geometry', () => {
     const sk = makeSketch()
     expect(computeAnchorRelativePos('length', ['entity:S1:NX'], sk, FID, [0, 0])).toBeNull()
+  })
+})
+
+describe('computeDimensionSign', () => {
+  it('point_distance_x: +1 when b is right of a, -1 when left', () => {
+    const sk = makeSketch()  // P1 (2,0), P2 (5,4)
+    expect(computeDimensionSign('point_distance_x', ['vertex:S1:P1', 'vertex:S1:P2'], sk, FID)).toBe(1)
+    expect(computeDimensionSign('point_distance_x', ['vertex:S1:P2', 'vertex:S1:P1'], sk, FID)).toBe(-1)
+  })
+
+  it('point_distance_y: +1 when b is above a, -1 when below', () => {
+    const sk = makeSketch()
+    expect(computeDimensionSign('point_distance_y', ['vertex:S1:P1', 'vertex:S1:P2'], sk, FID)).toBe(1)
+    expect(computeDimensionSign('point_distance_y', ['vertex:S1:P2', 'vertex:S1:P1'], sk, FID)).toBe(-1)
+  })
+
+  it('angle: handedness follows the directed cross product, flips with operand order', () => {
+    const sk = makeSketch()  // L1 +x, L3 into the first quadrant -> cross > 0
+    expect(computeDimensionSign('angle', ['entity:S1:L1', 'entity:S1:L3'], sk, FID)).toBe(1)
+    expect(computeDimensionSign('angle', ['entity:S1:L3', 'entity:S1:L1'], sk, FID)).toBe(-1)
+  })
+
+  it('returns null for non-directional dimension kinds', () => {
+    const sk = makeSketch()
+    expect(computeDimensionSign('length', ['entity:S1:L1'], sk, FID)).toBeNull()
+    expect(computeDimensionSign('radius', ['entity:S1:A1'], sk, FID)).toBeNull()
+    expect(computeDimensionSign('point_distance', ['vertex:S1:P1', 'vertex:S1:P2'], sk, FID)).toBeNull()
+  })
+})
+
+describe('pure sign helpers (used by the live flip button)', () => {
+  it('linearDimensionSign reads the signed gap on the relevant axis', () => {
+    expect(linearDimensionSign('point_distance_x', [0, 0], [5, 9])).toBe(1)
+    expect(linearDimensionSign('point_distance_x', [5, 9], [0, 0])).toBe(-1)
+    expect(linearDimensionSign('point_distance_y', [0, 0], [9, 5])).toBe(1)
+    expect(linearDimensionSign('point_distance_y', [0, 5], [9, 0])).toBe(-1)
+  })
+
+  it('angleDimensionSign reads the directed cross of the two line directions', () => {
+    // dirA +x, dirB +y -> cross > 0
+    expect(angleDimensionSign([0, 0], [1, 0], [0, 0], [0, 1])).toBe(1)
+    // dirB -y -> cross < 0
+    expect(angleDimensionSign([0, 0], [1, 0], [0, 0], [0, -1])).toBe(-1)
   })
 })

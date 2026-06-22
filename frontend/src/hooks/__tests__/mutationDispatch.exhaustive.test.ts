@@ -8,6 +8,7 @@ export const ALL_MUTATION_TYPES = [
   'add_constraint',
   'set_constraint_value',
   'set_constraint_pos',
+  'set_constraint_sign',
   'delete',
   'add_entity',
   'add_entity_with_constraint',

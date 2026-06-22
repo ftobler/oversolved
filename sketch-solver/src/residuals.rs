@@ -1,11 +1,10 @@
-//! Constraint residual builders, ported arm-for-arm from
-//! `oversolved/kernel/solver_residuals.py`.
+//! Constraint residual builders.
 //!
 //! `Problem` precomputes the per-solve invariants (entity kinds/offsets, the
 //! initial param vector `x0`, the line-circle coincident map) once, then
 //! `residuals(x)` evaluates the stacked residual vector for a candidate `x`.
-//! Computation is in `f64` to match Python's `float64`; the wire format's `f32`
-//! is widened on decode and narrowed only at output.
+//! Computation is in `f64`; the wire format's `f32` is widened on decode and
+//! narrowed only at output.
 //!
 //! `pinned_mask` and `equality_pins` are lowered to extra residual rows here
 //! (one `x[i] - target` row each), which is exactly what `_residual_fixed`
@@ -145,9 +144,8 @@ pub struct Problem<'a> {
     pinned_indices: Vec<usize>,
     equality_pins: Vec<(usize, f64)>,
     /// (line_index, curve_index) -> which line endpoint is pinned to the
-    /// curve (circle or arc), mirroring `line_circle_coincident` in
-    /// `_build_residuals_fn`.  An arc tangent uses the same pinned-foot
-    /// path as a circle once the coincident is known.
+    /// curve (circle or arc). An arc tangent uses the same pinned-foot path as
+    /// a circle once the coincident is known.
     line_circle_coincident: HashMap<(u32, u32), PointSelector>,
 }
 
@@ -235,7 +233,7 @@ impl<'a> Problem<'a> {
         &x[off..off + size]
     }
 
-    /// Resolve a reference to a 2D point, mirroring `get_point`.
+    /// Resolve a reference to a 2D point.
     fn point(&self, x: &[f64], r: Ref) -> P2 {
         match r {
             Ref::External { x: ex, y: ey } => [ex, ey],
@@ -295,7 +293,7 @@ impl<'a> Problem<'a> {
         }
     }
 
-    /// Unit radius direction at a contact point, mirroring `_radius_dir`.
+    /// Unit radius direction at a contact point.
     fn radius_dir(&self, x: &[f64], arc_index: u32, arc_point: PointSelector, contact: P2) -> P2 {
         let ep = self.params(x, arc_index);
         if self.kind_of(arc_index) == Kind::Circle {
@@ -335,8 +333,7 @@ impl<'a> Problem<'a> {
 
     /// Residual rows of a single constraint. Caller-only constraints (those
     /// whose required roles are missing, e.g. a query that did not resolve to a
-    /// local entity) contribute no rows, matching the Python filter that drops
-    /// them before solve.
+    /// local entity) contribute no rows: they are dropped before solve.
     pub fn residual_one(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let Some(kind) = c.kind() else { return };
         match kind {
@@ -426,7 +423,11 @@ impl<'a> Problem<'a> {
         let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
         let vx = pb[0] - ep_a[0];
         let vy = pb[1] - ep_a[1];
-        r.push(vx * nx + vy * ny - value);
+        // The perpendicular offset is already signed (the normal direction picks
+        // a side). The orientation sign selects which side `value` targets;
+        // absent, it defaults to +1, reproducing the legacy signed residual.
+        let proj = vx * nx + vy * ny;
+        r.push(proj - c.sign.unwrap_or(1.0) * value);
     }
 
     /// True when the ref denotes a single point: an external reference, an
@@ -604,8 +605,15 @@ impl<'a> Problem<'a> {
         let db = [eb[2] - eb[0], eb[3] - eb[1]];
         let dot = da[0] * db[0] + da[1] * db[1];
         let cross = da[0] * db[1] - da[1] * db[0];
-        let angle = cross.abs().atan2(dot);
-        r.push(angle - value.to_radians());
+        // Without an orientation sign the unsigned angle in [0, 180] is matched,
+        // so the two mirror configurations (line B turned +theta or -theta from
+        // line A) both satisfy it. With a sign the *signed* angle in (-180, 180]
+        // is matched against `sign * value`, pinning the handedness while the
+        // user-facing value stays non-negative.
+        match c.sign {
+            Some(s) => r.push(cross.atan2(dot) - s * value.to_radians()),
+            None => r.push(cross.abs().atan2(dot) - value.to_radians()),
+        }
     }
 
     fn r_tangent(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
@@ -758,14 +766,26 @@ impl<'a> Problem<'a> {
         let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
             return;
         };
-        r.push((pb[0] - pa[0]).abs() - value);
+        // Signed gap b.x - a.x. With an orientation sign the target is
+        // `sign * value` (so b can be pinned to either side of a while value
+        // stays non-negative); absent, the legacy absolute residual is matched,
+        // which is satisfied on either side.
+        let d = pb[0] - pa[0];
+        match c.sign {
+            Some(s) => r.push(d - s * value),
+            None => r.push(d.abs() - value),
+        }
     }
 
     fn r_point_distance_y(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
             return;
         };
-        r.push((pb[1] - pa[1]).abs() - value);
+        let d = pb[1] - pa[1];
+        match c.sign {
+            Some(s) => r.push(d - s * value),
+            None => r.push(d.abs() - value),
+        }
     }
 
     fn r_midpoint(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
@@ -1744,6 +1764,178 @@ mod tests {
     }
 
     #[test]
+    fn point_distance_x_signed_pins_b_to_the_right() {
+        // pb is +10 to the right of pa. sign +1, value 10 -> (10-0) - 1*10 = 0.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 10.0, 5.0],
+            vec![cons_vs(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                10.0,
+                1.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1);
+        assert!(r[0].abs() < 1e-12, "signed +1 same side: {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_x_signed_wrong_side_is_nonzero_not_satisfied_by_abs() {
+        // pb sits to the right (+10) but sign -1 demands the left side. The abs
+        // residual would read 0 here (bistable); the signed one reads 20, so the
+        // solver is pushed to actually move pb to the other side.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, 10.0, 5.0],
+            vec![cons_vs(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                10.0,
+                -1.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert!((r[0] - 20.0).abs() < 1e-12, "signed -1 wrong side: {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_x_signed_negative_side_satisfied_when_b_is_left() {
+        // pb is -10 (left of pa). sign -1, value 10 -> (-10-0) - (-1*10) = 0.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, -10.0, 5.0],
+            vec![cons_vs(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                10.0,
+                -1.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert!(r[0].abs() < 1e-12, "signed -1 correct (left) side: {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_x_without_sign_keeps_legacy_abs_bistability() {
+        // No sign: pb on the left still satisfies value 10 via the absolute
+        // residual (|-10| - 10 = 0). Pins that the legacy path is untouched.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+            vec![0.0, 0.0, -10.0, 5.0],
+            vec![cons_v(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                10.0,
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert!(r[0].abs() < 1e-12, "legacy abs both sides: {}", r[0]);
+    }
+
+    #[test]
+    fn point_distance_y_signed_picks_the_side() {
+        // pb is +5 above pa; sign +1 satisfies, sign -1 reads 10.
+        let mk = |sign: f64| {
+            input(
+                vec![ent(Kind::Point, 0), ent(Kind::Point, 2)],
+                vec![0.0, 0.0, 10.0, 5.0],
+                vec![cons_vs(
+                    ConstraintKind::PointDistanceY,
+                    ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Xy)),
+                    5.0,
+                    sign,
+                )],
+            )
+        };
+        let up = mk(1.0);
+        let pu = Problem::new(&up);
+        assert!(pu.residuals(&pu.x0)[0].abs() < 1e-12);
+        let down = mk(-1.0);
+        let pd = Problem::new(&down);
+        assert!((pd.residuals(&pd.x0)[0] - 10.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn line_distance_signed_selects_side_and_defaults_to_legacy() {
+        // Line A along +x through origin; point b 5 above it. Normal is (0,1),
+        // so the signed perpendicular offset is +5.
+        let mk = |by: f32, sign: Option<f64>| {
+            let c = Constraint {
+                kind_code: ConstraintKind::LineDistance.to_u8(),
+                refs: ab(e_ref(0, PointSelector::Absent), e_ref(1, PointSelector::Xy)),
+                value: Some(5.0),
+                sign,
+                ..Default::default()
+            };
+            input(
+                vec![ent(Kind::Line, 0), ent(Kind::Point, 4)],
+                vec![0.0, 0.0, 10.0, 0.0, 3.0, by],
+                vec![c],
+            )
+        };
+        // No sign -> legacy signed residual against +value: b above satisfies.
+        let none = mk(5.0, None);
+        let pn = Problem::new(&none);
+        assert!(pn.residuals(&pn.x0)[0].abs() < 1e-12, "legacy +1 default");
+        // sign -1 wants b below; b above reads 10.
+        let wrong = mk(5.0, Some(-1.0));
+        let pw = Problem::new(&wrong);
+        assert!((pw.residuals(&pw.x0)[0] - 10.0).abs() < 1e-12, "signed -1 wrong side");
+        // sign -1 with b below is satisfied.
+        let right = mk(-5.0, Some(-1.0));
+        let pr = Problem::new(&right);
+        assert!(pr.residuals(&pr.x0)[0].abs() < 1e-12, "signed -1 correct side");
+    }
+
+    #[test]
+    fn angle_signed_pins_handedness_legacy_is_side_agnostic() {
+        // Line A along +x (dir 0). Line B is either +y (dir +90, cross>0) or
+        // -y (dir -90, cross<0). value 90 in all cases.
+        let mk = |by_end: f32, sign: Option<f64>| {
+            let c = Constraint {
+                kind_code: ConstraintKind::Angle.to_u8(),
+                refs: ab(e_ref(0, PointSelector::Absent), e_ref(1, PointSelector::Absent)),
+                value: Some(90.0),
+                sign,
+                ..Default::default()
+            };
+            input(
+                vec![ent(Kind::Line, 0), ent(Kind::Line, 4)],
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, by_end],
+                vec![c],
+            )
+        };
+        // Legacy (no sign): both handedness configs satisfy the unsigned angle.
+        let lpos = mk(1.0, None);
+        let lp = Problem::new(&lpos);
+        assert!(lp.residuals(&lp.x0)[0].abs() < 1e-12, "legacy +y");
+        let lneg = mk(-1.0, None);
+        let ln = Problem::new(&lneg);
+        assert!(ln.residuals(&ln.x0)[0].abs() < 1e-12, "legacy -y");
+        // sign +1 wants the +90 (CCW) handedness: +y satisfies, -y reads pi.
+        let spos = mk(1.0, Some(1.0));
+        let sp = Problem::new(&spos);
+        assert!(sp.residuals(&sp.x0)[0].abs() < 1e-12, "signed +1 with +y");
+        let sneg = mk(-1.0, Some(1.0));
+        let sn = Problem::new(&sneg);
+        assert!(
+            (sn.residuals(&sn.x0)[0].abs() - std::f64::consts::PI).abs() < 1e-12,
+            "signed +1 with -y must be off by a half turn: {}",
+            sn.residuals(&sn.x0)[0]
+        );
+        // sign -1 flips it: -y now satisfies.
+        let smneg = mk(-1.0, Some(-1.0));
+        let smn = Problem::new(&smneg);
+        assert!(smn.residuals(&smn.x0)[0].abs() < 1e-12, "signed -1 with -y");
+    }
+
+    #[test]
     fn midpoint_line_form_constrains_point_to_segment_center() {
         // Line [0,0 -> 4,2] has midpoint (2,1). A point sitting there is feasible
         // in both axes; the big-jac test only checks this branch's derivative, not
@@ -2053,8 +2245,8 @@ mod tests {
 
     /// Build the full entities/params/constraints for the all-constraints Jacobian
     /// coverage test, then assert the analytic Jacobian matches FD. The FD is the
-    /// trusted oracle (it is what shadow-mode parity validated against Python),
-    /// so this gate catches any hand-derivative mistake.
+    /// trusted oracle (it is finite differences of the residual itself), so this
+    /// gate catches any hand-derivative mistake.
     ///
     /// Extracted to a helper so the bigger problem (with RadiusDifference,
     /// PointDistanceX/Y) stays manageable.

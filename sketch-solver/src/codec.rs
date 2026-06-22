@@ -35,10 +35,11 @@
 //!     u8  ref_type            // 0 = entity, 1 = external_xy
 //!     entity (ref_type 0):  u8 point_selector, u32 entity_index
 //!     external (ref_type 1): f32 x, f32 y
-//!   u8  scalar_flags          // bit0 has_value, bit1 has_xy, bit2 has_axis
+//!   u8  scalar_flags          // bit0 has_value, bit1 has_xy, bit2 has_axis, bit3 has_sign
 //!   has_value: f32 value
 //!   has_xy:    f32 x, f32 y
 //!   has_axis:  u8 axis
+//!   has_sign:  f32 sign       // orientation selector for directional dims (+1/-1)
 //! ```
 //!
 //! ## Output buffer layout
@@ -238,12 +239,18 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
     } else {
         None
     };
+    let sign = if flags & 0b1000 != 0 {
+        Some(r.f32()? as f64)
+    } else {
+        None
+    };
     Ok(Constraint {
         kind_code,
         refs,
         value,
         xy,
         axis,
+        sign,
     })
 }
 
@@ -308,6 +315,9 @@ fn encode_constraint(w: &mut Writer, c: &Constraint) {
     if c.axis.is_some() {
         flags |= 0b100;
     }
+    if c.sign.is_some() {
+        flags |= 0b1000;
+    }
     w.u8(flags);
     if let Some(v) = c.value {
         w.f32(v as f32);
@@ -318,6 +328,9 @@ fn encode_constraint(w: &mut Writer, c: &Constraint) {
     }
     if let Some(a) = c.axis {
         w.u8(a.to_u8());
+    }
+    if let Some(s) = c.sign {
+        w.f32(s as f32);
     }
 }
 
@@ -515,6 +528,51 @@ mod tests {
         );
         let midpoint = &decoded.constraints[3];
         assert_eq!(midpoint.axis, Some(Axis::X));
+    }
+
+    #[test]
+    fn sign_selector_round_trips() {
+        // A directional dimension carries an orientation sign alongside its
+        // value; both must survive the codec, and the has_sign flag bit must be
+        // independent of has_value.
+        let input = Input {
+            entities: vec![Entity {
+                kind: Kind::Point,
+                param_offset: 0,
+            }],
+            params_initial: vec![0.0, 0.0],
+            pinned_mask: vec![0],
+            equality_pins: Vec::new(),
+            constraints: vec![
+                Constraint {
+                    kind_code: crate::ConstraintKind::PointDistanceX.to_u8(),
+                    refs: vec![(
+                        RefRole::A,
+                        Ref::Entity {
+                            index: 0,
+                            point: PointSelector::Xy,
+                        },
+                    )],
+                    value: Some(7.5),
+                    sign: Some(-1.0),
+                    ..Default::default()
+                },
+                // A sign without a value (defensive: the flags are orthogonal).
+                Constraint {
+                    kind_code: crate::ConstraintKind::Angle.to_u8(),
+                    sign: Some(1.0),
+                    ..Default::default()
+                },
+            ],
+            options: Options::default(),
+        };
+        let decoded = decode_input(&encode_input(&input)).expect("decode");
+        assert_eq!(decoded.constraints[0].value, Some(7.5));
+        assert_eq!(decoded.constraints[0].sign, Some(-1.0));
+        assert_eq!(decoded.constraints[1].value, None);
+        assert_eq!(decoded.constraints[1].sign, Some(1.0));
+        // Byte-identical re-encode: the new field is part of the canonical layout.
+        assert_eq!(encode_input(&decoded), encode_input(&input));
     }
 
     #[test]

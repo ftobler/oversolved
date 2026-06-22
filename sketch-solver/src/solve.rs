@@ -1,22 +1,20 @@
 //! Sketch-solve orchestration: run the LM driver, then derive rank, overall
 //! status, per-entity status, and per-entity vertex freedom.
 //!
-//! Ported from `_run_solver` / `_entity_status` in `oversolved/kernel/solver.py`.
 //! The crate handles solving only; query/projection resolution and writing
-//! solved params back into the doc stay in the TS builder (the plan's "what
-//! stays scalar TS" boundary).
+//! solved params back into the doc stay in the TS builder (the "what stays
+//! scalar TS" boundary).
 
 use crate::lm::{solve_lm, solve_lm_sparse};
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
 use nalgebra::{DMatrix, SymmetricEigen};
 
-/// Singular values above this count toward the rank (mirrors `RANK_TOL`).
+/// Singular values above this count toward the rank.
 const RANK_TOL: f64 = 1e-6;
-/// Sum of squared residuals above this means the system is unsatisfiable
-/// (mirrors `LOSS_THRESHOLD`).
+/// Sum of squared residuals above this means the system is unsatisfiable.
 const LOSS_THRESHOLD: f64 = 1e-4;
-/// Drag re-solve regularization, mirroring `solver_constants.py`. A linear
+/// Drag re-solve regularization. A linear
 /// penalty `w*(x - x0)` per param biases the constraint null-space toward the
 /// pre-drag state so free DOF do not drift; weights are small vs hard
 /// constraints (weight 1) so real constraints always dominate.
@@ -124,7 +122,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     }
 }
 
-/// Per-param drag regularization weights, mirroring `_drag_reg_weights`. Every
+/// Per-param drag regularization weights. Every
 /// param gets `REG_WEIGHT_BASE`; the dragged (anchor) entity's params get the
 /// firmer `REG_WEIGHT_DRAG`. The contract carries a single `drag_anchor_id`
 /// (an entity index); an out-of-range id just leaves the base weights (still a

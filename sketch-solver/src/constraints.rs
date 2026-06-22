@@ -1,9 +1,9 @@
 //! Constraint model and its kind/role vocabulary.
 //!
-//! This mirrors the Python `_CONSTRAINT_HANDLERS` dicts in
-//! `oversolved/kernel/solver_residuals.py`. A constraint is a kind plus a small
-//! set of role-tagged references plus optional scalar payload (`value`, an
-//! explicit `(x, y)` target for `fixed`, and an `axis` for `midpoint`).
+//! A constraint is a kind plus a small set of role-tagged references plus
+//! optional scalar payload (`value`, an explicit `(x, y)` target for `fixed`,
+//! an `axis` for `midpoint`, and a `sign` orientation selector for directional
+//! dimensions). This crate is the canonical solver definition.
 //!
 //! The crate never resolves queries: a reference always arrives already pointing
 //! at a concrete entity *index* (the TS builder resolves ancestral query strings
@@ -14,11 +14,10 @@
 /// Which geometric sub-point of an entity a reference selects.
 ///
 /// `Absent` is meaningful and distinct from `Start`: several handlers (notably
-/// `coincident`) branch on whether the source dict carried a `point` key at all
-/// (`"point" not in a_ref`), treating a point-less line reference as "the whole
-/// line" rather than "its start point". `get_point` still falls back to the
-/// start point when the selector is `Absent`, matching Python's
-/// `ref.get("point", "start")`.
+/// `coincident`) branch on whether the source carried a `point` key at all,
+/// treating a point-less line reference as "the whole line" rather than "its
+/// start point". `point()` still falls back to the start point when the
+/// selector is `Absent`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PointSelector {
     Absent,
@@ -82,7 +81,7 @@ impl PointSelector {
     }
 }
 
-/// The role a reference plays within a constraint, mirroring the dict keys
+/// The role a reference plays within a constraint
 /// (`target`, `a`, `b`, `line`, `arc`, `point`, `point_a`, `point_b`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefRole {
@@ -247,15 +246,22 @@ impl ConstraintKind {
 
 /// One constraint: kind, role-tagged references, and optional scalar payload.
 /// The residual builder dispatches on `kind` and reads whichever roles that kind
-/// expects (mirroring the Python handlers' `if "a" in c` / `c["target"]` access).
+/// expects.
 #[derive(Debug, Clone, Default)]
 pub struct Constraint {
     pub kind_code: u8,
     pub refs: Vec<(RefRole, Ref)>,
     pub value: Option<f64>,
-    /// Explicit `(x, y)` target for `fixed` (mode 3 of `_residual_fixed`).
+    /// Explicit `(x, y)` target for `fixed` (the explicit-coordinate mode).
     pub xy: Option<(f64, f64)>,
     pub axis: Option<Axis>,
+    /// Orientation selector for directional dimensions (`point_distance_x`,
+    /// `point_distance_y`, `line_distance`, `angle`). When `Some(s)` the
+    /// residual constrains the *signed* measure to `s * value`, so `s` (`+1.0`
+    /// or `-1.0`) picks which side / handedness while the user-facing `value`
+    /// stays non-negative. `None` keeps the legacy side-agnostic (absolute)
+    /// residual, so existing constraints without a sign are unchanged.
+    pub sign: Option<f64>,
 }
 
 impl Constraint {

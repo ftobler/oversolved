@@ -6,7 +6,7 @@ import type { ActiveTool, Mutation, SelectionDomain, Sketch } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
-import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints } from '@/utils/geometry/dimensionNaturalValue'
+import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -71,6 +71,10 @@ export interface DialogState {
   // Return an error message to reject the input (dialog stays open and shows
   // it); return null to accept. Omit to accept any input.
   validate?: (val: string) => string | null
+  // Optional secondary action rendered as an extra button (e.g. "Flip side" on
+  // a directional dimension). Runs its handler and closes the dialog; it does
+  // not go through `validate`/`onConfirm`.
+  extraAction?: { label: string; onClick: () => void }
 }
 
 // Dragging a geometry vertex or whole edge.
@@ -644,10 +648,17 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         const pos = (placementWorld && sketch)
           ? computeAnchorRelativePos(constraintKind, targets, sketch, featureId, placementWorld)
           : null
+        // Pin the side/handedness the user drew so the solver cannot mirror the
+        // geometry to the other (equally valid) solution. Directional dims only;
+        // null for length/radius/diameter/euclidean distance.
+        const sign = sketch
+          ? computeDimensionSign(constraintKind, targets, sketch, featureId)
+          : null
         onMutation({
           type: 'add_constraint',
           featureId, kind: constraintKind, targets, value,
           ...(pos && { pos }),
+          ...(sign !== null && { sign }),
         })
         // The dimension tool stays armed so the user can place several dims
         // without re-pressing 'd'. They exit explicitly (Escape / different

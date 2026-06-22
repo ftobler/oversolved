@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { linearDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import { useDimLabelScale } from './useDimLabelScale'
@@ -17,7 +18,20 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
+  // Directional distances (point_distance_x / point_distance_y) carry an
+  // orientation sign; the edit dialog offers a Flip side button that swaps it.
+  // The current side is read from the rendered geometry, so flipping is just
+  // negating it. Euclidean point_distance and length have no side.
+  const isDirectional = dim.kind === 'point_distance_x' || dim.kind === 'point_distance_y'
+  const onFlip = useCallback(() => {
+    if (!interaction) return
+    const current = linearDimensionSign(dim.kind, dim.p1, dim.p2)
+    getSketchCallback('onMutation')?.({
+      type: 'set_constraint_sign', featureId: interaction.featureId, constraintId: cid, sign: -current,
+    })
+  }, [interaction, cid, dim.kind, dim.p1, dim.p2])
+  const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
+    useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined)
   const activeDragPos = useActiveLabelDrag(cid)
   const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)

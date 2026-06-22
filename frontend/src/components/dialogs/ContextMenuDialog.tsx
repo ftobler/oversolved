@@ -74,6 +74,15 @@ export default function ContextMenuDialog() {
       />
       <button className="context-menu-btn context-menu-btn-ok" onClick={handleConfirm}><img src={okIcon} alt="OK" /></button>
       <button className="context-menu-btn context-menu-btn-cancel" onClick={() => { dialog.onCancel?.(); closeDialog() }}><img src={cancelIcon} alt="Cancel" /></button>
+      {dialog.extraAction && (
+        <button
+          type="button"
+          className="context-menu-btn context-menu-btn-extra"
+          onClick={() => { dialog.extraAction!.onClick(); closeDialog() }}
+        >
+          {dialog.extraAction.label}
+        </button>
+      )}
       {error && <span className="context-menu-error" role="alert">{error}</span>}
     </div>
   )

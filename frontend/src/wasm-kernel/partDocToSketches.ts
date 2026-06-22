@@ -102,6 +102,9 @@ function lowerConstraint(
     out.y = c.y
   }
   if (typeof c.axis === 'string') out.axis = c.axis
+  // Orientation selector for directional dimensions (+1/-1). Carried through so
+  // the chosen side survives to the solver; absent for non-directional dims.
+  if (typeof c.sign === 'number') out.sign = c.sign
   return out
 }
 

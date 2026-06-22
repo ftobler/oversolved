@@ -59,7 +59,7 @@ const REF_KEYS: Array<[string, number]> = [
   ['point_b', Role.point_b],
 ]
 
-/** Matches ORIGIN_ID in `solver_constants.py`. */
+/** The injected projected-origin point id. */
 export const ORIGIN_ID = '_origin'
 
 export interface SketchEntity {
@@ -127,8 +127,7 @@ export function pinnedMaskFor(layout: EntityLayout[], pinnedIds: Iterable<string
 
 /**
  * Lower a sketch. Appends the projected origin point (pinned at the plane
- * origin) exactly as `_solve_sketch` does, so DOF accounting and per-entity
- * status match the Python solver.
+ * origin), so DOF accounting and per-entity status come out right.
  *
  * Pass `opts.dragMode = true` and `opts.dragAnchorId` for a drag-frame solve;
  * the default cold-solve options are `{ dragMode: false, dragAnchorId: 0,
@@ -180,6 +179,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     if (typeof c.value === 'number') out.value = c.value
     if (typeof c.x === 'number' && typeof c.y === 'number') out.xy = [c.x, c.y]
     if (typeof c.axis === 'string') out.axis = AxisCode[c.axis]
+    if (typeof c.sign === 'number') out.sign = c.sign
     return out
   }
 

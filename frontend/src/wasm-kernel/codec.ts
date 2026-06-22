@@ -75,6 +75,9 @@ export interface FlatConstraint {
   value?: number
   xy?: [number, number]
   axis?: number
+  // Orientation selector for directional dimensions (+1/-1). Picks which side /
+  // handedness the signed measure must match while value stays non-negative.
+  sign?: number
 }
 
 export interface FlatInput {
@@ -195,6 +198,7 @@ export function encodeInput(input: FlatInput): Uint8Array {
     if (c.value !== undefined) flags |= 0b001
     if (c.xy !== undefined) flags |= 0b010
     if (c.axis !== undefined) flags |= 0b100
+    if (c.sign !== undefined) flags |= 0b1000
     w.u8(flags)
     if (c.value !== undefined) w.f32(c.value)
     if (c.xy !== undefined) {
@@ -202,6 +206,7 @@ export function encodeInput(input: FlatInput): Uint8Array {
       w.f32(c.xy[1])
     }
     if (c.axis !== undefined) w.u8(c.axis)
+    if (c.sign !== undefined) w.f32(c.sign)
   }
   return w.done()
 }

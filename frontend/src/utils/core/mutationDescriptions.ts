@@ -14,6 +14,8 @@ export function describeMutation(m: Mutation): string {
       return `set ${m.constraintId} value in ${m.featureId}`
     case 'set_constraint_pos':
       return `set ${m.constraintId} pos in ${m.featureId}`
+    case 'set_constraint_sign':
+      return `flip ${m.constraintId} side in ${m.featureId}`
     case 'delete':
       return `delete ${m.targets.length} element(s)`
     case 'add_entity':

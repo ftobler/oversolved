@@ -74,6 +74,18 @@
   filter: invert(70%) sepia(100%) saturate(300%) hue-rotate(170deg);
 }
 
+/* Text action button (e.g. "Flip side" on a directional dimension). */
+.context-menu-btn-extra {
+  color: #ccc;
+  font-size: 12px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.context-menu-btn-extra:hover {
+  color: #fff;
+}
+
 /* Hide the number input spinner arrows */
 .context-menu-input::-webkit-outer-spin-button,
 .context-menu-input::-webkit-inner-spin-button {
