@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { backendBundle } from '@/adapters/backend'
 import { dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
@@ -72,6 +73,9 @@ export function useDocumentState(
         setOwnerUsername(data.owner_username || '')
         setPermission(data.permission || 'owner')
         setIsPublic(data.is_public || false)
+        // Freshly loaded content matches its store; any self-heal above predates
+        // user intent, so the document starts clean.
+        useUnsavedChangesStore.getState().setDirty(false)
         setLoading(false)
         if (solveOnLoad && reSolveRef.current) {
           reSolveRef.current(parsed)
@@ -95,6 +99,8 @@ export function useDocumentState(
         }
       }
       await storeRef.current.save(uuid, body)
+      // The store now holds the latest edits, so there is nothing to warn about.
+      useUnsavedChangesStore.getState().setDirty(false)
       return true
     } catch (e) {
       setError(String(e))

@@ -5,6 +5,7 @@ import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { failLoud } from '@/stores/stateInvariants'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
@@ -40,6 +41,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     setSolveError(null)
     const current = docRef.current
     if (!current) return
+
+    // Every doc edit funnels through here (direct mutations, drags, and preview
+    // commits all call handleMutation), so this is the one place that flags the
+    // document as having changes not yet saved to its store.
+    useUnsavedChangesStore.getState().setDirty(true)
 
     setSolveResults(prev => {
       if (m.type === 'delete_feature') {

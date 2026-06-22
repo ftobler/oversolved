@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 
@@ -28,6 +29,9 @@ export function useUndoRedo(
       if (prev.length === 0) return prev
       const next = [...prev]
       const entry = next.pop()!
+      // Restoring an earlier doc moves it away from the saved content, so it
+      // counts as unsaved until the user saves again.
+      useUnsavedChangesStore.getState().setDirty(true)
       const preUndoDoc = docRef.current
       if (preUndoDoc) setRedoStack(r => [...r, { doc: preUndoDoc, mutation: entry.mutation }])
       docRef.current = entry.doc
@@ -48,6 +52,7 @@ export function useUndoRedo(
       if (prev.length === 0) return prev
       const next = [...prev]
       const entry = next.pop()!
+      useUnsavedChangesStore.getState().setDirty(true)
       const preRedoDoc = docRef.current
       if (preRedoDoc) setUndoStack(u => [...u, { doc: preRedoDoc, mutation: entry.mutation }])
       docRef.current = entry.doc
