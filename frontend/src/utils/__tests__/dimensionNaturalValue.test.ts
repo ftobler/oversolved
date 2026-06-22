@@ -5,6 +5,7 @@ import {
   computeAnchorRelativePos,
   computeDimensionSign,
   linearDimensionSign,
+  lineDistanceSign,
   angleDimensionSign,
 } from '@/utils/geometry/dimensionNaturalValue'
 import type { Sketch } from '@/types/cad'
@@ -20,6 +21,7 @@ function makeSketch(): Sketch {
     A1: { start: [5, 0], end: [0, 5], center: [0, 0], radius: 5 },  // arc r=5
     P1: { x: 2, y: 0 } as unknown as Sketch[string],
     P2: { x: 5, y: 4 } as unknown as Sketch[string],
+    P3: { x: 5, y: -4 } as unknown as Sketch[string],  // below L1 (negative perpendicular side)
   } as Sketch
 }
 
@@ -158,6 +160,12 @@ describe('computeDimensionSign', () => {
     expect(computeDimensionSign('angle', ['entity:S1:L3', 'entity:S1:L1'], sk, FID)).toBe(-1)
   })
 
+  it('line_distance: +1 when the point is on the +normal side of the line, -1 below', () => {
+    const sk = makeSketch()  // L1 horizontal (y=0); P2 above (y=4), P3 below (y=-4)
+    expect(computeDimensionSign('line_distance', ['entity:S1:L1', 'vertex:S1:P2'], sk, FID)).toBe(1)
+    expect(computeDimensionSign('line_distance', ['entity:S1:L1', 'vertex:S1:P3'], sk, FID)).toBe(-1)
+  })
+
   it('returns null for non-directional dimension kinds', () => {
     const sk = makeSketch()
     expect(computeDimensionSign('length', ['entity:S1:L1'], sk, FID)).toBeNull()
@@ -179,5 +187,14 @@ describe('pure sign helpers (used by the live flip button)', () => {
     expect(angleDimensionSign([0, 0], [1, 0], [0, 0], [0, 1])).toBe(1)
     // dirB -y -> cross < 0
     expect(angleDimensionSign([0, 0], [1, 0], [0, 0], [0, -1])).toBe(-1)
+  })
+
+  it('lineDistanceSign reads the signed perpendicular offset (p1=foot, p2=point)', () => {
+    // Horizontal line direction `normal` = [1,0] -> perpDir = [0,1].
+    expect(lineDistanceSign([5, 0], [5, 4], [1, 0])).toBe(1)
+    expect(lineDistanceSign([5, 0], [5, -4], [1, 0])).toBe(-1)
+    // Vertical line direction `normal` = [0,1] -> perpDir = [-1,0].
+    expect(lineDistanceSign([0, 5], [-4, 5], [0, 1])).toBe(1)
+    expect(lineDistanceSign([0, 5], [4, 5], [0, 1])).toBe(-1)
   })
 })

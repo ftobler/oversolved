@@ -128,6 +128,12 @@ export function dimensionSignFromConstraint(
     const r = render as DimLinearRender
     return linearDimensionSign(c.kind, r.p1, r.p2)
   }
+  if (c.kind === 'line_distance') {
+    const render = computeConstraintRender(c, sketch) as DimLinearRender | { kind: string }
+    if (render.kind !== 'dim_linear') return null
+    const r = render as DimLinearRender
+    return lineDistanceSign(r.p1, r.p2, r.normal)
+  }
   if (c.kind === 'angle') {
     const render = computeConstraintRender(c, sketch) as DimAngleRender | { kind: string }
     if (render.kind !== 'dim_angle') return null
@@ -150,6 +156,20 @@ export function linearDimensionSign(
 ): number {
   const d = kind === 'point_distance_y' ? p2[1] - p1[1] : p2[0] - p1[0]
   return d < 0 ? -1 : 1
+}
+
+/** Current side of a perpendicular point-to-line distance: sign of the offset
+ *  of `p2` (the point) from `p1` (its foot on the line) along the measurement
+ *  direction. `normal` is the rendered line direction, so the measurement
+ *  direction is its perpendicular `(-normal.y, normal.x)`, matching the solver's
+ *  signed projection `(pb - line_start) . (-dy, dx)/n`. +1/-1. */
+export function lineDistanceSign(
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+  normal: readonly [number, number],
+): number {
+  const t = (p2[0] - p1[0]) * -normal[1] + (p2[1] - p1[1]) * normal[0]
+  return t < 0 ? -1 : 1
 }
 
 /** Current handedness of an angle: sign of the directed cross dirA x dirB,

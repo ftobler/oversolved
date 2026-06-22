@@ -25,7 +25,7 @@ export function renderDimension(
 ): ReactNode | null {
   switch (r.kind) {
     case 'dim_linear': {
-      const dim = r as { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
+      const dim = r as { kind: string; dimKind?: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number] }
       return <LinearDimension key={cid} cid={cid} dim={dim} dimOffset={dimOffset} interaction={interactionFor(base, cid, 'dimension')} planeTransform={planeTransform} />
     }
     case 'dim_radius': {

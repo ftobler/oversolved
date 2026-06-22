@@ -11,11 +11,12 @@
 // Skips when the Rust solver build is absent.
 
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, Sketch } from '@/types/cad'
 import { loadSolver } from './loadSolver'
 import { lowerSketch } from './lowerSketch'
 import { encodeInput, decodeOutput } from './codec'
 import { partDocToSketches } from './partDocToSketches'
+import { computeDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 
 const bytes = loadSolver()
 
@@ -66,5 +67,49 @@ describe.skipIf(!bytes)('signed directional dimension', () => {
     // reason to flip them.
     expect(Math.abs(solved.pb[0] - solved.pa[0])).toBeCloseTo(10, 3)
     expect(solved.pb[0] - solved.pa[0]).toBeGreaterThan(0)
+  })
+})
+
+// line_distance is also directional: its residual is signed (defaults to +1), so
+// a perpendicular dimension drawn with the point on the negative-normal side
+// would flip the point to the +side at creation unless the drawn side is pinned
+// as an orientation sign. This reproduces that end to end: line la pinned along
+// +x, point pb 3 below it. The creation path (computeDimensionSign) must author
+// sign -1 so pb stays below after the solve.
+describe.skipIf(!bytes)('signed line_distance does not mirror at creation', () => {
+  // la along +x; pb 3 below it (negative perpendicular side).
+  const drawn: Sketch = {
+    la: { start: [0, 0], end: [10, 0] } as unknown as Sketch[string],
+    pb: { x: 5, y: -3 } as unknown as Sketch[string],
+  } as Sketch
+
+  function lineDistanceDoc(sign: number | null): PartDoc {
+    return {
+      features: [{
+        id: 'sk', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'la', kind: 'line' }, { id: 'pb', kind: 'point' }],
+        initial: { la: [0, 0, 10, 0], pb: [5, -3] },
+        constraints: [
+          { id: 'fix', kind: 'fixed', target: '$la' },  // pin the whole line still
+          { id: 'ld', kind: 'line_distance', a: '$la', b: '$pb', value: 3, ...(sign !== null && { sign }) },
+        ],
+      }],
+    }
+  }
+
+  it('authors a -1 sign for a point on the negative-normal side', () => {
+    const sign = computeDimensionSign('line_distance', ['entity:sk:la', 'vertex:sk:pb'], drawn, 'sk')
+    expect(sign).toBe(-1)
+  })
+
+  it('keeps pb on the drawn (below) side once the authored sign rides through', () => {
+    const sign = computeDimensionSign('line_distance', ['entity:sk:la', 'vertex:sk:pb'], drawn, 'sk')
+    const solved = solveFeature(lineDistanceDoc(sign))
+    expect(solved.pb[1]).toBeCloseTo(-3, 3)
+  })
+
+  it('without a sign the legacy residual mirrors pb to the +side (the bug)', () => {
+    const solved = solveFeature(lineDistanceDoc(null))
+    expect(solved.pb[1]).toBeCloseTo(3, 3)
   })
 })

@@ -417,6 +417,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const midY = (pa[1] + pb[1]) / 2
     return {
       kind: 'dim_linear',
+      dimKind: 'point_distance_x',
       p1: [pa[0], midY],
       p2: [pb[0], midY],
       value: resolved.value || 0,
@@ -438,6 +439,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const midX = (pa[0] + pb[0]) / 2
     return {
       kind: 'dim_linear',
+      dimKind: 'point_distance_y',
       p1: [midX, pa[1]],
       p2: [midX, pb[1]],
       value: resolved.value || 0,
@@ -478,6 +480,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     }
     return {
       kind: 'dim_linear',
+      dimKind: 'line_distance',
       p1: foot,
       p2: pb,
       value: resolved.value || 0,

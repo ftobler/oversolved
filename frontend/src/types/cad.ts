@@ -264,8 +264,8 @@ export interface PartConstraint {
   // Orientation selector for directional dimensions (point_distance_x/y,
   // line_distance, angle): +1 or -1. Picks which side / handedness the signed
   // measure must match, keeping `value` non-negative. Absent = legacy
-  // side-agnostic (absolute) behavior. Flipped by dragging the label across the
-  // measured geometry or via the dimension dialog's flip button.
+  // side-agnostic (absolute) behavior. Authored from the drawn geometry at
+  // creation and swapped after the fact via the dimension dialog's Flip side button.
   sign?: number
   // Dimension label position — 2D offset in sketch space relative to the
   // constraint's anchor point (midpoint of measured points for linear dims,
@@ -492,6 +492,11 @@ export interface DimLinearRender {
   p2: Point
   normal: Point
   value: number
+  // Originating constraint kind, present only for the directional linear dims
+  // (point_distance_x / point_distance_y / line_distance). The render `kind` is
+  // always 'dim_linear', so the renderer reads this to know whether the dim has
+  // an orientation side (and which sign convention) for the "Flip side" button.
+  dimKind?: string
   entity?: string
   // Label offset in sketch space relative to midpoint(p1, p2).
   pos?: Point

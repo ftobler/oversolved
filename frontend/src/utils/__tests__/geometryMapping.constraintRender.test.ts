@@ -251,3 +251,31 @@ describe('computeConstraintRender (dim pos propagation)', () => {
     expect(r.pos).toEqual([1, 2])
   })
 })
+
+describe('computeConstraintRender (directional linear dims tag their dimKind)', () => {
+  // The render kind is always 'dim_linear', so the renderer relies on `dimKind`
+  // to know a linear dim is directional (and which sign convention) for the
+  // "Flip side" button. Non-directional linear dims must leave it unset.
+  it('point_distance_x / point_distance_y / line_distance carry dimKind', () => {
+    const sk = makeSketch()
+    const px = computeConstraintRender(
+      { id: 'a', kind: 'point_distance_x', a: '$PT', b: '$circ1', value: 1 }, sk,
+    ) as DimLinearRender
+    expect(px.dimKind).toBe('point_distance_x')
+    const py = computeConstraintRender(
+      { id: 'b', kind: 'point_distance_y', a: '$PT', b: '$circ1', value: 1 }, sk,
+    ) as DimLinearRender
+    expect(py.dimKind).toBe('point_distance_y')
+    const ld = computeConstraintRender(
+      { id: 'c', kind: 'line_distance', a: '$H1', b: '$PT', value: 1 }, sk,
+    ) as DimLinearRender
+    expect(ld.dimKind).toBe('line_distance')
+  })
+
+  it('non-directional length leaves dimKind unset', () => {
+    const r = computeConstraintRender(
+      { id: 'L', kind: 'length', target: '$H1', value: 10 }, makeSketch(),
+    ) as DimLinearRender
+    expect(r.dimKind).toBeUndefined()
+  })
+})

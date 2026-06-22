@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { Line, Html } from '@react-three/drei'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
-import { linearDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
+import { linearDimensionSign, lineDistanceSign } from '@/utils/geometry/dimensionNaturalValue'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
 import { useDimLabelScale } from './useDimLabelScale'
@@ -13,23 +13,28 @@ import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
 export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransform }: {
   cid: string
-  dim: { kind: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number]; ext1_line?: [number, number, number, number]; ext2_line?: [number, number, number, number] }
+  dim: { kind: string; dimKind?: string; p1: [number, number]; p2: [number, number]; normal: [number, number]; value: number; pos?: [number, number]; ext1_line?: [number, number, number, number]; ext2_line?: [number, number, number, number] }
   dimOffset: number
   interaction?: DimInteraction
   planeTransform?: PlaneTransform
 }) {
-  // Directional distances (point_distance_x / point_distance_y) carry an
-  // orientation sign; the edit dialog offers a Flip side button that swaps it.
-  // The current side is read from the rendered geometry, so flipping is just
-  // negating it. Euclidean point_distance and length have no side.
-  const isDirectional = dim.kind === 'point_distance_x' || dim.kind === 'point_distance_y'
+  // Directional distances (point_distance_x / point_distance_y / line_distance)
+  // carry an orientation sign; the edit dialog offers a Flip side button that
+  // swaps it. The render `kind` is always 'dim_linear', so the originating
+  // constraint kind arrives as `dimKind`; euclidean point_distance and length
+  // leave it unset and have no side. The current side is read from the rendered
+  // geometry per kind, so flipping is just negating it.
+  const dimKind = dim.dimKind
+  const isDirectional = dimKind === 'point_distance_x' || dimKind === 'point_distance_y' || dimKind === 'line_distance'
   const onFlip = useCallback(() => {
-    if (!interaction) return
-    const current = linearDimensionSign(dim.kind, dim.p1, dim.p2)
+    if (!interaction || !dimKind) return
+    const current = dimKind === 'line_distance'
+      ? lineDistanceSign(dim.p1, dim.p2, dim.normal)
+      : linearDimensionSign(dimKind, dim.p1, dim.p2)
     getSketchCallback('onMutation')?.({
       type: 'set_constraint_sign', featureId: interaction.featureId, constraintId: cid, sign: -current,
     })
-  }, [interaction, cid, dim.kind, dim.p1, dim.p2])
+  }, [interaction, cid, dimKind, dim.p1, dim.p2, dim.normal])
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined)
   const activeDragPos = useActiveLabelDrag(cid)
