@@ -19,7 +19,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const {
     doc, setDoc, docRef, docName, setDocName, ownerUsername,
-    loading, error, setError, permission, isPublic,
+    loading, error, setError, permission, isPublic, isCloudDoc,
     saveDoc, renameDoc, cloneDoc,
   } = useDocumentState(uuid, reSolveRef, { solveOnLoad })
 
@@ -191,6 +191,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     cloneDoc,
     permission,
     isPublic,
+    isCloudDoc,
     startPreviewMode,
     commitPreview,
     cancelPreview,

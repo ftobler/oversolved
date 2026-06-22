@@ -28,6 +28,10 @@ export function useDocumentState(
   const [error, setError] = useState<string | null>(null)
   const [permission, setPermission] = useState<string>('owner')
   const [isPublic, setIsPublic] = useState(false)
+  // True when the open document was resolved from the cloud domain. Sharing is a
+  // cloud-only concept, so the share UI uses this to refuse a local-only doc
+  // instead of issuing a guaranteed-404 request for a uuid the server never minted.
+  const [isCloudDoc, setIsCloudDoc] = useState(false)
   // The store the open document was resolved from (its domain). Edits go back to
   // the SAME domain, so save/rename target this rather than assuming local home.
   const storeRef = useRef(backendBundle.documents)
@@ -60,6 +64,7 @@ export function useDocumentState(
       .then(({ data, store }) => {
         if (cancelled) return
         storeRef.current = store
+        setIsCloudDoc(store === backendBundle.cloudDocuments)
         const parsed = (parseYaml(data.content) ?? {}) as PartDoc
         if (!parsed.features || parsed.features.length === 0) {
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
@@ -139,6 +144,7 @@ export function useDocumentState(
     setError,
     permission,
     isPublic,
+    isCloudDoc,
     saveDoc,
     renameDoc,
     cloneDoc,

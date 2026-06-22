@@ -9,10 +9,15 @@ interface ShareDialogProps {
   documentName: string
   ownerUsername: string
   isOwner: boolean
+  // False when the open document lives only in the local home library (IndexedDB)
+  // and was never pushed to the Cloud. Sharing is a Cloud (PDM) concept, so a
+  // local-only doc has no server record to share -- listing shares would 404.
+  // Defaults true: the Documents page only opens this dialog for cloud docs.
+  isCloudDoc?: boolean
   onClose: () => void
 }
 
-export default function ShareDialog({ isOpen, documentUuid, documentName, ownerUsername, isOwner, onClose }: ShareDialogProps) {
+export default function ShareDialog({ isOpen, documentUuid, documentName, ownerUsername, isOwner, isCloudDoc = true, onClose }: ShareDialogProps) {
   const [shareUsername, setShareUsername] = useState('')
   const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
   const [shares, setShares] = useState<ShareInfo[]>([])
@@ -21,7 +26,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
   const [error, setError] = useState<string | null>(null)
 
   const fetchShares = useCallback(async () => {
-    if (!isOwner || !backendBundle.sharing) return
+    if (!isOwner || !isCloudDoc || !backendBundle.sharing) return
     try {
       const sharesList = await backendBundle.sharing.listShares(documentUuid)
       setShares(sharesList)
@@ -29,10 +34,10 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
     } catch (e) {
       setError(String(e))
     }
-  }, [isOwner, documentUuid])
+  }, [isOwner, isCloudDoc, documentUuid])
 
   useEffect(() => {
-    if (isOpen && isOwner) {
+    if (isOpen && isOwner && isCloudDoc) {
       fetchShares()
     }
     if (!isOpen) {
@@ -40,7 +45,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
       setSharePermission('view')
       setError(null)
     }
-  }, [isOpen, isOwner, documentUuid, fetchShares])
+  }, [isOpen, isOwner, isCloudDoc, documentUuid, fetchShares])
 
   const handleShare = async () => {
     if (!shareUsername.trim() || !backendBundle.sharing) return
@@ -96,7 +101,13 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
           {!isOwner && (
             <p className="share-dialog-error">Only the owner can manage shares.</p>
           )}
-          {isOwner && (
+          {isOwner && !isCloudDoc && (
+            <p className="share-dialog-error">
+              This document lives only on this device. Push it to the Cloud (from the
+              documents overview) to share it with others.
+            </p>
+          )}
+          {isOwner && isCloudDoc && (
             <>
               <div className="share-dialog-row" style={{ justifyContent: 'space-between' }}>
 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#f3f4f6' }}>

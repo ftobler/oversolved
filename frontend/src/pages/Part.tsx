@@ -121,6 +121,7 @@ export default function Part() {
     bodies,
     pickBodies,
     permission,
+    isCloudDoc,
     startPreviewMode,
     commitPreview,
     cancelPreview,
@@ -814,6 +815,7 @@ export default function Part() {
         docName={docName}
         ownerUsername={ownerUsername}
         permission={permission}
+        isCloudDoc={isCloudDoc}
       />
     </div>
   )

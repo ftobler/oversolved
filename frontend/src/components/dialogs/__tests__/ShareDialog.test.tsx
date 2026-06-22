@@ -37,6 +37,31 @@ describe('ShareDialog', () => {
     expect(screen.getByText('Only the owner can manage shares.')).toBeInTheDocument()
   })
 
+  it('explains and skips the fetch for a local-only doc (isCloudDoc false)', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 404 } as Response)
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <ShareDialog
+        isOpen
+        documentUuid="b4524ea9-79fe-422d-9348-3023aec5dfc0"
+        documentName="TestDoc"
+        ownerUsername="TestUser"
+        isOwner
+        isCloudDoc={false}
+        onClose={vi.fn()}
+      />
+    )
+    await act(async () => {})
+
+    expect(screen.getByText(/lives only on this device/i)).toBeInTheDocument()
+    // No share-management UI, and crucially no guaranteed-404 request to the server.
+    expect(screen.queryByPlaceholderText('Username')).not.toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('creates share with username via API', async () => {
     const fetchMock = vi.fn((url: string, options?: RequestInit) => {
       if (url === '/api/documents/doc-1/shares') {

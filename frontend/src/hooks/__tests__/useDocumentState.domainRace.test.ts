@@ -86,4 +86,23 @@ describe('useDocumentState domain load race', () => {
     expect(h.localSave).toHaveBeenCalled()
     expect(h.cloudSave).not.toHaveBeenCalled()
   })
+
+  // isCloudDoc drives whether the share UI is offered: a local-home doc is not
+  // shareable (no server record), a cloud-domain doc is.
+  it('reports isCloudDoc false for a local doc and true for a cloud doc', async () => {
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('L', reSolveRef, { solveOnLoad: false }))
+    await tick()
+    await act(async () => { h.localLoads.L.resolve({ content: 'name: L', name: 'L' }) })
+    await tick()
+    expect(result.current.isCloudDoc).toBe(false)
+
+    const cloud = renderHook(() => useDocumentState('C', reSolveRef, { solveOnLoad: false }))
+    await tick()
+    await act(async () => { h.localLoads.C.reject(new Error('not in local')) })
+    await tick()
+    await act(async () => { h.cloudLoads.C.resolve({ content: 'name: C', name: 'C' }) })
+    await tick()
+    expect(cloud.result.current.isCloudDoc).toBe(true)
+  })
 })
