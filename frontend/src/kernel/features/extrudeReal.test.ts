@@ -141,6 +141,50 @@ function disjointTwoRectSpec(operation = 'new') {
   }
 }
 
+/**
+ * Two equal overlapping circles bisected by a vertical line through their two
+ * intersection points (the segmented_surface_after_extrude bug report). The
+ * sketch subdivides into four adjacent regions (two crescents + two lens halves)
+ * that are all connected, so extruding the whole sketch must fuse into ONE body.
+ */
+function vennBisectSpec(operation = 'add') {
+  return {
+    features: [
+      {
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [
+          { id: 'cL', kind: 'circle' as const },
+          { id: 'cR', kind: 'circle' as const },
+          { id: 'ln', kind: 'line' as const },
+          { id: 'pTop', kind: 'point' as const },
+          { id: 'pBot', kind: 'point' as const },
+        ],
+        initial: {
+          pTop: [0, 15],
+          cR: [6.614378452301025, 7.5, 10],
+          pBot: [0, 0],
+          ln: [0, 15, 0, 0],
+          cL: [-6.614378452301025, 7.5, 10],
+        },
+        constraints: [
+          { id: 'eq', kind: 'equal_length' as const, a: '$cL', b: '$cR' },
+          { id: 'co1', kind: 'coincident' as const, a: '$pTopxy', b: '$cR' },
+          { id: 'co2', kind: 'coincident' as const, a: '$pTopxy', b: '$cL' },
+          { id: 'co3', kind: 'coincident' as const, a: '$lnstart', b: '$pTopxy' },
+          { id: 'co4', kind: 'coincident' as const, a: '$pBotxy', b: '$cR' },
+          { id: 'co5', kind: 'coincident' as const, a: '$pBotxy', b: '$cL' },
+          { id: 'co6', kind: 'coincident' as const, a: '$lnend', b: '$pBotxy' },
+          { id: 'vert', kind: 'vertical' as const, target: '$ln' },
+          { id: 'co7', kind: 'coincident' as const, a: '@builtin_origin', b: '$pBotxy' },
+          { id: 'len', kind: 'length' as const, target: '$ln', value: 15 },
+          { id: 'dia', kind: 'diameter' as const, target: '$cR', value: 20 },
+        ],
+      },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation },
+    ],
+  }
+}
+
 describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', () => {
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
@@ -864,6 +908,51 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
+  })
+
+  it('adjacent subdivided regions fuse into one body', () => {
+    /** Regression: segmented_surface_after_extrude. Four connected sketch regions
+     *  extruded together must fuse into a single solid, not split into bodies. */
+    const result = run(vennBisectSpec('add'))
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).not.toHaveProperty('body_ex1_1')
+    expect(Object.keys(result.bodies)).toHaveLength(1)
+    const mesh = body(result, 'body_ex1').mesh as {
+      face_data?: Array<{ centroid: number[]; surface_type?: string }>
+    } | undefined
+    const fd = mesh?.face_data ?? []
+    const topFlats = fd.filter((f) => f.surface_type === 'flatface' && Math.abs(f.centroid[2] - 10) < 0.1)
+    expect(topFlats).toHaveLength(1)
+  })
+
+  it('adjacent regions selected individually fuse into one body', () => {
+    /** Regression: segmented_surface_after_extrude. The four connected regions
+     *  selected one by one (the user's exact order) must still fuse into one
+     *  solid -- the extrude must not be order-sensitive. */
+    const sketch = vennBisectSpec().features[0]
+    const refs = [
+      '?7,7,9,4;@sk1/cR@sk1/lnsurface:1@sk1:flatface',
+      '?7,7,9,4;@sk1/cL@sk1/cRsurface:3@sk1:flatface',
+      '?7,7,9,4;@sk1/cL@sk1/lnsurface:0@sk1:flatface',
+      '?7,7,9,4;@sk1/cL@sk1/cRsurface:2@sk1:flatface',
+    ]
+    const result = run({
+      features: [sketch, { id: 'ex1', kind: 'extrude', sketch: refs, distance: 10, direction: 'normal', operation: 'add' }],
+    })
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex1')
+    expect(result.bodies).not.toHaveProperty('body_ex1_1')
+    expect(Object.keys(result.bodies)).toHaveLength(1)
+    // The swept top must be ONE planar face, not segmented per source region.
+    const mesh = body(result, 'body_ex1').mesh as {
+      face_data?: Array<{ centroid: number[]; surface_type?: string }>
+    } | undefined
+    const fd = mesh?.face_data ?? []
+    const topFlats = fd.filter((f) => f.surface_type === 'flatface' && Math.abs(f.centroid[2] - 10) < 0.1)
+    const botFlats = fd.filter((f) => f.surface_type === 'flatface' && Math.abs(f.centroid[2]) < 0.1)
+    expect(topFlats).toHaveLength(1)
+    expect(botFlats).toHaveLength(1)
   })
 
   it('invalid distance expression surfaces as a feature exception', () => {

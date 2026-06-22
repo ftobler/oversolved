@@ -28,7 +28,7 @@ import {
 } from './primitives'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
-import { booleanWithHistory } from './booleans'
+import { booleanWithHistory, cleanWithHistory } from './booleans'
 
 const POINT_TOL = 1e-6
 
@@ -461,6 +461,19 @@ export function extrudeProfileWithLineage(
   }
 
   if (solid === null) throw new Error('no loops to extrude')
+
+  // Fusing the per-region prisms keeps every shared boundary as an internal seam,
+  // so the swept caps stay split into one coplanar face per source region (the
+  // "segmented surface" of a multi-select extrude). UnifySameDomain merges those
+  // coplanar caps (and the cocylindrical laterals) into one face each. Lineage is
+  // geometry-hash keyed and was built per group before the fuse; the laterals
+  // keep their hash, while the merged caps carry empty token lists either way, so
+  // the maps still apply to the unified solid. Single-group extrudes have no seam
+  // to merge, so the clean only runs when more than one group was fused.
+  if (groups.length > 1) {
+    solid = cleanWithHistory(oc, scope, solid).shape
+  }
+
   return { solid, faceLineage, edgeLineage }
 }
 
