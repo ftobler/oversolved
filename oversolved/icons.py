@@ -16,6 +16,16 @@ def draw_dotted_line(ctx, x0, y0, x1, y1, num_dots):
     stroke(ctx, 1.5)
 
 
+def _draw_x(ctx):
+    # X shape: two crossing diagonal lines.
+    ctx.move_to(0.2, 0.2)
+    ctx.line_to(0.8, 0.8)
+    stroke(ctx, 2)
+    ctx.move_to(0.8, 0.2)
+    ctx.line_to(0.2, 0.8)
+    stroke(ctx, 2)
+
+
 def _arrowhead(ctx, x, y, angle, size):
     """Draw a filled arrowhead at (x, y) pointing at angle (degrees). Uses arr for size."""
     rad = math.radians(angle)
@@ -920,13 +930,7 @@ def dialog_ok(ctx):
 
 @icon("frontend/src/assets/icons/dialog-cancel.svg")
 def dialog_cancel(ctx):
-    # X mark
-    ctx.move_to(0.2, 0.2)
-    ctx.line_to(0.8, 0.8)
-    stroke(ctx, 2)
-    ctx.move_to(0.8, 0.2)
-    ctx.line_to(0.2, 0.8)
-    stroke(ctx, 2)
+    _draw_x(ctx)
 
 
 @icon("frontend/src/assets/icons/toolbar-project.svg")
@@ -1122,14 +1126,7 @@ def icon_download(ctx):
 @icon("frontend/src/assets/icons/exit-sketch.svg")
 def exit_sketch(ctx):
     """Icon for Exit sketch context menu entry: simple X cross."""
-    # Draw an X shape (two crossing diagonal lines)
-    ctx.move_to(0.2, 0.2)
-    ctx.line_to(0.8, 0.8)
-    stroke(ctx, 2)
-
-    ctx.move_to(0.8, 0.2)
-    ctx.line_to(0.2, 0.8)
-    stroke(ctx, 2)
+    _draw_x(ctx)
 
 
 @icon("frontend/src/assets/icons/dots.svg")
