@@ -7,7 +7,7 @@ const CENTROID_ARC_SAMPLES = 64
 
 export type LoopEdge = Record<string, unknown>
 
-function radians(deg: number): number {
+export function radians(deg: number): number {
   return (deg * Math.PI) / 180
 }
 

@@ -24,7 +24,7 @@ import {
   isClassifierId,
 } from '../query'
 import { frameFromPlaneTransform } from '../types3d'
-import { loopCentroid, type LoopEdge } from '../profileLoops'
+import { loopCentroid, radians, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared'
 
@@ -267,10 +267,6 @@ function registerSolvedGeometrySlash(
       globalRepo.register(prefix + '/xy', { external_xy: params.slice(0, 2), sketch_id: featureId })
     }
   }
-}
-
-function radians(deg: number): number {
-  return (deg * Math.PI) / 180
 }
 
 /** Structural strict equality (mirrors Python `dict == dict`; no float tolerance). */
