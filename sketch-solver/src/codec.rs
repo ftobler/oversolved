@@ -108,6 +108,13 @@ impl<'a> Reader<'a> {
         let b = self.take(4)?;
         Ok(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
+
+    fn f64(&mut self) -> Result<f64, CodecError> {
+        let b = self.take(8)?;
+        Ok(f64::from_le_bytes([
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+        ]))
+    }
 }
 
 /// Growable little-endian byte writer.
@@ -380,17 +387,11 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     for _ in 0..vf_len {
         vertex_freedom.push(r.f32()?);
     }
-    let residual_norm = {
-        let b = r.take(8)?;
-        f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
-    };
+    let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
     let iters = r.u32()?;
-    let ms = {
-        let b = r.take(8)?;
-        f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
-    };
+    let ms = r.f64()?;
     Ok(Output {
         params_solved,
         entity_status,
