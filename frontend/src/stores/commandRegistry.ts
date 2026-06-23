@@ -10,7 +10,7 @@ const handlers = new Map<string, () => void>()
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
 // then the lowercase key name. E.g. Ctrl+Z → "ctrl+z", D → "d".
 
-export type CoreKeybinding = {
+type CoreKeybinding = {
   // Canonical key string, e.g. "ctrl+z".
   key: string
   // Command name, e.g. "undo".

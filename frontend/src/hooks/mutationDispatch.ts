@@ -80,7 +80,7 @@ import {
   applySetFeatureSuppression,
 } from '@/utils/yamlMutations'
 
-export type MutationHandlers = {
+type MutationHandlers = {
   [K in Mutation['type']]: (doc: PartDoc, m: Extract<Mutation, { type: K }>) => void
 }
 

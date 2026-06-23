@@ -5,7 +5,7 @@ import type { PartEditorData } from '@/stores/partEditorStore'
 // Mirrored slice: everything except the fields the store itself owns.
 // rollbackPosition, pickBoundary, and editingFeatureId are mutated via
 // their dedicated setters; setSnapshot preserves them.
-export type MirroredPartEditorData = Omit<
+type MirroredPartEditorData = Omit<
   PartEditorData,
   'rollbackPosition' | 'pickBoundary' | 'editingFeatureId'
 >

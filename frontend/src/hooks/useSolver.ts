@@ -23,7 +23,7 @@ const SKETCH_KINDS = new Set(['sketch', 'plane'])
  * `'editing'` variant. Any code that accesses `world.pickBodies` without first
  * narrowing `world.status === 'editing'` is a type error.
  */
-export type WorldState =
+type WorldState =
   | { status: 'full'; bodies: Record<string, BodyResult> }
   | { status: 'editing'; bodies: Record<string, BodyResult>; pickBodies: Record<string, BodyResult> }
 
