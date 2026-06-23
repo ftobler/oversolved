@@ -13,7 +13,7 @@ import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
 import { faceCentroid, faceNormal, faceArea, edgeToGeom } from './primitives'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
-import type { BrepDiff } from '../types3d'
+import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 type Lineage = Record<string, string[]>
 
@@ -24,19 +24,6 @@ export interface EdgeModifierResult {
   faceLineage: Lineage | null
   edgeLineage: Lineage | null
   diff: BrepDiff
-}
-
-function emptyDiff(): BrepDiff {
-  return {
-    new_faces: [],
-    inherited_faces: [],
-    new_edges: [],
-    inherited_edges: [],
-    modified_input_faces: [],
-    deleted_input_faces: [],
-    modified_input_edges: [],
-    deleted_input_edges: [],
-  }
 }
 
 function faceGh(oc: OccModule, scope: DisposeScope, face: OccShape): string {
@@ -195,7 +182,7 @@ function edgeModifierDiff(
   oldShape: OccShape,
   newShape: OccShape,
 ): BrepDiff {
-  const diff = emptyDiff()
+  const diff = emptyBrepDiff()
 
   const classify = (
     inputs: OccShape[],
@@ -272,7 +259,7 @@ function applyEdgeModifier(
     reason,
     faceLineage: null,
     edgeLineage: null,
-    diff: emptyDiff(),
+    diff: emptyBrepDiff(),
   })
 
   if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
@@ -318,7 +305,7 @@ function applyEdgeModifier(
   try {
     diff = edgeModifierDiff(oc, scope, maker, shape, built)
   } catch {
-    diff = emptyDiff()
+    diff = emptyBrepDiff()
   }
 
   return { shape: built, success: true, reason: null, faceLineage, edgeLineage, diff }

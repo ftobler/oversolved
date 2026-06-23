@@ -18,22 +18,9 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
-import type { BrepDiff } from '../types3d'
+import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 export type BooleanOp = 'cut' | 'fuse' | 'common'
-
-function emptyDiff(): BrepDiff {
-  return {
-    new_faces: [],
-    inherited_faces: [],
-    new_edges: [],
-    inherited_edges: [],
-    modified_input_faces: [],
-    deleted_input_faces: [],
-    modified_input_edges: [],
-    deleted_input_edges: [],
-  }
-}
 
 /** All sub-shapes of `shape` of the given enum kind, as IsSame-comparable handles. */
 function explore(
@@ -120,7 +107,7 @@ export function booleanWithHistory(
   if (!algo.IsDone()) throw new Error(`boolean ${op} did not complete`)
 
   const result = algo.Shape()
-  const diff = emptyDiff()
+  const diff = emptyBrepDiff()
   if (!algo.HasHistory()) return { shape: result, diff }
   const history = scope.track(algo.History()).get()
 

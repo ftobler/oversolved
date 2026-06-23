@@ -13,6 +13,20 @@ export interface BrepDiff {
   deleted_input_edges: unknown[]
 }
 
+/** A BrepDiff with every classification list empty. */
+export function emptyBrepDiff(): BrepDiff {
+  return {
+    new_faces: [],
+    inherited_faces: [],
+    new_edges: [],
+    inherited_edges: [],
+    modified_input_faces: [],
+    deleted_input_faces: [],
+    modified_input_edges: [],
+    deleted_input_edges: [],
+  }
+}
+
 /** A 3D solid body tracked through the feature stack. */
 export interface Body {
   id: string
