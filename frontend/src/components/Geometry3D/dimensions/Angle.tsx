@@ -1,11 +1,11 @@
 import { useCallback } from 'react'
-import { Line, Html } from '@react-three/drei'
+import { Line } from '@react-three/drei'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { angleDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import { sampleArc } from '@/components/sketch/sketch_helpers'
 import { Arrowhead, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
-import { useDimLabelScale } from './useDimLabelScale'
+import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
@@ -30,7 +30,6 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
     })
   }, [interaction, cid, dim.p1, dim.p2, dim.p3, dim.p4])
   const activeDragPos = useActiveLabelDrag(cid)
-  const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
@@ -129,12 +128,6 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 
-  const handleLabelClick = useCallback((e: React.MouseEvent) => {
-    if (!interaction) return
-    e.stopPropagation()
-    onClick({ stopPropagation: () => {} })
-  }, [interaction, onClick])
-
   return (
     <group key={cid}>
       {/* Radial witness lines connecting the measured segments to the arc */}
@@ -150,25 +143,12 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       <Arrowhead tip={[arcStartPt[0], arcStartPt[1]]} from={[arcStartPt[0] + tanStartInX, arcStartPt[1] + tanStartInY]} color={color} />
       <Arrowhead tip={[arcEndPt[0],   arcEndPt[1]  ]} from={[arcEndPt[0]   + tanEndInX,   arcEndPt[1]   + tanEndInY  ]} color={color} />
 
-      {/* Interaction hit area */}
-      {!isDragged && (
-        <mesh ref={meshRef} position={[labelX, labelY, LABEL_Z_OFFSET]}>
-          <circleGeometry args={[1, 8]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      )}
-
-      {/* Label text */}
-      <Html position={[labelX, labelY, LABEL_Z_OFFSET]} center style={{ pointerEvents: interaction ? 'auto' : 'none' }}>
-        <div
-          onClick={handleLabelClick}
-          onDoubleClick={(e) => { if (interaction) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
-          onPointerDown={(e) => { if (interaction) { e.stopPropagation(); onPointerDown({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
-          style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none', cursor: interaction ? 'pointer' : undefined }}
-        >
-          {label}
-        </div>
-      </Html>
+      {/* Interaction hit area and label text */}
+      <DimensionLabel
+        x={labelX} y={labelY} label={label} color={color}
+        interactive={!!interaction} isDragged={isDragged}
+        onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}
+      />
     </group>
   )
 }

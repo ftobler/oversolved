@@ -1,10 +1,10 @@
 import { useCallback } from 'react'
-import { Line, Html } from '@react-three/drei'
+import { Line } from '@react-three/drei'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { linearDimensionSign, lineDistanceSign } from '@/utils/geometry/dimensionNaturalValue'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
-import { useDimLabelScale } from './useDimLabelScale'
+import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
@@ -38,7 +38,6 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined)
   const activeDragPos = useActiveLabelDrag(cid)
-  const meshRef = useDimLabelScale()
   const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
   const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
   const setDragPending = useSketchEditorStore(s => s.setDragPending)
@@ -140,12 +139,6 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 
-  const handleLabelClick = useCallback((e: React.MouseEvent) => {
-    if (!interaction) return
-    e.stopPropagation()
-    onClick({ stopPropagation: () => {} })
-  }, [interaction, onClick])
-
   return (
     <group key={cid}>
       {!ext1.skip && <ExtensionLine start={[ext1.touchX, ext1.touchY]} end={[d1x, d1y]} color={color} />}
@@ -180,22 +173,11 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
           <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
         </>
       )}
-      {!isDragged && (
-        <mesh ref={meshRef} position={[labelX, labelY, LABEL_Z_OFFSET]}>
-          <circleGeometry args={[1, 8]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      )}
-      <Html position={[labelX, labelY, LABEL_Z_OFFSET]} center style={{ pointerEvents: interaction ? 'auto' : 'none' }}>
-        <div
-          onClick={handleLabelClick}
-          onDoubleClick={(e) => { if (interaction) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
-          onPointerDown={(e) => { if (interaction) { e.stopPropagation(); onPointerDown({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
-          style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none', cursor: interaction ? 'pointer' : undefined }}
-        >
-          {label}
-        </div>
-      </Html>
+      <DimensionLabel
+        x={labelX} y={labelY} label={label} color={color}
+        interactive={!!interaction} isDragged={isDragged}
+        onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}
+      />
     </group>
   )
 }
