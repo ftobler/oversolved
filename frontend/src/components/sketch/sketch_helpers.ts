@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, Point, Constraints } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { RENDER_KIND_TO_ICON } from '@/registry'
+import { iconModules } from '@/utils/core/iconModules'
 
 /** Check if all values in a tuple are finite numbers. */
 export function allFinite(...vals: number[]): boolean {
@@ -29,12 +30,6 @@ export const COLOR_CONSTRAINT = '#ffd54f'
 
 export const ICON_SIZE = 22
 export const ICON_COLS = 3
-
-export const iconModules = import.meta.glob('@/assets/icons/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
 
 export function getIconUrl(kind: string): string | undefined {
   const name = RENDER_KIND_TO_ICON[kind]

@@ -1,11 +1,5 @@
 import type { ConstraintDef, EntityDef } from '@/registry'
-
-// Eager-load all icon SVGs so we can look them up by filename at runtime.
-const iconModules = import.meta.glob('@/assets/icons/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
+import { iconModules } from '@/utils/core/iconModules'
 
 const iconMap = Object.fromEntries(
   Object.entries(iconModules).map(([k, v]) => [k.split('/').pop()?.replace(/\.svg$/, ''), v])

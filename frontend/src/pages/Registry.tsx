@@ -3,13 +3,7 @@ import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, CONSTRAINT_BY_KIND, ENTITY_BY_A
 import { KEYMAP, CORE_KEYBINDINGS } from '@/stores/commandRegistry'
 import { SINGLE_ENTITY_RULES, MULTI_ENTITY_RULES } from '@/registry/measurementRegistry'
 import '@/pages/Registry.css'
-
-// Eager-load all icons so we can display them inline.
-const iconModules = import.meta.glob('@/assets/icons/*.svg', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
+import { iconModules } from '@/utils/core/iconModules'
 
 function iconUrl(filename: string | undefined): string | undefined {
   if (!filename) return undefined
