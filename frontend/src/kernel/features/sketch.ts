@@ -424,7 +424,7 @@ export function prepareDragContext(
 
 /** Rebuild a Sketch (for Geometry3D rendering) and a per-entity geometry map
  *  (the pointer-up commit payload) from flattened solver params + layout. */
-export function paramsToPreview(
+function paramsToPreview(
   params: number[],
   layout: EntityLayout[],
 ): { sketch: Sketch; geometry: Record<string, number[]> } {

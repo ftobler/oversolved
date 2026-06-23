@@ -780,7 +780,7 @@ export function applyAddNgon(
  *  direction `(-dy, dx)/L`, and grows the radius of a circle/arc (outward).
  *  Spline/ellipse have no clean parametric offset, so the seed is an exact copy.
  *  Shared with the connected-profile offset so both author identical seeds. */
-export function offsetSeed(kind: string, p: number[], distance: number): number[] | null {
+function offsetSeed(kind: string, p: number[], distance: number): number[] | null {
   switch (kind) {
     case 'line': {
       const dx = p[2] - p[0], dy = p[3] - p[1]

@@ -55,11 +55,6 @@ function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<Sketc
   }
 }
 
-// Mutation types dispatched to the parent (Part.tsx) for YAML AST manipulation + re-solve
-export type { Mutation }
-
-export type { ActiveTool }
-
 export const getEffectiveTool = (activeTool: ActiveTool): NonNullable<ActiveTool> => activeTool ?? 'drag'
 
 export interface DialogState {

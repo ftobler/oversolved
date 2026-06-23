@@ -33,7 +33,7 @@ import {
 } from '@/kernel/features/sketch'
 import { setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
 
-export interface UseWasmDragSolveInput {
+interface UseWasmDragSolveInput {
   featureId: string
   /** Full feature definition; the drag context is lowered from it. */
   featureDef?: PartFeature
@@ -48,7 +48,7 @@ export interface UseWasmDragSolveInput {
   originLocal?: [number, number]
 }
 
-export interface WasmDragSolveResult {
+interface WasmDragSolveResult {
   /** The WASM-solved preview, or null before the first frame lands. */
   sketch: Sketch | null
   /** True when the WASM path owns this drag (context built + solver loaded).
