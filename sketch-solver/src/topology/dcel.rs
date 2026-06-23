@@ -16,7 +16,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::curve_intersect::{intersect_curves, Curve};
-use super::curve_split::{ellipse_point_at, subdivide_bezier, BezierCtrl};
+use super::curve_split::{bezier_point, ellipse_point_at, subdivide_bezier, BezierCtrl};
 use super::profile_loops::{subdivide_loops, BoundaryEdge, EdgeGeom, Vec2};
 use super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS};
 
@@ -425,18 +425,6 @@ fn arc_eg(e: &InputEntity, a0: f64, a1: f64, ccw: bool) -> EdgeGeom {
         start: [cx + r * a0.cos(), cy + r * a0.sin()],
         end: [cx + r * a1.cos(), cy + r * a1.sin()],
     }
-}
-
-fn bezier_point(p1: Vec2, c1: Vec2, c2: Vec2, p4: Vec2, t: f64) -> Vec2 {
-    let mt = 1.0 - t;
-    let a = mt * mt * mt;
-    let b = 3.0 * mt * mt * t;
-    let c = 3.0 * mt * t * t;
-    let d = t * t * t;
-    [
-        a * p1[0] + b * c1[0] + c * c2[0] + d * p4[0],
-        a * p1[1] + b * c1[1] + c * c2[1] + d * p4[1],
-    ]
 }
 
 fn spline_eg(e: &InputEntity) -> EdgeGeom {

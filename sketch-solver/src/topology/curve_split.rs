@@ -48,20 +48,25 @@ pub fn ellipse_point_at(center: Vec2, a: f64, b: f64, theta_deg: f64, phi: f64) 
     ]
 }
 
+/// Cubic Bezier point at parameter t from control points p0, c1, c2, p3.
+pub fn bezier_point(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, t: f64) -> Vec2 {
+    let mt = 1.0 - t;
+    let w0 = mt * mt * mt;
+    let w1 = 3.0 * mt * mt * t;
+    let w2 = 3.0 * mt * t * t;
+    let w3 = t * t * t;
+    [
+        w0 * p0[0] + w1 * c1[0] + w2 * c2[0] + w3 * p3[0],
+        w0 * p0[1] + w1 * c1[1] + w2 * c2[1] + w3 * p3[1],
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn bez_at(c: &BezierCtrl, t: f64) -> Vec2 {
-        let mt = 1.0 - t;
-        let w0 = mt * mt * mt;
-        let w1 = 3.0 * mt * mt * t;
-        let w2 = 3.0 * mt * t * t;
-        let w3 = t * t * t;
-        [
-            w0 * c[0][0] + w1 * c[1][0] + w2 * c[2][0] + w3 * c[3][0],
-            w0 * c[0][1] + w1 * c[1][1] + w2 * c[2][1] + w3 * c[3][1],
-        ]
+        bezier_point(c[0], c[1], c[2], c[3], t)
     }
 
     #[test]

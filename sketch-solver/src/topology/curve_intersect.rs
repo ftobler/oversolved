@@ -12,6 +12,7 @@
 //! tangency (a touch with no sign change) yields no point, so a single grazing
 //! contact does not split a curve.
 
+use super::curve_split::bezier_point;
 use super::TOL_TOPOLOGY_MERGE;
 
 pub type Vec2 = [f64; 2];
@@ -50,18 +51,6 @@ fn ellipse_at(c: Vec2, a: f64, b: f64, theta: f64, phi: f64) -> Vec2 {
     let ax = a * phi.cos();
     let ay = b * phi.sin();
     [c[0] + ax * cr - ay * sr, c[1] + ax * sr + ay * cr]
-}
-
-fn bezier_at(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, t: f64) -> Vec2 {
-    let mt = 1.0 - t;
-    let w0 = mt * mt * mt;
-    let w1 = 3.0 * mt * mt * t;
-    let w2 = 3.0 * mt * t * t;
-    let w3 = t * t * t;
-    [
-        w0 * p0[0] + w1 * c1[0] + w2 * c2[0] + w3 * p3[0],
-        w0 * p0[1] + w1 * c1[1] + w2 * c2[1] + w3 * p3[1],
-    ]
 }
 
 // ─── recover a curve's parameter from a point known to lie on it ───
@@ -293,7 +282,7 @@ fn bezier_line(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2) -> Ve
     let nx = l1[1] - l0[1];
     let ny = -(l1[0] - l0[0]);
     let g = move |t: f64| -> f64 {
-        let p = bezier_at(p0, c1, c2, p3, t);
+        let p = bezier_point(p0, c1, c2, p3, t);
         nx * (p[0] - l0[0]) + ny * (p[1] - l0[1])
     };
     scan_roots(&g, 0.0, 1.0)
@@ -396,7 +385,7 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         let eval_at: Box<dyn Fn(f64) -> Vec2> = match *scanned {
             Curve::Circle { c, r } => Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()]),
             Curve::Ellipse { c, a, b, theta } => Box::new(move |phi: f64| ellipse_at(c, a, b, theta, phi)),
-            Curve::Bezier { p0, c1, c2, p3 } => Box::new(move |t: f64| bezier_at(p0, c1, c2, p3, t)),
+            Curve::Bezier { p0, c1, c2, p3 } => Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t)),
             Curve::Line { .. } => panic!("scan_with: unsupported scanned curve kind"),
         };
         let hi = match *scanned {
@@ -427,7 +416,7 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
     // line operand; segment params outside [0, 1] are off the finite segment.
     let bezier_line_hits = |p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2, line: &Curve, bezier_is_a: bool, hits: &mut Vec<Hit>| {
         for t in bezier_line(p0, c1, c2, p3, l0, l1) {
-            let p = bezier_at(p0, c1, c2, p3, t);
+            let p = bezier_point(p0, c1, c2, p3, t);
             let lp = param_of(line, p);
             if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
                 continue;
