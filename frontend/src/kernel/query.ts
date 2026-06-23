@@ -8,13 +8,6 @@
 // for scoring.
 
 import {
-  Outcome,
-  DEFAULT_HEURISTIC_CONFIG,
-  scoreOverlap,
-  pickBest,
-} from "./queryHeuristics"
-import type { HeuristicConfig } from "./queryHeuristics"
-import {
   BUILTIN_PLANES,
   FRONT_PLANE,
   isPlaneType,
@@ -622,65 +615,6 @@ export function evictAncestryAndRegister(
   }
 
   return repo.registerAncestor(ancestorIds, payload, geomHash)
-}
-
-// Unwired Option B staging: recursive lineage nodes (kept for parity with the
-// Python module; not on the live resolve path).
-
-export interface QueryNode {
-  id: string
-  parents: QueryNode[]
-  leafGeom: Record<string, unknown> | null
-}
-
-export function tagSet(node: QueryNode): Set<string> {
-  const tags = new Set<string>([node.id])
-  for (const p of node.parents) for (const t of tagSet(p)) tags.add(t)
-  return tags
-}
-
-export function buildQuery(elementId: string, parentMap: Record<string, string[]>): QueryNode {
-  const pid = elementId.startsWith("@") ? elementId : ref(elementId)
-  const parents = parentMap[elementId] ?? []
-  return { id: pid, parents: parents.map(p => buildQuery(p, parentMap)), leafGeom: null }
-}
-
-export function resolveQuery(
-  node: QueryNode,
-  repo: Repository,
-  cfg: HeuristicConfig = DEFAULT_HEURISTIC_CONFIG,
-): [Outcome, unknown] {
-  const tags = tagSet(node)
-  if (tags.size === 0) return [Outcome.UNRESOLVED, null]
-
-  const exactHits: string[] = []
-  for (const entry of repo.ancestral.values()) {
-    if (isSubset(tags, entry.set)) exactHits.push(...entry.eids)
-  }
-  if (exactHits.length) {
-    const unique = [...new Set(exactHits)]
-    if (unique.length === 1) return [Outcome.RESOLVED, repo.elements.get(unique[0]) ?? null]
-    const scores: [unknown, number][] = []
-    for (const eid of unique) {
-      let elemTags = new Set<string>()
-      for (const entry of repo.ancestral.values()) {
-        if (entry.eids.includes(eid)) {
-          elemTags = entry.set
-          break
-        }
-      }
-      scores.push([repo.elements.get(eid) ?? null, scoreOverlap(tags, elemTags)])
-    }
-    return pickBest(scores, cfg)
-  }
-
-  const allScores: [unknown, number][] = []
-  for (const entry of repo.ancestral.values()) {
-    const overlap = scoreOverlap(tags, entry.set)
-    if (overlap < cfg.overlapThreshold) continue
-    for (const eid of entry.eids) allScores.push([repo.elements.get(eid) ?? null, overlap])
-  }
-  return pickBest(allScores, cfg)
 }
 
 // ─── Plane/point helpers (port of solver_plane) ───
