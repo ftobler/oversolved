@@ -14,6 +14,7 @@
 
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::TOL_TOPOLOGY_MERGE;
+use crate::radians;
 
 pub type Vec2 = [f64; 2];
 
@@ -39,10 +40,6 @@ fn norm_2pi(a: f64) -> f64 {
     ((a % TWO_PI) + TWO_PI) % TWO_PI
 }
 
-fn deg2rad(d: f64) -> f64 {
-    d * std::f64::consts::PI / 180.0
-}
-
 // ─── recover a curve's parameter from a point known to lie on it ───
 
 fn param_of(curve: &Curve, p: Vec2) -> f64 {
@@ -58,8 +55,8 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
         }
         Curve::Circle { c, .. } => norm_2pi((p[1] - c[1]).atan2(p[0] - c[0])),
         Curve::Ellipse { c, a, b, theta } => {
-            let cr = deg2rad(theta).cos();
-            let sr = deg2rad(theta).sin();
+            let cr = radians(theta).cos();
+            let sr = radians(theta).sin();
             let dx = p[0] - c[0];
             let dy = p[1] - c[1];
             // Un-rotate into the ellipse's local frame; the eccentric angle is
@@ -84,8 +81,8 @@ fn conic_residual(curve: &Curve) -> Box<dyn Fn(Vec2) -> f64> {
             dx * dx + dy * dy - r * r
         }),
         Curve::Ellipse { c, a, b, theta } => {
-            let cr = deg2rad(theta).cos();
-            let sr = deg2rad(theta).sin();
+            let cr = radians(theta).cos();
+            let sr = radians(theta).sin();
             Box::new(move |p: Vec2| {
                 let dx = p[0] - c[0];
                 let dy = p[1] - c[1];
@@ -212,8 +209,8 @@ fn line_circle(l0: Vec2, l1: Vec2, c: Vec2, r: f64) -> Vec<Vec2> {
 /// Line vs ellipse: map the line into the ellipse's local unit-circle space,
 /// intersect the unit circle in closed form, map hit points back to world.
 fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<Vec2> {
-    let cr = deg2rad(theta).cos();
-    let sr = deg2rad(theta).sin();
+    let cr = radians(theta).cos();
+    let sr = radians(theta).sin();
     let to_local = |p: Vec2| -> Vec2 {
         let dx = p[0] - c[0];
         let dy = p[1] - c[1];

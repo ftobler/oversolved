@@ -34,6 +34,16 @@ pub mod wasm;
 
 pub use constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 
+/// Degrees->radians factor. Angle params are stored in degrees (matching the
+/// backend arc-angle convention) and converted at use sites. The `radians`
+/// helper keeps the multiply-then-divide grouping its call sites have always
+/// used, so it is bit-identical to the conversions it replaces.
+pub(crate) const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
+
+pub(crate) fn radians(deg: f64) -> f64 {
+    deg * std::f64::consts::PI / 180.0
+}
+
 /// Geometric entity kinds the solver understands. Post kind-collapse (phase
 /// 0.5) there are exactly four; projection is a pin-mask concern, not a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

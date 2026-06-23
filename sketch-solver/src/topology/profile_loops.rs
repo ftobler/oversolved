@@ -7,6 +7,7 @@
 //! shares: `dcel` builds them, this module samples them.
 
 use super::TOL_NEAR_ZERO_AREA;
+use crate::radians;
 
 pub type Vec2 = [f64; 2];
 
@@ -78,10 +79,6 @@ pub struct BoundaryEdge {
     pub id: Option<String>,
     pub start_vertex: Option<String>,
     pub end_vertex: Option<String>,
-}
-
-fn radians(deg: f64) -> f64 {
-    deg * std::f64::consts::PI / 180.0
 }
 
 /// n interior points spread along an arc edge (n>=1); empty if not an arc.

@@ -19,6 +19,7 @@ use super::curve_intersect::{intersect_curves, Curve};
 use super::curve_split::{bezier_point, ellipse_point_at, subdivide_bezier, BezierCtrl};
 use super::profile_loops::{subdivide_loops, BoundaryEdge, EdgeGeom, Vec2};
 use super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS};
+use crate::radians;
 
 const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 
@@ -88,9 +89,6 @@ pub struct TopologyOut {
 
 // ─── small helpers ───
 
-fn radians(deg: f64) -> f64 {
-    deg * std::f64::consts::PI / 180.0
-}
 fn degrees(rad: f64) -> f64 {
     rad * 180.0 / std::f64::consts::PI
 }

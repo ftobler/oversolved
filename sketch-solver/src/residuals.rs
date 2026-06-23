@@ -13,14 +13,12 @@
 
 use crate::constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::sparse::SparseRow;
-use crate::{Entity, Input, Kind};
+use crate::{Entity, Input, Kind, DEG2RAD};
 use nalgebra::DMatrix;
 use std::collections::HashMap;
 
 /// A point in sketch-plane coordinates.
 type P2 = [f64; 2];
-
-const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 
 /// A circle or arc: both store their radius at param index 2, so constraints
 /// like equal-radius and circle/circle tangency treat them interchangeably.
