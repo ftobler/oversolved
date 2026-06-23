@@ -279,18 +279,18 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   }
 
   if (kind === 'coincident') {
-    const eid = resolved.a?.entity || resolved.target?.entity
-    if (!eid) return { kind: 'unknown' }
-    const ref = resolved.a ?? resolved.target
-    if (!ref) return { kind: 'unknown' }
-    const pt = geomPoint(sketch, ref)
-    if (!pt) return { kind: 'unknown' }
-    return {
-      kind: 'symbol_coincident',
-      at: pt,
-      entity: eid,
-      entities: [resolved.a?.entity, resolved.b?.entity, resolved.target?.entity].filter(Boolean) as string[],
+    // Anchor at whichever operand resolves to a sketch point. A coincident pinning
+    // a local point to the document origin (or any builtin/cross-sketch ref) leaves
+    // one slot unresolvable in this sketch; the other operand still gives a valid
+    // glyph position, so it renders as a coincident rather than the generic unknown
+    // tile. See bugreports/strange_residual_constraint_20260622_200230.md.
+    const entities = [resolved.a?.entity, resolved.b?.entity, resolved.target?.entity].filter(Boolean) as string[]
+    for (const ref of [resolved.a, resolved.b, resolved.target]) {
+      if (!ref) continue
+      const pt = geomPoint(sketch, ref)
+      if (pt) return { kind: 'symbol_coincident', at: pt, entity: ref.entity, entities }
     }
+    return { kind: 'unknown' }
   }
 
   if (kind === 'normal') {

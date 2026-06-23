@@ -70,6 +70,25 @@ describe('computeConstraintRender (coincident / colinear / midpoint)', () => {
     expect(r.entities).toEqual(['H1', 'V1'])
   })
 
+  it('coincident pinning a point to @builtin_origin renders as a coincident at the local point', () => {
+    // The origin operand has no geometry in this sketch, but the local point does;
+    // the glyph must anchor there instead of falling back to the unknown tile.
+    // See bugreports/strange_residual_constraint_20260622_200230.md.
+    const c: PartConstraint = { id: 'C', kind: 'coincident', a: '@builtin_origin', b: '$PT' }
+    const r = computeConstraintRender(c, makeSketch()) as SymbolRender
+    expect(r.kind).toBe('symbol_coincident')
+    expect(r.at).toEqual([7, 1])
+    expect(r.entities).toEqual(['PT'])
+  })
+
+  it('coincident with the origin in the b slot anchors at the a point', () => {
+    const c: PartConstraint = { id: 'C', kind: 'coincident', a: '$PT', b: '@builtin_origin' }
+    const r = computeConstraintRender(c, makeSketch()) as SymbolRender
+    expect(r.kind).toBe('symbol_coincident')
+    expect(r.at).toEqual([7, 1])
+    expect(r.entities).toEqual(['PT'])
+  })
+
   it('coincident using the target slot resolves too', () => {
     const c: PartConstraint = { id: 'C', kind: 'coincident', target: '$L2' }
     const r = computeConstraintRender(c, makeSketch()) as SymbolRender
