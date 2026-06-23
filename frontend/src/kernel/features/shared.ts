@@ -29,7 +29,7 @@ export interface PlaneLike {
 type Dict = Record<string, unknown>
 
 /** Python `x % m` (result takes the divisor's sign), unlike JS `%`. */
-function pymod(x: number, m: number): number {
+export function pymod(x: number, m: number): number {
   return ((x % m) + m) % m
 }
 

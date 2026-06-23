@@ -15,12 +15,9 @@ import type { OccModule, OccShape, OccOrientedShape, OccSubShape } from './occTy
 import type { Frame3D } from '../types3d'
 import { faceCentroid, faceNormal, faceSurfaceType } from './primitives'
 import { faceSortKey, compareFaceSortKeys } from './shapes'
+import { pymod } from '../features/shared'
 
 const TWO_PI = 2 * Math.PI
-
-function pymod(x: number, m: number): number {
-  return ((x % m) + m) % m
-}
 
 /** Faces of a shape sorted by `_face_sort_key` (flat-before-curved, normal, centroid). */
 function sortedFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
