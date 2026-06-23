@@ -2,7 +2,7 @@ import type { Sketch, Point, Arc, LineSegment, PointEntity, Circle, Ellipse, Spl
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 const ICON_SIZE = 14
 
-export function arrowhead(x1: number, y1: number, x2: number, y2: number, size = 6): string {
+function arrowhead(x1: number, y1: number, x2: number, y2: number, size = 6): string {
   const dx = x2 - x1
   const dy = y2 - y1
   const len = Math.sqrt(dx * dx + dy * dy) || 1
