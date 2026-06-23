@@ -26,7 +26,7 @@ import {
 import { frameFromPlaneTransform } from '../types3d'
 import { loopCentroid, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
-import type { PlaneLike } from './shared'
+import { sketchToWorld2d, type PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
 
@@ -305,17 +305,6 @@ function registerAncestralDeduped(
     return
   }
   evictAncestryAndRegister(globalRepo, ids, payload)
-}
-
-/** Transform 2D sketch coordinates into 3D world space. */
-function sketchToWorld2d(xy: number[], plane: PlaneLike): number[] {
-  const { x_axis, y_axis, origin } = plane
-  const [u, v] = xy
-  return [
-    origin[0] + u * x_axis[0] + v * y_axis[0],
-    origin[1] + u * x_axis[1] + v * y_axis[1],
-    origin[2] + u * x_axis[2] + v * y_axis[2],
-  ]
 }
 
 /**
