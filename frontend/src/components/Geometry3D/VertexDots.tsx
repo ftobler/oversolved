@@ -4,6 +4,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch/sketch_helpers'
+import { applyWorldBillboard } from '@/components/Geometry3D/billboard'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
@@ -17,12 +18,7 @@ export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depth
   useFrame(() => {
     if (!meshRef.current) return
     meshRef.current.scale.setScalar(px * p2w(camera))
-    if (billboard) {
-      // Billboard in world space: undo parent world rotation before applying camera quaternion
-      const parentQuat = new THREE.Quaternion()
-      meshRef.current.parent?.getWorldQuaternion(parentQuat)
-      meshRef.current.quaternion.copy(camera.quaternion).premultiply(parentQuat.invert())
-    }
+    if (billboard) applyWorldBillboard(meshRef.current, camera)
   })
   return (
     <mesh ref={meshRef} position={[x, y, 0]} renderOrder={renderOrder}>
@@ -39,10 +35,7 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
   useFrame(() => {
     if (!groupRef.current) return
     groupRef.current.scale.setScalar(px * p2w(camera))
-    // Billboard in world space: undo parent world rotation before applying camera quaternion
-    const parentQuat = new THREE.Quaternion()
-    groupRef.current.parent?.getWorldQuaternion(parentQuat)
-    groupRef.current.quaternion.copy(camera.quaternion).premultiply(parentQuat.invert())
+    applyWorldBillboard(groupRef.current, camera)
   })
   const h = 1.4 // half-size of square in local units
   const pts: [number, number, number][] = [[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0], [-h, -h, 0]]

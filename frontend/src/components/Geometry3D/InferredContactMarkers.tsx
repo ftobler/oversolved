@@ -6,6 +6,7 @@ import type { Sketch, PartConstraint, Topology } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/components/sketch/sketch_helpers'
 import { COLOR_SNAP, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
+import { applyWorldBillboard } from '@/components/Geometry3D/billboard'
 import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 
 // A hollow ring drawn at constant pixel size, billboarded to face the camera.
@@ -27,9 +28,7 @@ function DockRing({ x, y, px, id }: { x: number; y: number; px: number; id: stri
   useFrame(() => {
     if (!groupRef.current) return
     groupRef.current.scale.setScalar((hovered ? px + 1 : px) * p2w(camera))
-    const parentQuat = new THREE.Quaternion()
-    groupRef.current.parent?.getWorldQuaternion(parentQuat)
-    groupRef.current.quaternion.copy(camera.quaternion).premultiply(parentQuat.invert())
+    applyWorldBillboard(groupRef.current, camera)
   })
   return (
     <group ref={groupRef} position={[x, y, 0]}>
