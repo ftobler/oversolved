@@ -51,7 +51,7 @@ export interface TessMesh {
   is_fallback: boolean
 }
 
-export interface TessellateOptions {
+interface TessellateOptions {
   deflection?: number
   angularDeflection?: number
 }
@@ -174,7 +174,7 @@ export function bodyFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): 
   return bodyFrameFromPoints(points)
 }
 
-export interface SolidMeshOptions extends TessellateOptions {
+interface SolidMeshOptions extends TessellateOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
@@ -322,25 +322,25 @@ export function compareEdgeSortKeys(a: EdgeSortKey, b: EdgeSortKey): number {
   return a.length - b.length
 }
 
-export interface SolidEdgesOptions {
+interface SolidEdgesOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
   edgeLineage?: Record<string, string[]> | null
 }
 
-export interface SolidEdgesResult {
+interface SolidEdgesResult {
   edges: EdgeData[]
   edge_queries: string[]
 }
 
-export interface SolidVerticesOptions {
+interface SolidVerticesOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
 }
 
-export interface SolidVerticesResult {
+interface SolidVerticesResult {
   vertices: Vec3[]
   vertex_queries: string[]
 }

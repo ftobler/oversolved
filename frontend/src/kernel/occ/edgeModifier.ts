@@ -11,7 +11,7 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
-import { faceCentroid, faceNormal, faceArea, edgeToGeom } from './primitives'
+import { faceCentroid, faceNormal, faceArea, edgeToGeom, round6 } from './primitives'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
@@ -59,8 +59,6 @@ function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
   return out
 }
 
-const r6 = (x: number): number => Math.round(x * 1e6) / 1e6
-
 /**
  * (face_lineage, edge_lineage) for the modified shape (mirrors
  * `_extract_edge_modifier_lineage`). Old face tokens follow Modified()/geometry
@@ -88,7 +86,7 @@ function extractLineage(
   }))
 
   const geomKey = (c: number[], a: number, n: number[]): string =>
-    [r6(c[0]), r6(c[1]), r6(c[2]), r6(a), r6(n[0]), r6(n[1]), r6(n[2])].join(',')
+    [round6(c[0]), round6(c[1]), round6(c[2]), round6(a), round6(n[0]), round6(n[1]), round6(n[2])].join(',')
 
   const findOutputFace = (c: number[], a: number, n: number[]): OccShape | null => {
     const key = geomKey(c, a, n)

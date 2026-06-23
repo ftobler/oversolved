@@ -425,7 +425,9 @@ export function faceNormal(oc: OccModule, scope: DisposeScope, face: OccShape): 
 
 const TWO_PI = 2 * Math.PI
 const CIRCLE_TOL = 1e-4
-const r6 = (x: number): number => Math.round(x * 1e6) / 1e6
+// Sort-key quantisation only; exact banker's-rounding parity with Python's
+// round() is unnecessary because the values compared are well-separated.
+export const round6 = (x: number): number => Math.round(x * 1e6) / 1e6
 
 /** Mirror of `edge_to_geom_dict`: (geometry, deterministic sort key) for an edge. */
 export function edgeToGeom(
@@ -446,7 +448,7 @@ export function edgeToGeom(
     // type_order 0 keeps straight edges before curved (fillet-arc-stable indices).
     return {
       ed: { kind: 'line', start: s, end: e },
-      sortKey: [0, 'line', r6(s[0]), r6(s[1]), r6(s[2]), r6(e[0]), r6(e[1]), r6(e[2])],
+      sortKey: [0, 'line', round6(s[0]), round6(s[1]), round6(s[2]), round6(e[0]), round6(e[1]), round6(e[2])],
     }
   }
 
@@ -466,7 +468,7 @@ export function edgeToGeom(
       ed: { kind, center, radius, axis: ax, x_axis: xd, angle_start: u0, angle_end: u1 },
       // x_axis breaks the tie between the two semicircle halves OCC makes for a
       // full circle (same center/radius/span) so their order is stable.
-      sortKey: [1, kind, r6(center[0]), r6(center[1]), r6(center[2]), r6(radius), r6(u0), r6(u1), r6(xd[0]), r6(xd[1]), r6(xd[2])],
+      sortKey: [1, kind, round6(center[0]), round6(center[1]), round6(center[2]), round6(radius), round6(u0), round6(u1), round6(xd[0]), round6(xd[1]), round6(xd[2])],
     }
   }
 
@@ -487,7 +489,7 @@ export function edgeToGeom(
       ed: { kind: 'ellipse', center, a, b, axis: ax, x_axis: xd, angle_start: u0, angle_end: u1 },
       // u0/u1 distinguish a partial elliptical arc from a full ellipse and keep
       // two arcs of the same conic on distinct geom hashes (mirrors the arc arm).
-      sortKey: [1, 'ellipse', r6(center[0]), r6(center[1]), r6(center[2]), r6(a), r6(b), r6(u0), r6(u1), r6(xd[0]), r6(xd[1]), r6(xd[2])],
+      sortKey: [1, 'ellipse', round6(center[0]), round6(center[1]), round6(center[2]), round6(a), round6(b), round6(u0), round6(u1), round6(xd[0]), round6(xd[1]), round6(xd[2])],
     }
   }
 
@@ -503,7 +505,7 @@ export function edgeToGeom(
   const mid = points[N / 2]
   return {
     ed: { kind: 'spline', points },
-    sortKey: [1, 'spline', r6(mid[0]), r6(mid[1]), r6(mid[2]), 0, 0, 0],
+    sortKey: [1, 'spline', round6(mid[0]), round6(mid[1]), round6(mid[2]), 0, 0, 0],
   }
 }
 

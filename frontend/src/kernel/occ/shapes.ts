@@ -17,6 +17,7 @@ import {
   makeLineEdge,
   makePrism,
   makeWire,
+  round6,
   type SurfaceType,
   type Vec3,
 } from './primitives'
@@ -31,12 +32,6 @@ export function triangleArea(p0: Vec3, p1: Vec3, p2: Vec3): number {
   const ny = v1[2] * v2[0] - v1[0] * v2[2]
   const nz = v1[0] * v2[1] - v1[1] * v2[0]
   return 0.5 * Math.sqrt(nx * nx + ny * ny + nz * nz)
-}
-
-function round6(x: number): number {
-  // Sort-key quantisation only; exact banker's-rounding parity with Python's
-  // round() is unnecessary because the values compared are well-separated.
-  return Math.round(x * 1e6) / 1e6
 }
 
 export interface FaceSortItem {
@@ -85,7 +80,7 @@ export function buildBox(oc: OccModule, table: HandleTable, spec: BoxSpec): OccH
   }
 }
 
-export interface CylinderSpec {
+interface CylinderSpec {
   center: Vec3
   axis: Vec3
   radius: number
@@ -103,7 +98,7 @@ export function buildCylinder(oc: OccModule, table: HandleTable, spec: CylinderS
   }
 }
 
-export interface ExtrudeProfileSpec {
+interface ExtrudeProfileSpec {
   /** Closed polygon of world-space corners (not repeating the first point). */
   loop: Vec3[]
   /** Extrude direction (unit vector). */
@@ -146,7 +141,7 @@ export type EdgeSpec =
     }
   | { kind: 'circle'; center: Vec3; normal: Vec3; xAxis: Vec3; radius: number }
 
-export interface ProfileExtrudeSpec {
+interface ProfileExtrudeSpec {
   edges: EdgeSpec[]
   direction: Vec3
   distance: number

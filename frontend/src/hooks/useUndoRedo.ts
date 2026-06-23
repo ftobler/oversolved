@@ -87,9 +87,7 @@ export function useUndoRedo(
 
   return {
     undoStack,
-    setUndoStack,
     redoStack,
-    setRedoStack,
     suppressUndoRef,
     pushUndo,
     handleUndo,

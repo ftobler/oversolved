@@ -5,10 +5,7 @@ import { HttpDocumentStore } from './HttpDocumentStore'
 import { IndexedDbDocumentStore, IndexedDbTrashAdapter } from './IndexedDbDocumentStore'
 
 export type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
-export type { Backend } from '@/config/capabilities'
-export { resolveBackend, hasBackend } from '@/config/capabilities'
-export { HttpDocumentStore } from './HttpDocumentStore'
-export { IndexedDbDocumentStore, IndexedDbTrashAdapter } from './IndexedDbDocumentStore'
+export { resolveBackend } from '@/config/capabilities'
 export { exportBundle, importBundle, buildBundleBytes } from './bundle'
 export { copyDocument, pushDocument, moveDocument, syncAllDocuments } from './transfer'
 
