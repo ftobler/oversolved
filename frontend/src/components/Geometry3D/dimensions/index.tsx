@@ -1,6 +1,5 @@
 export type { DimInteraction } from './useDimInteraction'
-export { Arrowhead, DashedLine } from './primitives'  // ArrowTail is internal
+export { DashedLine } from './primitives'  // Arrowhead/ArrowTail are imported directly
 export { LinearDimension } from './Linear'
 export { RadiusDimension, DiameterDimension } from './Radial'
 export { AngleDimension } from './Angle'
-export { ConstraintOverlays } from './Symbol'

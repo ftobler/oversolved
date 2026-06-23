@@ -4,7 +4,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
 import { p2w } from '@/components/sketch/sketch_helpers'
 
-export interface DrawAlignmentResult {
+interface DrawAlignmentResult {
   kind: 'kinda_horizontal' | 'kinda_vertical'
   point: [number, number]
   vertexId: 'draw:last'

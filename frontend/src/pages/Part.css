@@ -236,8 +236,6 @@
   gap: 4px;
   padding: 2px 4px;
   margin: 4px 0;
-  /* background: #1a1a1a; */
-  /* border: 1px solid #333; */
   border-radius: 4px;
   font-size: 12px;
   color: #ccc;
@@ -463,7 +461,6 @@
 .feature-item:hover {
   background: #222;
   border-color: #4fc3f7;
-  /* color: #4fc3f7; */
   color: white;
 }
 
@@ -788,16 +785,12 @@
   align-items: center;
   justify-content: center;
   padding: 6px;
-  /* font-size: 12px; */
-  /* font-weight: 600; */
   border: none;
   border-radius: 3px;
   background: transparent;
   color: #888;
   cursor: pointer;
-  /* white-space: nowrap; */
   position: relative;
-  /* min-width: 32px; */
   height: 32px;
 }
 
@@ -1205,7 +1198,6 @@
 
 .feature-item.selected {
   background: #1a1a2a;
-   /* color: #4fc3f7; */
   color: white;
   outline: 1px solid #1e3a4a;
 }

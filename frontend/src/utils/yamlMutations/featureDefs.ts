@@ -412,21 +412,6 @@ export function applySetCircularArrayField(doc: PartDoc, featureId: string, fiel
 
 // ─── Delete Body ───
 
-export function applySetArraySourceBody(doc: PartDoc, featureId: string, sourceBody: string): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
-    warn(`applySetArraySourceBody: feature ${featureId} has no array`)
-    return
-  }
-  feature.array.source_body = sourceBody
-}
-
-export function applySetDeleteBodyTarget(doc: PartDoc, featureId: string, target: string): void {
-  const feat = doc.features?.find(f => f.id === featureId)
-  if (!feat?.delete_body) return
-  feat.delete_body.body = target
-}
-
 export function applyAddDeleteBody(
   doc: PartDoc,
   featureId: string,
