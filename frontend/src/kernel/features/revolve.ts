@@ -24,7 +24,7 @@ import type { Vec3 } from '../occ/primitives'
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
 
-export interface RevolveResult {
+interface RevolveResult {
   [key: string]: unknown
   status: string
   body_id: string

@@ -19,7 +19,7 @@ import type { PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
 
-export interface HoleResult {
+interface HoleResult {
   [key: string]: unknown
   status: string
   body_id: string

@@ -26,7 +26,7 @@ import { resolveUpToPlane, upToDistance, trimAtPlane, UP_TO_REACH, type CutPlane
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
 
-export interface ExtrudeResult {
+interface ExtrudeResult {
   [key: string]: unknown
   status: string
   body_id: string

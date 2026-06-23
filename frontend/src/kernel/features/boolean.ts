@@ -17,7 +17,7 @@ import { booleanWithDiff, exploreSolids } from '../occ/booleans'
 
 type Dict = Record<string, unknown>
 
-export interface BooleanResult {
+interface BooleanResult {
   status: string
   body_id: string
   body_ids: string[]

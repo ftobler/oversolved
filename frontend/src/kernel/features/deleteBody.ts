@@ -11,7 +11,7 @@ import { resolveBody } from './shared'
 
 type Dict = Record<string, unknown>
 
-export interface DeleteBodyResult {
+interface DeleteBodyResult {
   status: string
   deleted_body_id: string
 }
