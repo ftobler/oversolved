@@ -26,6 +26,39 @@ def _draw_x(ctx):
     stroke(ctx, 2)
 
 
+def _draw_plane_grid(ctx, x0, y0, x1, y1, x2, y2, x3, y3):
+    # Tilted 3x2 plane: perimeter, 2 vertical and 1 horizontal internal lines.
+    # Corners are bottom-left, bottom-right, top-right, top-left (isometric view).
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x2, y2)
+    ctx.line_to(x3, y3)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    N = 2  # internal vertical lines for 3 columns
+    for i in range(1, N):
+        t = i / N
+        left_x = x0 + (x3 - x0) * t
+        left_y = y0 + (y3 - y0) * t
+        right_x = x1 + (x2 - x1) * t
+        right_y = y1 + (y2 - y1) * t
+        ctx.move_to(left_x, left_y)
+        ctx.line_to(right_x, right_y)
+    stroke(ctx, 1.5)
+
+    M = 2  # internal horizontal line for 2 rows
+    for i in range(1, M):
+        t = i / M
+        bottom_x = x0 + (x1 - x0) * t
+        bottom_y = y0 + (y1 - y0) * t
+        top_x = x3 + (x2 - x3) * t
+        top_y = y3 + (y2 - y3) * t
+        ctx.move_to(bottom_x, bottom_y)
+        ctx.line_to(top_x, top_y)
+    stroke(ctx, 1.5)
+
+
 def _arrowhead(ctx, x, y, angle, size):
     """Draw a filled arrowhead at (x, y) pointing at angle (degrees). Uses arr for size."""
     rad = math.radians(angle)
@@ -601,46 +634,8 @@ def feature_origin(ctx):
 
 @icon("frontend/src/assets/icons/feature-plane.svg")
 def feature_plane(ctx):
-    # Plane icon: 3D tilted 3x2 grid
-    # Define the tilted plane corners (isometric-like view)
-    x0, y0 = 0.2, 0.7  # bottom-left
-    x1, y1 = 0.8, 0.65  # bottom-right
-    x2, y2 = 0.75, 0.2  # top-right
-    x3, y3 = 0.15, 0.25  # top-left
-
-    # Draw the plane perimeter
-    ctx.move_to(x0, y0)
-    ctx.line_to(x1, y1)
-    ctx.line_to(x2, y2)
-    ctx.line_to(x3, y3)
-    ctx.close_path()
-    stroke(ctx, 1.5)
-
-    # Draw vertical grid lines (2 internal lines for 3 columns)
-    N = 2
-    for i in range(1, N):
-        t = i / N
-        # Interpolate points along the edges
-        left_x = x0 + (x3 - x0) * t
-        left_y = y0 + (y3 - y0) * t
-        right_x = x1 + (x2 - x1) * t
-        right_y = y1 + (y2 - y1) * t
-        ctx.move_to(left_x, left_y)
-        ctx.line_to(right_x, right_y)
-    stroke(ctx, 1.5)
-
-    # Draw horizontal grid line (1 internal line for 2 rows)
-    M = 2
-    for i in range(1, M):
-        t = i / M
-        # Interpolate points along top and bottom edges
-        bottom_x = x0 + (x1 - x0) * t
-        bottom_y = y0 + (y1 - y0) * t
-        top_x = x3 + (x2 - x3) * t
-        top_y = y3 + (y2 - y3) * t
-        ctx.move_to(bottom_x, bottom_y)
-        ctx.line_to(top_x, top_y)
-    stroke(ctx, 1.5)
+    # Plane icon: 3D tilted 3x2 grid (isometric-like view)
+    _draw_plane_grid(ctx, 0.2, 0.7, 0.8, 0.65, 0.75, 0.2, 0.15, 0.25)
 
 
 @icon("frontend/src/assets/icons/feature-variable.svg")
@@ -664,39 +659,7 @@ def feature_variable(ctx):
 @icon("frontend/src/assets/icons/feature-add-plane.svg")
 def feature_add_plane(ctx):
     # Plane icon scaled to left portion, plus sign in top-right
-    x0, y0 = 0.1, 0.75
-    x1, y1 = 0.65, 0.7
-    x2, y2 = 0.6, 0.35
-    x3, y3 = 0.05, 0.4
-
-    ctx.move_to(x0, y0)
-    ctx.line_to(x1, y1)
-    ctx.line_to(x2, y2)
-    ctx.line_to(x3, y3)
-    ctx.close_path()
-    stroke(ctx, 1.5)
-
-    N = 2
-    for i in range(1, N):
-        t = i / N
-        left_x = x0 + (x3 - x0) * t
-        left_y = y0 + (y3 - y0) * t
-        right_x = x1 + (x2 - x1) * t
-        right_y = y1 + (y2 - y1) * t
-        ctx.move_to(left_x, left_y)
-        ctx.line_to(right_x, right_y)
-    stroke(ctx, 1.5)
-
-    M = 2
-    for i in range(1, M):
-        t = i / M
-        bottom_x = x0 + (x1 - x0) * t
-        bottom_y = y0 + (y1 - y0) * t
-        top_x = x3 + (x2 - x3) * t
-        top_y = y3 + (y2 - y3) * t
-        ctx.move_to(bottom_x, bottom_y)
-        ctx.line_to(top_x, top_y)
-    stroke(ctx, 1.5)
+    _draw_plane_grid(ctx, 0.1, 0.75, 0.65, 0.7, 0.6, 0.35, 0.05, 0.4)
 
     # Plus sign in top-right corner
     cx, cy, arm = 0.8, 0.22, 0.12
