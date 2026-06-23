@@ -12,7 +12,7 @@
 //! tangency (a touch with no sign change) yields no point, so a single grazing
 //! contact does not split a curve.
 
-use super::curve_split::bezier_point;
+use super::curve_split::{bezier_point, ellipse_point_at};
 use super::TOL_TOPOLOGY_MERGE;
 
 pub type Vec2 = [f64; 2];
@@ -41,16 +41,6 @@ fn norm_2pi(a: f64) -> f64 {
 
 fn deg2rad(d: f64) -> f64 {
     d * std::f64::consts::PI / 180.0
-}
-
-// ─── parametric evaluation ───
-
-fn ellipse_at(c: Vec2, a: f64, b: f64, theta: f64, phi: f64) -> Vec2 {
-    let cr = deg2rad(theta).cos();
-    let sr = deg2rad(theta).sin();
-    let ax = a * phi.cos();
-    let ay = b * phi.sin();
-    [c[0] + ax * cr - ay * sr, c[1] + ax * sr + ay * cr]
 }
 
 // ─── recover a curve's parameter from a point known to lie on it ───
@@ -384,7 +374,7 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
                      hits: &mut Vec<Hit>| {
         let eval_at: Box<dyn Fn(f64) -> Vec2> = match *scanned {
             Curve::Circle { c, r } => Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()]),
-            Curve::Ellipse { c, a, b, theta } => Box::new(move |phi: f64| ellipse_at(c, a, b, theta, phi)),
+            Curve::Ellipse { c, a, b, theta } => Box::new(move |phi: f64| ellipse_point_at(c, a, b, theta, phi)),
             Curve::Bezier { p0, c1, c2, p3 } => Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t)),
             Curve::Line { .. } => panic!("scan_with: unsupported scanned curve kind"),
         };
