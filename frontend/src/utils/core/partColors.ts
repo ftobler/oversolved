@@ -19,9 +19,6 @@ export const COLOR_PREVIEW_EDGE = '#A855F7'  // violet neon for edge-only previe
 export const COLOR_PROJECTED = '#ffca28'  // amber for projected/reference geometry
 export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
 
-// Constraint tile color (shared between 2D and 3D views)
-export const COLOR_CONSTRAINT = '#ffd54f'
-
 // Render order (higher = renders on top)
 export const RENDER_ORDER_DEFAULT = 0
 export const RENDER_ORDER_EDITING = 10
