@@ -28,32 +28,29 @@ export function applySetPartColor(doc: PartDoc, bodyId: string, color: string): 
   doc.part_style[bodyId] = { ...current, color: trimmed }
 }
 
-export function applySetPartTransparency(doc: PartDoc, bodyId: string, transparency: number): void {
-  const clamped = Math.max(0, Math.min(1, transparency))
+type ClampedStyleField = 'transparency' | 'metalness' | 'roughness' | 'transmission'
+
+function setClampedStyleField(doc: PartDoc, bodyId: string, field: ClampedStyleField, value: number): void {
+  const clamped = Math.max(0, Math.min(1, value))
   if (!doc.part_style) doc.part_style = {}
   const current = doc.part_style[bodyId] ?? {}
-  doc.part_style[bodyId] = { ...current, transparency: clamped }
+  doc.part_style[bodyId] = { ...current, [field]: clamped }
+}
+
+export function applySetPartTransparency(doc: PartDoc, bodyId: string, transparency: number): void {
+  setClampedStyleField(doc, bodyId, 'transparency', transparency)
 }
 
 export function applySetPartMetalness(doc: PartDoc, bodyId: string, metalness: number): void {
-  const clamped = Math.max(0, Math.min(1, metalness))
-  if (!doc.part_style) doc.part_style = {}
-  const current = doc.part_style[bodyId] ?? {}
-  doc.part_style[bodyId] = { ...current, metalness: clamped }
+  setClampedStyleField(doc, bodyId, 'metalness', metalness)
 }
 
 export function applySetPartRoughness(doc: PartDoc, bodyId: string, roughness: number): void {
-  const clamped = Math.max(0, Math.min(1, roughness))
-  if (!doc.part_style) doc.part_style = {}
-  const current = doc.part_style[bodyId] ?? {}
-  doc.part_style[bodyId] = { ...current, roughness: clamped }
+  setClampedStyleField(doc, bodyId, 'roughness', roughness)
 }
 
 export function applySetPartTransmission(doc: PartDoc, bodyId: string, transmission: number): void {
-  const clamped = Math.max(0, Math.min(1, transmission))
-  if (!doc.part_style) doc.part_style = {}
-  const current = doc.part_style[bodyId] ?? {}
-  doc.part_style[bodyId] = { ...current, transmission: clamped }
+  setClampedStyleField(doc, bodyId, 'transmission', transmission)
 }
 
 // ─── Sketch admin ───
