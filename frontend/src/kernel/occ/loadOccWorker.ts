@@ -51,6 +51,3 @@ const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> =
 export function loadOccWorker(base: string = DEFAULT_BASE): Promise<OccModule | null> {
   return occWorker.load(base)
 }
-
-/** Reset the memoized module (tests / hot-reload). */
-export const resetOccWorker = occWorker.reset

@@ -94,8 +94,3 @@ export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | nul
   })()
   return cached
 }
-
-/** Reset the memoized module (tests / hot-reload). */
-export function resetOccWeb(): void {
-  cached = null
-}

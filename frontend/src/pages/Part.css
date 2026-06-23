@@ -217,96 +217,9 @@
   font-family: 'Monaco', 'Courier', monospace;
 }
 
-.stat-row .value.trend-faster {
-  color: #10b981;
-}
-
-.stat-row .value.trend-slower {
-  color: #ef4444;
-}
-
-.stat-row .value.trend-stable {
-  color: #8b5cf6;
-}
-
-.popover-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 6px 0;
-}
-
-.popover-sparkline {
-  margin: 6px 0;
-}
-
-.sparkline-label {
-  font-size: 10px;
-  color: var(--text);
-  opacity: 0.7;
-  text-align: center;
-  margin-top: 4px;
-}
-
 .rebuild-sparkline {
   width: 100%;
   height: 40px;
-}
-
-.exit-feature-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #b83b88;
-  padding: 2px 4px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-}
-
-.exit-feature-btn img {
-  width: 16px;
-  height: 16px;
-  filter: invert(0.8);
-}
-
-.exit-feature-btn .material-icons-outlined {
-  font-size: 16px;
-}
-
-.exit-feature-btn:hover {
-  background: #2a1a2a;
-  color: #e060b0;
-}
-
-.sketch-edit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #0af;
-  padding: 2px 4px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-}
-
-.sketch-edit-btn .material-icons-outlined {
-  font-size: 16px;
-}
-
-.sketch-edit-btn:hover {
-  background: rgba(0, 170, 255, 0.1);
-}
-
-.sketch-edit-btn:active {
-  background: rgba(0, 170, 255, 0.2);
 }
 
 .features-list {
@@ -379,26 +292,6 @@
 .feature-name.feature-name-suppressed {
   text-decoration: line-through;
   opacity: 0.5;
-}
-
-.feature-name-input {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1 1 0;
-  text-align: left;
-  font-size: 12px;
-  color: #ccc;
-  background: #1a1a1a;
-  border: 2px solid #4fc3f7;
-  border-radius: 4px;
-  padding: 2px 6px;
-  outline: none;
-  height: 100%;
-  line-height: 16px;
-  width: 0;
-  min-width: 0;
-  box-sizing: border-box;
 }
 
 .feature-edit-btn {
@@ -1047,14 +940,6 @@
   filter: invert(0.8);
 }
 
-.solve-time {
-  font-size: 12px;
-  color: #888;
-  margin-left: 8px;
-  padding: 0px 0;
-  font-family: 'Roboto Mono', monospace;
-}
-
 .code-split {
   flex: 1;
   display: flex;
@@ -1354,11 +1239,6 @@
   gap: 4px;
 }
 
-.feature-field-hint {
-  font-size: 10px;
-  color: #777;
-}
-
 .feature-field-select {
   flex: 1;
   font-size: 10px;
@@ -1543,21 +1423,6 @@
 
 .feature-pick-chip-item.drop-target-right {
   border-right: 2px solid #4fc3f7;
-}
-
-.feature-pick-chip-list {
-  height: auto;
-  min-height: 20px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  padding: 2px 4px;
-  gap: 3px;
-}
-
-.debug-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
 }
 
 .undo-redo-btn-group {

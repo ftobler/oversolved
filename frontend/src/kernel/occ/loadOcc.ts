@@ -59,6 +59,3 @@ const occ = memoizedLoad(async (): Promise<OccModule | null> => {
 })
 
 export const loadOcc = occ.load
-
-/** Reset the memoized module (tests / hot-reload). */
-export const resetOcc = occ.reset
