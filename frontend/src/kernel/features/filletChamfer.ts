@@ -26,7 +26,7 @@ import {
 
 type Dict = Record<string, unknown>
 
-export interface EdgeFeatureResult {
+interface EdgeFeatureResult {
   [key: string]: unknown
   status: string
   body_id: string

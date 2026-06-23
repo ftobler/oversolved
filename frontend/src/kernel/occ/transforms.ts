@@ -70,7 +70,7 @@ export function copyShape(oc: OccModule, scope: DisposeScope, shape: OccShape): 
   return maker.Shape()
 }
 
-export interface TransformParams {
+interface TransformParams {
   translation?: number[] | null
   rotationAxisOrigin?: number[] | null
   rotationAxisDirection?: number[] | null

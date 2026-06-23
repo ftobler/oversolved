@@ -10,7 +10,7 @@ import { base64ToBytes, stepBytesToShape } from '../occ/stepIo'
 
 type Dict = Record<string, unknown>
 
-export interface ImportStepResult {
+interface ImportStepResult {
   status: string
   body_id: string
 }

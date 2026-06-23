@@ -31,7 +31,7 @@ export interface ExtrudeOptions {
   linearDeflection?: number
 }
 
-export interface ExtrudeOutput {
+interface ExtrudeOutput {
   result: MeshResult
   /** Handle to the produced solid, owned by `table`. Release to evict. */
   solid: OccHandle

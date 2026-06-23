@@ -15,7 +15,7 @@ import { sub, dot, cross } from './vec3'
 
 type Dict = Record<string, unknown>
 
-export interface PlaneResult {
+interface PlaneResult {
   status: string
   plane: Frame3D
 }
