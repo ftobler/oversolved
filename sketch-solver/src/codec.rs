@@ -68,7 +68,6 @@ pub enum CodecError {
     UnexpectedEof,
     BadMagic,
     BadKind(u8),
-    BadConstraintKind(u8),
     BadRefRole(u8),
     BadPointSelector(u8),
     BadAxis(u8),
