@@ -4,15 +4,6 @@ import json
 import pytest
 import psycopg2
 from werkzeug.security import generate_password_hash
-from oversolved.db import Database, PostgreSQLConnection
-
-
-def _make_db(pg_dsn):
-    from oversolved.migrations import discover_and_register
-    database = Database(PostgreSQLConnection(pg_dsn))
-    discover_and_register(database)
-    database.init()
-    return database
 
 
 def _create_user(app, username, password):

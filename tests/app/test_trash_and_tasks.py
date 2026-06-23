@@ -11,14 +11,7 @@ from oversolved.db import (
     PeriodicTaskStore,
 )
 from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask, _cron_next
-
-
-def _make_db(pg_dsn):
-    from oversolved.migrations import discover_and_register
-    database = Database(PostgreSQLConnection(pg_dsn))
-    discover_and_register(database)
-    database.init()
-    return database
+from .dbutil import make_db as _make_db
 
 
 @pytest.fixture

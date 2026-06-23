@@ -8,14 +8,7 @@ from oversolved.db import (
     UserStore,
     SessionStore,
 )
-
-
-def _make_db(pg_dsn):
-    from oversolved.migrations import discover_and_register
-    database = Database(PostgreSQLConnection(pg_dsn))
-    discover_and_register(database)
-    database.init()
-    return database
+from .dbutil import make_db as _make_db
 
 
 @pytest.fixture

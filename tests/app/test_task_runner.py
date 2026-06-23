@@ -4,13 +4,14 @@ import argparse
 import pytest
 from datetime import datetime, timedelta, timezone
 from oversolved.cli import _positive_int, _validate_db_args, build_parser
-from oversolved.db import Database, PostgreSQLConnection, PeriodicTaskStore
+from oversolved.db import PeriodicTaskStore
 from oversolved.periodic_tasks import (
     TaskScheduler,
     PeriodicTask,
     _cron_next,
     is_task_due,
 )
+from .dbutil import make_db as _make_db
 
 
 class FakeTask(PeriodicTask):
@@ -26,14 +27,6 @@ class FakeTask(PeriodicTask):
         if self.fail:
             raise RuntimeError("Intentional failure")
         return {"status": "success", "deleted_count": 0, "errors": []}
-
-
-def _make_db(pg_dsn):
-    from oversolved.migrations import discover_and_register
-    database = Database(PostgreSQLConnection(pg_dsn))
-    discover_and_register(database)
-    database.init()
-    return database
 
 
 @pytest.fixture
