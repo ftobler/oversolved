@@ -7,7 +7,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
-import type { Repository } from '../query'
+import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared'
 import { resolveBody } from './shared'
 import { applyTransformShape, makeMirrorTrsf, transformCopy } from '../occ/transforms'
@@ -34,29 +34,6 @@ function bareBody(id: string, createdBy: string, sketchId: string): Body {
     face_lineage: {},
     edge_lineage: {},
   }
-}
-
-/** Query-result -> 3D point (mirrors `_get_point_3d`). */
-function getPoint3d(ref: Dict, globalRepo: Repository): number[] {
-  if ('external_xy' in ref) {
-    const xy = ref.external_xy as number[]
-    const sketchId = ref.sketch_id as string | undefined
-    if (sketchId) {
-      const pt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-      if (pt) {
-        return [
-          pt.origin[0] + xy[0] * pt.x_axis[0] + xy[1] * pt.y_axis[0],
-          pt.origin[1] + xy[0] * pt.x_axis[1] + xy[1] * pt.y_axis[1],
-          pt.origin[2] + xy[0] * pt.x_axis[2] + xy[1] * pt.y_axis[2],
-        ]
-      }
-    }
-    return [xy[0], xy[1], 0.0]
-  }
-  if (ref.type === 'vertex' && 'origin' in ref) return ref.origin as number[]
-  if ('origin' in ref && !('normal' in ref)) return ref.origin as number[]
-  if ('origin' in ref && 'normal' in ref) throw new Error('reference is a plane, not a point')
-  throw new Error('point reference has no coordinates')
 }
 
 /** Query-result -> [start, end] (mirrors `_get_edge_3d`). */
