@@ -2,6 +2,12 @@ import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, Mirr
 import { ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, randomId, normalizeRefList } from './helpers'
 
+/** Append a feature, lazily initializing the features array. */
+function pushFeature(doc: PartDoc, feature: PartFeature): void {
+  if (!doc.features) doc.features = []
+  doc.features.push(feature)
+}
+
 // ─── Set Feature Field (generic) ───
 
 // Shared body for the `applySet<Kind>Field` mutators that warn when the
@@ -83,7 +89,6 @@ export function applyAddExtrude(
   sketchQuery: string,
   distance: number,
 ): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'extrude',
@@ -94,7 +99,7 @@ export function applyAddExtrude(
       direction: 'normal',
     },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 // extrude/revolve/sweep each store their profile (and the sweep its path) as a
@@ -152,7 +157,6 @@ export function applyAddRevolve(
   sketchQuery: string,
   angle: number,
 ): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'revolve',
@@ -164,7 +168,7 @@ export function applyAddRevolve(
       axis_direction: [0, 0, 1],
     },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
@@ -188,7 +192,6 @@ export function applyAddSweep(
   sketchQuery: string,
   pathQuery: string,
 ): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'sweep',
@@ -198,7 +201,7 @@ export function applyAddSweep(
       path: pathQuery ? [pathQuery] : [],
     },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 export function applyAddSweepProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
@@ -226,14 +229,13 @@ export function applyAddImportStep(
   label?: string,
   fileData?: string,
 ): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = { id: featureId, kind: 'import_step' }
   // file_data (inline base64, browser-read) is the working path the WASM kernel
   // parses; file_id is the legacy upload handle kept for back-compat.
   if (fileData) feature.file_data = fileData
   if (fileId) feature.file_id = fileId
   if (label) feature.label = label
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 // ─── Fillet / Chamfer ───
@@ -243,14 +245,13 @@ export function applyAddFillet(
   featureId: string,
   label?: string,
 ): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'fillet',
     label: label ?? 'Fillet',
     fillet: { edges: [], radius: 1 },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 export function applyAddChamfer(
@@ -258,14 +259,13 @@ export function applyAddChamfer(
   featureId: string,
   label?: string,
 ): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'chamfer',
     label: label ?? 'Chamfer',
     chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 // fillet and chamfer both carry an identical `edges: string[]` list, so the
@@ -313,14 +313,13 @@ export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: n
 // ─── Boolean ───
 
 export function applyAddBoolean(doc: PartDoc, featureId: string, label?: string): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'boolean',
     label: label ?? 'Boolean',
     boolean: { operation: 'union', target: '', tools: [] },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
@@ -349,7 +348,6 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
 // ─── Array ───
 
 export function applyAddArray(doc: PartDoc, featureId: string, label?: string): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'array',
@@ -363,7 +361,7 @@ export function applyAddArray(doc: PartDoc, featureId: string, label?: string): 
       include_source: true,
     },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 export function applySetArrayMode(
@@ -393,7 +391,6 @@ export function applySetArrayMode(
 // ─── Circular Array ───
 
 export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: string): void {
-  if (!doc.features) doc.features = []
   const feature: PartFeature = {
     id: featureId,
     kind: 'circular_array',
@@ -406,7 +403,7 @@ export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: s
       axis_direction: [0, 0, 1],
     },
   }
-  doc.features.push(feature)
+  pushFeature(doc, feature)
 }
 
 export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
@@ -436,8 +433,7 @@ export function applyAddDeleteBody(
   body = '',
   label?: string,
 ): void {
-  if (!doc.features) doc.features = []
-  doc.features.push({
+  pushFeature(doc, {
     id: featureId,
     kind: 'delete_body',
     label: label ?? 'Delete Body',
@@ -446,8 +442,7 @@ export function applyAddDeleteBody(
 }
 
 export function applyAddHole(doc: PartDoc, featureId: string, label?: string): void {
-  if (!doc.features) doc.features = []
-  doc.features.push({
+  pushFeature(doc, {
     id: featureId,
     kind: 'hole',
     label: label ?? 'Hole',
@@ -464,8 +459,7 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
 // ─── Transform ───
 
 export function applyAddTransform(doc: PartDoc, featureId: string, label?: string): void {
-  if (!doc.features) doc.features = []
-  doc.features.push({
+  pushFeature(doc, {
     id: featureId,
     kind: 'transform',
     label: label ?? 'Transform',
@@ -552,8 +546,7 @@ export function applyMirrorEntities(
 }
 
 export function applyAddMirror(doc: PartDoc, featureId: string, label?: string): void {
-  if (!doc.features) doc.features = []
-  doc.features.push({
+  pushFeature(doc, {
     id: featureId,
     kind: 'mirror',
     label: label ?? 'Mirror',
