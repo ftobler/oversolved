@@ -8,7 +8,7 @@ import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody, resolveDirectionQuery, resolveAxisQuery } from './shared'
+import { bareBody, resolveBody, resolveDirectionQuery, resolveAxisQuery } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf, transformCopy } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 
@@ -18,20 +18,6 @@ export interface ArrayResult {
   status: string
   body_id: string
   operation: string
-}
-
-function bareBody(id: string, createdBy: string): Body {
-  return {
-    id,
-    created_by: createdBy,
-    modified_by: [],
-    shape: null,
-    sketch_id: '',
-    brep_diff: null,
-    profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
-  }
 }
 
 /** Build linear/rectangular array instance transforms (mirrors `_build_array_transforms`). */

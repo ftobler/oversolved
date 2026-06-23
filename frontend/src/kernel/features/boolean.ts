@@ -12,7 +12,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared'
+import { bareBody, resolveBody } from './shared'
 import { booleanWithDiff, exploreSolids } from '../occ/booleans'
 
 type Dict = Record<string, unknown>
@@ -28,22 +28,6 @@ const OP_MAP: Record<string, 'fuse' | 'cut' | 'common'> = {
   union: 'fuse',
   subtract: 'cut',
   intersect: 'common',
-}
-
-function bareBody(id: string, createdBy: string, sketchId: string): Body {
-  // Mirrors Python Body(id, created_by, shape, sketch_id) with field defaults
-  // (shape is assigned by the caller after registration).
-  return {
-    id,
-    created_by: createdBy,
-    modified_by: [],
-    shape: null,
-    sketch_id: sketchId,
-    brep_diff: null,
-    profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
-  }
 }
 
 /** Solve a boolean feature into the body store (mirrors `_solve_boolean`). */

@@ -9,7 +9,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared'
-import { resolveBody } from './shared'
+import { bareBody, resolveBody } from './shared'
 import { applyTransformShape, makeMirrorTrsf, transformCopy } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 
@@ -20,20 +20,6 @@ export interface TransformResult {
   body_id: string
   operation: string
   body_ids?: string[]
-}
-
-function bareBody(id: string, createdBy: string, sketchId: string): Body {
-  return {
-    id,
-    created_by: createdBy,
-    modified_by: [],
-    shape: null,
-    sketch_id: sketchId,
-    brep_diff: null,
-    profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
-  }
 }
 
 /** Query-result -> [start, end] (mirrors `_get_edge_3d`). */

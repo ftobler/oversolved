@@ -310,6 +310,24 @@ export function resolveBody(ref: string, bodyStore: Record<string, Body>): Body 
 }
 
 /**
+ * Build an empty Body shell with default fields (shape is assigned by the caller
+ * after registration). Mirrors Python Body(id, created_by, shape, sketch_id).
+ */
+export function bareBody(id: string, createdBy: string, sketchId = ''): Body {
+  return {
+    id,
+    created_by: createdBy,
+    modified_by: [],
+    shape: null,
+    sketch_id: sketchId,
+    brep_diff: null,
+    profile_queries: [],
+    face_lineage: {},
+    edge_lineage: {},
+  }
+}
+
+/**
  * Body IDs a body operation should target (mirrors `_resolve_merge_targets`).
  * Empty/None merge target means ALL bodies; otherwise the ref resolves to one.
  */
