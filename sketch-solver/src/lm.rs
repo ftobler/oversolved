@@ -1,5 +1,5 @@
-//! Hand-rolled Levenberg-Marquardt driver with a 3-point finite-difference
-//! Jacobian.
+//! Hand-rolled Levenberg-Marquardt driver accepting an analytic Jacobian from
+//! the caller.
 //!
 //! This replaces scipy's `least_squares(method="trf", jac="3-point")`. Per the
 //! migration plan we deliberately do NOT try to match `trf` (trust-region
