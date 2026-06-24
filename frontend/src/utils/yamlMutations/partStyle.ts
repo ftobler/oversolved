@@ -1,8 +1,7 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
+import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { findFeature } from './helpers'
 import { isValidVariableName } from '@/kernel/features/variable'
-
-const BUILTIN_FEATURE_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
 // ─── Part Style ───
 
