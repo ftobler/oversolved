@@ -525,36 +525,6 @@ export function readSolidEdges(
   return uniq.map((edge) => edgeToGeom(oc, scope, edge))
 }
 
-/**
- * Return ([xmin, ymin, zmin], [xmax, ymax, zmax]) AABB of a shape.
- * Computed from the B-rep (UseTriangulation off) for stability.
- *
- * NOTE: the stock opencascade.js@1.1.1 build does not export `Bnd_Box` or
- * `BRepBndLib`; this function will throw until a custom build that includes
- * the `Bnd` module is used. The body AABB used for classification comes instead
- * from `tessellation.ts`'s `bodyFrame` (vertices + edge samples, mesh-free), so
- * this exact B-rep box is not on the hot path -- it would be the one-line swap
- * if edgeless-surface accuracy ever becomes a requirement.
- */
-export function boundingBox(
-  oc: OccModule,
-  scope: DisposeScope,
-  shape: OccShape,
-): { min: Vec3; max: Vec3 } {
-  if (!oc.Bnd_Box || !oc.BRepBndLib) {
-    throw new Error('Bnd_Box or BRepBndLib not available in this OCC build')
-  }
-  const box = scope.track(new oc.Bnd_Box())
-  oc.BRepBndLib.Add_s(shape, box, false)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const arr = (box as any).Get()
-  if (Array.isArray(arr) && arr.length === 6) {
-    const [xmin, ymin, zmin, xmax, ymax, zmax] = arr as number[]
-    return { min: [xmin, ymin, zmin], max: [xmax, ymax, zmax] }
-  }
-  throw new Error('Bnd_Box.Get() did not return a 6-element array')
-}
-
 /** Unique B-rep vertices of a solid (deduped by topological identity). */
 export function readSolidVertices(oc: OccModule, scope: DisposeScope, solid: OccShape): Vec3[] {
   const E = oc.TopAbs_ShapeEnum
