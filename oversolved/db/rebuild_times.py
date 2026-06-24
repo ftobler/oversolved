@@ -9,30 +9,6 @@ class RebuildTimeStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def record(self, doc_id: str, duration_ms: int, feature_count: int) -> None:
-        """Insert one rebuild timing row."""
-        try:
-            self.db.execute(
-                """INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count)
-                   VALUES (?, ?, ?)""",
-                (doc_id, duration_ms, feature_count),
-            )
-            self.db.commit()
-        except Exception:
-            self.db.rollback()
-            raise
-
-    def history(self, doc_id: str, limit: int = 20) -> list[int]:
-        """Return the most recent rebuild durations (newest first)."""
-        cursor = self.db.execute(
-            """SELECT duration_ms FROM rebuild_times
-               WHERE document_uuid = ?
-               ORDER BY id DESC
-               LIMIT ?""",
-            (doc_id, limit),
-        )
-        return [row[0] for row in cursor.fetchall()]
-
     def compute_stats(self, doc_id: str) -> dict:
         """Compute aggregate rebuild statistics for a document."""
         cursor = self.db.execute(

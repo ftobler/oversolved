@@ -1,9 +1,5 @@
 """Unit tests for RebuildTimeStore."""
 
-from unittest.mock import patch
-
-import pytest
-
 from oversolved.db import Database, SQLiteConnection, RebuildTimeStore
 
 
@@ -21,29 +17,17 @@ def _make_db() -> Database:
     return db
 
 
-class TestRebuildTimeStore:
-
-    def test_record_inserts_row(self):
-        db = _make_db()
-        store = RebuildTimeStore(db)
-        store.record("doc-1", 150, 3)
-        cursor = db.execute(
-            "SELECT document_uuid, duration_ms, feature_count FROM rebuild_times"
+def _seed(db: Database, doc_id: str, durations: list[int]) -> None:
+    """Insert rebuild timing rows for testing."""
+    for d in durations:
+        db.execute(
+            "INSERT INTO rebuild_times (document_uuid, duration_ms, feature_count) VALUES (?, ?, 1)",
+            (doc_id, d),
         )
-        rows = cursor.fetchall()
-        assert len(rows) == 1
-        assert rows[0][0] == "doc-1"
-        assert rows[0][1] == 150
-        assert rows[0][2] == 3
+    db.commit()
 
-    def test_record_rolls_back_and_reraises_on_failure(self):
-        """A failed insert (missing table) rolls back and propagates the error."""
-        db = Database(SQLiteConnection(":memory:"))  # no rebuild_times table
-        store = RebuildTimeStore(db)
-        with patch.object(db, "rollback", wraps=db.rollback) as rollback:
-            with pytest.raises(Exception):
-                store.record("doc-x", 100, 2)
-        assert rollback.called
+
+class TestRebuildTimeStore:
 
     def test_compute_stats_empty_returns_zeros(self):
         db = _make_db()
@@ -63,8 +47,7 @@ class TestRebuildTimeStore:
         db = _make_db()
         store = RebuildTimeStore(db)
         # Insert oldest first (lower ids = older), newest last (higher ids = more recent)
-        for duration in [1000, 950, 900, 850, 800, 100, 90, 80, 70, 60]:
-            store.record("doc-trend", duration, 1)
+        _seed(db, "doc-trend", [1000, 950, 900, 850, 800, 100, 90, 80, 70, 60])
         stats = store.compute_stats("doc-trend")
         assert stats["trend"] == "faster"
 
@@ -72,8 +55,7 @@ class TestRebuildTimeStore:
         """Recent rebuilds much slower than older ones gives trend='slower'."""
         db = _make_db()
         store = RebuildTimeStore(db)
-        for duration in [100, 110, 120, 130, 140, 800, 850, 900, 950, 1000]:
-            store.record("doc-slow", duration, 1)
+        _seed(db, "doc-slow", [100, 110, 120, 130, 140, 800, 850, 900, 950, 1000])
         stats = store.compute_stats("doc-slow")
         assert stats["trend"] == "slower"
 
@@ -81,7 +63,7 @@ class TestRebuildTimeStore:
         """One record: odd-count median equals the value and trend stays None."""
         db = _make_db()
         store = RebuildTimeStore(db)
-        store.record("doc-one", 175, 1)
+        _seed(db, "doc-one", [175])
         stats = store.compute_stats("doc-one")
         assert stats["rebuild_count"] == 1
         assert stats["last_duration_ms"] == 175
@@ -94,24 +76,6 @@ class TestRebuildTimeStore:
         """Recent and older averages within 10 percent gives trend='stable'."""
         db = _make_db()
         store = RebuildTimeStore(db)
-        for duration in [100, 101, 99, 100, 102, 98, 100, 101, 99, 100]:
-            store.record("doc-stable", duration, 1)
+        _seed(db, "doc-stable", [100, 101, 99, 100, 102, 98, 100, 101, 99, 100])
         stats = store.compute_stats("doc-stable")
         assert stats["trend"] == "stable"
-
-    def test_history_returns_newest_first(self):
-        db = _make_db()
-        store = RebuildTimeStore(db)
-        for d in [10, 20, 30]:
-            store.record("doc-h", d, 1)
-        h = store.history("doc-h", limit=20)
-        assert h[0] == 30  # most recent first
-        assert h[-1] == 10
-
-    def test_history_respects_limit(self):
-        db = _make_db()
-        store = RebuildTimeStore(db)
-        for d in range(25):
-            store.record("doc-lim", d, 1)
-        h = store.history("doc-lim", limit=20)
-        assert len(h) == 20
