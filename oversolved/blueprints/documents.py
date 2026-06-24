@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request, Response
 from PIL import Image
 from oversolved.db import DocumentStore, UserStore, RebuildTimeStore, _now
 from flask import g
-from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission, api_error
+from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission, require_json, api_error
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
@@ -36,9 +36,8 @@ def list_documents():
 @documents_bp.route("", methods=["POST"])
 @require_auth
 @require_csrf
+@require_json
 def create_document():
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     name = (data.get("name") or "").strip()
     if not name:
@@ -76,9 +75,8 @@ def get_document(uuid):
 @require_auth
 @require_csrf
 @require_doc_permission("edit")
+@require_json
 def update_document(uuid):
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     if "content" not in data:
         return api_error('Missing "content" field', "BAD_REQUEST", 400)
@@ -104,9 +102,8 @@ def update_document(uuid):
 @require_auth
 @require_csrf
 @require_doc_permission("owner")
+@require_json
 def rename_document(uuid):
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     name = (data.get("name") or "").strip()
     if not name:
@@ -203,9 +200,8 @@ def clone_document(uuid):
 @require_auth
 @require_csrf
 @require_doc_permission("owner")
+@require_json
 def create_share(uuid):
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     db = get_db()
     doc_store = DocumentStore(db)
@@ -295,9 +291,8 @@ def rebuild_stats(doc_id):
 @documents_bp.route("/import", methods=["POST"])
 @require_auth
 @require_csrf
+@require_json
 def import_document():
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     name = (data.get("name") or "").strip()
     content = data.get("content") or ""

@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
-from oversolved.blueprints import require_auth, require_admin, require_csrf, get_db, validate_password_strength, api_error
+from oversolved.blueprints import require_auth, require_admin, require_csrf, require_json, get_db, validate_password_strength, api_error
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +49,8 @@ def list_users() -> ResponseReturnValue:
 @require_auth
 @require_csrf
 @require_admin
+@require_json
 def create_user_admin() -> ResponseReturnValue:
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip()
@@ -86,9 +85,8 @@ def create_user_admin() -> ResponseReturnValue:
 @require_auth
 @require_csrf
 @require_admin
+@require_json
 def admin_update_user(user_id: int) -> ResponseReturnValue:
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
 
     if user_id == g.current_user["id"] and data.get("is_active") is False:
@@ -139,9 +137,8 @@ def admin_delete_user(user_id: int) -> ResponseReturnValue:
 @require_auth
 @require_csrf
 @require_admin
+@require_json
 def admin_reset_password(user_id: int) -> ResponseReturnValue:
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     new_password = data.get("password") or ""
     if not new_password:

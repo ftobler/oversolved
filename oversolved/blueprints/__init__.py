@@ -37,6 +37,18 @@ def get_db():
     return g.db
 
 
+def require_json(f):
+    """Decorator that requires the request Content-Type to be application/json."""
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not request.is_json:
+            return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 def require_csrf(f):
     """Decorator that provides CSRF protection via Origin/Referer header check.
 

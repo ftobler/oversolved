@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import UserStore
-from oversolved.blueprints import get_db, require_auth, require_csrf, validate_password_strength, api_error
+from oversolved.blueprints import get_db, require_auth, require_csrf, require_json, validate_password_strength, api_error
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users/me")
 
@@ -13,9 +13,8 @@ _VALID_SORT_PREFS = {"alphabetical", "date_newest_first", "date_oldest_first"}
 @users_bp.route("", methods=["PUT"])
 @require_auth
 @require_csrf
+@require_json
 def update_profile():
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     username = data.get("username")
     email = data.get("email")
@@ -71,9 +70,8 @@ def get_preferences():
 @users_bp.route("/preferences", methods=["PUT"])
 @require_auth
 @require_csrf
+@require_json
 def update_preferences():
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     document_sort = data.get("document_sort", "").strip()
     if not document_sort:

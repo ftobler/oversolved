@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 from oversolved.db import UserStore, SessionStore, _now
-from oversolved.blueprints import get_db, require_csrf, api_error
+from oversolved.blueprints import get_db, require_csrf, require_json, api_error
 from oversolved.rate_limit import RateLimiter
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -57,13 +57,12 @@ def _user_response(user: dict) -> dict:
 
 
 @auth_bp.route("/login", methods=["POST"])
+@require_json
 def login():
     client_ip = request.remote_addr or "unknown"
     if _login_rate_limit_exceeded(client_ip):
         return api_error("Too many login attempts", "RATE_LIMITED", 429)
 
-    if not request.is_json:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     credential = (data.get("credential") or data.get("username") or "").strip()
     password = data.get("password") or ""
