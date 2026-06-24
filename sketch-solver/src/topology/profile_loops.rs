@@ -6,6 +6,7 @@
 //! `EdgeGeom`/`BoundaryEdge` are the loop-edge vocabulary the whole pipeline
 //! shares: `dcel` builds them, this module samples them.
 
+use super::curve_split::bezier_point;
 use super::TOL_NEAR_ZERO_AREA;
 use crate::radians;
 
@@ -116,20 +117,12 @@ fn arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
 /// n interior points along a cubic-Bezier spline edge; empty if not one.
 fn spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     if let EdgeGeom::Spline { start, c1, c2, end } = *e {
-        let mut out = Vec::with_capacity(n);
-        for k in 0..n {
-            let t = (k as f64 + 1.0) / (n as f64 + 1.0);
-            let mt = 1.0 - t;
-            let a = mt * mt * mt;
-            let b = 3.0 * mt * mt * t;
-            let c = 3.0 * mt * t * t;
-            let d = t * t * t;
-            out.push([
-                a * start[0] + b * c1[0] + c * c2[0] + d * end[0],
-                a * start[1] + b * c1[1] + c * c2[1] + d * end[1],
-            ]);
-        }
-        out
+        (0..n)
+            .map(|k| {
+                let t = (k as f64 + 1.0) / (n as f64 + 1.0);
+                bezier_point(start, c1, c2, end, t)
+            })
+            .collect()
     } else {
         vec![]
     }
