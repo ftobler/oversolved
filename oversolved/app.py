@@ -44,6 +44,16 @@ def _ensure_admin_user(db: Database, testing: bool = False) -> None:
         user_store.update(uid, is_admin=1, must_change_password=1)
 
 
+def _register_blueprints(app: Flask) -> None:
+    """Register all API blueprints."""
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(users_bp)
+    app.register_blueprint(documents_bp)
+    app.register_blueprint(upload_export_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(docs_bp)
+
+
 def _check_production_config(app: Flask) -> None:
     """Warn about missing production security settings.
 
@@ -79,6 +89,8 @@ def create_app(config: dict | None = None) -> Flask:
         app.config.update(config)
 
     _check_production_config(app)
+
+    _register_blueprints(app)
 
     db_config = {
         "type": app.config["DB_TYPE"],
@@ -119,14 +131,6 @@ def create_app(config: dict | None = None) -> Flask:
 
     oversolved_cfg = OversolvedConfig.from_env(instance_path=app.instance_path)
     app.config["OVERSOLVED"] = oversolved_cfg
-
-    # Register blueprints
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(users_bp)
-    app.register_blueprint(documents_bp)
-    app.register_blueprint(upload_export_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(docs_bp)
 
     # ── JSON error handlers ────────────────────────────────────────────────────
 
