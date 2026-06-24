@@ -260,7 +260,7 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
     })
 }
 
-pub fn encode_input(input: &Input) -> Vec<u8> {
+pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     let mut w = Writer::default();
     w.u32(MAGIC);
     w.u32(input.entities.len() as u32);
