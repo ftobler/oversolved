@@ -28,7 +28,7 @@ import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch, wasLastCl
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { CLICK_THRESHOLD_PX, DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
-import { getBodiesToRender, getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
+import { getBodiesToRender, getSketchesToRender, getPreviewBodies, type BodyRenderItem } from '@/components/Viewport/bodyUtils'
 import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
@@ -501,6 +501,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
+  const renderBodyItem = (b: BodyRenderItem) => (
+    <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} />
+  )
+
   return (
     <div
       style={PARENT_STYLE}
@@ -567,15 +571,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
         {ghostMode ? (
           <>
-            {pickBodyItems.map(b => (
-              <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} />
-            ))}
+            {pickBodyItems.map(renderBodyItem)}
             <PreviewEdgeOverlay items={previewBodyItems} pickItems={pickBodyItems} />
           </>
         ) : (
-          bodyItems.map(b => (
-            <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} />
-          ))
+          bodyItems.map(renderBodyItem)
         )}
       </Canvas>
 
