@@ -7,7 +7,7 @@ import type {
 } from '@/types/cad'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
 import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
-import { computeAngleDimension } from '@/components/Geometry3D/dimensions/angleDimensionLogic'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 
 /**
  * Compute the natural measurement for a freshly-placed dimension so the value-

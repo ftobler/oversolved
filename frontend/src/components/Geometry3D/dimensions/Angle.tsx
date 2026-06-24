@@ -9,7 +9,7 @@ import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
-import { computeAngleDimension } from './angleDimensionLogic'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 import type { PlaneTransform } from '@/types/cad'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
