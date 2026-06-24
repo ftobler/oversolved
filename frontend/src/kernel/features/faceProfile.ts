@@ -20,7 +20,7 @@ import { extractProfileLoops, registerTopFace, type PlaneLike } from './shared'
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
 
-export interface FaceProfile {
+interface FaceProfile {
   loops: EdgeDict[][]
   plane: PlaneLike
   /** The OCC face when resolved from a body, else null (topo-surface paths). */
@@ -175,7 +175,7 @@ export function resolveFaceProfile(
   throw new Error(`Cannot resolve profile from: ${sketchRef}`)
 }
 
-export interface ExtrudeLoops {
+interface ExtrudeLoops {
   loops: EdgeDict[][]
   plane: PlaneLike
   sketchId: string

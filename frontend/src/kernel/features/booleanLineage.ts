@@ -77,7 +77,7 @@ function findBestFaceMatch(
   return best !== null && bestScore < 1.0 ? best : null
 }
 
-export interface TransferLineageInput {
+interface TransferLineageInput {
   /** The body's shape AFTER the boolean (cleaned). */
   bodyShape: OccShape
   /** The boolean's BrepDiff (cleaned-space face/edge handles). */

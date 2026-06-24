@@ -29,7 +29,7 @@ export interface Resolved3dGeometry {
 
 /** A lowered projection: the resolved entity kind plus its 2D params. The kind
  *  can differ from the declared kind (a tilted circle lowers to an ellipse). */
-export interface ProjectedParams {
+interface ProjectedParams {
   kind: string
   params: number[]
 }

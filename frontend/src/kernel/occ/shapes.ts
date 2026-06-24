@@ -63,7 +63,7 @@ export function compareFaceSortKeys(a: number[], b: number[]): number {
 
 // --- body building ---------------------------------------------------------
 
-export interface BoxSpec {
+interface BoxSpec {
   dx: number
   dy: number
   dz: number
