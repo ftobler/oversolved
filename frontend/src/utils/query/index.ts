@@ -6,11 +6,10 @@ import { VERTEX_POINT_KEYS } from "@/types/vertexKeys"
  *
  * Call ONLY at true serialization boundaries:
  *   - writing into a PartDoc / YAML field
- *   - constructing an ancestry id list inside q.ancestry()
  *   - React keys or Set members where an opaque stable string is needed
  *
  * Do NOT call to compare queries -- use structural equality on the objects.
- * Do NOT call to inspect kind -- use q.kind.
+ * Do NOT call to inspect kind -- use the `kind` field directly.
  * If you find yourself calling this just to pass the value somewhere else,
  * keep the Query object instead.
  */
@@ -74,18 +73,4 @@ function _parseAncestry(s: string): AncestryQuery {
   return { kind: "ancestry", ids, typeRestriction, classifier }
 }
 
-/** Constructor helpers -- callers never need to call emitWire themselves. */
-export const q = {
-  local: (eid: string, sub?: string): LocalQuery =>
-    ({ kind: "local", eid, sub }),
-  absolute: (featureId: string, eid?: string, sub?: string): AbsoluteQuery =>
-    ({ kind: "absolute", featureId, eid, sub }),
-  // Accepts Query objects so callers never have to call emitWire just to
-  // pass something into ancestry.
-  ancestry: (ids: (Query | string)[], typeRestriction?: string, classifier?: string): AncestryQuery => ({
-    kind: "ancestry",
-    ids: ids.map(i => typeof i === "string" ? i : emitWire(i)),
-    typeRestriction,
-    classifier,
-  }),
-}
+

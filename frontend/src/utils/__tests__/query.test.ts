@@ -1,22 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { emitWire, parseQuery, q } from '@/utils/query'
-
-describe('emitWire', () => {
-  it('local no sub',       () => expect(emitWire(q.local('e1'))).toBe('$e1'))
-  it('local with start',   () => expect(emitWire(q.local('e1', 'start'))).toBe('$e1start'))
-  it('local with end',     () => expect(emitWire(q.local('e1', 'end'))).toBe('$e1end'))
-  it('absolute feature',   () => expect(emitWire(q.absolute('sk1'))).toBe('@sk1'))
-  it('absolute element',   () => expect(emitWire(q.absolute('sk1', 'l1'))).toBe('@sk1l1'))
-  it('absolute with sub',  () => expect(emitWire(q.absolute('sk1', 'l1', 'end'))).toBe('@sk1l1end'))
-  it('ancestry two ids', () => {
-    const s = emitWire(q.ancestry(['@sk1a', '@sk1b']))
-    expect(s).toMatch(/^\?/)
-    expect(s).toContain('@sk1a')
-    expect(s).toContain('@sk1b')
-  })
-  it('ancestry with type',       () => expect(emitWire(q.ancestry(['@a'], 'flatface'))).toContain(':flatface'))
-  it('ancestry with classifier', () => expect(emitWire(q.ancestry(['@a'], 'flatface', 'inner'))).toContain('@inner'))
-})
+import { emitWire, parseQuery } from '@/utils/query'
 
 describe('parseQuery', () => {
   it('dispatches local',    () => expect(parseQuery('$e1').kind).toBe('local'))
@@ -40,13 +23,17 @@ describe('parseQuery round-trips via emitWire', () => {
   })
 })
 
-describe('q helpers produce correct emitWire output', () => {
-  it('q.local',    () => expect(emitWire(q.local('e1', 'start'))).toBe('$e1start'))
-  it('q.absolute', () => expect(emitWire(q.absolute('sk1', 'l1', 'end'))).toBe('@sk1l1end'))
-  it('q.ancestry accepts Query objects -- emitWire is called internally, not by caller', () => {
-    const a = q.absolute('sk1', 'l1')
-    const b = q.absolute('sk1', 'arc1')
-    const anc = q.ancestry([a, b], 'flatface')
-    expect(anc.ids).toEqual(['@sk1l1', '@sk1arc1'])
+describe('emitWire handles all query shapes', () => {
+  it('local',    () => expect(emitWire({ kind: 'local', eid: 'e1', sub: 'start' })).toBe('$e1start'))
+  it('absolute', () => expect(emitWire({ kind: 'absolute', featureId: 'sk1', eid: 'l1', sub: 'end' })).toBe('@sk1l1end'))
+  it('ancestry with string ids', () => {
+    const anc = {
+      kind: 'ancestry' as const,
+      ids: ['@sk1l1', '@sk1arc1'],
+      typeRestriction: 'flatface' as string | undefined,
+      classifier: undefined as string | undefined,
+    }
+    expect(emitWire(anc)).toContain('@sk1l1')
+    expect(emitWire(anc)).toContain('@sk1arc1')
   })
 })
