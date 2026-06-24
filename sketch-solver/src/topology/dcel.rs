@@ -448,6 +448,8 @@ fn ellipse_arc_eg(e: &InputEntity, phi0: f64, phi1: f64, ccw: bool) -> EdgeGeom 
     let a = e.a.unwrap();
     let b = e.b.unwrap();
     let theta = e.theta.unwrap_or(0.0);
+    let cr = (theta * std::f64::consts::PI / 180.0).cos();
+    let sr = (theta * std::f64::consts::PI / 180.0).sin();
     EdgeGeom::EllipseArc {
         center: [c[0], c[1]],
         a,
@@ -456,8 +458,8 @@ fn ellipse_arc_eg(e: &InputEntity, phi0: f64, phi1: f64, ccw: bool) -> EdgeGeom 
         angle_start_deg: degrees(phi0),
         angle_end_deg: degrees(phi1),
         ccw,
-        start: ellipse_point_at([c[0], c[1]], a, b, theta, phi0),
-        end: ellipse_point_at([c[0], c[1]], a, b, theta, phi1),
+        start: ellipse_point_at([c[0], c[1]], a, b, cr, sr, phi0),
+        end: ellipse_point_at([c[0], c[1]], a, b, cr, sr, phi1),
     }
 }
 
@@ -643,8 +645,10 @@ fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64 {
                 } else if p1 > p0 {
                     p1 -= TWO_PI;
                 }
+                let cr = (theta * std::f64::consts::PI / 180.0).cos();
+                let sr = (theta * std::f64::consts::PI / 180.0).sin();
                 for k in 1..8 {
-                    pts.push(ellipse_point_at([center[0], center[1]], a, b, theta, p0 + (p1 - p0) * k as f64 / 8.0));
+                    pts.push(ellipse_point_at([center[0], center[1]], a, b, cr, sr, p0 + (p1 - p0) * k as f64 / 8.0));
                 }
             }
             EdgeGeom::Line { .. } | EdgeGeom::Ellipse { .. } => {}

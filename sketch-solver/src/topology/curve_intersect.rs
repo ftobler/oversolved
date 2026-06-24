@@ -368,7 +368,11 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
                      hits: &mut Vec<Hit>| {
         let eval_at: Box<dyn Fn(f64) -> Vec2> = match *scanned {
             Curve::Circle { c, r } => Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()]),
-            Curve::Ellipse { c, a, b, theta } => Box::new(move |phi: f64| ellipse_point_at(c, a, b, theta, phi)),
+            Curve::Ellipse { c, a, b, theta } => {
+                let cr = (theta * std::f64::consts::PI / 180.0).cos();
+                let sr = (theta * std::f64::consts::PI / 180.0).sin();
+                Box::new(move |phi: f64| ellipse_point_at(c, a, b, cr, sr, phi))
+            }
             Curve::Bezier { p0, c1, c2, p3 } => Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t)),
             Curve::Line { .. } => panic!("scan_with: unsupported scanned curve kind"),
         };

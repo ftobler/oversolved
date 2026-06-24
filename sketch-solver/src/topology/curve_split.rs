@@ -36,10 +36,8 @@ pub fn subdivide_bezier(c: &BezierCtrl, t0: f64, t1: f64) -> BezierCtrl {
     right
 }
 
-/// Point on an ellipse at eccentric angle phi (theta in degrees).
-pub fn ellipse_point_at(center: Vec2, a: f64, b: f64, theta_deg: f64, phi: f64) -> Vec2 {
-    let cr = (theta_deg * std::f64::consts::PI / 180.0).cos();
-    let sr = (theta_deg * std::f64::consts::PI / 180.0).sin();
+/// Point on an ellipse at eccentric angle phi with pre-computed rotation trig.
+pub fn ellipse_point_at(center: Vec2, a: f64, b: f64, cr: f64, sr: f64, phi: f64) -> Vec2 {
     let ax = a * phi.cos();
     let ay = b * phi.sin();
     [
@@ -95,28 +93,30 @@ mod tests {
 
     #[test]
     fn ellipse_point_at_axis_aligned() {
-        let p = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 0.0, 0.0);
+        // theta=0 => cr=1, sr=0
+        let p = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 1.0, 0.0, 0.0);
         assert!((p[0] - 4.0).abs() < 1e-12 && (p[1] - 2.0).abs() < 1e-12);
-        let q = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 0.0, std::f64::consts::FRAC_PI_2);
+        let q = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 1.0, 0.0, std::f64::consts::FRAC_PI_2);
         assert!((q[0] - 1.0).abs() < 1e-12 && (q[1] - 3.0).abs() < 1e-12);
     }
 
     #[test]
     fn ellipse_point_at_rotated_90_degrees() {
-        // theta=90 swaps the axes: the major axis now points +y. At phi=0 the
-        // semi-major endpoint sits directly above the center; at phi=pi/2 the
-        // semi-minor endpoint sits to its left.
-        let major = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 90.0, 0.0);
+        // theta=90 => cr=0, sr=1, swaps the axes: the major axis now points +y.
+        // At phi=0 the semi-major endpoint sits directly above the center;
+        // at phi=pi/2 the semi-minor endpoint sits to its left.
+        let major = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 0.0, 1.0, 0.0);
         assert!((major[0] - 1.0).abs() < 1e-9 && (major[1] - 5.0).abs() < 1e-9);
-        let minor = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 90.0, std::f64::consts::FRAC_PI_2);
+        let minor = ellipse_point_at([1.0, 2.0], 3.0, 1.0, 0.0, 1.0, std::f64::consts::FRAC_PI_2);
         assert!((minor[0] - 0.0).abs() < 1e-9 && (minor[1] - 2.0).abs() < 1e-9);
     }
 
     #[test]
     fn ellipse_point_at_rotated_45_degrees() {
-        // Semi-major endpoint (phi=0) of a 45-degree-rotated ellipse lands on the
+        // theta=45 => cr=sr=sqrt(2)/2. Semi-major endpoint (phi=0) lands on the
         // diagonal at distance a from the center: (a*cos45, a*sin45).
-        let p = ellipse_point_at([0.0, 0.0], 2.0, 1.0, 45.0, 0.0);
+        let d2 = std::f64::consts::FRAC_1_SQRT_2;
+        let p = ellipse_point_at([0.0, 0.0], 2.0, 1.0, d2, d2, 0.0);
         let d = 2.0 * std::f64::consts::FRAC_1_SQRT_2;
         assert!((p[0] - d).abs() < 1e-9 && (p[1] - d).abs() < 1e-9);
     }
