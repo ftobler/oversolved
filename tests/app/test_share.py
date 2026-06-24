@@ -92,31 +92,6 @@ class TestDocumentStoreShares:
         doc_store.share_document(uuid, other_id, "edit")
         assert doc_store.get_permission(uuid, other_id) == "edit"
 
-    def test_list_owned_and_shared(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        other_id = user_store.create("other", "hash")
-        uuid = doc_store.create("Doc", owner_id)
-        doc_store.share_document(uuid, other_id, "view")
-
-        owner_docs = doc_store.list_owned_and_shared(owner_id, include_shared=True)
-        assert len(owner_docs) == 1
-        assert owner_docs[0]["is_owner"] is True
-        assert owner_docs[0]["owner_username"] == "owner"
-
-        other_docs = doc_store.list_owned_and_shared(other_id, include_shared=True)
-        assert len(other_docs) == 1
-        assert other_docs[0]["is_owner"] is False
-        assert other_docs[0]["owner_username"] == "owner"
-
-    def test_list_owned_and_shared_exclude_shared(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        other_id = user_store.create("other", "hash")
-        uuid = doc_store.create("Doc", owner_id)
-        doc_store.share_document(uuid, other_id, "view")
-
-        other_docs = doc_store.list_owned_and_shared(other_id, include_shared=False)
-        assert len(other_docs) == 0
-
 
 class TestShareAPI:
     """Tests for share API endpoints."""

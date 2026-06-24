@@ -188,7 +188,6 @@ class TestUserStore:
             assert "is_active" in user
 
 
-
     def test_change_password(self, user_store):
         uid = user_store.create("pwchanger", "hash")
         user_store.change_password(uid, "newhash")
@@ -652,16 +651,6 @@ class TestDocumentStorePublicAccess:
 
         doc_store.set_public(uuid, True)
         assert doc_store.get_permission(uuid, other_id) == "view"
-
-    def test_list_owned_and_shared_includes_public(self, doc_store, user_store):
-        owner_id = user_store.create("owner4", "hash")
-        other_id = user_store.create("other4", "hash")
-        uuid = doc_store.create("PublicDoc", owner_id)
-
-        doc_store.set_public(uuid, True)
-        docs = doc_store.list_owned_and_shared(other_id, include_shared=True)
-        uuids = [d["uuid"] for d in docs]
-        assert uuid in uuids
 
     def test_list_shared_with_excludes_public(self, doc_store, user_store):
         owner_id = user_store.create("owner5", "hash")

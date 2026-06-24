@@ -362,11 +362,6 @@ class DocumentStore:
             for row in cursor.fetchall()
         ]
 
-    def list_owned_and_shared(self, user_id: int, sort: str = "name", include_shared: bool = True) -> list[dict]:
-        """List documents owned by or shared with a user."""
-        filter_type = "all" if include_shared else "owned"
-        return self._execute_documents_query(filter_type, "", sort, user_id)
-
     def list_public(self, sort: str = "name") -> list[dict]:
         """List all public documents with owner username."""
         return self._execute_documents_query("public", "", sort, 0)
