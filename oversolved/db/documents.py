@@ -362,11 +362,6 @@ class DocumentStore:
             for row in cursor.fetchall()
         ]
 
-    def search_by_name(self, user_id: int, search_query: str,
-                       filter_type: str = "all", sort: str = "name") -> list[dict]:
-        """Server-side case-insensitive search across documents visible to the user."""
-        return self._execute_documents_query(filter_type, search_query, sort, user_id)
-
     def list_by_filter(self, user_id: int, filter_type: str = "owned",
                        sort: str = "name", search: str = "") -> list[dict]:
         """Unified method: list documents by filter type with optional search."""

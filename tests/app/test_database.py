@@ -187,7 +187,6 @@ class TestUserStore:
             assert "is_admin" in user
             assert "is_active" in user
 
-
     def test_change_password(self, user_store):
         uid = user_store.create("pwchanger", "hash")
         user_store.change_password(uid, "newhash")
@@ -651,16 +650,6 @@ class TestDocumentStorePublicAccess:
 
         doc_store.set_public(uuid, True)
         assert doc_store.get_permission(uuid, other_id) == "view"
-
-    def test_search_by_name_all_includes_public(self, doc_store, user_store):
-        owner_id = user_store.create("owner6", "hash")
-        other_id = user_store.create("other6", "hash")
-        uuid = doc_store.create("SearchablePublic", owner_id)
-
-        doc_store.set_public(uuid, True)
-        docs = doc_store.search_by_name(other_id, "SearchablePublic", filter_type="all")
-        uuids = [d["uuid"] for d in docs]
-        assert uuid in uuids
 
     def test_set_public_idempotent(self, doc_store, user_store):
         owner_id = user_store.create("owner7", "hash")

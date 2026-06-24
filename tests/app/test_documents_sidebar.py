@@ -48,41 +48,6 @@ def authed_client2(app, authed_client):
 class TestDocumentStoreSidebar:
     """Tests for DocumentStore sidebar methods."""
 
-    def test_search_by_name_owned(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        doc_store.create("AlphaDoc", owner_id)
-        doc_store.create("BetaDoc", owner_id)
-
-        docs = doc_store.search_by_name(owner_id, "alpha", filter_type="owned")
-        assert len(docs) == 1
-        assert docs[0]["name"] == "AlphaDoc"
-
-    def test_search_by_name_shared(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        other_id = user_store.create("other", "hash")
-        uuid = doc_store.create("SharedDoc", owner_id)
-        doc_store.share_document(uuid, other_id, "view")
-
-        docs = doc_store.search_by_name(other_id, "shared", filter_type="shared")
-        assert len(docs) == 1
-        assert docs[0]["uuid"] == uuid
-
-    def test_search_by_name_public(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        uuid = doc_store.create("PublicDoc", owner_id)
-        doc_store.set_public(uuid, True)
-
-        docs = doc_store.search_by_name(999, "public", filter_type="public")
-        assert len(docs) == 1
-        assert docs[0]["uuid"] == uuid
-
-    def test_search_by_name_case_insensitive(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        doc_store.create("MixedCase", owner_id)
-
-        docs = doc_store.search_by_name(owner_id, "mixedcase", filter_type="owned")
-        assert len(docs) == 1
-
     def test_list_by_filter_owned(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
         other_id = user_store.create("other", "hash")
