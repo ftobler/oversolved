@@ -140,13 +140,16 @@ function removeRefAt(doc: PartDoc, featureId: string, kind: RefListKind, field: 
   sub[field] = current
 }
 
-export function applyAddExtrudeProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  toggleRef(doc, featureId, 'extrude', 'sketch', sketchQuery, 'applyAddExtrudeProfile')
+function makeAddRefToggle(kind: RefListKind, field: RefListField, fn: string) {
+  return (doc: PartDoc, featureId: string, query: string) => toggleRef(doc, featureId, kind, field, query, fn)
 }
 
-export function applyRemoveExtrudeProfile(doc: PartDoc, featureId: string, index: number): void {
-  removeRefAt(doc, featureId, 'extrude', 'sketch', index, 'applyRemoveExtrudeProfile')
+function makeRemoveRefAt(kind: RefListKind, field: RefListField, fn: string) {
+  return (doc: PartDoc, featureId: string, index: number) => removeRefAt(doc, featureId, kind, field, index, fn)
 }
+
+export const applyAddExtrudeProfile = makeAddRefToggle('extrude', 'sketch', 'applyAddExtrudeProfile')
+export const applyRemoveExtrudeProfile = makeRemoveRefAt('extrude', 'sketch', 'applyRemoveExtrudeProfile')
 
 // ─── Revolve ───
 
@@ -171,13 +174,8 @@ export function applyAddRevolve(
   pushFeature(doc, feature)
 }
 
-export function applyAddRevolveProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  toggleRef(doc, featureId, 'revolve', 'sketch', sketchQuery, 'applyAddRevolveProfile')
-}
-
-export function applyRemoveRevolveProfile(doc: PartDoc, featureId: string, index: number): void {
-  removeRefAt(doc, featureId, 'revolve', 'sketch', index, 'applyRemoveRevolveProfile')
-}
+export const applyAddRevolveProfile = makeAddRefToggle('revolve', 'sketch', 'applyAddRevolveProfile')
+export const applyRemoveRevolveProfile = makeRemoveRefAt('revolve', 'sketch', 'applyRemoveRevolveProfile')
 
 // ─── Sweep ───
 
@@ -204,21 +202,10 @@ export function applyAddSweep(
   pushFeature(doc, feature)
 }
 
-export function applyAddSweepProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
-  toggleRef(doc, featureId, 'sweep', 'sketch', sketchQuery, 'applyAddSweepProfile')
-}
-
-export function applyRemoveSweepProfile(doc: PartDoc, featureId: string, index: number): void {
-  removeRefAt(doc, featureId, 'sweep', 'sketch', index, 'applyRemoveSweepProfile')
-}
-
-export function applyAddSweepPath(doc: PartDoc, featureId: string, pathQuery: string): void {
-  toggleRef(doc, featureId, 'sweep', 'path', pathQuery, 'applyAddSweepPath')
-}
-
-export function applyRemoveSweepPath(doc: PartDoc, featureId: string, index: number): void {
-  removeRefAt(doc, featureId, 'sweep', 'path', index, 'applyRemoveSweepPath')
-}
+export const applyAddSweepProfile = makeAddRefToggle('sweep', 'sketch', 'applyAddSweepProfile')
+export const applyRemoveSweepProfile = makeRemoveRefAt('sweep', 'sketch', 'applyRemoveSweepProfile')
+export const applyAddSweepPath = makeAddRefToggle('sweep', 'path', 'applyAddSweepPath')
+export const applyRemoveSweepPath = makeRemoveRefAt('sweep', 'path', 'applyRemoveSweepPath')
 
 // ─── Import Step ───
 
