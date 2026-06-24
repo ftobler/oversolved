@@ -38,6 +38,7 @@ const ENABLE_ID_BUFFER_PICKING = true
 // references every Viewport render, forcing CanvasImpl to re-render needlessly.
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
+const PARENT_STYLE: React.CSSProperties = { position: 'relative', width: '100%', height: '100%', touchAction: 'none' }
 
 export interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void
@@ -500,7 +501,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   return (
     <div
-      style={{ position: 'relative', width: '100%', height: '100%', touchAction: 'none' }}
+      style={PARENT_STYLE}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerMove={rubberBand.onPointerMove}
