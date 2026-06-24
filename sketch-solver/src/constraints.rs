@@ -277,9 +277,6 @@ impl Constraint {
             .map(|(_, rf)| *rf)
     }
 
-    pub fn has_role(&self, role: RefRole) -> bool {
-        self.refs.iter().any(|(r, _)| *r == role)
-    }
 }
 
 #[cfg(test)]
@@ -384,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn ref_for_and_has_role_select_by_role() {
+    fn ref_for_select_by_role() {
         let a = Ref::Entity {
             index: 0,
             point: PointSelector::Start,
@@ -395,10 +392,6 @@ mod tests {
             refs: vec![(RefRole::A, a), (RefRole::B, b)],
             ..Default::default()
         };
-
-        assert!(c.has_role(RefRole::A));
-        assert!(c.has_role(RefRole::B));
-        assert!(!c.has_role(RefRole::Target));
 
         assert_eq!(c.ref_for(RefRole::A), Some(a));
         assert_eq!(c.ref_for(RefRole::B), Some(b));
