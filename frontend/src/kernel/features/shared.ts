@@ -355,6 +355,33 @@ function normalize3(d: number[]): number[] | null {
   return null
 }
 
+/** Resolve a query to a 3D line {start, direction}, shared by resolveDirectionQuery and resolveAxisQuery. */
+function resolveQueryToLine(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null,
+): { start: number[]; dir: number[] } | null {
+  if (!query) return null
+  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  if (data && 'start' in data && 'end' in data) {
+    const start = data.start as number[]
+    const end = data.end as number[]
+    const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
+    if (dir) return { start, dir }
+  } else if (data && 'external_params' in data && data.kind === 'line') {
+    const sketchId = (data.sketch_id as string) ?? ''
+    const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
+    if (plane) {
+      const params = data.external_params as number[]
+      const start = sketchToWorld2d(params.slice(0, 2), plane)
+      const end = sketchToWorld2d(params.slice(2, 4), plane)
+      const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
+      if (dir) return { start, dir }
+    }
+  }
+  return null
+}
+
 /**
  * Resolve a direction query to a unit vector (mirrors `_resolve_direction_query`).
  * Handles both 3D edge results ({start, end}) and 2D sketch-line results
@@ -367,25 +394,8 @@ export function resolveDirectionQuery(
   fallback: number[],
   bodyStore: Record<string, unknown> | null = null,
 ): number[] {
-  if (!query) return fallback
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
-  if (data && 'start' in data && 'end' in data) {
-    const start = data.start as number[]
-    const end = data.end as number[]
-    const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-    if (dir) return dir
-  } else if (data && 'external_params' in data && data.kind === 'line') {
-    const sketchId = (data.sketch_id as string) ?? ''
-    const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
-    if (plane) {
-      const params = data.external_params as number[]
-      const start = sketchToWorld2d(params.slice(0, 2), plane)
-      const end = sketchToWorld2d(params.slice(2, 4), plane)
-      const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-      if (dir) return dir
-    }
-  }
-  return fallback
+  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  return line ? line.dir : fallback
 }
 
 /**
@@ -400,25 +410,8 @@ export function resolveAxisQuery(
   fallbackDirection: number[],
   bodyStore: Record<string, unknown> | null = null,
 ): [number[], number[]] {
-  if (!query) return [fallbackOrigin, fallbackDirection]
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
-  if (data && 'start' in data && 'end' in data) {
-    const start = data.start as number[]
-    const end = data.end as number[]
-    const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-    if (dir) return [[...start], dir]
-  } else if (data && 'external_params' in data && data.kind === 'line') {
-    const sketchId = (data.sketch_id as string) ?? ''
-    const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
-    if (plane) {
-      const params = data.external_params as number[]
-      const start = sketchToWorld2d(params.slice(0, 2), plane)
-      const end = sketchToWorld2d(params.slice(2, 4), plane)
-      const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-      if (dir) return [[...start], dir]
-    }
-  }
-  return [fallbackOrigin, fallbackDirection]
+  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  return line ? [[...line.start], line.dir] : [fallbackOrigin, fallbackDirection]
 }
 
 // Re-export so the Frame3D type is visible to consumers of PlaneLike.
