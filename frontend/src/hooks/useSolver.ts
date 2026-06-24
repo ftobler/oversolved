@@ -361,10 +361,6 @@ export function useSolver(
     }
   }, [onFirstSolve, uuid, applyBuildResponse])
 
-  const resetSolver = useCallback(() => {
-    firstSolveDone.current = false
-  }, [])
-
   useEffect(() => {
     cancelledRef.current = false
     return () => { cancelledRef.current = true }
@@ -402,7 +398,6 @@ export function useSolver(
     setSolveRawResult,
     featureTimings,
     reSolve,
-    resetSolver,
     validation,
     clearValidation: () => setValidation(null),
   }

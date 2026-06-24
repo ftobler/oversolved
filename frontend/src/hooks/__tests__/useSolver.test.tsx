@@ -385,20 +385,6 @@ describe('useSolver', () => {
   })
 
   describe('lifecycle', () => {
-    it('resets firstSolve on resetSolver', async () => {
-      vi.useFakeTimers()
-      const onFirstSolve = vi.fn()
-      const { result } = setupHook({ onFirstSolve })
-      await act(async () => { await result.current.reSolve(solvableDoc()) })
-      act(() => { vi.advanceTimersByTime(0) })
-      expect(onFirstSolve).toHaveBeenCalledTimes(1)
-      result.current.resetSolver()
-      await act(async () => { await result.current.reSolve(solvableDoc()) })
-      act(() => { vi.advanceTimersByTime(0) })
-      expect(onFirstSolve).toHaveBeenCalledTimes(2)
-      vi.useRealTimers()
-    })
-
     it('reads rollbackPosition from the partEditorStore on each solve', async () => {
       const { result } = setupHook()
       const features = Array.from({ length: 15 }, (_, i) => ({ id: `f${i}`, kind: 'sketch' as const }))
