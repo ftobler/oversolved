@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
-import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddPointWithConstraint, applyAddImportStep, applyDeleteFeature, dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddImportStep, applyDeleteFeature, dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { applyAddPointWithConstraint } from '@/utils/yamlMutations/sketch'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
