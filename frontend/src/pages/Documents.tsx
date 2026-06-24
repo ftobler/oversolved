@@ -14,6 +14,14 @@ import type { TrashDoc } from '@/adapters/trash'
 import { useAuth } from '@/contexts/AuthContext'
 import '@/pages/Documents.css'
 
+function stopClick(handler: () => void): React.MouseEventHandler {
+  return (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    handler()
+  }
+}
+
 type DocumentMeta = DocSummary
 
 // Tile thumbnail: prefer the inline base64 preview (local store), else the
@@ -656,11 +664,7 @@ export default function Documents() {
                             {onCloud && doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  setShareDoc(doc)
-                                }}
+                                onClick={stopClick(() => setShareDoc(doc))}
                                 title="Share document"
                               >
                                 <span className="material-icons">share</span>
@@ -669,39 +673,29 @@ export default function Documents() {
                             {onCloud && !doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
+                                onClick={stopClick(() => {
                                   if (window.confirm('Remove this shared document?')) {
                                     backendBundle.sharing?.leaveShare(doc.uuid)
                                       .then(() => fetchDocuments(activeFilter, debouncedSearch))
                                       .catch(() => undefined)
                                   }
-                                }}
+                                })}
                                 title="Unshare document"
                               >
                                 <span className="material-icons">link_off</span>
                               </button>
                             )}
-                            <button
-                              className="btn btn-tile-action"
-                              onClick={e => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleDuplicate(doc.uuid)
-                              }}
-                              title="Duplicate"
-                            >
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={stopClick(() => handleDuplicate(doc.uuid))}
+                                title="Duplicate"
+                              >
                               <span className="material-icons">content_copy</span>
                             </button>
                             {!onCloud && cloudAvailable && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleCopyToCloud(doc.uuid, doc.name)
-                                }}
+                                onClick={stopClick(() => handleCopyToCloud(doc.uuid, doc.name))}
                                 title="Copy to Cloud"
                               >
                                 <span className="material-icons">cloud_upload</span>
@@ -710,11 +704,7 @@ export default function Documents() {
                             {!onCloud && cloudAvailable && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleMoveToCloud(doc.uuid, doc.name)
-                                }}
+                                onClick={stopClick(() => handleMoveToCloud(doc.uuid, doc.name))}
                                 title="Move to Cloud"
                               >
                                 <span className="material-icons">drive_file_move</span>
@@ -723,11 +713,7 @@ export default function Documents() {
                             {onCloud && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleCopyToLocal(doc.uuid, doc.name)
-                                }}
+                                onClick={stopClick(() => handleCopyToLocal(doc.uuid, doc.name))}
                                 title="Copy to Local"
                               >
                                 <span className="material-icons">cloud_download</span>
@@ -736,35 +722,23 @@ export default function Documents() {
                             {onCloud && doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleMoveToLocal(doc.uuid, doc.name)
-                                }}
+                                onClick={stopClick(() => handleMoveToLocal(doc.uuid, doc.name))}
                                 title="Move to Local"
                               >
                                 <span className="material-icons">drive_file_move</span>
                               </button>
                             )}
-                            <button
-                              className="btn btn-tile-action"
-                              onClick={e => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                handleExport(doc.uuid, doc.name)
-                              }}
-                              title="Export YAML"
-                            >
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={stopClick(() => handleExport(doc.uuid, doc.name))}
+                                title="Export YAML"
+                              >
                               <span className="material-icons">download</span>
                             </button>
                             {doc.is_owner && (
                               <button
                                 className="btn btn-delete-tile"
-                                onClick={e => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleDeleteDocument(doc.uuid)
-                                }}
+                                onClick={stopClick(() => handleDeleteDocument(doc.uuid))}
                                 title="Delete document"
                               >
                                 <span className="material-icons">delete</span>
