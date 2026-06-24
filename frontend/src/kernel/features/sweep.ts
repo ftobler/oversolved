@@ -22,12 +22,6 @@ import { makeLineEdge, makeArcEdge, type Vec3 } from '../occ/primitives'
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
 
-export interface SweepResult {
-  [key: string]: unknown
-  status: string
-  body_id: string
-}
-
 /**
  * Normalize a sweep profile reference. A viewport `entity:<sketchId>:<eid>` or
  * `vertex:<sketchId>:<eid>:<sub>` selection ID identifies a single sketch
@@ -369,7 +363,7 @@ export function solveSweep(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): SweepResult {
+): { [key: string]: unknown; status: string; body_id: string } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.sweep as Dict) ?? {}
   const mergeTarget = ((sub.merge_target as string) ?? (feature.merge_target as string)) ?? null
@@ -480,7 +474,7 @@ export function solveSweep(
   const [spineEdges] = collectPathEdges(oc, scope, pathRefs, globalRepo)
 
   const bodyId = 'body_' + featureId
-  const result: SweepResult = { status: 'ok', body_id: bodyId }
+  const result: { [key: string]: unknown; status: string; body_id: string } = { status: 'ok', body_id: bodyId }
   const operation = ((merged.operation as string) ?? 'add') as BodyOperation
 
   const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId)
