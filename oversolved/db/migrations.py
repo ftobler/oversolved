@@ -6,15 +6,6 @@ from typing import Any, Callable
 from oversolved.db.connection import DatabaseConnection, PostgreSQLConnection
 
 
-def _to_bytes(value: object) -> bytes | None:
-    """Normalize BYTEA values: psycopg2 returns memoryview, sqlite returns bytes."""
-    if value is None:
-        return None
-    if isinstance(value, memoryview):
-        return bytes(value)
-    return value  # type: ignore[return-value]
-
-
 class Database:
     """Database manager with migrations support."""
 

@@ -4,7 +4,16 @@ import uuid as uuid_mod
 from datetime import datetime
 
 from oversolved.db import _now
-from oversolved.db.migrations import Database, _to_bytes
+from oversolved.db.migrations import Database
+
+
+def _to_bytes(value: object) -> bytes | None:
+    """Normalize BYTEA values: psycopg2 returns memoryview, sqlite returns bytes."""
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        return bytes(value)
+    return value  # type: ignore[return-value]
 
 
 class DocumentStore:

@@ -7,7 +7,7 @@ apply_migration rollback, and the _to_bytes normalizer with no postgres needed.
 
 import pytest
 from oversolved.db import Database, SQLiteConnection
-from oversolved.db.migrations import _to_bytes
+from oversolved.db.documents import _to_bytes
 
 
 def _make_db():
