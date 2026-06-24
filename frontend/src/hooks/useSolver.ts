@@ -338,7 +338,7 @@ export function useSolver(
       // pick_boundary was requested, pick_bodies (the "before" state). The TS
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
-      const buildResult = applyBuildResponse(d, local as unknown as BuildResponse, solveTimeMs, currentRequestId)
+      const buildResult = applyBuildResponse(d, local as BuildResponse, solveTimeMs, currentRequestId)
       if (!firstSolveDone.current && onFirstSolve) {
         firstSolveDone.current = true
         setTimeout(onFirstSolve, 0)
