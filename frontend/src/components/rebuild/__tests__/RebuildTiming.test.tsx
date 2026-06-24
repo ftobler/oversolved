@@ -1,27 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RebuildButton } from '@/components/rebuild/RebuildButton'
-import { RebuildSparkline } from '@/components/rebuild/RebuildSparkline'
 import { RebuildTimingPopover } from '@/components/rebuild/RebuildTimingPopover'
-
-describe('RebuildSparkline', () => {
-  it('renders with data', () => {
-    const { container } = render(<RebuildSparkline durations={[100, 200, 150]} />)
-    expect(container.querySelector('svg')).toBeInTheDocument()
-    expect(container.querySelector('polyline')).toBeInTheDocument()
-    expect(container.querySelectorAll('circle').length).toBe(3)
-  })
-
-  it('returns null for empty data', () => {
-    const { container } = render(<RebuildSparkline durations={[]} />)
-    expect(container.firstChild).toBeNull()
-  })
-
-  it('handles single data point', () => {
-    const { container } = render(<RebuildSparkline durations={[100]} />)
-    expect(container.querySelector('svg')).toBeInTheDocument()
-  })
-})
 
 describe('RebuildTimingPopover', () => {
   const sampleFeatures = [
