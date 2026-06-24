@@ -38,14 +38,6 @@ class DocumentStore:
             )
         return uuid
 
-    def create_with_uuid(self, uuid: str, name: str, owner_id: int) -> None:
-        """Create a new document with a specific UUID."""
-        with self.db.transaction():
-            self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id) VALUES (?, ?, ?, ?)",
-                (uuid, name, "", owner_id),
-            )
-
     def store_content(self, uuid: str, content: str) -> None:
         """Update document content."""
         now = _now()

@@ -714,14 +714,6 @@ class TestDocumentStorePublicAccess:
 class TestDocumentStoreMisc:
     """Coverage for the less-trodden DocumentStore branches."""
 
-    def test_create_with_uuid(self, doc_store, user_id):
-        doc_store.create_with_uuid("fixed-uuid-1234", "Imported", user_id)
-        doc = doc_store.retrieve("fixed-uuid-1234")
-        assert doc is not None
-        assert doc["name"] == "Imported"
-        assert doc["owner_id"] == user_id
-        assert doc["content"] == ""
-
     def test_update_no_fields_returns_false(self, doc_store, user_id):
         uuid = doc_store.create("Doc", user_id)
         assert doc_store.update(uuid) is False
