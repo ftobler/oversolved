@@ -21,6 +21,10 @@ const LOSS_THRESHOLD: f64 = 1e-4;
 const REG_WEIGHT_BASE: f64 = 1e-3;
 const REG_WEIGHT_DRAG: f64 = 5e-2;
 
+fn to_f32(x: &[f64]) -> Vec<f32> {
+    x.iter().map(|&v| v as f32).collect()
+}
+
 pub fn solve_sketch(input: &Input) -> Output {
     let problem = Problem::new(input);
     let x0: Vec<f64> = problem.x0.clone();
@@ -50,7 +54,7 @@ pub fn solve_sketch(input: &Input) -> Output {
             result.x.clone()
         };
 
-        let params_solved: Vec<f32> = x_final.iter().map(|&v| v as f32).collect();
+        let params_solved = to_f32(&x_final);
 
         return Output {
             params_solved,
@@ -95,7 +99,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     // `result.x` is not read again, so move it instead of cloning.
     let x_final = result.x;
 
-    let params_solved: Vec<f32> = x_final.iter().map(|&v| v as f32).collect();
+    let params_solved = to_f32(&x_final);
 
     let (entity_status, vertex_freedom) = if input.options.skip_status_pass {
         (Vec::new(), Vec::new())
