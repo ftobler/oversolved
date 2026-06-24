@@ -162,7 +162,8 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
 
     let mut entities = Vec::with_capacity(n_entities);
     for _ in 0..n_entities {
-        let kind = Kind::from_u8(r.u8()?).ok_or(CodecError::BadKind(0))?;
+        let kind_byte = r.u8()?;
+        let kind = Kind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
         let param_offset = r.u32()? as usize;
         entities.push(Entity { kind, param_offset });
     }
@@ -209,12 +210,14 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
     let n_refs = r.u8()? as usize;
     let mut refs = Vec::with_capacity(n_refs);
     for _ in 0..n_refs {
-        let role = RefRole::from_u8(r.u8()?).ok_or(CodecError::BadRefRole(0))?;
+        let role_byte = r.u8()?;
+        let role = RefRole::from_u8(role_byte).ok_or(CodecError::BadRefRole(role_byte))?;
         let ref_type = r.u8()?;
         let rf = match ref_type {
             0 => {
-                let point = PointSelector::from_u8(r.u8()?)
-                    .ok_or(CodecError::BadPointSelector(0))?;
+                let point_byte = r.u8()?;
+                let point = PointSelector::from_u8(point_byte)
+                    .ok_or(CodecError::BadPointSelector(point_byte))?;
                 let index = r.u32()?;
                 Ref::Entity { index, point }
             }
@@ -241,7 +244,8 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
         None
     };
     let axis = if flags & 0b100 != 0 {
-        Some(Axis::from_u8(r.u8()?).ok_or(CodecError::BadAxis(0))?)
+        let axis_byte = r.u8()?;
+        Some(Axis::from_u8(axis_byte).ok_or(CodecError::BadAxis(axis_byte))?)
     } else {
         None
     };
