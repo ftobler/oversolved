@@ -34,38 +34,6 @@ def _row_to_user(row, columns: tuple) -> dict:
     return result
 
 
-class AccountStore:
-    """Unified accounts table for user namespace tracking."""
-
-    def __init__(self, db: Database):
-        self.db = db
-
-    def find_by_handle(self, handle: str) -> dict | None:
-        """Find an account by handle. Returns {id, handle, owner_type, owner_id}."""
-        cursor = self.db.execute(
-            "SELECT id, handle, owner_type, owner_id FROM accounts WHERE handle = ?",
-            (handle,),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            return None
-        return {
-            "id": row[0],
-            "handle": row[1],
-            "owner_type": row[2],
-            "owner_id": row[3],
-        }
-
-    def register(self, handle: str, owner_type: str, owner_id: int) -> None:
-        """Register a new handle for a user or org."""
-        with self.db.transaction():
-            self.db.execute(
-                """INSERT INTO accounts (handle, owner_type, owner_id)
-                   VALUES (?, ?, ?)""",
-                (handle, owner_type, owner_id),
-            )
-
-
 class UserStore:
     """User management."""
 

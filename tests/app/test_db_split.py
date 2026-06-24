@@ -15,7 +15,6 @@ def test_public_api_compat():
         SQLiteConnection,
         PostgreSQLConnection,
         Database,
-        AccountStore,
         UserStore,
         SessionStore,
         DocumentStore,
