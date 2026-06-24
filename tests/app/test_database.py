@@ -652,16 +652,6 @@ class TestDocumentStorePublicAccess:
         doc_store.set_public(uuid, True)
         assert doc_store.get_permission(uuid, other_id) == "view"
 
-    def test_list_shared_with_excludes_public(self, doc_store, user_store):
-        owner_id = user_store.create("owner5", "hash")
-        other_id = user_store.create("other5", "hash")
-        uuid = doc_store.create("PublicOnlyDoc", owner_id)
-
-        doc_store.set_public(uuid, True)
-        docs = doc_store.list_shared_with(other_id)
-        uuids = [d["uuid"] for d in docs]
-        assert uuid not in uuids
-
     def test_search_by_name_all_includes_public(self, doc_store, user_store):
         owner_id = user_store.create("owner6", "hash")
         other_id = user_store.create("other6", "hash")

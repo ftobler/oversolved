@@ -362,10 +362,6 @@ class DocumentStore:
             for row in cursor.fetchall()
         ]
 
-    def list_shared_with(self, user_id: int, sort: str = "name") -> list[dict]:
-        """List documents explicitly shared with this user (excluding owned and public-only)."""
-        return self._execute_documents_query("shared", "", sort, user_id)
-
     def search_by_name(self, user_id: int, search_query: str,
                        filter_type: str = "all", sort: str = "name") -> list[dict]:
         """Server-side case-insensitive search across documents visible to the user."""

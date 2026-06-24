@@ -48,31 +48,6 @@ def authed_client2(app, authed_client):
 class TestDocumentStoreSidebar:
     """Tests for DocumentStore sidebar methods."""
 
-    def test_list_shared_with(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        other_id = user_store.create("other", "hash")
-        uuid = doc_store.create("SharedDoc", owner_id)
-        doc_store.share_document(uuid, other_id, "view")
-
-        docs = doc_store.list_shared_with(other_id)
-        assert len(docs) == 1
-        assert docs[0]["uuid"] == uuid
-        assert docs[0]["is_owner"] is False
-        assert docs[0]["owner_username"] == "owner"
-
-    def test_list_shared_with_empty(self, doc_store, user_store):
-        other_id = user_store.create("other", "hash")
-        docs = doc_store.list_shared_with(other_id)
-        assert docs == []
-
-    def test_list_shared_with_excludes_owned(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        uuid = doc_store.create("OwnDoc", owner_id)
-        doc_store.share_document(uuid, owner_id, "view")
-
-        docs = doc_store.list_shared_with(owner_id)
-        assert docs == []
-
     def test_search_by_name_owned(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
         doc_store.create("AlphaDoc", owner_id)
