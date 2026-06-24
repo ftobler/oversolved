@@ -129,10 +129,10 @@ export function applyRenameFeature(doc: PartDoc, featureId: string, label: strin
   }
 }
 
-export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
-  const targets = (doc.features ?? []).filter(
-    f => (f.kind === 'sketch' || f.kind === 'plane')
-  )
+// Toggle `visible` across every feature matching `predicate`: if any is currently
+// visible, hide all (visible=false); otherwise show all (drop the override).
+function toggleVisibility(doc: PartDoc, predicate: (f: PartFeature) => boolean): void {
+  const targets = (doc.features ?? []).filter(predicate)
   const anyVisible = targets.some(f => f.visible !== false)
   for (const f of targets) {
     if (anyVisible) {
@@ -143,21 +143,17 @@ export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
   }
 }
 
+export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
+  toggleVisibility(doc, f => f.kind === 'sketch' || f.kind === 'plane')
+}
+
 export function applyTogglePlaneVisibility(doc: PartDoc): void {
-  const targets = (doc.features ?? []).filter(f => {
+  toggleVisibility(doc, f => {
     if (f.id === 'Origin') return false
     if (f.kind === 'plane') return true
     if (f.id === 'Top' || f.id === 'Front' || f.id === 'Right') return true
     return false
   })
-  const anyVisible = targets.some(f => f.visible !== false)
-  for (const f of targets) {
-    if (anyVisible) {
-      f.visible = false
-    } else {
-      delete f.visible
-    }
-  }
 }
 
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, definition?: Record<string, unknown>): void {
