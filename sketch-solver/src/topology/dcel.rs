@@ -1024,7 +1024,10 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
     let mut next_he: HashMap<usize, usize> = HashMap::new();
     for outs in out_map.values() {
         let k = outs.len();
-        for pos in 0..outs.len() {
+        if k == 0 {
+            continue;
+        }
+        for pos in 0..k {
             let i = outs[pos].2;
             let ti = i ^ 1;
             let prev = ((pos as i64 - 1).rem_euclid(k as i64)) as usize;
