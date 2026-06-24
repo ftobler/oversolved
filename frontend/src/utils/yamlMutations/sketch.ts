@@ -459,45 +459,6 @@ export function applyAddEntityWithConstraint(
   ])
 }
 
-export function applyAddPointWithConstraint(
-  doc: PartDoc,
-  featureId: string,
-  params: [number, number],
-  snapVertexId?: string,
-  snapEntityRef?: string,
-  constraintKind?: string,
-): void {
-  const feature = findFeature(doc, featureId)
-  if (!feature) return
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  const existing = new Set(feature.entities.map(e => e.id))
-  let eid = randomId(12)
-  while (existing.has(eid)) eid = randomId(12)
-  feature.entities.push({ id: eid, kind: 'point' })
-  feature.initial[eid] = [round(params[0]), round(params[1])]
-
-  if (!constraintKind) return
-  if (!feature.constraints) feature.constraints = []
-
-  let target: string
-  if (snapEntityRef) {
-    target = snapEntityRef
-  } else if (snapVertexId && snapVertexId.startsWith('@builtin_')) {
-    target = snapVertexId
-  } else if (snapVertexId) {
-    // Use snapVertexId directly -- same reasoning as applyAddEntityWithConstraint.
-    target = snapVertexId
-  } else {
-    return
-  }
-
-  applyAddConstraint(doc, featureId, constraintKind, [
-    `vertex:${featureId}:${eid}:xy`,
-    target,
-  ])
-}
-
 /** Materialize a real `point` entity at a curve-curve contact (a tangency or an
  *  intersection) and pin it to every curve through the point with a
  *  `coincident`-to-locus constraint.
