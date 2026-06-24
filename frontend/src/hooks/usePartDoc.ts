@@ -18,16 +18,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const reSolveRef = useRef<ReSolveFn | null>(null)
 
   const {
-    doc, setDoc, docRef, docName, setDocName, ownerUsername,
-    loading, error, setError, permission, isPublic, isCloudDoc,
+    doc, setDoc, docRef, docName, ownerUsername,
+    loading, error, setError, permission, isCloudDoc,
     saveDoc, renameDoc, cloneDoc,
   } = useDocumentState(uuid, reSolveRef, { solveOnLoad })
 
   const {
     solveResults, setSolveResults, bodies, pickBodies,
-    solving, solveTime, solveError, setSolveError, solveResult, setSolveRawResult,
+    solving, solveError, setSolveError, solveResult,
     featureTimings, reSolve,
-    validation, clearValidation,
+    validation,
   } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve }, docRef, setDoc)
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
