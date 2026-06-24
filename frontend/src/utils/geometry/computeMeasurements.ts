@@ -124,19 +124,7 @@ export function computeMeasurements(
   // Use registry to evaluate single-entity measurements only if there's exactly one entity total
   const totalEntities = arcs.length + circles.length + lines.length + points.length
   if (totalEntities === 1) {
-    for (const entity of arcs) {
-      const result = measureSingleEntity(entity)
-      if (result.length > 0) return result
-    }
-    for (const entity of circles) {
-      const result = measureSingleEntity(entity)
-      if (result.length > 0) return result
-    }
-    for (const entity of lines) {
-      const result = measureSingleEntity(entity)
-      if (result.length > 0) return result
-    }
-    for (const entity of points) {
+    for (const entity of [...arcs, ...circles, ...lines, ...points]) {
       const result = measureSingleEntity(entity)
       if (result.length > 0) return result
     }
