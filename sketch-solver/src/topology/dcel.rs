@@ -575,7 +575,7 @@ fn bend(eg: &EdgeGeom) -> f64 {
             if speed2 < EPS {
                 return 0.0;
             }
-            s * a * b / speed2.powf(1.5)
+            s * a * b / speed2 * speed2.sqrt()
         }
         EdgeGeom::Spline { start, c1, c2, .. } => {
             let d1 = [3.0 * (c1[0] - start[0]), 3.0 * (c1[1] - start[1])];
@@ -587,7 +587,7 @@ fn bend(eg: &EdgeGeom) -> f64 {
             if speed2 < EPS {
                 return 0.0; // degenerate tangent: no curvature signal to tie-break on
             }
-            (d1[0] * d2[1] - d1[1] * d2[0]) / speed2.powf(1.5)
+            (d1[0] * d2[1] - d1[1] * d2[0]) / speed2 * speed2.sqrt()
         }
     }
 }
