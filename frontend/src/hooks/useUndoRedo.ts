@@ -24,47 +24,33 @@ export function useUndoRedo(
     setRedoStack([])
   }, [])
 
-  const handleUndo = useCallback(() => {
-    setUndoStack(prev => {
-      if (prev.length === 0) return prev
-      const next = [...prev]
-      const entry = next.pop()!
-      // Restoring an earlier doc moves it away from the saved content, so it
-      // counts as unsaved until the user saves again.
-      useUnsavedChangesStore.getState().setDirty(true)
-      const preUndoDoc = docRef.current
-      if (preUndoDoc) setRedoStack(r => [...r, { doc: preUndoDoc, mutation: entry.mutation }])
-      docRef.current = entry.doc
-      setDoc(entry.doc)
-      // Undo/redo always exits any edit and snaps rollback to the end of the
-      // restored doc — there is no meaningful in-edit state to preserve.
-      const store = usePartEditorStore.getState()
-      store.setEditingFeatureId(null)
-      store.setPickBoundary(null)
-      store.setRollbackPosition(entry.doc.features?.length ?? 0)
-      reSolve(entry.doc)
-      return next
-    })
-  }, [docRef, setDoc, reSolve])
+  const applyUndoRedo = useCallback(
+    (setFromStack: typeof setUndoStack, setToStack: typeof setUndoStack) => {
+      setFromStack(prev => {
+        if (prev.length === 0) return prev
+        const next = [...prev]
+        const entry = next.pop()!
+        // Restoring an earlier doc moves it away from the saved content, so it
+        // counts as unsaved until the user saves again.
+        useUnsavedChangesStore.getState().setDirty(true)
+        const preDoc = docRef.current
+        if (preDoc) setToStack(r => [...r, { doc: preDoc, mutation: entry.mutation }])
+        docRef.current = entry.doc
+        setDoc(entry.doc)
+        // Undo/redo always exits any edit and snaps rollback to the end of the
+        // restored doc — there is no meaningful in-edit state to preserve.
+        const store = usePartEditorStore.getState()
+        store.setEditingFeatureId(null)
+        store.setPickBoundary(null)
+        store.setRollbackPosition(entry.doc.features?.length ?? 0)
+        reSolve(entry.doc)
+        return next
+      })
+    }, [docRef, setDoc, reSolve])
 
-  const handleRedo = useCallback(() => {
-    setRedoStack(prev => {
-      if (prev.length === 0) return prev
-      const next = [...prev]
-      const entry = next.pop()!
-      useUnsavedChangesStore.getState().setDirty(true)
-      const preRedoDoc = docRef.current
-      if (preRedoDoc) setUndoStack(u => [...u, { doc: preRedoDoc, mutation: entry.mutation }])
-      docRef.current = entry.doc
-      setDoc(entry.doc)
-      const store = usePartEditorStore.getState()
-      store.setEditingFeatureId(null)
-      store.setPickBoundary(null)
-      store.setRollbackPosition(entry.doc.features?.length ?? 0)
-      reSolve(entry.doc)
-      return next
-    })
-  }, [docRef, setDoc, reSolve])
+  const handleUndo = useCallback(() => { applyUndoRedo(setUndoStack, setRedoStack) }, [applyUndoRedo])
+
+  const handleRedo = useCallback(() => { applyUndoRedo(setRedoStack, setUndoStack) }, [applyUndoRedo])
 
   const saveUndoStackSnapshot = useCallback(() => {
     stackSnapshotRef.current = {
