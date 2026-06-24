@@ -170,20 +170,15 @@ fn dedup(spl: &[Split]) -> Vec<Split> {
     if spl.is_empty() {
         return vec![];
     }
-    let mut sorted: Vec<Split> = spl.to_vec();
-    sorted.sort_by(|x, y| {
+    let mut out: Vec<Split> = spl.to_vec();
+    out.sort_by(|x, y| {
         if x.0 != y.0 {
             x.0.partial_cmp(&y.0).unwrap()
         } else {
             x.1.cmp(&y.1)
         }
     });
-    let mut out: Vec<Split> = vec![sorted[0].clone()];
-    for s in &sorted[1..] {
-        if (s.0 - out.last().unwrap().0).abs() > SPLIT_EPS {
-            out.push(s.clone());
-        }
-    }
+    out.dedup_by(|a, b| (a.0 - b.0).abs() <= SPLIT_EPS);
     out
 }
 
