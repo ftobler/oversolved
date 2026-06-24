@@ -4,6 +4,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from oversolved.db import _now
 from oversolved.db.migrations import Database
 
 
@@ -21,7 +22,7 @@ class SessionStore:
         token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         expires_at = (datetime.now(timezone.utc) + self.SESSION_DURATION).isoformat()
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self.db.transaction():
             self.db.execute(
                 "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
@@ -98,6 +99,6 @@ class SessionStore:
 
     def cleanup_expired(self) -> None:
         """Remove expired sessions."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self.db.transaction():
             self.db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))

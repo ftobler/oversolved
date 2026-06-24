@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, Response
 from PIL import Image
-from oversolved.db import DocumentStore, UserStore, RebuildTimeStore
+from oversolved.db import DocumentStore, UserStore, RebuildTimeStore, _now
 from flask import g
 from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission, api_error
 
@@ -120,7 +120,7 @@ def rename_document(uuid):
 @require_csrf
 @require_doc_permission("owner")
 def delete_document(uuid):
-    deleted_at = datetime.now(timezone.utc).isoformat()
+    deleted_at = _now()
     DocumentStore(get_db()).update(uuid, deleted_at=deleted_at)
     return jsonify({
         "uuid": uuid,

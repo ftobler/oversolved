@@ -1,8 +1,9 @@
 """Document store implementation."""
 
 import uuid as uuid_mod
-from datetime import datetime, timezone
+from datetime import datetime
 
+from oversolved.db import _now
 from oversolved.db.migrations import Database, _to_bytes
 
 
@@ -20,7 +21,7 @@ class DocumentStore:
     def create(self, name: str, owner_id: int, is_public: bool = False) -> str:
         """Create a new document and return its UUID."""
         uuid = uuid_mod.uuid4().hex
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self.db.transaction():
             self.db.execute(
                 "INSERT INTO documents (uuid, name, content, owner_id, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -38,7 +39,7 @@ class DocumentStore:
 
     def store_content(self, uuid: str, content: str) -> None:
         """Update document content."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self.db.transaction():
             self.db.execute(
                 "UPDATE documents SET content = ?, updated_at = ? WHERE uuid = ?",
@@ -47,7 +48,7 @@ class DocumentStore:
 
     def store_preview_image(self, uuid: str, image_data: bytes) -> None:
         """Update document preview image."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self.db.transaction():
             self.db.execute(
                 "UPDATE documents SET preview_image = ?, updated_at = ? WHERE uuid = ?",
@@ -56,7 +57,7 @@ class DocumentStore:
 
     def rename(self, uuid: str, name: str) -> bool:
         """Rename a document. Returns True if found."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self.db.transaction():
             cursor = self.db.execute(
                 "UPDATE documents SET name = ?, updated_at = ? WHERE uuid = ?",
@@ -73,7 +74,7 @@ class DocumentStore:
         if not updates:
             return False
         if "updated_at" not in updates:
-            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            updates["updated_at"] = _now()
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [uuid]
         with self.db.transaction():
@@ -170,7 +171,7 @@ class DocumentStore:
         if doc is None:
             return None
         new_uuid = uuid_mod.uuid4().hex
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         owner_id = doc["owner_id"] if new_owner_id is None else new_owner_id
         with self.db.transaction():
             self.db.execute(

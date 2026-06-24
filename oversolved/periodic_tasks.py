@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from croniter import croniter, CroniterBadCronError
+from oversolved.db import _now
 
 if TYPE_CHECKING:
     from oversolved.db import Database
@@ -109,13 +110,13 @@ class TaskScheduler:
             try:
                 result = task.run(db)
                 task_store.update_task(task_key, {
-                    "last_run_at": datetime.now(timezone.utc).isoformat(),
+                    "last_run_at": _now(),
                     "last_run_status": result.get("status", "success"),
                 })
                 results.append({"task_key": task_key, "status": "success", **result})
             except Exception as e:
                 task_store.update_task(task_key, {
-                    "last_run_at": datetime.now(timezone.utc).isoformat(),
+                    "last_run_at": _now(),
                     "last_run_status": "error",
                 })
                 results.append({"task_key": task_key, "status": "error", "error": str(e)})
@@ -138,14 +139,14 @@ class TaskScheduler:
             result = task.run(db)
 
             task_store.update_task(task_key, {
-                "last_run_at": datetime.now(timezone.utc).isoformat(),
+                "last_run_at": _now(),
                 "last_run_status": result.get("status", "success"),
             })
 
             return {"status": "success", **result}
         except Exception as e:
             task_store.update_task(task_key, {
-                "last_run_at": datetime.now(timezone.utc).isoformat(),
+                "last_run_at": _now(),
                 "last_run_status": "error",
             })
             return {"status": "error", "error": str(e)}

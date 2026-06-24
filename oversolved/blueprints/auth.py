@@ -1,9 +1,8 @@
 """Authentication routes."""
 
-from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
-from oversolved.db import UserStore, SessionStore
+from oversolved.db import UserStore, SessionStore, _now
 from oversolved.blueprints import get_db, require_csrf, api_error
 from oversolved.rate_limit import RateLimiter
 
@@ -87,7 +86,7 @@ def login():
     _clear_login_failures(client_ip)
     if not user["is_active"]:
         return api_error("Account is deactivated", "FORBIDDEN", 403)
-    user_store.update(user["id"], last_login_at=datetime.now(timezone.utc).isoformat())
+    user_store.update(user["id"], last_login_at=_now())
     token = SessionStore(db).create(user["id"])
     response = make_response(jsonify({"user": _user_response(user)}))
     secure = current_app.config.get("SESSION_COOKIE_SECURE", False)
