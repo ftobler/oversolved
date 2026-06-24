@@ -260,6 +260,7 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
     })
 }
 
+#[cfg(test)]
 pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     let mut w = Writer::default();
     w.u32(MAGIC);
@@ -293,6 +294,7 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     w.buf
 }
 
+#[cfg(test)]
 fn encode_constraint(w: &mut Writer, c: &Constraint) {
     w.u8(c.kind_code);
     w.u8(c.refs.len() as u8);
