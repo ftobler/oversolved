@@ -12,7 +12,6 @@ export {
   DIMENSION_LABEL_FAT_PIXELS,
   type IdPipelineOptions,
 } from './IdPipeline'
-export { pixelsToClipSpace } from './pixelsToClipSpace'
 export { IdPipelineContext, useIdPipeline } from './IdPipelineContext'
 export { default as IdPickingDriver } from './IdPickingDriver'
 export { useFaceIdRegistration } from './useFaceIdRegistration'
