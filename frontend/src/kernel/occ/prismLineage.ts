@@ -231,7 +231,7 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop
  * are holes. A loop made entirely of arcs on one shared circle is emitted as a
  * single closed circle edge so OCC builds one cylindrical face on extrude.
  */
-export function sketchLoopsToFace(
+function sketchLoopsToFace(
   oc: OccModule,
   scope: DisposeScope,
   loops: LoopEdge[][],

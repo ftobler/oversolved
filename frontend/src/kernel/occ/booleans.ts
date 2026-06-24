@@ -205,7 +205,7 @@ export function cleanWithHistory(
  * cleaned pool. The `*_input_*` lists are carried as-is (they reference inputs,
  * untouched by clean). Dedupes by IsSame.
  */
-export function composeDiffThroughClean(
+function composeDiffThroughClean(
   oc: OccModule,
   scope: DisposeScope,
   diff: BrepDiff,

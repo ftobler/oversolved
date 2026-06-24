@@ -241,7 +241,7 @@ const WIRE_HEAL_TOL = 0.01
  * catches the resulting drop. Effective only when the edges already (nearly)
  * connect.
  */
-export function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
+function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   const sfw = scope.track(new oc.ShapeFix_Wire_1())
   for (const e of edges) {
     const singleBuilder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
@@ -317,7 +317,7 @@ export function makePrism(
  * size, so meshing each face individually (as cadquery does) is what reproduces
  * Python's per-face triangulation; do not substitute a single solid-level mesh.
  */
-export function meshShape(
+function meshShape(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
@@ -327,7 +327,7 @@ export function meshShape(
   scope.track(new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, true, angularDeflection, false))
 }
 
-export interface FaceTessellation {
+interface FaceTessellation {
   /** Per-face vertices in world coordinates (location transform applied). */
   vertices: Vec3[]
   /** Triangles as 0-based indices into `vertices`, winding fixed for orientation. */
