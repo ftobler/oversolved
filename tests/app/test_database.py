@@ -752,7 +752,7 @@ class TestDocumentStoreMisc:
         doc_store.set_public(uuid, True)
         assert doc_store.has_permission(uuid, other_id, "view") is True
 
-        doc_store.unshare_public(uuid)
+        doc_store.set_public(uuid, False)
         assert doc_store.has_permission(uuid, other_id, "view") is False
 
     def test_get_shares_includes_public_link(self, doc_store, user_store):

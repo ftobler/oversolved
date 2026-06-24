@@ -201,14 +201,6 @@ class DocumentStore:
                 (uuid, shared_with_user_id),
             )
 
-    def unshare_public(self, uuid: str) -> None:
-        """Remove public access for a document."""
-        with self.db.transaction():
-            self.db.execute(
-                "UPDATE documents SET is_public = 0 WHERE uuid = ?",
-                (uuid,),
-            )
-
     def get_shares(self, uuid: str) -> list[dict]:
         """List all shares for a document, including public link status."""
         cursor = self.db.execute(
