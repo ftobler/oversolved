@@ -171,14 +171,6 @@ class UserStore:
             for row in cursor.fetchall()
         ]
 
-    def set_active(self, user_id: int, active: bool) -> bool:
-        """Set is_active flag. Returns True if user was found."""
-        return self.update(user_id, is_active=1 if active else 0)
-
-    def set_admin(self, user_id: int, admin: bool) -> bool:
-        """Set is_admin flag. Returns True if user was found."""
-        return self.update(user_id, is_admin=1 if admin else 0)
-
     def change_password(self, user_id: int, new_hash: str) -> bool:
         """Change user password. Returns True if user was found."""
         return self.update(user_id, password_hash=new_hash)

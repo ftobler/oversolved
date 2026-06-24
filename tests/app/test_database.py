@@ -187,23 +187,7 @@ class TestUserStore:
             assert "is_admin" in user
             assert "is_active" in user
 
-    def test_set_active(self, user_store):
-        uid = user_store.create("activeuser", "hash")
-        user_store.set_active(uid, False)
-        user = user_store.find_by_id(uid)
-        assert user["is_active"] is False
-        user_store.set_active(uid, True)
-        user = user_store.find_by_id(uid)
-        assert user["is_active"] is True
 
-    def test_set_admin(self, user_store):
-        uid = user_store.create("admincandidate", "hash")
-        user_store.set_admin(uid, True)
-        user = user_store.find_by_id(uid)
-        assert user["is_admin"] is True
-        user_store.set_admin(uid, False)
-        user = user_store.find_by_id(uid)
-        assert user["is_admin"] is False
 
     def test_change_password(self, user_store):
         uid = user_store.create("pwchanger", "hash")

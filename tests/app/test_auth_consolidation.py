@@ -39,7 +39,7 @@ class TestAuthenticateToken:
         user_id = user_store.create("inactive_user", generate_password_hash("pass"))
         session_store = SessionStore(db)
         token = session_store.create(user_id)
-        user_store.set_active(user_id, False)
+        user_store.update(user_id, is_active=0)
 
         result = authenticate_token(db, token)
         assert isinstance(result, AuthError)
