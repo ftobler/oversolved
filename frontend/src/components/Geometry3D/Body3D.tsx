@@ -48,6 +48,10 @@ const EDGE_FRAG_SHADER = `
   }
 `
 
+function useDispose<T extends { dispose(): void }>(obj: T | null | undefined): void {
+  useEffect(() => { return () => { obj?.dispose() } }, [obj])
+}
+
 function buildEdgeMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: EDGE_VERT_SHADER,
@@ -152,9 +156,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     return geo
   }, [mesh])
 
-  useEffect(() => {
-    return () => { geometry.dispose() }
-  }, [geometry])
+  useDispose(geometry)
 
   const edgeGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
@@ -170,14 +172,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     return geo
   }, [edges])
 
-  useEffect(() => {
-    return () => { edgeGeometry.dispose() }
-  }, [edgeGeometry])
+  useDispose(edgeGeometry)
 
   const edgeMaterial = useMemo(() => buildEdgeMaterial(), [])
-  useEffect(() => {
-    return () => { edgeMaterial.dispose() }
-  }, [edgeMaterial])
+  useDispose(edgeMaterial)
 
   // Precompute segment counts for edge index mapping
   const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
