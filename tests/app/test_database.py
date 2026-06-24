@@ -264,19 +264,6 @@ class TestSessionStore:
         # With MAX_SESSIONS=5, both sessions survive (2 < 5)
         assert session_store.find(token_a) is not None
 
-    def test_cleanup_for_user_keeps_specified_token(self, session_store, user_id):
-        token_a = session_store.create(user_id)
-        session_store.cleanup_for_user(user_id, keep_token=token_a)
-
-        assert session_store.find(token_a) is not None
-
-    def test_cleanup_for_user_without_keep_removes_all(self, session_store, user_id):
-        token_a = session_store.create(user_id)
-
-        session_store.cleanup_for_user(user_id)
-
-        assert session_store.find(token_a) is None
-
     def test_new_session_does_not_affect_other_users(self, session_store, user_store):
         uid1 = user_store.create("user1", "hash")
         uid2 = user_store.create("user2", "hash")
@@ -353,37 +340,6 @@ class TestSessionStore:
             "SELECT COUNT(*) FROM sessions WHERE token_hash = ?", (token_hash,)
         )
         return cursor.fetchone()[0]
-
-    def test_cleanup_expired_deletes_expired_keeps_valid(self, session_store, user_id):
-        from datetime import datetime, timedelta, timezone
-        past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-        future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-        expired_hash = self._insert_session(session_store, user_id, "expired-tok", past)
-        valid_hash = self._insert_session(session_store, user_id, "valid-tok", future)
-
-        session_store.cleanup_expired()
-
-        # cleanup_expired must physically delete the row, not merely hide it like find().
-        assert self._row_count(session_store, expired_hash) == 0
-        assert self._row_count(session_store, valid_hash) == 1
-
-    def test_cleanup_expired_is_noop_when_none_expired(self, session_store, user_id):
-        token = session_store.create(user_id)
-        session_store.cleanup_expired()
-        assert session_store.find(token) is not None
-
-    def test_cleanup_expired_spans_all_users(self, session_store, user_store):
-        from datetime import datetime, timedelta, timezone
-        past = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
-        uid_a = user_store.create("expA", "hash")
-        uid_b = user_store.create("expB", "hash")
-        hash_a = self._insert_session(session_store, uid_a, "a-tok", past)
-        hash_b = self._insert_session(session_store, uid_b, "b-tok", past)
-
-        session_store.cleanup_expired()
-
-        assert self._row_count(session_store, hash_a) == 0
-        assert self._row_count(session_store, hash_b) == 0
 
 
 class TestSessionCleanupIntegration:

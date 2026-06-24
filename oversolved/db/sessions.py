@@ -57,24 +57,6 @@ class SessionStore:
         )
         return cursor.rowcount
 
-    def cleanup_for_user(self, user_id: int, keep_token: str | None = None) -> int:
-        """Remove active sessions for a user, optionally keeping one token.
-
-        Returns the number of sessions deleted.
-        """
-        if keep_token:
-            keep_hash = hashlib.sha256(keep_token.encode()).hexdigest()
-            cursor = self.db.execute(
-                "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
-                (user_id, keep_hash),
-            )
-        else:
-            cursor = self.db.execute(
-                "DELETE FROM sessions WHERE user_id = ?",
-                (user_id,),
-            )
-        return cursor.rowcount
-
     def find(self, token: str) -> dict | None:
         """Find a valid (non-expired) session."""
         token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -96,9 +78,3 @@ class SessionStore:
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.db.transaction():
             self.db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
-
-    def cleanup_expired(self) -> None:
-        """Remove expired sessions."""
-        now = _now()
-        with self.db.transaction():
-            self.db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
