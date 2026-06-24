@@ -93,7 +93,7 @@ fn degrees(rad: f64) -> f64 {
     rad * 180.0 / std::f64::consts::PI
 }
 /// Python float modulo (result takes the sign of the divisor).
-fn pymod(a: f64, b: f64) -> f64 {
+pub fn pymod(a: f64, b: f64) -> f64 {
     ((a % b) + b) % b
 }
 

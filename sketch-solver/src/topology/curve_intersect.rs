@@ -13,6 +13,7 @@
 //! contact does not split a curve.
 
 use super::curve_split::{bezier_point, ellipse_point_at};
+use super::dcel::pymod;
 use super::TOL_TOPOLOGY_MERGE;
 use crate::radians;
 
@@ -36,10 +37,6 @@ pub struct Hit {
 const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 const POINT_MERGE: f64 = TOL_TOPOLOGY_MERGE; // two hits closer than this are the same
 
-fn norm_2pi(a: f64) -> f64 {
-    ((a % TWO_PI) + TWO_PI) % TWO_PI
-}
-
 // ─── recover a curve's parameter from a point known to lie on it ───
 
 fn param_of(curve: &Curve, p: Vec2) -> f64 {
@@ -53,7 +50,7 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
             }
             ((p[0] - p0[0]) * dx + (p[1] - p0[1]) * dy) / len2
         }
-        Curve::Circle { c, .. } => norm_2pi((p[1] - c[1]).atan2(p[0] - c[0])),
+        Curve::Circle { c, .. } => pymod((p[1] - c[1]).atan2(p[0] - c[0]), TWO_PI),
         Curve::Ellipse { c, a, b, theta } => {
             let cr = radians(theta).cos();
             let sr = radians(theta).sin();
@@ -63,7 +60,7 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
             // atan2(y'/b, x'/a) (NOT the geometric angle).
             let xl = dx * cr + dy * sr;
             let yl = -dx * sr + dy * cr;
-            norm_2pi((yl / b).atan2(xl / a))
+            pymod((yl / b).atan2(xl / a), TWO_PI)
         }
         // bezier: not recoverable in closed form; callers that pair a bezier as
         // the "other" curve obtain its parameter directly.
