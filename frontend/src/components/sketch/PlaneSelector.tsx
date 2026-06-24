@@ -1,6 +1,6 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
-import { usePickField } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/usePickField'
 import { planeLabel } from '@/components/Geometry3D/utils'
 
 interface PlaneSelectorProps {

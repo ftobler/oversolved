@@ -1,6 +1,6 @@
 import type { PartFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
-import { usePickField } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/usePickField'
 import { ExpressionInput } from './widgets/ExpressionInput'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

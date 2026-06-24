@@ -1,6 +1,6 @@
 import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
-import { usePickField } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { planeLabel } from '@/components/Geometry3D/utils'
 import { emitAbsoluteSelectionQuery } from '@/utils/query/selectionId'

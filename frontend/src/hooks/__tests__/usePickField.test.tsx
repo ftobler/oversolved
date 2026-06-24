@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, fireEvent } from '@testing-library/react'
-import { usePickField } from '@/hooks/useFieldPicking'
+import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 beforeEach(() => {
