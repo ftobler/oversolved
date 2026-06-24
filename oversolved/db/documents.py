@@ -163,10 +163,6 @@ class DocumentStore:
             for row in cursor.fetchall()
         ]
 
-    def delete(self, uuid: str) -> bool:
-        """Delete a document by UUID. Returns True if deleted."""
-        return self.permanently_delete(uuid)
-
     def _copy_document(self, uuid: str, new_name: str, new_owner_id: int | None = None) -> str | None:
         """Copy a document's content under a fresh uuid and name.
 

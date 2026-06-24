@@ -494,13 +494,13 @@ class TestDocumentStore:
     def test_rename_nonexistent(self, doc_store):
         assert doc_store.rename("no-uuid", "Name") is False
 
-    def test_delete(self, doc_store, user_id):
+    def test_permanently_delete(self, doc_store, user_id):
         uuid = doc_store.create("Doc", user_id)
-        assert doc_store.delete(uuid) is True
+        assert doc_store.permanently_delete(uuid) is True
         assert doc_store.retrieve(uuid) is None
 
-    def test_delete_nonexistent(self, doc_store):
-        assert doc_store.delete("no-uuid") is False
+    def test_permanently_delete_nonexistent(self, doc_store):
+        assert doc_store.permanently_delete("no-uuid") is False
 
     def test_list_by_owner(self, doc_store, user_id):
         doc_store.create("Beta", user_id)
