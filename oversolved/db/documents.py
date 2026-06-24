@@ -289,15 +289,6 @@ class DocumentStore:
             return "view"
         return None
 
-    def get_owner_username(self, uuid: str) -> str | None:
-        """Get the username of the document owner."""
-        cursor = self.db.execute(
-            "SELECT u.username FROM documents d JOIN users u ON d.owner_id = u.id WHERE d.uuid = ?",
-            (uuid,),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
     def _documents_query(
         self, filter_type: str, search: str, sort: str, user_id: int
     ) -> tuple[str, tuple]:

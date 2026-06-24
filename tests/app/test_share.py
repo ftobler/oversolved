@@ -92,11 +92,6 @@ class TestDocumentStoreShares:
         doc_store.share_document(uuid, other_id, "edit")
         assert doc_store.get_permission(uuid, other_id) == "edit"
 
-    def test_get_owner_username(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        uuid = doc_store.create("Doc", owner_id)
-        assert doc_store.get_owner_username(uuid) == "owner"
-
     def test_list_owned_and_shared(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
         other_id = user_store.create("other", "hash")
