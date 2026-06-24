@@ -48,33 +48,6 @@ def authed_client2(app, authed_client):
 class TestDocumentStoreSidebar:
     """Tests for DocumentStore sidebar methods."""
 
-    def test_list_public(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        uuid = doc_store.create("PublicDoc", owner_id)
-        doc_store.set_public(uuid, True)
-
-        docs = doc_store.list_public()
-        assert len(docs) == 1
-        assert docs[0]["uuid"] == uuid
-        assert docs[0]["name"] == "PublicDoc"
-        assert docs[0]["is_owner"] is False
-        assert docs[0]["owner_username"] == "owner"
-
-    def test_list_public_empty_when_none(self, doc_store, user_store):
-        owner_id = user_store.create("owner", "hash")
-        doc_store.create("PrivateDoc", owner_id)
-
-        docs = doc_store.list_public()
-        assert docs == []
-
-    def test_list_public_includes_owner_username(self, doc_store, user_store):
-        owner_id = user_store.create("alice", "hash")
-        uuid = doc_store.create("Doc", owner_id)
-        doc_store.set_public(uuid, True)
-
-        docs = doc_store.list_public()
-        assert docs[0]["owner_username"] == "alice"
-
     def test_list_shared_with(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
         other_id = user_store.create("other", "hash")
