@@ -3,7 +3,7 @@
 import uuid as uuid_mod
 from datetime import datetime
 
-from oversolved.db import _now
+from oversolved.db._time import _now
 from oversolved.db.migrations import Database
 
 

@@ -4,7 +4,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from oversolved.db import _now
+from oversolved.db._time import _now
 from oversolved.db.migrations import Database
 
 
