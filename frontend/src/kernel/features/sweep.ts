@@ -22,20 +22,6 @@ import { makeLineEdge, makeArcEdge, type Vec3 } from '../occ/primitives'
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
 
-/**
- * Normalize a sweep profile reference. A viewport `entity:<sketchId>:<eid>` or
- * `vertex:<sketchId>:<eid>:<sub>` selection ID identifies a single sketch
- * entity; the profile is its parent sketch, so return the bare sketch id (which
- * collectExtrudeLoops resolves like a plain `$sketch` ref). All other ref forms
- * (`$`, `@`, `?`, bare ids) pass through unchanged.
- */
-export function profileRefToSketchRef(ref: string): string {
-  if (ref.startsWith('entity:') || ref.startsWith('vertex:')) {
-    return ref.split(':')[1]
-  }
-  return ref
-}
-
 /** Resolve a sweep path reference to the sketch id holding the spine. */
 export function pathRefToSketchId(pathRef: string, globalRepo: Repository): string {
   if (pathRef.startsWith('@')) return pathRef.slice(1).split('/')[0]

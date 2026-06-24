@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, profileRefToSketchRef, orderedPathWorldEdges, type ChainEdge } from './sweep'
+import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdges, type ChainEdge } from './sweep'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -205,22 +205,6 @@ describe('pathRefToSketchId', () => {
 
   it('throws when a ?ancestry ref names no known sketch', () => {
     expect(() => pathRefToSketchId('?5;@nope', new Repository())).toThrow(/could not resolve path sketch/)
-  })
-})
-
-describe('profileRefToSketchRef', () => {
-  it('collapses an entity selection ID to its parent sketch id', () => {
-    expect(profileRefToSketchRef('entity:bOhvSew-4vrj:SN7Aax6PfaDQoVdM')).toBe('bOhvSew-4vrj')
-  })
-
-  it('collapses a vertex selection ID to its parent sketch id', () => {
-    expect(profileRefToSketchRef('vertex:sk1:e2:start')).toBe('sk1')
-  })
-
-  it('passes plain $/@/? refs through unchanged', () => {
-    expect(profileRefToSketchRef('$sk1')).toBe('$sk1')
-    expect(profileRefToSketchRef('@sk1/e2')).toBe('@sk1/e2')
-    expect(profileRefToSketchRef('?3;@sk1')).toBe('?3;@sk1')
   })
 })
 
