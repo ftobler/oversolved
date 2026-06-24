@@ -14,12 +14,6 @@ import { booleanWithDiff } from '../occ/booleans'
 
 type Dict = Record<string, unknown>
 
-export interface ArrayResult {
-  status: string
-  body_id: string
-  operation: string
-}
-
 /** Build linear/rectangular array instance transforms (mirrors `_build_array_transforms`). */
 export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature: Dict, globalRepo: Repository): OccTrsf[] {
   const mode = (feature.mode as string) ?? 'linear'
@@ -98,7 +92,7 @@ function applyArray(
   featureId: string,
   bodyStore: Record<string, Body>,
   opLabel: string,
-): ArrayResult {
+): { status: string; body_id: string; operation: string } {
   const sourceShape = table.get<OccShape>(body.shape!)
   const instances: OccShape[] = []
   if (includeSource) instances.push(sourceShape)
@@ -171,7 +165,7 @@ export function solveArray(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): ArrayResult {
+): { status: string; body_id: string; operation: string } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.array as Dict) ?? {}
   const merged: Dict = { ...sub, ...feature }
@@ -190,7 +184,7 @@ export function solveCircularArray(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): ArrayResult {
+): { status: string; body_id: string; operation: string } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.circular_array as Dict) ?? {}
   const merged: Dict = { ...sub, ...feature }
