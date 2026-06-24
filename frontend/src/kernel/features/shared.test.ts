@@ -9,7 +9,6 @@ import fixture from '../occ/__fixtures__/featuresShared.json'
 import { Repository, makeAncestryQuery } from '../query'
 import type { Body, BrepDiff } from '../types3d'
 import {
-  tessellateEdge,
   extractProfileLoops,
   registerTopFace,
   resolveDirection,
@@ -69,14 +68,6 @@ function makeStore(spec: Record<string, string>): Record<string, Body> {
 }
 
 const f = fixture as unknown as Record<string, Array<Record<string, unknown>>>
-
-describe('tessellateEdge parity', () => {
-  for (const c of f.tessellate_edge) {
-    it(c.name as string, () => {
-      expectClose(tessellateEdge(c.edge as Record<string, unknown>), c.expected)
-    })
-  }
-})
 
 describe('extractProfileLoops parity', () => {
   for (const c of f.extract_profile_loops) {

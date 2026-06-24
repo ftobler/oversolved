@@ -16,7 +16,7 @@ import type { Body, BrepDiff, Frame3D } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry } from '../query'
 import { loopCentroid } from '../profileLoops'
-import { ARC_SEGMENTS, TOL_LOOP_CLOSURE } from '../solverConstants'
+import { TOL_LOOP_CLOSURE } from '../solverConstants'
 
 /** A plane as either a Frame3D or a plain `{origin, x_axis, y_axis, normal}` dict. */
 export interface PlaneLike {
@@ -51,33 +51,6 @@ export function surfaceEntityIds(surface: Dict): string[] {
 }
 
 // ─── Profile loops ───
-
-/**
- * Ordered 2D [u, v] sample points for a boundary edge, exclusive of the start
- * point (mirrors `_tessellate_edge`). Arcs are sampled into segments scaled by
- * their angular span; line/other edges return just the endpoint.
- */
-export function tessellateEdge(edge: Dict): number[][] {
-  const kind = (edge.kind as string) ?? 'line'
-  const end = edge.end as number[] | undefined | null
-  if (kind === 'arc') {
-    const center = (edge.center as number[]) ?? [0, 0]
-    const radius = (edge.radius as number) ?? 1.0
-    const a0 = (edge.angle_start_deg as number) ?? 0.0
-    const a1 = (edge.angle_end_deg as number) ?? 360.0
-    const ccw = (edge.ccw as boolean) ?? true
-    const span = ccw ? pymod(a1 - a0 + 360, 360) : -pymod(a0 - a1 + 360, 360)
-    const steps = Math.max(4, Math.trunc((Math.abs(span) / 360) * ARC_SEGMENTS))
-    const pts: number[][] = []
-    for (let i = 1; i <= steps; i++) {
-      const a = ((a0 + (span * i) / steps) * Math.PI) / 180
-      pts.push([center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)])
-    }
-    return pts
-  }
-  if (end !== undefined && end !== null) return [[...end]]
-  return []
-}
 
 /**
  * Assemble surface boundaries into ordered closed loops (mirrors
