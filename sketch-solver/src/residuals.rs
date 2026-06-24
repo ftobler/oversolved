@@ -918,18 +918,18 @@ impl<'a> Problem<'a> {
 
     /// Param indices a constraint's references touch (full entity blocks).
     fn involved_params(&self, c: &Constraint) -> Vec<usize> {
-        let mut idxs = Vec::new();
+        let mut seen = std::collections::HashSet::new();
         for (_, rf) in &c.refs {
             if let Ref::Entity { index, .. } = rf {
                 let off = self.offset_of(*index);
                 let size = self.kind_of(*index).param_count();
                 for i in 0..size {
-                    if !idxs.contains(&(off + i)) {
-                        idxs.push(off + i);
-                    }
+                    seen.insert(off + i);
                 }
             }
         }
+        let mut idxs: Vec<usize> = seen.into_iter().collect();
+        idxs.sort();
         idxs
     }
 
