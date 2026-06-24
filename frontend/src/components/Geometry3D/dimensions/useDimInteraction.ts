@@ -1,9 +1,19 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
 import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
-import { useClickAfterDragSuppression } from '../useClickAfterDragSuppression'
+
+function useClickAfterDragSuppression() {
+  const moved = useRef(false)
+  const markMoved = useCallback(() => { moved.current = true }, [])
+  const consumeClick = useCallback((): boolean => {
+    if (moved.current) { moved.current = false; return true }
+    return false
+  }, [])
+  const reset = useCallback(() => { moved.current = false }, [])
+  return { markMoved, consumeClick, reset }
+}
 
 /** Optional interactive context for dimension components.
  *  When provided, hover highlights entities, click opens an edit prompt,
