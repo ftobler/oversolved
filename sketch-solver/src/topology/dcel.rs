@@ -173,7 +173,7 @@ fn dedup(spl: &[Split]) -> Vec<Split> {
     let mut out: Vec<Split> = spl.to_vec();
     out.sort_by(|x, y| {
         if x.0 != y.0 {
-            x.0.partial_cmp(&y.0).unwrap()
+            x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal)
         } else {
             x.1.cmp(&y.1)
         }
