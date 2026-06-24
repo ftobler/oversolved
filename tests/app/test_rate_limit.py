@@ -10,9 +10,8 @@ from oversolved.blueprints.auth import (
 
 @pytest.fixture(autouse=True)
 def clear_rate_limit_state():
-    """Reset rate limit state before each test."""
-    _login_limiter.reset()
     yield
+    _login_limiter.clear("127.0.0.1")
 
 
 def _bad_login(client, username="attacker", remote_addr="127.0.0.1"):
