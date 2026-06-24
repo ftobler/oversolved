@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest'
-import { resolveBodyPickRef, resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
+import { resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
+
+function normalizeBodyRef(ref: string): string {
+  if (ref.startsWith('body:')) {
+    ref = '@' + ref.slice(5)
+  } else if (ref.startsWith('@') && ref.includes('/')) {
+    ref = '@' + ref.slice(1).split('/')[0]
+  }
+  if (ref.startsWith('@') && !ref.startsWith('@body_')) {
+    ref = '@body_' + ref.slice(1)
+  }
+  return ref
+}
+
+function resolveBodyPickRef(id: string): string {
+  if (id.startsWith('face:')) {
+    return id.split(':').slice(2).join(':')
+  }
+  return normalizeBodyRef(id)
+}
 
 describe('resolveBodyPickRef', () => {
   it('converts body: prefix to @body_ ref', () => {

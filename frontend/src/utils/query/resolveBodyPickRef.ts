@@ -14,21 +14,6 @@ function normalizeBodyRef(ref: string): string {
 }
 
 /**
- * Convert a viewport selection ID to a body reference suitable for the solver.
- *
- * face:featureId:innerQuery  →  innerQuery  (backend ? branch coerces face→body)
- * body:body_ex1              →  @body_ex1
- * @ex1/face/0                →  @body_ex1
- * @body_ex1 / ?...           →  unchanged  (already a valid body or ? query)
- */
-export function resolveBodyPickRef(id: string): string {
-  if (id.startsWith('face:')) {
-    return id.split(':').slice(2).join(':')
-  }
-  return normalizeBodyRef(id)
-}
-
-/**
  * Convert a viewport selection ID to a body reference for a merge/boolean
  * target field (extrude/revolve merge_target). Unlike resolveBodyPickRef, a
  * `?` ancestry query is coerced to `@body_<first-segment>` rather than passed
