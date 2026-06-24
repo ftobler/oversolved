@@ -499,13 +499,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return sizes
   }, [features, featureDefs, bodies])
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
+
   return (
     <div
       style={PARENT_STYLE}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerMove={rubberBand.onPointerMove}
-      onContextMenu={e => { e.preventDefault(); }}
+      onContextMenu={handleContextMenu}
     >
       <Canvas
         orthographic
