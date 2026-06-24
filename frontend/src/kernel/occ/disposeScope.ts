@@ -72,19 +72,6 @@ export class DisposeScope {
   }
 }
 
-/**
- * Run `fn` with a fresh scope and dispose it afterwards, even on throw. Detach
- * anything that must survive (`scope.detach(shape)`) before returning it.
- */
-export function withScope<T>(fn: (scope: DisposeScope) => T): T {
-  const scope = new DisposeScope()
-  try {
-    return fn(scope)
-  } finally {
-    scope.dispose()
-  }
-}
-
 /** Drain a TopTools_ListOfShape into an array (Size/First_1/RemoveFirst). */
 export function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
   const out: OccShape[] = []

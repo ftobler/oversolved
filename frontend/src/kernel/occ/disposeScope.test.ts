@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DisposeScope, withScope, type Disposable } from './disposeScope'
+import { DisposeScope, type Disposable } from './disposeScope'
 
 class FakeObj implements Disposable {
   deleted = 0
@@ -83,26 +83,4 @@ describe('DisposeScope', () => {
     expect(() => scope.track({ delete() {} })).toThrow(/after dispose/)
   })
 
-  it('withScope disposes even when fn throws', () => {
-    const order: string[] = []
-    const obj = new FakeObj('z', order)
-    expect(() =>
-      withScope((scope) => {
-        scope.track(obj)
-        throw new Error('boom')
-      }),
-    ).toThrow('boom')
-    expect(obj.deleted).toBe(1)
-  })
-
-  it('withScope returns the detached survivor undeleted', () => {
-    const order: string[] = []
-    const survivor = new FakeObj('survivor', order)
-    const out = withScope((scope) => {
-      scope.track(survivor)
-      return scope.detach(survivor)
-    })
-    expect(out).toBe(survivor)
-    expect(survivor.deleted).toBe(0)
-  })
 })
