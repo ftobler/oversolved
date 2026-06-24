@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { http, parseHttpError } from '@/utils/core/httpClient'
+import '@/pages/adminSettings.css'
 import '@/pages/UserProfile.css'
 
 export default function UserProfile() {
