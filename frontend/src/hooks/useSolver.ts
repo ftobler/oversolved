@@ -13,6 +13,7 @@ import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
+const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
 
 /**
  * Discriminated union over the dual-world invariant:
@@ -87,7 +88,7 @@ export function useSolver(
   // inside the 'editing' variant — accessing it on 'full' is a type error.
   const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {} })
   const bodies: Record<string, BodyResult> = world.bodies
-  const pickBodies: Record<string, BodyResult> = world.status === 'editing' ? world.pickBodies : {}
+  const pickBodies: Record<string, BodyResult> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
   const [solving, setSolving] = useState(false)
   const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})
   const [solveTime, setSolveTime] = useState<number | null>(null)
