@@ -348,8 +348,8 @@ impl<'a> Problem<'a> {
             ConstraintKind::Tangent => self.r_tangent(c, x, r),
             ConstraintKind::EqualLength => self.r_equal_length(c, x, r),
             ConstraintKind::PointDistance => self.r_point_distance(c, x, r),
-            ConstraintKind::PointDistanceX => self.r_point_distance_x(c, x, r),
-            ConstraintKind::PointDistanceY => self.r_point_distance_y(c, x, r),
+        ConstraintKind::PointDistanceX => self.r_point_distance_axis(c, x, r, 0),
+        ConstraintKind::PointDistanceY => self.r_point_distance_axis(c, x, r, 1),
             ConstraintKind::Midpoint => self.r_midpoint(c, x, r),
             ConstraintKind::Concentric => self.r_concentric(c, x, r),
             ConstraintKind::Fixed => self.r_fixed(c, x, r),
@@ -760,26 +760,11 @@ impl<'a> Problem<'a> {
         r.push(dist - value);
     }
 
-    fn r_point_distance_x(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
+    fn r_point_distance_axis(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>, axis: usize) {
         let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
             return;
         };
-        // Signed gap b.x - a.x. With an orientation sign the target is
-        // `sign * value` (so b can be pinned to either side of a while value
-        // stays non-negative); absent, the legacy absolute residual is matched,
-        // which is satisfied on either side.
-        let d = pb[0] - pa[0];
-        match c.sign {
-            Some(s) => r.push(d - s * value),
-            None => r.push(d.abs() - value),
-        }
-    }
-
-    fn r_point_distance_y(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let Some((pa, pb, value)) = self.point_pair_value(c, x) else {
-            return;
-        };
-        let d = pb[1] - pa[1];
+        let d = pb[axis] - pa[axis];
         match c.sign {
             Some(s) => r.push(d - s * value),
             None => r.push(d.abs() - value),
