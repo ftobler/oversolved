@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { backendBundle } from '@/adapters/backend'
 import type { DocumentSort, UserPreferences } from '@/adapters/preferences'
 
@@ -25,7 +25,7 @@ export function useUserPreferences(signedIn = true) {
       .finally(() => setLoading(false))
   }, [prefs, cloudLoad])
 
-  const updatePreference = async (key: keyof UserPreferences, value: string) => {
+  const updatePreference = useCallback(async (key: keyof UserPreferences, value: string) => {
     const next = { ...preferences, [key]: value } as UserPreferences
     setPreferences(next)
     try {
@@ -33,7 +33,7 @@ export function useUserPreferences(signedIn = true) {
     } catch {
       setPreferences(preferences)  // revert on failure (HTTP)
     }
-  }
+  }, [preferences, prefs])
 
   return { preferences, loading, updatePreference }
 }
