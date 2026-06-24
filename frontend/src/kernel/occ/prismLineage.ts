@@ -14,8 +14,6 @@ import { extractErrorMessage } from '../errors'
 import type { OccModule, OccShape, OccSubShape, OccListOfShape } from './occTypes'
 import type { PlaneLike } from '../features/shared'
 import {
-  faceCentroid,
-  faceNormal,
   edgeToGeom,
   makeArcEdge,
   makeLineEdge,
@@ -26,7 +24,7 @@ import {
   healWire,
   type Vec3,
 } from './primitives'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
+import { faceGh, edgeGh } from './lineageHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory } from './booleans'
 
@@ -49,19 +47,6 @@ function pointsMatch(a: number[], b: number[]): boolean {
     Math.abs(a[1] - b[1]) < POINT_TOL &&
     Math.abs(a[2] - b[2]) < POINT_TOL
   )
-}
-
-function faceGh(oc: OccModule, scope: DisposeScope, face: OccShape): string {
-  return faceGeometryHash(faceCentroid(oc, scope, face), faceNormal(oc, scope, face))
-}
-
-function edgeGh(oc: OccModule, scope: DisposeScope, edge: OccShape): string | null {
-  try {
-    const { ed } = edgeToGeom(oc, scope, edge)
-    return edgeGeometryHash(ed as unknown as Record<string, unknown>)
-  } catch {
-    return null
-  }
 }
 
 // ─── sketch loops -> OCC face ───

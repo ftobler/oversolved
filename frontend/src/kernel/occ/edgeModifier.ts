@@ -11,8 +11,9 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
-import { faceCentroid, faceNormal, faceArea, edgeToGeom, round6 } from './primitives'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
+import { faceCentroid, faceNormal, faceArea, round6 } from './primitives'
+import { faceGeometryHash } from '../geomHash'
+import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 type Lineage = Record<string, string[]>
@@ -24,19 +25,6 @@ export interface EdgeModifierResult {
   faceLineage: Lineage | null
   edgeLineage: Lineage | null
   diff: BrepDiff
-}
-
-function faceGh(oc: OccModule, scope: DisposeScope, face: OccShape): string {
-  return faceGeometryHash(faceCentroid(oc, scope, face), faceNormal(oc, scope, face))
-}
-
-function edgeGh(oc: OccModule, scope: DisposeScope, edge: OccShape): string | null {
-  try {
-    const { ed } = edgeToGeom(oc, scope, edge)
-    return edgeGeometryHash(ed as unknown as Record<string, unknown>)
-  } catch {
-    return null
-  }
 }
 
 function asFace(oc: OccModule, s: OccShape): OccSubShape {

@@ -15,18 +15,9 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { BrepDiff } from '../types3d'
-import { faceCentroid, faceNormal, faceArea, edgeToGeom, type Vec3 } from '../occ/primitives'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
-
-/** Geometry-hash key for a raw OCC edge (mirrors `_occ_edge_geom_hash`); null on failure. */
-export function occEdgeGeomHash(oc: OccModule, scope: DisposeScope, edge: OccShape): string | null {
-  try {
-    const { ed } = edgeToGeom(oc, scope, edge)
-    return edgeGeometryHash(ed as unknown as Record<string, unknown>)
-  } catch {
-    return null
-  }
-}
+import { faceCentroid, faceNormal, faceArea, type Vec3 } from '../occ/primitives'
+import { faceGeometryHash } from '../geomHash'
+import { faceGh, edgeGh } from '../occ/lineageHash'
 
 interface FaceGeom {
   face: OccShape
@@ -50,10 +41,6 @@ function faceGeometryList(oc: OccModule, scope: DisposeScope, shape: OccShape): 
     })
   }
   return out
-}
-
-function faceGhFromShape(oc: OccModule, scope: DisposeScope, face: OccShape): string {
-  return faceGeometryHash(faceCentroid(oc, scope, face), faceNormal(oc, scope, face))
 }
 
 /**
@@ -136,7 +123,7 @@ export function transferBooleanLineage(
       if (src) {
         const tokens = faceLineage[candidateGh(src)]
         if (tokens && tokens.length) {
-          newFaceLineage[faceGhFromShape(oc, scope, outputFace)] = tokens
+          newFaceLineage[faceGh(oc, scope, outputFace)] = tokens
         }
       }
     }
@@ -150,7 +137,7 @@ export function transferBooleanLineage(
       if (src) {
         const tokens = toolFaceLineage[candidateGh(src)]
         if (tokens && tokens.length) {
-          newFaceLineage[faceGhFromShape(oc, scope, outputFace)] = tokens
+          newFaceLineage[faceGh(oc, scope, outputFace)] = tokens
         }
       }
     }
@@ -164,13 +151,13 @@ export function transferBooleanLineage(
   const faceExp = scope.track(new oc.TopExp_Explorer_2(bodyShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; faceExp.More(); faceExp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
-    const fgh = faceGhFromShape(oc, scope, face)
+    const fgh = faceGh(oc, scope, face)
     const faceTokens = newFaceLineage[fgh]
     if (!faceTokens || faceTokens.length === 0) continue
     const edgeExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
     for (; edgeExp.More(); edgeExp.Next()) {
       const edge = scope.track(oc.TopoDS.Edge_1(edgeExp.Current()))
-      const egh = occEdgeGeomHash(oc, scope, edge)
+      const egh = edgeGh(oc, scope, edge)
       if (egh === null) continue
       const existing = newEdgeLineage[egh] ?? []
       for (const eid of faceTokens) {
