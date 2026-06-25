@@ -21,7 +21,7 @@ pub mod profile_loops;
 
 // Tolerances mirrored from frontend/src/kernel/solverConstants.ts.
 pub const TOL_TOPOLOGY_EPS: f64 = 1e-9;
-pub const TOL_TOPOLOGY_MERGE: f64 = 1e-6;
+pub const TOL_TOPOLOGY_MERGE: f64 = 1e-5;
 pub const TOL_TOPOLOGY_SPLIT: f64 = 1e-7;
 pub const TOL_NEAR_ZERO_AREA: f64 = 1e-12;
 

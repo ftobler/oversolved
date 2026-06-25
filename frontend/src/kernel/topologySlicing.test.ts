@@ -3,7 +3,7 @@
 // using the enrichSketchEntity dict form detectTopology consumes.
 import { describe, it, expect } from "vitest"
 import { detectTopology, topologyAvailable } from "./topologyTestUtil"
-import { TOL_TOPOLOGY_MERGE } from "./solverConstants"
+import { TOL_TOPOLOGY_MERGE, TOL_TOPOLOGY_SPLIT } from "./solverConstants"
 
 type Geom = Record<string, unknown>
 
@@ -53,9 +53,13 @@ describe.skipIf(!topologyAvailable)("area builder: line / arc / circle slicing a
   // exactly the line-end / intersection vertex gap the merge must absorb.
   describe("slice-line-endpoint-near-rim: vertex-merge tolerance boundary", () => {
     const ellAt = (phi: number): [number, number] => [5 * Math.cos(phi), 2.5 * Math.sin(phi)]
-    // L large so the off-rim point's *line parameter* stays well inside SPLIT,
-    // isolating the world-space MERGE tolerance as the only thing under test.
-    const surfaces = (phiA: number, phiB: number, eps: number, L = 100): number => {
+    // L large so the off-rim point's *line parameter* (eps / L) stays two orders
+    // below SPLIT even at the largest eps tested (MERGE * 2): otherwise the line
+    // itself registers the interior crossing as a separate split and the chord
+    // closes regardless of the world merge, defeating the test. Derived from the
+    // constants so it tracks any future retune of MERGE / SPLIT.
+    const L_MIN = (TOL_TOPOLOGY_MERGE * 2) / (TOL_TOPOLOGY_SPLIT / 100)
+    const surfaces = (phiA: number, phiB: number, eps: number, L = L_MIN): number => {
       const A = ellAt(phiA)
       const B = ellAt(phiB)
       const n = Math.hypot(A[0] - B[0], A[1] - B[1])

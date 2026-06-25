@@ -6,9 +6,14 @@ export const TOL_TOPOLOGY_EPS = 1e-9
 // World-space vertex merge: two area-builder vertices closer than this are one.
 // Must not be tighter than the solver's coincidence residual, else a line
 // endpoint constrained onto a curve and the curve/line intersection computed
-// there land on distinct vertices and the slice fails to close. Kept at the
-// loop-closure scale (TOL_LOOP_CLOSURE) which already bounds solver residuals.
-export const TOL_TOPOLOGY_MERGE = 1e-6
+// there land on distinct vertices and the slice fails to close. The solver
+// routinely converges a coincidence to ~1e-6 (bug report sketch_area_building:
+// a venn chord whose endpoints sit on the circle/circle intersections landed
+// 1.03e-6 away, just past a 1e-6 merge, tearing the planar graph into 1 face
+// instead of 4), so this sits an order of magnitude above that residual while
+// staying far below any real feature separation. Mirrored in
+// sketch-solver/src/topology/mod.rs.
+export const TOL_TOPOLOGY_MERGE = 1e-5
 export const TOL_TOPOLOGY_SPLIT = 1e-7
 
 // Arc tessellation density (mirrors solver_constants._ARC_SEGMENTS): the number

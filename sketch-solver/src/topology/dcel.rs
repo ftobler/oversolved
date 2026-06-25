@@ -1478,6 +1478,24 @@ mod tests {
     }
 
     #[test]
+    fn venn_chord_splits_lens_into_four_areas() {
+        // Bug report sketch_area_building: two overlapping circles (a venn diagram)
+        // with a line connecting their two intersection points must yield 4 areas
+        // (the 2 outer crescents + the lens split in two by the chord). The solver
+        // leaves each circle/circle intersection ~1e-6 from the coincident line
+        // endpoint, so the vertex merge must be looser than that residual or the
+        // chord's corner vertices fail to fuse, the planar graph tears, and the
+        // tracer collapses to a single face. Geometry is the report's solved values.
+        let geom = vec![
+            ("A".into(), circle([-49.890132904052734, -0.0206315740942955], 23.889873504638672)),
+            ("B".into(), circle([-28.857667922973633, 3.3534867763519287], 23.889873504638672)),
+            ("L".into(), line([-42.76115417480469, 22.780765533447266], [-35.98664855957031, -19.44791030883789])),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 4, "2 crescents + 2 lens halves");
+    }
+
+    #[test]
     fn line_slashes_circle_into_two_areas() {
         let geom = vec![
             ("c0".into(), circle([0.0, 0.0], 1.0)),
