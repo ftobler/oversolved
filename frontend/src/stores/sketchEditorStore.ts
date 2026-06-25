@@ -250,6 +250,8 @@ function buildToolContext(get: () => SketchEditorState): ToolContext {
   }
 }
 
+const DRAW_STATE_CLEAR = { drawPoints: [] as [number, number][], drawHover: null as [number, number] | null, drawSnapVertexId: null as string | null }
+
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectionDomain: 'sketch_2d',
