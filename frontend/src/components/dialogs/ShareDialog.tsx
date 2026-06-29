@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { HttpError } from '@/utils/core/httpClient'
 import { type ShareInfo } from '@/adapters/sharing'
 import { backendBundle } from '@/adapters/backend'
+import './ShareDialog.css'
 
 interface ShareDialogProps {
   isOpen: boolean
