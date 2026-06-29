@@ -31,20 +31,26 @@ function asFace(oc: OccModule, s: OccShape): OccSubShape {
   return oc.TopoDS.Face_1(s) as OccSubShape
 }
 
-function exploreFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
-  const E = oc.TopAbs_ShapeEnum
+// Walk a shape's sub-shapes of one kind, downcasting each to its concrete type.
+function explore(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  kind: object,
+  cast: (s: OccShape) => OccShape,
+): OccShape[] {
   const out: OccShape[] = []
-  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Face_1(exp.Current())))
+  const exp = scope.track(new oc.TopExp_Explorer_2(shape, kind, oc.TopAbs_ShapeEnum.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) out.push(scope.track(cast(exp.Current())))
   return out
 }
 
+function exploreFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+  return explore(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, (s) => oc.TopoDS.Face_1(s))
+}
+
 function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
-  const E = oc.TopAbs_ShapeEnum
-  const out: OccShape[] = []
-  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Edge_1(exp.Current())))
-  return out
+  return explore(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, (s) => oc.TopoDS.Edge_1(s))
 }
 
 /**
