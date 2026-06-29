@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity } from '@/types/cad'
-import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds, groupConstraintsByEntity } from '@/components/sketch/sketch_helpers'
+import { ICON_SIZE, ICON_COLS, getIconUrl, getEntityBounds, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { renderDimension } from './renderDimension'
 

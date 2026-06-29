@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { Sketch, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
-import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/components/sketch/sketch_helpers'
+import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/utils/geometry/sketchHelpers'
 
 // Pure builders that turn a sketch + plane matrix into the segment/vertex
 // buffers the sketchEntity / sketchVertex ID layers consume. Lives outside the

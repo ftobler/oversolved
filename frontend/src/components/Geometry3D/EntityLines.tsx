@@ -4,7 +4,7 @@ import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Sp
 import { isProjectedEntity } from '@/types/cad'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/components/sketch/sketch_helpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/utils/geometry/sketchHelpers'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'

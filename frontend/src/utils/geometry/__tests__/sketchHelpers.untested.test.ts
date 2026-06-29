@@ -7,7 +7,7 @@ import {
   sampleArc,
   sampleArcCCW,
   getEntityBounds,
-} from '@/components/sketch/sketch_helpers'
+} from '@/utils/geometry/sketchHelpers'
 import type { Entity } from '@/types/cad'
 
 // sketch_helpers is pure (THREE math + asset lookup, no DOM). The existing

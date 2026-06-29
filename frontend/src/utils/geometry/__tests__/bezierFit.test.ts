@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
-import { sampleBezier } from '@/components/sketch/sketch_helpers'
+import { sampleBezier } from '@/utils/geometry/sketchHelpers'
 
 type P2 = [number, number]
 

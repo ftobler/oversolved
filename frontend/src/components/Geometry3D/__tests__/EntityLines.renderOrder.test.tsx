@@ -25,7 +25,7 @@ vi.mock('@/components/Geometry3D/VertexDots', () => ({
   ProjectedOriginPoint: () => null,
 }))
 
-vi.mock('@/components/sketch/sketch_helpers', () => ({
+vi.mock('@/utils/geometry/sketchHelpers', () => ({
   sampleArc: () => [[0, 0, 0], [1, 0, 0]],
   sampleArcCCW: () => [[0, 0, 0], [1, 0, 0]],
   pointTo3D: (p: [number, number]) => [p[0], p[1], 0],

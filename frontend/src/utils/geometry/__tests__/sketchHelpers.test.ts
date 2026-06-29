@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sampleEllipse, sampleBezier, getEntityBounds, ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
+import { sampleEllipse, sampleBezier, getEntityBounds, ellipseAxisPoints } from '@/utils/geometry/sketchHelpers'
 import type { Ellipse, Spline } from '@/types/cad'
 
 describe('sampleEllipse', () => {

@@ -6,7 +6,7 @@ import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorSt
 import { toolRegistry } from '@/registry/toolRegistry'
 import { Dot } from '@/components/Geometry3D/VertexDots'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
-import { p2w } from '@/components/sketch/sketch_helpers'
+import { p2w } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SNAP, COLOR_PREVIEW } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'

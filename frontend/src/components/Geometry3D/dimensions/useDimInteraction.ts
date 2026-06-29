@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
-import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
+import { COLOR_CONSTRAINT } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'

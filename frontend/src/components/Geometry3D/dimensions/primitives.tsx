@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Line2 } from 'three-stdlib'
-import { p2w, ARROW_SHAPE } from '@/components/sketch/sketch_helpers'
+import { p2w, ARROW_SHAPE } from '@/utils/geometry/sketchHelpers'
 
 // Filled triangle arrowhead with constant pixel size regardless of zoom.
 export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [number, number]; color: string }) {

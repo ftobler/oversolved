@@ -14,7 +14,7 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: {} }),
 }))
 
-vi.mock('@/components/sketch/sketch_helpers', () => ({
+vi.mock('@/utils/geometry/sketchHelpers', () => ({
   p2w: () => 1,
 }))
 

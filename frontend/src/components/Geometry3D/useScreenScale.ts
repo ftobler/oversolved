@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { p2w } from '@/components/sketch/sketch_helpers'
+import { p2w } from '@/utils/geometry/sketchHelpers'
 import { applyWorldBillboard } from '@/components/Geometry3D/billboard'
 
 /**

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w } from '@/components/sketch/sketch_helpers'
+import { p2w } from '@/utils/geometry/sketchHelpers'
 import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_SELECTED,

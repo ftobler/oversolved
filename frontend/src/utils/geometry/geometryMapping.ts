@@ -7,7 +7,7 @@ import type {
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
-import { ellipseAxisPoints } from '@/components/sketch/sketch_helpers'
+import { ellipseAxisPoints } from '@/utils/geometry/sketchHelpers'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined

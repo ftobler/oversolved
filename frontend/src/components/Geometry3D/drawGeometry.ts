@@ -1,8 +1,8 @@
 // PURE GEOMETRY -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 import type { Sketch, Entity } from '@/types/cad'
-import { getEntityBounds } from '@/components/sketch/sketch_helpers'
-import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier } from '@/components/sketch/sketch_helpers'
+import { getEntityBounds } from '@/utils/geometry/sketchHelpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier } from '@/utils/geometry/sketchHelpers'
 
 // Default semi-minor/semi-major ratio for the two-click ellipse draw (golden
 // ratio). The second click only fixes the major axis; b is seeded from a. This
