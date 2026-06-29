@@ -250,6 +250,18 @@ function buildToolContext(get: () => SketchEditorState): ToolContext {
   }
 }
 
+// Fire a tool's activate/deactivate lifecycle hook if the tool is registered.
+// Callers own the guard deciding whether the hook should run at all.
+function activateTool(get: () => SketchEditorState, toolId: ActiveTool): void {
+  if (!toolId) return
+  toolRegistry.get(toolId as ToolId)?.activate(buildToolContext(get))
+}
+
+function deactivateTool(get: () => SketchEditorState, toolId: ActiveTool): void {
+  if (!toolId) return
+  toolRegistry.get(toolId as ToolId)?.deactivate(buildToolContext(get))
+}
+
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectionDomain: 'sketch_2d',
@@ -355,12 +367,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const prevTool = get().activeTool
 
     // Deactivate previous tool (lifecycle hook)
-    if (prevTool) {
-      const prev = toolRegistry.get(prevTool as ToolId)
-      if (prev) {
-        prev.deactivate(buildToolContext(get))
-      }
-    }
+    deactivateTool(get, prevTool)
 
     set(state => {
       const updates: Record<string, unknown> = {
@@ -396,12 +403,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     })
 
     // Activate new tool (lifecycle hook)
-    if (tool) {
-      const next = toolRegistry.get(tool as ToolId)
-      if (next) {
-        next.activate(buildToolContext(get))
-      }
-    }
+    activateTool(get, tool)
 
     if (devOnly || testMode) {
       validateWithRepair(get, set)
@@ -699,10 +701,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (prevTool && stack.length > 0) {
       const top = stack[stack.length - 1]
       if (top === `tool:${prevTool}`) {
-        const prev = toolRegistry.get(prevTool as ToolId)
-        if (prev) {
-          prev.deactivate(buildToolContext(get))
-        }
+        deactivateTool(get, prevTool)
       }
     }
 
