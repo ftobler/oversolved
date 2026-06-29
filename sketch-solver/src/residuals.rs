@@ -437,6 +437,28 @@ impl<'a> Problem<'a> {
         }
     }
 
+    /// Residual for a point lying on an entity (line/circle/arc/ellipse/spline).
+    /// Used symmetrically regardless of whether the point is the A or B ref.
+    fn r_point_on_entity(&self, x: &[f64], point: Ref, entity_index: u32, entity_kind: Kind, r: &mut Vec<f64>) {
+        let pa = self.point(x, point);
+        let ep = self.params(x, entity_index);
+        match entity_kind {
+            Kind::Line => {
+                let (dx, dy) = (ep[2] - ep[0], ep[3] - ep[1]);
+                let n = (dx * dx + dy * dy).sqrt();
+                let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
+                r.push((pa[0] - ep[0]) * nx + (pa[1] - ep[1]) * ny);
+            }
+            Kind::Circle | Kind::Arc => {
+                let dist = ((pa[0] - ep[0]).powi(2) + (pa[1] - ep[1]).powi(2)).sqrt();
+                r.push(dist - ep[2]);
+            }
+            Kind::Ellipse => r.push(ellipse_point_residual(pa, ep)),
+            Kind::Spline => r.push(spline_point_residual(pa, ep)),
+            _ => {}
+        }
+    }
+
     fn r_coincident(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let (Some(a_ref), Some(b_ref)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
             return;
@@ -480,50 +502,26 @@ impl<'a> Problem<'a> {
             };
             r.push((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny);
         } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Line) {
-            let pa = self.point(x, a_ref);
-            let ep_b = self.params(x, b_index.unwrap());
-            let (dx, dy) = (ep_b[2] - ep_b[0], ep_b[3] - ep_b[1]);
-            let n = (dx * dx + dy * dy).sqrt();
-            let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
-            r.push((pa[0] - ep_b[0]) * nx + (pa[1] - ep_b[1]) * ny);
+            self.r_point_on_entity(x, a_ref, b_index.unwrap(), Kind::Line, r);
         } else if !self.ref_is_point(&b_ref)
             && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc))
         {
-            let pa = self.point(x, a_ref);
-            let ep_b = self.params(x, b_index.unwrap());
-            let dist = ((pa[0] - ep_b[0]).powi(2) + (pa[1] - ep_b[1]).powi(2)).sqrt();
-            r.push(dist - ep_b[2]);
+            self.r_point_on_entity(x, a_ref, b_index.unwrap(), b_kind.unwrap(), r);
         } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Ellipse) {
-            let pa = self.point(x, a_ref);
-            let ep_b = self.params(x, b_index.unwrap());
-            r.push(ellipse_point_residual(pa, ep_b));
+            self.r_point_on_entity(x, a_ref, b_index.unwrap(), Kind::Ellipse, r);
         } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Spline) {
-            let pa = self.point(x, a_ref);
-            let ep_b = self.params(x, b_index.unwrap());
-            r.push(spline_point_residual(pa, ep_b));
+            self.r_point_on_entity(x, a_ref, b_index.unwrap(), Kind::Spline, r);
         } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Line) && self.ref_is_point(&b_ref) {
-            let pa = self.point(x, b_ref);
-            let ep_a = self.params(x, a_index.unwrap());
-            let (dx, dy) = (ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]);
-            let n = (dx * dx + dy * dy).sqrt();
-            let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
-            r.push((pa[0] - ep_a[0]) * nx + (pa[1] - ep_a[1]) * ny);
+            self.r_point_on_entity(x, b_ref, a_index.unwrap(), Kind::Line, r);
         } else if !self.ref_is_point(&a_ref)
             && (a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc))
             && self.ref_is_point(&b_ref)
         {
-            let pa = self.point(x, b_ref);
-            let ep_a = self.params(x, a_index.unwrap());
-            let dist = ((pa[0] - ep_a[0]).powi(2) + (pa[1] - ep_a[1]).powi(2)).sqrt();
-            r.push(dist - ep_a[2]);
+            self.r_point_on_entity(x, b_ref, a_index.unwrap(), a_kind.unwrap(), r);
         } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Ellipse) && self.ref_is_point(&b_ref) {
-            let pa = self.point(x, b_ref);
-            let ep_a = self.params(x, a_index.unwrap());
-            r.push(ellipse_point_residual(pa, ep_a));
+            self.r_point_on_entity(x, b_ref, a_index.unwrap(), Kind::Ellipse, r);
         } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Spline) && self.ref_is_point(&b_ref) {
-            let pa = self.point(x, b_ref);
-            let ep_a = self.params(x, a_index.unwrap());
-            r.push(spline_point_residual(pa, ep_a));
+            self.r_point_on_entity(x, b_ref, a_index.unwrap(), Kind::Spline, r);
         } else {
             let pa = self.point(x, a_ref);
             let pb = self.point(x, b_ref);
