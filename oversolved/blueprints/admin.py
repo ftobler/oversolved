@@ -250,6 +250,31 @@ def backup_all_documents() -> ResponseReturnValue:
             os.unlink(tmp.name)
 
 
+# ── Import backup (restore) ─────────────────────────────────────────────────
+
+# Zip-bomb guardrails for the import path. The entry count caps pathological
+# archives; the decompressed-size cap stops a modest entry count of huge files.
+_MAX_ZIP_ENTRIES = 10000
+_MAX_ZIP_DECOMPRESSED = 500 * 1024 * 1024
+
+
+def _check_zip_limits(stream: Any) -> ResponseReturnValue | None:
+    """Return an error response if `stream` is a zip-bomb, else None (ok).
+
+    Reads the zip central directory only (no decompression); the caller must
+    `seek(0)` afterwards before re-reading for the actual import.
+    """
+    with zipfile.ZipFile(stream, 'r') as bomb_check:
+        if len(bomb_check.filelist) > _MAX_ZIP_ENTRIES:
+            return api_error("Archive contains too many files", "BAD_REQUEST", 400)
+        total_decompressed = 0
+        for file_info in bomb_check.filelist:
+            total_decompressed += file_info.file_size
+            if total_decompressed > _MAX_ZIP_DECOMPRESSED:
+                return api_error("Archive too large when decompressed", "BAD_REQUEST", 400)
+    return None
+
+
 @admin_bp.route("/api/admin/import-backup", methods=["POST"])
 @require_auth
 @require_csrf
@@ -269,17 +294,9 @@ def import_backup() -> ResponseReturnValue:
         return api_error("File too large", "CONTENT_TOO_LARGE", 413)
 
     try:
-        MAX_ZIP_ENTRIES = 10000
-        MAX_ZIP_DECOMPRESSED = 500 * 1024 * 1024
-
-        with zipfile.ZipFile(file.stream, 'r') as bomb_check:
-            if len(bomb_check.filelist) > MAX_ZIP_ENTRIES:
-                return api_error("Archive contains too many files", "BAD_REQUEST", 400)
-            total_decompressed = 0
-            for file_info in bomb_check.filelist:
-                total_decompressed += file_info.file_size
-                if total_decompressed > MAX_ZIP_DECOMPRESSED:
-                    return api_error("Archive too large when decompressed", "BAD_REQUEST", 400)
+        bomb_error = _check_zip_limits(file.stream)
+        if bomb_error is not None:
+            return bomb_error
         file.stream.seek(0)
 
         db = get_db()
