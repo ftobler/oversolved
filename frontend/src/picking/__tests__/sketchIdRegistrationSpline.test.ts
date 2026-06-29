@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildSketchSegments, buildSketchVertices } from '@/picking/useSketchIdRegistration'
+import { buildSketchSegments, buildSketchVertices } from '@/picking/sketchIdBuilders'
 import type { Sketch, Spline } from '@/types/cad'
 
 // Same hazard the ellipse work hit: without a spline arm in the ID-buffer

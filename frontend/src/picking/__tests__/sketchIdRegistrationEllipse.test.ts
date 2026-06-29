@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildSketchSegments, buildSketchVertices } from '@/picking/useSketchIdRegistration'
+import { buildSketchSegments, buildSketchVertices } from '@/picking/sketchIdBuilders'
 import type { Sketch, Ellipse } from '@/types/cad'
 
 // Regression: the ID-buffer registration only handled line/arc/circle/point, so
