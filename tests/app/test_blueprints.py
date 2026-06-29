@@ -1,16 +1,6 @@
 """Tests for blueprint registration and structure."""
 
-import os
-import pytest
 from pathlib import Path
-from oversolved.app import create_app
-
-
-@pytest.fixture
-def app(pg_dsn):
-    os.environ["OVERSOLVED_ADMIN_PASSWORD"] = "admin"
-    app = create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-    return app
 
 
 class TestBlueprintRegistration:
