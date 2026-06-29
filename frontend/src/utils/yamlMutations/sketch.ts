@@ -760,6 +760,63 @@ function offsetSeed(kind: string, p: number[], distance: number): number[] | nul
   }
 }
 
+/** Reconnect the corners among offset clones: miter line/line corners to the
+ *  intersection of the two *seeded* (untrimmed) offset lines (NOT the offset of
+ *  the shared vertex), and carry line/arc and arc/arc tangency over so the
+ *  solver settles the fillet join. Snapshot the seeds before trimming endpoints
+ *  -- otherwise the second corner of a shared line would intersect an
+ *  already-moved line and drift. Spline/ellipse corners stay ungrafted (matches
+ *  the copy-at-source clone policy). */
+function reconnectOffsetCorners(
+  doc: PartDoc,
+  feature: PartFeature,
+  featureId: string,
+  cloneOf: Map<string, string>,
+  kindOf: Map<string, string>,
+): void {
+  // The caller (applyAddOffset) ensures these exist; guard anyway so a direct
+  // call cannot crash on a half-built feature.
+  if (!feature.initial || !feature.constraints) return
+  const initial = feature.initial
+  const seedSnapshot = new Map<string, number[]>()
+  for (const cloneId of cloneOf.values()) seedSnapshot.set(cloneId, [...initial[cloneId]])
+
+  const curved = (k: string | undefined) => k === 'arc' || k === 'circle'
+  for (const corner of offsetCorners([...cloneOf.keys()], feature.constraints)) {
+    const cloneA = cloneOf.get(corner.a.entityId)
+    const cloneB = cloneOf.get(corner.b.entityId)
+    if (!cloneA || !cloneB) continue
+    const kindA = kindOf.get(corner.a.entityId)
+    const kindB = kindOf.get(corner.b.entityId)
+
+    if (kindA === 'line' && kindB === 'line') {
+      const ix = lineIntersect(seedSnapshot.get(cloneA)!, seedSnapshot.get(cloneB)!)
+      if (!ix) continue  // near-parallel: leave the gap, no coincident, no crash
+      const ia = lineVertexIndices(corner.a.vertexKey)
+      const ib = lineVertexIndices(corner.b.vertexKey)
+      if (!ia || !ib) continue
+      const pa = initial[cloneA], pb = initial[cloneB]
+      pa[ia[0]] = round(ix[0]); pa[ia[1]] = round(ix[1])
+      pb[ib[0]] = round(ix[0]); pb[ib[1]] = round(ix[1])
+      applyAddConstraint(doc, featureId, 'coincident', [
+        `vertex:${featureId}:${cloneA}:${corner.a.vertexKey}`,
+        `vertex:${featureId}:${cloneB}:${corner.b.vertexKey}`,
+      ])
+    } else if ((kindA === 'line' && curved(kindB)) || (curved(kindA) && kindB === 'line') ||
+               (curved(kindA) && curved(kindB))) {
+      // line/arc or arc/arc: a fillet corner. Endpoints of an arc clone cannot be
+      // mitered into place (the geometry is center+radius+angles), so carry the
+      // tangency over and let the solver settle the join.
+      applyAddConstraint(doc, featureId, 'tangent', [
+        `entity:${featureId}:${cloneA}`,
+        `entity:${featureId}:${cloneB}`,
+      ])
+    }
+    // spline/ellipse corners: no clean offset relationship, leave them ungrafted
+    // (matches the copy-at-source clone policy above).
+  }
+}
+
 /** Offset: for each source entity, clone it and tie the copy to the source with
  *  ONLY a geometric relationship (parallel for lines, concentric for
  *  circles/arcs). The offset distance and direction are baked into the clone's
@@ -830,43 +887,7 @@ export function applyAddOffset(
   // (untrimmed) offset lines, so snapshot the seeds before we start trimming
   // endpoints -- otherwise the second corner of a shared line would intersect an
   // already-moved line and drift.
-  const seedSnapshot = new Map<string, number[]>()
-  for (const cloneId of cloneOf.values()) seedSnapshot.set(cloneId, [...feature.initial[cloneId]])
-
-  for (const corner of offsetCorners([...cloneOf.keys()], feature.constraints)) {
-    const cloneA = cloneOf.get(corner.a.entityId)
-    const cloneB = cloneOf.get(corner.b.entityId)
-    if (!cloneA || !cloneB) continue
-    const kindA = kindOf.get(corner.a.entityId)
-    const kindB = kindOf.get(corner.b.entityId)
-
-    const curved = (k: string | undefined) => k === 'arc' || k === 'circle'
-    if (kindA === 'line' && kindB === 'line') {
-      const ix = lineIntersect(seedSnapshot.get(cloneA)!, seedSnapshot.get(cloneB)!)
-      if (!ix) continue  // near-parallel: leave the gap, no coincident, no crash
-      const ia = lineVertexIndices(corner.a.vertexKey)
-      const ib = lineVertexIndices(corner.b.vertexKey)
-      if (!ia || !ib) continue
-      const pa = feature.initial[cloneA], pb = feature.initial[cloneB]
-      pa[ia[0]] = round(ix[0]); pa[ia[1]] = round(ix[1])
-      pb[ib[0]] = round(ix[0]); pb[ib[1]] = round(ix[1])
-      applyAddConstraint(doc, featureId, 'coincident', [
-        `vertex:${featureId}:${cloneA}:${corner.a.vertexKey}`,
-        `vertex:${featureId}:${cloneB}:${corner.b.vertexKey}`,
-      ])
-    } else if ((kindA === 'line' && curved(kindB)) || (curved(kindA) && kindB === 'line') ||
-               (curved(kindA) && curved(kindB))) {
-      // line/arc or arc/arc: a fillet corner. Endpoints of an arc clone cannot be
-      // mitered into place (the geometry is center+radius+angles), so carry the
-      // tangency over and let the solver settle the join.
-      applyAddConstraint(doc, featureId, 'tangent', [
-        `entity:${featureId}:${cloneA}`,
-        `entity:${featureId}:${cloneB}`,
-      ])
-    }
-    // spline/ellipse corners: no clean offset relationship, leave them ungrafted
-    // (matches the copy-at-source clone policy above).
-  }
+  reconnectOffsetCorners(doc, feature, featureId, cloneOf, kindOf)
 }
 
 export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: string): void {
