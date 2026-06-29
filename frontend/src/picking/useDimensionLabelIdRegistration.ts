@@ -1,8 +1,8 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { PlaneTransform } from '@/types/cad'
-import { buildPlaneMatrix } from './idRegistrationUtils'
+import { buildPlaneMatrix, useRegisteredBody } from './idRegistrationUtils'
 
 /**
  * Register a dimension label hit circle into the dimensionLabel ID layer.
@@ -32,25 +32,22 @@ export function useDimensionLabelIdRegistration(params: {
 
   const matrix = useMemo(() => buildPlaneMatrix(planeTransform), [planeTransform])
 
-  useEffect(() => {
-    if (!enabled) return
-    if (!pipeline) return
-    const entityKey = sub
-      ? `dim:${constraintId}:${sub}`
-      : `dim:${constraintId}`
-    const bodyKey = entityKey
+  const entityKey = sub ? `dim:${constraintId}:${sub}` : `dim:${constraintId}`
 
-    const v = new THREE.Vector3(px, py, pz).applyMatrix4(matrix)
-
-    pipeline.dimensionLabelLayer.registerBody({
-      bodyKey,
-      vertices: [[v.x, v.y, v.z]],
-      vertexQueries: [entityKey],
-    })
-    pipeline.markDirty()
-    return () => {
-      pipeline.dimensionLabelLayer.unregisterBody(bodyKey)
-      pipeline.markDirty()
-    }
-  }, [pipeline, constraintId, sub, px, py, pz, enabled, matrix])
+  useRegisteredBody(
+    pipeline,
+    enabled,
+    entityKey,
+    (p) => {
+      const v = new THREE.Vector3(px, py, pz).applyMatrix4(matrix)
+      p.dimensionLabelLayer.registerBody({
+        bodyKey: entityKey,
+        vertices: [[v.x, v.y, v.z]],
+        vertexQueries: [entityKey],
+      })
+      return true
+    },
+    (p) => p.dimensionLabelLayer.unregisterBody(entityKey),
+    [px, py, pz, matrix],
+  )
 }
