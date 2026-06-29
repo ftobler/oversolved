@@ -103,6 +103,100 @@ export function resetSketchSolver(): void {
 }
 
 /**
+ * Lower every projected entity (one carrying a ``source`` ancestry query) in a
+ * sketch feature: resolve the source geometry via the repository, project it
+ * onto the sketch plane, and fold the resulting 2D params into ``initial``.
+ * The entity's ``source`` is stripped and its id is added to ``pinnedIds`` so
+ * the solver treats the lowered params as immovable -- the design invariant
+ * "a projected entity is just an entity whose params are pinned".
+ *
+ * Returns the mutated feature plus the bookkeeping the caller surfaces to the
+ * doc (resolved kinds for tilted-circle/partial-ellipse lowering) and to the
+ * UI (ids of projections that could not be resolved this solve, dropped so the
+ * rest of the sketch still builds). Mirrors Python's
+ * ``_project_source_to_params`` + ``_resolve_source_geometry``.
+ */
+function lowerProjectedEntities(
+  feature: Dict,
+  plane: ReturnType<typeof resolveSketchPlane>,
+  globalRepo: Repository,
+): {
+  loweredFeature: Dict
+  resolvedKinds: Record<string, string>
+  projectionErrors: string[]
+  pinnedIds: string[]
+} {
+  const entities = (feature.entities as Array<Dict>) ?? []
+  const hasProjections = entities.some((e) => e.source)
+  const resolvedKinds: Record<string, string> = {}
+  const projectionErrors: string[] = []
+  const pinnedIds: string[] = []
+
+  if (!hasProjections || entities.length === 0) {
+    return { loweredFeature: feature, resolvedKinds, projectionErrors, pinnedIds }
+  }
+
+  // Resolved params land in `initial` (keyed by entity id) -- the same place
+  // lowerSketch reads seed params from. The source query is re-resolved on
+  // every solve, so projected geometry tracks the source B-rep (parametric
+  // associativity); a projected entity carries no params in the doc itself.
+  const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
+  const loweredEntities: Array<Dict> = []
+  for (const ent of entities) {
+    const source = ent.source
+    if (!source) { loweredEntities.push(ent); continue }
+    const entId = ent.id as string
+    let lowered: Dict | null = null
+    try {
+      const sourceStr = typeof source === 'string' ? source : ''
+      if (sourceStr.startsWith('$')) {
+        const sourceEid = sourceStr.slice(1)
+        const srcParams = initial[sourceEid]
+        if (srcParams) {
+          initial[entId] = [...srcParams]
+          lowered = { ...ent, source: undefined }
+        }
+      } else {
+        const resolved = globalRepo.query(sourceStr, null) as Dict | null
+        if (resolved) {
+          const data3d = resolve3dGeometry(resolved, sourceStr)
+          if (data3d) {
+            const declaredKind = (ent.kind as string) ?? 'point'
+            const projected = projectTo2d(data3d, plane as PlaneFrame)
+            if (projected) {
+              initial[entId] = projected.params
+              // A tilted circle lowers to an ellipse, a partial ellipse to a
+              // spline: the resolved kind wins, and is surfaced so the doc
+              // entity adopts it (its param count must match the geometry).
+              if (projected.kind !== declaredKind) resolvedKinds[entId] = projected.kind
+              lowered = { ...ent, source: undefined, kind: projected.kind }
+            }
+          }
+        }
+      }
+    } catch {
+      // fall through to the unresolved path below
+    }
+    if (lowered) {
+      loweredEntities.push(lowered)
+      pinnedIds.push(entId)
+    } else {
+      // Unresolvable projection: drop it rather than leaving a `source` that
+      // would make partDocToSketches skip (and the whole sketch throw). The
+      // rest of the sketch -- including the user's own geometry -- still solves.
+      projectionErrors.push(entId)
+    }
+  }
+
+  return {
+    loweredFeature: { ...feature, entities: loweredEntities, initial },
+    resolvedKinds,
+    projectionErrors,
+    pinnedIds,
+  }
+}
+
+/**
  * Solve a single sketch feature with the Rust kernel. Must call
  * ``initSketchSolver()`` first; throws if the solver is not loaded.
  * Returns a result compatible with Python's ``_dispatch_sketch`` output.
@@ -127,78 +221,8 @@ export function solveSketch(
 
   // ── Lower projected entities before partDocToSketches ──────────────────
   const plane = resolveSketchPlane((feature.plane as string | undefined) ?? null, globalRepo)
-  const entities = (feature.entities as Array<Dict>) ?? []
-  const hasProjections = entities.some((e) => e.source)
-  let loweredFeature = feature
-  // Projected entities whose lowered kind differs from the declared kind; the
-  // caller adopts these onto the doc entity so its params stay matched.
-  const resolvedKinds: Record<string, string> = {}
-  // Projected entities whose source query could not be resolved this solve
-  // (e.g. a stale ancestry query after the source B-rep changed). They are
-  // dropped from the solve so the rest of the sketch still builds.
-  const projectionErrors: string[] = []
-  // Projected entities whose params resolved this solve. Their `source` is
-  // stripped so the solver sees ordinary geometry; pinning every one of their
-  // params (via the lowered `pinned_mask`) keeps the LM exploration from nudging
-  // them off the projected location -- the design invariant "a projected entity
-  // is just an entity whose params are pinned".
-  const pinnedIds: string[] = []
-
-  if (hasProjections && entities.length > 0) {
-    // Resolved params land in `initial` (keyed by entity id) -- the same place
-    // lowerSketch reads seed params from. The source query is re-resolved on
-    // every solve, so projected geometry tracks the source B-rep (parametric
-    // associativity); a projected entity carries no params in the doc itself.
-    const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
-    const loweredEntities: Array<Dict> = []
-    for (const ent of entities) {
-      const source = ent.source
-      if (!source) { loweredEntities.push(ent); continue }
-      const entId = ent.id as string
-      let lowered: Dict | null = null
-      try {
-        const sourceStr = typeof source === 'string' ? source : ''
-        if (sourceStr.startsWith('$')) {
-          const sourceEid = sourceStr.slice(1)
-          const srcParams = initial[sourceEid]
-          if (srcParams) {
-            initial[entId] = [...srcParams]
-            lowered = { ...ent, source: undefined }
-          }
-        } else {
-          const resolved = globalRepo.query(sourceStr, null) as Dict | null
-          if (resolved) {
-            const data3d = resolve3dGeometry(resolved, sourceStr)
-            if (data3d) {
-              const declaredKind = (ent.kind as string) ?? 'point'
-              const projected = projectTo2d(data3d, plane as PlaneFrame)
-              if (projected) {
-                initial[entId] = projected.params
-                // A tilted circle lowers to an ellipse, a partial ellipse to a
-                // spline: the resolved kind wins, and is surfaced so the doc
-                // entity adopts it (its param count must match the geometry).
-                if (projected.kind !== declaredKind) resolvedKinds[entId] = projected.kind
-                lowered = { ...ent, source: undefined, kind: projected.kind }
-              }
-            }
-          }
-        }
-      } catch {
-        // fall through to the unresolved path below
-      }
-      if (lowered) {
-        loweredEntities.push(lowered)
-        pinnedIds.push(entId)
-      } else {
-        // Unresolvable projection: drop it rather than leaving a `source` that
-        // would make partDocToSketches skip (and the whole sketch throw). The
-        // rest of the sketch -- including the user's own geometry -- still solves.
-        projectionErrors.push(entId)
-      }
-    }
-
-    loweredFeature = { ...feature, entities: loweredEntities, initial }
-  }
+  const { loweredFeature, resolvedKinds, projectionErrors, pinnedIds } =
+    lowerProjectedEntities(feature, plane, globalRepo)
 
   // ── Lower the live PartDoc feature to SketchInput ──────────────────────
   // Express the document origin (0,0,0) in this sketch's local 2D frame so a
