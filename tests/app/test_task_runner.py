@@ -11,7 +11,6 @@ from oversolved.periodic_tasks import (
     _cron_next,
     is_task_due,
 )
-from .dbutil import make_db as _make_db
 
 
 class FakeTask(PeriodicTask):
@@ -27,13 +26,6 @@ class FakeTask(PeriodicTask):
         if self.fail:
             raise RuntimeError("Intentional failure")
         return {"status": "success", "deleted_count": 0, "errors": []}
-
-
-@pytest.fixture
-def db(pg_dsn):
-    database = _make_db(pg_dsn)
-    yield database
-    database.close()
 
 
 @pytest.fixture

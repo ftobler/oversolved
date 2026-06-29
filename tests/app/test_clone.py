@@ -6,14 +6,6 @@ from oversolved.db import (
     DocumentStore,
     UserStore,
 )
-from .dbutil import make_db as _make_db
-
-
-@pytest.fixture
-def db(pg_dsn):
-    database = _make_db(pg_dsn)
-    yield database
-    database.close()
 
 
 @pytest.fixture

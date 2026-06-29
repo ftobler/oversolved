@@ -8,6 +8,7 @@ import psycopg2
 from urllib.parse import urlparse, urlunparse
 
 from oversolved.app import create_app
+from .dbutil import make_db
 
 _DEFAULT_BASE_DSN = "postgresql://oversolved:oversolved@localhost:5432/oversolved"
 _BASE_DSN = os.environ.get("TEST_DB_DSN", _DEFAULT_BASE_DSN)
@@ -48,6 +49,14 @@ def pg_dsn():
         )
         cur.execute(f"DROP DATABASE {test_db}")
     conn.close()
+
+
+@pytest.fixture
+def db(pg_dsn):
+    """Provide a migrated, initialized Database on an isolated test database."""
+    database = make_db(pg_dsn)
+    yield database
+    database.close()
 
 
 @pytest.fixture
