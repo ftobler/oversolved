@@ -359,10 +359,8 @@ def import_backup() -> ResponseReturnValue:
 @require_auth
 @require_csrf
 @require_admin
+@require_json
 def submit_bug_report() -> ResponseReturnValue:
-    content_type = request.content_type or ""
-    if "application/json" not in content_type:
-        return api_error("Content-Type must be application/json", "INVALID_CONTENT_TYPE", 400)
     data = request.get_json()
     if not data:
         return api_error("Empty request body", "BAD_REQUEST", 400)
