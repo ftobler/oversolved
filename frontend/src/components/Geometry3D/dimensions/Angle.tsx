@@ -4,14 +4,11 @@ import { getSketchCallback } from '@/stores/sketchEditorStore'
 import { angleDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import { sampleArc } from '@/components/sketch/sketch_helpers'
 import { Arrowhead, ExtensionLine } from './primitives'
-import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown } from './useDimInteraction'
+import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
-import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
-import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 import type { PlaneTransform } from '@/types/cad'
-import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
 export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   cid: string
@@ -102,15 +99,8 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
   const label = `${displayedValue % 1 === 0 ? displayedValue : displayedValue.toFixed(1)}°`
 
-  useDimensionLabelIdRegistration({
-    constraintId: cid,
-    position: [labelX, labelY, LABEL_Z_OFFSET],
-    enabled: !!interaction && !isDragged,
-    planeTransform,
-  })
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, vx, vy, labelX, labelY)
-
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>

@@ -1,12 +1,9 @@
 import { Line } from '@react-three/drei'
 import { Arrowhead, ArrowTail } from './primitives'
-import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown } from './useDimInteraction'
+import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
-import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
-import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import type { PlaneTransform } from '@/types/cad'
-import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
 export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   cid: string
@@ -63,15 +60,8 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
 
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
-  useDimensionLabelIdRegistration({
-    constraintId: cid,
-    position: [labelX, labelY, LABEL_Z_OFFSET],
-    enabled: !!interaction && !isDragged,
-    planeTransform,
-  })
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, cx, cy, labelX, labelY)
-
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -147,15 +137,8 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
 
   const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
-  useDimensionLabelIdRegistration({
-    constraintId: cid,
-    position: [labelX, labelY, LABEL_Z_OFFSET],
-    enabled: !!interaction && !isDragged,
-    planeTransform,
-  })
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
-
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>

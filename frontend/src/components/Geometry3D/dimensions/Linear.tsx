@@ -3,13 +3,10 @@ import { Line } from '@react-three/drei'
 import { getSketchCallback } from '@/stores/sketchEditorStore'
 import { linearDimensionSign, lineDistanceSign } from '@/utils/geometry/dimensionNaturalValue'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
-import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown } from './useDimInteraction'
+import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
-import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
-import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import type { PlaneTransform } from '@/types/cad'
-import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
 export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransform }: {
   cid: string
@@ -112,16 +109,8 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   const ext1 = dim.ext1_line ? extEval(dim.ext1_line[0], dim.ext1_line[1], dim.ext1_line[2], dim.ext1_line[3], d1x, d1y) : { skip: false, touchX: x1, touchY: y1 } as const
   const ext2 = dim.ext2_line ? extEval(dim.ext2_line[0], dim.ext2_line[1], dim.ext2_line[2], dim.ext2_line[3], d2x, d2y) : { skip: false, touchX: x2, touchY: y2 } as const
 
-  useDimensionLabelIdRegistration({
-    constraintId: cid,
-    position: [labelX, labelY, LABEL_Z_OFFSET],
-    enabled: !!interaction && !isDragged,
-    planeTransform,
-  })
-
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
-
-  useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>

@@ -2,7 +2,10 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
 import { COLOR_CONSTRAINT } from '@/components/sketch/sketch_helpers'
-import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
+import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
+import { useDimDispatchRegistration } from './useDimDispatchRegistration'
+import type { PlaneTransform } from '@/types/cad'
 
 function useClickAfterDragSuppression() {
   const moved = useRef(false)
@@ -142,6 +145,39 @@ export function useDimLabelPointerDown(
       startWorld: [labelX, labelY],
     })
   }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
+}
+
+/**
+ * Registers a dimension label's pickable id and its pointer-event dispatch.
+ * This pair of calls is identical across every dimension component; only the
+ * label position and the dispatch handlers vary. The dispatched `onClick` is
+ * always a no-op (single-click selection is handled on the label mesh itself).
+ */
+export function useDimLabelRegistration(args: {
+  cid: string
+  interaction: DimInteraction | undefined
+  isDragged: boolean
+  labelX: number
+  labelY: number
+  planeTransform?: PlaneTransform
+  onOver: (e: { stopPropagation: () => void }) => void
+  onOut: () => void
+  onDoubleClick: (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void
+  onPointerDown: (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void
+}): void {
+  useDimensionLabelIdRegistration({
+    constraintId: args.cid,
+    position: [args.labelX, args.labelY, LABEL_Z_OFFSET],
+    enabled: !!args.interaction && !args.isDragged,
+    planeTransform: args.planeTransform,
+  })
+  useDimDispatchRegistration(args.cid, {
+    onOver: args.onOver,
+    onOut: args.onOut,
+    onClick: () => {},
+    onDoubleClick: args.onDoubleClick,
+    onPointerDown: args.onPointerDown,
+  })
 }
 
 // Returns the active dragged label position for this constraint (if being dragged), else null.
