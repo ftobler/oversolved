@@ -191,6 +191,35 @@ function fallbackConstraintGlyph(constraint: PartConstraint, sketch: Sketch): Co
   return { kind: 'unknown' }
 }
 
+// point_distance_x and point_distance_y are the same dimension transposed across
+// the two axes; build the shared render and pick the per-axis fields by isX.
+function pointDistanceAxisRender(
+  dimKind: 'point_distance_x' | 'point_distance_y',
+  resolved: ResolvedConstraint,
+  sketch: Sketch,
+): ConstraintRender {
+  const eid = resolved.a?.entity
+  const eid2 = resolved.b?.entity
+  if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
+  const pa = geomPoint(sketch, resolved.a)
+  const pb = geomPoint(sketch, resolved.b)
+  if (!pa || !pb) return { kind: 'unknown' }
+  const isX = dimKind === 'point_distance_x'
+  const mid = isX ? (pa[1] + pb[1]) / 2 : (pa[0] + pb[0]) / 2
+  return {
+    kind: 'dim_linear',
+    dimKind,
+    p1: isX ? [pa[0], mid] : [mid, pa[1]],
+    p2: isX ? [pb[0], mid] : [mid, pb[1]],
+    value: resolved.value || 0,
+    normal: isX ? [0, 1] : [1, 0],
+    entity: eid,
+    ext1_line: isX ? [pa[0] - 100, pa[1], pa[0] + 100, pa[1]] : [pa[0], pa[1] - 100, pa[0], pa[1] + 100],
+    ext2_line: isX ? [pb[0] - 100, pb[1], pb[0] + 100, pb[1]] : [pb[0], pb[1] - 100, pb[0], pb[1] + 100],
+    ...(resolved.pos && { pos: resolved.pos }),
+  }
+}
+
 function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
   // Normalize refs: convert query strings to {entity, point?} objects.
   const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, sketch) : q
@@ -407,48 +436,8 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     }
   }
 
-  if (kind === 'point_distance_x') {
-    const eid = resolved.a?.entity
-    const eid2 = resolved.b?.entity
-    if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
-    const pa = geomPoint(sketch, resolved.a)
-    const pb = geomPoint(sketch, resolved.b)
-    if (!pa || !pb) return { kind: 'unknown' }
-    const midY = (pa[1] + pb[1]) / 2
-    return {
-      kind: 'dim_linear',
-      dimKind: 'point_distance_x',
-      p1: [pa[0], midY],
-      p2: [pb[0], midY],
-      value: resolved.value || 0,
-      normal: [0, 1],
-      entity: eid,
-      ext1_line: [pa[0] - 100, pa[1], pa[0] + 100, pa[1]],
-      ext2_line: [pb[0] - 100, pb[1], pb[0] + 100, pb[1]],
-      ...(resolved.pos && { pos: resolved.pos }),
-    }
-  }
-
-  if (kind === 'point_distance_y') {
-    const eid = resolved.a?.entity
-    const eid2 = resolved.b?.entity
-    if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
-    const pa = geomPoint(sketch, resolved.a)
-    const pb = geomPoint(sketch, resolved.b)
-    if (!pa || !pb) return { kind: 'unknown' }
-    const midX = (pa[0] + pb[0]) / 2
-    return {
-      kind: 'dim_linear',
-      dimKind: 'point_distance_y',
-      p1: [midX, pa[1]],
-      p2: [midX, pb[1]],
-      value: resolved.value || 0,
-      normal: [1, 0],
-      entity: eid,
-      ext1_line: [pa[0], pa[1] - 100, pa[0], pa[1] + 100],
-      ext2_line: [pb[0], pb[1] - 100, pb[0], pb[1] + 100],
-      ...(resolved.pos && { pos: resolved.pos }),
-    }
+  if (kind === 'point_distance_x' || kind === 'point_distance_y') {
+    return pointDistanceAxisRender(kind, resolved, sketch)
   }
 
   if (kind === 'line_distance') {
