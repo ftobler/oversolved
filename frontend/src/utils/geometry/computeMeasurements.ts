@@ -1,7 +1,7 @@
 import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '@/types/cad'
 import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '@/registry/measurementRegistry'
 import { getEntityKind } from '@/types/cad'
-import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
+import { parseTopoFallbackQuery, parseSelectionId } from '@/utils/query/selectionId'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -57,13 +57,14 @@ export function computeMeasurements(
     let entityId: string | undefined
     let vertexRef: string | undefined
 
-    if (id.startsWith('entity:')) {
-      const parts = id.split(':')
-      entityId = parts[2]
-    } else if (id.startsWith('vertex:')) {
-      const parts = id.split(':')
-      entityId = parts[2]
-      vertexRef = parts[3]
+    // entity:/vertex: ids share their wire format with selectionId.ts; let the
+    // canonical parser pull out the fields instead of re-splitting on ':' here.
+    const parsed = id.startsWith('entity:') || id.startsWith('vertex:') ? parseSelectionId(id) : null
+    if (parsed?.kind === 'entity') {
+      entityId = parsed.eid
+    } else if (parsed?.kind === 'vertex') {
+      entityId = parsed.eid
+      vertexRef = parsed.sub
     } else {
       continue
     }
