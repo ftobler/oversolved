@@ -1,10 +1,7 @@
-import { useRef } from 'react'
 import { Line } from '@react-three/drei'
-import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w } from '@/components/sketch/sketch_helpers'
-import { applyWorldBillboard } from '@/components/Geometry3D/billboard'
+import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
@@ -13,13 +10,7 @@ import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, C
 export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depthTest = true }: {
   x: number; y: number; px: number; color: string; billboard?: boolean; renderOrder?: number; depthTest?: boolean
 }) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (!meshRef.current) return
-    meshRef.current.scale.setScalar(px * p2w(camera))
-    if (billboard) applyWorldBillboard(meshRef.current, camera)
-  })
+  const meshRef = useScreenScale<THREE.Mesh>(px, { billboard })
   return (
     <mesh ref={meshRef} position={[x, y, 0]} renderOrder={renderOrder}>
       <circleGeometry args={[1, 10]} />
@@ -30,13 +21,7 @@ export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depth
 
 // Square highlight rendered at z=0.001 so it's always visible above lines.
 export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
-  const groupRef = useRef<THREE.Group>(null)
-  const { camera } = useThree()
-  useFrame(() => {
-    if (!groupRef.current) return
-    groupRef.current.scale.setScalar(px * p2w(camera))
-    applyWorldBillboard(groupRef.current, camera)
-  })
+  const groupRef = useScreenScale<THREE.Group>(px, { billboard: true })
   const h = 1.4 // half-size of square in local units
   const pts: [number, number, number][] = [[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0], [-h, -h, 0]]
   return (
@@ -87,8 +72,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
  *  is visual-only — no R3F event props. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = false }: { x: number; y: number; featureId: string; entityId: string; isEditing?: boolean }) {
-  const groupRef = useRef<THREE.Group>(null)
-  const { camera } = useThree()
+  const groupRef = useScreenScale<THREE.Group>(7)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
@@ -96,11 +80,6 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = fa
 
   // Hover state is driven by the ID-buffer dispatcher.
   const hovered = hoveredSelectionId === entId
-
-  useFrame(() => {
-    const scale = 7 * p2w(camera)
-    if (groupRef.current) groupRef.current.scale.setScalar(scale)
-  })
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
