@@ -32,13 +32,7 @@ class PeriodicTaskStore:
         filtered = {k: v for k, v in updates.items() if k in allowed}
         if not filtered:
             return
-        set_clause = ", ".join(f"{k} = ?" for k in filtered)
-        values = list(filtered.values()) + [task_key]
-        with self.db.transaction():
-            self.db.execute(
-                f"UPDATE periodic_tasks SET {set_clause} WHERE task_key = ?",
-                tuple(values),
-            )
+        self.db.update("periodic_tasks", "task_key", task_key, filtered)
 
     def ensure_task_exists(self, task_key: str) -> None:
         """Ensure a task record exists, creating if needed."""

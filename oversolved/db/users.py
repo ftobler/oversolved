@@ -133,15 +133,7 @@ class UserStore:
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return False
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values())
-        values.append(user_id)
-        with self.db.transaction():
-            cursor = self.db.execute(
-                f"UPDATE users SET {set_clause} WHERE id = ?",
-                tuple(values),
-            )
-            return cursor.rowcount > 0
+        return self.db.update("users", "id", user_id, updates) > 0
 
     def delete(self, user_id: int) -> bool:
         """Delete user. Returns True if user was found and deleted."""

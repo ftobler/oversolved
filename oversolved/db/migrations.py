@@ -116,6 +116,21 @@ class Database:
         """Execute an INSERT and return the auto-generated row ID."""
         return self.conn.insert_returning_id(query, params)
 
+    def update(self, table: str, key_column: str, key_value: Any, fields: dict) -> int:
+        """Apply already-validated field updates in a transaction. Returns affected row count.
+
+        Callers own field validation (allow-listing); this only builds the SET clause
+        and runs the statement so the mechanical part is not duplicated per store.
+        """
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [key_value]
+        with self.transaction():
+            cursor = self.execute(
+                f"UPDATE {table} SET {set_clause} WHERE {key_column} = ?",
+                tuple(values),
+            )
+            return cursor.rowcount
+
     def commit(self) -> None:
         """Commit transaction."""
         self.conn.commit()

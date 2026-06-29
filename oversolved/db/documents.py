@@ -76,14 +76,7 @@ class DocumentStore:
             return False
         if "updated_at" not in updates:
             updates["updated_at"] = _now()
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [uuid]
-        with self.db.transaction():
-            cursor = self.db.execute(
-                f"UPDATE documents SET {set_clause} WHERE uuid = ?",
-                tuple(values),
-            )
-            return cursor.rowcount > 0
+        return self.db.update("documents", "uuid", uuid, updates) > 0
 
     def retrieve(self, uuid: str) -> dict | None:
         """Retrieve a document by UUID."""
