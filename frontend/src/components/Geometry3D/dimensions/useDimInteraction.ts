@@ -112,6 +112,38 @@ export function useDimInteraction(
   return { hovered, selected, color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
 }
 
+/**
+ * Pointer-down handler that begins a dim_label drag. Identical wiring across all
+ * dimension components; only the anchor (entity-relative origin) and the label
+ * start position differ. Scalars are taken individually so the memoization deps
+ * match the per-component originals.
+ */
+export function useDimLabelPointerDown(
+  cid: string,
+  interaction: DimInteraction | undefined,
+  resetDragMoved: () => void,
+  anchorX: number, anchorY: number,
+  labelX: number, labelY: number,
+) {
+  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
+  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
+  const setDragPending = useSketchEditorStore(s => s.setDragPending)
+  return useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
+    if (!interaction) return
+    e.stopPropagation()
+    resetDragMoved()
+    setIsPointerDown(true)
+    setDragStartClient([e.clientX, e.clientY])
+    setDragPending({
+      type: 'dim_label',
+      constraintId: cid,
+      featureId: interaction.featureId,
+      anchorWorld: [anchorX, anchorY],
+      startWorld: [labelX, labelY],
+    })
+  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
+}
+
 // Returns the active dragged label position for this constraint (if being dragged), else null.
 export function useActiveLabelDrag(cid: string): [number, number] | null {
   const drag = useSketchEditorStore(s => s.drag)

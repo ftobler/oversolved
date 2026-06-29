@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
 import { Line } from '@react-three/drei'
-import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { getSketchCallback } from '@/stores/sketchEditorStore'
 import { linearDimensionSign, lineDistanceSign } from '@/utils/geometry/dimensionNaturalValue'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
-import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
+import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -38,9 +38,6 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
     useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined)
   const activeDragPos = useActiveLabelDrag(cid)
-  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
-  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
-  const setDragPending = useSketchEditorStore(s => s.setDragPending)
 
   const [x1, y1] = dim.p1, [x2, y2] = dim.p2
   const nx = dim.normal[0], ny = dim.normal[1]
@@ -122,20 +119,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     planeTransform,
   })
 
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    if (!interaction) return
-    e.stopPropagation()
-    resetDragMoved()
-    setIsPointerDown(true)
-    setDragStartClient([e.clientX, e.clientY])
-    setDragPending({
-      type: 'dim_label',
-      constraintId: cid,
-      featureId: interaction.featureId,
-      anchorWorld: [anchorX, anchorY],
-      startWorld: [labelX, labelY],
-    })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
+  const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 

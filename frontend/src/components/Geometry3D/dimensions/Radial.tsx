@@ -1,8 +1,6 @@
-import { useCallback } from 'react'
 import { Line } from '@react-three/drei'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { Arrowhead, ArrowTail } from './primitives'
-import { useDimInteraction, useActiveLabelDrag } from './useDimInteraction'
+import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -18,9 +16,6 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
 }) {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged   } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
-  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
-  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
-  const setDragPending = useSketchEditorStore(s => s.setDragPending)
 
   // p1 = center, p2 = edge point; r is the circle/arc radius.
   const [cx, cy] = dim.p1
@@ -74,21 +69,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
     enabled: !!interaction && !isDragged,
     planeTransform,
   })
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    if (!interaction) return
-    e.stopPropagation()
-    resetDragMoved()
-    setIsPointerDown(true)
-    setDragStartClient([e.clientX, e.clientY])
-    setDragPending({
-      type: 'dim_label',
-      constraintId: cid,
-      featureId: interaction.featureId,
-      anchorWorld: [cx, cy],
-      startWorld: [labelX, labelY],
-    })
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  }, [interaction, cid, cx, cy, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
+  const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, cx, cy, labelX, labelY)
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 
@@ -126,9 +107,6 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
 }) {
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } = useDimInteraction(cid, dim.value, interaction)
   const activeDragPos = useActiveLabelDrag(cid)
-  const setIsPointerDown = useSketchEditorStore(s => s.setIsPointerDown)
-  const setDragStartClient = useSketchEditorStore(s => s.setDragStartClient)
-  const setDragPending = useSketchEditorStore(s => s.setDragPending)
 
   // p1 and p2 are the two endpoints of the diameter; center is their midpoint.
   const anchorX = (dim.p1[0] + dim.p2[0]) / 2, anchorY = (dim.p1[1] + dim.p2[1]) / 2
@@ -175,20 +153,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
     enabled: !!interaction && !isDragged,
     planeTransform,
   })
-  const onPointerDown = useCallback((e: { stopPropagation: () => void; clientX: number; clientY: number }) => {
-    if (!interaction) return
-    e.stopPropagation()
-    resetDragMoved()
-    setIsPointerDown(true)
-    setDragStartClient([e.clientX, e.clientY])
-    setDragPending({
-      type: 'dim_label',
-      constraintId: cid,
-      featureId: interaction.featureId,
-      anchorWorld: [anchorX, anchorY],
-      startWorld: [labelX, labelY],
-    })
-  }, [interaction, cid, anchorX, anchorY, labelX, labelY, resetDragMoved, setIsPointerDown, setDragStartClient, setDragPending])
+  const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
 
   useDimDispatchRegistration(cid, { onOver, onOut, onClick: () => {}, onDoubleClick, onPointerDown })
 
