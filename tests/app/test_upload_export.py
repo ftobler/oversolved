@@ -7,7 +7,6 @@ path (file_id generation, persistence, JSON response) and the missing-field
 branch uncovered. These tests exercise that logic with a plain byte payload.
 """
 
-import json
 import os
 import re
 from io import BytesIO
@@ -22,18 +21,6 @@ def app(pg_dsn, tmp_path, monkeypatch):
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
     monkeypatch.setenv("OVERSOLVED_UPLOAD_DIR", str(tmp_path / "uploads"))
     return create_app({"DB_TYPE": "postgres", "TESTING": True, "DB_DSN": pg_dsn})
-
-
-@pytest.fixture
-def authed_client(app):
-    client = app.test_client()
-    resp = client.post(
-        "/api/auth/login",
-        data=json.dumps({"username": "admin", "password": "admin"}),
-        content_type="application/json",
-    )
-    assert resp.status_code == 200
-    return client
 
 
 def test_missing_file_field_returns_400(authed_client):

@@ -1,6 +1,5 @@
 """Tests for POST /api/upload route."""
 
-import json
 import os
 import re
 import pytest
@@ -31,18 +30,6 @@ def app(pg_dsn, tmp_path, monkeypatch):
 @pytest.fixture
 def client(app):
     return app.test_client()
-
-
-@pytest.fixture
-def authed_client(app):
-    c = app.test_client()
-    resp = c.post(
-        "/api/auth/login",
-        data=json.dumps({"username": "admin", "password": "admin"}),
-        content_type="application/json",
-    )
-    assert resp.status_code == 200
-    return c
 
 
 @pytest.fixture
