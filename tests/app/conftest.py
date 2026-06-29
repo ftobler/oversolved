@@ -8,6 +8,7 @@ import psycopg2
 from urllib.parse import urlparse, urlunparse
 
 from oversolved.app import create_app
+from oversolved.db import DocumentStore, UserStore
 from .dbutil import make_db
 
 _DEFAULT_BASE_DSN = "postgresql://oversolved:oversolved@localhost:5432/oversolved"
@@ -57,6 +58,16 @@ def db(pg_dsn):
     database = make_db(pg_dsn)
     yield database
     database.close()
+
+
+@pytest.fixture
+def doc_store(db):
+    return DocumentStore(db)
+
+
+@pytest.fixture
+def user_store(db):
+    return UserStore(db)
 
 
 @pytest.fixture

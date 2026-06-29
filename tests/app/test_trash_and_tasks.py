@@ -7,20 +7,9 @@ from oversolved.db import (
     Database,
     PostgreSQLConnection,
     DocumentStore,
-    UserStore,
     PeriodicTaskStore,
 )
 from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask, _cron_next
-
-
-@pytest.fixture
-def doc_store(db):
-    return DocumentStore(db)
-
-
-@pytest.fixture
-def user_store(db):
-    return UserStore(db)
 
 
 @pytest.fixture

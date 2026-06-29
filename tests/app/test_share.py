@@ -1,21 +1,6 @@
 """Tests for document sharing feature."""
 
 import json
-import pytest
-from oversolved.db import (
-    DocumentStore,
-    UserStore,
-)
-
-
-@pytest.fixture
-def doc_store(db):
-    return DocumentStore(db)
-
-
-@pytest.fixture
-def user_store(db):
-    return UserStore(db)
 
 
 class TestDocumentStoreShares:

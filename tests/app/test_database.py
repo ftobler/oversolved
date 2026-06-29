@@ -4,7 +4,6 @@ import pytest
 from oversolved.db import (
     Database,
     PostgreSQLConnection,
-    DocumentStore,
     UserStore,
     SessionStore,
 )
@@ -12,18 +11,8 @@ from .dbutil import make_db as _make_db
 
 
 @pytest.fixture
-def user_store(db):
-    return UserStore(db)
-
-
-@pytest.fixture
 def session_store(db):
     return SessionStore(db)
-
-
-@pytest.fixture
-def doc_store(db):
-    return DocumentStore(db)
 
 
 @pytest.fixture
