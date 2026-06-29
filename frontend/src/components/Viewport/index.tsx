@@ -21,15 +21,39 @@ import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
-import { IdPickingDriver, DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME } from '@/picking'
+import {
+  IdPickingDriver,
+  DIMENSION_LABEL_LAYER_NAME,
+  FACE_LAYER_NAME,
+  EDGE_LAYER_NAME,
+  VERTEX_LAYER_NAME,
+  PLANE_LAYER_NAME,
+  SKETCH_ENTITY_LAYER_NAME,
+  SKETCH_VERTEX_LAYER_NAME,
+  ORIGIN_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME,
+} from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
-import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch, wasLastClickStaleResolve } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import {
+  useIdBufferPointerDispatch,
+  wasLastClickConsumedByIdDispatch,
+  wasLastClickStaleResolve,
+} from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { CLICK_THRESHOLD_PX, DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
-import { getBodiesToRender, getSketchesToRender, getPreviewBodies, type BodyRenderItem } from '@/components/Viewport/bodyUtils'
-import { buildBodySnapSketch, builtinPlaneTransform, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
+import {
+  getBodiesToRender,
+  getSketchesToRender,
+  getPreviewBodies,
+  type BodyRenderItem,
+} from '@/components/Viewport/bodyUtils'
+import {
+  buildBodySnapSketch,
+  builtinPlaneTransform,
+  BODY_SNAP_FEAT_PREFIX,
+} from '@/components/Geometry3D/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
 const ENABLE_ID_BUFFER_PICKING = true
@@ -44,7 +68,12 @@ export interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void
 }
 
-function isActive(id: string, features: Feature[] | undefined, rollbackPos: number | undefined, visible: Set<string> | undefined): boolean {
+function isActive(
+  id: string,
+  features: Feature[] | undefined,
+  rollbackPos: number | undefined,
+  visible: Set<string> | undefined,
+): boolean {
   if (!features || features.length === 0) return true
   const idx = features.findIndex(f => f.id === id)
   if (idx < 0) return false
@@ -142,7 +171,10 @@ function calculatePlaneSize(
   return FALLBACK_SIZE
 }
 
-function getActiveSketchPlane(activeFeatureId: string | null | undefined, features: Feature[] | undefined): string | null {
+function getActiveSketchPlane(
+  activeFeatureId: string | null | undefined,
+  features: Feature[] | undefined,
+): string | null {
   if (!activeFeatureId || !features) return null
   const activeFeature = features.find(f => f.id === activeFeatureId)
   if (!activeFeature || activeFeature.kind !== 'sketch') return null
@@ -354,13 +386,27 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     alignToPlane(camera, controlsRef.current, planeId)
   }, [cameraRef])
 
-  const alignCameraToFace = useCallback((faceNormal: [number, number, number], faceCenter: [number, number, number]) => {
-    const camera = cameraRef.current as THREE.OrthographicCamera | null
-    if (!camera) return
-    alignToFace(camera, controlsRef.current, faceNormal, faceCenter)
-  }, [cameraRef])
+  const alignCameraToFace = useCallback(
+    (faceNormal: [number, number, number], faceCenter: [number, number, number]) => {
+      const camera = cameraRef.current as THREE.OrthographicCamera | null
+      if (!camera) return
+      alignToFace(camera, controlsRef.current, faceNormal, faceCenter)
+    },
+    [cameraRef],
+  )
 
-  useImperativeHandle(ref, () => ({ captureScreenshot, captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace }), [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace])
+  useImperativeHandle(
+    ref,
+    () => ({
+      captureScreenshot,
+      captureScreenshotForSaving,
+      autoZoomToFit,
+      cancelPendingFit,
+      alignCameraToPlane,
+      alignCameraToFace,
+    }),
+    [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace],
+  )
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
@@ -502,7 +548,23 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
   const renderBodyItem = (b: BodyRenderItem) => (
-    <Body3D key={b.key} featureId={b.featureId} bodyId={b.bodyId} mesh={b.mesh} edges={b.edges} edgeQueries={b.edgeQueries} vertices={b.vertices} vertexQueries={b.vertexQueries} visible={b.visible} showDebugHit={showDebugHit} color={partColors?.[b.key]} transparency={partStyle?.[b.key]?.transparency ?? 0} roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS} metalness={partStyle?.[b.key]?.metalness ?? 0} transmission={partStyle?.[b.key]?.transmission ?? 0} />
+    <Body3D
+      key={b.key}
+      featureId={b.featureId}
+      bodyId={b.bodyId}
+      mesh={b.mesh}
+      edges={b.edges}
+      edgeQueries={b.edgeQueries}
+      vertices={b.vertices}
+      vertexQueries={b.vertexQueries}
+      visible={b.visible}
+      showDebugHit={showDebugHit}
+      color={partColors?.[b.key]}
+      transparency={partStyle?.[b.key]?.transparency ?? 0}
+      roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS}
+      metalness={partStyle?.[b.key]?.metalness ?? 0}
+      transmission={partStyle?.[b.key]?.transmission ?? 0}
+    />
   )
 
   return (
@@ -521,7 +583,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         onCreated={onCreated}
         onPointerMissed={onPointerMissed}
       >
-        <SceneController key="scene-ctrl" canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} controlsRef={controlsRef} />
+        <SceneController
+          key="scene-ctrl"
+          canvasRef={canvasRef}
+          pvRef={pvRef}
+          hoverRef={hoverRef}
+          snapRef={snapRef}
+          cameraRef={cameraRef}
+          controlsRef={controlsRef}
+        />
 
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}
@@ -540,7 +610,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           .map(f => {
             const solveResult = solveResults?.[f.id]
             if (!solveResult?.plane_transform) return null
-            return <UserDefinedPlane key={f.id} featureId={f.id} label={f.label || f.id} planeTransform={solveResult.plane_transform} size={planeSizes[f.id]} />
+            return (
+              <UserDefinedPlane
+                key={f.id}
+                featureId={f.id}
+                label={f.label || f.id}
+                planeTransform={solveResult.plane_transform}
+                size={planeSizes[f.id]}
+              />
+            )
           })}
 
         {(() => {
@@ -555,7 +633,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const sketchFeature = features?.find(f => f.id === activeFeatureId)
           const sketchLabel = sketchFeature?.label || activeFeatureId
 
-          return <SketchPlaneDisplay key="sketch-plane" planeQuery={sketchPlaneQuery} size={planeSize} sketchLabel={sketchLabel} />
+          return (
+            <SketchPlaneDisplay
+              key="sketch-plane"
+              planeQuery={sketchPlaneQuery}
+              size={planeSize}
+              sketchLabel={sketchLabel}
+            />
+          )
         })()}
 
         {activeSketchFeatures.map(f => {
@@ -565,7 +650,23 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
           const isActiveFeature = f.id === activeFeatureId
           return (
-            <Geometry3D key={f.id} featureId={f.id} solved={sketch} entities={fullFeatureDef.entities} constraints={constraints} topology={solveResult?.topology} activeFeatureId={activeFeatureId} plane={fullFeatureDef.plane} planeTransform={solveResult?.plane_transform} originLocal={solveResult?.originLocal} solveStatus={solveResult?.status} entityStatus={solveResult?.features} showDebugHit={showDebugHit} otherSketches={isActiveFeature ? combinedOtherSketches : undefined} featureDef={fullFeatureDef} />
+            <Geometry3D
+              key={f.id}
+              featureId={f.id}
+              solved={sketch}
+              entities={fullFeatureDef.entities}
+              constraints={constraints}
+              topology={solveResult?.topology}
+              activeFeatureId={activeFeatureId}
+              plane={fullFeatureDef.plane}
+              planeTransform={solveResult?.plane_transform}
+              originLocal={solveResult?.originLocal}
+              solveStatus={solveResult?.status}
+              entityStatus={solveResult?.features}
+              showDebugHit={showDebugHit}
+              otherSketches={isActiveFeature ? combinedOtherSketches : undefined}
+              featureDef={fullFeatureDef}
+            />
           )
         })}
 
@@ -608,7 +709,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         })()} />
       )}
 
-      <CubeGizmoCanvas canvasRef={canvasRef} pvRef={pvRef} hoverRef={hoverRef} snapRef={snapRef} cameraRef={cameraRef} />
+      <CubeGizmoCanvas
+        canvasRef={canvasRef}
+        pvRef={pvRef}
+        hoverRef={hoverRef}
+        snapRef={snapRef}
+        cameraRef={cameraRef}
+      />
       <ContextMenuDialog />
     </div>
   )
