@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import 'fake-indexeddb/auto'
-import { IDBFactory } from 'fake-indexeddb'
+import { resetFakeIndexedDb } from './fakeIndexedDb'
 import JSZip from 'jszip'
 import { IndexedDbDocumentStore, LOCAL_OWNER } from '../IndexedDbDocumentStore'
 import { buildBundleBytes, importBundle } from '../bundle'
@@ -8,7 +7,7 @@ import { resetDbConnection } from '../idb'
 import { secureFilename } from '../secureFilename'
 
 beforeEach(() => {
-  globalThis.indexedDB = new IDBFactory()
+  resetFakeIndexedDb()
   resetDbConnection()
 })
 
@@ -28,7 +27,7 @@ describe('bundle export/import', () => {
     const bytes = await buildBundleBytes(store, [a.uuid, b.uuid])
 
     // Import into a fresh store and assert payloads survived.
-    globalThis.indexedDB = new IDBFactory()
+    resetFakeIndexedDb()
     resetDbConnection()
     const target = new IndexedDbDocumentStore()
     const ids = await importBundle(target, bytes)

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import 'fake-indexeddb/auto'
-import { IDBFactory } from 'fake-indexeddb'
+import { resetFakeIndexedDb } from './fakeIndexedDb'
 import type { DocumentStore } from '../types'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
 import { HttpDocumentStore } from '../HttpDocumentStore'
@@ -154,7 +153,7 @@ const adapters: Adapter[] = [
   {
     name: 'IndexedDbDocumentStore',
     make: () => new IndexedDbDocumentStore(),
-    setup: () => { globalThis.indexedDB = new IDBFactory(); resetDbConnection() },
+    setup: () => { resetFakeIndexedDb(); resetDbConnection() },
     teardown: () => {},
   },
   {

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import 'fake-indexeddb/auto'
-import { IDBFactory } from 'fake-indexeddb'
+import { resetFakeIndexedDb } from './fakeIndexedDb'
 import { IndexedDbDocumentStore, IndexedDbTrashAdapter } from '../IndexedDbDocumentStore'
 import { resetDbConnection } from '../idb'
 
@@ -12,7 +11,7 @@ import { resetDbConnection } from '../idb'
 // Each test gets a clean database: swap in a fresh fake IndexedDB factory and
 // drop the cached connection so the store reopens against it.
 beforeEach(() => {
-  globalThis.indexedDB = new IDBFactory()
+  resetFakeIndexedDb()
   resetDbConnection()
 })
 
