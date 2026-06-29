@@ -6,7 +6,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
-import { executeCommand } from '@/stores/commandRegistry'
+import { executeCommand } from '@/utils/core/commandRegistry'
 
 const mockAutoZoomToFit = vi.fn()
 const mockCancelPendingFit = vi.fn()

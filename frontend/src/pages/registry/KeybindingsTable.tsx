@@ -1,5 +1,5 @@
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL } from '@/registry'
-import { CORE_KEYBINDINGS } from '@/stores/commandRegistry'
+import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 
 type KeybindingRow = { key: string; command: string; label: string; description: string }
 

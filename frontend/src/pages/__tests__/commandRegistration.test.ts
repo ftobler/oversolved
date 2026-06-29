@@ -3,7 +3,7 @@ import {
   registerCommand,
   executeCommand,
   clearAllHandlers,
-} from '@/stores/commandRegistry'
+} from '@/utils/core/commandRegistry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { buildCommandEntries } from '@/pages/commandEntries'
 

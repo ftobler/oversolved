@@ -6,7 +6,7 @@ import {
   executeCommand,
   clearAllHandlers,
   dispatchKey,
-} from '@/stores/commandRegistry'
+} from '@/utils/core/commandRegistry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 beforeEach(() => { clearAllHandlers() })

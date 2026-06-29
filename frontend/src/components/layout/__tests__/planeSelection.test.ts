@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { registerCommand, executeCommand, unregisterCommand, clearAllHandlers } from '@/stores/commandRegistry'
+import { registerCommand, executeCommand, unregisterCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 
 // Plane selection is no longer a parallel store path. It is just a pick field
 // (`activePickField = { featureId, field: 'plane' }`) consumed by PlaneSelector

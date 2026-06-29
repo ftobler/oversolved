@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { executeCommand, CORE_KEYBINDINGS } from '@/stores/commandRegistry'
+import { executeCommand, CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl } from './toolUtils'
 import type { ToolDef } from './toolsConfig'

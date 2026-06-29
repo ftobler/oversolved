@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { buildCommandEntries } from '@/pages/commandEntries'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
-import { executeCommand } from '@/stores/commandRegistry'
+import { executeCommand } from '@/utils/core/commandRegistry'
 
 export function usePartCommands(
   handleUndo: () => void,

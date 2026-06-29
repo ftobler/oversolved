@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { registerCommand, unregisterCommand, dispatchKey } from '@/stores/commandRegistry'
+import { registerCommand, unregisterCommand, dispatchKey } from '@/utils/core/commandRegistry'
 
 export interface CommandEntry {
   name: string

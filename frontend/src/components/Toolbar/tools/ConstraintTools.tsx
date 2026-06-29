@@ -1,6 +1,6 @@
 import { TOOLBAR_CONSTRAINTS } from '@/registry'
 import type { ConstraintDef } from '@/registry'
-import { executeCommand } from '@/stores/commandRegistry'
+import { executeCommand } from '@/utils/core/commandRegistry'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'
 

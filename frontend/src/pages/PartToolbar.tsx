@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Mutation } from '@/types/cad'
-import { executeCommand } from '@/stores/commandRegistry'
+import { executeCommand } from '@/utils/core/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import AppHeader from '@/components/layout/AppHeader'

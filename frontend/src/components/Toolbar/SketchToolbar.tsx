@@ -1,5 +1,5 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { executeCommand, CORE_KEYBINDINGS } from '@/stores/commandRegistry'
+import { executeCommand, CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 import EntityTools from '@/components/Toolbar/tools/EntityTools'

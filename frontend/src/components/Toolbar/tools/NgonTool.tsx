@@ -1,5 +1,5 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { executeCommand } from '@/stores/commandRegistry'
+import { executeCommand } from '@/utils/core/commandRegistry'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import toolbarNgonIcon from '@/assets/icons/toolbar-ngon.svg'
 

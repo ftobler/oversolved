@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildCommandEntries } from '@/pages/commandEntries'
-import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP, clearAllHandlers } from '@/stores/commandRegistry'
+import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP, clearAllHandlers } from '@/utils/core/commandRegistry'
 import { CONSTRAINTS } from '@/registry'
 
 // Ensure clean state before each test

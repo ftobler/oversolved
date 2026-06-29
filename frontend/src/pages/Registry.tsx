@@ -1,7 +1,7 @@
 import AppHeader from '@/components/layout/AppHeader'
 import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, SNAP_KINDS } from '@/registry'
 import { SINGLE_ENTITY_RULES, MULTI_ENTITY_RULES } from '@/registry/measurementRegistry'
-import { KEYMAP } from '@/stores/commandRegistry'
+import { KEYMAP } from '@/utils/core/commandRegistry'
 import '@/pages/Registry.css'
 import { ConstraintsTable } from './registry/ConstraintsTable'
 import { DimensionRulesTable } from './registry/DimensionRulesTable'

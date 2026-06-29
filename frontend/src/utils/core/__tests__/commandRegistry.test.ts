@@ -9,7 +9,7 @@ import {
   clearAllHandlers,
   buildKeyString,
   dispatchKey,
-} from '@/stores/commandRegistry'
+} from '@/utils/core/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
