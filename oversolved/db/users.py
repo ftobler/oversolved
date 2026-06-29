@@ -143,25 +143,12 @@ class UserStore:
 
     def list_all(self) -> list[dict]:
         """List all users (for admin). Returns list of user dicts without password_hash."""
+        cols = ("id", "username", "email", "must_change_password", "is_admin",
+                "is_active", "created_at", "last_login_at", "updated_at")
         cursor = self.db.execute(
-            """SELECT id, username, email, must_change_password, is_admin,
-                      is_active, created_at, last_login_at, updated_at
-               FROM users ORDER BY username"""
+            f"SELECT {', '.join(cols)} FROM users ORDER BY username"
         )
-        return [
-            {
-                "id": row[0],
-                "username": row[1],
-                "email": row[2],
-                "must_change_password": bool(row[3]),
-                "is_admin": bool(row[4]),
-                "is_active": bool(row[5]),
-                "created_at": row[6],
-                "last_login_at": row[7],
-                "updated_at": row[8],
-            }
-            for row in cursor.fetchall()
-        ]
+        return [_row_to_user(row, cols) for row in cursor.fetchall()]
 
     def change_password(self, user_id: int, new_hash: str) -> bool:
         """Change user password. Returns True if user was found."""
