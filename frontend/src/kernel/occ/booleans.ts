@@ -18,6 +18,7 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
+import { canonicalizeCylinderFaces, type CanonicalFaceSwap } from './canonicalSurfaces'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 export type BooleanOp = 'cut' | 'fuse' | 'common'
@@ -262,10 +263,30 @@ function composeDiffThroughClean(
 }
 
 /**
+ * Rewrite a BrepDiff's face lists through the canonicalization swaps (raw face
+ * -> analytic-cylinder rebuild).  Edges are untouched by the rebuild (the new
+ * faces reuse the original wires), so only the face lists need mapping.
+ */
+function mapDiffThroughCanonical(diff: BrepDiff, swaps: CanonicalFaceSwap[]): BrepDiff {
+  const mapOne = (s: OccSubShape): OccSubShape => swaps.find((sw) => sw.from.IsSame(s))?.to ?? s
+  const mapList = (items: unknown[]): OccSubShape[] => (items as OccSubShape[]).map(mapOne)
+  return {
+    ...diff,
+    new_faces: mapList(diff.new_faces),
+    inherited_faces: mapList(diff.inherited_faces),
+  }
+}
+
+/**
  * Boolean (cut|fuse|common) then clean, composing history through the clean step
  * (mirrors cadquery_ops `_boolean_with_diff`). Returns (cleaned shape, BrepDiff
  * in cleaned-shape handle space). The cleaned shape is NOT tracked; the diff's
  * cleaned sub-shape handles are tracked in `scope`.
+ *
+ * Between the boolean and the clean, non-analytic faces that lie on a true
+ * cylinder (fillet strips, prisms of BSpline arcs) are rebuilt on shared
+ * analytic cylinders so UnifySameDomain can fold coincident wall halves --
+ * without this an add-extrude onto a filleted wall keeps a seam at the weld.
  */
 export function booleanWithDiff(
   oc: OccModule,
@@ -275,10 +296,13 @@ export function booleanWithDiff(
   op: BooleanOp,
 ): { shape: OccShape; diff: BrepDiff } {
   const { shape: raw, diff: rawDiff } = booleanWithHistory(oc, scope, target, tool, op)
+  const canonical = canonicalizeCylinderFaces(oc, scope, raw)
+  const preClean = canonical.shape
+  const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.swaps) : rawDiff
   let cleaned: OccShape
   let history: OccHistory
   try {
-    const r = cleanWithHistory(oc, scope, raw)
+    const r = cleanWithHistory(oc, scope, preClean)
     cleaned = r.shape
     history = r.history
   } catch {
@@ -288,8 +312,8 @@ export function booleanWithDiff(
     // shared coincident face plus the hole's inner wall defeat the merge. The raw
     // fuse output is a sound solid, so fall back to it un-merged (an extra seam
     // edge where the parts meet) rather than failing the whole feature.
-    return { shape: raw, diff: rawDiff }
+    return { shape: preClean, diff: preDiff }
   }
-  const diff = composeDiffThroughClean(oc, scope, rawDiff, history, cleaned)
+  const diff = composeDiffThroughClean(oc, scope, preDiff, history, cleaned)
   return { shape: cleaned, diff }
 }

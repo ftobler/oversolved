@@ -193,6 +193,8 @@ export interface OccSurfaceAdaptor extends OccDisposable {
   LastVParameter(): number
   /** Only valid when GetType() is GeomAbs_Plane (used for face-profile planes). */
   Plane(): OccPln
+  /** Point + first derivatives at (u, v); p/du/dv are caller-allocated out-params. */
+  D1(u: number, v: number, p: OccXYZ, du: OccXYZ, dv: OccXYZ): void
 }
 
 /** gp_Pnt2d / gp_Dir2d: a 2D point or direction on a face's parameter space. */
@@ -480,6 +482,25 @@ export interface OccModule extends OccSpikeModule {
     concatBSplines: boolean,
   ) => OccUnify
 
+  // --- 2e: canonical surface recognition (canonicalSurfaces.ts) ------------
+  gp_Pnt_1: new () => OccXYZ
+  gp_Vec_1: new () => OccXYZ
+  /** gp_Ax3(location, N, Vx): a cylinder frame; Vx fixes where the U=0 seam sits. */
+  gp_Ax3_3: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
+  gp_Cylinder_2: new (frame: OccDisposable, radius: number) => OccDisposable
+  /** BRepBuilderAPI_MakeFace(gp_Cylinder, wire, inside): a face on an analytic cylinder. */
+  BRepBuilderAPI_MakeFace_17: new (
+    cylinder: OccDisposable,
+    wire: OccShape,
+    inside: boolean,
+  ) => OccFaceBuilder
+  BRepTools_ReShape: new () => OccReShape
+  ShapeFix_Shape_2: new (shape: OccShape) => OccShapeFixShape
+  /** Null progress indicator (ShapeFix_Shape.Perform requires the argument). */
+  Handle_Message_ProgressIndicator_1: new () => OccDisposable
+  /** BRepCheck_Analyzer(shape, geomControls): plain (suffix-free) ctor in this build. */
+  BRepCheck_Analyzer: new (shape: OccShape, geomControls: boolean) => OccShapeAnalyzer
+
   // --- assembly export: gather disjoint bodies into one compound shape -----
   // STEP/STL export of a whole assembly writes a single TopoDS_Compound built
   // from every body's solid. Unlike a boolean fuse this never fails on disjoint
@@ -556,6 +577,35 @@ export interface OccModule extends OccSpikeModule {
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */
 export interface OccOrientedShape extends OccShape {
   Orientation_1(): OccEnumValue
+}
+
+/** A shape handle that can flip its orientation (TopoDS_Shape::Reversed). */
+export interface OccOrientableShape extends OccShape {
+  Reversed(): OccShape
+}
+
+/** BRepTools_ReShape: record shape substitutions, then rebuild the ancestors.
+ *  Also covers ShapeBuild_ReShape (its subclass, the ShapeFix context). */
+export interface OccReShape extends OccDisposable {
+  Replace(oldShape: OccShape, newShape: OccShape): void
+  Apply(shape: OccShape, until: OccShapeEnumValue): OccShape
+}
+
+/** Handle_ShapeBuild_ReShape: get() borrows the fixer's substitution context. */
+export interface OccReShapeHandle extends OccDisposable {
+  get(): OccReShape | null
+}
+
+/** ShapeFix_Shape: the general healer (here: project missing face pcurves). */
+export interface OccShapeFixShape extends OccDisposable {
+  Perform(progress: OccDisposable): boolean
+  Shape(): OccShape
+  Context(): OccReShapeHandle
+}
+
+/** BRepCheck_Analyzer: whole-shape validity gate. */
+export interface OccShapeAnalyzer extends OccDisposable {
+  IsValid_2(): boolean
 }
 
 /**
