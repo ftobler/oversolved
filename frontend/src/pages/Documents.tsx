@@ -95,11 +95,19 @@ export default function Documents() {
 
   // When the cloud domain disappears (logout or going offline), snap the view back
   // to a coherent local-only state so no stale cloud filter / trash view lingers.
+  // Also re-arm the post-login bridge prompt so a fresh sign-in can offer to mirror
+  // local docs up again. Guarded on a true->false transition so the initial mount
+  // (cloudAvailable starts false before the session resolves) does NOT clear the
+  // flag -- a reload that restores an active session still honors a prior Dismiss.
+  const prevCloudForBridge = useRef(cloudAvailable)
   useEffect(() => {
+    const was = prevCloudForBridge.current
+    prevCloudForBridge.current = cloudAvailable
     if (cloudAvailable) return
     setActiveDomain('local')
     setActiveFilter('owned')
     setIsTrashView(false)
+    if (was) sessionStorage.removeItem('docDomainBridgeSeen')
   }, [cloudAvailable])
 
   useEffect(() => {
