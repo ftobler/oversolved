@@ -154,12 +154,13 @@ export default function PartEditorPanel({
             </div>
           </div>
         )}
-        {mode !== 'code' && (
-          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} />
-            <LoadingOverlay isDocumentLoading={loading} />
-          </div>
-        )}
+        {/* Keep the Viewport mounted across mode switches (hidden in code mode).
+            Unmounting would remount it on return and re-arm its auto-fit, which
+            reframes/re-scales the camera. We only want the first-solve fit. */}
+        <div style={{ position: 'relative', width: '100%', height: '100%', display: mode === 'code' ? 'none' : undefined }}>
+          <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} />
+          <LoadingOverlay isDocumentLoading={loading} />
+        </div>
       </div>
       {rightPanel}
     </div>
