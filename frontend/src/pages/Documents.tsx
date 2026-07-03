@@ -550,8 +550,8 @@ export default function Documents() {
                 You're signed in. Copy your {bridgeCount} local document{bridgeCount === 1 ? '' : 's'} to Cloud?
               </span>
               <span className="bridge-prompt-actions">
-                <button className="btn" onClick={handleSyncAll}>Copy all</button>
-                <button className="btn btn-clear-search" onClick={dismissBridge}>Dismiss</button>
+                <button className="btn btn-copy-all" onClick={handleSyncAll}>Copy all</button>
+                <button className="btn btn-dismiss" onClick={dismissBridge}>Dismiss</button>
               </span>
             </div>
           )}

@@ -85,7 +85,7 @@ describe('post-login bridge prompt re-arming on logout', () => {
     const prompt = await screen.findByText(/Copy your 1 local document to Cloud/)
 
     // Explicit Dismiss -- a deliberate "not now" within this session.
-    const dismiss = prompt.closest('div')!.querySelector('button.btn-clear-search')!
+    const dismiss = prompt.closest('div')!.querySelector('button.btn-dismiss')!
     fireEvent.click(dismiss)
     await waitFor(() => {
       expect(screen.queryByText(/Copy your 1 local document to Cloud/)).not.toBeInTheDocument()
