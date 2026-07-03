@@ -111,7 +111,6 @@
   padding-bottom: 0px;
   font-size: 10px;
   font-weight: 600;
-  text-transform: uppercase;
   color: #666;
 }
 
@@ -1149,7 +1148,6 @@
   padding: 5px 10px;
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
   color: #555;
   background: none;
   border: none;
@@ -1184,7 +1182,6 @@
 .debug-section-title {
   font-size: 10px;
   font-weight: 600;
-  text-transform: uppercase;
   color: #555;
   padding-bottom: 3px;
   border-bottom: 1px solid #222;
