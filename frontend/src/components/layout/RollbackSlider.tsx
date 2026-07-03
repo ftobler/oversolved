@@ -2,6 +2,7 @@ import React from 'react'
 
 interface RollbackSliderProps {
   isDragging: boolean
+  draggable: boolean
   onDragStart: (e: React.DragEvent) => void
   onDragOver: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
@@ -10,6 +11,7 @@ interface RollbackSliderProps {
 
 export function RollbackSlider({
   isDragging,
+  draggable,
   onDragStart,
   onDragOver,
   onDrop,
@@ -19,7 +21,7 @@ export function RollbackSlider({
     <li
       className={`rollback-bar ${isDragging ? 'dragging' : ''}`}
       title="Rollback"
-      draggable
+      draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}

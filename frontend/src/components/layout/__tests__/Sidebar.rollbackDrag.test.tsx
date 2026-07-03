@@ -261,6 +261,55 @@ describe('rollback bar drag convergence', () => {
     })
   })
 
+  it('renders the rollback bar at the end when rollbackPosition is null', () => {
+    // Edit exit resets rollbackPosition to null, meaning "end of stack".
+    // The bar must still be drawn there, not vanish.
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, null)
+    renderSidebar()
+
+    expect(screen.getByTitle('Rollback')).toBeInTheDocument()
+  })
+
+  it('renders the rollback bar when rollbackPosition is stale past the end', () => {
+    // Deleting features out of order can leave rollbackPosition > features.length
+    // until the owner clamps it. Render must clamp to the end, not draw nothing.
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, 99)
+    renderSidebar()
+
+    expect(screen.getByTitle('Rollback')).toBeInTheDocument()
+  })
+
+  it('rollback bar is not draggable while a feature is being edited', () => {
+    const onRollbackDragStart = vi.fn()
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, 5)
+    usePartEditorStore.setState({ editingFeatureId: 'ex1' })
+    renderSidebar(makeCallbacks({ onRollbackDragStart }))
+
+    const rollbackBar = screen.getByTitle('Rollback')
+    expect(rollbackBar.getAttribute('draggable')).toBe('false')
+
+    fireEvent(rollbackBar, createDragEvent('dragstart'))
+    expect(onRollbackDragStart).not.toHaveBeenCalled()
+    expect(rollbackBar.classList.contains('dragging')).toBe(false)
+  })
+
+  it('mid-list rollback bar is not draggable while a feature is being edited', () => {
+    const onRollbackDragStart = vi.fn()
+    const features = [...builtInFeatures, sketchFeature, extrudeFeature]
+    setupStore(features, 5)
+    usePartEditorStore.setState({ editingFeatureId: 'sk1' })
+    renderSidebar(makeCallbacks({ onRollbackDragStart }))
+
+    const rollbackBar = screen.getByTitle('Rollback')
+    expect(rollbackBar.getAttribute('draggable')).toBe('false')
+
+    fireEvent(rollbackBar, createDragEvent('dragstart'))
+    expect(onRollbackDragStart).not.toHaveBeenCalled()
+  })
+
   it('end-of-list rollback bar can be dragged to set rollback to end', () => {
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]

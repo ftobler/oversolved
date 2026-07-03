@@ -158,6 +158,13 @@ describe('Part - eliminate redundant solves', () => {
       expect(countSolveCalls()).toBe(1)
     })
 
+    // Adding a feature enters edit mode on it, and the rollback bar is not
+    // draggable while editing. Commit the edit first, then drag.
+    fireEvent.click(screen.getByTitle('OK'))
+    await waitFor(() => {
+      expect(countSolveCalls()).toBe(2)
+    })
+
     vi.mocked(solveViaWorker).mockClear()
 
     const rollbackBars = screen.getAllByTitle('Rollback')

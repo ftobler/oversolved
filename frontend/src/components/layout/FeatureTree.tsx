@@ -51,6 +51,14 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
 
+  // null means "end of stack" (edit exit resets to null), and out-of-order
+  // deletes can leave a stale position past the end until the owner clamps it.
+  // Normalize here so the bar is always drawn at exactly one place.
+  const effectiveRollback = Math.min(rollbackPosition ?? features.length, features.length)
+  // While a feature is edited the rollback is pinned to just after it (the
+  // solver invariant depends on that), so the bar must not be draggable.
+  const rollbackDraggable = editingFeatureId === null
+
   return (
     <div
       className="sidebar-top"
@@ -153,10 +161,12 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
               handleDrop(e)
             }}
           >
-            {rollbackPosition === index && (
+            {effectiveRollback === index && (
               <RollbackSlider
                 isDragging={draggedRollback}
+                draggable={rollbackDraggable}
                 onDragStart={(e) => {
+                  if (!rollbackDraggable) return
                   setDraggedRollback(true)
                   onRollbackDragStart(e)
                 }}
@@ -176,7 +186,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
             )}
             <li
               key={feature.id}
-              className={`feature-item ${index >= (rollbackPosition ?? features.length) ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
               draggable={!isBuiltIn && feature.id !== editingFeatureId}
               onDragStart={(e) => {
                 if (isBuiltIn) return
@@ -285,19 +295,23 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
           </div>
         )})
       )}
-      {rollbackPosition === features.length && (
+      {effectiveRollback === features.length && (
         <RollbackSlider
           isDragging={draggedRollback}
+          draggable={rollbackDraggable}
           onDragStart={(e) => {
+            if (!rollbackDraggable) return
             setDraggedRollback(true)
             onRollbackDragStart(e)
           }}
           onDragOver={(e) => {
+            if (!draggedRollback) return
             e.preventDefault()
             e.stopPropagation()
             setDropTargetIndex(features.length)
           }}
           onDrop={(e) => {
+            if (!draggedRollback) return
             e.preventDefault()
             e.stopPropagation()
             onSetRollbackPosition(features.length)
