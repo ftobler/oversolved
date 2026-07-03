@@ -37,7 +37,6 @@ export default function RightClickMenu({ items, position, onClose }: RightClickM
       onMouseDown={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
-      onContextMenu={e => e.preventDefault()}
     >
       {items.map((item, i) => (
         <div
