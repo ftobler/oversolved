@@ -275,7 +275,21 @@ export function booleanWithDiff(
   op: BooleanOp,
 ): { shape: OccShape; diff: BrepDiff } {
   const { shape: raw, diff: rawDiff } = booleanWithHistory(oc, scope, target, tool, op)
-  const { shape: cleaned, history } = cleanWithHistory(oc, scope, raw)
+  let cleaned: OccShape
+  let history: OccHistory
+  try {
+    const r = cleanWithHistory(oc, scope, raw)
+    cleaned = r.shape
+    history = r.history
+  } catch {
+    // ShapeUpgrade_UnifySameDomain (the coplanar-face merge) can throw on a valid
+    // boolean result whose coincident faces it cannot fold. The reproducer is an
+    // extrude of a body face that has a hole, added back onto that same body: the
+    // shared coincident face plus the hole's inner wall defeat the merge. The raw
+    // fuse output is a sound solid, so fall back to it un-merged (an extra seam
+    // edge where the parts meet) rather than failing the whole feature.
+    return { shape: raw, diff: rawDiff }
+  }
   const diff = composeDiffThroughClean(oc, scope, rawDiff, history, cleaned)
   return { shape: cleaned, diff }
 }

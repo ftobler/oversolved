@@ -1014,4 +1014,90 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     expect(res(result, 'ex1').status).toBe('ok')
     expect(res(result, 'ex1').handle).toBeUndefined()
   })
+
+  // ── Extrude a body face that has a hole, added back onto itself ────────────
+
+  // Reproduces bugreports/extrude_2_does_not_work: a first extrude of a peanut
+  // profile (two overlapping circles) with a hole leaves a body whose top face
+  // carries an inner loop. Extruding that face with the default `add` operation
+  // fuses the new prism onto the same body across their shared coincident face.
+  // The raw fuse is a valid solid, but the coplanar-merge clean step throws on
+  // it; the feature must still succeed (fall back to the un-merged solid).
+  const peanutWithHoleSketch = {
+    id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'cL', kind: 'circle' }, { id: 'cR', kind: 'circle' },
+      { id: 'ln', kind: 'line' }, { id: 'pTop', kind: 'point' }, { id: 'pBot', kind: 'point' },
+      { id: 'cHole', kind: 'circle' },
+    ],
+    initial: {
+      cL: [-6.614378452301025, 7.5, 10], cR: [6.614378452301025, 7.5, 10],
+      ln: [0, 15, 0, 0], pTop: [0, 15], pBot: [0, 0],
+      cHole: [-6.614378452301025, 7.5, 5.703681945800781],
+    },
+    constraints: [
+      { id: 'eq', kind: 'equal_length', a: '$cR', b: '$cL' },
+      { id: 'co1', kind: 'coincident', a: '$pTopxy', b: '$cL' },
+      { id: 'co2', kind: 'coincident', a: '$pTopxy', b: '$cR' },
+      { id: 'co3', kind: 'coincident', a: '$lnstart', b: '$pTopxy' },
+      { id: 'co4', kind: 'coincident', a: '$pBotxy', b: '$cL' },
+      { id: 'co5', kind: 'coincident', a: '$pBotxy', b: '$cR' },
+      { id: 'co6', kind: 'coincident', a: '$lnend', b: '$pBotxy' },
+      { id: 'vert', kind: 'vertical', target: '$ln' },
+      { id: 'co7', kind: 'coincident', a: '@builtin_origin', b: '$pBotxy' },
+      { id: 'len', kind: 'length', target: '$ln', value: 15 },
+      { id: 'dia', kind: 'diameter', target: '$cR', value: 20 },
+      { id: 'coHole', kind: 'coincident', a: '$cHolecenter', b: '$cLcenter' },
+    ],
+  }
+
+  function sk1SurfaceQueries(): string[] {
+    const r = run({ features: [peanutWithHoleSketch] })
+    const state = r._build_state as { checkpoints: Record<string, { repo_snapshot: { elements: Record<string, unknown> } }> }
+    const cp = Object.values(state.checkpoints)[0]
+    const topo = cp?.repo_snapshot?.elements?.['_topo_sk1'] as { surfaces?: Array<{ query?: string }> } | undefined
+    return (topo?.surfaces ?? []).map((s) => s.query ?? '')
+  }
+
+  function topFaceQuery(result: BuildResponse, bodyId: string): string {
+    const mesh = body(result, bodyId).mesh as { face_data?: Array<{ normal: number[] }>; face_queries?: string[] } | undefined
+    let q = ''
+    mesh?.face_data?.forEach((fd, i) => { if (fd.normal[2] > 0.9) q = mesh.face_queries?.[i] ?? '' })
+    return q
+  }
+
+  it('extrude of a body face with a hole, add operation, does not fail', () => {
+    const surfs = sk1SurfaceQueries()
+    // Extrude only the four ring surfaces (0..3), excluding the hole disk (4,5),
+    // so the resulting body keeps a hole through it.
+    const profile = surfs.slice(0, 4)
+    const first = run({
+      features: [
+        peanutWithHoleSketch,
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+      ],
+    })
+    expect(res(first, 'ex1').status).toBe('ok')
+    const topQuery = topFaceQuery(first, 'body_ex1')
+    expect(topQuery).not.toBe('')
+
+    const result = run({
+      features: [
+        peanutWithHoleSketch,
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },  // default add
+      ],
+    })
+    expect(res(result, 'ex2').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; face_data?: unknown[] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      const zs = mesh.vertices.map((v) => v[2])
+      expect(Math.min(...zs)).toBeCloseTo(0, 5)
+      expect(Math.max(...zs)).toBeCloseTo(20, 5)  // both extrudes fused into one 20-tall body
+      // The hole survives: an inner cylindrical wall means faces beyond the bare
+      // top/bottom/outer-wall set of a hole-less solid.
+      expect((mesh.face_data ?? []).length).toBeGreaterThan(4)
+    }
+  })
 })
