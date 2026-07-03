@@ -35,8 +35,10 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1 className="login-logo">Oversolved</h1>
-        <form className="login-form" onSubmit={handleSubmit}>
+        <div className="login-header">
+          <h1 className="login-logo">Oversolved</h1>
+        </div>
+        <form className="login-body" onSubmit={handleSubmit}>
           <input
             className="login-input"
             type="text"
@@ -59,11 +61,13 @@ export default function Login() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        {/* Guest-first: signing in is an optional cloud upgrade, never a wall.
-            This skips it and drops straight into the local library. */}
-        <button className="login-guest-btn" type="button" onClick={() => navigate('/documents')}>
-          Continue without signing in
-        </button>
+        <div className="login-footer">
+          {/* Guest-first: signing in is an optional cloud upgrade, never a wall.
+              This skips it and drops straight into the local library. */}
+          <button className="login-guest-btn" type="button" onClick={() => navigate('/documents')}>
+            Continue without signing in
+          </button>
+        </div>
       </div>
     </div>
   )

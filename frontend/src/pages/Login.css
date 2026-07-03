@@ -7,14 +7,24 @@
 }
 
 .login-card {
-  width: 320px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 32px;
+  width: 90%;
+  max-width: 360px;
+  background: #1e1e1e;
+  border: none;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  color: #ddd;
+  font-size: 14px;
+}
+
+.login-header {
+  padding: 20px 20px 16px 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .login-logo {
@@ -28,7 +38,9 @@
   text-align: center;
 }
 
-.login-form {
+.login-body {
+  flex: 1;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -43,18 +55,22 @@
   font-size: 14px;
   font-family: inherit;
   outline: none;
+  box-sizing: border-box;
+  width: 100%;
   transition: border-color 0.2s;
 }
 
 .login-input:focus {
+  outline: none;
   border-color: #4fc3f7;
+  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
   color: #fff;
 }
 
 .login-error {
   margin: 0;
   color: #ef5350;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .login-btn {
@@ -79,6 +95,12 @@
   cursor: not-allowed;
 }
 
+.login-footer {
+  padding: 16px 20px 20px 20px;
+  display: flex;
+  justify-content: center;
+}
+
 .login-guest-btn {
   background: none;
   border: none;
@@ -87,10 +109,17 @@
   font-family: inherit;
   cursor: pointer;
   text-align: center;
-  padding: 0;
+  padding: 8px 12px;
+  margin: 4px 0;
   transition: color 0.2s;
 }
 
 .login-guest-btn:hover {
   color: #ccc;
+}
+
+@media (max-width: 768px) {
+  .login-card {
+    width: 95%;
+  }
 }
