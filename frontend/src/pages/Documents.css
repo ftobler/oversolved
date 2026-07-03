@@ -28,6 +28,7 @@
 .sidebar-section-label {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   margin: 12px 12px 4px;
   color: #666;
@@ -47,14 +48,13 @@
 }
 
 .sidebar-section-label::before {
-  flex: 0 0 8px;
+  flex: 1 1 0;
 }
 
 .sidebar-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 2px 12px;
+  padding: 7px 12px;
   margin-right: 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -84,6 +84,7 @@
   font-size: 16px;
   width: 16px;
   height: 16px;
+  margin-right: 8px;
 }
 
 .sidebar-item-label {
