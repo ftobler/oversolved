@@ -73,15 +73,24 @@
   padding: 12px 20px 16px;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .message-dialog-footer .btn {
   width: auto;
   flex: 0 0 auto;
+  border-radius: 9999px;
 }
 
 .message-dialog-ok-btn {
-  border-radius: 9999px;
+  min-width: 100px;
+}
+
+.message-dialog-confirm-btn {
+  min-width: 100px;
+}
+
+.message-dialog-cancel-btn {
   min-width: 100px;
 }
 

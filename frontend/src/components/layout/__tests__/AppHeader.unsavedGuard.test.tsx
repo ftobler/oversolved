@@ -7,7 +7,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
 }))
 
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import AppHeader from '../AppHeader'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
@@ -24,47 +24,53 @@ describe('AppHeader unsaved-changes navigation guard', () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: null, online: true, logout: vi.fn() })
     useUnsavedChangesStore.getState().setDirty(false)
+    useUnsavedChangesStore.getState().dismissConfirm()
     window.history.pushState({}, '', '/documents/abc')
   })
   afterEach(() => {
+    act(() => {
+      useUnsavedChangesStore.getState().setDirty(false)
+      useUnsavedChangesStore.getState().dismissConfirm()
+    })
     vi.restoreAllMocks()
-    useUnsavedChangesStore.getState().setDirty(false)
   })
 
-  it('does not prompt when there are no unsaved changes', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('does not set a pending callback when there are no unsaved changes', () => {
     wrap()
-    fireEvent.click(screen.getByTitle('Documentation'))
-    expect(confirm).not.toHaveBeenCalled()
+    act(() => {
+      fireEvent.click(screen.getByTitle('Documentation'))
+    })
+    expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
   })
 
-  it('prompts and blocks navigation when dirty and the user cancels', () => {
+  it('blocks navigation and stores a pending callback when dirty', () => {
     useUnsavedChangesStore.getState().setDirty(true)
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     wrap()
-    const docsLink = screen.getByTitle('Documentation')
-    const event = fireEvent.click(docsLink)
-    expect(confirm).toHaveBeenCalledOnce()
-    // A cancelled click is preventDefault-ed so react-router does not navigate.
-    expect(event).toBe(false)
-    // Pathname is unchanged and the flag is preserved for the next attempt.
-    expect(window.location.pathname).toBe('/documents/abc')
+    act(() => {
+      fireEvent.click(screen.getByTitle('Documentation'))
+    })
+    expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    // Pathname unchanged: navigation was blocked.
+    expect(window.location.pathname).toBe('/documents/abc')
   })
 
-  it('prompts then clears the flag and allows navigation when the user confirms', () => {
+  it('guard clears dirty after executing the stored callback', () => {
     useUnsavedChangesStore.getState().setDirty(true)
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     wrap()
-    fireEvent.click(screen.getByTitle('Documentation'))
-    expect(confirm).toHaveBeenCalledOnce()
-    // react-router performs the client-side navigation (it preventDefaults the
-    // event itself), and the guard has cleared the flag.
-    expect(window.location.pathname).toBe('/docs')
+    act(() => {
+      fireEvent.click(screen.getByTitle('Documentation'))
+    })
+    expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
+    // Simulate the user confirming via the dialog.
+    act(() => {
+      useUnsavedChangesStore.getState().pendingCallback!()
+      useUnsavedChangesStore.getState().dismissConfirm()
+    })
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
-  it('guards logout too', async () => {
+  it('guards logout when dirty', () => {
     const logout = vi.fn().mockResolvedValue(undefined)
     mockUseAuth.mockReturnValue({
       user: { id: 1, username: 'ada', email: null, must_change_password: false, is_admin: false, is_active: true },
@@ -72,9 +78,11 @@ describe('AppHeader unsaved-changes navigation guard', () => {
       logout,
     })
     useUnsavedChangesStore.getState().setDirty(true)
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     wrap()
-    fireEvent.click(screen.getByTitle('Sign out'))
+    act(() => {
+      fireEvent.click(screen.getByTitle('Sign out'))
+    })
+    expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(logout).not.toHaveBeenCalled()
   })
 })

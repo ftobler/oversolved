@@ -2,7 +2,8 @@ import { useNavigate, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
-import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
+import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import MessageDialog from '@/components/dialogs/MessageDialog'
 import '@/components/layout/AppHeader.css'
 
 interface AppHeaderProps {
@@ -14,6 +15,15 @@ interface AppHeaderProps {
 export default function AppHeader({ title, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
   const { user, online, logout } = useAuth()
+  const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
+  const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
+
+  const handleUnsavedConfirm = () => {
+    const cb = useUnsavedChangesStore.getState().pendingCallback
+    if (!cb) return
+    cb()
+    dismissConfirm()
+  }
 
   const handleLogout = async () => {
     if (!confirmDiscardUnsavedChanges()) return
@@ -33,6 +43,7 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   }
 
   return (
+    <>
     <header className="app-header">
       <div className="app-header-left">
         <Link to="/documents" className="toolbar-btn burger" title="Documents" onClick={guardLink}>
@@ -86,5 +97,17 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         )}
       </div>
     </header>
+
+    <MessageDialog
+      isOpen={pendingCallback != null}
+      title="Unsaved Changes"
+      message="You have unsaved changes that will be lost. Leave without saving?"
+      variant="error"
+      onClose={dismissConfirm}
+      onConfirm={handleUnsavedConfirm}
+      confirmLabel="Discard"
+      cancelLabel="Stay"
+    />
+    </>
   )
 }

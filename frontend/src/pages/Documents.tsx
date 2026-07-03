@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
 import Dialog from '@/components/dialogs/Dialog'
+import MessageDialog from '@/components/dialogs/MessageDialog'
 import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
@@ -73,6 +74,9 @@ export default function Documents() {
   const [trashLoading, setTrashLoading] = useState(false)
   const [activeDomain, setActiveDomain] = useState<Domain>('local')
   const [notice, setNotice] = useState<string | null>(null)
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<{ uuid: string; name: string } | null>(null)
+  const [moveTarget, setMoveTarget] = useState<{ uuid: string; name: string; toCloud: boolean } | null>(null)
+  const [unshareTarget, setUnshareTarget] = useState<DocumentMeta | null>(null)
   const { user, online, setOnline } = useAuth()
   // Guest sort lives on defaults only; the cloud preferences load is gated on a
   // signed-in session so a guest never fires a doomed 401 request.
@@ -219,22 +223,26 @@ export default function Documents() {
   // refetched because the moved tile leaves the domain on screen (unlike copy).
   const handleMoveToCloud = async (uuid: string, name: string) => {
     if (!cloudStore) return
-    if (!window.confirm(`Move "${name}" to Cloud? It will be removed from Local.`)) return
-    try {
-      await moveDocument(backendBundle.documents, cloudStore, uuid)
-      setNotice(`Moved "${name}" to Cloud`)
-      fetchDocuments(activeFilter, debouncedSearch)
-    } catch (e) {
-      setError(String(e))
-    }
+    setMoveTarget({ uuid, name, toCloud: true })
   }
 
   const handleMoveToLocal = async (uuid: string, name: string) => {
     if (!cloudStore) return
-    if (!window.confirm(`Move "${name}" to Local? It will be removed from Cloud.`)) return
+    setMoveTarget({ uuid, name, toCloud: false })
+  }
+
+  const handleMoveConfirm = async () => {
+    const target = moveTarget
+    if (!target || !cloudStore) return
+    setMoveTarget(null)
     try {
-      await moveDocument(cloudStore, backendBundle.documents, uuid)
-      setNotice(`Moved "${name}" to Local`)
+      if (target.toCloud) {
+        await moveDocument(backendBundle.documents, cloudStore, target.uuid)
+        setNotice(`Moved "${target.name}" to Cloud`)
+      } else {
+        await moveDocument(cloudStore, backendBundle.documents, target.uuid)
+        setNotice(`Moved "${target.name}" to Local`)
+      }
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
       setError(String(e))
@@ -351,11 +359,15 @@ export default function Documents() {
   }
 
   const handlePermanentDelete = async (uuid: string, name: string) => {
-    if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) {
-      return
-    }
+    setPermanentDeleteTarget({ uuid, name })
+  }
+
+  const handlePermanentDeleteConfirm = async () => {
+    const target = permanentDeleteTarget
+    if (!target) return
+    setPermanentDeleteTarget(null)
     try {
-      await activeTrash?.purge(uuid)
+      await activeTrash?.purge(target.uuid)
       fetchTrash(activeDomain)
     } catch (e) {
       setError(parseHttpError(e, 'Failed to delete document'))
@@ -550,6 +562,48 @@ export default function Documents() {
             />
           )}
 
+          <MessageDialog
+            isOpen={permanentDeleteTarget != null}
+            title="Permanently Delete"
+            message={`Permanently delete "${permanentDeleteTarget?.name}"? This cannot be undone.`}
+            variant="error"
+            onClose={() => setPermanentDeleteTarget(null)}
+            onConfirm={handlePermanentDeleteConfirm}
+            confirmLabel="Delete"
+            cancelLabel="Cancel"
+          />
+
+          <MessageDialog
+            isOpen={moveTarget != null}
+            title="Move Document"
+            message={moveTarget?.toCloud
+              ? `Move "${moveTarget?.name}" to Cloud? It will be removed from Local.`
+              : `Move "${moveTarget?.name}" to Local? It will be removed from Cloud.`}
+            variant="info"
+            onClose={() => setMoveTarget(null)}
+            onConfirm={handleMoveConfirm}
+            confirmLabel="Move"
+            cancelLabel="Cancel"
+          />
+
+          <MessageDialog
+            isOpen={unshareTarget != null}
+            title="Remove Shared Document"
+            message={`Remove "${unshareTarget?.name}" from your shared documents?`}
+            variant="info"
+            onClose={() => setUnshareTarget(null)}
+            onConfirm={() => {
+              const u = unshareTarget
+              if (!u) return
+              setUnshareTarget(null)
+              backendBundle.sharing?.leaveShare(u.uuid)
+                .then(() => fetchDocuments(activeFilter, debouncedSearch))
+                .catch(() => undefined)
+            }}
+            confirmLabel="Remove"
+            cancelLabel="Cancel"
+          />
+
           {isTrashView ? (
             <>
               {trashLoading && <p className="status">Loading trash...</p>}
@@ -636,13 +690,7 @@ export default function Documents() {
                             {onCloud && !doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
-                                onClick={stopClick(() => {
-                                  if (window.confirm('Remove this shared document?')) {
-                                    backendBundle.sharing?.leaveShare(doc.uuid)
-                                      .then(() => fetchDocuments(activeFilter, debouncedSearch))
-                                      .catch(() => undefined)
-                                  }
-                                })}
+                                onClick={stopClick(() => setUnshareTarget(doc))}
                                 title="Unshare document"
                               >
                                 <span className="material-icons">link_off</span>

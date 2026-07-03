@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAdminGuard } from '@/hooks/useAdminGuard'
 import Dialog from '@/components/dialogs/Dialog'
+import MessageDialog from '@/components/dialogs/MessageDialog'
 import { http, parseHttpError } from '@/utils/core/httpClient'
 import '@/pages/AdminUsers.css'
 
@@ -32,6 +33,7 @@ export default function AdminUsers() {
   const [newIsAdmin, setNewIsAdmin] = useState(false)
   const [resetPassword, setResetPassword] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null)
 
   const isAdmin = useAdminGuard(user, navigate)
 
@@ -90,9 +92,13 @@ export default function AdminUsers() {
   }
 
   const handleDelete = async (u: UserRecord) => {
-    if (!confirm(`Delete user "${u.username}"? This action cannot be undone.`)) {
-      return
-    }
+    setDeleteTarget(u)
+  }
+
+  const handleDeleteConfirm = async () => {
+    const u = deleteTarget
+    if (!u) return
+    setDeleteTarget(null)
     try {
       await http.deleteJson(`/api/admin/users/${u.id}`)
       fetchUsers()
@@ -249,6 +255,17 @@ export default function AdminUsers() {
             </div>
           </Dialog>
         )}
+
+        <MessageDialog
+          isOpen={deleteTarget != null}
+          title="Delete User"
+          message={`Delete user "${deleteTarget?.username}"? This action cannot be undone.`}
+          variant="error"
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDeleteConfirm}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+        />
 
         {loading ? (
           <p className="admin-users-status">Loading users...</p>

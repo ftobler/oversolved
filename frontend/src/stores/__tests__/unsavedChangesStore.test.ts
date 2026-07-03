@@ -1,31 +1,38 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useUnsavedChangesStore, confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 
 describe('confirmDiscardUnsavedChanges', () => {
   beforeEach(() => {
     useUnsavedChangesStore.getState().setDirty(false)
-  })
-  afterEach(() => {
-    vi.restoreAllMocks()
+    useUnsavedChangesStore.getState().dismissConfirm()
   })
 
   it('proceeds without prompting when there are no unsaved changes', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     expect(confirmDiscardUnsavedChanges()).toBe(true)
-    expect(confirm).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
   })
 
-  it('blocks and keeps the dirty flag when the user cancels the prompt', () => {
+  it('returns false and stores a callback when the document is dirty', () => {
     useUnsavedChangesStore.getState().setDirty(true)
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     expect(confirmDiscardUnsavedChanges()).toBe(false)
+    expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
-  it('proceeds and clears the dirty flag when the user confirms discard', () => {
+  it('executing the pending callback clears dirty and dismisses', () => {
     useUnsavedChangesStore.getState().setDirty(true)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    expect(confirmDiscardUnsavedChanges()).toBe(true)
+    expect(confirmDiscardUnsavedChanges()).toBe(false)
+    const cb = useUnsavedChangesStore.getState().pendingCallback
+    expect(cb).not.toBeNull()
+    cb!()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('dismissConfirm clears the pending callback', () => {
+    useUnsavedChangesStore.getState().setDirty(true)
+    confirmDiscardUnsavedChanges()
+    expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
+    useUnsavedChangesStore.getState().dismissConfirm()
+    expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
   })
 })

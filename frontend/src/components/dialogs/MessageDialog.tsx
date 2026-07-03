@@ -9,6 +9,9 @@ interface MessageDialogProps {
   message: string
   variant?: MessageVariant
   onClose: () => void
+  onConfirm?: () => void
+  confirmLabel?: string
+  cancelLabel?: string
 }
 
 const ICON: Record<MessageVariant, string> = {
@@ -17,7 +20,7 @@ const ICON: Record<MessageVariant, string> = {
   error: 'error',
 }
 
-export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose }: MessageDialogProps) {
+export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel' }: MessageDialogProps) {
   const okRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -26,14 +29,22 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
     okRef.current?.focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'Enter') {
+      if (e.key === 'Escape') {
         e.preventDefault()
         onClose()
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (onConfirm) {
+          onConfirm()
+        } else {
+          onClose()
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, onConfirm])
 
   if (!isOpen) return null
 
@@ -59,9 +70,20 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
         </div>
 
         <div className="message-dialog-footer">
-          <button ref={okRef} className="btn btn-primary message-dialog-ok-btn" onClick={onClose}>
-            OK
-          </button>
+          {onConfirm ? (
+            <>
+              <button ref={okRef} className="btn btn-primary message-dialog-confirm-btn" onClick={onConfirm}>
+                {confirmLabel}
+              </button>
+              <button className="btn btn-secondary message-dialog-cancel-btn" onClick={onClose}>
+                {cancelLabel}
+              </button>
+            </>
+          ) : (
+            <button ref={okRef} className="btn btn-primary message-dialog-ok-btn" onClick={onClose}>
+              OK
+            </button>
+          )}
         </div>
       </div>
     </div>

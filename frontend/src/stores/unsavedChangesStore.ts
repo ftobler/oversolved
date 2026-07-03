@@ -9,20 +9,29 @@ import { create } from 'zustand'
 // pages never inherit a stale flag.
 interface UnsavedChangesState {
   dirty: boolean
+  pendingCallback: (() => void) | null
   setDirty: (dirty: boolean) => void
+  requestConfirm: (onDiscard: () => void) => void
+  dismissConfirm: () => void
 }
 
 export const useUnsavedChangesStore = create<UnsavedChangesState>((set) => ({
   dirty: false,
+  pendingCallback: null,
   setDirty: (dirty) => set({ dirty }),
+  requestConfirm: (onDiscard) => set({ pendingCallback: onDiscard }),
+  dismissConfirm: () => set({ pendingCallback: null }),
 }))
 
 // Imperative guard for navigation outside React render (event handlers, the
-// logout flow). Returns true when it is safe to proceed; on a confirmed discard
-// it clears the flag so the in-flight navigation does not re-prompt.
+// logout flow). When the document is dirty, schedules a confirm dialog via the
+// store so the shared header can render it. Returns false to cancel the current
+// event (e.preventDefault etc.) while the user decides.
 export function confirmDiscardUnsavedChanges(): boolean {
   if (!useUnsavedChangesStore.getState().dirty) return true
-  const ok = window.confirm('You have unsaved changes that will be lost. Leave without saving?')
-  if (ok) useUnsavedChangesStore.getState().setDirty(false)
-  return ok
+  // Schedule the confirm; AppHeader renders it and fires the callback on confirm.
+  useUnsavedChangesStore.getState().requestConfirm(() => {
+    useUnsavedChangesStore.getState().setDirty(false)
+  })
+  return false
 }
