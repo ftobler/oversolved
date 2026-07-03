@@ -11,11 +11,15 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import { extractErrorMessage } from '../errors'
-import type { OccModule, OccShape, OccSubShape, OccListOfShape } from './occTypes'
+import type { OccModule, OccShape, OccSubShape, OccListOfShape, OccCircle, OccPrismBuilder } from './occTypes'
 import type { PlaneLike } from '../features/shared'
 import {
   edgeToGeom,
+  faceCentroid,
+  faceNormal,
+  faceSurfaceType,
   makeArcEdge,
+  makeCircleEdge,
   makeLineEdge,
   makeBezierEdge,
   makeEllipseEdge,
@@ -26,7 +30,7 @@ import {
 } from './primitives'
 import { faceGh, edgeGh } from './lineageHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
-import { booleanWithHistory, cleanWithHistory } from './booleans'
+import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
 
 const POINT_TOL = 1e-6
 
@@ -395,26 +399,271 @@ function prefixTokens(lineage: Record<string, string[]>, prefix: string): void {
   }
 }
 
+// ─── pre-prism profile union (multi-group extrude) ───
+
 /**
- * Extrude profile loops to a solid and return (solid, faceLineage, edgeLineage)
- * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
- * separately and fused; nested loops become holes. The returned solid is raw and
- * lives in `scope` -- the caller registers/disposes it (typically via
- * applyBodyOperation). Lineage tokens are `@sketch_id/entity`.
+ * If `wire` is a closed chain of arcs (or full circles) all on the same circle,
+ * rebuild it as ONE closed-circle edge on that circle's own frame; else return
+ * null (the caller keeps the original wire). This collapses the emergent hole
+ * boundary that is split between two adjacent source regions into a single
+ * canonical closed-circle edge before the prism is built, so the prism emits ONE
+ * cylinder face with a deterministic seam (the circle's own X axis). A later
+ * add-fuse onto this body -- which prisms the body's top face -- then inherits
+ * the same seam by construction, and the fuse+clean merges cleanly (the
+ * original "extrude adds a hole-bearing face back onto its own body" defect
+ * that left every wall, hole included, doubled at the profile-plane seam).
+ *
+ * The first contributing arc's `gp_Circ` supplies the frame so the rebuilt
+ * edge's seam is the underlying circle's own X axis -- independent of where the
+ * partial arcs split it, hence the same for every body and every future tool.
  */
-export function extrudeProfileWithLineage(
+function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape | null {
+  const E = oc.TopAbs_ShapeEnum
+  const edges: OccShape[] = []
+  const exp = scope.track(new oc.TopExp_Explorer_2(wire, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) edges.push(scope.track(oc.TopoDS.Edge_1(exp.Current())))
+  if (edges.length < 2) return null
+
+  let center: Vec3 | null = null
+  let radius = 0.0
+  let frameCirc: OccCircle | null = null
+  const tol = 1e-6
+  for (const e of edges) {
+    const { ed } = edgeToGeom(oc, scope, e)
+    if (ed.kind !== 'arc' && ed.kind !== 'circle') return null
+    const c = ed.center as Vec3
+    const r = ed.radius as number
+    if (center === null) {
+      center = [c[0], c[1], c[2]]
+      radius = r
+      const ad = scope.track(new oc.BRepAdaptor_Curve_2(e))
+      frameCirc = scope.track(ad.Circle())
+    } else if (
+      Math.abs(c[0] - center[0]) > tol ||
+      Math.abs(c[1] - center[1]) > tol ||
+      Math.abs(c[2] - center[2]) > tol ||
+      Math.abs(r - radius) > tol
+    ) {
+      return null  // mixed circles / not co-circular
+    }
+  }
+  const circ = frameCirc as OccCircle
+  const loc = circ.Location()
+  const axDir = circ.Axis().Direction()
+  const xDir = circ.XAxis().Direction()
+  const edge = makeCircleEdge(
+    oc, scope,
+    [loc.X(), loc.Y(), loc.Z()],
+    [axDir.X(), axDir.Y(), axDir.Z()],
+    [xDir.X(), xDir.Y(), xDir.Z()],
+    radius,
+  )
+  return makeWire(oc, scope, [edge])
+}
+
+/**
+ * Rebuild `face` so every inner (hole) wire that is a closed chain of arcs on
+ * the same circle is replaced by a single closed-circle edge. The outer wire is
+ * left intact (it stays a chain of partial arcs -- the peanut's outer boundary
+ * uses two distinct circles and must not collapse). Returns the original face
+ * unchanged when no hole needed canonicalizing, so callers can skip a redundant
+ * face rebuild. Planar geometry is identical (same outer wire, same hole
+ * curves), so the face's centroid/normal -- and therefore its geom hash -- is
+ * preserved.
+ */
+function canonicalizeFaceCircles(oc: OccModule, scope: DisposeScope, face: OccShape): OccShape {
+  const E = oc.TopAbs_ShapeEnum
+  const outerWire = scope.track(oc.BRepTools.OuterWire(face))
+  const holes: OccShape[] = []
+  const wexp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_WIRE, E.TopAbs_SHAPE))
+  for (; wexp.More(); wexp.Next()) {
+    const w = scope.track(oc.TopoDS.Wire_1(wexp.Current()))
+    if (!(w as OccSubShape).IsSame(outerWire)) holes.push(w)
+  }
+  const rebuilt = canonicalizeFaceCirclesWith(oc, scope, outerWire, holes)
+  return rebuilt ?? face
+}
+
+/**
+ * Exported core of [[canonicalizeFaceCircles]]: rebuild a planar face from
+ * `outerWire` + `holes` so that any hole wire that is a closed chain of arcs on
+ * the same circle is replaced by a single closed-circle edge. Returns the
+ * original outer+holes wrapped in `makeFaceFromWire` when at least one hole was
+ * canonicalized (else returns null, so the caller can skip a redundant rebuild).
+ * Exposed for the unit test that drives it with synthetic wires.
+ */
+export function canonicalizeFaceCirclesWith(
   oc: OccModule,
   scope: DisposeScope,
-  loops: LoopEdge[][],
+  outerWire: OccShape,
+  holes: OccShape[],
+): OccShape | null {
+  let changed = false
+  const canonicalHoles: OccShape[] = []
+  for (const w of holes) {
+    const canon = collapseCircleWire(oc, scope, w)
+    if (canon !== null) {
+      changed = true
+      canonicalHoles.push(canon)
+    } else {
+      canonicalHoles.push(w)
+    }
+  }
+  if (!changed) return null
+  return makeFaceFromWire(oc, scope, outerWire, canonicalHoles)
+}
+
+/**
+ * Pre-prism profile union via a legacy-solid round-trip.  Build the multi-group
+ * extrude the legacy way (per-group prisms fused + UnifySameDomain-cleaned),
+ * which yields a sound body whose every wall is already one face -- but whose
+ * emergent hole cylinder carries the merged-arc (non-canonical) seam (the
+ * "8-face defect" when this body is later the target of an add).  The cleaned
+ * solid's ENTRANCE cap face nonetheless has a canonical closed-circle hole
+ * edge (UnifySameDomain canonicalizes the cap edge as a side effect of merging
+ * the two cocylindrical half-cylinder faces), so we extract that cap and
+ * re-prism it ONCE.  The re-prism's hole cylinder inherits that canonical
+ * seam (and the outer walls keep their arc-endpoint-pinned seams, identical to
+ * the legacy build), so a downstream add-fuse that prisms this body's swept
+ * top face merges cleanly -- the original defect repaired at the body's source.
+ * Returns the canonical profile face, or null when the round-trip cannot
+ * produce one safely (the caller then keeps the legacy multi-face body).
+ */
+function tryCanonicalMergedProfile(
+  oc: OccModule,
+  scope: DisposeScope,
+  groups: [LoopEdge[], LoopEdge[][]][],
   plane: PlaneLike,
   directionVec: Vec3,
   distance: number,
-  sketchId = '',
-): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
-  const groups = classifyLoops(loops)
-  if (groups.length === 0) throw new Error('no loops to extrude')
+): OccShape | null {
+  try {
+    const faces = groups.map(([outer, holes]) =>
+      sketchLoopsToFace(oc, scope, [outer, ...holes], plane),
+    )
+    const vec = scope.track(
+      new oc.gp_Vec_4(
+        directionVec[0] * distance,
+        directionVec[1] * distance,
+        directionVec[2] * distance,
+      ),
+    )
+    let solid: OccShape = (
+      scope.track(new oc.BRepPrimAPI_MakePrism_1(faces[0], vec, true, true)) as OccPrismBuilder
+    ).Shape()
+    for (let i = 1; i < faces.length; i++) {
+      const part = (
+        scope.track(new oc.BRepPrimAPI_MakePrism_1(faces[i], vec, true, true)) as OccPrismBuilder
+      ).Shape()
+      solid = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
+    }
+    // The pre-prism-union path only makes sense when the groups tile ONE
+    // connected region (their prism-fuse collapses to a single solid). For
+    // disjoint groups (e.g. two non-adjacent rects) the fuse stays a
+    // compound of N solids -- the legacy path must keep them as the
+    // multi-body output the caller splits apart; bailing here preserves it.
+    if (countSolids(oc, scope, solid) !== 1) return null
+    try {
+      solid = cleanWithHistory(oc, scope, solid).shape
+    } catch {
+      // The prism-fuse-clean is the legacy path -- the only throw the
+      // diagnostics pinned was the periodic-cylinder face merge (now avoided
+      // here because this solid is the build target, never the add tool). Any
+      // other throw means we cannot get a canonical cap cleanly -> bail.
+      return null
+    }
+    // Find the ENTRANCE cap: a planar face whose normal is anti-parallel to
+    // `directionVec` and whose centroid lies on the resolved profile plane
+    // through `plane.origin`.  That is the sketch-side cap; priming it back
+    // along `directionVec` rebuilds the same span (so symmetric/reverse keep
+    // their resolved effective plane).
+    const E = oc.TopAbs_ShapeEnum
+    const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    // Project the centroid onto the resolved profile-plane normal (not the
+    // prism direction) so the entrance cap is identified regardless of the
+    // resolved direction's relation to the sketch normal (symmetric/reverse
+    // here today; a future skew extrude would still find the cap correctly).
+    const op =
+      plane.origin[0] * plane.normal[0] +
+      plane.origin[1] * plane.normal[1] +
+      plane.origin[2] * plane.normal[2]
+    let entrance: OccShape | null = null
+    for (; fexp.More(); fexp.Next()) {
+      const f = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+      if (faceSurfaceType(oc, scope, f) !== 'flatface') continue
+      const n = faceNormal(oc, scope, f)
+      const dot = n[0] * directionVec[0] + n[1] * directionVec[1] + n[2] * directionVec[2]
+      if (dot > -0.9) continue  // not anti-parallel -- not the entrance cap
+      const c = faceCentroid(oc, scope, f)
+      const cp =
+        c[0] * plane.normal[0] +
+        c[1] * plane.normal[1] +
+        c[2] * plane.normal[2]
+      if (Math.abs(cp - op) > 1e-3) continue  // not on the resolved profile plane
+      entrance = f
+      break
+    }
+    if (entrance === null) return null
+    return canonicalizeFaceCircles(oc, scope, entrance)
+  } catch {
+    return null
+  }
+}
 
-  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+/**
+ * Prism a single profile face, then attach the per-profile-edge lineage keyed
+ * by geometry hash. `lineageLoops` is the set of profile loops whose entity ids
+ * the merged face's edges will be matched against (flat across groups for the
+ * pre-prism-union path, the per-group loops for the single-group path).
+ */
+function prismFaceWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  profileFace: OccShape,
+  lineageLoops: LoopEdge[][],
+  plane: PlaneLike,
+  directionVec: Vec3,
+  distance: number,
+  tokenPrefix: string,
+): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  const builder = scope.track(
+    new oc.BRepPrimAPI_MakePrism_1(
+      profileFace,
+      scope.track(
+        new oc.gp_Vec_4(
+          directionVec[0] * distance,
+          directionVec[1] * distance,
+          directionVec[2] * distance,
+        ),
+      ),
+      true,
+      true,
+    ),
+  ) as OccPrismBuilder
+  const solid = builder.Shape()
+  const lineage = buildPrismLineageMap(oc, scope, profileFace, builder, lineageLoops, plane)
+  prefixTokens(lineage.faceLineage, tokenPrefix)
+  prefixTokens(lineage.edgeLineage, tokenPrefix)
+  return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
+}
+
+/**
+ * Legacy per-group prism + fuse path (the fallback for a multi-group extrude
+ * whose planar profile union cannot be safely reconstructed). Each group's
+ * loops become one prism, prisms are fused, and the fused solid is cleaned
+ * when more than one group survived -- producing a sound body whose every wall
+ * nonetheless carries the internal seam at the source-region boundaries
+ * (the documented 8-face defect on the peanut-with-hole add case).
+ */
+function perGroupPrismWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  groups: [LoopEdge[], LoopEdge[][]][],
+  plane: PlaneLike,
+  directionVec: Vec3,
+  distance: number,
+  tokenPrefix: string,
+): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
   let solid: OccShape | null = null
   const faceLineage: Record<string, string[]> = {}
   const edgeLineage: Record<string, string[]> = {}
@@ -434,7 +683,7 @@ export function extrudeProfileWithLineage(
         true,
         true,
       ),
-    )
+    ) as OccPrismBuilder
     const part = builder.Shape()
     const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane)
     prefixTokens(lineage.faceLineage, tokenPrefix)
@@ -446,20 +695,67 @@ export function extrudeProfileWithLineage(
   }
 
   if (solid === null) throw new Error('no loops to extrude')
-
-  // Fusing the per-region prisms keeps every shared boundary as an internal seam,
-  // so the swept caps stay split into one coplanar face per source region (the
-  // "segmented surface" of a multi-select extrude). UnifySameDomain merges those
-  // coplanar caps (and the cocylindrical laterals) into one face each. Lineage is
-  // geometry-hash keyed and was built per group before the fuse; the laterals
-  // keep their hash, while the merged caps carry empty token lists either way, so
-  // the maps still apply to the unified solid. Single-group extrudes have no seam
-  // to merge, so the clean only runs when more than one group was fused.
   if (groups.length > 1) {
-    solid = cleanWithHistory(oc, scope, solid).shape
+    // cleanWithHistory collapses the per-region coplanar caps into one each
+    // and the cocylindrical walls into one.  On a disjoint multi-solid
+    // compound (the fallback path here) UnifySameDomain can occasionally
+    // reject the compound; keep the un-merged raw_solid in that rare case
+    // rather than crash the feature -- the caller side splits multi-solids.
+    try {
+      solid = cleanWithHistory(oc, scope, solid).shape
+    } catch {
+      // kept raw solid -- segmentation faces survive but the volume is intact.
+    }
+  }
+  return { solid, faceLineage, edgeLineage }
+}
+
+/**
+ * Extrude profile loops to a solid and return (solid, faceLineage, edgeLineage)
+ * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
+ * and fused; nested loops become holes. The returned solid is raw and lives in
+ * `scope` -- the caller registers/disposes it (typically via applyBodyOperation).
+ * Lineage tokens are `@sketch_id/entity`.
+ *
+ * Multi-group extrudes take the "pre-prism profile union" path: the groups'
+ * loops are extruded the legacy way (per-group prisms fused + cleaned), which
+ * already yields ONE body whose every wall is a single face, but whose emergent
+ * hole cylinder carries a non-canonical seam (the documented "8-face defect"
+ * when this body is later the target of an add).  We then extract that body's
+ * ENTRANCE cap face (which carries a canonical closed-circle hole edge -- a
+ * side effect of the clean fusion of the cocylindrical half-cylinder walls),
+ * canonicalize any remaining split-hole boundary, and re-prism the resulting
+ * single face ONCE.  This rebuilds the same body with a canonical hole seam so a
+ * downstream add-fuse that prisms this body's top face merges cleanly.  The
+ * legacy per-prism fuse path survives as a fallback for the rare case that the
+ * round-trip cannot recover a single canonical face.
+ */
+export function extrudeProfileWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  loops: LoopEdge[][],
+  plane: PlaneLike,
+  directionVec: Vec3,
+  distance: number,
+  sketchId = '',
+): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  const groups = classifyLoops(loops)
+  if (groups.length === 0) throw new Error('no loops to extrude')
+  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+
+  if (groups.length === 1) {
+    const [outer, holes] = groups[0]
+    const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
+    return prismFaceWithLineage(oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix)
   }
 
-  return { solid, faceLineage, edgeLineage }
+  const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance)
+  if (merged !== null) {
+    const lineageLoops = groups.flatMap(([outer, holes]) => [outer, ...holes])
+    return prismFaceWithLineage(oc, scope, merged, lineageLoops, plane, directionVec, distance, tokenPrefix)
+  }
+
+  return perGroupPrismWithLineage(oc, scope, groups, plane, directionVec, distance, tokenPrefix)
 }
 
 // ─── revolve (the revolve leaf's brep producer) ───
