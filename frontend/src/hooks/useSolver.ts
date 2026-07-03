@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation } from '@/types/cad'
+import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
@@ -112,6 +112,7 @@ export function useSolver(
       plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }
       body_id?: string
       exception?: string
+      handle?: FeatureHandleData
       solve_ms?: number
       projection_errors?: string[]
     }>
@@ -185,6 +186,7 @@ export function useSolver(
           status: feature.status ?? 'exception',
           ...(feature.body_id !== undefined && { body_id: feature.body_id }),
           ...(feature.exception !== undefined && { exception: feature.exception }),
+          ...(feature.handle !== undefined && { handle: feature.handle }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
         }
       }
