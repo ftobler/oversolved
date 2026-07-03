@@ -58,7 +58,6 @@
   margin-right: 12px;
   border-radius: 4px;
   cursor: pointer;
-  color: #ccc;
   user-select: none;
   font-size: 14px;
   text-align: left;
@@ -72,7 +71,6 @@
    matches the surrounding sidebar items. */
 .sidebar-item-login {
   text-decoration: none;
-  color: #ccc;
 }
 
 .sidebar-item.active {
