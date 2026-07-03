@@ -4,6 +4,7 @@ import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { backendBundle } from '@/adapters/backend'
+import MessageDialog from '@/components/dialogs/MessageDialog'
 import type { Mutation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
@@ -31,6 +32,7 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
     history: true,
     historyCount: 5,
   })
+  const [bugReportSuccess, setBugReportSuccess] = useState(false)
 
   const handleSubmitBugReport = async () => {
     if (!bugReportForm.title.trim()) {
@@ -54,7 +56,7 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
         report.history = historyItems
       }
       await backendBundle.telemetry.send(report)
-      alert('Bug report submitted successfully!')
+      setBugReportSuccess(true)
       setDebugTab('selection')
     } catch (e) {
       setBugReportError(`Failed to submit: ${e}`)
@@ -66,6 +68,7 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
   if (!debugOpen) return null
 
   return (
+    <>
     <aside className="debug-drawer">
       <div className="debug-tabs">
         <button className={`debug-tab ${debugTab === 'selection' ? 'active' : ''}`} onClick={() => setDebugTab('selection')}>Selection</button>
@@ -129,5 +132,13 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
         </div>
       )}
     </aside>
+    <MessageDialog
+      isOpen={bugReportSuccess}
+      title="Bug Report"
+      message="Bug report submitted successfully!"
+      variant="success"
+      onClose={() => setBugReportSuccess(false)}
+    />
+    </>
   )
 }

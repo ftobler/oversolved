@@ -10,7 +10,7 @@ import { TOOLBAR_ENTITIES, ENTITIES } from '@/registry/entityRegistry'
 // locks the contract for the next entity kind too.
 function commandNames(): Set<string> {
   const noop = () => {}
-  const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop)
+  const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
   return new Set(entries.map(e => e.name))
 }
 

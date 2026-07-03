@@ -27,6 +27,8 @@ import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
+import type { ShowMessagePayload } from '@/pages/commandEntries'
+import MessageDialog from '@/components/dialogs/MessageDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
 import measurementIcon from '@/assets/icons/measurement.svg'
@@ -85,6 +87,8 @@ export default function Part() {
   const { user } = useAuth()
 
   const [debugOpen, setDebugOpen] = useState(false)
+  const [messageDialog, setMessageDialog] = useState<ShowMessagePayload | null>(null)
+  const showMessage = useCallback((payload: ShowMessagePayload) => setMessageDialog(payload), [])
   const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
   const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
 
@@ -486,6 +490,7 @@ export default function Part() {
     handleToggleSketchPlaneVisibility,
     handleTogglePlaneVisibility,
     handleAddFeature,
+    showMessage,
   )
 
   const handleSave = async () => {
@@ -816,6 +821,13 @@ export default function Part() {
         ownerUsername={ownerUsername}
         permission={permission}
         isCloudDoc={isCloudDoc}
+      />
+      <MessageDialog
+        isOpen={messageDialog !== null}
+        title={messageDialog?.title ?? ''}
+        message={messageDialog?.message ?? ''}
+        variant={messageDialog?.variant ?? 'info'}
+        onClose={() => setMessageDialog(null)}
       />
     </div>
   )

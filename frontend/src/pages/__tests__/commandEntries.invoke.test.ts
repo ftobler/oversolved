@@ -12,7 +12,7 @@ import type { DialogState } from '@/stores/sketchEditorStore'
 const noop = () => {}
 
 function entry(name: string) {
-  const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop)
+  const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
   const e = entries.find(x => x.name === name)
   if (!e) throw new Error(`no command entry ${name}`)
   return e
@@ -43,14 +43,17 @@ describe('command callbacks that drive the sketch editor store', () => {
     expect(setActivePickField).toHaveBeenCalledWith(null)
   })
 
-  it('set_tool_mirror surfaces a not-implemented notice (alert) and does not switch tools', () => {
+  it('set_tool_mirror surfaces a not-implemented notice (showMessage) and does not switch tools', () => {
     const store = useSketchEditorStore.getState()
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
-    const alert = vi.spyOn(window, 'alert').mockImplementation(noop)
+    const showMessage = vi.fn()
 
-    entry('set_tool_mirror').fn()
+    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
+    const e = entries.find(x => x.name === 'set_tool_mirror')!
+    e.fn()
 
-    expect(alert).toHaveBeenCalledOnce()
+    expect(showMessage).toHaveBeenCalledOnce()
+    expect(showMessage).toHaveBeenCalledWith({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })
     expect(setActiveTool).not.toHaveBeenCalled()
   })
 

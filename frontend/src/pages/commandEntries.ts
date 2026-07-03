@@ -2,6 +2,12 @@ import { CONSTRAINTS, ENTITIES } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
+export interface ShowMessagePayload {
+  title: string
+  message: string
+  variant?: 'info' | 'success' | 'error'
+}
+
 /**
  * Builds the full command entry list for the sketch editor.
  * Pass stable (useCallback-wrapped) handler references so the returned array
@@ -16,6 +22,7 @@ export function buildCommandEntries(
   handleAddExtrude: () => void,
   handleAddHole: () => void,
   handleAddTransform: () => void,
+  showMessage: (payload: ShowMessagePayload) => void,
 ): CommandEntry[] {
   const getState = useSketchEditorStore.getState
   return [
@@ -46,7 +53,7 @@ export function buildCommandEntries(
       name: `apply_${c.kind}`,
       fn: c.shortcut
         ? () => getState().applyConstraint(c.kind)
-        : () => { alert(`Constraint "${c.label}" is not yet implemented.`); },
+        : () => { showMessage({ title: 'Not Implemented', message: `Constraint "${c.label}" is not yet implemented.`, variant: 'info' }); },
     })),
     { name: 'cancel_draw', fn: () => {
         getState().clearDraw()
@@ -57,7 +64,7 @@ export function buildCommandEntries(
       getState().setActivePickField(null)
     }},
     { name: 'set_tool_mirror', fn: () => {
-      alert('Mirror tool is not yet implemented.')
+      showMessage({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })
     }},
     // Offset is a selection action, not a draw mode: it operates on the currently
     // selected sketch entities. Prompt for the signed distance, then dispatch.

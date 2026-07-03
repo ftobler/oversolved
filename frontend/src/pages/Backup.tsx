@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { http } from '@/utils/core/httpClient'
 import { downloadBlob } from '@/utils/core/downloadBlob'
+import MessageDialog from '@/components/dialogs/MessageDialog'
 import '@/pages/adminSettings.css'
 
 export default function Backup() {
@@ -9,6 +10,7 @@ export default function Backup() {
   const [loadingDownload, setLoadingDownload] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [messageDialog, setMessageDialog] = useState<{ title: string; message: string; variant?: 'info' | 'success' | 'error' } | null>(null)
 
   if (!user?.is_admin) {
     return (
@@ -24,7 +26,7 @@ export default function Backup() {
       const blob = await http.getBlob('/api/admin/backup')
       downloadBlob(blob, `backup-${new Date().toISOString().split('T')[0]}.zip`)
     } catch (e) {
-      alert(`Error: ${String(e)}`)
+      setMessageDialog({ title: 'Download Failed', message: `Error: ${String(e)}`, variant: 'error' })
     } finally {
       setLoadingDownload(false)
     }
@@ -49,9 +51,9 @@ export default function Backup() {
         + (data.skipped_count > 0 ? `\nSkipped: ${data.skipped_count}` : '')
         + (data.errors && data.errors.length > 0 ? `\n\nErrors:\n${data.errors.slice(0, 3).join('\n')}${data.errors.length > 3 ? `\n... and ${data.errors.length - 3} more` : ''}` : '')
 
-      alert(message)
+      setMessageDialog({ title: 'Import Complete', message, variant: 'success' })
     } catch (e) {
-      alert(`Error: ${String(e)}`)
+      setMessageDialog({ title: 'Import Failed', message: `Error: ${String(e)}`, variant: 'error' })
     } finally {
       setLoadingImport(false)
       if (fileInputRef.current) {
@@ -81,6 +83,13 @@ export default function Backup() {
           {loadingDownload ? 'Preparing…' : 'Download Backup'}
         </button>
       </div>
+      <MessageDialog
+        isOpen={messageDialog !== null}
+        title={messageDialog?.title ?? ''}
+        message={messageDialog?.message ?? ''}
+        variant={messageDialog?.variant ?? 'info'}
+        onClose={() => setMessageDialog(null)}
+      />
     </div>
   )
 }
