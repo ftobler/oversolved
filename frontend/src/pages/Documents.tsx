@@ -73,7 +73,6 @@ export default function Documents() {
   const [trashLoading, setTrashLoading] = useState(false)
   const [activeDomain, setActiveDomain] = useState<Domain>('local')
   const [notice, setNotice] = useState<string | null>(null)
-  const [bridgeCount, setBridgeCount] = useState(0)  // 0 = the post-login bridge prompt is hidden
   const { user, online, setOnline } = useAuth()
   // Guest sort lives on defaults only; the cloud preferences load is gated on a
   // signed-in session so a guest never fires a doomed 401 request.
@@ -95,19 +94,13 @@ export default function Documents() {
 
   // When the cloud domain disappears (logout or going offline), snap the view back
   // to a coherent local-only state so no stale cloud filter / trash view lingers.
-  // Also re-arm the post-login bridge prompt so a fresh sign-in can offer to mirror
-  // local docs up again. Guarded on a true->false transition so the initial mount
-  // (cloudAvailable starts false before the session resolves) does NOT clear the
-  // flag -- a reload that restores an active session still honors a prior Dismiss.
-  const prevCloudForBridge = useRef(cloudAvailable)
+  const prevCloudAvailable = useRef(cloudAvailable)
   useEffect(() => {
-    const was = prevCloudForBridge.current
-    prevCloudForBridge.current = cloudAvailable
+    prevCloudAvailable.current = cloudAvailable
     if (cloudAvailable) return
     setActiveDomain('local')
     setActiveFilter('owned')
     setIsTrashView(false)
-    if (was) sessionStorage.removeItem('docDomainBridgeSeen')
   }, [cloudAvailable])
 
   useEffect(() => {
@@ -248,13 +241,11 @@ export default function Documents() {
     }
   }
 
-  // Bulk push the whole local library up to the cloud (doc-domain-move slice 5).
-  // Drives both the toolbar "Sync all" verb and the post-login bridge prompt's
-  // "Copy all". Only unsynced docs move (markSynced clears dirty), so it is safe to
+  // Bulk push the whole local library up to the cloud.
+  // Only unsynced docs move (markSynced clears dirty), so it is safe to
   // re-run. Both sides stay intact -- it mirrors, never moves.
   const handleSyncAll = async () => {
     if (!cloudStore) return
-    setBridgeCount(0)  // dismiss the bridge prompt if this came from it
     try {
       const { pushed } = await syncAllDocuments(backendBundle.documents, cloudStore)
       setNotice(
@@ -265,31 +256,6 @@ export default function Documents() {
     } catch (e) {
       setError(String(e))
     }
-  }
-
-  // Post-login bridge prompt (doc-domain-move slice 5 / static-build-notes "you have
-  // two domains now -- copy local -> cloud?"). When the cloud domain first becomes
-  // available (sign-in), offer once to mirror the local library up. An OFFER, both
-  // sides left intact; dismissing changes nothing. sessionStorage keeps it to one
-  // prompt per tab session so a reload that restores the session does not nag.
-  const prevCloudAvailable = useRef(cloudAvailable)
-  useEffect(() => {
-    const was = prevCloudAvailable.current
-    prevCloudAvailable.current = cloudAvailable
-    if (was || !cloudAvailable) return
-    if (sessionStorage.getItem('docDomainBridgeSeen')) return
-    backendBundle.documents.list({ filter: 'owned' })
-      .then(local => {
-        if (local.length === 0) return
-        sessionStorage.setItem('docDomainBridgeSeen', '1')
-        setBridgeCount(local.length)
-      })
-      .catch(() => undefined)
-  }, [cloudAvailable])
-
-  const dismissBridge = () => {
-    sessionStorage.setItem('docDomainBridgeSeen', '1')
-    setBridgeCount(0)
   }
 
   const handleExport = async (uuid: string, name: string) => {
@@ -544,17 +510,6 @@ export default function Documents() {
 
         <div className="documents-main">
           {notice && <p className="status notice">{notice}</p>}
-          {bridgeCount > 0 && (
-            <div className="status bridge-prompt">
-              <span>
-                You're signed in. Copy your {bridgeCount} local document{bridgeCount === 1 ? '' : 's'} to Cloud?
-              </span>
-              <span className="bridge-prompt-actions">
-                <button className="btn btn-copy-all" onClick={handleSyncAll}>Copy all</button>
-                <button className="btn btn-dismiss" onClick={dismissBridge}>Dismiss</button>
-              </span>
-            </div>
-          )}
           <Dialog
             isOpen={showAddForm}
             title="Create New Document"

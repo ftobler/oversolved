@@ -20,7 +20,6 @@ describe('Documents sidebar sign-in affordance', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     freshLocalDb()
-    sessionStorage.setItem('docDomainBridgeSeen', '1')
   })
 
   afterEach(() => {

@@ -22,7 +22,6 @@ describe('Documents offline + logout transitions', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     freshLocalDb()
-    sessionStorage.setItem('docDomainBridgeSeen', '1')  // suppress the post-login bridge prompt
   })
 
   afterEach(() => {

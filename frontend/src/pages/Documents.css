@@ -185,48 +185,6 @@
   color: #66bb6a;
 }
 
-.status.bridge-prompt {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  color: #ccc;
-  background: rgba(102, 187, 106, 0.08);
-  border: 1px solid rgba(102, 187, 106, 0.3);
-  border-radius: 6px;
-}
-
-.bridge-prompt-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-/* The bridge prompt's Dismiss: a plain secondary button in the flex row, NOT the
-   same class as the search-bar clear icon (which is absolutely positioned over
-   the search input and would overlap the Copy all button here). */
-.btn-dismiss {
-  background: transparent;
-  color: #999;
-  border: 1px solid #555;
-}
-.btn-dismiss:hover {
-  background: #333;
-  color: #ccc;
-}
-
-/* The bridge prompt's Copy all: a primary action. Its rest state is slightly
-   darker than the surrounding prompt text; on hover it lifts to that brighter
-   tone (the "highlight") so it reads as the affirmative verb. */
-.btn-copy-all {
-  background: #2a2c33;
-  color: #888;
-  border: 1px solid #444;
-}
-.btn-copy-all:hover {
-  background: #333;
-  color: #ccc;
-}
 
 .dialog-component-overlay {
   position: fixed;

@@ -118,13 +118,11 @@ describe('Documents cross-domain copy', () => {
   })
 })
 
-// doc-domain-move slice 5: move (copy + delete source), bulk sync-all, and the
-// post-login bridge prompt.
+// doc-domain-move: move (copy + delete source) and bulk sync-all.
 describe('Documents cross-domain move + sync-all', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     freshLocalDb()
-    sessionStorage.clear()  // the bridge prompt is one-shot per tab session
   })
 
   afterEach(() => {
@@ -206,42 +204,4 @@ describe('Documents cross-domain move + sync-all', () => {
     })
   })
 
-  it('post-login bridge prompt offers to copy the local library up, then Copy all syncs', async () => {
-    const local = getLocalStore()
-    const a = await local.create('A'); await local.save(a.uuid, { content: 'a' })
-
-    const fetchMock = pushFetchMock()
-    vi.stubGlobal('fetch', fetchMock)
-
-    renderDocuments()
-
-    // The prompt surfaces once the session resolves (cloud domain becomes available).
-    const copyAll = await screen.findByText('Copy all')
-    expect(screen.getByText(/Copy your 1 local document to Cloud/)).toBeInTheDocument()
-
-    fireEvent.click(copyAll)
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/documents', expect.objectContaining({ method: 'POST' }))
-    })
-    // The prompt dismisses itself after acting.
-    await waitFor(() => expect(screen.queryByText('Copy all')).not.toBeInTheDocument())
-  })
-
-  it('the bridge prompt does not appear for a guest (no cloud domain)', async () => {
-    const local = getLocalStore()
-    const x = await local.create('Solo'); await local.save(x.uuid, { content: 'x' })
-
-    const fetchMock = vi.fn((url: string): Promise<Response> => {
-      if (url === '/api/auth/me') return Promise.resolve(res({}, false, 401))
-      if (url === '/api/users/me/preferences') return Promise.resolve(res({}, false, 401))
-      return Promise.resolve(res({ documents: [] }))
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    renderDocuments()
-
-    await waitFor(() => expect(screen.getByText('local/Solo')).toBeInTheDocument())
-    expect(screen.queryByText('Copy all')).not.toBeInTheDocument()
-  })
 })
