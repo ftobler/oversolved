@@ -141,7 +141,6 @@ describe('Documents cross-domain move + sync-all', () => {
   }
 
   it('Move to Cloud pushes the tile up then removes the local source', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const local = getLocalStore()
     const { uuid } = await local.create('Bracket')
     await local.save(uuid, { content: 'profile: square' })
@@ -153,6 +152,10 @@ describe('Documents cross-domain move + sync-all', () => {
 
     const moveBtn = await screen.findByTitle('Move to Cloud')
     fireEvent.click(moveBtn)
+
+    // The move opens a confirm MessageDialog; accept it to run the push + delete.
+    const confirmBtn = await screen.findByRole('button', { name: 'Move' })
+    fireEvent.click(confirmBtn)
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/documents', expect.objectContaining({ method: 'POST' }))
@@ -166,7 +169,6 @@ describe('Documents cross-domain move + sync-all', () => {
   })
 
   it('Move to Cloud does nothing when the confirm is declined', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     const local = getLocalStore()
     const { uuid } = await local.create('Bracket')
     await local.save(uuid, { content: 'profile: square' })
@@ -178,6 +180,10 @@ describe('Documents cross-domain move + sync-all', () => {
 
     const moveBtn = await screen.findByTitle('Move to Cloud')
     fireEvent.click(moveBtn)
+
+    // Decline the MessageDialog confirm: no push, source untouched.
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel' })
+    fireEvent.click(cancelBtn)
 
     expect(fetchMock).not.toHaveBeenCalledWith('/api/documents', expect.objectContaining({ method: 'POST' }))
     expect((await local.list()).length).toBe(1)  // source untouched
