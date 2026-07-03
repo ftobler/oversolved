@@ -55,6 +55,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
     // that setDrag() makes mid-handler (lazy drag initiation below).
     const { drag, dragPending, dragStartClient, isPointerDown } = useSketchEditorStore.getState()
     if (!drag && !dragPending) return
+    // Feature editing handles are 3D-axis drags owned by the FeatureHandles
+    // component, never by a sketch DragPlane.
+    if (drag?.type === 'feature_handle' || (!drag && dragPending?.type === 'feature_handle')) return
     // Only the DragPlane whose featureId matches the active drag processes this event.
     if (drag && drag.featureId !== featureId) return
     if (!drag && dragPending && dragPending.featureId !== featureId) return
@@ -87,7 +90,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
             startWorld: dragPending.startWorld,
             currentWorld: dragPending.startWorld,
           })
-        } else {
+        } else if (dragPending.type !== 'feature_handle') {
           const dragTool = toolRegistry.get('drag')
           if (dragTool) {
             const state = useSketchEditorStore.getState()
@@ -120,7 +123,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
 
     // Re-read after the potential setDrag() call above.
     const currentDrag = useSketchEditorStore.getState().drag
-    if (!currentDrag) return
+    if (!currentDrag || currentDrag.type === 'feature_handle') return
 
     // All drag types use raw localPoint for smooth movement. Snap and alignment
     // are computed separately without modifying the drag position, so the core
@@ -199,6 +202,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
       // Either no drag for us, or another sketch's DragPlane owns it.
       return
     }
+    // Feature-handle drags are owned end-to-end by the FeatureHandles
+    // component (their featureId is a brep feature, never a sketch's).
+    if (currentDrag.type === 'feature_handle') return
 
     if (currentDrag.type === 'dim_label') {
       if (onMutation) {

@@ -962,4 +962,56 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     expect(res(result, 'ex1').status).toBe('exception')
     expect(String(res(result, 'ex1').exception)).toContain('2+/')
   })
+
+  // ── Editing handle descriptor ────────────────────────────────────────────
+
+  function handleOf(result: BuildResponse, featureId: string): Record<string, unknown> {
+    const h = res(result, featureId).handle as Record<string, unknown> | undefined
+    expect(h).toBeDefined()
+    return h!
+  }
+
+  function expectVecClose(v: unknown, expected: number[]): void {
+    const arr = v as number[]
+    expect(arr).toHaveLength(expected.length)
+    for (let i = 0; i < expected.length; i++) expect(arr[i]).toBeCloseTo(expected[i], 4)
+  }
+
+  it('blind extrude emits a linear distance handle at the swept face centroid', () => {
+    const result = run(fullRectExtrudeSpec(10, 10, 5))
+    const h = handleOf(result, 'ex1')
+    expect(h.kind).toBe('linear')
+    expect(h.field).toBe('distance')
+    expect(h.value).toBe(5)
+    expect(h.unit_scale).toBe(1)
+    expectVecClose(h.direction, [0, 0, 1])
+    expectVecClose(h.anchor, [5, 5, 5])
+  })
+
+  it('reverse extrude handle points the other way', () => {
+    const result = run(fullRectExtrudeSpec(10, 10, 5, 'reverse'))
+    const h = handleOf(result, 'ex1')
+    expectVecClose(h.direction, [0, 0, -1])
+    expectVecClose(h.anchor, [5, 5, -5])
+  })
+
+  it('symmetric extrude handle grabs the half-distance face at half scale', () => {
+    const result = run(fullRectExtrudeSpec(10, 10, 8, 'symmetric'))
+    const h = handleOf(result, 'ex1')
+    expect(h.unit_scale).toBe(0.5)
+    expectVecClose(h.anchor, [5, 5, 4])
+  })
+
+  it('up_to extrude emits no distance handle', () => {
+    const spec = {
+      features: [
+        rectSketchSk('sk1', 10, 10),
+        { id: 'pl1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 7 } },
+        { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, termination: 'up_to', up_to: '@pl1', operation: 'new' },
+      ],
+    }
+    const result = run(spec)
+    expect(res(result, 'ex1').status).toBe('ok')
+    expect(res(result, 'ex1').handle).toBeUndefined()
+  })
 })

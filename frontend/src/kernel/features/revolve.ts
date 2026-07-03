@@ -19,7 +19,9 @@ import { collectExtrudeLoops } from './faceProfile'
 import { sketchToWorld2d, surfaceEntityIds, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
-import type { Vec3 } from '../occ/primitives'
+import { faceCentroid, type Vec3 } from '../occ/primitives'
+import { loopCentroid } from '../profileLoops'
+import { angularHandle } from './featureHandles'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -197,6 +199,19 @@ export function solveRevolve(
       Object.assign(faceLineage, lineage.faceLineage)
       Object.assign(edgeLineage, lineage.edgeLineage)
     }
+  }
+
+  // Editing handle: draggable angle arrow at the profile reference point swept
+  // to the end of the revolution, pulling along the sweep tangent.
+  let refPoint: number[] | null = null
+  if (cqFaces.length > 0 && allLoops.length === 0) {
+    refPoint = faceCentroid(oc, scope, cqFaces[0])
+  } else if (firstPt !== null && allLoops.length > 0) {
+    refPoint = sketchToWorld2d(loopCentroid(allLoops[0]), firstPt)
+  }
+  if (refPoint !== null) {
+    const handle = angularHandle('angle', ao, ad, refPoint, angle, direction)
+    if (handle !== null) result.handle = handle
   }
 
   const opResult = applyBodyOperation(oc, scope, table, {

@@ -17,7 +17,9 @@ import type { Repository } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, surfaceEntityIds, type PlaneLike } from './shared'
+import { resolveDirection, surfaceEntityIds, sketchToWorld2d, type PlaneLike } from './shared'
+import { loopCentroid } from '../profileLoops'
+import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
@@ -219,6 +221,31 @@ export function solveExtrude(
     toolShape = cutPlane !== null ? trimAtPlane(oc, scope, lineage.solid, cutPlane, directionVec as Vec3) : lineage.solid
     Object.assign(faceLineage, lineage.faceLineage)
     Object.assign(edgeLineage, lineage.edgeLineage)
+  }
+
+  // Editing handle: blind extrudes expose a draggable distance arrow anchored
+  // at the profile centroid swept to the end face, so the grab point rides the
+  // face the distance moves. Up-to extrudes have no distance to drag.
+  if (termination !== 'up_to') {
+    const grabDist = direction === 'symmetric' ? distance / 2 : distance
+    let handleDir: number[] | null = null
+    let handleBase: number[] | null = null
+    if (usingFaces) {
+      const n = faceNormal(oc, scope, cqFaces[0])
+      handleDir = direction === 'reverse' ? (n.map((c) => -c) as Vec3) : n
+      handleBase = faceCentroid(oc, scope, cqFaces[0])
+    } else if (firstPt !== null && allLoops.length > 0) {
+      const [dirVec] = resolveDirection((firstPt.normal as number[]) ?? [0, 0, 1], firstPt, direction, distance)
+      handleDir = dirVec
+      handleBase = sketchToWorld2d(loopCentroid(allLoops[0]), firstPt)
+    }
+    if (handleDir !== null && handleBase !== null) {
+      const anchor = offsetAlong(handleBase, handleDir, grabDist)
+      const handle = anchor === null
+        ? null
+        : linearHandle('distance', anchor, handleDir, distance, direction === 'symmetric' ? 0.5 : 1)
+      if (handle !== null) result.handle = handle
+    }
   }
 
   const opResult = applyBodyOperation(oc, scope, table, {

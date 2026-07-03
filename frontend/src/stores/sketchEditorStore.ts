@@ -95,7 +95,23 @@ export interface DimLabelDrag {
   currentWorld: [number, number]
 }
 
-export type DragState = VertexOrEdgeDrag | DimLabelDrag
+// Dragging a feature editing handle (extrude/fillet/revolve arrow). Unlike the
+// sketch drags this lives in world space: the cursor ray is mapped onto the
+// handle's 3D axis and the travel converted to a field value via unitScale.
+export interface FeatureHandleDrag {
+  type: 'feature_handle'
+  featureId: string
+  field: string
+  startValue: number
+  currentValue: number
+  axisOrigin: [number, number, number]  // world anchor at startValue
+  axisDir: [number, number, number]  // unit world drag direction
+  unitScale: number  // world units per field unit
+  min: number
+  max?: number
+}
+
+export type DragState = VertexOrEdgeDrag | DimLabelDrag | FeatureHandleDrag
 
 export interface EdgeVertexDragPending {
   type: 'edge' | 'vertex'
@@ -114,7 +130,19 @@ export interface DimLabelDragPending {
   startWorld: [number, number]
 }
 
-export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending
+export interface FeatureHandleDragPending {
+  type: 'feature_handle'
+  featureId: string
+  field: string
+  startValue: number
+  axisOrigin: [number, number, number]
+  axisDir: [number, number, number]
+  unitScale: number
+  min: number
+  max?: number
+}
+
+export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending | FeatureHandleDragPending
 
 // The single, store-owned pick-field coordinator (Layer 2 of the selection
 // model). When non-null, exactly one feature field is consuming picks. There

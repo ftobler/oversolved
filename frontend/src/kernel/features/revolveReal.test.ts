@@ -299,4 +299,29 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     expect(res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
+
+  it('revolve emits an angular handle at the swept profile centroid', () => {
+    // Rectangle [1,3]x[0,1] on the front plane, 90deg around the Y axis:
+    // centroid (2, 0.5, 0) sweeps to (0, 0.5, -2); the tangent there is -X.
+    const result = run({
+      version: 1, kind: 'part',
+      features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 90 })],
+    })
+    expect(res(result, 'rev1').status).toBe('ok')
+    const h = res(result, 'rev1').handle as Record<string, unknown>
+    expect(h).toBeDefined()
+    expect(h.kind).toBe('angular')
+    expect(h.field).toBe('angle')
+    expect(h.value).toBe(90)
+    expect(h.max).toBe(360)
+    const anchor = h.anchor as number[]
+    expect(anchor[0]).toBeCloseTo(0, 4)
+    expect(anchor[1]).toBeCloseTo(0.5, 4)
+    expect(anchor[2]).toBeCloseTo(-2, 4)
+    const dir = h.direction as number[]
+    expect(dir[0]).toBeCloseTo(-1, 4)
+    expect(dir[1]).toBeCloseTo(0, 4)
+    expect(dir[2]).toBeCloseTo(0, 4)
+    expect(h.unit_scale as number).toBeCloseTo((2 * Math.PI) / 180, 6)
+  })
 })

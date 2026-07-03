@@ -7,7 +7,7 @@ export { VertexIdLayer, VERTEX_LAYER_NAME, type VertexBodyRegistration } from '.
 export {
   IdPipeline, DEFAULT_WINDOW_SIZE,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-  DIMENSION_LABEL_LAYER_NAME,
+  DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
   SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_FAT_PIXELS, SKETCH_VERTEX_FAT_PIXELS, ORIGIN_FAT_PIXELS,
   DIMENSION_LABEL_FAT_PIXELS,
   type IdPipelineOptions,
@@ -22,6 +22,7 @@ export { useOriginMarkerIdRegistration } from './useOriginMarkerIdRegistration'
 export { useSketchIdRegistration } from './useSketchIdRegistration'
 export { useSketchSurfaceIdRegistration } from './useSketchSurfaceIdRegistration'
 export { useDimensionLabelIdRegistration } from './useDimensionLabelIdRegistration'
+export { useFeatureHandleIdRegistration, featureHandleKey } from './useFeatureHandleIdRegistration'
 export { getLivePipeline } from './IdPipelineContext'
 export { idToRGB, rgbToId, idToRGBNormalized, EMPTY_ID, MAX_ID } from './idEncoding'
 export type { IdLayer, LayerZPolicy } from './IdLayer'

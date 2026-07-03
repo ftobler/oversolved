@@ -9,6 +9,7 @@ import type { IdLayer } from './IdLayer'
 import {
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
+  FEATURE_HANDLE_LAYER_NAME,
 } from './layerNames'
 
 // Layer name constants now live in the pure ./layerNames module (no three.js)
@@ -17,6 +18,7 @@ import {
 export {
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
+  FEATURE_HANDLE_LAYER_NAME,
 }
 export const SKETCH_ENTITY_FAT_PIXELS = 8
 export const SKETCH_VERTEX_FAT_PIXELS = 12
@@ -69,6 +71,7 @@ export class IdPipeline {
   readonly sketchVertexLayer: VertexIdLayer
   readonly originLayer: VertexIdLayer
   readonly dimensionLabelLayer: VertexIdLayer
+  readonly featureHandleLayer: VertexIdLayer
   private layers: IdLayer[]
   private windowSize: number
   private renderCount = 0
@@ -110,6 +113,12 @@ export class IdPipeline {
     this.dimensionLabelLayer = new VertexIdLayer(this.registry, {
       name: DIMENSION_LABEL_LAYER_NAME, priority: 70, zPolicy: 'no-depth',
     })
+    // Feature editing handles (draggable extrude/fillet/revolve arrows) sit on
+    // top of everything: while a handle is shown the user is mid-edit and the
+    // grab gesture must never lose to a body or label underneath.
+    this.featureHandleLayer = new VertexIdLayer(this.registry, {
+      name: FEATURE_HANDLE_LAYER_NAME, priority: 80, zPolicy: 'no-depth',
+    })
 
     this.layers = []
     this.addLayer(this.planeLayer)           // -10  behind everything
@@ -121,6 +130,7 @@ export class IdPipeline {
     this.addLayer(this.sketchVertexLayer)    //  50
     this.addLayer(this.originLayer)          //  60
     this.addLayer(this.dimensionLabelLayer)  //  70
+    this.addLayer(this.featureHandleLayer)   //  80
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
     this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false

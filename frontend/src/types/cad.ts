@@ -662,6 +662,21 @@ export interface PlaneTransform {
   origin: number[]  // world-space origin [x, y, z]
 }
 
+// Draggable editing-handle descriptor emitted by the kernel per brep feature
+// (extrude distance, revolve angle, fillet radius, chamfer distance). Dragging
+// the grab point by d world units along `direction` changes `field` by
+// d / unit_scale; `anchor` is the grab point at the current `value`.
+export interface FeatureHandleData {
+  kind: 'linear' | 'angular'
+  field: string
+  anchor: [number, number, number]
+  direction: [number, number, number]
+  value: number
+  unit_scale: number
+  min: number
+  max?: number
+}
+
 export interface SketchData {
   solved: Sketch
   constraints?: Constraints
@@ -673,6 +688,7 @@ export interface SketchData {
   plane?: { origin: [number, number, number]; x_axis: [number, number, number]; y_axis: [number, number, number]; normal: [number, number, number] }
   body_id?: string
   exception?: string
+  handle?: FeatureHandleData  // editing handle for brep features (extrude/revolve/fillet/chamfer)
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>

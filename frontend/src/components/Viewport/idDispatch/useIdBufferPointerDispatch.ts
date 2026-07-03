@@ -4,6 +4,7 @@ import { getLivePipeline } from '@/picking'
 import type { ResolvedHit } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dimensionLabelAdapter } from './dimensionLabelAdapter'
+import { featureHandleAdapter } from './featureHandleAdapter'
 import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover, setSelectionIdOnHover } from './brepAdapters'
 import { sketchEntityAdapter } from './sketchEntityAdapter'
 import { sketchVertexAdapter } from './sketchVertexAdapter'
@@ -14,7 +15,7 @@ import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-  SKETCH_SURFACE_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
 } from '@/picking'
 
 /**
@@ -112,6 +113,9 @@ const hoverAdapters: Record<string, ((entityKey: string) => void) | undefined> =
   [PLANE_LAYER_NAME]: planeAdapter.onHover,
   [ORIGIN_LAYER_NAME]: originAdapter.onHover,
   [DIMENSION_LABEL_LAYER_NAME]: undefined,  // handled separately
+  // Handle hover rides hoveredSelectionId: the arrow derives its highlight
+  // from the store key, and a hovered handle blocks the rubber-band start.
+  [FEATURE_HANDLE_LAYER_NAME]: setSelectionIdOnHover,
 }
 
 export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): void {
@@ -195,7 +199,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // entity / vertex drawing), which are not a parallel pick path — they
       // are the current tool acting. Pick chips are a consumer layer that
       // observes normalSelection downstream; they never branch the click.
-      if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
+      if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
+        // A handle is a drag affordance, not a selectable entity: consume the
+        // click so it neither toggles selection nor clears it via the
+        // backplane, but dispatch nothing.
+      } else if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME) {
         sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
@@ -212,10 +220,13 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       if (!hit) return
-      // Only dimension labels currently care about double-click (opens the
-      // value-edit dialog; single-click selects so Delete can target the dim).
+      // Only dimension labels and feature handles care about double-click
+      // (opens the value-edit dialog; single-click selects so Delete can
+      // target the dim).
       if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onDoubleClick(hit.entityKey, e.clientX, e.clientY)
+      } else if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
+        featureHandleAdapter.onDoubleClick(hit.entityKey, e.clientX, e.clientY)
       }
     }
 
@@ -224,7 +235,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       const hit = resolveSync(e, attached)
       if (!hit) return
       const tool = useSketchEditorStore.getState().activeTool
-      if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
+      if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
+        featureHandleAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
+      } else if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME && (tool === 'drag' || tool === null || tool === 'select')) {
         sketchVertexAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)

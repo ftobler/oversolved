@@ -15,7 +15,8 @@ import { ref, makeAncestryQuery, parseAncestry, bodyIdOf } from '../query'
 import { edgeGeometryHash, faceGeometryHash, isGeomKeyedLineage } from '../geomHash'
 import { edgeLineageTokens } from '../faceQuery'
 import { resolveBody } from './shared'
-import { faceCentroid, faceNormal, edgeToGeom } from '../occ/primitives'
+import { faceCentroid, faceNormal, edgeToGeom, type Vec3 } from '../occ/primitives'
+import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
   applyFilletWithDiff,
@@ -199,6 +200,38 @@ type ApplyFn = (
 ) => EdgeModifierResult
 
 /**
+ * Grab point + outward direction for the editing handle of an edge modifier:
+ * the midpoint of the picked edge, pulling along the average normal of its two
+ * adjacent faces (the direction a growing fillet/chamfer visually expands in).
+ * Computed on the PRE-modifier shape, where the picked edge still exists.
+ */
+function edgeHandleGeometry(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  edge: OccShape,
+): { anchor: Vec3; direction: Vec3 } | null {
+  const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
+  const mid = ad.Value((ad.FirstParameter() + ad.LastParameter()) / 2)
+  const anchor: Vec3 = [mid.X(), mid.Y(), mid.Z()]
+
+  const normals: Vec3[] = []
+  for (const face of exploreFaces(oc, scope, shape)) {
+    const owns = exploreEdges(oc, scope, face).some((e) =>
+      (e as OccSubShape).IsSame(edge as OccSubShape))
+    if (!owns) continue
+    normals.push(faceNormal(oc, scope, face))
+    if (normals.length === 2) break
+  }
+  if (normals.length === 0) return null
+  const sum: Vec3 = normals.reduce<Vec3>((a, n) => [a[0] + n[0], a[1] + n[1], a[2] + n[2]], [0, 0, 0])
+  const len = Math.hypot(sum[0], sum[1], sum[2])
+  // Opposing normals (tangent faces) collapse the average; fall back to one side.
+  const dir = len > 1e-9 ? ([sum[0] / len, sum[1] / len, sum[2] / len] as Vec3) : normals[0]
+  return { anchor, direction: dir }
+}
+
+/**
  * Shared body-resolution + edge-application for fillet and chamfer (mirrors
  * `_apply_edge_feature`). Throws ValueError-style errors for the caller to wrap.
  */
@@ -210,6 +243,7 @@ function applyEdgeFeature(
   bodyStore: Record<string, Body>,
   featureKind: string,
   applyFn: ApplyFn,
+  makeHandle?: (anchor: Vec3, direction: Vec3) => FeatureHandle | null,
 ): EdgeFeatureResult {
   const featureId = (feature.id as string) ?? ''
   const edges = (feature.edges as string[]) ?? []
@@ -271,6 +305,7 @@ function applyEdgeFeature(
   }
 
   const applied: string[] = []
+  let handle: FeatureHandle | null = null
   for (const [bid, qlist] of groups) {
     let body: Body
     try {
@@ -300,6 +335,13 @@ function applyEdgeFeature(
       continue
     }
 
+    // Editing handle geometry from the first picked edge, taken before the
+    // modifier consumes it.
+    if (handle === null && makeHandle !== undefined) {
+      const geom = edgeHandleGeometry(oc, scope, oldShape, topoEdges[0])
+      if (geom !== null) handle = makeHandle(geom.anchor, geom.direction)
+    }
+
     const wantLineage = Object.keys(body.face_lineage).length > 0 || Object.keys(body.edge_lineage).length > 0
     const res = applyFn(oc, scope, oldShape, topoEdges, wantLineage, body.face_lineage, body.edge_lineage)
 
@@ -322,9 +364,10 @@ function applyEdgeFeature(
       body_id: applied[0],
       body_ids: applied,
       exception: `${featureKind}: ${unresolved.length} edge(s) could not be resolved`,
+      ...(handle !== null && { handle }),
     }
   }
-  return { status: 'ok', body_id: applied[0], body_ids: applied }
+  return { status: 'ok', body_id: applied[0], body_ids: applied, ...(handle !== null && { handle }) }
 }
 
 /** Solve a fillet feature (mirrors `_solve_fillet`). */
@@ -345,6 +388,11 @@ export function solveFillet(
     withLineage
       ? applyFilletWithLineage(o, s, shape, radius, edges, fl, el)
       : applyFilletWithDiff(o, s, shape, radius, edges),
+  // unit_scale=1 here is a 1:1 UX approximation: dragging along the
+  // face-bisector normal is not the exact radius/bisector-travel relation
+  // (r = d_bisector * sin(theta/2) for the included edge angle), but it is
+  // close enough for a freehand tweak and re-anchors on every rebuild.
+  (anchor, direction) => linearHandle('radius', anchor, direction, radius),
   )
 }
 
@@ -369,5 +417,8 @@ export function solveChamfer(
     withLineage
       ? applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, fl, el)
       : applyChamferWithDiff(o, s, shape, distance, edges, chamferMode, angle),
+  // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
+  // face-bisector normal, not the exact chamfer geometry relation.
+  (anchor, direction) => linearHandle('distance', anchor, direction, distance),
   )
 }

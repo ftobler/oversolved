@@ -92,6 +92,45 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     }
   })
 
+  it('fillet emits a linear radius handle on the picked edge', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBody(scope, table)
+      const result = solveFillet(
+        occ,
+        scope,
+        table,
+        { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2 } },
+        new Repository(),
+        bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      const h = result.handle as Record<string, unknown>
+      expect(h).toBeDefined()
+      expect(h.kind).toBe('linear')
+      expect(h.field).toBe('radius')
+      expect(h.value).toBe(2)
+      // Anchor is the midpoint of a 10-box edge (one coordinate at 5, the
+      // others on the box hull), pulling outward along the adjacent-face
+      // normal bisector (unit length, pointing away from the box interior).
+      const anchor = h.anchor as number[]
+      expect(anchor.filter((c) => Math.abs(c - 5) < 1e-6).length).toBeGreaterThanOrEqual(1)
+      for (const c of anchor) {
+        expect(c).toBeGreaterThanOrEqual(-1e-6)
+        expect(c).toBeLessThanOrEqual(10 + 1e-6)
+      }
+      const dir = h.direction as number[]
+      expect(Math.hypot(dir[0], dir[1], dir[2])).toBeCloseTo(1, 6)
+      // Outward: stepping from the anchor along the direction leaves the box.
+      const stepped = anchor.map((c, i) => c + dir[i])
+      const outside = stepped.some((c) => c < -1e-6 || c > 10 + 1e-6)
+      expect(outside).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('chamfer bevels a box edge', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })

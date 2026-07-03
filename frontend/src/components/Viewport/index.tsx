@@ -13,6 +13,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import OriginMarker from '@/components/Viewport/OriginMarker'
+import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
@@ -24,6 +25,7 @@ import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
 import {
   IdPickingDriver,
   DIMENSION_LABEL_LAYER_NAME,
+  FEATURE_HANDLE_LAYER_NAME,
   FACE_LAYER_NAME,
   EDGE_LAYER_NAME,
   VERTEX_LAYER_NAME,
@@ -262,7 +264,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin layers.
   const consumedLayers = useMemo(() => (ENABLE_ID_BUFFER_PICKING
     ? new Set([
-      DIMENSION_LABEL_LAYER_NAME,
+      DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
       FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
       PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
       SKETCH_SURFACE_LAYER_NAME,
@@ -678,6 +680,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         ) : (
           bodyItems.map(renderBodyItem)
         )}
+
+        {/* Draggable editing arrow for the feature open in the editor panel. */}
+        <FeatureHandles />
       </Canvas>
 
       {/* 268: rubber-band drag-box selection overlay */}
