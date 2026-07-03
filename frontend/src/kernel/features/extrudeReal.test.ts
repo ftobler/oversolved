@@ -1059,7 +1059,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   function sk1SurfaceQueries(): string[] {
     const r = run({ features: [peanutWithHoleSketch] })
-    const state = r._build_state as { checkpoints: Record<string, { repo_snapshot: { elements: Record<string, unknown> } }> }
+    const state = r._build_state as unknown as { checkpoints: Record<string, { repo_snapshot: { elements: Record<string, unknown> } }> }
     const cp = Object.values(state.checkpoints)[0]
     const topo = cp?.repo_snapshot?.elements?.['_topo_sk1'] as { surfaces?: Array<{ query?: string }> } | undefined
     return (topo?.surfaces ?? []).map((s) => s.query ?? '')
