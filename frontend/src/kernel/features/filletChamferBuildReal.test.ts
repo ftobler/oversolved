@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { SharedHarness } from '../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from './sketch'
+import { ref, makeAncestryQuery, parseAncestry } from '../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -259,21 +260,159 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(String(h.res(r, 'fil').exception ?? '')).toContain('no edges resolved')
   })
 
-  it('fillet fails on stale gedge hash', () => {
+  it('fillet resolves stale gedge hash via stable ancestry', () => {
     /**
-     * A hash-only query with a bogus @gedge_ hash must not silently fillet the wrong edge via
-     * body-scoped fallback.
+     * A query whose @gedge_ hash matches nothing must resolve through its
+     * geometry-independent tokens (feature, body, lineage, classifiers) to the
+     * same edge the fresh query names -- not hard-fail, not pick a sibling.
      */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
     const q = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
     expect(q.startsWith('?')).toBe(true)
 
-    // Build a stale query with a bogus gedge hash.
+    // Same-length bogus hash keeps the wire format's hex length prefix valid.
     const staleQ = q.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
-    spec.features.push({ id: 'fil', kind: 'fillet', edges: [staleQ], radius: 0.5 })
+    const anchorOf = (edgeQ: string): number[] => {
+      const s = fullRectExtrudeSpec(10, 10, 5)
+      s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 0.5 })
+      const r = h.run(s)
+      expect(h.res(r, 'fil').status).toBe('ok')
+      return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
+    }
+    const stale = anchorOf(staleQ)
+    const fresh = anchorOf(q)
+    stale.forEach((v, i) => expect(v).toBeCloseTo(fresh[i], 9))
+  })
+
+  it('fillet with stale hash and ambiguous ancestry is hard exception', () => {
+    /**
+     * Feature+body tokens alone match every edge of the box; with a dead hash
+     * and no classifier to narrow, resolution must fail loud instead of
+     * silently filleting an arbitrary edge.
+     */
+    const spec = fullRectExtrudeSpec(10, 10, 5)
+    const q = makeAncestryQuery(
+      [ref('gedge_deadbeef00000001'), ref('ex1'), ref('body_ex1')],
+      'straightedge',
+    )
+    spec.features.push({ id: 'fil', kind: 'fillet', edges: [q], radius: 0.5 })
     const r = h.run(spec)
     expect(h.res(r, 'fil').status).toBe('exception')
+    expect(String(h.res(r, 'fil').exception ?? '')).toContain('no edges resolved')
+  })
+
+  it('fillet survives extrude distance change (query stability)', () => {
+    /**
+     * The bugreport scenario: a fillet picked at one extrude distance must
+     * still resolve after the distance changes, even though every moved edge
+     * gets a new geometry hash. The stale query must land on the edge whose
+     * stable ancestry matches, verified via the editing-handle anchor.
+     */
+    const eq5 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
+    const eq8 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 8)), 'body_ex1').edge_queries as string[]) ?? []
+    const gedgeOf = (q: string): string | undefined =>
+      parseAncestry(q)[0].find((i) => i.startsWith('@gedge_'))
+    const sigOf = (q: string): string => {
+      const [ids, tr] = parseAncestry(q)
+      return makeAncestryQuery(ids.filter((i) => !i.startsWith('@gedge_')), tr)
+    }
+    // A d=5 query for an edge that moved: its hash exists in no d=8 edge, but
+    // exactly one d=8 query carries the same stable-token signature.
+    const freshHashes = new Set(eq8.map(gedgeOf))
+    const pair = eq5
+      .filter((q) => gedgeOf(q) !== undefined && !freshHashes.has(gedgeOf(q)))
+      .map((q) => ({ stale: q, fresh: eq8.find((f) => sigOf(f) === sigOf(q)) }))
+      .find((p) => p.fresh !== undefined)
+    expect(pair).toBeDefined()
+
+    const anchorOf = (edgeQ: string): number[] => {
+      const s = fullRectExtrudeSpec(10, 10, 8)
+      s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 1 })
+      const r = h.run(s)
+      expect(h.res(r, 'fil').status).toBe('ok')
+      return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
+    }
+    const stale = anchorOf(pair!.stale)
+    const fresh = anchorOf(pair!.fresh!)
+    stale.forEach((v, i) => expect(v).toBeCloseTo(fresh[i], 9))
+  })
+
+  it('stale hash on modifier-created edge never resolves silently wrong', () => {
+    /**
+     * Edges created by a previous fillet register under the modifier id while
+     * pick-time queries carry the extrude id. A stale hash on such an edge
+     * must either land on the same edge (stable ancestry + classifier
+     * validation) or fail loud -- never fillet a lineage-sharing sibling.
+     */
+    const base = (): { features: Array<Record<string, unknown>> } => {
+      const s = fullRectExtrudeSpec(10, 10, 5)
+      s.features.push({ id: 'fillet1', kind: 'fillet', edges: ['?body_ex1:edge:0'], radius: 1 })
+      return s
+    }
+    const r0 = h.run(base())
+    expect(h.res(r0, 'fillet1').status).toBe('ok')
+    const eqPlain = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
+    const eqFilleted = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const gedgeOf = (q: string): string | undefined =>
+      parseAncestry(q)[0].find((i) => i.startsWith('@gedge_'))
+    const preHashes = new Set(eqPlain.map(gedgeOf))
+    const newEdgeQ = eqFilleted.find((q) => gedgeOf(q) !== undefined && !preHashes.has(gedgeOf(q)))
+    expect(newEdgeQ).toBeDefined()
+
+    const staleQ = newEdgeQ!.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
+    const run2 = (edgeQ: string): ReturnType<typeof h.run> => {
+      const s = base()
+      s.features.push({ id: 'fillet2', kind: 'fillet', edges: [edgeQ], radius: 0.3 })
+      return h.run(s)
+    }
+    const rStale = run2(staleQ)
+    const status = h.res(rStale, 'fillet2').status
+    if (status === 'ok') {
+      const rFresh = run2(newEdgeQ!)
+      expect(h.res(rFresh, 'fillet2').status).toBe('ok')
+      const a = (h.res(rStale, 'fillet2').handle as { anchor: number[] }).anchor
+      const b = (h.res(rFresh, 'fillet2').handle as { anchor: number[] }).anchor
+      a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 9))
+    } else {
+      expect(status).toBe('exception')
+    }
+  })
+
+  it('classifier narrows ancestral sibling edges on stale hash', () => {
+    /**
+     * Two edges can share every lineage token (e.g. the two cap edges swept
+     * from one sketch line, or the bugreport's two seam edges of overlapping
+     * circles) and differ only in @cls_* spatial role. With a stale hash the
+     * classifier tier must pick the right sibling.
+     */
+    const r0 = h.run(fullRectExtrudeSpec(10, 10, 5))
+    const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const sigNoCls = (q: string): string => {
+      const [ids, tr] = parseAncestry(q)
+      return makeAncestryQuery(
+        ids.filter((i) => !i.startsWith('@gedge_') && !i.startsWith('@cls_')),
+        tr,
+      )
+    }
+    const target = eq.find(
+      (q) =>
+        parseAncestry(q)[0].some((i) => i.startsWith('@cls_')) &&
+        eq.some((o) => o !== q && sigNoCls(o) === sigNoCls(q)),
+    )
+    expect(target).toBeDefined()
+
+    const staleQ = target!.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
+    const anchorOf = (edgeQ: string): number[] => {
+      const s = fullRectExtrudeSpec(10, 10, 5)
+      s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 0.5 })
+      const r = h.run(s)
+      expect(h.res(r, 'fil').status).toBe('ok')
+      return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
+    }
+    const stale = anchorOf(staleQ)
+    const fresh = anchorOf(target!)
+    stale.forEach((v, i) => expect(v).toBeCloseTo(fresh[i], 9))
   })
 
   it('fillet populates brepDiff on the modified body', () => {

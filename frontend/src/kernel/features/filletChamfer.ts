@@ -2,19 +2,20 @@
 // @body_<id> token is only a hint -- geometry wins), resolves the queries to OCC edges via a
 // per-body edge index, applies the modifier with lineage, and updates the body store in place.
 //
-// The OCC modifier producer lives in occ/edgeModifier.ts. Edge resolution mirrors the Python
-// three-tier scheme: exact ancestry-query match -> geometry-hash match (ignoring a stale @body
-// token) -> face query (all edges of a face).
+// The OCC modifier producer lives in occ/edgeModifier.ts. Edge resolution extends the Python
+// three-tier scheme with a stable-ancestry tier: exact ancestry-query match -> geometry-hash
+// match (ignoring a stale @body token) -> stable ancestry + classifier match (survives a stale
+// geom hash after an upstream dimension edit) -> face query (all edges of a face).
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
-import type { Repository } from '../query'
-import { ref, makeAncestryQuery, parseAncestry, bodyIdOf } from '../query'
-import { edgeGeometryHash, faceGeometryHash, isGeomKeyedLineage } from '../geomHash'
+import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId } from '../query'
+import { edgeGeometryHash, faceGeometryHash, geometryClassifiers, isGeomKeyedLineage } from '../geomHash'
 import { edgeLineageTokens } from '../faceQuery'
 import { resolveBody } from './shared'
+import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceCentroid, faceNormal, edgeToGeom, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
@@ -37,6 +38,17 @@ interface EdgeFeatureResult {
 interface EdgeIndex {
   queryToEdge: Map<string, OccShape>
   hashToEdge: Map<string, OccShape>
+  // Local per-body repository holding each edge under its geometry-independent
+  // ancestry tokens, so a stored query whose gedge_ hash went stale (an upstream
+  // dimension edit moved the edge) still resolves via lineage + classifiers.
+  ancestryRepo: Repository
+}
+
+/** Payload registered per edge in the ancestry repo; carries the OCC shape back out. */
+interface AncestryEdgePayload {
+  type: string
+  classifiers: string[]
+  shape: OccShape
 }
 
 function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
@@ -81,7 +93,8 @@ function brepDiffNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: BrepDif
 function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, body: Body): EdgeIndex {
   const queryToEdge = new Map<string, OccShape>()
   const hashToEdge = new Map<string, OccShape>()
-  if (body.shape === null) return { queryToEdge, hashToEdge }
+  const ancestryRepo = new Repository()
+  if (body.shape === null) return { queryToEdge, hashToEdge, ancestryRepo }
   const shape = table.get<OccShape>(body.shape)
 
   const uniq: OccShape[] = []
@@ -93,6 +106,9 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   const hasModifier =
     body.brep_diff !== null && body.modified_by.length > 0 && body.modified_by[body.modified_by.length - 1] !== body.created_by
   const newEdgeHashes = hasModifier ? brepDiffNewEdgeHashes(oc, scope, body.brep_diff) : new Set<string>()
+  // Same AABB frame tessellation uses when it minted the picked query, so the
+  // classifiers recomputed here line up token-for-token with the stored ones.
+  const { center, half } = bodyFrame(oc, scope, shape)
 
   uniq.forEach((te, idx) => {
     const { ed } = edgeToGeom(oc, scope, te)
@@ -109,11 +125,25 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
         ids.push(...body.profile_queries)
       }
       queryToEdge.set(makeAncestryQuery(ids, edgeType), te)
+
+      // Stable-ancestry registration: the same tokens minus the volatile geom
+      // hash. The hash goes in as the repo's tie-break key and the spatial
+      // classifiers ride the payload, mirroring how the main Repository tiers
+      // them (ancestry first, classifier narrowing, hash last).
+      const pt = edgeRepresentativePoint(ed)
+      const classifiers = pt ? geometryClassifiers(pt, center, half) : []
+      const stableIds = ids.slice(1).filter((t) => !isClassifierId(t))
+      // Pick-time queries are always minted with the body's creator, but
+      // modifier-created edges index under the modifier id; carry both so the
+      // stored @<creator> token still lands in the superset match.
+      if (edgeCreatedBy !== body.created_by) stableIds.push(ref(body.created_by))
+      const payload: AncestryEdgePayload = { type: edgeType, classifiers, shape: te }
+      ancestryRepo.registerAncestor(stableIds, payload, geomHash)
     }
     queryToEdge.set(`?${body.id}:edge:${idx}`, te)
   })
 
-  return { queryToEdge, hashToEdge }
+  return { queryToEdge, hashToEdge, ancestryRepo }
 }
 
 /** Resolve a face ancestry query to all OCC edges of the matching face. */
@@ -169,12 +199,43 @@ function resolveEdgesWithIndex(
         // ignore geom-hash resolution failure
       }
     }
+    if (edge === undefined && q.startsWith('?') && !q.includes('gface_')) {
+      // Face queries never name a single edge; leave them to the gface tier.
+      edge = resolveByStableAncestry(index.ancestryRepo, q)
+    }
     if (edge === undefined && q.includes('gface_')) {
       for (const fe of resolveFaceToEdges(oc, scope, table, q, body)) addUnique(fe)
     }
     if (edge !== undefined) addUnique(edge)
   }
   return result
+}
+
+/**
+ * Stable-ancestry tier: resolve a stored query whose gedge_ hash no longer
+ * matches any current edge (the edge moved when an upstream dimension changed)
+ * by its geometry-independent tokens -- creating feature, body, sketch-entity
+ * lineage -- with classifiers narrowing ancestral siblings (e.g. the two seam
+ * edges of overlapping extruded circles, distinguished only by @cls_yp/@cls_yn).
+ * An ambiguous match stays unresolved: fail safe over filleting the wrong edge.
+ */
+function resolveByStableAncestry(repo: Repository, q: string): OccShape | undefined {
+  try {
+    const resolved = repo.query(q)
+    if (resolved !== null && typeof resolved === 'object' && 'shape' in resolved) {
+      const payload = resolved as AncestryEdgePayload
+      // The repo's classifier tier only runs on 2+ candidates, so a lone
+      // lineage-sharing sibling can come back when the true edge dropped out
+      // of the candidate set. Validate the stored spatial role before
+      // actuating: an unmatched classifier means unresolved, not a guess.
+      const [ids] = parseAncestry(q)
+      const wanted = ids.filter(isClassifierId).map((i) => i.slice(1))
+      if (wanted.every((c) => payload.classifiers.includes(c))) return payload.shape
+    }
+  } catch {
+    // AmbiguousQueryError or a malformed ancestry string: leave unresolved
+  }
+  return undefined
 }
 
 /** Resolve edge queries to OCC edges on a body (mirrors `_resolve_fillet_edges`). */
