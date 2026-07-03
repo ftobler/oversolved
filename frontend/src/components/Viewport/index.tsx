@@ -311,7 +311,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       img.src = dataUrl
     })
 
-    const MAX_SIZE = 512
+    const MAX_SIZE = 1024
     const finalScale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1)
     const newWidth = Math.floor(img.width * finalScale)
     const newHeight = Math.floor(img.height * finalScale)
