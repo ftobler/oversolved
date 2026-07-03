@@ -27,10 +27,13 @@ describe('featureHandle ID layer', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     const key = featureHandleKey('ex1', 'distance')
     expect(key).toBe('fhandle:ex1:distance')
+    // One segment spanning the whole arrow (tail to cone tip), one id: every
+    // pixel of the arrow resolves to the same grab key.
     p.featureHandleLayer.registerBody({
       bodyKey: key,
-      vertices: [[5, 5, 5]],
-      vertexQueries: [key],
+      segmentPositions: new Float32Array([0, 0, 0, 5, 5, 5]),
+      segmentToEdge: [0],
+      edgeQueries: [key],
     })
     expect(p.registry.lookupKey(FEATURE_HANDLE_LAYER_NAME, key)).toBeDefined()
     expect(p.registry.size()).toBe(1)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
@@ -9,21 +9,31 @@ import {
 } from '@/stores/sketchEditorStore'
 import { useFeatureHandleIdRegistration, featureHandleKey } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
-import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease } from '@/components/Geometry3D/featureHandleMath'
+import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx } from '@/components/Geometry3D/featureHandleMath'
 import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import { evalExpr } from '@/kernel/evalExpr'
 import type { FeatureHandleData, Mutation, PartFeature, SketchData } from '@/types/cad'
 
-// Arrow proportions in screen pixels; the group is rescaled to p2w(camera)
-// every frame so the handle keeps a constant on-screen size at any zoom.
-const SHAFT_START = -10  // tail reaches slightly behind the grab point
+// Arrow-head proportions in screen pixels; that part of the arrow is rescaled
+// to p2w(camera) every frame so it keeps a constant on-screen size at any
+// zoom. The tail behind the grab point is world-sized instead: it spans the
+// whole feature (extrude origin to end face), so only its radius is pixels.
+const SHAFT_START = -10  // tailless (angular) arrows reach slightly behind the grab point
 const SHAFT_END = 26
 const SHAFT_RADIUS = 1.6
 const CONE_LEN = 16
 const CONE_RADIUS = 5.5
-const LABEL_OFFSET = SHAFT_END + CONE_LEN + 14
+const TIP = SHAFT_END + CONE_LEN
+
+// Value-label metrics (px). The label is offset from the arrow tip in screen
+// space (see labelOffsetPx), so it needs its own approximate half-extents:
+// monospace 11px is ~6.6px per character plus the 5px horizontal padding.
+const LABEL_FONT_PX = 11
+const LABEL_CHAR_W = 6.6
+const LABEL_HALF_H = 9
+const LABEL_GAP = 8
 
 // Stored value must be a plain number for the arrow to be draggable; an
 // expression (e.g. "width*2") would be silently destroyed by a drag commit,
@@ -94,7 +104,7 @@ function HandleArrow({ featureId, feature, handle }: {
   feature: PartFeature
   handle: FeatureHandleData
 }) {
-  const { camera, gl } = useThree()
+  const { camera, gl, size } = useThree()
   const selectionKey = featureHandleKey(featureId, handle.field)
 
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === selectionKey)
@@ -121,10 +131,26 @@ function HandleArrow({ featureId, feature, handle }: {
     [dx, dy, dz],
   )
 
+  // World-sized tail behind the grab point (feature origin to grab point);
+  // the drag preview stretches it live so the tail always ends at the origin.
+  const tailLen = handleTailLength(handle.kind, handle.value, handle.unit_scale)
+  const tailWorldLen = tailLen + travel
+
+  // Pixel->world factor, quantized: re-rendering (and re-registering the pick
+  // segment) on every zoom tick would rebuild the ID buffer continuously, so
+  // only steps of ~25% propagate; the resolver's snap window absorbs the
+  // residual error at the screen-sized arrow tip.
+  const [pxToWorld, setPxToWorld] = useState(() => p2w(camera))
+
+  // The pick segment spans the visible arrow: tail start (world-sized part)
+  // through the screen-sized head to the cone tip.
+  const headStartPx = tailLen > 0 ? 0 : SHAFT_START
+  const tipWorld = TIP * pxToWorld
   useFeatureHandleIdRegistration({
     featureId,
     field: handle.field,
-    position: [ax, ay, az],
+    start: [ax - dx * tailLen, ay - dy * tailLen, az - dz * tailLen],
+    end: [ax + dx * tipWorld, ay + dy * tipWorld, az + dz * tipWorld],
     enabled: !activeDrag,
   })
 
@@ -273,20 +299,50 @@ function HandleArrow({ featureId, feature, handle }: {
 
   // ─── visuals ───
   const groupRef = useRef<THREE.Group>(null)
+  const tailRef = useRef<THREE.Mesh>(null)
   useFrame(() => {
-    groupRef.current?.scale.setScalar(p2w(camera))
+    const f = p2w(camera)
+    groupRef.current?.scale.setScalar(f)
+    // The tail's radius is screen-constant but its length is world-sized, so
+    // it cannot live in the uniformly rescaled head group.
+    tailRef.current?.scale.set(SHAFT_RADIUS * f, tailWorldLen, SHAFT_RADIUS * f)
+    if (f > pxToWorld * 1.25 || f < pxToWorld * 0.8) setPxToWorld(f)
   })
 
   const color = activeDrag || hovered ? COLOR_HOVER : COLOR_SELECTED
   const opacity = draggable ? 1 : 0.45
   const displayValue = roundHandleValue(activeDrag ? activeDrag.currentValue : handle.value)
   const showLabel = !!activeDrag || hovered
+  const labelText = `${handle.field} ${displayValue.toFixed(2)}`
+
+  // Label placement: offset from the cone tip in SCREEN space, along the
+  // arrow's projected direction. An offset along the 3D axis foreshortens to
+  // zero when the arrow points at the camera, parking the label on the cone;
+  // the screen-space offset (with an end-on fallback) never does.
+  const screenDir = ((): [number, number] => {
+    const a = new THREE.Vector3(ax, ay, az).project(camera)
+    const b = new THREE.Vector3(ax + dx, ay + dy, az + dz).project(camera)
+    return [(b.x - a.x) * size.width / 2, -((b.y - a.y) * size.height / 2)]
+  })()
+  const labelHalfW = labelText.length * LABEL_CHAR_W / 2 + 5
+  const [labelDx, labelDy] = labelOffsetPx(screenDir, labelHalfW, LABEL_HALF_H, LABEL_GAP)
 
   return (
     <group position={position} quaternion={quaternion}>
+      {tailWorldLen > 1e-9 && (
+        <mesh
+          ref={tailRef}
+          position={[0, -tailWorldLen / 2, 0]}
+          scale={[SHAFT_RADIUS * pxToWorld, tailWorldLen, SHAFT_RADIUS * pxToWorld]}
+          renderOrder={1000}
+        >
+          <cylinderGeometry args={[1, 1, 1, 12]} />
+          <meshBasicMaterial color={color} transparent opacity={opacity} depthTest={false} depthWrite={false} />
+        </mesh>
+      )}
       <group ref={groupRef}>
-        <mesh position={[0, (SHAFT_START + SHAFT_END) / 2, 0]} renderOrder={1000}>
-          <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_END - SHAFT_START, 12]} />
+        <mesh position={[0, (headStartPx + SHAFT_END) / 2, 0]} renderOrder={1000}>
+          <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_END - headStartPx, 12]} />
           <meshBasicMaterial color={color} transparent opacity={opacity} depthTest={false} depthWrite={false} />
         </mesh>
         <mesh position={[0, SHAFT_END + CONE_LEN / 2, 0]} renderOrder={1000}>
@@ -294,13 +350,14 @@ function HandleArrow({ featureId, feature, handle }: {
           <meshBasicMaterial color={color} transparent opacity={opacity} depthTest={false} depthWrite={false} />
         </mesh>
         {showLabel && (
-          <Html position={[0, LABEL_OFFSET, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
+          <Html position={[0, TIP, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
             <div style={{
-              color, fontSize: 14, fontFamily: 'monospace', background: '#111',
+              color, fontSize: LABEL_FONT_PX, fontFamily: 'monospace', background: '#111',
               padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap',
+              transform: `translate(${labelDx}px, ${labelDy}px)`,
               userSelect: 'none', WebkitUserSelect: 'none',
             }}>
-              {`${handle.field} ${displayValue.toFixed(2)}`}
+              {labelText}
             </div>
           </Html>
         )}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease } from '../featureHandleMath'
+import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx } from '../featureHandleMath'
 
 describe('closestAxisParam', () => {
   it('hits the exact axis point when the ray crosses the axis', () => {
@@ -100,5 +100,50 @@ describe('roundHandleValue', () => {
     expect(roundHandleValue(3.14159)).toBe(3.14)
     expect(roundHandleValue(2.005)).toBeCloseTo(2.01, 10)
     expect(roundHandleValue(-1.239)).toBe(-1.24)
+  })
+})
+
+describe('handleTailLength', () => {
+  it('spans the full feature for a linear handle (anchor to feature origin)', () => {
+    expect(handleTailLength('linear', 25, 1)).toBe(25)
+  })
+
+  it('applies the unit scale (symmetric extrude: grab face at distance/2)', () => {
+    expect(handleTailLength('linear', 20, 0.5)).toBe(10)
+  })
+
+  it('never goes negative', () => {
+    expect(handleTailLength('linear', -5, 1)).toBe(0)
+  })
+
+  it('gives angular handles no tail (a straight shaft would misrepresent the arc)', () => {
+    expect(handleTailLength('angular', 180, 2)).toBe(0)
+  })
+})
+
+describe('labelOffsetPx', () => {
+  it('offsets along the projected arrow direction with the box support term', () => {
+    // Arrow pointing screen-right: label center moves right by gap + halfW.
+    expect(labelOffsetPx([1, 0], 40, 9, 8)).toEqual([48, 0])
+    // Arrow pointing screen-up (y negative): label center moves up by gap + halfH.
+    const [ox, oy] = labelOffsetPx([0, -2], 40, 9, 8)
+    expect(ox).toBeCloseTo(0, 9)
+    expect(oy).toBeCloseTo(-17, 9)
+  })
+
+  it('normalizes the direction (magnitude does not change the offset)', () => {
+    expect(labelOffsetPx([5, 0], 40, 9, 8)).toEqual(labelOffsetPx([1, 0], 40, 9, 8))
+  })
+
+  it('mixes width and height support for a diagonal arrow', () => {
+    const s = Math.SQRT1_2
+    const [ox, oy] = labelOffsetPx([1, 1], 40, 9, 8)
+    const support = 40 * s + 9 * s
+    expect(ox).toBeCloseTo(s * (8 + support), 9)
+    expect(oy).toBeCloseTo(s * (8 + support), 9)
+  })
+
+  it('falls back to above-the-tip when the arrow is seen end-on', () => {
+    expect(labelOffsetPx([0, 0], 40, 9, 8)).toEqual([0, -17])
   })
 })

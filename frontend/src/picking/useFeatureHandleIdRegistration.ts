@@ -7,20 +7,25 @@ export function featureHandleKey(featureId: string, field: string): string {
 }
 
 /**
- * Register a feature editing handle's grab point into the featureHandle ID
- * layer. `position` is world space (handles are not sketch-plane objects).
- * The layer is priority=80 / no-depth, so the grab pixel wins over every
- * other layer -- matching the always-on-top visible arrow.
+ * Register a feature editing handle's arrow into the featureHandle ID layer
+ * as a single line segment from the arrow tail to its tip, both world space
+ * (handles are not sketch-plane objects). The layer is priority=80 /
+ * no-depth, so the arrow's pixels win over every other layer -- matching the
+ * always-on-top visible arrow. The resolver's snap window then gives the
+ * whole arrow the same grab slop a vertex point gets, instead of only one
+ * point on a much longer visual.
  */
 export function useFeatureHandleIdRegistration(params: {
   featureId: string
   field: string
-  position: [number, number, number]
+  start: [number, number, number]
+  end: [number, number, number]
   enabled?: boolean
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, field, enabled = true } = params
-  const [px, py, pz] = params.position
+  const [sx, sy, sz] = params.start
+  const [ex, ey, ez] = params.end
 
   const entityKey = featureHandleKey(featureId, field)
 
@@ -31,12 +36,13 @@ export function useFeatureHandleIdRegistration(params: {
     (p) => {
       p.featureHandleLayer.registerBody({
         bodyKey: entityKey,
-        vertices: [[px, py, pz]],
-        vertexQueries: [entityKey],
+        segmentPositions: new Float32Array([sx, sy, sz, ex, ey, ez]),
+        segmentToEdge: [0],
+        edgeQueries: [entityKey],
       })
       return true
     },
     (p) => p.featureHandleLayer.unregisterBody(entityKey),
-    [px, py, pz],
+    [sx, sy, sz, ex, ey, ez],
   )
 }

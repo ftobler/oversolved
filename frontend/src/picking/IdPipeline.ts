@@ -71,7 +71,7 @@ export class IdPipeline {
   readonly sketchVertexLayer: VertexIdLayer
   readonly originLayer: VertexIdLayer
   readonly dimensionLabelLayer: VertexIdLayer
-  readonly featureHandleLayer: VertexIdLayer
+  readonly featureHandleLayer: EdgeIdLayer
   private layers: IdLayer[]
   private windowSize: number
   private renderCount = 0
@@ -115,9 +115,12 @@ export class IdPipeline {
     })
     // Feature editing handles (draggable extrude/fillet/revolve arrows) sit on
     // top of everything: while a handle is shown the user is mid-edit and the
-    // grab gesture must never lose to a body or label underneath.
-    this.featureHandleLayer = new VertexIdLayer(this.registry, {
+    // grab gesture must never lose to a body or label underneath. An edge
+    // layer, not a vertex layer: the whole arrow line is the grab target, so
+    // the pick region matches the visible arrow instead of one snap point.
+    this.featureHandleLayer = new EdgeIdLayer(this.registry, {
       name: FEATURE_HANDLE_LAYER_NAME, priority: 80, zPolicy: 'no-depth',
+      depthTest: false, depthWrite: false,
     })
 
     this.layers = []

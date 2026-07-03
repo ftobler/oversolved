@@ -89,3 +89,42 @@ export function shouldCommitHandleRelease(
   const rounded = roundHandleValue(currentValue)
   return rounded !== roundHandleValue(startValue) ? rounded : null
 }
+
+/**
+ * World length of the arrow's tail behind the grab point, so the arrow spans
+ * the whole feature: a linear handle's anchor sits `value * unitScale` world
+ * units from the feature origin (extrude: profile plane, symmetric extrude:
+ * mid-plane via unitScale 0.5, fillet/chamfer: picked edge), so that distance
+ * is exactly the tail. Angular handles get no tail: a straight shaft would
+ * misrepresent the sweep arc, so they keep the short fixed-size arrow.
+ */
+export function handleTailLength(
+  kind: 'linear' | 'angular',
+  value: number,
+  unitScale: number,
+): number {
+  if (kind !== 'linear') return 0
+  return Math.max(0, value * unitScale)
+}
+
+/**
+ * Screen-px offset of the value label's CENTER from the arrow tip, placing
+ * the label just past the tip along the arrow's projected screen direction.
+ * The support term (halfW*|sx| + halfH*|sy|) pushes the label's own box fully
+ * clear of the tip whichever way the arrow points; when the arrow is seen
+ * end-on (projected direction ~ zero) the label sits above the tip instead
+ * of on top of the cone. Screen y grows downward.
+ */
+export function labelOffsetPx(
+  screenDir: readonly [number, number],
+  halfW: number,
+  halfH: number,
+  gap: number,
+): [number, number] {
+  const len = Math.hypot(screenDir[0], screenDir[1])
+  if (len < 1e-6) return [0, -(gap + halfH)]
+  const sx = screenDir[0] / len
+  const sy = screenDir[1] / len
+  const support = halfW * Math.abs(sx) + halfH * Math.abs(sy)
+  return [sx * (gap + support), sy * (gap + support)]
+}
