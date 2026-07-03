@@ -246,20 +246,65 @@
   background: #1e1e1e;
   border: none;
   border-radius: 16px;
-  padding: 16px 20px;
-  min-width: 280px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   color: #ddd;
+}
+
+.dialog-component-header {
+  padding-left: 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog-component-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.dialog-component-body {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.dialog-component-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #f3f4f6;
-  text-align: center;
+.dialog-component-close-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 12px;
+}
+
+.dialog-component-close-btn:hover {
+  background: #333;
+  color: #ccc;
+}
+
+.dialog-component-close-btn .material-icons {
+  font-size: 20px;
 }
 
 .dialog-component-buttons {
@@ -267,7 +312,9 @@
   flex-direction: row;
   gap: 8px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid #333;
 }
 
 .dialog-component input {

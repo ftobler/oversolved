@@ -6,8 +6,9 @@
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding-top: 20vh;
   z-index: 9999;
 }
 
@@ -15,28 +16,77 @@
   background: #1e1e1e;
   border: none;
   border-radius: 16px;
-  padding: 16px 20px;
-  min-width: 280px;
+  width: 90%;
+  max-width: 420px;
+  max-height: 80vh;
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   color: #ddd;
 }
 
+.export-dialog-header {
+  padding-left: 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .export-dialog-title {
+  margin: 0;
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 16px;
-  color: #aaa;
+  color: #f3f4f6;
+}
+
+.export-dialog-body {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-dialog-close-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 12px;
+}
+
+.export-dialog-close-btn:hover {
+  background: #333;
+  color: #ccc;
+}
+
+.export-dialog-close-btn .material-icons {
+  font-size: 20px;
 }
 
 .export-dialog-section {
-  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .export-dialog-label {
-  display: block;
   font-size: 12px;
   color: #888;
-  margin-bottom: 6px;
+  margin: 0;
 }
 
 .export-dialog-radio-group {
@@ -75,8 +125,11 @@
 }
 
 .export-dialog-filename {
-  margin-bottom: 16px;
-  padding-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
   border-top: 1px solid #333;
 }
 
@@ -88,30 +141,38 @@
 
 .export-dialog-buttons {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid #333;
 }
 
 .export-dialog-btn {
-  padding: 6px 14px;
+  padding: 8px 14px;
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
-  border: 1px solid #555;
-  background: #2a2a2a;
+  border: none;
+  background: #333;
   color: #ccc;
 }
 
 .export-dialog-btn:hover {
-  border-color: #888;
+  background: #444;
+  color: #fff;
 }
 
 .export-dialog-btn-download {
   background: #2a5a8a;
-  border-color: #4fc3f7;
   color: #fff;
 }
 
 .export-dialog-btn-download:hover {
   background: #3a6a9a;
+}
+
+@media (max-width: 768px) {
+  .export-dialog {
+    width: 95%;
+  }
 }

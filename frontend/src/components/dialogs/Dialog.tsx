@@ -26,8 +26,18 @@ export default function Dialog({
   return (
     <div className="dialog-component-overlay" onClick={onClose}>
       <div className="dialog-component" onClick={e => e.stopPropagation()}>
-        <div className="dialog-component-title">{title}</div>
-        {children}
+        <div className="dialog-component-header">
+          <h2 className="dialog-component-title">{title}</h2>
+          <button
+            className="dialog-component-close-btn"
+            onClick={onClose}
+            title="Close"
+            type="button"
+          >
+            <span className="material-icons">close</span>
+          </button>
+        </div>
+        <div className="dialog-component-body">{children}</div>
         {onConfirm && (
           <div className="dialog-component-buttons">
             <button className="btn btn-primary" onClick={onConfirm} disabled={confirmDisabled}>

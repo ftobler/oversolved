@@ -70,10 +70,20 @@ function PartColorPopoverInner({
   const [roughnessDraft, setRoughnessDraft] = useState(style?.roughness ?? DEFAULT_PART_ROUGHNESS)
   const [transmissionDraft, setTransmissionDraft] = useState(style?.transmission ?? 0)
 
-  // Focus first focusable element on mount
+  // Anchor the popover so the click point sits at its vertical midpoint,
+  // keeping the whole panel inside the viewport.
+  const [adjustedTop, setAdjustedTop] = useState(() => popover.position[1] + 6)
   useEffect(() => {
     requestAnimationFrame(() => {
-      const firstInput = popoverRef.current?.querySelector('input, button') as HTMLElement | null
+      const el = popoverRef.current
+      if (!el) return
+      const h = el.getBoundingClientRect().height
+      const vh = window.innerHeight
+      const half = h / 2
+      const ideal = popover.position[1]
+      const clamped = Math.max(half, Math.min(ideal, vh - half))
+      setAdjustedTop(clamped)
+      const firstInput = el.querySelector('input, button') as HTMLElement | null
       firstInput?.focus()
     })
   }, [])
@@ -83,7 +93,7 @@ function PartColorPopoverInner({
       ref={popoverRef}
       className="part-color-popover"
       tabIndex={-1}
-      style={{ left: popover.position[0], top: popover.position[1] + 6 }}
+      style={{ left: popover.position[0], top: adjustedTop, transform: 'translateY(-50%)' }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault()
@@ -113,77 +123,90 @@ function PartColorPopoverInner({
         }
       }}
     >
-      <div className="part-color-popover-row">
-        <span className="part-color-popover-label">Color</span>
-        <input
-          type="text"
-          className="part-color-input"
-          value={colorDraft}
-          onChange={(e) => {
-            const val = e.target.value.toUpperCase()
-            setColorDraft(val)
-            const normalized = normalizeHexColor(val)
-            if (normalized) {
-              onColorSet(popover.bodyId, normalized)
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              const normalized = normalizeHexColor(colorDraft)
-              if (normalized) {
-                onApply({ type: 'set_part_color', bodyId: popover.bodyId, color: normalized })
-              }
-            }
-          }}
-          placeholder="#RRGGBB"
-        />
+      <div className="part-color-popover-header">
+        <h3 className="part-color-popover-title">Part Color</h3>
+        <button
+          className="part-color-popover-close-btn"
+          onClick={onCancel}
+          title="Close"
+          type="button"
+        >
+          <span className="material-icons">close</span>
+        </button>
       </div>
-      <MaterialSlider
-        label="Opacity"
-        value={transparencyDraft}
-        onChange={(val) => {
-          setTransparencyDraft(val)
-          onTransparencySet(popover.bodyId, val)
-        }}
-        display={(val) => `${((1 - val) * 100).toFixed(0)}%`}
-      />
-      <MaterialSlider
-        label="Metalness"
-        value={metalnessDraft}
-        onChange={(val) => {
-          setMetalnessDraft(val)
-          onMetalnessSet(popover.bodyId, val)
-        }}
-      />
-      <MaterialSlider
-        label="Roughness"
-        value={roughnessDraft}
-        onChange={(val) => {
-          setRoughnessDraft(val)
-          onRoughnessSet(popover.bodyId, val)
-        }}
-      />
-      <MaterialSlider
-        label="Transmission"
-        value={transmissionDraft}
-        onChange={(val) => {
-          setTransmissionDraft(val)
-          onTransmissionSet(popover.bodyId, val)
-        }}
-      />
-      <div className="part-color-swatches">
-        {PART_COLOR_PALETTE.map(c => (
-          <button
-            key={c}
-            className={`part-color-swatch ${normalizeHexColor(colorDraft) === c ? 'selected' : ''}`}
-            style={{ background: c }}
-            title={c}
-            onClick={() => {
-              setColorDraft(c)
-              onColorSet(popover.bodyId, c)
+      <div className="part-color-popover-body">
+        <div className="part-color-popover-row">
+          <span className="part-color-popover-label">Color</span>
+          <input
+            type="text"
+            className="part-color-input"
+            value={colorDraft}
+            onChange={(e) => {
+              const val = e.target.value.toUpperCase()
+              setColorDraft(val)
+              const normalized = normalizeHexColor(val)
+              if (normalized) {
+                onColorSet(popover.bodyId, normalized)
+              }
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const normalized = normalizeHexColor(colorDraft)
+                if (normalized) {
+                  onApply({ type: 'set_part_color', bodyId: popover.bodyId, color: normalized })
+                }
+              }
+            }}
+            placeholder="#RRGGBB"
           />
-        ))}
+        </div>
+        <MaterialSlider
+          label="Opacity"
+          value={transparencyDraft}
+          onChange={(val) => {
+            setTransparencyDraft(val)
+            onTransparencySet(popover.bodyId, val)
+          }}
+          display={(val) => `${((1 - val) * 100).toFixed(0)}%`}
+        />
+        <MaterialSlider
+          label="Metalness"
+          value={metalnessDraft}
+          onChange={(val) => {
+            setMetalnessDraft(val)
+            onMetalnessSet(popover.bodyId, val)
+          }}
+        />
+        <MaterialSlider
+          label="Roughness"
+          value={roughnessDraft}
+          onChange={(val) => {
+            setRoughnessDraft(val)
+            onRoughnessSet(popover.bodyId, val)
+          }}
+        />
+        <MaterialSlider
+          label="Transmission"
+          value={transmissionDraft}
+          onChange={(val) => {
+            setTransmissionDraft(val)
+            onTransmissionSet(popover.bodyId, val)
+          }}
+        />
+        <div className="part-color-swatches">
+          {PART_COLOR_PALETTE.map(c => (
+            <button
+              key={c}
+              className={`part-color-swatch ${normalizeHexColor(colorDraft) === c ? 'selected' : ''}`}
+              style={{ background: c }}
+              title={c}
+              onClick={() => {
+                setColorDraft(c)
+                onColorSet(popover.bodyId, c)
+              }}
+            />
+          ))}
+        </div>
       </div>
       <div className="part-color-popover-actions">
         <button className="part-color-popover-btn" onClick={onCancel}>
