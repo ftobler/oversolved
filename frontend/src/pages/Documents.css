@@ -244,8 +244,8 @@
 
 .dialog-component {
   background: #1e1e1e;
-  border: 1px solid #444;
-  border-radius: 6px;
+  border: none;
+  border-radius: 16px;
   padding: 16px 20px;
   min-width: 280px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
@@ -363,7 +363,7 @@
 
 .doc-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(256px, 1fr));
   gap: 8px;
 }
 
@@ -494,7 +494,7 @@
   }
 
   .doc-tiles {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 8px;
   }
 }
