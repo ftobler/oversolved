@@ -364,7 +364,7 @@ function bodyFrameFromPoints(points: Vec3[]): { center: Vec3; half: Vec3 } {
 
 /** One point standing in for an edge when classifying its position:
  * line midpoint, circle/arc center, spline middle. */
-function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
+export function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
   if (ed.kind === 'line') {
     return [(ed.start[0] + ed.end[0]) / 2, (ed.start[1] + ed.end[1]) / 2, (ed.start[2] + ed.end[2]) / 2]
   }

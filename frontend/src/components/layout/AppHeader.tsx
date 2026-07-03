@@ -26,7 +26,10 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   }
 
   const handleLogout = async () => {
-    if (!confirmDiscardUnsavedChanges()) return
+    if (!confirmDiscardUnsavedChanges(async () => {
+      await logout()
+      navigate('/documents')
+    })) return
     // Logout is non-destructive: it drops the cloud credential and drops you back
     // to the guest session, still inside the app on your local library. So return
     // to the documents home, not the login page.
@@ -39,7 +42,12 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   // when the user backs out of discarding unsaved edits so the Link does not
   // navigate.
   const guardLink = (e: MouseEvent) => {
-    if (!confirmDiscardUnsavedChanges()) e.preventDefault()
+    const href = (e.currentTarget as HTMLAnchorElement).getAttribute('href')
+    if (!confirmDiscardUnsavedChanges(() => {
+      if (href) navigate(href)
+    })) {
+      e.preventDefault()
+    }
   }
 
   return (

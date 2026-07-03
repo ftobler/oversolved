@@ -25,13 +25,14 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set) => ({
 
 // Imperative guard for navigation outside React render (event handlers, the
 // logout flow). When the document is dirty, schedules a confirm dialog via the
-// store so the shared header can render it. Returns false to cancel the current
-// event (e.preventDefault etc.) while the user decides.
-export function confirmDiscardUnsavedChanges(): boolean {
+// store so the shared header can render it. `onProceed` is baked into the stored
+// callback and fired when the user clicks Discard. Returns false to cancel the
+// current event (e.preventDefault etc.) while the user decides.
+export function confirmDiscardUnsavedChanges(onProceed?: () => void): boolean {
   if (!useUnsavedChangesStore.getState().dirty) return true
-  // Schedule the confirm; AppHeader renders it and fires the callback on confirm.
   useUnsavedChangesStore.getState().requestConfirm(() => {
     useUnsavedChangesStore.getState().setDirty(false)
+    onProceed?.()
   })
   return false
 }

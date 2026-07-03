@@ -19,13 +19,15 @@ describe('confirmDiscardUnsavedChanges', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
-  it('executing the pending callback clears dirty and dismisses', () => {
+  it('executing the pending callback clears dirty and fires onProceed', () => {
     useUnsavedChangesStore.getState().setDirty(true)
-    expect(confirmDiscardUnsavedChanges()).toBe(false)
+    let proceeded = false
+    expect(confirmDiscardUnsavedChanges(() => { proceeded = true })).toBe(false)
     const cb = useUnsavedChangesStore.getState().pendingCallback
     expect(cb).not.toBeNull()
     cb!()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(proceeded).toBe(true)
   })
 
   it('dismissConfirm clears the pending callback', () => {
