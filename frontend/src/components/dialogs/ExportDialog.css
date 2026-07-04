@@ -127,16 +127,26 @@
 .export-dialog-filename {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   padding-top: 12px;
   border-top: 1px solid #333;
 }
 
-.export-dialog-filename-text {
-  font-size: 13px;
+.export-dialog-filename-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: #2a2a2a;
+  border: none;
+  border-radius: 4px;
   color: #ccc;
+  font-size: 13px;
+  box-sizing: border-box;
   font-family: monospace;
+}
+
+.export-dialog-filename-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
 }
 
 .export-dialog-buttons {

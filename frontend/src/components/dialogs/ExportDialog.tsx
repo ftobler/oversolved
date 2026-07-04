@@ -6,27 +6,37 @@ export type ExportFormat = 'step' | 'stl'
 export interface ExportDialogProps {
   isOpen: boolean
   defaultName: string
-  onDownload: (format: ExportFormat, tessellation: number) => void
+  onDownload: (format: ExportFormat, tessellation: number, fileName: string) => void
   onCancel: () => void
+}
+
+function swapExtension(name: string, newExt: string): string {
+  const lastDot = name.lastIndexOf('.')
+  const base = lastDot > 0 ? name.slice(0, lastDot) : name
+  return `${base}.${newExt}`
 }
 
 export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('step')
   const [tessellation, setTessellation] = useState(0.5)
+  const [fileName, setFileName] = useState(`${defaultName}.step`)
+
+  const handleFormatChange = (newFormat: ExportFormat) => {
+    setFormat(newFormat)
+    setFileName(prev => swapExtension(prev, newFormat))
+  }
 
   if (!isOpen) return null
 
   const handleDownload = () => {
-    onDownload(format, format === 'stl' ? tessellation : 0)
+    onDownload(format, format === 'stl' ? tessellation : 0, fileName)
   }
-
-  const extension = format === 'step' ? 'step' : 'stl'
 
   return (
     <div className="export-dialog-overlay" onClick={onCancel}>
       <div className="export-dialog" onClick={e => e.stopPropagation()}>
         <div className="export-dialog-header">
-          <h2 className="export-dialog-title">Export</h2>
+          <h2 className="export-dialog-title">Export Model</h2>
           <button
             className="export-dialog-close-btn"
             onClick={onCancel}
@@ -47,7 +57,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
                   name="format"
                   value="step"
                   checked={format === 'step'}
-                  onChange={() => setFormat('step')}
+                  onChange={() => handleFormatChange('step')}
                 />
                 <span>STEP</span>
               </label>
@@ -57,7 +67,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
                   name="format"
                   value="stl"
                   checked={format === 'stl'}
-                  onChange={() => setFormat('stl')}
+                  onChange={() => handleFormatChange('stl')}
                 />
                 <span>STL</span>
               </label>
@@ -84,7 +94,11 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
 
           <div className="export-dialog-filename">
             <span className="export-dialog-label">File</span>
-            <span className="export-dialog-filename-text">{defaultName}.{extension}</span>
+            <input
+              className="export-dialog-filename-input"
+              value={fileName}
+              onChange={e => setFileName(e.target.value)}
+            />
           </div>
         </div>
 

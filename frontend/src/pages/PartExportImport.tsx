@@ -40,7 +40,7 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
       openShare: () => setShareDocOpen(true),
     }))
 
-    const handleExportDownload = async (format: ExportFormat, tessellation: number) => {
+    const handleExportDownload = async (format: ExportFormat, tessellation: number, fileName: string) => {
       if (!doc?.features) return
       // Export runs entirely in the WASM kernel (the same builder that solves the
       // doc), so it works offline / zero-backend with no network round-trip. The
@@ -59,7 +59,7 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
           return
         }
         const mime = format === 'step' ? 'application/step' : 'model/stl'
-        const filename = `${exportDefaultName}.${format}`
+        const filename = fileName || `${exportDefaultName}.${format}`
         const blob = new Blob([bytes as BlobPart], { type: mime })
         downloadBlob(blob, filename)
       } catch (e) {
