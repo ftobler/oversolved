@@ -27,6 +27,11 @@ interface FaceProfile {
   face: OccShape | null
 }
 
+// [step-hang-debug] Temporary instrumentation for the imported-STEP + extrude
+// rebuild hang. Flip to true to trace the face-profile path in the Worker
+// console. Remove once the stall is located and fixed.
+const STEPDEBUG = false
+
 function bodyShape(table: HandleTable, body: Body): OccShape {
   if (body.shape === null) throw new Error(`body ${body.id} has no shape`)
   return table.get<OccShape>(body.shape as OccHandle)
@@ -100,6 +105,7 @@ export function resolveFaceProfile(
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): FaceProfile {
+  if (STEPDEBUG) console.log('[step-hang-debug]       resolveFaceProfile ref=', sketchRef)
   const slash = SLASH_FACE.exec(sketchRef)
   if (slash) {
     const featId = slash[1]
@@ -107,9 +113,16 @@ export function resolveFaceProfile(
     const body = findBodyForFeature(bodyStore, featId)
     if (body === null) throw new Error(`No body found for feature '${featId}'`)
     const shape = bodyShape(table, body)
+    if (STEPDEBUG) console.log('[step-hang-debug]       resolveFaceIndexViaHash START idx=', faceIndex)
+    const _t0 = performance.now()
     const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo)
+    if (STEPDEBUG) console.log('[step-hang-debug]       resolveFaceIndexViaHash done in', (performance.now() - _t0).toFixed(1), 'ms resolved=', resolved)
     if (resolved !== null) faceIndex = resolved
-    return extractLoopsFromOccFace(oc, scope, shape, faceIndex)
+    if (STEPDEBUG) console.log('[step-hang-debug]       extractLoopsFromOccFace START idx=', faceIndex)
+    const _t1 = performance.now()
+    const out = extractLoopsFromOccFace(oc, scope, shape, faceIndex)
+    if (STEPDEBUG) console.log('[step-hang-debug]       extractLoopsFromOccFace done in', (performance.now() - _t1).toFixed(1), 'ms')
+    return out
   }
 
   const faceEntry = globalRepo.query(sketchRef, null, bodyStore) as Dict | null
