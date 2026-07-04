@@ -86,7 +86,7 @@ function PartColorPopoverInner({
       const firstInput = el.querySelector('input, button') as HTMLElement | null
       firstInput?.focus()
     })
-  }, [])
+  }, [popover.position])
 
   return (
     <div

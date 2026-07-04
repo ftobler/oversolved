@@ -67,14 +67,14 @@ describe('topologyStale -- dim_label drags are excluded at the call site', () =>
 
   it('a vertex drag narrows isDraggingThis to true (geometry moving)', () => {
     const isDraggingThis = true
-    const dragType: 'vertex' | 'edge' | 'dim_label' = 'vertex'
+    const dragType = 'vertex' as 'vertex' | 'edge' | 'dim_label'
     const isGeometryDragging = isDraggingThis && dragType !== 'dim_label'
     expect(topologyStale(isGeometryDragging, null, solved)).toBe(true)
   })
 
   it('an edge drag narrows isDraggingThis to true (geometry moving)', () => {
     const isDraggingThis = true
-    const dragType: 'vertex' | 'edge' | 'dim_label' = 'edge'
+    const dragType = 'edge' as 'vertex' | 'edge' | 'dim_label'
     const isGeometryDragging = isDraggingThis && dragType !== 'dim_label'
     expect(topologyStale(isGeometryDragging, null, solved)).toBe(true)
   })
