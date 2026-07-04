@@ -13,7 +13,6 @@ interface PartExportImportProps {
   docName: string | null
   ownerUsername: string | null
   permission: string | null
-  isCloudDoc: boolean
 }
 
 export interface PartExportImportHandle {
@@ -22,7 +21,7 @@ export interface PartExportImportHandle {
 }
 
 const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProps>(
-  function PartExportImport({ uuid, docName, ownerUsername, permission, isCloudDoc }, ref) {
+  function PartExportImport({ uuid, docName, ownerUsername, permission }, ref) {
     const doc = usePartEditorStore(s => s.doc)
     const notify = useNotify()
 
@@ -88,7 +87,6 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
           documentName={docName || 'Untitled'}
           ownerUsername={ownerUsername || ''}
           isOwner={permission === 'owner'}
-          isCloudDoc={isCloudDoc}
           onClose={() => setShareDocOpen(false)}
         />
       </>

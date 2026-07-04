@@ -732,6 +732,7 @@ export default function Part() {
         readOnly={readOnly}
         permission={permission}
         docName={docName}
+        isCloudDoc={isCloudDoc}
         onRename={(name) => renameDoc(uuid!, name)}
         handleSave={handleSave}
         handleClone={handleClone}
@@ -820,7 +821,6 @@ export default function Part() {
         docName={docName}
         ownerUsername={ownerUsername}
         permission={permission}
-        isCloudDoc={isCloudDoc}
       />
       <MessageDialog
         isOpen={messageDialog !== null}

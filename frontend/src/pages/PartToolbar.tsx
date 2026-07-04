@@ -12,6 +12,7 @@ interface PartToolbarProps {
   readOnly: boolean
   permission: string | null
   docName: string | null
+  isCloudDoc: boolean
   onRename: (name: string) => Promise<boolean>
   handleSave: () => void
   handleClone: () => void
@@ -22,6 +23,7 @@ export default function PartToolbar({
   readOnly,
   permission,
   docName,
+  isCloudDoc,
   onRename,
   handleSave,
   handleClone,
@@ -105,7 +107,7 @@ export default function PartToolbar({
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
       </button>
-      {backendBundle.sharing && permission === 'owner' && (
+      {backendBundle.sharing && permission === 'owner' && isCloudDoc && (
         <button
           className="toolbar-btn"
           aria-label="Share document"
