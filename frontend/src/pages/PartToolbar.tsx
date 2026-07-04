@@ -69,7 +69,7 @@ export default function PartToolbar({
           <span className="material-icons-outlined">undo</span>
         </button>
         {undoHover && undoStack.length > 0 && (
-          <div className="undo-redo-tooltip undo-tooltip">
+          <div className="undo-redo-tooltip undo-tooltip">{/* dialog */}
             <div className="undo-redo-tooltip-header">Undo ({undoStack.length}) Ctrl+Z</div>
             {undoStack.slice(-5).reverse().map((entry, i) => (
               <div key={i} className="undo-redo-tooltip-item">
@@ -89,7 +89,7 @@ export default function PartToolbar({
           <span className="material-icons-outlined">redo</span>
         </button>
         {redoHover && redoStack.length > 0 && (
-          <div className="undo-redo-tooltip redo-tooltip">
+          <div className="undo-redo-tooltip redo-tooltip">{/* dialog */}
             <div className="undo-redo-tooltip-header">Redo ({redoStack.length}) Ctrl+Shift+Z</div>
             {redoStack.slice(-5).reverse().map((entry, i) => (
               <div key={i} className="undo-redo-tooltip-item">

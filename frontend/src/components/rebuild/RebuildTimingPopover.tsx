@@ -34,7 +34,7 @@ export function RebuildTimingPopover({ featureTimings, features, isVisible, onMo
   const badge = validation ? validationBadge(validation) : null
 
   return (
-    <div className="rebuild-timing-popover" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <div className="rebuild-timing-popover" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>{/* dialog */}
       <div className="popover-header">
         <strong>Rebuild Times</strong>
         {badge && (
