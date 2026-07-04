@@ -457,6 +457,15 @@ export interface OccModule extends OccSpikeModule {
   GeomAbs_SurfaceType: {
     GeomAbs_Plane: OccEnumValue
     GeomAbs_Cylinder: OccEnumValue
+    GeomAbs_Cone: OccEnumValue
+    GeomAbs_Sphere: OccEnumValue
+    GeomAbs_Torus: OccEnumValue
+    GeomAbs_BezierSurface: OccEnumValue
+    GeomAbs_BSplineSurface: OccEnumValue
+    GeomAbs_SurfaceOfRevolution: OccEnumValue
+    GeomAbs_SurfaceOfExtrusion: OccEnumValue
+    GeomAbs_OffsetSurface: OccEnumValue
+    GeomAbs_OtherSurface: OccEnumValue
   }
   TopAbs_Orientation: {
     TopAbs_REVERSED: OccEnumValue

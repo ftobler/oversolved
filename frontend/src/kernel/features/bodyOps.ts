@@ -54,6 +54,7 @@ function newBody(
   profileQueries: string[],
   faceLineage: Record<string, string[]>,
   edgeLineage: Record<string, string[]>,
+  imported = false,
 ): Body {
   return {
     id,
@@ -65,6 +66,7 @@ function newBody(
     profile_queries: [...profileQueries],
     face_lineage: { ...faceLineage },
     edge_lineage: { ...edgeLineage },
+    ...(imported ? { imported: true } : {}),
   }
 }
 
@@ -125,10 +127,12 @@ export function applyBodyOperation(
       if (existingBody.shape === null) continue
       const oldShape = table.get<OccShape>(existingBody.shape)
       // Skip targets the tool does not actually intersect (volume ~ 0).
+      // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
+      const unifyOpts = { unifyFaces: !existingBody.imported }
       try {
         const probe = new DisposeScope()
         try {
-          const { shape: inter } = booleanWithDiff(oc, probe, oldShape, toolShape, 'common')
+          const { shape: inter } = booleanWithDiff(oc, probe, oldShape, toolShape, 'common', unifyOpts)
           if (volumeOf(oc, probe, inter) < 1e-10) continue
         } finally {
           probe.dispose()
@@ -137,7 +141,7 @@ export function applyBodyOperation(
         continue
       }
 
-      const { shape: newShape, diff } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut')
+      const { shape: newShape, diff } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
       const lineage = transferBooleanLineage(oc, scope, {
         bodyShape: newShape,
@@ -172,6 +176,7 @@ export function applyBodyOperation(
             [],
             {},
             {},
+            existingBody.imported,
           )
           cutBodyIds.push(newBid)
         }
@@ -226,7 +231,8 @@ export function applyBodyOperation(
       let newShape: OccShape
       let diff
       try {
-        const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse')
+        // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
+        const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', { unifyFaces: !existingBody.imported })
         newShape = res.shape
         diff = res.diff
       } catch (exc) {

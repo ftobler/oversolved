@@ -39,6 +39,14 @@ export interface Body {
   profile_queries: string[]
   face_lineage: Record<string, string[]>
   edge_lineage: Record<string, string[]>
+  /**
+   * True when the body's geometry originates from a STEP import (as opposed to
+   * native modelling). Imported B-rep carries freeform faces and STEP tolerances
+   * that make ShapeUpgrade_UnifySameDomain's face fold spin uncatchably, so
+   * booleans against an imported body skip the face merge. Propagated across
+   * modifications and cut splits; native tools never set it.
+   */
+  imported?: boolean
 }
 
 /** Cached state at a single feature boundary for partial rebuild. */

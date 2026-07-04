@@ -22,14 +22,10 @@ import { copyShape } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
+import { stepDebug } from './stepDebug'
 
 let occModule: OccModule | null = null
 let occLoading: Promise<OccModule | null> | null = null
-
-// [step-hang-debug] Temporary instrumentation for the imported-STEP + extrude
-// rebuild hang. Flip to true to trace the solve path in the Worker console.
-// Remove once the stall is located and fixed.
-const STEPDEBUG = false
 
 // ─── cross-solve checkpoint cache ───
 // The checkpoint cache is not a side table: it IS the OCC handles in this
@@ -276,14 +272,14 @@ export async function solveLocally(
       ? { ...spec, _validate: true }
       : spec
 
-    if (STEPDEBUG) console.log('[step-hang-debug] calling build() features=', (specForBuild.features as unknown[] | undefined)?.length ?? 0, 'rollback=', options.rollbackPosition)
+    if (stepDebug()) console.log('[step-hang-debug] calling build() features=', (specForBuild.features as unknown[] | undefined)?.length ?? 0, 'rollback=', options.rollbackPosition)
     const _buildT0 = performance.now()
     const response = build(specForBuild, {
       prevState,
       pickBoundary: options.pickBoundary ?? null,
       rollbackPosition: options.rollbackPosition ?? null,
     }, deps)
-    if (STEPDEBUG) console.log('[step-hang-debug] build() returned in', (performance.now() - _buildT0).toFixed(1), 'ms')
+    if (stepDebug()) console.log('[step-hang-debug] build() returned in', (performance.now() - _buildT0).toFixed(1), 'ms')
     // Remember the state (and the live handles it points at) for the next solve.
     lastBuildState = response._build_state
     return response

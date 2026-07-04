@@ -186,14 +186,17 @@ export function booleanWithHistory(
 
 /**
  * ShapeUpgrade_UnifySameDomain (cadquery Shape.clean) with exposed history
- * (mirrors `ocp_clean_with_history`).
+ * (mirrors `ocp_clean_with_history`). `unifyFaces` gates the face merge; pass
+ * false to keep only the edge merge when the face merge is unsafe (imported STEP
+ * geometry, see `booleanWithDiff`).
  */
 export function cleanWithHistory(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
+  unifyFaces = true,
 ): { shape: OccShape; history: OccHistory } {
-  const up = scope.track(new oc.ShapeUpgrade_UnifySameDomain_2(shape, true, true, true))
+  const up = scope.track(new oc.ShapeUpgrade_UnifySameDomain_2(shape, true, unifyFaces, unifyFaces))
   up.AllowInternalEdges(false)
   up.Build()
   return { shape: up.Shape(), history: scope.track(up.History_1()).get() }
@@ -294,7 +297,15 @@ export function booleanWithDiff(
   target: OccShape,
   tool: OccShape,
   op: BooleanOp,
+  opts: { unifyFaces?: boolean } = {},
 ): { shape: OccShape; diff: BrepDiff } {
+  // The face merge (UnifySameDomain's face fold) can spin forever, not throw, on
+  // imported-STEP topology (the reproducer: extruding a holed face of an
+  // imported body back onto itself, double_with_hole.step). The two cases are
+  // geometrically indistinguishable from natively modelled ones, so the caller
+  // decides by provenance and passes `unifyFaces: false` for imported targets;
+  // the edge merge (always safe) still runs, at the cost of an extra seam face.
+  const unifyFaces = opts.unifyFaces ?? true
   const { shape: raw, diff: rawDiff } = booleanWithHistory(oc, scope, target, tool, op)
   const canonical = canonicalizeCylinderFaces(oc, scope, raw)
   const preClean = canonical.shape
@@ -302,7 +313,7 @@ export function booleanWithDiff(
   let cleaned: OccShape
   let history: OccHistory
   try {
-    const r = cleanWithHistory(oc, scope, preClean)
+    const r = cleanWithHistory(oc, scope, preClean, unifyFaces)
     cleaned = r.shape
     history = r.history
   } catch {
