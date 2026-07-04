@@ -78,10 +78,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 4px;
-  margin: 4px 0;
+  padding: 8px 8px;
+  margin: 2px 0;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
   color: #ccc;
   cursor: pointer;
   user-select: none;
@@ -268,10 +268,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 4px;
-  margin: 4px 0;
+  padding: 8px 8px;
+  margin: 2px 0;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
   color: #ccc;
   cursor: pointer;
   /* Disable browser builtin context menu on features-list */
@@ -292,7 +292,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 26px;
   flex-shrink: 0;
   width: 100%;
 }
@@ -340,8 +339,8 @@
   cursor: pointer;
   padding: 2px 4px;
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
 }
 
 .feature-edit-btn img,
@@ -366,7 +365,7 @@
 }
 
 .feature-edit-btn .material-icons-outlined {
-  font-size: 11px;
+  font-size: 16px;
 }
 
 .feature-ok-btn {
@@ -429,12 +428,12 @@
 }
 
 .feature-visibility-btn .material-icons-outlined {
-  font-size: 11px;
+  font-size: 16px;
 }
 
 .feature-visibility-placeholder {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
 }
 
@@ -812,12 +811,12 @@
   color: #888;
   cursor: pointer;
   position: relative;
-  height: 32px;
+  height: 40px;
 }
 
 .mode-btn img {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   filter: invert(0.8);
 }
 
@@ -853,8 +852,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 4px;
   border: none;
   background: transparent;
@@ -945,12 +944,12 @@
 }
 
 .editor-btn .material-icons {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .editor-btn img {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   filter: invert(0.8);
 }
 
