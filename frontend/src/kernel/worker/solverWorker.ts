@@ -17,7 +17,6 @@
 
 import { solveLocally, exportLocally, setOccLoader } from '../solveLocally'
 import { extractErrorMessage } from '../errors'
-import { stepDebug } from '../stepDebug'
 import { inWorker } from '../inWorker'
 import { loadOccWorker } from '../occ/loadOccWorker'
 import type {
@@ -34,23 +33,8 @@ export async function handleSolveRequest(
   req: SolveRequest,
   solve: SolveEngine,
 ): Promise<SolveResponse> {
-  // [step-hang-debug] Worker-boundary trace. This is the disambiguator for the
-  // imported-STEP + extrude hang: if `RECEIVED` prints in the Worker console but
-  // `DONE` never follows, the solve entered the Worker and hung there (OCC). If
-  // `RECEIVED` never prints when you trigger the extrude, the request never
-  // reached the Worker and the stall is on the main thread. Enable with
-  // `__STEP_DEBUG__ = true` in the Worker console (no rebuild). See stepDebug.ts.
-  const _dbg = stepDebug()
-  const _t0 = _dbg ? performance.now() : 0
-  if (_dbg) {
-    const feats = (req.spec.features as { id?: string; kind?: string }[] | undefined) ?? []
-    console.log('[step-hang-debug] worker RECEIVED solve id=', req.id,
-      'features=', feats.map((f) => `${f.id}:${f.kind}`),
-      'rollback=', req.options?.rollbackPosition, 'pickBoundary=', req.options?.pickBoundary)
-  }
   try {
     const response = await solve(req.spec, req.options)
-    if (_dbg) console.log('[step-hang-debug] worker DONE solve id=', req.id, 'in', (performance.now() - _t0).toFixed(1), 'ms')
     if (!response) {
       // OCC.js unavailable; main thread surfaces "local solver unavailable".
       return { id: req.id, ok: true, payload: null }
@@ -65,7 +49,6 @@ export async function handleSolveRequest(
     }
     return { id: req.id, ok: true, payload }
   } catch (e) {
-    if (_dbg) console.log('[step-hang-debug] worker ERROR solve id=', req.id, 'in', (performance.now() - _t0).toFixed(1), 'ms:', extractErrorMessage(e))
     return { id: req.id, ok: false, error: extractErrorMessage(e) }
   }
 }

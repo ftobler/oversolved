@@ -16,7 +16,6 @@ import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops } from '../occ/faceLoops'
 import { extractProfileLoops, registerTopFace, type PlaneLike } from './shared'
-import { stepDebug } from '../stepDebug'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -101,7 +100,6 @@ export function resolveFaceProfile(
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): FaceProfile {
-  if (stepDebug()) console.log('[step-hang-debug]       resolveFaceProfile ref=', sketchRef)
   const slash = SLASH_FACE.exec(sketchRef)
   if (slash) {
     const featId = slash[1]
@@ -109,16 +107,9 @@ export function resolveFaceProfile(
     const body = findBodyForFeature(bodyStore, featId)
     if (body === null) throw new Error(`No body found for feature '${featId}'`)
     const shape = bodyShape(table, body)
-    if (stepDebug()) console.log('[step-hang-debug]       resolveFaceIndexViaHash START idx=', faceIndex)
-    const _t0 = performance.now()
     const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo)
-    if (stepDebug()) console.log('[step-hang-debug]       resolveFaceIndexViaHash done in', (performance.now() - _t0).toFixed(1), 'ms resolved=', resolved)
     if (resolved !== null) faceIndex = resolved
-    if (stepDebug()) console.log('[step-hang-debug]       extractLoopsFromOccFace START idx=', faceIndex)
-    const _t1 = performance.now()
-    const out = extractLoopsFromOccFace(oc, scope, shape, faceIndex)
-    if (stepDebug()) console.log('[step-hang-debug]       extractLoopsFromOccFace done in', (performance.now() - _t1).toFixed(1), 'ms')
-    return out
+    return extractLoopsFromOccFace(oc, scope, shape, faceIndex)
   }
 
   const faceEntry = globalRepo.query(sketchRef, null, bodyStore) as Dict | null

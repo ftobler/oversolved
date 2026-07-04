@@ -11,7 +11,6 @@ import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
-import { stepDebug } from '@/kernel/stepDebug'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
@@ -322,19 +321,11 @@ export function useSolver(
       // HandleTable + last BuildState, keyed by doc id) so incremental rebuild
       // reuses the clean prefix; the work runs off the main thread so a long
       // solve never freezes the UI.
-      // [step-hang-debug] Main-thread boundary trace for the imported-STEP +
-      // extrude hang. Enable with `__STEP_DEBUG__ = true` in the PAGE console (no
-      // rebuild). If POSTING prints but the worker never logs `RECEIVED`, the
-      // stall is on the main thread before postMessage (e.g. cloning a large
-      // inline STEP `file_data`); if both print but no GOT-RESPONSE, the Worker
-      // hung. See stepDebug.ts.
-      if (stepDebug()) console.log('[step-hang-debug] main POSTING solve reqId=', currentRequestId, 'features=', solveFeatures.map(f => `${f.id}:${f.kind}`), 'pickBoundary=', pickBoundary)
       const local = await solveViaWorker(solvePayload, {
         pickBoundary: pickBoundary ?? null,
         rollbackPosition: adjustedRollback,
         validate: opts?.validate,
       })
-      if (stepDebug()) console.log('[step-hang-debug] main GOT-RESPONSE reqId=', currentRequestId, 'ok=', local !== null)
       if (!local) {
         const msg = 'Local solver unavailable (OCC.js failed to load)'
         setSolveError(msg)

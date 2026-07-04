@@ -24,7 +24,6 @@ import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToPlane, upToDistance, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
-import { stepDebug } from '../stepDebug'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -165,10 +164,8 @@ export function solveExtrude(
 
   let toolShape: OccShape
   if (usingFaces) {
-    if (stepDebug()) console.log('[step-hang-debug]     extrude USING FACES cqFaces=', cqFaces.length, 'dir=', direction, 'distance=', distance)
     const faceNormalVec = faceNormal(oc, scope, cqFaces[0])
     const reverseVec = faceNormalVec.map((n) => -n) as Vec3
-    if (stepDebug()) console.log('[step-hang-debug]     extrude faceNormal=', faceNormalVec, 'centroid=', faceCentroid(oc, scope, cqFaces[0]))
     if (cutPlane !== null) {
       const dirVec = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
       if (upToDistance(cutPlane, faceCentroid(oc, scope, cqFaces[0]), dirVec) <= 1e-9) {
@@ -192,17 +189,11 @@ export function solveExtrude(
       }
       toolShape = tool
     } else if (direction === 'reverse') {
-      if (stepDebug()) console.log('[step-hang-debug]     extrude makePrism (reverse) START')
-      const _t0 = performance.now()
       let tool = makePrism(oc, scope, cqFaces[0], reverseVec, distance)
-      if (stepDebug()) console.log('[step-hang-debug]     extrude makePrism (reverse) done in', (performance.now() - _t0).toFixed(1), 'ms')
       for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, reverseVec, distance))
       toolShape = tool
     } else {
-      if (stepDebug()) console.log('[step-hang-debug]     extrude makePrism (normal) START')
-      const _t0 = performance.now()
       let tool = makePrism(oc, scope, cqFaces[0], faceNormalVec, distance)
-      if (stepDebug()) console.log('[step-hang-debug]     extrude makePrism (normal) done in', (performance.now() - _t0).toFixed(1), 'ms')
       for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, faceNormalVec, distance))
       toolShape = tool
     }
@@ -257,8 +248,6 @@ export function solveExtrude(
     }
   }
 
-  if (stepDebug()) console.log('[step-hang-debug]     extrude applyBodyOperation START operation=', operation, 'bodyId=', bodyId, 'bodies=', Object.keys(bodyStore), 'mergeTarget=', mergeTarget)
-  const _aboT0 = performance.now()
   const opResult = applyBodyOperation(oc, scope, table, {
     toolShape,
     bodyStore,
@@ -272,7 +261,6 @@ export function solveExtrude(
     faceLineage,
     edgeLineage,
   })
-  if (stepDebug()) console.log('[step-hang-debug]     extrude applyBodyOperation done in', (performance.now() - _aboT0).toFixed(1), 'ms status=', opResult.status, 'op=', opResult.operation)
   Object.assign(result, opResult)
 
   if (profileErrors.length) {

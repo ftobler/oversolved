@@ -9,7 +9,6 @@ import { faceGeometryHash, faceNormalHash, edgeGeometryHash, vertexGeometryHash,
 import { faceTokens, edgeLineageTokens } from './faceQuery'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { normalToFrame } from './types3d'
-import { stepDebug } from './stepDebug'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import type { TessMesh } from './occ/tessellation'
 import type { OccHandle } from './occ/handleTable'
@@ -666,7 +665,6 @@ export function build(
     : allFeatures
 
   const firstDirty = findFirstDirty(features, options.prevState)
-  if (stepDebug()) console.log('[step-hang-debug] build() firstDirty=', firstDirty, 'of', features.length, 'prevOrder=', options.prevState?.feature_order.length ?? 0)
 
   // Evict the prev-state checkpoints this build discards: everything from the
   // first dirty feature onward (the clean prefix, indices < firstDirty, is
@@ -774,7 +772,6 @@ export function build(
 
   for (const feature of features.slice(firstDirty)) {
     const fid = String(feature.id ?? '')
-    if (stepDebug()) console.log('[step-hang-debug]   feature <', fid, 'kind=', feature.kind, '> solve START')
 
     if (feature.suppressed) {
       const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
@@ -799,14 +796,12 @@ export function build(
       const t0 = performance.now()
       const featureResult = deps.trySolveFeature(feature, globalRepo, bodyStore, featuresById, variableContext)
       featureResult.solve_ms = performance.now() - t0
-      if (stepDebug()) console.log('[step-hang-debug]   feature <', fid, 'kind=', feature.kind, '> solve done in', (featureResult.solve_ms as number).toFixed(1), 'ms status=', featureResult.status)
       deps.postRegister(globalRepo, fid, feature, featureResult)
       result[fid] = featureResult
       const vv = variableValueOf(feature, featureResult)
       if (vv) variableContext[vv.name] = vv.value
     } catch (e) {
       const err = extractErrorMessage(e)
-      if (stepDebug()) console.log('[step-hang-debug]   feature <', fid, 'kind=', feature.kind, '> THREW:', err)
       result[fid] = { status: 'exception', exception: err, solve_ms: 0 }
     } finally {
       setCurrentFeatureId(null)
@@ -814,19 +809,13 @@ export function build(
 
     for (const [bodyId, body] of Object.entries(bodyStore)) {
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
-        if (stepDebug()) console.log('[step-hang-debug]     register NEW body', bodyId, 'created_by=', body.created_by)
-        const _regT0 = performance.now()
         _registerBodyFaces(globalRepo, body, deps)
-        if (stepDebug()) console.log('[step-hang-debug]     register NEW body', bodyId, 'done in', (performance.now() - _regT0).toFixed(1), 'ms')
         _registerSolidAncestry(globalRepo, body)
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
       } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates.
-        if (stepDebug()) console.log('[step-hang-debug]     register MOD body', bodyId, 'modified_by=', body.modified_by.length)
-        const _regT0 = performance.now()
         _registerBodyFaces(globalRepo, body, deps)
-        if (stepDebug()) console.log('[step-hang-debug]     register MOD body', bodyId, 'done in', (performance.now() - _regT0).toFixed(1), 'ms')
       }
     }
 
@@ -844,10 +833,7 @@ export function build(
   const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
   globalRepo.gc(activeFids)
 
-  if (stepDebug()) console.log('[step-hang-debug] build() post-loop tessellate of', Object.keys(bodyStore).length, 'bodies')
-  const _tessT0 = performance.now()
   const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo)
-  if (stepDebug()) console.log('[step-hang-debug] build() tessellate done in', (performance.now() - _tessT0).toFixed(1), 'ms')
 
   // Rebuild checkpoints for dirty features.
   const cleanPrefixFids = new Set<string>()

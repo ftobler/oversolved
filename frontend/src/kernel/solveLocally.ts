@@ -22,7 +22,6 @@ import { copyShape } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
-import { stepDebug } from './stepDebug'
 
 let occModule: OccModule | null = null
 let occLoading: Promise<OccModule | null> | null = null
@@ -272,14 +271,11 @@ export async function solveLocally(
       ? { ...spec, _validate: true }
       : spec
 
-    if (stepDebug()) console.log('[step-hang-debug] calling build() features=', (specForBuild.features as unknown[] | undefined)?.length ?? 0, 'rollback=', options.rollbackPosition)
-    const _buildT0 = performance.now()
     const response = build(specForBuild, {
       prevState,
       pickBoundary: options.pickBoundary ?? null,
       rollbackPosition: options.rollbackPosition ?? null,
     }, deps)
-    if (stepDebug()) console.log('[step-hang-debug] build() returned in', (performance.now() - _buildT0).toFixed(1), 'ms')
     // Remember the state (and the live handles it points at) for the next solve.
     lastBuildState = response._build_state
     return response
