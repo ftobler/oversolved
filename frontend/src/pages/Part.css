@@ -1279,7 +1279,7 @@
   border: 1px solid #3a2a3a;
   border-radius: 3px;
   color: #bbb;
-  padding: 4px 6px;
+  padding: 0px 8px;
   height: 24px;
   line-height: 14px;
   width: 0;
@@ -1348,7 +1348,10 @@
 .feature-pick-chip.empty {
   color: #555;
   font-style: italic;
-  max-height: 20px;
+  min-height: 28px;
+  max-height: 28px;
+  height: 28px;
+  padding: 0 0 0 4px;
   overflow-y: hidden;
 }
 
@@ -1356,7 +1359,7 @@
   font-size: 12px;
   color: #555;
   font-style: italic;
-  padding: 2px 0;
+  line-height: 28px;
 }
 
 .feature-pick-chip-item {
