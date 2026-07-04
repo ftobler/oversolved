@@ -8,7 +8,7 @@ import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { isConnectionError, parseHttpError } from '@/utils/core/httpClient'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments } from '@/stores/documentStore'
+import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments, importStepFile } from '@/stores/documentStore'
 import type { DocSummary, DocumentStore } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
 import type { TrashDoc } from '@/adapters/trash'
@@ -312,6 +312,19 @@ export default function Documents() {
       return
     }
 
+    // A STEP file becomes a fresh document whose content is a single
+    // import_step feature carrying the inline base64 bytes (parsed by the WASM
+    // kernel, no server round-trip). Same shape Part.tsx produces on import.
+    if (/\.(step|stp)$/i.test(file.name)) {
+      try {
+        await importStepFile(activeStore, file)
+        fetchDocuments(activeFilter, debouncedSearch)
+      } catch (err) {
+        setError(parseHttpError(err, 'Failed to import STEP file'))
+      }
+      return
+    }
+
     const name = file.name.replace(/\.yaml$/, '').replace(/\.yml$/, '')
     if (!name) {
       setError('Invalid filename')
@@ -477,10 +490,10 @@ export default function Documents() {
           <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocPublic(activeFilter === 'public') }} title="Add document">
             <span className="material-icons">add</span>
           </button>
-          <label className="toolbar-btn btn-import" title="Import YAML or .oversolved bundle">
+          <label className="toolbar-btn btn-import" title="Import STEP, YAML, or .oversolved bundle">
             <input
               type="file"
-              accept=".yaml,.yml,.oversolved,.zip"
+              accept=".step,.stp,.yaml,.yml,.oversolved,.zip"
               onChange={handleImportFile}
               className="file-upload-input"
             />

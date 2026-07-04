@@ -1,19 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc } from '@/types/cad'
 import { backendBundle } from '@/adapters/backend'
 import { dropDeadAxisConstraints } from '@/utils/yamlMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 
-export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
-  { id: 'Origin', kind: 'origin' },
-  { id: 'Top',    kind: 'plane' },
-  { id: 'Front',  kind: 'plane' },
-  { id: 'Right',  kind: 'plane' },
-]
-
-export const BUILTIN_FEATURE_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
+export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
 export function useDocumentState(
   uuid: string | undefined,

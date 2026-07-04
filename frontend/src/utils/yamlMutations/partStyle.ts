@@ -1,5 +1,5 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
-import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature } from './helpers'
 import { isValidVariableName } from '@/kernel/features/variable'
 
