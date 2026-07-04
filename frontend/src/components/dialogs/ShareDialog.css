@@ -68,7 +68,7 @@
   border: none;
   border-radius: 4px;
   color: #ccc;
-  font-size: 13px;
+  font-size: 14px;
   box-sizing: border-box;
 }
 
@@ -84,14 +84,14 @@
   border: 1px solid #333;
   border-radius: 4px;
   color: #ccc;
-  font-size: 13px;
+  font-size: 14px;
   min-width: 80px;
 }
 
 .share-dialog-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 .share-dialog-table th:first-child,
 .share-dialog-table td:first-child {

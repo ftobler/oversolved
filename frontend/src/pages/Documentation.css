@@ -106,7 +106,7 @@
   padding: 2px 6px;
   border-radius: 3px;
   font-family: 'Roboto Mono', monospace;
-  font-size: 0.9em;
+  font-size: 14px;
   color: #81c784;
 }
 
@@ -123,7 +123,7 @@
   background: none;
   padding: 0;
   color: #81c784;
-  font-size: 0.85em;
+  font-size: 14px;
   line-height: 1.5;
 }
 

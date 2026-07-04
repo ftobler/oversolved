@@ -61,7 +61,7 @@
 }
 
 .bug-report-attachments {
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 8px;
 }
 
@@ -76,7 +76,7 @@
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   color: #ccc;
 }
 
@@ -92,7 +92,7 @@
   width: 40px;
   padding: 2px 4px;
   margin: 0 4px;
-  font-size: 11px;
+  font-size: 12px;
   background: #0a0a0a;
   color: #aaa;
   border: 1px solid #333;

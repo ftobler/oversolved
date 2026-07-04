@@ -43,7 +43,7 @@
   border: 1px solid #333;
   border-radius: 6px;
   text-decoration: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   transition: all 0.2s;
 }
@@ -58,7 +58,7 @@
   position: absolute;
   bottom: 32px;
   color: #444;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .counter {

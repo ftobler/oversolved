@@ -109,7 +109,7 @@
   justify-content: center;
   padding: 4px 12px;
   padding-bottom: 0px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: #666;
 }
@@ -202,13 +202,13 @@
 }
 
 .rebuild-timing-popover .popover-header strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: none;
 }
 
 .rebuild-validation-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -683,7 +683,7 @@
   color: #ccc;
   border-radius: 4px;
   height: 28px;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -968,7 +968,7 @@
   border: none;
   border-right: 1px solid #333;
   font-family: 'Roboto Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   resize: none;
 }
@@ -984,7 +984,7 @@
   background: #0d0d0d;
   overflow-y: auto;
   font-family: 'Roboto Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: #ccc;
   text-align: left;
@@ -1008,7 +1008,7 @@
   color: #ccc;
   border: none;
   font-family: 'Roboto Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   resize: none;
 }
@@ -1105,7 +1105,7 @@
   align-items: center;
   gap: 6px;
   font-family: 'Roboto Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   color: #cccccc;
   flex-shrink: 0;
   max-width: 50%;
@@ -1141,14 +1141,14 @@
   border-bottom: 1px solid #333;
   background: #0d0d0d;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .debug-tab {
   margin: 0;
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #555;
   background: none;
@@ -1182,7 +1182,7 @@
 }
 
 .debug-section-title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: #555;
   padding-bottom: 3px;
@@ -1191,7 +1191,7 @@
 
 .debug-value {
   font-family: 'Roboto Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   color: #aaa;
   word-break: break-all;
   padding: 2px 4px;
@@ -1209,7 +1209,7 @@
 }
 
 .debug-empty {
-  font-size: 11px;
+  font-size: 12px;
   color: #444;
   font-style: italic;
   padding: 2px 4px;
@@ -1240,7 +1240,7 @@
 }
 
 .feature-field-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #999;
   flex-shrink: 0;
   width: 80px;
@@ -1252,7 +1252,7 @@
 
 .feature-field-select {
   flex: 1;
-  font-size: 10px;
+  font-size: 12px;
   background: #1a0f1a;
   border: 1px solid #3a2a3a;
   border-radius: 3px;
@@ -1274,7 +1274,7 @@
 
 .feature-field-input {
   flex: 1;
-  font-size: 10px;
+  font-size: 12px;
   background: #1a0f1a;
   border: 1px solid #3a2a3a;
   border-radius: 3px;
@@ -1298,7 +1298,7 @@
 }
 
 .feature-field-eval {
-  font-size: 9px;
+  font-size: 12px;
   color: #6a5a6a;
   padding: 0 4px;
   white-space: nowrap;
@@ -1328,7 +1328,7 @@
   cursor: pointer;
   padding: 2px 4px;
   gap: 3px;
-  font-size: 10px;
+  font-size: 12px;
   color: #bbb;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1353,7 +1353,7 @@
 }
 
 .feature-pick-chip-empty-text {
-  font-size: 10px;
+  font-size: 12px;
   color: #555;
   font-style: italic;
   padding: 2px 0;
@@ -1377,7 +1377,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 12px;
   color: #fff;
 }
 
@@ -1466,7 +1466,7 @@
 
 /* dialog header */
 .undo-redo-tooltip-header {
-  font-size: 11px;
+  font-size: 12px;
   color: #888;
   padding: 12px 16px;
   border-bottom: 1px solid #333;
