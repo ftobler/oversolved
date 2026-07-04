@@ -42,9 +42,9 @@ describe('computeGizmoHit', () => {
   })
 
   it('hits a corner vertex when clicking its (chamfered, inset) polygon', () => {
-    // Vertex 6 (1,1,1) projects toward ~(98.56, 29.44), but the bevel/chamfer
-    // insets the drawn hexagon inward; its body sits around (84, 30).
-    const hit = computeGizmoHit(84, 30, [], cameraWith(new THREE.Quaternion()))
+    // Vertex 6 (1,1,1) projects toward ~(107.8, 32.2), but the bevel/chamfer
+    // insets the drawn hexagon inward; its body sits around (99, 40).
+    const hit = computeGizmoHit(99, 40, [], cameraWith(new THREE.Quaternion()))
     expect(hit).not.toBeNull()
     expect(hit!.type).toBe('vertex')
     expect(hit!.index).toBe(6)
@@ -95,9 +95,9 @@ describe('drawCubeGizmo', () => {
     const { canvas, calls } = makeRecordingCanvas()
     const verts = drawCubeGizmo(canvas, cameraWith(new THREE.Quaternion()), null)
     expect(verts).toHaveLength(8)
-    // Front corner (1,1,1) -> (98.56, 29.44) under the identity camera.
-    expect(verts[6].sx).toBeCloseTo(98.56)
-    expect(verts[6].sy).toBeCloseTo(29.44)
+    // Front corner (1,1,1) -> (107.8, 32.2) under the identity camera.
+    expect(verts[6].sx).toBeCloseTo(107.8)
+    expect(verts[6].sy).toBeCloseTo(32.2)
     // It sized the backing store and stroked at least one path.
     expect((canvas as unknown as { width: number }).width).toBe(GIZMO_SIZE)
     expect(calls.some(c => c[0] === 'fill')).toBe(true)
