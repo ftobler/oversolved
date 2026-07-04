@@ -14,6 +14,14 @@ describe('buildStepContent', () => {
     const imp = doc.features.find((f: { id: string }) => f.id === 'IM1')
     expect(imp.kind).toBe('import_step')
     expect(imp.file_data).toBe('QUFBQQ==')
+    expect(imp.label).toBeUndefined()
+  })
+
+  it('passes the label through to the import_step feature', () => {
+    const yaml = buildStepContent('QUFBQQ==', 'IM1', 'bracket')
+    const doc = parseYaml(yaml)
+    const imp = doc.features.find((f: { id: string }) => f.id === 'IM1')
+    expect(imp.label).toBe('bracket')
   })
 
   it('generates a feature id when none is given', () => {
@@ -43,6 +51,7 @@ describe('importStepFile', () => {
     expect(imp).toBeTruthy()
     expect(typeof imp.file_data).toBe('string')
     expect(imp.file_data.length).toBeGreaterThan(0)
+    expect(imp.label).toBe('bracket')
   })
 
   it('rejects an empty STEP file', async () => {

@@ -31,9 +31,13 @@ function readFileAsBase64(file: Blob): Promise<string> {
  * gets on first open) plus a single `import_step` feature carrying the inline
  * base64 bytes. Pure so it is testable without a File or store.
  */
-export function buildStepContent(fileDataB64: string, featureId: string = randomId(18)): string {
+export function buildStepContent(
+  fileDataB64: string,
+  featureId: string = randomId(18),
+  label?: string,
+): string {
   const doc: PartDoc = { features: BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f })) }
-  applyAddImportStep(doc, featureId, undefined, undefined, fileDataB64)
+  applyAddImportStep(doc, featureId, undefined, label, fileDataB64)
   return stringifyYaml(doc)
 }
 
@@ -46,7 +50,7 @@ export async function importStepFile(store: DocumentStore, file: File): Promise<
   if (!fileData) throw new Error('STEP file is empty')
   const name = file.name.replace(/\.(step|stp)$/i, '')
   if (!name) throw new Error('Invalid filename')
-  const content = buildStepContent(fileData)
+  const content = buildStepContent(fileData, randomId(18), name)
   const { uuid } = await store.create(name)
   await store.save(uuid, { content })
   return uuid
