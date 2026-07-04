@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // app is fully functional as a guest (null). Signing in only ADDS the cloud
   // domain on top, it is never a wall. On a zero-backend build there is no server
   // to sign in to, so the session simply stays guest forever -- static IS the
-  // not-logged-in state (see static-build-notes: guest-first session).
+  // not-logged-in state (guest-first session).
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(hasBackend)
   // Cloud reachability. Starts optimistic; flips to false when a cloud call hits a

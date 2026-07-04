@@ -1,6 +1,6 @@
 /**
- * Capability-bundle guardrail (static-build-notes.md, cross-cutting section
- * "backend as an injected capability bundle").
+ * Capability-bundle guardrail (cross-cutting: "backend as an injected
+ * capability bundle").
  *
  * The rule: view/page/hook/context code must NOT read `hasBackend` or hardcode
  * a raw `/api/...` literal. Those belong behind the document store / capability
@@ -37,8 +37,8 @@ const ALLOWED_HOME_PREFIXES = [
 // admin / account / login pages, all self-guarded behind `user?.`). Their
 // backend coupling is structural, not migration debt -- there is no static
 // behaviour to fold them into, so they are deliberately exempt rather than
-// baselined (decided 2026-06-19, static-build-notes "Auth as a capability": auth
-// is a FLOW, not a port; admin/account pages ride the same reasoning). Unlike
+// baselined (decided 2026-06-19: auth is a FLOW, not a port; admin/account
+// pages ride the same reasoning). Unlike
 // the shrink-only baselines below, this list is permanent by design. Keep it
 // tight: a view that ALSO ships on static (Part, Documents) is debt, not a seam.
 const SANCTIONED_SEAMS = [

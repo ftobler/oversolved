@@ -2,8 +2,8 @@
 // trashed documents is a server-side lifecycle that only the PDM backend tracks.
 // The static build has no trash -- `remove()` on the local IndexedDB store is a
 // hard delete -- so the capability is ABSENT (`backendBundle.trash` is null and
-// the Trash view does not exist). See static-build-notes.md Topic 3 (scope /
-// lifecycle split) and the cross-cutting capability-bundle section.
+// the Trash view does not exist). Soft-delete lifecycle requires a server, so the
+// capability is absent on the static build (scope / lifecycle split).
 import { http } from '@/utils/core/httpClient'
 import { type Backend } from '@/config/capabilities'
 

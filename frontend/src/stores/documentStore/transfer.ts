@@ -63,7 +63,7 @@ export async function moveDocument(
 
 // Bulk push: mirror every local document that has unsynced local changes up to the
 // cloud, acking each. The "sync all" counterpart to the per-doc push verb -- both
-// coexist (the git-push analogy in static-build-notes). Selection uses the DocMeta
+// coexist (the git-push analogy: bulk local-to-cloud, acking each). Selection uses the DocMeta
 // dirty flag (set on save, cleared by markSynced), so a doc already mirrored is
 // skipped and a re-run pushes nothing new. A store that does not track meta has no
 // dirty flag -> treated as always-dirty (push everything). It cannot yet UPDATE an

@@ -3,7 +3,7 @@
 // concept of other users (the local IndexedDB library belongs to the device),
 // so the capability is ABSENT -- `backendBundle.sharing` is null and the share UI does
 // not exist. Sharing is user-to-user version handover, never an editing
-// dependency (see static-build-notes.md Topic 7).
+// dependency.
 import { http } from '@/utils/core/httpClient'
 import { type Backend } from '@/config/capabilities'
 

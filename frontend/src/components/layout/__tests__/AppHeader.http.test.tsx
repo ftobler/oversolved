@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 // Server build: login is reachable. The header is the view half of the one
 // guest-first session -- it shows a "Sign in" affordance when guest and the
-// account name + logout when signed in. (static-build-notes: three-state header.)
+// account name + logout when signed in. (three-state header.)
 vi.mock('@/config/capabilities', () => ({ hasBackend: true }))
 
 const mockUseAuth = vi.fn()

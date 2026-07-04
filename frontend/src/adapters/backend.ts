@@ -1,5 +1,5 @@
-// The backend, bundled as ONE injected capability set (static-build-notes.md,
-// cross-cutting section "backend as an injected capability bundle").
+// The backend, bundled as ONE injected capability set (cross-cutting:
+// "backend as an injected capability bundle").
 //
 // This is the composition root for the server-facing capabilities. The whole app
 // is parameterised over a single `BackendBundle`; views read a capability off the
@@ -37,7 +37,7 @@ export interface BackendBundle {
 //
 // Home is local on BOTH builds: `documents` is the IndexedDB library and the
 // server store is the separate `cloudDocuments` domain, never "home". This is the
-// store-home inversion from static-build-notes ("IndexedDB is home in BOTH builds").
+// store-home inversion ("IndexedDB is home in BOTH builds").
 export function createBackend(
   flag: BackendFlag,
   documents: DocumentStore,
