@@ -790,6 +790,7 @@
   overflow-x: hidden;
   overflow-y: hidden;
   flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .mode-selector {
