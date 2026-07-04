@@ -325,10 +325,8 @@ describe('tool commands via store', () => {
     expect(KEYMAP['y']).toBe('toggle_sketch_plane_visibility')
   })
 
-  it('dispatchKey for constraint shortcut calls applyConstraint on the store', () => {
+  it('apply_parallel constraint command calls applyConstraint on the store', () => {
     registerCommand('apply_parallel', () => useSketchEditorStore.getState().applyConstraint('parallel'))
-    const e = fakeKey('p')
-    dispatchKey(e)
     // applyConstraint returns early without selection, so just verify no throw
     expect(() => executeCommand('apply_parallel')).not.toThrow()
   })

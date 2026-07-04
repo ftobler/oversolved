@@ -53,9 +53,9 @@ describe('keyboard command dispatch', () => {
     expect(handler).toHaveBeenCalledOnce()
   })
 
-  it('p key dispatches apply_parallel outside sketch mode', () => {
+  it('p key dispatches toggle_plane_visibility outside sketch mode', () => {
     const handler = vi.fn()
-    registerCommand('apply_parallel', handler)
+    registerCommand('toggle_plane_visibility', handler)
     dispatchKey(fakeKey('p'))
     expect(handler).toHaveBeenCalledOnce()
   })

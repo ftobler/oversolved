@@ -51,6 +51,7 @@ export const KEYMAP: Record<string, string> = {
 // Keys that are only active outside of sketch-edit mode.
 // These override KEYMAP entries when no sketch is being edited.
 export const FEATURE_KEYMAP: Record<string, string> = {
+  'p': 'toggle_plane_visibility',
   'e': 'add_extrude',
 }
 
