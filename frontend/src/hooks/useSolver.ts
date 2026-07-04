@@ -240,7 +240,7 @@ export function useSolver(
 
   const reSolve = useCallback(async (
     d: PartDoc,
-    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _isCleanupReSolve?: boolean },
+    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _isCleanupReSolve?: boolean },
   ) => {
     setSolving(true)
     setSolveTime(null)
@@ -297,7 +297,7 @@ export function useSolver(
         setSolveResults({})
         setWorld({ status: 'full', bodies: {} })
         setSolveError(null)
-        if (!firstSolveDone.current && onFirstSolve) {
+        if (!firstSolveDone.current && !opts?._suppressFirstSolve && onFirstSolve) {
           firstSolveDone.current = true
           setTimeout(onFirstSolve, 0)
         }
@@ -342,7 +342,7 @@ export function useSolver(
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
       const buildResult = applyBuildResponse(d, local as BuildResponse, solveTimeMs, currentRequestId)
-      if (!firstSolveDone.current && onFirstSolve) {
+      if (!firstSolveDone.current && !opts?._suppressFirstSolve && onFirstSolve) {
         firstSolveDone.current = true
         setTimeout(onFirstSolve, 0)
       }

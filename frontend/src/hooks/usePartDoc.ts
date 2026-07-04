@@ -9,7 +9,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
-type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => Promise<void> | void
+type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _isCleanupReSolve?: boolean }) => Promise<void> | void
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const modeRef = useRef(mode)
@@ -76,7 +76,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint' || m.type === 'move_entity'
         ? { featureId: m.featureId, entityId: m.entityId }
         : undefined
-    reSolve(next, { bypassCache: true, dragAnchor })
+    reSolve(next, { bypassCache: true, dragAnchor, _suppressFirstSolve: true })
   }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
