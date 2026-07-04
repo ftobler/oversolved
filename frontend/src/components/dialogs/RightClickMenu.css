@@ -16,8 +16,8 @@
 .right-click-menu-item {
   display: flex;
   align-items: center;
-  padding: 3px 4px;
-  font-size: 12px;
+  padding: 6px 8px;
+  font-size: 14px;
   font-family: monospace;
   color: #ccc;
   cursor: pointer;
@@ -35,8 +35,8 @@
 }
 
 .right-click-menu-icon {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   filter: invert(0.8);
 }
 

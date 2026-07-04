@@ -33,7 +33,7 @@
 }
 
 .doc-sidebar {
-  width: 240px;
+  width: 288px;
   border-right: 1px solid #333;
   background: #111;
   display: flex;
@@ -128,13 +128,13 @@
   padding: 2px;
   border-radius: 3px;
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
 }
 
 .rebuild-button img {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   filter: invert(0.5);
 }
 
@@ -148,8 +148,8 @@
 }
 
 .rebuild-spinner {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   animation: rebuild-spin 1s linear infinite;
 }
 
@@ -282,8 +282,8 @@
 }
 
 .feature-icon {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   filter: invert(0.8);
 }
@@ -350,8 +350,8 @@
 .feature-context-btn img,
 .part-visibility-btn img,
 .part-context-btn img {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   filter: invert(0.8);
 }
 
@@ -365,7 +365,7 @@
 }
 
 .feature-edit-btn .material-icons-outlined {
-  font-size: 16px;
+  font-size: 20px;
 }
 
 .feature-ok-btn {
@@ -428,7 +428,7 @@
 }
 
 .feature-visibility-btn .material-icons-outlined {
-  font-size: 16px;
+  font-size: 20px;
 }
 
 .feature-visibility-placeholder {
@@ -508,8 +508,8 @@
 }
 
 .part-item .part-icon {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   filter: invert(0.8);
 }
@@ -811,6 +811,7 @@
   color: #888;
   cursor: pointer;
   position: relative;
+  width: 40px;
   height: 40px;
 }
 
@@ -840,8 +841,8 @@
 }
 
 .toolbar-separator {
-  width: 24px;
-  height: 8px;
+  width: 32px;
+  height: 10px;
   background: var(--tiling-sine-fine) repeat-x;
   transform: rotate(90deg);
   margin: 0 0px;
@@ -1083,7 +1084,7 @@
   border: none;
   cursor: pointer;
   color: #555;
-  padding: 2px 4px;
+  padding: 4px 8px;
   border-radius: 3px;
 }
 
