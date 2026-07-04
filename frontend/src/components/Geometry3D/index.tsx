@@ -27,6 +27,15 @@ import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactM
 // No constraint resolution -- the WASM hard solve handles that on pointer-up.
 import { edgeDragPreview } from '@/utils/geometry/edgeDragPreview'
 
+// Drag-time topology staleness gate: while a drag is in progress OR the
+// held-preview geometry has not yet been rebuilt by the cold solve, the
+// `topology` prop still represents the PRE-drag sketch -- rendering it would
+// draw a self-intersecting area fill and offer stale `isect:` ids for the
+// snap scan / ID picker. `topologyStale` is a single boolean shared by the
+// renderer, the ID-buffer registration, and the snap scan so the three
+// cannot drift. See feature/drag-topology-staleness.md.
+import { topologyStale } from '@/components/Geometry3D/dragTopologyGate'
+
 // WASM drag solve: runs the real solver on every drag frame.
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
 
@@ -132,6 +141,30 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // frame-pending window. After drag: the held preview until a fresh solve.
   const displaySketch = isDraggingThis ? (preview ?? nextHeld ?? solved) : (nextHeld ?? solved)
 
+  // Topology staleness gate: the WASM drag fast-path rewrites only per-entity
+  // geometry each rAF; the Rust area builder runs only on the cold solve. So
+  // `topology` is stale during a vertex/edge drag and through the post-drag
+  // pre-solve window where `nextHeld` (a held preview) is showing geometry the
+  // fresh solve has not yet rebuilt topology for. While stale:
+  //  - TopologySurfaces / useSketchSurfaceIdRegistration are suppressed
+  //    (area fill would render at the pre-drag footprint, self-intersecting
+  //    the moved entity lines).
+  //  - InferredContactMarkers / useSketchIdRegistration see topology=undefined
+  //    (free curve-curve intersections would otherwise be registered/picked at
+  //    their pre-drag positions). The dock: half of the inferred set is
+  //    live-derived from `sketch + constraints + params`, so it stays valid.
+  //  - DragPlane snap scan sees topology=undefined (the load-bearing pin:
+  //    see feature/drag-topology-staleness.md -- a coincident snap to a stale
+  //    `isect:` id at the pre-drag crossing position would commit a
+  //    constraint against a position that visually no longer exists).
+  // The single gate is shared by renderer + ID + snap so the three cannot drift.
+  //
+  // `dim_label` drags do NOT move geometry (the preview is `solved` itself),
+  // so they are excluded: the area fill and inferred-contact markers must stay
+  // visible while the user repositions a dimension label.
+  const isGeometryDragging = isDraggingThis && drag?.type !== 'dim_label'
+  const stale = topologyStale(isGeometryDragging, nextHeld, solved)
+
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
 
   const rot = resolvedPlaneTransform
@@ -172,14 +205,22 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     planeTransform: resolvedPlaneTransform,
     enabled: !activeFeatureId || isEditing,
     constraints: featureDef?.constraints,
-    topology,
+    // Treat topology as absent while stale: drops the `isect:` half of the
+    // inferred-contact ID registration (pre-drag crossings), keeps the
+    // `dock:` half (live-derived from `sketch + constraints + params`).
+    topology: stale ? undefined : topology,
   })
 
   useSketchSurfaceIdRegistration({
     featureId,
-    topology: topology,
+    topology,
     planeTransform: resolvedPlaneTransform,
-    enabled: !activeFeatureId || isEditing,
+    // Suppress the area-fill ID layer while stale: a surface query resolved at
+    // the pre-drag footprint can otherwise be picked/consumed during the
+    // held-preview window. Areas are decoration in the first place (see the
+    // crossLayerSelection.test.ts inert contract); hiding the layer mid-drag
+    // is the safe choice.
+    enabled: (!activeFeatureId || isEditing) && !stale,
   })
 
   const getEntityColor = (entityId: string): string => {
@@ -219,12 +260,12 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // Draw-time snap reads hoveredVertexPosition from the store (VertexDots does the raycast hover).
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
-      {topology && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
+      {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} constraints={featureDef?.constraints} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} isEditing={isEditing} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
-      {isEditing && <InferredContactMarkers sketch={displaySketch} featureId={featureId} constraints={featureDef?.constraints} topology={topology} />}
-      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={topology} />}
+      {isEditing && !stale && <InferredContactMarkers sketch={displaySketch} featureId={featureId} constraints={featureDef?.constraints} topology={topology} />}
+      {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}
       {isEditing && <DragAlignmentIndicator />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} />
