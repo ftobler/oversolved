@@ -42,7 +42,8 @@ function loadWebModule(base: string): Promise<WebModule | null> {
       // The web build needs its init() called once (fetches the .wasm).
       await mod.default(`${base}sketch_solver_bg.wasm`)
       return mod
-    } catch {
+    } catch (e) {
+      console.error('[solverWasm] loadWebModule failed:', e)
       return null
     }
   })()
