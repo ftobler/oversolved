@@ -50,7 +50,7 @@ export async function importStepFile(store: DocumentStore, file: File): Promise<
   if (!fileData) throw new Error('STEP file is empty')
   const name = file.name.replace(/\.(step|stp)$/i, '')
   if (!name) throw new Error('Invalid filename')
-  const content = buildStepContent(fileData, randomId(18), name)
+  const content = buildStepContent(fileData, randomId(18), file.name)
   const { uuid } = await store.create(name)
   await store.save(uuid, { content })
   return uuid

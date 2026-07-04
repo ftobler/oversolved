@@ -51,7 +51,7 @@ describe('importStepFile', () => {
     expect(imp).toBeTruthy()
     expect(typeof imp.file_data).toBe('string')
     expect(imp.file_data.length).toBeGreaterThan(0)
-    expect(imp.label).toBe('bracket')
+    expect(imp.label).toBe('bracket.step')
   })
 
   it('rejects an empty STEP file', async () => {
