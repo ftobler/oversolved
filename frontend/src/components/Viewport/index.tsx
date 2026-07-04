@@ -327,13 +327,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   }, [])
 
   // Auto-fit: frame a document's content once, when its geometry first becomes
-  // available. `fitPending` is the single intent flag. It starts true (fit the
-  // first document on open) and is re-armed per document by the imperative
-  // autoZoomToFit() (called on each document's first solve). Because it is a
-  // re-armable intent, not a permanent latch, loading a second document into
-  // the same Viewport re-fits - the latch bug that left later documents
-  // unframed is gone. Camera-only; never mutates app state.
-  const fitPendingRef = useRef(true)
+  // available. `fitPending` is armed by autoZoomToFit() (called imperatively on
+  // each document's first solve) and disarmed once fitToContent succeeds. Because
+  // it is a re-armable intent, not a permanent latch, loading a second document
+  // into the same Viewport re-fits. Camera-only; never mutates app state.
+  const fitPendingRef = useRef(false)
 
   const tryFit = useCallback((force = false) => {
     if (!fitPendingRef.current) return

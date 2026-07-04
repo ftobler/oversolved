@@ -97,6 +97,8 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     render(<Viewport ref={ref} />)
     const zoomBefore = testCamera.zoom
 
+    ref.current?.autoZoomToFit()
+
     await act(async () => {
       usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
     })
@@ -111,6 +113,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
 
     // Simulate entering sketch edit: trigger an initial zoom first with no active feature,
     // then reset camera and enter edit mode.
+    ref.current?.autoZoomToFit()
     await act(async () => {
       usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
     })
@@ -158,6 +161,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     render(<Viewport ref={ref} />)
 
     // First document: geometry arrives and the camera fits.
+    ref.current?.autoZoomToFit()
     await act(async () => {
       usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
     })
