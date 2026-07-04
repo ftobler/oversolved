@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-export const GIZMO_SIZE = 128
+export const GIZMO_SIZE = 140
 export const GIZMO_STYLE: React.CSSProperties = {
   position: 'absolute',
   bottom: 12,
