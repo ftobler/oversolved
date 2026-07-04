@@ -14,7 +14,7 @@
 .documents-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   width: 200px;
   min-width: 200px;
   overflow-y: auto;
@@ -54,7 +54,7 @@
 .sidebar-item {
   display: flex;
   align-items: center;
-  padding: 7px 12px;
+  padding: 10px 12px;
   margin-right: 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -64,7 +64,7 @@
 }
 
 .sidebar-item:hover {
-  background-color: #141519;
+  background-color: #101014;
 }
 
 /* The sign-in entry is a Link, not a div: drop the default anchor styling so it
@@ -74,7 +74,7 @@
 }
 
 .sidebar-item.active {
-  background: #111111;
+  background: #000;
   color: #fff;
 }
 
@@ -107,7 +107,7 @@
 
 .doc-controls {
   display: flex;
-  gap: 4px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -368,7 +368,7 @@
 
 .doc-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(256px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 8px;
 }
 
@@ -436,8 +436,8 @@
   color: #555;
   border: none;
   border-radius: 4px;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -457,9 +457,9 @@
 
 .btn-tile-action .material-icons,
 .btn-delete-tile .material-icons {
-  font-size: 16px;
-  width: 16px;
-  height: 16px;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
 }
 
 .doc-tile-meta {
