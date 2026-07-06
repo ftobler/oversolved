@@ -114,6 +114,44 @@ describe("edgeDescriptorOf derivation", () => {
     expect(partial?.point[1]).toBeCloseTo(2, 6)
   })
 
+  it("near-full ellipse (span within 1e-6 of 2*pi) still anchors on center", () => {
+    // 4dp rounding jitter must not flip a near-full ellipse to the midpoint
+    // anchor: a flip would strand persisted tokens across rebuilds.
+    const base = { kind: "ellipse", center: [0, 0, 0], a: 4, b: 2, axis: [0, 0, 1], x_axis: [1, 0, 0] }
+    const nearFull = edgeDescriptorOf({ ...base, angle_start: 0, angle_end: 2 * Math.PI - 1e-7 })
+    expect(nearFull?.point).toEqual([0, 0, 0])
+  })
+
+  it("partial ellipse without `b` yields null (fail-safe, no colliding center anchor)", () => {
+    const base = { kind: "ellipse", center: [0, 0, 0], a: 4, axis: [0, 0, 1], x_axis: [1, 0, 0] }
+    expect(edgeDescriptorOf({ ...base, angle_start: 0, angle_end: Math.PI })).toBeNull()
+  })
+
+  it("circle/arc/ellipse without `axis` yields null (no world-axis fallback)", () => {
+    // A missing axis is malformed geometry, not a defaultable field: a
+    // world-axis fallback could match an unrelated world-axis query silently.
+    expect(edgeDescriptorOf({ kind: "circle", center: [0, 0, 0], radius: 4 })).toBeNull()
+    expect(
+      edgeDescriptorOf({ kind: "arc", center: [0, 0, 0], radius: 2, x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2 }),
+    ).toBeNull()
+    expect(edgeDescriptorOf({ kind: "ellipse", center: [0, 0, 0], a: 4, b: 2, x_axis: [1, 0, 0] })).toBeNull()
+  })
+
+  it("arc without `x_axis` yields null", () => {
+    // The arc midpoint needs the plane's x_axis; without it the descriptor
+    // cannot be derived and must not fall back to a world axis.
+    expect(
+      edgeDescriptorOf({
+        kind: "arc",
+        center: [0, 0, 0],
+        radius: 2,
+        axis: [0, 0, 1],
+        angle_start: 0,
+        angle_end: Math.PI / 2,
+      }),
+    ).toBeNull()
+  })
+
   it("spline: mean of points, chord direction, chord length", () => {
     const d = edgeDescriptorOf({
       kind: "spline",

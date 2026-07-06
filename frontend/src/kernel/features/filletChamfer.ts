@@ -164,6 +164,20 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   return { queryToEdge, hashToEdge, descriptorEdges, ancestryRepo }
 }
 
+/**
+ * Descriptor-tier face picker (the @gdf| half of `resolveFaceToEdges`).
+ * Pure: returns the winning candidate or undefined when the match is
+ * tight-ambiguous or a near-tie (fail-safe -- the caller returns no edges
+ * rather than filleting the wrong face's edges). Extracted so the refusal
+ * contract can be unit-tested without OCC.
+ */
+export function pickFaceByDescriptor<T>(
+  qd: GeomDescriptor,
+  candidates: Array<[T, GeomDescriptor]>,
+): T | undefined {
+  return bestDescriptorMatch(qd, candidates)
+}
+
 /** Resolve a face ancestry query to all OCC edges of the matching face. */
 function resolveFaceToEdges(
   oc: OccModule,
@@ -193,7 +207,7 @@ function resolveFaceToEdges(
           GeomDescriptor,
         ],
     )
-    const winner = bestDescriptorMatch(qd, candidates)
+    const winner = pickFaceByDescriptor(qd, candidates)
     if (winner !== undefined) return exploreEdges(oc, scope, winner)
     return []
   }

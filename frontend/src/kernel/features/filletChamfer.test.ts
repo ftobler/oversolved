@@ -5,12 +5,13 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { solveFillet, solveChamfer, resolveFilletEdges } from './filletChamfer'
+import { solveFillet, solveChamfer, resolveFilletEdges, pickFaceByDescriptor } from './filletChamfer'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccHandle } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
+import type { GeomDescriptor } from '../geomDescriptor'
 
 const oc = null as unknown as OccModule
 const scope = null as never
@@ -88,5 +89,42 @@ describe('resolveFilletEdges guard', () => {
 
   it('returns empty array when edgeQueries is empty (body with null shape)', () => {
     expect(resolveFilletEdges(oc, scopeNull, table, oneBody().body_b, [])).toEqual([])
+  })
+})
+
+/**
+ * pickFaceByDescriptor: the @gdf| tier of resolveFaceToEdges. An ambiguous
+ * match (near-tie, no clear nearest-with-margin winner) must refuse -- the
+ * fillet/chamfer leaf cuts metal, so it returns undefined and the caller
+ * emits no edges, rather than guessing and filleting the wrong face's edges.
+ */
+describe('pickFaceByDescriptor refusal', () => {
+  const face = (point: number[], axis: number[]): GeomDescriptor => ({ kind: 'face', point, axis })
+
+  it('near-tie outside the tight window -> undefined (no edges)', () => {
+    const qd = face([0, 0, 10], [0, 0, 1])
+    const candidates: Array<[string, GeomDescriptor]> = [
+      ['capA', face([0, 0, 11], [0, 0, 1])],
+      ['capB', face([0, 0, 11.5], [0, 0, 1])],
+    ]
+    expect(pickFaceByDescriptor(qd, candidates)).toBeUndefined()
+  })
+
+  it('two tight hits -> undefined (no edges)', () => {
+    const qd = face([0, 0, 10], [0, 0, 1])
+    const candidates: Array<[string, GeomDescriptor]> = [
+      ['capA', face([0, 0, 10.0001], [0, 0, 1])],
+      ['capB', face([0, 0, 9.9999], [0, 0, 1])],
+    ]
+    expect(pickFaceByDescriptor(qd, candidates)).toBeUndefined()
+  })
+
+  it('unique tight hit wins (the matching face gets filleted)', () => {
+    const qd = face([0, 0, 10], [0, 0, 1])
+    const candidates: Array<[string, GeomDescriptor]> = [
+      ['cap', face([0, 0, 10.0002], [0, 0, 1])],
+      ['other', face([0, 0, 14], [0, 0, 1])],
+    ]
+    expect(pickFaceByDescriptor(qd, candidates)).toBe('cap')
   })
 })

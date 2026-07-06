@@ -196,11 +196,16 @@ export function edgeDescriptorOf(edge: Record<string, unknown>): EdgeDescriptor 
     const center = asVec(edge["center"])
     const radius = Number(edge["radius"])
     if (!center || !Number.isFinite(radius)) return null
-    const axis = asVec(edge["axis"]) ?? [0, 0, 1]
+    // Axis is essential geometry, not a test-harness default: a missing axis
+    // means the payload is malformed, and emitting a world-axis fallback would
+    // let it match an unrelated world-axis query silently.
+    const axis = asVec(edge["axis"])
+    if (axis === null) return null
     if (kind === "circle") {
       return { kind: "edge", edgeKind: "circle", point: center, axis, scalar: radius }
     }
-    const xAxis = asVec(edge["x_axis"]) ?? [1, 0, 0]
+    const xAxis = asVec(edge["x_axis"])
+    if (xAxis === null) return null
     const yAxis = cross(axis, xAxis)
     const mid = (edgeAngle(edge, true) + edgeAngle(edge, false)) / 2
     return {
@@ -216,17 +221,24 @@ export function edgeDescriptorOf(edge: Record<string, unknown>): EdgeDescriptor 
     const a = Number(edge["a"])
     const b = Number(edge["b"])
     if (!center || !Number.isFinite(a)) return null
-    const axis = asVec(edge["axis"]) ?? [0, 0, 1]
+    const axis = asVec(edge["axis"])
+    if (axis === null) return null
     const t0 = edgeAngle(edge, true)
     const t1 = edgeAngle(edge, false)
     // A full ellipse (or missing range) anchors on the center; a partial
     // elliptical arc anchors on its midpoint so two arcs of one ellipse differ.
-    const full = Math.abs(Math.abs(t1 - t0) - 2 * Math.PI) < 1e-9 || t0 === t1
-    let point = center
-    if (!full && Number.isFinite(b)) {
-      const xAxis = asVec(edge["x_axis"]) ?? [1, 0, 0]
-      point = conicPoint(center, xAxis, cross(axis, xAxis), a, b, (t0 + t1) / 2)
-    }
+    // The 1e-6 window rides above 4dp rounding jitter, so a near-full ellipse
+    // (span 2*pi - 1e-7) does not flip to the midpoint anchor and strand tokens
+    // across rebuilds.
+    const full = Math.abs(Math.abs(t1 - t0) - 2 * Math.PI) < 1e-6 || t0 === t1
+    if (full) return { kind: "edge", edgeKind: "ellipse", point: center, axis, scalar: a }
+    // Partial elliptical arc: midpoint anchor needs `b` and the plane's x_axis.
+    // A payload missing them cannot distinguish two arcs of one ellipse, so we
+    // refuse to emit (fail-safe over a colliding center anchor).
+    if (!Number.isFinite(b)) return null
+    const xAxis = asVec(edge["x_axis"])
+    if (xAxis === null) return null
+    const point = conicPoint(center, xAxis, cross(axis, xAxis), a, b, (t0 + t1) / 2)
     return { kind: "edge", edgeKind: "ellipse", point, axis, scalar: a }
   }
   // Spline and anything else that carries sampled points: mean point + chord.

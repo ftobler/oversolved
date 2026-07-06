@@ -556,6 +556,9 @@ export class Repository {
       // Descriptor analogue of the precise-hash-only rule: without an ancestry
       // bound, match TIGHT only. Nearest-with-margin is deliberately excluded
       // here -- a loose global match could reach across unrelated lineages.
+      // First-parseable-descriptor wins (mirrors the legacy preciseHashes[0]
+      // first-wins); a query with mixed descriptor kinds is unusual and the
+      // second token simply goes unused at this tier.
       const qd = descriptorIds.map(parseGeomDescriptorId).find(d => d !== null) ?? null
       if (qd !== null) {
         const fallbackIds: string[] = []
