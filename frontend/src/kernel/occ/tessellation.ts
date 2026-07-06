@@ -27,7 +27,8 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
-import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash, vertexGeometryHash } from '../geomHash'
+import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash } from '../geomHash'
+import { edgeDescriptorOf, emitEdgeDescriptor, emitVertexDescriptor } from '../geomDescriptor'
 import { buildFaceQuery, faceTokens, edgeLineageTokens } from '../faceQuery'
 import { ref, makeAncestryQuery } from '../query'
 import type { EdgeData } from '@/types/cad'
@@ -407,17 +408,23 @@ export function solidToEdges(
       for (const ed of edges) {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
-        const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
+        // Descriptor token instead of the old gedge_ digest: tolerant identity
+        // in persisted queries (query-descriptor-identity). The digest stays a
+        // fail-safe fallback for the rare edge whose dict carries no geometry.
+        const desc = edgeDescriptorOf(ed as unknown as Record<string, unknown>)
+        const geomToken = desc
+          ? emitEdgeDescriptor(desc)
+          : ref(edgeGeometryHash(ed as unknown as Record<string, unknown>))
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
         if (bodyId) {
-          const ids = [ref(geomHash), ref(createdBy), ref(bodyId)]
+          const ids = [geomToken, ref(createdBy), ref(bodyId)]
           const eTokens = edgeLineageTokens(ed as unknown as Record<string, unknown>, opts.edgeLineage ?? null)
           if (eTokens.length) ids.push(...eTokens)
           else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         } else {
-          const ids = [ref(geomHash), ref(createdBy)]
+          const ids = [geomToken, ref(createdBy)]
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         }
@@ -519,13 +526,14 @@ export function solidToVertices(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       for (const v of vertices) {
-        const geomHash = vertexGeometryHash(v)
+        // Descriptor token instead of the old gvertex_ digest (query-descriptor-identity).
+        const geomToken = emitVertexDescriptor(v)
         if (bodyId) {
-          const ids = [ref(geomHash), ref(createdBy), ref(bodyId)]
+          const ids = [geomToken, ref(createdBy), ref(bodyId)]
           if (opts.profileQueries && opts.profileQueries.length) ids.push(...opts.profileQueries)
           vertex_queries.push(makeAncestryQuery(ids, 'vertex'))
         } else {
-          vertex_queries.push(makeAncestryQuery([ref(geomHash), ref(createdBy)], 'vertex'))
+          vertex_queries.push(makeAncestryQuery([geomToken, ref(createdBy)], 'vertex'))
         }
       }
     }

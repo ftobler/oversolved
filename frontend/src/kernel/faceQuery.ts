@@ -2,7 +2,8 @@
 // (shard 1) and the ancestry query format (shard 2) at the tessellation boundary; phase 2b left
 // face_data carrying geometry only and deferred this wiring to 2c.
 
-import { faceGeometryHash, faceNormalHash, edgeGeometryHash } from "./geomHash"
+import { faceGeometryHash, edgeGeometryHash } from "./geomHash"
+import { emitFaceDescriptor } from "./geomDescriptor"
 import { ref, makeAncestryQuery } from "./query"
 
 /** Ancestry query string for a face, or null if createdBy is absent. */
@@ -18,12 +19,12 @@ export function buildFaceQuery(
   classifiers: string[] | null = null,
 ): string | null {
   if (!createdBy) return null
-  const geomHash = faceGeometryHash(centroid, normal)
-  const normalHash = faceNormalHash(normal)
   if (bodyId) {
-    // gface_ (centroid+normal) is the precise identity; gnormal_ is the
-    // orientation-only fallback the resolver uses when the centroid drifts.
-    const ids = [ref(geomHash), ref(normalHash), ref(createdBy), ref(bodyId)]
+    // The descriptor token replaces the old gface_/gnormal_ digest pair: it
+    // carries centroid+normal in the clear, so the resolver can match with
+    // tolerance when the centroid drifts instead of going stale (see
+    // geomDescriptor.ts). Digests remain the lineage-map keys only.
+    const ids = [emitFaceDescriptor(centroid, normal), ref(createdBy), ref(bodyId)]
     if (faceTokens && faceTokens.length) ids.push(...faceTokens)
     else if (profileQueries && profileQueries.length) ids.push(...profileQueries)
     // Classifier tokens (spatial role) ride the id list; the resolver

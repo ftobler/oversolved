@@ -13,6 +13,15 @@ import {
   isPlaneType,
   resolveBarePlaneId,
 } from "./solverConstants"
+import {
+  DEFAULT_DESCRIPTOR_MATCH,
+  descriptorDistance,
+  descriptorOfElement,
+  isGeomDescriptorId,
+  narrowByDescriptor,
+  parseGeomDescriptorId,
+  type GeomDescriptor,
+} from "./geomDescriptor"
 
 export class AmbiguousQueryError extends Error {}
 
@@ -425,7 +434,10 @@ export class Repository {
 
     const hashIds = ids.filter(isGeomHashId)
     const classifierIds = ids.filter(isClassifierId)
-    const nonHashIds = ids.filter(i => !isGeomHashId(i) && !isClassifierId(i))
+    const descriptorIds = ids.filter(isGeomDescriptorId)
+    const nonHashIds = ids.filter(
+      i => !isGeomHashId(i) && !isClassifierId(i) && !isGeomDescriptorId(i),
+    )
 
     let candidateIds: string[] = []
     let querySet = new Set<string>()
@@ -479,8 +491,24 @@ export class Repository {
       if (narrowed.length) candidateIds = narrowed
     }
 
+    if (candidateIds.length > 1 && descriptorIds.length) {
+      // Descriptor tier (query-descriptor-identity): tolerance matching against
+      // the candidates' registered geometry. Gate by kind/orientation, then
+      // tight window, then nearest-with-margin; a near-tie refuses to narrow so
+      // the >1 leftover fails loud below (fail-safe over fail-wrong).
+      for (const dTok of descriptorIds) {
+        if (candidateIds.length <= 1) break
+        const qd = parseGeomDescriptorId(dTok)
+        if (qd === null) continue
+        const pairs = candidateIds.map(
+          eid => [eid, descriptorOfElement(this.elements.get(eid))] as [string, GeomDescriptor | null],
+        )
+        candidateIds = narrowByDescriptor(qd, pairs)
+      }
+    }
+
     if (candidateIds.length > 1 && hashIds.length) {
-      // Tie-break by geometry hash in specificity order: precise element hash
+      // Legacy digest tie-break (pre-descriptor docs): precise element hash
       // first, then the @gnormal_ orientation-only fallback, staying within the
       // ancestry-matched set so @gnormal_ never reaches across lineages.
       const preciseHashes = hashIds.filter(h => !h.startsWith("@gnormal_")).map(h => h.slice(1))
@@ -524,6 +552,24 @@ export class Repository {
       candidateIds = orderFilter(fallbackIds)
     }
 
+    if (!candidateIds.length && descriptorIds.length) {
+      // Descriptor analogue of the precise-hash-only rule: without an ancestry
+      // bound, match TIGHT only. Nearest-with-margin is deliberately excluded
+      // here -- a loose global match could reach across unrelated lineages.
+      const qd = descriptorIds.map(parseGeomDescriptorId).find(d => d !== null) ?? null
+      if (qd !== null) {
+        const fallbackIds: string[] = []
+        for (const [eid, el] of this.elements) {
+          if (typeRestriction !== null && objType(el) !== typeRestriction) continue
+          const cd = descriptorOfElement(el)
+          if (cd === null) continue
+          const dist = descriptorDistance(qd, cd)
+          if (dist !== null && dist <= DEFAULT_DESCRIPTOR_MATCH.tightTol) fallbackIds.push(eid)
+        }
+        candidateIds = orderFilter(fallbackIds)
+      }
+    }
+
     if (!candidateIds.length) return null
     if (candidateIds.length > 1) {
       throw new AmbiguousQueryError(
@@ -538,7 +584,9 @@ export class Repository {
     if (!queryStr || queryStr[0] !== "?") return []
     const orderFilter = this.orderFilter(currentFeatureId)
     const [ids, typeRestriction] = parseAncestry(queryStr)
-    const querySet = new Set(ids.filter(i => !isGeomHashId(i) && !isClassifierId(i)))
+    const querySet = new Set(
+      ids.filter(i => !isGeomHashId(i) && !isClassifierId(i) && !isGeomDescriptorId(i)),
+    )
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
       if (isSubset(querySet, entry.set)) candidateIds.push(...entry.eids)
@@ -552,7 +600,9 @@ export class Repository {
 
   queryAllTyped(q: AncestryQuery, currentFeatureId: string | null = null): unknown[] {
     const orderFilter = this.orderFilter(currentFeatureId)
-    const querySet = new Set(q.ancestorIds.filter(i => !isGeomHashId(i) && !isClassifierId(i)))
+    const querySet = new Set(
+      q.ancestorIds.filter(i => !isGeomHashId(i) && !isClassifierId(i) && !isGeomDescriptorId(i)),
+    )
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
       if (isSubset(querySet, entry.set)) candidateIds.push(...entry.eids)

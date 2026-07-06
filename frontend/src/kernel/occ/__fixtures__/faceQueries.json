@@ -1,284 +1,284 @@
 {
-  "build": [
-    {
-      "name": "no_created_by",
-      "args": {
-        "created_by": null,
-        "body_id": "body_x",
-        "face_idx": 0,
-        "centroid": [
-          1.0,
-          2.0,
-          3.0
-        ],
-        "normal": [
-          0.0,
-          0.0,
-          1.0
-        ],
-        "surface_type": "flatface",
-        "profile_queries": null,
-        "face_tokens": null,
-        "classifiers": null
-      },
-      "expected": null
-    },
-    {
-      "name": "body_plain",
-      "args": {
-        "created_by": "feat_a",
-        "body_id": "body_x",
-        "face_idx": 0,
-        "centroid": [
-          1.0,
-          2.0,
-          3.0
-        ],
-        "normal": [
-          0.0,
-          0.0,
-          1.0
-        ],
-        "surface_type": "flatface",
-        "profile_queries": null,
-        "face_tokens": null,
-        "classifiers": null
-      },
-      "expected": "?17,19,7,7;@gface_4b355923e302aae4@gnormal_95fa425aa0da0411@feat_a@body_x:flatface"
-    },
-    {
-      "name": "body_with_face_tokens",
-      "args": {
-        "created_by": "feat_a",
-        "body_id": "body_x",
-        "face_idx": 1,
-        "centroid": [
-          1.5,
-          -2.5,
-          0.0
-        ],
-        "normal": [
-          0.0,
-          0.0,
-          -1.0
-        ],
-        "surface_type": "flatface",
-        "face_tokens": [
-          "@feat_a/e0",
-          "@feat_a/e1"
-        ],
-        "profile_queries": null,
-        "classifiers": null
-      },
-      "expected": "?17,19,7,7,a,a;@gface_21929b0c990fa567@gnormal_df22ece7807f55b8@feat_a@body_x@feat_a/e0@feat_a/e1:flatface"
-    },
-    {
-      "name": "body_with_profile_queries",
-      "args": {
-        "created_by": "feat_a",
-        "body_id": "body_x",
-        "face_idx": 2,
-        "centroid": [
-          0.0,
-          0.0,
-          5.0
-        ],
-        "normal": [
-          0.0,
-          0.0,
-          1.0
-        ],
-        "surface_type": "flatface",
-        "profile_queries": [
-          "?7;@feat_a"
-        ],
-        "face_tokens": null,
-        "classifiers": null
-      },
-      "expected": "?17,19,7,7,a;@gface_334e23455a687eda@gnormal_95fa425aa0da0411@feat_a@body_x?7;@feat_a:flatface"
-    },
-    {
-      "name": "body_face_tokens_win_over_profile",
-      "args": {
-        "created_by": "feat_a",
-        "body_id": "body_x",
-        "face_idx": 3,
-        "centroid": [
-          2.0,
-          2.0,
-          2.0
-        ],
-        "normal": [
-          0.5773502691896258,
-          0.5773502691896258,
-          0.5773502691896258
-        ],
-        "surface_type": "cylinderface",
-        "face_tokens": [
-          "@feat_a/e9"
-        ],
-        "profile_queries": [
-          "?7;@feat_a"
-        ],
-        "classifiers": null
-      },
-      "expected": "?17,19,7,7,a;@gface_c523cd52945c2125@gnormal_5e2d74b92e4331d2@feat_a@body_x@feat_a/e9:cylinderface"
-    },
-    {
-      "name": "body_with_classifiers",
-      "args": {
-        "created_by": "feat_a",
-        "body_id": "body_x",
-        "face_idx": 4,
-        "centroid": [
-          10.0,
-          0.0,
-          0.0
-        ],
-        "normal": [
-          1.0,
-          0.0,
-          0.0
-        ],
-        "surface_type": "flatface",
-        "face_tokens": [
-          "@feat_a/e0"
-        ],
-        "classifiers": [
-          "cls_xp",
-          "cls_zn"
-        ],
-        "profile_queries": null
-      },
-      "expected": "?17,19,7,7,a,7,7;@gface_0b1c45008f6fdc2c@gnormal_c697327a0fa72ab3@feat_a@body_x@feat_a/e0@cls_xp@cls_zn:flatface"
-    },
-    {
-      "name": "sketch_face_no_body",
-      "args": {
-        "created_by": "feat_a",
-        "body_id": null,
-        "face_idx": 7,
-        "centroid": [
-          1.0,
-          1.0,
-          0.0
-        ],
-        "normal": [
-          0.0,
-          0.0,
-          1.0
-        ],
-        "surface_type": "flatface",
-        "profile_queries": null,
-        "face_tokens": null,
-        "classifiers": null
-      },
-      "expected": "?d,7;@feat_a/face7@feat_a:flatface"
-    }
-  ],
-  "tokens": {
-    "face_hit": {
-      "centroid": [
-        1.0,
-        2.0,
-        3.0
-      ],
-      "normal": [
-        0.0,
-        0.0,
-        1.0
-      ],
-      "face_lineage": {
-        "gface_4b355923e302aae4": [
-          "@feat_a/e0"
-        ]
-      },
-      "expected": [
-        "@feat_a/e0"
-      ]
-    },
-    "face_miss": {
-      "centroid": [
-        9.0,
-        9.0,
-        9.0
-      ],
-      "normal": [
-        0.0,
-        0.0,
-        1.0
-      ],
-      "face_lineage": {
-        "gface_4b355923e302aae4": [
-          "@feat_a/e0"
-        ]
-      },
-      "expected": []
-    },
-    "face_null_lineage": {
-      "centroid": [
-        1.0,
-        2.0,
-        3.0
-      ],
-      "normal": [
-        0.0,
-        0.0,
-        1.0
-      ],
-      "face_lineage": null,
-      "expected": []
-    },
-    "edge_hit": {
-      "edge": {
-        "kind": "line",
-        "start": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "end": [
-          10.0,
-          0.0,
-          0.0
-        ]
-      },
-      "edge_lineage": {
-        "gedge_0013dd02e80bd620": [
-          "@feat_a/e3"
-        ]
-      },
-      "expected": [
-        "@feat_a/e3"
-      ]
-    },
-    "edge_null_lineage": {
-      "edge": {
-        "kind": "line",
-        "start": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "end": [
-          10.0,
-          0.0,
-          0.0
-        ]
-      },
-      "edge_lineage": null,
-      "expected": []
-    },
-    "edge_hash_raises": {
-      "edge": {
-        "kind": "arc"
-      },
-      "edge_lineage": {
-        "gedge_0013dd02e80bd620": [
-          "@feat_a/e3"
-        ]
-      },
-      "expected": []
-    }
+ "build": [
+  {
+   "name": "no_created_by",
+   "args": {
+    "created_by": null,
+    "body_id": "body_x",
+    "face_idx": 0,
+    "centroid": [
+     1.0,
+     2.0,
+     3.0
+    ],
+    "normal": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "surface_type": "flatface",
+    "profile_queries": null,
+    "face_tokens": null,
+    "classifiers": null
+   },
+   "expected": null
+  },
+  {
+   "name": "body_plain",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": "body_x",
+    "face_idx": 0,
+    "centroid": [
+     1.0,
+     2.0,
+     3.0
+    ],
+    "normal": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "surface_type": "flatface",
+    "profile_queries": null,
+    "face_tokens": null,
+    "classifiers": null
+   },
+   "expected": "?1c,7,7;@gdf|1.0,2.0,3.0|0.0,0.0,1.0@feat_a@body_x:flatface"
+  },
+  {
+   "name": "body_with_face_tokens",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": "body_x",
+    "face_idx": 1,
+    "centroid": [
+     1.5,
+     -2.5,
+     0.0
+    ],
+    "normal": [
+     0.0,
+     0.0,
+     -1.0
+    ],
+    "surface_type": "flatface",
+    "face_tokens": [
+     "@feat_a/e0",
+     "@feat_a/e1"
+    ],
+    "profile_queries": null,
+    "classifiers": null
+   },
+   "expected": "?1e,7,7,a,a;@gdf|1.5,-2.5,0.0|0.0,0.0,-1.0@feat_a@body_x@feat_a/e0@feat_a/e1:flatface"
+  },
+  {
+   "name": "body_with_profile_queries",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": "body_x",
+    "face_idx": 2,
+    "centroid": [
+     0.0,
+     0.0,
+     5.0
+    ],
+    "normal": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "surface_type": "flatface",
+    "profile_queries": [
+     "?7;@feat_a"
+    ],
+    "face_tokens": null,
+    "classifiers": null
+   },
+   "expected": "?1c,7,7,a;@gdf|0.0,0.0,5.0|0.0,0.0,1.0@feat_a@body_x?7;@feat_a:flatface"
+  },
+  {
+   "name": "body_face_tokens_win_over_profile",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": "body_x",
+    "face_idx": 3,
+    "centroid": [
+     2.0,
+     2.0,
+     2.0
+    ],
+    "normal": [
+     0.5773502691896258,
+     0.5773502691896258,
+     0.5773502691896258
+    ],
+    "surface_type": "cylinderface",
+    "face_tokens": [
+     "@feat_a/e9"
+    ],
+    "profile_queries": [
+     "?7;@feat_a"
+    ],
+    "classifiers": null
+   },
+   "expected": "?25,7,7,a;@gdf|2.0,2.0,2.0|0.5774,0.5774,0.5774@feat_a@body_x@feat_a/e9:cylinderface"
+  },
+  {
+   "name": "body_with_classifiers",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": "body_x",
+    "face_idx": 4,
+    "centroid": [
+     10.0,
+     0.0,
+     0.0
+    ],
+    "normal": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "surface_type": "flatface",
+    "face_tokens": [
+     "@feat_a/e0"
+    ],
+    "classifiers": [
+     "cls_xp",
+     "cls_zn"
+    ],
+    "profile_queries": null
+   },
+   "expected": "?1d,7,7,a,7,7;@gdf|10.0,0.0,0.0|1.0,0.0,0.0@feat_a@body_x@feat_a/e0@cls_xp@cls_zn:flatface"
+  },
+  {
+   "name": "sketch_face_no_body",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": null,
+    "face_idx": 7,
+    "centroid": [
+     1.0,
+     1.0,
+     0.0
+    ],
+    "normal": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "surface_type": "flatface",
+    "profile_queries": null,
+    "face_tokens": null,
+    "classifiers": null
+   },
+   "expected": "?d,7;@feat_a/face7@feat_a:flatface"
   }
+ ],
+ "tokens": {
+  "face_hit": {
+   "centroid": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "normal": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "face_lineage": {
+    "gface_4b355923e302aae4": [
+     "@feat_a/e0"
+    ]
+   },
+   "expected": [
+    "@feat_a/e0"
+   ]
+  },
+  "face_miss": {
+   "centroid": [
+    9.0,
+    9.0,
+    9.0
+   ],
+   "normal": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "face_lineage": {
+    "gface_4b355923e302aae4": [
+     "@feat_a/e0"
+    ]
+   },
+   "expected": []
+  },
+  "face_null_lineage": {
+   "centroid": [
+    1.0,
+    2.0,
+    3.0
+   ],
+   "normal": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "face_lineage": null,
+   "expected": []
+  },
+  "edge_hit": {
+   "edge": {
+    "kind": "line",
+    "start": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "end": [
+     10.0,
+     0.0,
+     0.0
+    ]
+   },
+   "edge_lineage": {
+    "gedge_0013dd02e80bd620": [
+     "@feat_a/e3"
+    ]
+   },
+   "expected": [
+    "@feat_a/e3"
+   ]
+  },
+  "edge_null_lineage": {
+   "edge": {
+    "kind": "line",
+    "start": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "end": [
+     10.0,
+     0.0,
+     0.0
+    ]
+   },
+   "edge_lineage": null,
+   "expected": []
+  },
+  "edge_hash_raises": {
+   "edge": {
+    "kind": "arc"
+   },
+   "edge_lineage": {
+    "gedge_0013dd02e80bd620": [
+     "@feat_a/e3"
+    ]
+   },
+   "expected": []
+  }
+ }
 }

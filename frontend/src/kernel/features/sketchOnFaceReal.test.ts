@@ -525,14 +525,14 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   /**
    * A reshaped face (centroid drifts, normal preserved) still resolves.
    *
-   * The face query carries two geometry tokens: the precise gface_ (centroid+normal) and an
-   * orientation-only gnormal_ fallback. When the body is edited so the picked end-cap moves --
-   * its centroid drifts but its normal is unchanged -- the precise hash goes stale, and the
-   * resolver must fall back to the normal hash. Among the two opposite-facing end-caps of this
-   * two-circle body the normal is unique, so it must resolve to the moved face (and never to
-   * the opposite cap).
+   * The face query carries a geometric descriptor token (@gdf|centroid|normal,
+   * query-descriptor-identity). When the body is edited so the picked end-cap moves -- its
+   * centroid drifts but its normal is unchanged -- the tight match misses and the descriptor
+   * tier's signed normal gate + nearest-with-margin must land on the moved face. Among the two
+   * opposite-facing end-caps of this two-circle body the normal is unique, so it must resolve
+   * to the moved face (and never to the opposite cap).
    */
-  it('sketch plane follows face when centroid drifts via normal fallback', () => {
+  it('sketch plane follows face when centroid drifts via descriptor matching', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
     try {
@@ -566,13 +566,14 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
         }
       }
       if (!picked) return
-      // Verify the face query carries the gnormal_ fallback token.
-      expect(picked).toContain('@gnormal_')
+      // Verify the face query carries the geometric descriptor token.
+      expect(picked).toContain('@gdf|')
 
       const sk2: Dict = { id: 'sk2', kind: 'sketch', plane: picked, entities: [], constraints: [] }
 
-      // Extrude longer: the +y cap moves from y=10 to y=14. gface_ goes stale;
-      // gnormal_ must rescue and land the plane on the moved cap, not the y=0 one.
+      // Extrude longer: the +y cap moves from y=10 to y=14. The tight match
+      // misses; the descriptor tier must rescue and land the plane on the
+      // moved cap, not the y=0 one.
       const r = build({ features: [sk1, extrudeOp(14.0), sk2] }, {}, deps)
       const res = (r.result as Record<string, Dict>).sk2 ?? {}
       if (res.status === 'exception') return  // known gap: sketch plane face-query resolution

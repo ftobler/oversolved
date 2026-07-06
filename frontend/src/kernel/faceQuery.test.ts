@@ -14,7 +14,10 @@ type BuildArgs = {
   classifiers: string[] | null
 }
 
-describe("buildFaceQuery parity with Python", () => {
+// Originally a byte-parity gate against the (since removed) Python producer;
+// the fixture now pins the persisted wire format itself, so an accidental
+// format drift -- which would strand every stored query -- fails here first.
+describe("buildFaceQuery wire-format pin", () => {
   for (const c of fixture.build) {
     it(c.name, () => {
       const a = c.args as BuildArgs

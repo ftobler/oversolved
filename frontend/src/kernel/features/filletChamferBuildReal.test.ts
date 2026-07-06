@@ -15,6 +15,19 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
+/** The query's geometry token (@gde| descriptor, query-descriptor-identity). */
+const geomTokenOf = (q: string): string | undefined =>
+  parseAncestry(q)[0].find((i) => i.startsWith('@gde|'))
+
+/** Replace the geometry token with one that matches nothing -- a diagonal
+ *  axis no axis-aligned box edge is parallel to, far from the body -- going
+ *  through parse/re-emit so the wire format's length prefixes stay valid. */
+function withDeadGeomToken(q: string): string {
+  const [ids, tr] = parseAncestry(q)
+  const dead = '@gde|line|999.0,999.0,999.0|0.5774,0.5774,0.5774|1.0'
+  return makeAncestryQuery(ids.map((i) => (i.startsWith('@gde|') ? dead : i)), tr)
+}
+
 function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
   return {
     id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane,
@@ -260,9 +273,9 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(String(h.res(r, 'fil').exception ?? '')).toContain('no edges resolved')
   })
 
-  it('fillet resolves stale gedge hash via stable ancestry', () => {
+  it('fillet resolves stale geometry token via stable ancestry', () => {
     /**
-     * A query whose @gedge_ hash matches nothing must resolve through its
+     * A query whose geometry token matches nothing must resolve through its
      * geometry-independent tokens (feature, body, lineage, classifiers) to the
      * same edge the fresh query names -- not hard-fail, not pick a sibling.
      */
@@ -270,9 +283,9 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r0 = h.run(spec)
     const q = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
     expect(q.startsWith('?')).toBe(true)
+    expect(geomTokenOf(q)).toBeDefined()
 
-    // Same-length bogus hash keeps the wire format's hex length prefix valid.
-    const staleQ = q.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
+    const staleQ = withDeadGeomToken(q)
     const anchorOf = (edgeQ: string): number[] => {
       const s = fullRectExtrudeSpec(10, 10, 5)
       s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 0.5 })
@@ -311,17 +324,16 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
      */
     const eq5 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
     const eq8 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 8)), 'body_ex1').edge_queries as string[]) ?? []
-    const gedgeOf = (q: string): string | undefined =>
-      parseAncestry(q)[0].find((i) => i.startsWith('@gedge_'))
     const sigOf = (q: string): string => {
       const [ids, tr] = parseAncestry(q)
-      return makeAncestryQuery(ids.filter((i) => !i.startsWith('@gedge_')), tr)
+      return makeAncestryQuery(ids.filter((i) => !i.startsWith('@gde|')), tr)
     }
-    // A d=5 query for an edge that moved: its hash exists in no d=8 edge, but
-    // exactly one d=8 query carries the same stable-token signature.
-    const freshHashes = new Set(eq8.map(gedgeOf))
+    // A d=5 query for an edge that moved: its geometry token matches no d=8
+    // edge exactly, but exactly one d=8 query carries the same stable-token
+    // signature.
+    const freshTokens = new Set(eq8.map(geomTokenOf))
     const pair = eq5
-      .filter((q) => gedgeOf(q) !== undefined && !freshHashes.has(gedgeOf(q)))
+      .filter((q) => geomTokenOf(q) !== undefined && !freshTokens.has(geomTokenOf(q)))
       .map((q) => ({ stale: q, fresh: eq8.find((f) => sigOf(f) === sigOf(q)) }))
       .find((p) => p.fresh !== undefined)
     expect(pair).toBeDefined()
@@ -354,13 +366,11 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(h.res(r0, 'fillet1').status).toBe('ok')
     const eqPlain = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
     const eqFilleted = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
-    const gedgeOf = (q: string): string | undefined =>
-      parseAncestry(q)[0].find((i) => i.startsWith('@gedge_'))
-    const preHashes = new Set(eqPlain.map(gedgeOf))
-    const newEdgeQ = eqFilleted.find((q) => gedgeOf(q) !== undefined && !preHashes.has(gedgeOf(q)))
+    const preTokens = new Set(eqPlain.map(geomTokenOf))
+    const newEdgeQ = eqFilleted.find((q) => geomTokenOf(q) !== undefined && !preTokens.has(geomTokenOf(q)))
     expect(newEdgeQ).toBeDefined()
 
-    const staleQ = newEdgeQ!.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
+    const staleQ = withDeadGeomToken(newEdgeQ!)
     const run2 = (edgeQ: string): ReturnType<typeof h.run> => {
       const s = base()
       s.features.push({ id: 'fillet2', kind: 'fillet', edges: [edgeQ], radius: 0.3 })
@@ -391,7 +401,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const sigNoCls = (q: string): string => {
       const [ids, tr] = parseAncestry(q)
       return makeAncestryQuery(
-        ids.filter((i) => !i.startsWith('@gedge_') && !i.startsWith('@cls_')),
+        ids.filter((i) => !i.startsWith('@gde|') && !i.startsWith('@cls_')),
         tr,
       )
     }
@@ -402,7 +412,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     )
     expect(target).toBeDefined()
 
-    const staleQ = target!.replace(/@gedge_[a-f0-9]+/, '@gedge_deadbeef00000001')
+    const staleQ = withDeadGeomToken(target!)
     const anchorOf = (edgeQ: string): number[] => {
       const s = fullRectExtrudeSpec(10, 10, 5)
       s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 0.5 })
