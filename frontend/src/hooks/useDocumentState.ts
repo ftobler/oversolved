@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
+import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { dropDeadAxisConstraints } from '@/utils/yamlMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
@@ -82,7 +83,7 @@ export function useDocumentState(
       })
       .catch(e => {
         if (cancelled) return
-        setError(String(e))
+        setError(parseHttpError(e, 'Failed to load document'))
         setLoading(false)
       })
     return () => { cancelled = true }
@@ -102,7 +103,7 @@ export function useDocumentState(
       useUnsavedChangesStore.getState().setDirty(false)
       return true
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to save document'))
       return false
     }
   }, [])
@@ -113,7 +114,7 @@ export function useDocumentState(
       setDocName(name)
       return true
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to rename document'))
       return false
     }
   }, [])

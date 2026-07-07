@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
 import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
@@ -134,19 +135,13 @@ export default function PartEditorPanel({
           )}
         </div>
 
-        {solveError && (
-          <div className="solve-error-banner">
-            Solver error: {solveError}
-            <button className="solve-error-dismiss" onClick={() => setSolveError(null)}>×</button>
-          </div>
+        {(solveError || error) && (
+          <ErrorBanner
+            message={solveError ? `Solver error: ${solveError}` : `Error: ${error}`}
+            onDismiss={() => { setSolveError(null); setError(null) }}
+          />
         )}
-        {error && (
-          <div className="error-banner">
-            <p className="error-banner-text">Error loading document: {error}</p>
-            <button className="error-banner-dismiss" onClick={() => setError(null)}>×</button>
-          </div>
-        )}
-        {!loading && !error && mode === 'code' && (
+        {!loading && mode === 'code' && (
           <div className="code-split">
             <textarea className="code-input" value={codeText} onChange={e => setCodeText(e.target.value)} placeholder="Document content..." spellCheck="false" />
             <div className="code-result">

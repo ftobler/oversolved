@@ -177,10 +177,6 @@
   font-size: 14px;
 }
 
-.status.error {
-  color: #ef5350;
-}
-
 .status.notice {
   color: #66bb6a;
 }

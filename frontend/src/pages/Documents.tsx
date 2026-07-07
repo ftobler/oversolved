@@ -7,6 +7,7 @@ import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
 import { isConnectionError, parseHttpError } from '@/utils/core/httpClient'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments, importStepFile } from '@/stores/documentStore'
 import type { DocSummary, DocumentStore } from '@/stores/documentStore'
@@ -148,7 +149,7 @@ export default function Documents() {
           setNotice('Cloud unavailable. Showing your local documents.')
           return
         }
-        setError(String(e))
+        setError(parseHttpError(e, 'Failed to load documents'))
       })
   }, [sortBy, activeStore, onCloud, setOnline])
 
@@ -181,7 +182,7 @@ export default function Documents() {
       await activeStore.remove(uuid)
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to delete document'))
     }
   }
 
@@ -204,7 +205,7 @@ export default function Documents() {
       await pushDocument(backendBundle.documents, cloudStore, uuid)
       setNotice(`Copied "${name}" to Cloud`)
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to copy document'))
     }
   }
 
@@ -214,7 +215,7 @@ export default function Documents() {
       await copyDocument(cloudStore, backendBundle.documents, uuid)
       setNotice(`Copied "${name}" to Local`)
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to copy document'))
     }
   }
 
@@ -245,7 +246,7 @@ export default function Documents() {
       }
       fetchDocuments(activeFilter, debouncedSearch)
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to move document'))
     }
   }
 
@@ -262,7 +263,7 @@ export default function Documents() {
           : 'Everything is already in sync',
       )
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to sync documents'))
     }
   }
 
@@ -291,7 +292,7 @@ export default function Documents() {
       const blob = await exportBundle(activeStore, all.map(d => d.uuid))
       downloadBlob(blob, `oversolved-backup-${new Date().toISOString().slice(0, 10)}.oversolved`)
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to export documents'))
     }
   }
 
@@ -307,7 +308,7 @@ export default function Documents() {
         await importBundle(activeStore, file)
         fetchDocuments(activeFilter, debouncedSearch)
       } catch (err) {
-        setError(String(err))
+        setError(parseHttpError(err, 'Failed to import file'))
       }
       return
     }
@@ -355,7 +356,7 @@ export default function Documents() {
     try {
       setTrashDocs(await adapter.list())
     } catch (e) {
-      setError(String(e))
+      setError(parseHttpError(e, 'Failed to load trash'))
     } finally {
       setTrashLoading(false)
     }
@@ -667,7 +668,7 @@ export default function Documents() {
           ) : (
             <>
               {loading && <p className="status">Loading documents...</p>}
-              {error && <p className="status error">Error: {error}</p>}
+              {error && <ErrorBanner message={`Error: ${error}`} onDismiss={() => setError(null)} />}
               {!loading && documents.length === 0 && debouncedSearch && (
                 <p className="status">No documents match "{debouncedSearch}"</p>
               )}
