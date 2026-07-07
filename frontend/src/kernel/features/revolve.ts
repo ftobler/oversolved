@@ -74,6 +74,18 @@ function resolveRevolveAxis(
 
   if (axisData && 'start' in axisData && 'end' in axisData) {
     apply(axisData.start as number[], axisData.end as number[])
+  } else if (axisData && 'center' in axisData && 'axis' in axisData) {
+    // Circle / arc / ellipse edge: the center sits on the rotation axis and the
+    // axis field (the circle's plane normal) is the rotation direction, flipped
+    // to match the stored direction (same sign convention as the line-edge arm).
+    const raw = axisData.axis as number[]
+    const axLen = Math.sqrt(raw[0] * raw[0] + raw[1] * raw[1] + raw[2] * raw[2])
+    if (axLen > 1e-12) {
+      const normal: number[] = [raw[0] / axLen, raw[1] / axLen, raw[2] / axLen]
+      const dot = normal[0] * storedDirection[0] + normal[1] * storedDirection[1] + normal[2] * storedDirection[2]
+      axisOrigin = [...(axisData.center as number[])]
+      axisDirection = dot < 0 ? [-normal[0], -normal[1], -normal[2]] : normal
+    }
   } else if (axisData && 'external_params' in axisData && axisData.kind === 'line') {
     const sketchId = (axisData.sketch_id as string) ?? ''
     const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
