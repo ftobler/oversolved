@@ -41,8 +41,18 @@ function fuse(oc: OccModule, scope: DisposeScope, a: OccShape, b: OccShape): Occ
  * from the stored origin/direction; an `axis` query overrides them but is flipped
  * (origin becomes the line's far end, direction negated) when it points opposite
  * the stored direction.
+ *
+ * Fail-loud guards: when an `axis` query is set but the registry returns null
+ * (stale pick -- the body rebuild minted new ancestry tokens, the edge was
+ * deleted, or the sketch line was removed), OR when the resolved payload carries
+ * no usable axis geometry (a degenerate line, a missing sketch plane, or an
+ * unrecognised shape), the resolver throws instead of silently falling back to
+ * the default [0,0,0]/[0,0,1] axis. A silent fallback there produces a wrong
+ * (squished) solid the user can't diagnose; a thrown error surfaces the revolve
+ * as a red feature so the user re-picks the axis. Mirrors the rotation-axis
+ * guard in transformMirror (`transform: rotation_axis not found`).
  */
-function resolveRevolveAxis(
+export function resolveRevolveAxis(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
@@ -54,6 +64,15 @@ function resolveRevolveAxis(
   if (!axisQuery) return [axisOrigin, axisDirection]
 
   const axisData = globalRepo.query(axisQuery, null, bodyStore) as Dict | null
+  if (axisData === null) {
+    throw new Error(`revolve: axis query did not resolve: ${JSON.stringify(axisQuery)}`)
+  }
+
+  // Tracks whether any branch actually produced an axis. The branches below can
+  // all silently no-op (a degenerate line, a zero-length axis, a missing sketch
+  // plane); without this flag the resolver would silently return the stored
+  // default -- the fail-wrong path the throw below closes.
+  let applied = false
 
   const apply = (start: number[], end: number[]): void => {
     const dx = end[0] - start[0]
@@ -70,11 +89,12 @@ function resolveRevolveAxis(
       axisOrigin = [...start]
       axisDirection = computed
     }
+    applied = true
   }
 
-  if (axisData && 'start' in axisData && 'end' in axisData) {
+  if ('start' in axisData && 'end' in axisData) {
     apply(axisData.start as number[], axisData.end as number[])
-  } else if (axisData && 'center' in axisData && 'axis' in axisData) {
+  } else if ('center' in axisData && 'axis' in axisData) {
     // Circle / arc / ellipse edge: the center sits on the rotation axis and the
     // axis field (the circle's plane normal) is the rotation direction, flipped
     // to match the stored direction (same sign convention as the line-edge arm).
@@ -85,14 +105,22 @@ function resolveRevolveAxis(
       const dot = normal[0] * storedDirection[0] + normal[1] * storedDirection[1] + normal[2] * storedDirection[2]
       axisOrigin = [...(axisData.center as number[])]
       axisDirection = dot < 0 ? [-normal[0], -normal[1], -normal[2]] : normal
+      applied = true
     }
-  } else if (axisData && 'external_params' in axisData && axisData.kind === 'line') {
+  } else if ('external_params' in axisData && axisData.kind === 'line') {
     const sketchId = (axisData.sketch_id as string) ?? ''
     const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
     if (plane) {
       const params = axisData.external_params as number[]
       apply(sketchToWorld2d(params.slice(0, 2), plane), sketchToWorld2d(params.slice(2, 4), plane))
     }
+  }
+
+  if (!applied) {
+    throw new Error(
+      'revolve: resolved axis payload carries no usable axis ' +
+        `(missing start/end, center/axis, or external_params+sketch plane for): ${JSON.stringify(axisQuery)}`,
+    )
   }
   return [axisOrigin, axisDirection]
 }

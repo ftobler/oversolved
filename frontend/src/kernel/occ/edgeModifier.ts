@@ -11,8 +11,8 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
-import { faceCentroid, faceNormal, faceArea, round6 } from './primitives'
-import { faceGeometryHash } from '../geomHash'
+import { faceCentroid, faceNormal, faceArea, round6, edgeToGeom } from './primitives'
+import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
@@ -211,18 +211,61 @@ function edgeModifierDiff(
   diff.modified_input_edges = edges.modified
   diff.deleted_input_edges = edges.deleted
 
-  const walk = (outputs: OccShape[], pool: OccShape[]): { fresh: OccShape[]; inherited: OccShape[] } => {
+  // Orientation-independent geometry keys for an edge (lines hashed both ways,
+  // mirroring brepDiffNewEdgeHashes). Used as the geometry fallback below.
+  const edgeGeomKeys = (s: OccShape): string[] => {
+    try {
+      const { ed } = edgeToGeom(oc, scope, s)
+      if (ed.kind === 'line') {
+        const a = (ed as { start: number[] }).start
+        const b = (ed as { end: number[] }).end
+        return [
+          edgeGeometryHash({ kind: 'line', start: a, end: b }),
+          edgeGeometryHash({ kind: 'line', start: b, end: a }),
+        ]
+      }
+      return [edgeGeometryHash(ed as unknown as Record<string, unknown>)]
+    } catch {
+      return []
+    }
+  }
+
+  const walk = (
+    outputs: OccShape[],
+    pool: OccShape[],
+    geomPool?: Set<string>,
+    keysOf?: (s: OccShape) => string[],
+  ): { fresh: OccShape[]; inherited: OccShape[] } => {
     const fresh: OccShape[] = []
     const inherited: OccShape[] = []
+    // Geometry fallback (edges only): BRepFilletAPI is an unreliable narrator --
+    // it rebuilds the whole solid and reports edges far from the filleted one as
+    // IsDeleted/regenerated, so they never reach `pool` and IsSame misses them.
+    // An output edge whose geometry already existed in the *old* shape is
+    // unchanged and must stay inherited, so the builder does not re-attribute
+    // its @created_by to the fillet (which would evict the original ancestry
+    // entry and break stored edge picks like a revolve axis). See
+    // bugreports/revolve_bug_20260707_151218.md. This only adds inherited
+    // classifications, never removes: modified edges (new geometry) still match
+    // via IsSame on their Modified() image, and genuinely new fillet edges have
+    // geometry absent from the old shape, so both stay correct.
     for (const s of outputs) {
-      if (pool.some((p) => (s as OccSubShape).IsSame(p as OccSubShape))) inherited.push(s)
-      else fresh.push(s)
+      if (pool.some((p) => (s as OccSubShape).IsSame(p as OccSubShape))) {
+        inherited.push(s)
+        continue
+      }
+      if (geomPool && keysOf && keysOf(s).some((k) => geomPool.has(k))) {
+        inherited.push(s)
+        continue
+      }
+      fresh.push(s)
     }
     return { fresh, inherited }
   }
 
+  const oldEdgeKeys = new Set(exploreEdges(oc, scope, oldShape).flatMap((e) => edgeGeomKeys(e)))
   const of = walk(exploreFaces(oc, scope, newShape), faces.preimages)
-  const oe = walk(exploreEdges(oc, scope, newShape), edges.preimages)
+  const oe = walk(exploreEdges(oc, scope, newShape), edges.preimages, oldEdgeKeys, edgeGeomKeys)
   diff.new_faces = of.fresh
   diff.inherited_faces = of.inherited
   diff.new_edges = oe.fresh

@@ -15,6 +15,14 @@
 // Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_fillet_fixture.py) was deleted with the Python kernel in
 // phase 4d.
+//
+// The new_edges/inherited_edges counts were corrected away from the original
+// Python snapshot (22/8 -> 8/22) when edgeModifier gained a geometry fallback
+// for the fillet inherited-edge misclassification: BRepFilletAPI reports edges
+// far from the filleted one as deleted/regenerated, so IsSame alone marked ~11
+// unchanged cube edges as new. The old snapshot encoded that bug. Volume and
+// lineage-token assertions are unchanged. See
+// bugreports/revolve_bug_20260707_151218.md.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

@@ -140,8 +140,8 @@
       "diff_counts": {
         "new_faces": 1,
         "inherited_faces": 6,
-        "new_edges": 22,
-        "inherited_edges": 8,
+        "new_edges": 8,
+        "inherited_edges": 22,
         "modified_input_faces": 4,
         "deleted_input_faces": 0,
         "modified_input_edges": 8,
@@ -278,8 +278,8 @@
       "diff_counts": {
         "new_faces": 1,
         "inherited_faces": 6,
-        "new_edges": 22,
-        "inherited_edges": 8,
+        "new_edges": 8,
+        "inherited_edges": 22,
         "modified_input_faces": 4,
         "deleted_input_faces": 0,
         "modified_input_edges": 8,
