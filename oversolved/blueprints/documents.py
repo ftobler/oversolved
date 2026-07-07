@@ -90,7 +90,7 @@ def update_document(uuid):
         image_data = base64.b64decode(data["preview_image"])
         try:
             img = Image.open(BytesIO(image_data))
-            if img.width > 512 or img.height > 512:
+            if img.width > 1024 or img.height > 1024:
                 return api_error("Invalid image", "BAD_REQUEST", 400)
         except Exception:
             return api_error("Invalid image data", "BAD_REQUEST", 400)

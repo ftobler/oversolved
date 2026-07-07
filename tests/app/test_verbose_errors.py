@@ -28,7 +28,7 @@ class TestVerbosePreviewErrors:
                 content_type="application/json",
             ).data
         )["uuid"]
-        img = Image.new("RGB", (600, 600), color="red")
+        img = Image.new("RGB", (1200, 1200), color="red")
         buf = BytesIO()
         img.save(buf, format="PNG")
         b64 = __import__("base64").b64encode(buf.getvalue()).decode()

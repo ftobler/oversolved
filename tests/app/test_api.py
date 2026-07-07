@@ -339,7 +339,7 @@ class TestDocumentAPI:
         from io import BytesIO
         from PIL import Image
 
-        img = Image.new("RGB", (600, 400), color="red")
+        img = Image.new("RGB", (1200, 400), color="red")
         buf = BytesIO()
         img.save(buf, format="PNG")
         encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
