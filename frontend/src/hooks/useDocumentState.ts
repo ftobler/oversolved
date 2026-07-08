@@ -61,7 +61,7 @@ export function useDocumentState(
         storeRef.current = store
         setIsCloudDoc(store === backendBundle.cloudDocuments)
         const parsed = (parseYaml(data.content) ?? {}) as PartDoc
-        if (!parsed.features || parsed.features.length === 0) {
+        if ((!parsed.kind || parsed.kind === 'part') && (!parsed.features || parsed.features.length === 0)) {
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
         }
         // Self-heal stale documents authored before whole-entity axis constraints

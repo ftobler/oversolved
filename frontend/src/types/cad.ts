@@ -346,6 +346,61 @@ export interface PartDoc {
   part_style?: Record<string, PartStyleEntry>
 }
 
+// ── Assembly Types ────
+
+export interface Transform3D {
+  tx: number
+  ty: number
+  tz: number
+  qx: number
+  qy: number
+  qz: number
+  qw: number
+}
+
+export interface MateRef {
+  part: string
+  anchor: string
+}
+
+export type MateKind = 'fixed' | 'sliding' | 'rotating' | 'sliding_rotating' | 'tangential' | 'copy_rotation' | 'spherical' | 'parallel' | 'parallel_plane_distance'
+
+export interface MateFeatureDef {
+  kind: MateKind
+  ref_a: MateRef
+  ref_b: MateRef
+  flip?: boolean
+  ratio?: number
+  offset?: NumberOrExpr
+  angle?: NumberOrExpr
+  radius?: NumberOrExpr
+}
+
+export interface PartInstance {
+  handle: string
+  doc_id: string
+  doc_rev: number
+  transform: Transform3D
+  visible?: boolean
+  fixed?: boolean
+}
+
+export interface AssemblyFeature {
+  id: string
+  kind: 'part_instance' | 'mate' | 'origin' | 'plane'
+  instance?: PartInstance
+  mate?: MateFeatureDef
+  definition?: PlaneDef
+}
+
+export interface AssemblyDoc {
+  oversolved?: number
+  version?: number
+  kind: 'assembly'
+  features?: AssemblyFeature[]
+  part_style?: Record<string, PartStyleEntry>
+}
+
 // ── UI / Rendering Types ────
 
 export interface LineSegment {

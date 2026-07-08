@@ -269,4 +269,28 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     await store.create('Mike')
     expect((await store.list({ sort: 'name' })).map(s => s.name)).toEqual(['Alpha', 'Mike', 'Zeta'])
   })
+
+  it('round-trips assembly content preserving kind', async () => {
+    const asmContent = 'kind: assembly\nfeatures: []\n'
+    const { uuid } = await store.create('Asm')
+    await store.save(uuid, { content: asmContent })
+    const loaded = await store.load(uuid)
+    expect(loaded.content).toBe(asmContent)
+  })
+
+  it('round-trips assembly content with features preserving kind', async () => {
+    const asmContent = 'kind: assembly\nfeatures:\n  - id: O1\n    kind: origin\n'
+    const { uuid } = await store.create('Asm2')
+    await store.save(uuid, { content: asmContent })
+    const loaded = await store.load(uuid)
+    expect(loaded.content).toBe(asmContent)
+  })
+
+  it('round-trips part content preserving kind', async () => {
+    const partContent = 'kind: part\nfeatures: []\n'
+    const { uuid } = await store.create('Part')
+    await store.save(uuid, { content: partContent })
+    const loaded = await store.load(uuid)
+    expect(loaded.content).toBe(partContent)
+  })
 })
