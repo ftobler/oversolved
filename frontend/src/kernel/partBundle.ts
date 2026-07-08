@@ -336,3 +336,118 @@ export function extractBodyAnchors(
 
   return anchors
 }
+
+// ── Anchor migration (Stage 3) ─────────────────────────────────────────────
+
+function distSq(a: Vec3, b: Vec3): number {
+  return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+}
+
+/**
+ * Migrate anchor ids from an old bundle to a new bundle, so mate refs survive
+ * rev-to-rev. Pure function over two anchor dicts — no OCC, no worker.
+ *
+ * Tier 1: exact `geom_hash` match transfers the old id.
+ * Tier 2: same `created_by` + same `kind`, unique candidate or nearest by
+ *         position. If the nearest is a tie, the old id dies.
+ *
+ * New anchors with no inbound old id keep their freshly minted ids.
+ * Old ids that found no match simply disappear from the result.
+ */
+export function migrateAnchors(
+  oldBundle: Pick<PartBundle, 'anchors'>,
+  newBundle: Pick<PartBundle, 'anchors'>,
+): Record<string, Anchor> {
+  const oldAnchors = oldBundle.anchors
+  const newAnchors = newBundle.anchors
+  const oldIds = Object.keys(oldAnchors)
+  const newIds = Object.keys(newAnchors)
+
+  if (oldIds.length === 0) return { ...newAnchors }
+
+  // Result starts with all new anchors keyed by their fresh ids.
+  const result: Record<string, Anchor> = { ...newAnchors }
+  const newIdConsumed = new Set<string>()
+  const oldIdMigrated = new Set<string>()
+
+  // Build geom_hash → new-id lookup for tier-1 exact-match fast path.
+  const newByGeomHash = new Map<string, string>()
+  for (const id of newIds) {
+    const gh = newAnchors[id].geom_hash
+    if (!newByGeomHash.has(gh)) newByGeomHash.set(gh, id)
+    else newByGeomHash.set(gh, '') // collision marker → skip tier 1
+  }
+
+  // ── Tier 1: exact geom_hash match ────────────────────────────────────
+
+  for (const oldId of oldIds) {
+    const oldA = oldAnchors[oldId]
+    const newId = newByGeomHash.get(oldA.geom_hash)
+    if (newId && newId !== '' && !newIdConsumed.has(newId)) {
+      delete result[newId]
+      result[oldId] = { ...newAnchors[newId] }
+      newIdConsumed.add(newId)
+      oldIdMigrated.add(oldId)
+    }
+  }
+
+  // ── Tier 2: created_by + kind ────────────────────────────────────────
+
+  // Index remaining (unconsumed) new anchors by (created_by, kind).
+  const newByCreatedByKind = new Map<string, string[]>()
+  for (const id of newIds) {
+    if (!newIdConsumed.has(id)) {
+      const key = `${newAnchors[id].created_by}|${newAnchors[id].kind}`
+      let list = newByCreatedByKind.get(key)
+      if (!list) { list = []; newByCreatedByKind.set(key, list) }
+      list.push(id)
+    }
+  }
+
+  const TIE_EPSILON_SQ = 1e-10
+
+  for (const oldId of oldIds) {
+    if (oldIdMigrated.has(oldId)) continue
+    const oldA = oldAnchors[oldId]
+    const key = `${oldA.created_by}|${oldA.kind}`
+    const candidates = newByCreatedByKind.get(key)
+    if (!candidates || candidates.length === 0) continue
+
+    if (candidates.length === 1) {
+      // Unique candidate — direct match.
+      const newId = candidates[0]
+      delete result[newId]
+      result[oldId] = { ...newAnchors[newId] }
+      newIdConsumed.add(newId)
+      oldIdMigrated.add(oldId)
+      newByCreatedByKind.set(key, [])
+    } else {
+      // Multiple candidates — pick nearest by position.
+      let bestId = ''
+      let bestDist = Infinity
+      let secondBestDist = Infinity
+      for (const cid of candidates) {
+        const d = distSq(oldA.point, newAnchors[cid].point)
+        if (d < bestDist - TIE_EPSILON_SQ) {
+          secondBestDist = bestDist
+          bestDist = d
+          bestId = cid
+        } else if (d < secondBestDist - TIE_EPSILON_SQ) {
+          secondBestDist = d
+        }
+      }
+      if (bestId && Math.abs(bestDist - secondBestDist) >= TIE_EPSILON_SQ) {
+        delete result[bestId]
+        result[oldId] = { ...newAnchors[bestId] }
+        newIdConsumed.add(bestId)
+        oldIdMigrated.add(oldId)
+        // Remove consumed candidate from pool.
+        const remaining = candidates.filter((cid) => cid !== bestId)
+        newByCreatedByKind.set(key, remaining)
+      }
+      // else: ambiguous tie → id dies (fail-safe over fail-wrong).
+    }
+  }
+
+  return result
+}
