@@ -379,7 +379,7 @@ export function tessellateFace(
 
 // --- face geometry readers -------------------------------------------------
 
-export type SurfaceType = 'flatface' | 'cylinderface' | 'face'
+export type SurfaceType = 'flatface' | 'cylinderface' | 'coneface' | 'sphereface' | 'torusface' | 'face'
 
 export function faceCentroid(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 {
   const props = scope.track(new oc.GProp_GProps_1())
@@ -399,6 +399,9 @@ export function faceSurfaceType(oc: OccModule, scope: DisposeScope, face: OccSha
   const t = adaptor.GetType().value
   if (t === oc.GeomAbs_SurfaceType.GeomAbs_Plane.value) return 'flatface'
   if (t === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) return 'cylinderface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Cone.value) return 'coneface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Sphere.value) return 'sphereface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Torus.value) return 'torusface'
   return 'face'
 }
 

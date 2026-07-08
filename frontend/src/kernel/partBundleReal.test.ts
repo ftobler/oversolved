@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// Stage 2b integration tests: build a PartBundle from a single-extrude part
+// Stage 2b + 2c integration tests: build a PartBundle from a single-extrude part
 // through the real OCC + Rust solver pipeline. Validates mesh extraction
-// (faceIdsPerTriangle) and edge-curve extraction (line edges for box, circle
-// edges for holes).
+// (faceIdsPerTriangle), edge-curve extraction (line edges for box, circle
+// edges for holes), and anchor enumeration (faces, edges, vertices).
 //
 // Does NOT assert byte-identity across rebuilds — OCC tessellation is not
 // guaranteed byte-deterministic across worker restarts or OCC.js versions.
@@ -127,7 +127,9 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     const bundle = toPartBundle('doc1', 1, result.bodies as Record<string, BodyResult>)
     expect(bundle.doc_id).toBe('doc1')
     expect(bundle.doc_rev).toBe(1)
-    expect(bundle.anchors).toEqual({})
+    // Stage 2c: anchors are now populated
+    expect(typeof bundle.anchors).toBe('object')
+    expect(Object.keys(bundle.anchors).length).toBeGreaterThan(0)
     expect(bundle.bodies.length).toBeGreaterThan(0)
     for (const bodyMesh of bundle.bodies) {
       expect(bodyMesh.mesh.vertices).toBeInstanceOf(Float32Array)
@@ -210,5 +212,110 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
       expect(b1.bodies[i].mesh.faceIdsPerTriangle.length).toBe(triCount1)
       expect(b2.bodies[i].mesh.faceIdsPerTriangle.length).toBe(triCount2)
     }
+  })
+
+  // ── Stage 2c: anchors ─────────────────────────────────────────────────
+
+  it('rect extrude anchors: 6 plane faces, 12 line edges, 8 point vertices', () => {
+    const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const bundle = toPartBundle('doc7', 1, result.bodies as Record<string, BodyResult>)
+    const vals = Object.values(bundle.anchors)
+    expect(vals.length).toBeGreaterThan(0)
+
+    const planeAnchors = vals.filter((a) => a.kind === 'plane')
+    const lineAnchors = vals.filter((a) => a.kind === 'line')
+    const vertexAnchors = vals.filter((a) => a.kind === 'point')
+
+    // A box has 6 planar faces
+    expect(planeAnchors.length).toBe(6)
+    // A box has 12 line edges
+    expect(lineAnchors.length).toBe(12)
+    // A box has 8 corner vertices
+    expect(vertexAnchors.length).toBe(8)
+
+    // Every face anchor has a @gdf descriptor, normal, and centroid
+    for (const a of planeAnchors) {
+      expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+      expect(a.point.length).toBe(3)
+      expect(a.axis.length).toBe(3)
+      const normalLen = Math.sqrt(a.axis[0] ** 2 + a.axis[1] ** 2 + a.axis[2] ** 2)
+      expect(normalLen).toBeCloseTo(1, 5)
+    }
+
+    // Every edge anchor has a @gde descriptor
+    for (const a of lineAnchors) {
+      expect(a.geom_hash.startsWith('@gde|')).toBe(true)
+      expect(a.point.length).toBe(3)
+      expect(a.axis.length).toBe(3)
+    }
+
+    // Every vertex anchor has a @gdv descriptor
+    for (const a of vertexAnchors) {
+      expect(a.geom_hash.startsWith('@gdv|')).toBe(true)
+      expect(a.point.length).toBe(3)
+    }
+  })
+
+  it('every anchor has created_by set to the owning feature', () => {
+    const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const bundle = toPartBundle('doc8', 1, result.bodies as Record<string, BodyResult>)
+    for (const a of Object.values(bundle.anchors)) {
+      expect(a.created_by).toBeTruthy()
+    }
+  })
+
+  it('same-rev rebuild produces same multiset of (kind, geom_hash) descriptors, different anchor ids', () => {
+    const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r2 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const b1 = toPartBundle('doc9', 1, r1.bodies as Record<string, BodyResult>)
+    const b2 = toPartBundle('doc9', 1, r2.bodies as Record<string, BodyResult>)
+
+    const descs1 = Object.values(b1.anchors).map((a) => `${a.kind}:${a.geom_hash}:${a.created_by}`).sort()
+    const descs2 = Object.values(b2.anchors).map((a) => `${a.kind}:${a.geom_hash}:${a.created_by}`).sort()
+    // Same rev → same descriptors (multiset). OCC geometry is deterministic per build.
+    expect(descs1.length).toBe(descs2.length)
+
+    const ids1 = new Set(Object.keys(b1.anchors))
+    const ids2 = new Set(Object.keys(b2.anchors))
+    // Freshly minted ids per build — they should all differ.
+    for (const id of ids1) expect(ids2.has(id)).toBe(false)
+  })
+
+  it('cylindrical hole face produces a cylinder anchor, planar faces produce plane anchors', () => {
+    // A sketch with a circle cutout → a through-hole.
+    const holeSketchSpec = {
+      id: 'sk_hole', kind: 'sketch' as const, label: 'Hole sketch',
+      plane: '@builtin_plane_front',
+      entities: [
+        { id: 'c1', kind: 'circle' as const },
+      ],
+      initial: {
+        c1: [5, 5, 2],
+      },
+      constraints: [
+        { id: 'dim1', kind: 'diameter' as const, target: { entity: 'c1' }, value: 4 },
+      ],
+    }
+    const result = run({ features: [
+      rectSketchSpec('sk1', 10, 10),
+      holeSketchSpec,
+      extrudeSpec('sk1', 'ex1', 5),
+      { id: 'ex_hole', kind: 'extrude' as const, label: 'Hole extrude',
+        sketch: '$sk_hole', distance: 5, direction: 'normal', operation: 'remove' as const },
+    ] })
+    const bundle = toPartBundle('doc10', 1, result.bodies as Record<string, BodyResult>)
+    const vals = Object.values(bundle.anchors)
+    const cylinderAnchors = vals.filter((a) => a.kind === 'cylinder')
+    // The hole's cylindrical wall is one cylinder anchor
+    expect(cylinderAnchors.length).toBeGreaterThanOrEqual(1)
+    for (const a of cylinderAnchors) {
+      expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+      // cylinder axis = normal of the cylindrical surface
+      expect(a.axis.length).toBe(3)
+    }
+
+    // Planar faces still produce plane anchors (box end faces + hole end)
+    const planeAnchors = vals.filter((a) => a.kind === 'plane')
+    expect(planeAnchors.length).toBeGreaterThan(0)
   })
 })

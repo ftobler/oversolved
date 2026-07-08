@@ -208,8 +208,131 @@ export function toPartBundle(
   bodyResults: Record<string, BodyResult>,
 ): PartBundle {
   const bodies: BodyMesh[] = []
+  const prefix = Math.random().toString(36).slice(2, 6)
+  let anchorCounter = 0
+  const mintAnchorId = (): string => { anchorCounter++; return `${prefix}_a${anchorCounter}` }
+  const allAnchors: Record<string, Anchor> = {}
   for (const body of Object.values(bodyResults)) {
     bodies.push(toBodyMesh(body))
+    Object.assign(allAnchors, extractBodyAnchors(body, mintAnchorId))
   }
-  return { doc_id, doc_rev, bodies, anchors: {} }
+  return { doc_id, doc_rev, bodies, anchors: allAnchors }
+}
+
+// ── Anchor extraction (Stage 2c) ─────────────────────────────────────────
+
+function faceTypeToAnchorKind(st: string | null | undefined): AnchorKind | null {
+  if (st === 'flatface') return 'plane'
+  if (st === 'cylinderface') return 'cylinder'
+  if (st === 'coneface') return 'cone'
+  if (st === 'sphereface') return 'sphere'
+  if (st === 'torusface') return 'torus'
+  return null  // skip unsupported (bspline/bezier/other)
+}
+
+function edgeAnchorKind(ed: EdgeData): AnchorKind | null {
+  if (ed.kind === 'line') return 'line'
+  if (ed.kind === 'circle' || ed.kind === 'arc') return 'circle'
+  return null  // skip ellipse, spline
+}
+
+function edgeAnchorPoint(ed: EdgeData): Vec3 {
+  switch (ed.kind) {
+    case 'line': return midpoint(ed.start, ed.end)
+    case 'circle': case 'arc': return ed.center
+    case 'ellipse': return ed.center
+    case 'spline': {
+      const midIdx = Math.floor(ed.points.length / 2)
+      return ed.points[midIdx]
+    }
+  }
+}
+
+function edgeAnchorAxis(ed: EdgeData): Vec3 {
+  switch (ed.kind) {
+    case 'line': return normalize(sub(ed.end, ed.start))
+    case 'circle': case 'arc': return ed.axis
+    case 'ellipse': return ed.axis
+    case 'spline': return [0, 0, 0]
+  }
+}
+
+/**
+ * Find the descriptor token in an ancestry query string. Query format:
+ * `?<hex>;<id1><id2>...:<typeRestriction>`. Each id starts with `@`.
+ * Returns the full id including the `@` prefix.
+ */
+function findDescriptorInQuery(query: string, prefix: string): string | null {
+  const searchToken = '@' + prefix
+  const idx = query.indexOf(searchToken)
+  if (idx === -1) return null
+  const endIdx = query.indexOf('@', idx + 1)
+  return endIdx === -1 ? query.slice(idx) : query.slice(idx, endIdx)
+}
+
+/**
+ * Extract all supported anchors from a single BodyResult.
+ * Skips freeform (bspline) faces, ellipse/spline edges. All vertices are kept.
+ * @param mintId factory for unique anchor ids within this bundle.
+ */
+export function extractBodyAnchors(
+  bodyResult: BodyResult,
+  mintId: () => string,
+): Record<string, Anchor> {
+  const anchors: Record<string, Anchor> = {}
+  const created_by = bodyResult.created_by || ''
+
+  // Face anchors: centroid + normal from face_data, kind from surface_type.
+  const fqs = bodyResult.mesh?.face_queries
+  const fds = bodyResult.mesh?.face_data
+  if (fqs && fds) {
+    for (let i = 0; i < fqs.length; i++) {
+      const desc = findDescriptorInQuery(fqs[i], 'gdf|')
+      if (!desc) continue
+      const kind = faceTypeToAnchorKind(fds[i]?.surface_type)
+      if (!kind) continue
+      anchors[mintId()] = {
+        kind,
+        point: fds[i].centroid,
+        axis: fds[i].normal,
+        geom_hash: desc,
+        created_by,
+      }
+    }
+  }
+
+  // Edge anchors: representative point + axis from EdgeData.
+  if (bodyResult.edges && bodyResult.edge_queries) {
+    for (let i = 0; i < bodyResult.edges.length; i++) {
+      const ed = bodyResult.edges[i]
+      const kind = edgeAnchorKind(ed)
+      if (!kind) continue
+      const desc = findDescriptorInQuery(bodyResult.edge_queries[i], 'gde|')
+      if (!desc) continue
+      anchors[mintId()] = {
+        kind,
+        point: edgeAnchorPoint(ed),
+        axis: edgeAnchorAxis(ed),
+        geom_hash: desc,
+        created_by,
+      }
+    }
+  }
+
+  // Vertex anchors: point from vertices array.
+  if (bodyResult.vertices && bodyResult.vertex_queries) {
+    for (let i = 0; i < bodyResult.vertices.length; i++) {
+      const desc = findDescriptorInQuery(bodyResult.vertex_queries[i], 'gdv|')
+      if (!desc) continue
+      anchors[mintId()] = {
+        kind: 'point',
+        point: bodyResult.vertices[i] as Vec3,
+        axis: [0, 0, 1],
+        geom_hash: desc,
+        created_by,
+      }
+    }
+  }
+
+  return anchors
 }

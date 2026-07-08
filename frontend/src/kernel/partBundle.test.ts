@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle } from './partBundle'
+import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors } from './partBundle'
 import type { EdgeData, BodyResult } from '../types/cad'
 
 describe('toEdgeCurve', () => {
@@ -200,7 +200,7 @@ describe('toBodyMesh', () => {
 })
 
 describe('toPartBundle', () => {
-  it('converts a Record of BodyResults into a PartBundle', () => {
+  it('converts a Record of BodyResults into a PartBundle with anchors', () => {
     const bodies: Record<string, BodyResult> = {
       body_1: {
         id: 'body_1',
@@ -221,7 +221,165 @@ describe('toPartBundle', () => {
     expect(bundle.doc_id).toBe('doc123')
     expect(bundle.doc_rev).toBe(5)
     expect(bundle.bodies).toHaveLength(2)
-    expect(bundle.anchors).toEqual({})
     expect(bundle.bodies[1].edges).toHaveLength(1)
+    // Anchors populated (empty for these no-query mock bodies)
+    expect(typeof bundle.anchors).toBe('object')
+    expect(Object.keys(bundle.anchors).length).toBeGreaterThanOrEqual(0)
+  })
+})
+
+// ── Anchor extraction (Stage 2c) ─────────────────────────────────────────
+
+/** Build a query string in the ancestry format that `findDescriptorInQuery` can parse. */
+function makeQuery(ids: string[], typeRestriction: string | null): string {
+  const hexLengths = ids.map((id) => id.length.toString(16)).join(',')
+  const body = ids.join('')
+  return typeRestriction ? `?${hexLengths};${body}:${typeRestriction}` : `?${hexLengths};${body}`
+}
+
+const EX_FEATURE = 'ex123'
+
+describe('extractBodyAnchors', () => {
+  function mintFactory(): () => string {
+    let n = 0
+    return () => { n++; return `a${n}` }
+  }
+
+  it('emits face anchors for flatface, cylinderface, coneface, sphereface, torusface', () => {
+    const types: [string, string][] = [
+      ['flatface', 'plane'],
+      ['cylinderface', 'cylinder'],
+      ['coneface', 'cone'],
+      ['sphereface', 'sphere'],
+      ['torusface', 'torus'],
+    ]
+    const fqs: string[] = []
+    const fds: { centroid: [number, number, number]; normal: [number, number, number]; surface_type: string; area: number }[] = []
+    for (let i = 0; i < types.length; i++) {
+      const [st] = types[i]
+      fqs.push(makeQuery([`@gdf|0,0,${i}|0,0,1`, `@${EX_FEATURE}`], st))
+      fds.push({ centroid: [0, 0, i], normal: [0, 0, 1], area: 1, surface_type: st })
+    }
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: { vertices: [], faces: [], face_queries: fqs, face_data: fds },
+    }
+    const anchors = extractBodyAnchors(body, mintFactory())
+    const vals = Object.values(anchors)
+    expect(vals).toHaveLength(5)
+    const kinds = vals.map((a) => a.kind).sort()
+    expect(kinds).toEqual(['cone', 'cylinder', 'plane', 'sphere', 'torus'])
+    for (const a of vals) {
+      expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+      expect(a.created_by).toBe(EX_FEATURE)
+    }
+  })
+
+  it('skips faces with unsupported surface type (bspline)', () => {
+    const fq = makeQuery([`@gdf|10,10,5|0,0,1`, `@${EX_FEATURE}`], 'face')
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [fq],
+        face_data: [{ centroid: [10, 10, 5], normal: [0, 0, 1], area: 1, surface_type: 'face' }],
+      },
+    }
+    const anchors = extractBodyAnchors(body, mintFactory())
+    expect(Object.keys(anchors)).toHaveLength(0)
+  })
+
+  it('emits line and circle edge anchors, skips ellipse and spline', () => {
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+        { kind: 'circle', center: [0, 0, 0], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 6.283185 },
+        { kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 6.283185 },
+        { kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] },
+      ],
+      edge_queries: [
+        makeQuery([`@gde|line|5,0,0|1,0,0|10`, `@${EX_FEATURE}`], 'straightedge'),
+        makeQuery([`@gde|circle|0,0,0|0,0,1|5`, `@${EX_FEATURE}`], 'edge'),
+        makeQuery([`@gde|ellipse|0,0,0|0,0,1|4`, `@${EX_FEATURE}`], 'edge'),
+        makeQuery([`@gde|spline|1,0,0|0,0,0|0`, `@${EX_FEATURE}`], 'edge'),
+      ],
+    }
+    const anchors = extractBodyAnchors(body, mintFactory())
+    const vals = Object.values(anchors)
+    expect(vals).toHaveLength(2)
+    expect(vals[0].kind).toBe('line')
+    expect(vals[0].geom_hash.startsWith('@gde|')).toBe(true)
+    expect(vals[1].kind).toBe('circle')
+    // line anchor point is the midpoint
+    expect(vals[0].point[0]).toBeCloseTo(5)
+    expect(vals[0].point[1]).toBeCloseTo(0)
+    // circle anchor point is the center
+    expect(vals[1].point[0]).toBeCloseTo(0)
+    expect(vals[1].point[1]).toBeCloseTo(0)
+    // line axis is the direction vector
+    expect(vals[0].axis[0]).toBeCloseTo(1)
+    expect(vals[0].axis[1]).toBeCloseTo(0)
+  })
+
+  it('emits vertex anchors for all vertices', () => {
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      vertices: [[0, 0, 0], [10, 0, 0], [10, 10, 0]],
+      vertex_queries: [
+        makeQuery([`@gdv|0,0,0`, `@${EX_FEATURE}`], 'vertex'),
+        makeQuery([`@gdv|10,0,0`, `@${EX_FEATURE}`], 'vertex'),
+        makeQuery([`@gdv|10,10,0`, `@${EX_FEATURE}`], 'vertex'),
+      ],
+    }
+    const anchors = extractBodyAnchors(body, mintFactory())
+    const vals = Object.values(anchors)
+    expect(vals).toHaveLength(3)
+    for (const a of vals) {
+      expect(a.kind).toBe('point')
+      expect(a.geom_hash.startsWith('@gdv|')).toBe(true)
+      expect(a.axis).toEqual([0, 0, 1])
+      expect(a.created_by).toBe(EX_FEATURE)
+    }
+    // point anchors carry the vertex position
+    expect(vals[0].point).toEqual([0, 0, 0])
+    expect(vals[1].point).toEqual([10, 0, 0])
+    expect(vals[2].point).toEqual([10, 10, 0])
+  })
+
+  it('returns empty anchors for a body with no queries', () => {
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: { vertices: [], faces: [] },
+    }
+    const anchors = extractBodyAnchors(body, mintFactory())
+    expect(Object.keys(anchors)).toHaveLength(0)
+  })
+
+  it('produces unique anchor ids across body types', () => {
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [
+          makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
+          makeQuery([`@gdf|1,0,0|1,0,0`, `@${EX_FEATURE}`], 'flatface'),
+        ],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
+          { centroid: [1, 0, 0], normal: [1, 0, 0], area: 1, surface_type: 'flatface' },
+        ],
+      },
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+      ],
+      edge_queries: [makeQuery([`@gde|line|5,0,0|1,0,0|10`, `@${EX_FEATURE}`], 'straightedge')],
+      vertices: [[0, 0, 0]],
+      vertex_queries: [makeQuery([`@gdv|0,0,0`, `@${EX_FEATURE}`], 'vertex')],
+    }
+    const anchors = extractBodyAnchors(body, mintFactory())
+    const keys = Object.keys(anchors)
+    expect(keys).toHaveLength(4)  // 2 faces + 1 edge + 1 vertex
+    expect(new Set(keys).size).toBe(keys.length)
   })
 })

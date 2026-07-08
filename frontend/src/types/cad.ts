@@ -139,6 +139,7 @@ export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
   area?: number
+  surface_type?: string     // eg 'flatface' / 'cylinderface' / 'coneface' / ...
 }
 
 export interface Mesh3D {
