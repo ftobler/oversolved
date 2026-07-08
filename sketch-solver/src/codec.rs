@@ -75,17 +75,18 @@ pub enum CodecError {
 }
 
 /// Cursor over a byte slice with little-endian primitive reads.
-struct Reader<'a> {
+#[derive(Clone)]
+pub(crate) struct Reader<'a> {
     buf: &'a [u8],
     pos: usize,
 }
 
 impl<'a> Reader<'a> {
-    fn new(buf: &'a [u8]) -> Self {
+    pub(crate) fn new(buf: &'a [u8]) -> Self {
         Reader { buf, pos: 0 }
     }
 
-    fn take(&mut self, n: usize) -> Result<&'a [u8], CodecError> {
+    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], CodecError> {
         let end = self.pos.checked_add(n).ok_or(CodecError::UnexpectedEof)?;
         if end > self.buf.len() {
             return Err(CodecError::UnexpectedEof);
@@ -95,21 +96,21 @@ impl<'a> Reader<'a> {
         Ok(s)
     }
 
-    fn u8(&mut self) -> Result<u8, CodecError> {
+    pub(crate) fn u8(&mut self) -> Result<u8, CodecError> {
         Ok(self.take(1)?[0])
     }
 
-    fn u32(&mut self) -> Result<u32, CodecError> {
+    pub(crate) fn u32(&mut self) -> Result<u32, CodecError> {
         let b = self.take(4)?;
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
 
-    fn f32(&mut self) -> Result<f32, CodecError> {
+    pub(crate) fn f32(&mut self) -> Result<f32, CodecError> {
         let b = self.take(4)?;
         Ok(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
 
-    fn f64(&mut self) -> Result<f64, CodecError> {
+    pub(crate) fn f64(&mut self) -> Result<f64, CodecError> {
         let b = self.take(8)?;
         Ok(f64::from_le_bytes([
             b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
@@ -119,25 +120,29 @@ impl<'a> Reader<'a> {
 
 /// Growable little-endian byte writer.
 #[derive(Default)]
-struct Writer {
+pub(crate) struct Writer {
     buf: Vec<u8>,
 }
 
 impl Writer {
-    fn u8(&mut self, v: u8) {
+    pub(crate) fn u8(&mut self, v: u8) {
         self.buf.push(v);
     }
 
-    fn u32(&mut self, v: u32) {
+    pub(crate) fn u32(&mut self, v: u32) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
 
-    fn f32(&mut self, v: f32) {
+    pub(crate) fn f32(&mut self, v: f32) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
 
-    fn f64(&mut self, v: f64) {
+    pub(crate) fn f64(&mut self, v: f64) {
         self.buf.extend_from_slice(&v.to_le_bytes());
+    }
+
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.buf
     }
 }
 

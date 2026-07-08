@@ -22,6 +22,8 @@ pub mod api;
 pub mod codec;
 pub mod constraints;
 pub mod lm;
+pub mod mate;
+pub mod mate_residuals;
 pub mod residuals;
 pub mod solve;
 pub mod sparse;
@@ -197,6 +199,15 @@ pub struct Output {
 pub fn solve_sketch(input: &Input) -> Output {
     solve::solve_sketch(input)
 }
+
+// ─── Mate solver ───
+
+pub use mate::{
+    Mate, MateDiagnostics, MateGeometry, MateInput, MateKind, MateOutput, MateRef, MateStatus,
+    RigidBody,
+};
+
+pub use mate_residuals::solve_mate;
 
 #[cfg(test)]
 mod tests {
