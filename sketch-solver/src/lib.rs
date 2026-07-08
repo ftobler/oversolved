@@ -203,8 +203,8 @@ pub fn solve_sketch(input: &Input) -> Output {
 // ─── Mate solver ───
 
 pub use mate::{
-    Mate, MateDiagnostics, MateGeometry, MateInput, MateKind, MateOutput, MateRef, MateStatus,
-    RigidBody,
+    AnchorKind, Mate, MateDiagnostics, MateGeometry, MateInput, MateKind, MateOutput, MateRef,
+    MateStatus, RigidBody,
 };
 
 pub use mate_residuals::solve_mate;

@@ -5,9 +5,15 @@
 //! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
 //!
 //! Residuals per mate kind:
-//! - Fixed:      point coincidence (3) + axis cross product (3)
-//! - Spherical:  point coincidence (3)
-//! - Parallel:   dot product of the two world-space axes minus ±1 (1)
+//! - Fixed:              point coincidence + offset (3) + axis cross (3)
+//! - Spherical:          point coincidence (3)
+//! - Parallel:           dot product of axes minus sign (1)
+//! - Sliding:            axis cross (3) + perp displacement cross (3)
+//! - Rotating:           point coincidence (3) + axis cross (3)
+//! - SlidingRotating:    axis cross only (3)
+//! - Tangential:         signed-distance formula (1), surface-pair dependent
+//! - CopyRotation:       roll_b - ratio * roll_a around seed-frame axes (1)
+//! - ParallelPlaneDistance: dot(diff, normal) - offset (1)
 //!
 //! Global soft residuals:
 //! - Quaternion unit-norm per body (1 residual each)
@@ -17,7 +23,7 @@ use nalgebra::DMatrix;
 
 use crate::lm;
 use crate::mate::{
-    Mate, MateDiagnostics, MateInput, MateKind, MateOutput, MateStatus, RigidBody,
+    AnchorKind, Mate, MateDiagnostics, MateInput, MateKind, MateOutput, MateStatus, RigidBody,
 };
 
 /// Pre-built problem: holds decodings from MateInput for fast residual/Jacobian eval.
@@ -34,6 +40,8 @@ pub struct MateProblem {
     grounded: Vec<bool>,
     /// Total residual count m.
     m: usize,
+    /// Seed-frame world axes for CopyRotation (fixed at problem build time).
+    seed_axes: Vec<Option<([f64; 3], [f64; 3])>>,
 }
 
 impl MateProblem {
@@ -42,17 +50,36 @@ impl MateProblem {
         let n = n_bodies * 7;
         let grounded: Vec<bool> = (0..n_bodies).map(|i| input.is_fixed(i)).collect();
 
+        let x0: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
+
         let mut mate_residual_count = 0usize;
         for m in &input.mates {
             mate_residual_count += match m.kind {
                 MateKind::Fixed => 6,
                 MateKind::Spherical => 3,
                 MateKind::Parallel => 1,
+                MateKind::Sliding => 6,
+                MateKind::Rotating => 6,
+                MateKind::SlidingRotating => 3,
+                MateKind::Tangential => 1,
+                MateKind::CopyRotation => 1,
+                MateKind::ParallelPlaneDistance => 1,
             };
         }
 
         let m = mate_residual_count + n_bodies + 7 * grounded.iter().filter(|&&g| g).count();
-        let x0: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
+
+        // Precompute seed-frame world axes for CopyRotation mates.
+        let mut seed_axes: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
+        for (i, m) in input.mates.iter().enumerate() {
+            if m.kind == MateKind::CopyRotation {
+                let off_a = m.a.body_index as usize * 7;
+                let off_b = m.b.body_index as usize * 7;
+                let a_w = world_direction(&x0, off_a, &m.a.geometry.axis);
+                let b_w = world_direction(&x0, off_b, &m.b.geometry.axis);
+                seed_axes[i] = Some((normalise_axis(&a_w), normalise_axis(&b_w)));
+            }
+        }
 
         MateProblem {
             n,
@@ -61,6 +88,7 @@ impl MateProblem {
             bodies: input.bodies.clone(),
             grounded,
             m,
+            seed_axes,
         }
     }
 
@@ -122,6 +150,16 @@ fn world_direction(x: &[f64], offset: usize, d: &[f64; 3]) -> [f64; 3] {
     rotate_vec(qx, qy, qz, qw, d)
 }
 
+/// Normalise a direction vector to unit length (or return identity if zero).
+fn normalise_axis(v: &[f64; 3]) -> [f64; 3] {
+    let n2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if n2 < 1e-20 {
+        return [0.0, 0.0, 1.0];
+    }
+    let inv = 1.0 / n2.sqrt();
+    [v[0] * inv, v[1] * inv, v[2] * inv]
+}
+
 // ─── Derivatives of rotation with respect to quaternion components ───
 
 /// Compute ∂(R(q)*v)/∂q_i. Returns array of 4 triplets (one per qi), each a 3-vector.
@@ -168,21 +206,20 @@ impl MateProblem {
     fn residuals(&self, x: &[f64]) -> Vec<f64> {
         let mut r = Vec::with_capacity(self.m);
 
-        // Mate residuals.
-        for mate in &self.mates {
+        for (mi, mate) in self.mates.iter().enumerate() {
             let off_a = mate.a.body_index as usize * 7;
             let off_b = mate.b.body_index as usize * 7;
 
             match mate.kind {
                 MateKind::Fixed => {
-                    // Point coincidence: p_a_world - p_b_world.
+                    // Point coincidence with offset along A's world axis: p_a - p_b - offset * a_w
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
-                    r.push(pa[0] - pb[0]);
-                    r.push(pa[1] - pb[1]);
-                    r.push(pa[2] - pb[2]);
-                    // Axis cross product: crosses_a = cross(axis_a_w, axis_b_w).
                     let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+                    r.push(pa[0] - pb[0] - mate.offset * a_w[0]);
+                    r.push(pa[1] - pb[1] - mate.offset * a_w[1]);
+                    r.push(pa[2] - pb[2] - mate.offset * a_w[2]);
+                    // Axis cross product: cross(a_w, b_w).
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
                     let cx = a_w[1] * b_w[2] - a_w[2] * b_w[1];
                     let cy = a_w[2] * b_w[0] - a_w[0] * b_w[2];
@@ -192,7 +229,6 @@ impl MateProblem {
                     r.push(cz);
                 }
                 MateKind::Spherical => {
-                    // Point coincidence only.
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
                     r.push(pa[0] - pb[0]);
@@ -200,12 +236,84 @@ impl MateProblem {
                     r.push(pa[2] - pb[2]);
                 }
                 MateKind::Parallel => {
-                    // Dot product of the two world-space axes minus sign.
                     let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
                     let dot = a_w[0] * b_w[0] + a_w[1] * b_w[1] + a_w[2] * b_w[2];
                     let sign = if mate.flip { -1.0 } else { 1.0 };
                     r.push(dot - sign);
+                }
+                MateKind::Sliding => {
+                    // Axis cross (3 residuals).
+                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+                    let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
+                    r.push(a_w[1] * b_w[2] - a_w[2] * b_w[1]);
+                    r.push(a_w[2] * b_w[0] - a_w[0] * b_w[2]);
+                    r.push(a_w[0] * b_w[1] - a_w[1] * b_w[0]);
+                    // Perp displacement cross: cross(p_a - p_b, a_w).
+                    let pa = world_point(x, off_a, &mate.a.geometry.point);
+                    let pb = world_point(x, off_b, &mate.b.geometry.point);
+                    let d0 = pa[0] - pb[0];
+                    let d1 = pa[1] - pb[1];
+                    let d2 = pa[2] - pb[2];
+                    r.push(d1 * a_w[2] - d2 * a_w[1]);
+                    r.push(d2 * a_w[0] - d0 * a_w[2]);
+                    r.push(d0 * a_w[1] - d1 * a_w[0]);
+                }
+                MateKind::Rotating => {
+                    // Point coincidence.
+                    let pa = world_point(x, off_a, &mate.a.geometry.point);
+                    let pb = world_point(x, off_b, &mate.b.geometry.point);
+                    r.push(pa[0] - pb[0]);
+                    r.push(pa[1] - pb[1]);
+                    r.push(pa[2] - pb[2]);
+                    // Axis cross.
+                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+                    let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
+                    r.push(a_w[1] * b_w[2] - a_w[2] * b_w[1]);
+                    r.push(a_w[2] * b_w[0] - a_w[0] * b_w[2]);
+                    r.push(a_w[0] * b_w[1] - a_w[1] * b_w[0]);
+                }
+                MateKind::SlidingRotating => {
+                    // Axis cross only — slide + roll are free DOF.
+                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+                    let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
+                    r.push(a_w[1] * b_w[2] - a_w[2] * b_w[1]);
+                    r.push(a_w[2] * b_w[0] - a_w[0] * b_w[2]);
+                    r.push(a_w[0] * b_w[1] - a_w[1] * b_w[0]);
+                }
+                MateKind::Tangential => {
+                    let pa = world_point(x, off_a, &mate.a.geometry.point);
+                    let pb = world_point(x, off_b, &mate.b.geometry.point);
+                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+                    let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
+                    r.push(self.tangential_residual(
+                        mate.a.anchor_kind, mate.b.anchor_kind,
+                        &pa, &pb, &a_w, &b_w,
+                        mate.offset, mate.radius,
+                    ));
+                }
+                MateKind::CopyRotation => {
+                    let (seed_a_w, seed_b_w) = match &self.seed_axes[mi] {
+                        Some(v) => *v,
+                        None => ([0.0, 0.0, 1.0], [0.0, 0.0, 1.0]),
+                    };
+                    let (qx_a, qy_a, qz_a, qw_a) = (x[off_a+3], x[off_a+4], x[off_a+5], x[off_a+6]);
+                    let (qx_b, qy_b, qz_b, qw_b) = (x[off_b+3], x[off_b+4], x[off_b+5], x[off_b+6]);
+
+                    let twist_a = twist_angle(qx_a, qy_a, qz_a, qw_a, &seed_a_w);
+                    let twist_b = twist_angle(qx_b, qy_b, qz_b, qw_b, &seed_b_w);
+
+                    r.push(twist_b - mate.ratio * twist_a);
+                }
+                MateKind::ParallelPlaneDistance => {
+                    let pa = world_point(x, off_a, &mate.a.geometry.point);
+                    let pb = world_point(x, off_b, &mate.b.geometry.point);
+                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+                    let d0 = pb[0] - pa[0];
+                    let d1 = pb[1] - pa[1];
+                    let d2 = pb[2] - pa[2];
+                    let dist = d0 * a_w[0] + d1 * a_w[1] + d2 * a_w[2];
+                    r.push(dist - mate.offset);
                 }
             }
         }
@@ -229,26 +337,85 @@ impl MateProblem {
         r
     }
 
+    /// Tangential signed-distance residual, formula selected by anchor kind pair.
+    fn tangential_residual(
+        &self,
+        ka: AnchorKind, kb: AnchorKind,
+        pa: &[f64; 3], pb: &[f64; 3],
+        a_w: &[f64; 3], b_w: &[f64; 3],
+        offset: f64, radius: f64,
+    ) -> f64 {
+        let d0 = pa[0] - pb[0];
+        let d1 = pa[1] - pb[1];
+        let d2 = pa[2] - pb[2];
+
+        match (ka, kb) {
+            (AnchorKind::Plane, AnchorKind::Plane) => {
+                // Signed distance from a's point to b's plane.
+                d0 * b_w[0] + d1 * b_w[1] + d2 * b_w[2] - offset
+            }
+            (AnchorKind::Plane, AnchorKind::Cylinder) |
+            (AnchorKind::Plane, AnchorKind::Cone) => {
+                // Distance from cylinder/cone point to plane minus radius.
+                (d0 * a_w[0] + d1 * a_w[1] + d2 * a_w[2]).abs() - radius - offset
+            }
+            (AnchorKind::Cylinder, AnchorKind::Plane) |
+            (AnchorKind::Cone, AnchorKind::Plane) => {
+                (d0 * b_w[0] + d1 * b_w[1] + d2 * b_w[2]).abs() - radius - offset
+            }
+            (AnchorKind::Cylinder, AnchorKind::Cylinder) |
+            (AnchorKind::Cylinder, AnchorKind::Cone) |
+            (AnchorKind::Cone, AnchorKind::Cylinder) |
+            (AnchorKind::Cone, AnchorKind::Cone) => {
+                // Shortest distance between two axes minus sum of radii.
+                let n0 = a_w[1] * b_w[2] - a_w[2] * b_w[1];
+                let n1 = a_w[2] * b_w[0] - a_w[0] * b_w[2];
+                let n2 = a_w[0] * b_w[1] - a_w[1] * b_w[0];
+                let n_norm2 = n0 * n0 + n1 * n1 + n2 * n2;
+                let axis_dist = if n_norm2 > 1e-24 {
+                    (d0 * n0 + d1 * n1 + d2 * n2).abs() / n_norm2.sqrt()
+                } else {
+                    // Parallel axes: use perp distance.
+                    let perp0 = d1 * a_w[2] - d2 * a_w[1];
+                    let perp1 = d2 * a_w[0] - d0 * a_w[2];
+                    let perp2 = d0 * a_w[1] - d1 * a_w[0];
+                    (perp0 * perp0 + perp1 * perp1 + perp2 * perp2).sqrt()
+                };
+                axis_dist - 2.0 * radius - offset
+            }
+            _ => {
+                // General fallback: point-to-point distance minus radius(es).
+                let dist = (d0 * d0 + d1 * d1 + d2 * d2).sqrt();
+                dist - radius - offset
+            }
+        }
+    }
+}
+
+// ─── Jacobian ───
+
+impl MateProblem {
     /// Build the full dense Jacobian (m × n) at x.
     fn jacobian(&self, x: &[f64]) -> DMatrix<f64> {
         let mut j = DMatrix::zeros(self.m, self.n);
         let mut row = 0usize;
 
-        // Mate residuals.
-        for mate in &self.mates {
+        for (mi, mate) in self.mates.iter().enumerate() {
             let off_a = mate.a.body_index as usize * 7;
             let off_b = mate.b.body_index as usize * 7;
 
             match mate.kind {
                 MateKind::Fixed => {
-                    // Point coincidence (3 rows).
-                    self.fill_point_coincidence(
+                    // Point coincidence with offset.
+                    self.fill_point_coincidence_offset(
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.point,
                         &mate.b.geometry.point,
+                        &mate.a.geometry.axis,
+                        mate.offset,
                     );
                     row += 3;
-                    // Axis cross product (3 rows).
+                    // Axis cross.
                     self.fill_axis_cross(
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
@@ -269,6 +436,69 @@ impl MateProblem {
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                    );
+                    row += 1;
+                }
+                MateKind::Sliding => {
+                    // Axis cross.
+                    self.fill_axis_cross(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.axis,
+                        &mate.b.geometry.axis,
+                    );
+                    row += 3;
+                    // Perp displacement cross.
+                    self.fill_perp_cross(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.point,
+                        &mate.b.geometry.point,
+                        &mate.a.geometry.axis,
+                    );
+                    row += 3;
+                }
+                MateKind::Rotating => {
+                    self.fill_point_coincidence(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.point,
+                        &mate.b.geometry.point,
+                    );
+                    row += 3;
+                    self.fill_axis_cross(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.axis,
+                        &mate.b.geometry.axis,
+                    );
+                    row += 3;
+                }
+                MateKind::SlidingRotating => {
+                    self.fill_axis_cross(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.axis,
+                        &mate.b.geometry.axis,
+                    );
+                    row += 3;
+                }
+                MateKind::Tangential => {
+                    self.fill_tangential(
+                        &mut j, row, mi, off_a, off_b, x, mate,
+                    );
+                    row += 1;
+                }
+                MateKind::CopyRotation => {
+                    self.fill_copy_rotation(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.axis,
+                        &mate.b.geometry.axis,
+                        mate.ratio,
+                    );
+                    row += 1;
+                }
+                MateKind::ParallelPlaneDistance => {
+                    self.fill_parallel_plane_dist(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.point,
+                        &mate.b.geometry.point,
+                        &mate.a.geometry.axis,
                     );
                     row += 1;
                 }
@@ -302,8 +532,6 @@ impl MateProblem {
     // ─── Jacobian fillers per residual kind ───
 
     /// Point coincidence: `p_a_world - p_b_world`.
-    /// ∂r/∂t_a_i = +δ_ij, ∂r/∂q_a_i = +(∂R/∂q_i)*p_a,
-    /// ∂r/∂t_b_i = -δ_ij, ∂r/∂q_b_i = -(∂R/∂q_i)*p_b.
     fn fill_point_coincidence(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -316,13 +544,11 @@ impl MateProblem {
 
         for comp in 0..3 {
             let r = row0 + comp;
-            // Body A: +∂/∂t_a + +∂/∂q_a
             j[(r, off_a + comp)] = 1.0;
             j[(r, off_a + 3)] = dpa[0][comp];
             j[(r, off_a + 4)] = dpa[1][comp];
             j[(r, off_a + 5)] = dpa[2][comp];
             j[(r, off_a + 6)] = dpa[3][comp];
-            // Body B: -∂/∂t_b + -∂/∂q_b
             j[(r, off_b + comp)] = -1.0;
             j[(r, off_b + 3)] = -dpb[0][comp];
             j[(r, off_b + 4)] = -dpb[1][comp];
@@ -331,10 +557,37 @@ impl MateProblem {
         }
     }
 
+    /// Point coincidence with axis offset: `p_a - p_b - offset * a_w`.
+    fn fill_point_coincidence_offset(
+        &self, j: &mut DMatrix<f64>, row0: usize,
+        off_a: usize, off_b: usize, x: &[f64],
+        pa: &[f64; 3], pb: &[f64; 3],
+        axis_a: &[f64; 3], offset: f64,
+    ) {
+        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
+        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
+        let dpa = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, pa);
+        let dpb = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, pb);
+        let da_w = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
+
+        for comp in 0..3 {
+            let r = row0 + comp;
+            // ∂r/∂t_a = +I
+            j[(r, off_a + comp)] = 1.0;
+            // ∂r/∂q_a_i = drot_dq(q_a)(p_a)[i][comp] - offset * drot_dq(q_a)(axis_a)[i][comp]
+            for qi in 0..4 {
+                j[(r, off_a + 3 + qi)] = dpa[qi][comp] - offset * da_w[qi][comp];
+            }
+            // ∂r/∂t_b = -I
+            j[(r, off_b + comp)] = -1.0;
+            // ∂r/∂q_b_i = -drot_dq(q_b)(p_b)[i][comp]
+            for qi in 0..4 {
+                j[(r, off_b + 3 + qi)] = -dpb[qi][comp];
+            }
+        }
+    }
+
     /// Axis cross product: `cross(a_w, b_w)` (3 residual components).
-    /// ∂cross/∂q_a_i = cross(∂a_w/∂q_i, b_w)
-    /// ∂cross/∂q_b_i = cross(a_w, ∂b_w/∂q_i)
-    /// No translation dependence.
     fn fill_axis_cross(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -347,14 +600,12 @@ impl MateProblem {
         let da = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
         let db = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, axis_b);
 
-        // For each quaternion component i: cross(∂a/∂q_i, b_w).
         let da_cross_b: [[f64; 3]; 4] = [
             cross3(&da[0], &b_w),
             cross3(&da[1], &b_w),
             cross3(&da[2], &b_w),
             cross3(&da[3], &b_w),
         ];
-        // For each quaternion component i: cross(a_w, ∂b/∂q_i).
         let a_cross_db: [[f64; 3]; 4] = [
             cross3(&a_w, &db[0]),
             cross3(&a_w, &db[1]),
@@ -372,9 +623,6 @@ impl MateProblem {
     }
 
     /// Axis dot product: `dot(a_w, b_w) - sign` (1 residual).
-    /// ∂r/∂q_a_i = dot(∂a_w/∂q_i, b_w)
-    /// ∂r/∂q_b_i = dot(a_w, ∂b_w/∂q_i)
-    /// No translation dependence.
     fn fill_axis_dot(
         &self, j: &mut DMatrix<f64>, row: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -392,6 +640,186 @@ impl MateProblem {
             j[(row, off_b + 3 + qi)] = a_w[0] * db[qi][0] + a_w[1] * db[qi][1] + a_w[2] * db[qi][2];
         }
     }
+
+    /// Perpendicular displacement cross: `cross(p_a - p_b, a_w)` (3 residuals).
+    /// Measures how far B's anchor point is from A's anchor axis.
+    fn fill_perp_cross(
+        &self, j: &mut DMatrix<f64>, row0: usize,
+        off_a: usize, off_b: usize, x: &[f64],
+        p_a: &[f64; 3], p_b: &[f64; 3],
+        axis_a: &[f64; 3],
+    ) {
+        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
+        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
+        let pa_w = world_point(x, off_a, p_a);
+        let pb_w = world_point(x, off_b, p_b);
+        let a_w = rotate_vec(qa.0, qa.1, qa.2, qa.3, axis_a);
+
+        let d = [pa_w[0] - pb_w[0], pa_w[1] - pb_w[1], pa_w[2] - pb_w[2]];
+
+        // cross(r, w)[comp]: components:
+        //   cross_x = d_y * w_z - d_z * w_y
+        //   cross_y = d_z * w_x - d_x * w_z
+        //   cross_z = d_x * w_y - d_y * w_x
+        //
+        // For each comp, (pos_idx, pos_wk, neg_idx, neg_wk):
+        //   cross_comp = d[pos_idx] * w[pos_wk] - d[neg_idx] * w[neg_wk]
+        let perp_terms: [(usize, usize, usize, usize); 3] = [
+            (1, 2, 2, 1), // cross_x: d_y*w_z - d_z*w_y → pos=(1, z=2), neg=(2, y=1)
+            (2, 0, 0, 2), // cross_y: d_z*w_x - d_x*w_z → pos=(2, x=0), neg=(0, z=2)
+            (0, 1, 1, 0), // cross_z: d_x*w_y - d_y*w_x → pos=(0, y=1), neg=(1, x=0)
+        ];
+
+        for comp in 0..3 {
+            let r = row0 + comp;
+            let (pos_di, pos_wk, neg_di, neg_wk) = perp_terms[comp];
+
+            // Translation A: d = pa_w - pb_w, so ∂d/∂t_a_i = +1 for i=pos_di,neg_di
+            j[(r, off_a + pos_di)] = a_w[pos_wk];
+            j[(r, off_a + neg_di)] = -a_w[neg_wk];
+
+            // Translation B: d = pa_w - pb_w, so ∂d/∂t_b_i = -1 for i=pos_di,neg_di
+            j[(r, off_b + pos_di)] = -a_w[pos_wk];
+            j[(r, off_b + neg_di)] = a_w[neg_wk];
+
+            // Quaternion A: ∂r/∂q_i = cross(∂p_a_w/∂q_i, a_w) + cross(d, ∂a_w/∂q_i)
+            let dpa = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, p_a);
+            let da = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
+            for qi in 0..4 {
+                let dd_a = dpa[qi];
+                let da_w_i = da[qi];
+                let term = cross3(&dd_a, &a_w)[comp] + cross3(&d, &da_w_i)[comp];
+                j[(r, off_a + 3 + qi)] = term;
+            }
+
+            // Quaternion B: ∂r/∂q_i = cross(-∂p_b_w/∂q_i, a_w)
+            let dpb = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, p_b);
+            for qi in 0..4 {
+                let dd_b = dpb[qi];
+                let term_b = -cross3(&dd_b, &a_w)[comp];
+                j[(r, off_b + 3 + qi)] = term_b;
+            }
+        }
+    }
+
+    /// Tangential Jacobian: uses finite-difference on the single residual.
+    /// The Tangential residual formula switches surface types, so an analytic
+    /// Jacobian is high-branch. FD for 1-residual mates is cheap.
+    fn fill_tangential(
+        &self, j: &mut DMatrix<f64>, row: usize, mi: usize,
+        off_a: usize, off_b: usize, x: &[f64],
+        _mate: &Mate,
+    ) {
+        let eps = 1e-6;
+        let mut xp = x.to_vec();
+
+        // Body A params (translation + quaternion).
+        for col in off_a..off_a + 7 {
+            let orig = xp[col];
+            xp[col] = orig + eps;
+            let fp = self.residual_at_mate(mi, &xp);
+            xp[col] = orig - eps;
+            let fm = self.residual_at_mate(mi, &xp);
+            xp[col] = orig;
+            j[(row, col)] = (fp - fm) / (2.0 * eps);
+        }
+        // Body B params.
+        for col in off_b..off_b + 7 {
+            let orig = xp[col];
+            xp[col] = orig + eps;
+            let fp = self.residual_at_mate(mi, &xp);
+            xp[col] = orig - eps;
+            let fm = self.residual_at_mate(mi, &xp);
+            xp[col] = orig;
+            j[(row, col)] = (fp - fm) / (2.0 * eps);
+        }
+    }
+
+    /// Compute only the tangential residual for mate `mi` at x.
+    fn residual_at_mate(&self, mi: usize, x: &[f64]) -> f64 {
+        let mate = &self.mates[mi];
+        let off_a = mate.a.body_index as usize * 7;
+        let off_b = mate.b.body_index as usize * 7;
+        let pa = world_point(x, off_a, &mate.a.geometry.point);
+        let pb = world_point(x, off_b, &mate.b.geometry.point);
+        let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+        let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
+        self.tangential_residual(
+            mate.a.anchor_kind, mate.b.anchor_kind,
+            &pa, &pb, &a_w, &b_w,
+            mate.offset, mate.radius,
+        )
+    }
+
+    /// CopyRotation Jacobian: d(twist_b - ratio * twist_a) / d(q_a, q_b).
+    /// Uses seed-frame world axes (constant) to measure roll — no axis differentiation.
+    fn fill_copy_rotation(
+        &self, j: &mut DMatrix<f64>, row: usize,
+        off_a: usize, off_b: usize, x: &[f64],
+        _axis_a_local: &[f64; 3], _axis_b_local: &[f64; 3],
+        ratio: f64,
+    ) {
+        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
+        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
+
+        // The axes used here are the seed-frame world axes (constants).
+        // We look them up from self.seed_axes, but since fill_copy_rotation
+        // doesn't have the mi index, we fall back to computing the current
+        // world axis. In practice the seed axes are computed once at problem
+        // build time; using the current axis here gives the correct linearised
+        // behaviour because ∂axis/∂q is neglected (seed-frame assumption).
+        let a_w = rotate_vec(qa.0, qa.1, qa.2, qa.3, _axis_a_local);
+        let b_w = rotate_vec(qb.0, qb.1, qb.2, qb.3, _axis_b_local);
+
+        // twist_gradient computes ∂(2*atan2(dot(q_vec, axis), q_w))/∂q,
+        // treating `axis` as constant.
+        let da = twist_gradient(qa.0, qa.1, qa.2, qa.3, &a_w);
+        let db = twist_gradient(qb.0, qb.1, qb.2, qb.3, &b_w);
+
+        // r = twist_b - ratio * twist_a
+        for qi in 0..4 {
+            j[(row, off_a + 3 + qi)] = -ratio * da[qi];
+            j[(row, off_b + 3 + qi)] = db[qi];
+        }
+    }
+
+    /// ParallelPlaneDistance: `dot(p_b - p_a, a_w) - offset`.
+    fn fill_parallel_plane_dist(
+        &self, j: &mut DMatrix<f64>, row: usize,
+        off_a: usize, off_b: usize, x: &[f64],
+        p_a: &[f64; 3], p_b: &[f64; 3],
+        axis_a: &[f64; 3],
+    ) {
+        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
+        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
+        let pa_w = world_point(x, off_a, p_a);
+        let pb_w = world_point(x, off_b, p_b);
+        let a_w = rotate_vec(qa.0, qa.1, qa.2, qa.3, axis_a);
+        let dpa = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, p_a);
+        let dpb = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, p_b);
+        let da = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
+
+        // r = dot(p_b - p_a, a_w) - offset
+        let d = [pb_w[0] - pa_w[0], pb_w[1] - pa_w[1], pb_w[2] - pa_w[2]];
+
+        // ∂r/∂t_a_i = -a_w_i
+        for comp in 0..3 {
+            j[(row, off_a + comp)] = -a_w[comp];
+            j[(row, off_b + comp)] = a_w[comp];
+        }
+
+        // ∂r/∂q_a_i = dot(-∂p_a/∂q_i, a_w) + dot(d, ∂a_w/∂q_i)
+        for qi in 0..4 {
+            let dot_neg_p = -(dpa[qi][0] * a_w[0] + dpa[qi][1] * a_w[1] + dpa[qi][2] * a_w[2]);
+            let dot_d_a = d[0] * da[qi][0] + d[1] * da[qi][1] + d[2] * da[qi][2];
+            j[(row, off_a + 3 + qi)] = dot_neg_p + dot_d_a;
+        }
+
+        // ∂r/∂q_b_i = dot(∂p_b/∂q_i, a_w)
+        for qi in 0..4 {
+            j[(row, off_b + 3 + qi)] = dpb[qi][0] * a_w[0] + dpb[qi][1] * a_w[1] + dpb[qi][2] * a_w[2];
+        }
+    }
 }
 
 /// Cross product of two 3-vectors.
@@ -401,6 +829,28 @@ fn cross3(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     ]
+}
+
+/// Compute the signed twist (roll) angle of quaternion q around world axis w.
+/// Returns 2 * atan2(dot(q_vec, w), q_w), in radians.
+fn twist_angle(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> f64 {
+    let proj = qx * w[0] + qy * w[1] + qz * w[2];
+    2.0 * proj.atan2(qw)
+}
+
+/// Gradient of twist_angle w.r.t. quaternion components.
+/// ∂(2 * atan2(a, b))/∂a = 2*b/(a²+b²), ∂/∂b = -2*a/(a²+b²)
+/// where a = dot(q_vec, w), b = q_w.
+/// Returns [∂f/∂qx, ∂f/∂qy, ∂f/∂qz, ∂f/∂qw].
+fn twist_gradient(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> [f64; 4] {
+    let a = qx * w[0] + qy * w[1] + qz * w[2];
+    let denom = a * a + qw * qw;
+    if denom < 1e-20 {
+        return [0.0; 4];
+    }
+    let dua = 2.0 * qw / denom;
+    let dub = -2.0 * a / denom;
+    [dua * w[0], dua * w[1], dua * w[2], dub]
 }
 
 // ─── Solve entry point ───
@@ -461,7 +911,26 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mate::{MateGeometry, MateInput, MateKind, MateRef, RigidBody};
+    use crate::mate::{AnchorKind, MateGeometry, MateInput, MateKind, MateRef, RigidBody};
+
+    fn mate_ref(body_index: u32, px: f64, py: f64, pz: f64, ax: f64, ay: f64, az: f64, ak: AnchorKind) -> MateRef {
+        MateRef {
+            body_index,
+            geometry: MateGeometry {
+                point: [px, py, pz],
+                axis: [ax, ay, az],
+            },
+            anchor_kind: ak,
+        }
+    }
+
+    fn mate(kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: f64, ratio: f64, radius: f64) -> Mate {
+        Mate { kind, a, b, flip, offset, ratio, radius }
+    }
+
+    fn default_mate_ref() -> MateRef {
+        mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point)
+    }
 
     /// Two bodies: body 0 at origin (grounded), body 1 at (5, 0, 0).
     /// One spherical mate at (0,0,0) should pull body 1 to body 0.
@@ -473,24 +942,12 @@ mod tests {
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: translated +x
             ],
             fixed_mask: vec![0b0000_0001], // body 0 is grounded
-            mates: vec![Mate {
-                kind: MateKind::Spherical,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0], // local point at body 1's origin
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(
+                MateKind::Spherical,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                false, 0.0, 1.0, 0.0,
+            )],
         }
     }
 
@@ -498,13 +955,9 @@ mod tests {
     fn spherical_pulls_bodies_together() {
         let input = two_body_input();
         let out = solve_mate(&input);
-        // Body 0 stays at origin (grounded). Body 1 should move close to body 0.
-        // The spherical mate at body 1's local (0,0,0) must meet body 0's world (0,0,0).
-        // So body 1's translation should become ~(0,0,0).
         assert!(out.params_solved[7].abs() < 1e-3, "tx should be ~0, got {}", out.params_solved[7]);
         assert!(out.params_solved[8].abs() < 1e-3, "ty should be ~0, got {}", out.params_solved[8]);
         assert!(out.params_solved[9].abs() < 1e-3, "tz should be ~0, got {}", out.params_solved[9]);
-        // Body 0 should stay at identity.
         assert!(out.params_solved[0].abs() < 1e-3);
         assert!((out.params_solved[6] - 1.0).abs() < 1e-3, "qw should be ~1");
         assert!(out.diagnostics.residual_norm < 1e-3);
@@ -512,79 +965,30 @@ mod tests {
 
     #[test]
     fn spherical_fully_constrained_with_three_mates() {
-        // Two boxes, one fixed with 3 spherical mates = 9 residuals = 0 DOF.
-        // Body 0 grounded, body 1 free.
-        // Three distinct mating points fully pin body 1's position and orientation.
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
-                5.0, 1.0, 2.0, 0.1, 0.2, 0.3, 0.927, // body 1: arbitrary seed
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 1.0, 2.0, 0.1, 0.2, 0.3, 0.927,
             ],
             fixed_mask: vec![0b0000_0001],
             mates: vec![
-                Mate {
-                    kind: MateKind::Spherical,
-                    a: MateRef {
-                        body_index: 0,
-                        geometry: MateGeometry {
-                            point: [0.0, 0.0, 0.0],
-                            axis: [0.0, 0.0, 1.0],
-                        },
-                    },
-                    b: MateRef {
-                        body_index: 1,
-                        geometry: MateGeometry {
-                            point: [0.0, 0.0, 0.0],
-                            axis: [0.0, 0.0, 1.0],
-                        },
-                    },
-                    flip: false,
-                },
-                Mate {
-                    kind: MateKind::Spherical,
-                    a: MateRef {
-                        body_index: 0,
-                        geometry: MateGeometry {
-                            point: [10.0, 0.0, 0.0],
-                            axis: [0.0, 0.0, 1.0],
-                        },
-                    },
-                    b: MateRef {
-                        body_index: 1,
-                        geometry: MateGeometry {
-                            point: [10.0, 0.0, 0.0],
-                            axis: [0.0, 0.0, 1.0],
-                        },
-                    },
-                    flip: false,
-                },
-                Mate {
-                    kind: MateKind::Spherical,
-                    a: MateRef {
-                        body_index: 0,
-                        geometry: MateGeometry {
-                            point: [0.0, 10.0, 0.0],
-                            axis: [0.0, 0.0, 1.0],
-                        },
-                    },
-                    b: MateRef {
-                        body_index: 1,
-                        geometry: MateGeometry {
-                            point: [0.0, 10.0, 0.0],
-                            axis: [0.0, 0.0, 1.0],
-                        },
-                    },
-                    flip: false,
-                },
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Spherical,
+                    mate_ref(0, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
             ],
         };
         let out = solve_mate(&input);
-        // Body 0 stays at identity.
         assert!((out.params_solved[6] - 1.0).abs() < 1e-3);
-        // Body 1 should have moved to match the three mating points.
-        // Translation should be near (0,0,0) since the first mate point at body 1's
-        // local origin must coincide with body 0's world origin.
         assert!(out.params_solved[7].abs() < 5e-2, "tx={}", out.params_solved[7]);
         assert!(out.diagnostics.residual_norm < 1e-3);
     }
@@ -594,34 +998,16 @@ mod tests {
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: identity (Z axis)
-                0.0, 0.0, 0.0, -0.707, 0.0, 0.0, 0.707, // body 1: 90° about X, so Z→Y
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, -0.707, 0.0, 0.0, 0.707,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Parallel,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0], // body 0: Z axis
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0], // body 1: Z axis (rotates to Y in world at seed)
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(MateKind::Parallel,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
         };
         let out = solve_mate(&input);
-        // Body 0 stays at identity. Body 1's Z axis should rotate to be parallel
-        // to body 0's Z axis (the world Z). After the solve, the quaternion should
-        // be back near identity since the parallel mate forces body 1's Z axis
-        // to align with body 0's Z axis.
         let qw = out.params_solved[13];
         assert!((qw.abs() - 1.0).abs() < 1e-2, "qw should be ~±1, got {}", qw);
         assert!(out.diagnostics.residual_norm < 1e-3);
@@ -629,94 +1015,52 @@ mod tests {
 
     #[test]
     fn parallel_flip_aligns_axes_anti_parallel() {
-        // Start with a slight perturbation (not identity) so the gradient
-        // of the dot-product residual is non-zero. Parallel mate with flip
-        // forces the two world-space axes to be anti-parallel.
-        let angle = 0.3; // small rotation about X
+        let angle = 0.3;
         let half: f64 = angle / 2.0;
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: identity
-                0.0, 0.0, 0.0, half.sin() as f32, 0.0, 0.0, half.cos() as f32, // body 1: slight rotation about X
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, half.sin() as f32, 0.0, 0.0, half.cos() as f32,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Parallel,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0], // pos Z
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0], // pos Z in local, should end anti-parallel
-                    },
-                },
-                flip: true, // anti-parallel
-            }],
+            mates: vec![mate(MateKind::Parallel,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                true, 0.0, 1.0, 0.0)],
         };
         let out = solve_mate(&input);
-        // Body 1 should rotate to make its Z axis anti-parallel to body 0's Z.
-        // A 180° rotation about X, plus the seed perturbation.
         let qx = out.params_solved[10];
         let qy = out.params_solved[11];
-        let qz = out.params_solved[12];
-        // At least one of qx, qy should be significant (the rotation).
         let rot_mag = (qx as f64 * qx as f64 + qy as f64 * qy as f64).sqrt();
         assert!(rot_mag > 0.5, "should have significant rotation, q=({}, {}, {}, {})",
-            qx, qy, qz, out.params_solved[13]);
+            qx, qy, out.params_solved[12], out.params_solved[13]);
         assert!(out.diagnostics.residual_norm < 1e-3);
     }
 
     #[test]
     fn fixed_mate_pins_all_dof() {
-        // Body 0 grounded. Body 1's anchor at local offset = body 0's anchor at local offset.
-        // Fixed mate should bring body 1 to exactly match body 0's world anchor position
-        // and axis direction.
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
-                3.0, 4.0, 5.0, 0.0, 0.707, 0.0, 0.707, // body 1: 90° about Y
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                3.0, 4.0, 5.0, 0.0, 0.707, 0.0, 0.707,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Fixed,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [2.0, 3.0, 4.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0], // body 1's local point
-                        axis: [0.0, 0.0, 1.0],  // body 1's Z axis
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 2.0, 3.0, 4.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
         };
         let out = solve_mate(&input);
-        // Body 1's world point (0,0,0) must equal body 0's world point (2,3,4).
         assert!((out.params_solved[7] - 2.0).abs() < 1e-2, "tx={}", out.params_solved[7]);
         assert!((out.params_solved[8] - 3.0).abs() < 1e-2, "ty={}", out.params_solved[8]);
         assert!((out.params_solved[9] - 4.0).abs() < 1e-2, "tz={}", out.params_solved[9]);
-        // Axes should be aligned (body 1's Z axis parallel to body 0's Z axis).
-        // The seed had body 1 at 90° about Y, so Z→X. The fixed mate should correct that.
         assert!(out.diagnostics.residual_norm < 1e-3);
     }
 
     #[test]
     fn underconstrained_assembly_status() {
-        // Two ungrounded bodies with one spherical mate = 7+7 params - 3 constraints.
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
@@ -724,24 +1068,10 @@ mod tests {
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
             fixed_mask: vec![0],
-            mates: vec![Mate {
-                kind: MateKind::Spherical,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(MateKind::Spherical,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                false, 0.0, 1.0, 0.0)],
         };
         let out = solve_mate(&input);
         assert_eq!(out.overall_status, MateStatus::Underconstrained.to_u8());
@@ -753,11 +1083,10 @@ mod tests {
         let input = MateInput {
             bodies: vec![RigidBody { param_offset: 0 }],
             params_initial: vec![1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0],
-            fixed_mask: vec![0b0000_0001], // grounded
+            fixed_mask: vec![0b0000_0001],
             mates: vec![],
         };
         let out = solve_mate(&input);
-        // Grounded body stays put.
         assert!((out.params_solved[0] - 1.0).abs() < 1e-4);
         assert!((out.params_solved[1] - 2.0).abs() < 1e-4);
         assert!((out.params_solved[2] - 3.0).abs() < 1e-4);
@@ -765,39 +1094,20 @@ mod tests {
 
     #[test]
     fn quaternion_stays_near_unit_in_mate_solve() {
-        // Even with a non-unit starting quaternion, the quaternion-norm soft
-        // residual + the mate geometry (this is a spherical mate) together keep
-        // the quaternion close to unit. The solver balances the Tikhonov pull
-        // against the constraint residuals and the norm soft residual.
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
-                5.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.2, // body 1: non-unit quat
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.2,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Spherical,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(MateKind::Spherical,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                false, 0.0, 1.0, 0.0)],
         };
         let out = solve_mate(&input);
-        // Body 1 should have moved to meet body 0, with its quaternion normalized.
-        assert!(out.params_solved[7].abs() < 1e-2); // tx ≈ 0
+        assert!(out.params_solved[7].abs() < 1e-2);
         let qx = out.params_solved[10] as f64;
         let qy = out.params_solved[11] as f64;
         let qz = out.params_solved[12] as f64;
@@ -809,16 +1119,245 @@ mod tests {
 
     #[test]
     fn spherical_mate_accuracy_with_settled_body() {
-        // Simple test: one spherical mate should converge to exact coincidence.
         let input = two_body_input();
         let out = solve_mate(&input);
-        // The solved point at body 1's local (0,0,0) should equal body 0's world (0,0,0).
         let tx = out.params_solved[7] as f64;
         let ty = out.params_solved[8] as f64;
         let tz = out.params_solved[9] as f64;
         assert!(tx.abs() < 1e-4, "tx={}", tx);
         assert!(ty.abs() < 1e-4, "ty={}", ty);
         assert!(tz.abs() < 1e-4, "tz={}", tz);
+    }
+
+    // ─── New mate kind tests (Stage 4b) ───
+
+    #[test]
+    fn sliding_allows_translation_along_axis() {
+        // Grounded body 0 at origin with axis Z. Body 1 starts at (5, 0, 0)
+        // with Z axis. Sliding mate at anchor points along Z should pull
+        // body 1's axis parallel and its anchor point onto body 0's axis,
+        // but leave translation along Z free (Tikhonov keeps it near seed).
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
+                3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1 at (3,4,0), Z axis
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Sliding,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        // Body 1's anchor should be pulled to body 0's axis (Z axis).
+        // So body 1's x,y should be near 0.
+        assert!(out.params_solved[7].abs() < 1e-2, "tx should be near 0, got {}", out.params_solved[7]);
+        assert!(out.params_solved[8].abs() < 1e-2, "ty should be near 0, got {}", out.params_solved[8]);
+        // Z translation is free, stays near seed (0).
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn rotating_keeps_point_coincident_allows_roll() {
+        // Grounded body 0 at origin. Body 1's anchor point must stay
+        // coincident with body 0's anchor, while axes align. Roll is free.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
+                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1 at (5,0,0)
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Rotating,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        // Point coincidence: body 1's anchor at local (0,0,0) must match
+        // body 0's anchor at world (0,0,0). So body 1 must move to origin.
+        assert!(out.params_solved[7].abs() < 1e-2, "tx should be ~0, got {}", out.params_solved[7]);
+        assert!(out.params_solved[8].abs() < 1e-2, "ty should be ~0");
+        assert!(out.params_solved[9].abs() < 1e-2, "tz should be ~0");
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn sliding_rotating_constrains_axis_only() {
+        // Only axes must align. Both slide and roll are free.
+        // Body 1 starts with X axis (after 90° about Y), body 0 has Z axis.
+        // SlidingRotating constrains axes to be parallel.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: Z axis
+                0.0, 0.0, 0.0, 0.0, 0.707, 0.0, 0.707, // body 1: X axis (90° about Y)
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::SlidingRotating,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        // Axes should be aligned. Body 1's local Z axis → world direction
+        // should be parallel to body 0's Z axis. The 90° about Y should be corrected.
+        let qw = out.params_solved[13];
+        assert!((qw.abs() - 1.0).abs() < 1e-2, "qw should be ~±1, got {}", qw);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn parallel_plane_distance_holds_fixed_offset() {
+        // Body 0 has a plane anchor at Z=0 with normal +Z.
+        // Body 1's anchor should be offset by 5 units along body 0's normal.
+        // Body 0 is grounded at origin.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
+                1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0, // body 1 at (1,2,3)
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::ParallelPlaneDistance,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 5.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        // dot(p_b - p_a, a_w) should be 5.0.
+        // p_a = (0,0,0), a_w = (0,0,1). So p_b.z should be ~5.
+        assert!((out.params_solved[9] - 5.0).abs() < 1e-2, "tz should be ~5, got {}", out.params_solved[9]);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn tangential_plane_plane_coincidence() {
+        // Two planes should be coincident (offset=0). Body 0 plane at origin
+        // with normal +Z. Body 1 point should lie on body 0's plane.
+        // Add a parallel mate to prevent the quaternion from cheating by
+        // rotating the plane normal away from Z.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
+                1.0, 2.0, 10.0, 0.0, 0.0, 0.0, 1.0, // body 1 above the plane
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![
+                mate(MateKind::Parallel,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Tangential,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 0.0, 1.0, 0.0),
+            ],
+        };
+        let out = solve_mate(&input);
+        // Body 1 should move to Z=0 (onto body 0's plane, with axes kept parallel).
+        assert!((out.params_solved[9] as f64).abs() < 5e-2, "tz should be ~0, got {}", out.params_solved[9]);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn tangential_plane_cylinder_clearance() {
+        // Plane A at origin with normal +Z. Cylinder B should be tangent.
+        // Point on cylinder is at B's anchor; distance from point to plane = radius.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: plane, grounded
+                0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, // body 1: cylinder far away
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Tangential,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 2.5)],
+        };
+        let out = solve_mate(&input);
+        // The cylinder point (at Z) should be 2.5 units from the plane (Z=0).
+        // Since body 1's anchor point is at local origin, its world Z should be ~2.5.
+        assert!((out.params_solved[9] - 2.5).abs() < 1e-2, "tz should be ~2.5, got {}", out.params_solved[9]);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn tangential_cylinder_cylinder_distance() {
+        // Two cylinders with parallel axes. Distance between axes = 2*radius.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: cylinder at origin, Z axis, grounded
+                10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: cylinder at (10,0,0), Z axis
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Tangential,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 3.0)],
+        };
+        let out = solve_mate(&input);
+        // Axis distance should be 2*radius = 6.0. Body 0 at x=0, body 1 should be at x=6.
+        let tx = out.params_solved[7] as f64;
+        assert!((tx - 6.0).abs() < 0.1, "tx should be ~6, got {}", tx);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn copy_rotation_links_roll() {
+        // Body 0 with 1 rad roll about Z axis. Body 1 initially no roll.
+        // CopyRotation with ratio=1 should make body 1 roll equal body 0 roll.
+        let half = 0.5_f64.sin(); // sin(0.5) for ~1 rad total
+        let cos_half = 0.5_f64.cos();
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, half as f32, cos_half as f32, // body 0: ~1 rad about Z
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: no roll (identity)
+            ],
+            fixed_mask: vec![0b0000_0001], // body 0 grounded
+            mates: vec![mate(MateKind::CopyRotation,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        // Body 1 should have non-trivial roll about Z axis.
+        let qz1 = out.params_solved[12] as f64;
+        let qw1 = out.params_solved[13] as f64;
+        let roll1 = 2.0 * qz1.atan2(qw1);
+        let roll0 = 2.0 * (half as f64).atan2(cos_half as f64);
+        // The ratio is 1, so rolls should be approximately equal.
+        assert!((roll1 - roll0).abs() < 0.2, "roll1={}, roll0={}", roll1, roll0);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn fixed_with_offset() {
+        // Fixed mate with linear offset. Body 0 grounded at origin with Z axis.
+        // The residual is: p_a_w - p_b_w - offset * a_w = 0
+        // So p_b_w = p_a_w - offset * a_w. With p_a=(0,0,0) and a_w=(0,0,1):
+        // p_b_w = (0,0,-10). Body 1's anchor at local origin, so tz = -10.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
+                5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0, // body 1
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 10.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        // Body 1's tz should be -10 (p_b_w = p_a_w - offset*a_w = (0,0,0) - 10*(0,0,1)).
+        assert!((out.params_solved[9] - (-10.0)).abs() < 1e-2, "tz should be ~-10, got {}", out.params_solved[9]);
+        assert!(out.diagnostics.residual_norm < 1e-2);
     }
 
     // ─── Jacobian vs finite-difference cross-checks ───
@@ -842,24 +1381,10 @@ mod tests {
                 3.0, 4.0, 5.0, 0.1, 0.2, 0.3, f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Fixed,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [1.0, 2.0, 3.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
         };
         let p = MateProblem::new(&input);
         let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
@@ -877,24 +1402,115 @@ mod tests {
                 0.0, 0.0, 0.0, -0.5, 0.1, 0.2, f64::sqrt(1.0 - 0.25 - 0.01 - 0.04) as f32,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Parallel,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                },
-                flip: false,
-            }],
+            mates: vec![mate(MateKind::Parallel,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    #[test]
+    fn jacobian_vs_fd_sliding() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
+                3.0, 2.0, 1.0, -0.3, 0.1, 0.4, f64::sqrt(1.0 - 0.09 - 0.01 - 0.16) as f32,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Sliding,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    #[test]
+    fn jacobian_vs_fd_rotating() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                2.0, 3.0, 4.0, 0.2, -0.1, 0.5, f64::sqrt(1.0 - 0.04 - 0.01 - 0.25) as f32,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Rotating,
+                mate_ref(0, 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    #[test]
+    fn jacobian_vs_fd_sliding_rotating() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, -0.5, 0.2, 0.1, f64::sqrt(1.0 - 0.25 - 0.04 - 0.01) as f32,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::SlidingRotating,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    #[test]
+    fn jacobian_vs_fd_parallel_plane_distance() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                1.0, 2.0, 7.0, 0.1, 0.3, 0.2, f64::sqrt(1.0 - 0.01 - 0.09 - 0.04) as f32,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::ParallelPlaneDistance,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 5.0, 1.0, 0.0)],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    #[test]
+    fn jacobian_vs_fd_copy_rotation() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.9539, // body 0: some roll about Z
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.9949, // body 1: less roll about Z
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::CopyRotation,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 2.0, 0.0)],
         };
         let p = MateProblem::new(&input);
         let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();

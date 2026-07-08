@@ -54,7 +54,7 @@ mod tests {
     use crate::codec::{decode_output, encode_input};
     use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
     use crate::mate::{
-        encode_mate_input, decode_mate_output, Mate, MateGeometry, MateInput,
+        encode_mate_input, decode_mate_output, AnchorKind, Mate, MateGeometry, MateInput,
         MateKind, MateRef, RigidBody,
     };
     use crate::{Entity, Input, Kind, Options, Status};
@@ -76,6 +76,7 @@ mod tests {
                         point: [0.0, 0.0, 0.0],
                         axis: [0.0, 0.0, 1.0],
                     },
+                    anchor_kind: AnchorKind::Point,
                 },
                 b: MateRef {
                     body_index: 1,
@@ -83,8 +84,12 @@ mod tests {
                         point: [0.0, 0.0, 0.0],
                         axis: [0.0, 0.0, 1.0],
                     },
+                    anchor_kind: AnchorKind::Point,
                 },
                 flip: false,
+                offset: 0.0,
+                ratio: 1.0,
+                radius: 0.0,
             }],
         };
         let bytes = encode_mate_input(&input);
