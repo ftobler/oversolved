@@ -8,6 +8,7 @@ import {
   mintInstanceHandle,
   IDENTITY_TRANSFORM,
 } from '@/utils/assemblyMutations'
+import { ASSEMBLY_HANDLE } from '@/utils/builtins'
 
 const emptyDoc: AssemblyDoc = { kind: 'assembly', features: [] }
 
@@ -125,5 +126,18 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     const handle = instances(doc)[0].handle
     setInstanceFixed(doc, handle, true)
     expect(instances(doc)[0].fixed).toBeUndefined()
+  })
+
+  // The assembly frame's reserved MateRef handle must never be a value a real
+  // instance can be minted with, or a part-anchor lookup would shadow the
+  // assembly built-ins. randomId(8) is an 11-char base64url string; the
+  // reserved handle is a distinct literal, so they cannot collide.
+  it('mints handles that never collide with the reserved assembly handle', () => {
+    let doc = emptyDoc
+    for (let i = 0; i < 200; i++) {
+      const handle = mintInstanceHandle(doc)
+      expect(handle).not.toBe(ASSEMBLY_HANDLE)
+      doc = appendPartInstance(doc, `doc-${i}`, 1)
+    }
   })
 })

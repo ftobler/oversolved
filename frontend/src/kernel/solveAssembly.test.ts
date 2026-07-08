@@ -13,8 +13,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { solveAssembly, encodeMateInput, decodeMateOutput } from './solveAssembly'
+import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
+import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/builtins'
 import type { PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
@@ -153,6 +154,72 @@ function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Array {
     out.setUint32(pos, 1, true); pos += 4
     out.setFloat64(pos, 0.001, true); pos += 8
     return new Uint8Array(outBuf)
+  }
+}
+
+interface DecodedMateRecord {
+  kindCode: number
+  bodyA: number
+  bodyB: number
+  anchorKindA: number
+  anchorKindB: number
+  pointA: [number, number, number]
+  axisA: [number, number, number]
+  pointB: [number, number, number]
+  axisB: [number, number, number]
+}
+
+interface DecodedInput {
+  nBodies: number
+  fixedMask: number[]
+  mates: DecodedMateRecord[]
+}
+
+/** Decode a mate-solver input buffer far enough to inspect bodies + mate records. */
+function decodeInput(input: Uint8Array): DecodedInput {
+  const v = new DataView(input.buffer, input.byteOffset, input.byteLength)
+  const nBodies = v.getUint32(4, true)
+  const nParams = v.getUint32(8, true)
+  const nMates = v.getUint32(12, true)
+  let pos = 20 + nBodies * 4 + nParams * 4
+  const maskLen = Math.ceil(nBodies / 8)
+  const fixedMask: number[] = []
+  for (let i = 0; i < maskLen; i++) fixedMask.push(v.getUint8(pos + i))
+  pos += maskLen
+  const readVec = (): [number, number, number] => {
+    const out: [number, number, number] = [
+      v.getFloat32(pos, true), v.getFloat32(pos + 4, true), v.getFloat32(pos + 8, true),
+    ]
+    pos += 12
+    return out
+  }
+  const mates: DecodedMateRecord[] = []
+  for (let i = 0; i < nMates; i++) {
+    const kindCode = v.getUint8(pos); pos += 1
+    const bodyA = v.getUint32(pos, true); pos += 4
+    const bodyB = v.getUint32(pos, true); pos += 4
+    const anchorKindA = v.getUint8(pos); pos += 1
+    const anchorKindB = v.getUint8(pos); pos += 1
+    const pointA = readVec()
+    const axisA = readVec()
+    const pointB = readVec()
+    const axisB = readVec()
+    pos += 1 + 4 + 4 + 4  // flags + offset + ratio + radius
+    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB })
+  }
+  return { nBodies, fixedMask, mates }
+}
+
+/** An echo solver that also captures the decoded input for inspection. */
+function makeCaptureSolver(): { solver: (input: Uint8Array) => Uint8Array; captured: { input?: DecodedInput } } {
+  const echo = makeEchoSolver()
+  const captured: { input?: DecodedInput } = {}
+  return {
+    solver: (input: Uint8Array) => {
+      captured.input = decodeInput(input)
+      return echo(input)
+    },
+    captured,
   }
 }
 
@@ -371,6 +438,90 @@ describe('solveAssembly', () => {
     expect(result.transforms).toEqual({})
     expect(result.bodies).toEqual({})
     expect(result.mateResults).toEqual({})
+  })
+
+  // ── assembly built-ins as ground (Stage 6c) ──────────────────────────
+
+  it('resolves a fixed mate from a part to the assembly Top plane through assemblyAnchors', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 5, 0) },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'fixed',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: ASSEMBLY_HANDLE, anchor: ASSEMBLY_TOP_ID },
+      },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+
+    // The mate resolved (not stale) and the part got a solved transform.
+    expect(result.mateResults['m1'].stale).toBe(false)
+    expect(result.transforms).toHaveProperty('p1')
+    // The assembly frame is synthetic: it never appears as an output transform.
+    expect(result.transforms).not.toHaveProperty(ASSEMBLY_HANDLE)
+
+    // The solver saw the part body (0) + a pinned assembly frame body (1).
+    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.fixedMask[0] & 0b10).toBe(0b10)  // body 1 grounded
+
+    // ref_b carried the Top-plane anchor geometry from assemblyAnchors.
+    const rec = captured.input!.mates[0]
+    expect(rec.bodyA).toBe(0)
+    expect(rec.bodyB).toBe(1)
+    const top = assemblyAnchors[ASSEMBLY_TOP_ID]
+    expect(rec.pointB).toEqual(top.point)
+    expect(rec.axisB).toEqual(top.axis)
+  })
+
+  it('flags a mate stale when the assembly anchor id is unknown', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'fixed',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: ASSEMBLY_HANDLE, anchor: 'NoSuchPlane' },
+      },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, makeEchoSolver())
+
+    expect(result.mateResults['m1'].stale).toBe(true)
+    expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
+  })
+
+  it('does not allocate an assembly frame body when no mate references it', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    // Only the two part bodies; nothing pinned.
+    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.fixedMask[0]).toBe(0)
   })
 })
 

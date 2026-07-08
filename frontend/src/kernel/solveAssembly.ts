@@ -11,6 +11,26 @@ import { migrateAnchors } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor } from './partBundle'
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
+import {
+  ASSEMBLY_HANDLE,
+  ASSEMBLY_ORIGIN_ID,
+  ASSEMBLY_TOP_ID,
+  ASSEMBLY_FRONT_ID,
+  ASSEMBLY_RIGHT_ID,
+} from '../utils/builtins'
+
+// ─── Assembly built-in anchors (Stage 6c) ────────────────────────────────
+// The assembly's own coordinate frame, referencable by a mate as ground via
+// MateRef.part === ASSEMBLY_HANDLE. Normals follow the part-editor
+// Top/Front/Right convention (Viewport index.tsx:603-605): Front normal +Z,
+// Top normal +Y, Right normal +X. The frame is pinned at the world origin and
+// is never solved, so geom_hash/created_by are unused here.
+export const assemblyAnchors: Record<string, Anchor> = {
+  [ASSEMBLY_ORIGIN_ID]: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: '' },
+  [ASSEMBLY_TOP_ID]:    { kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0], geom_hash: '', created_by: '' },
+  [ASSEMBLY_FRONT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: '' },
+  [ASSEMBLY_RIGHT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0], geom_hash: '', created_by: '' },
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -285,55 +305,62 @@ export async function solveAssembly(
     handleIndex++
   }
 
+  // The assembly frame is a synthetic body pinned at identity, allocated only
+  // when a mate references it (MateRef.part === ASSEMBLY_HANDLE). It grounds
+  // mates that fasten a part to the assembly's own origin/planes; its solved
+  // transform is discarded (it never moves and has no mesh).
+  const usesAssemblyFrame = mates.some(
+    m => m.ref_a.part === ASSEMBLY_HANDLE || m.ref_b.part === ASSEMBLY_HANDLE,
+  )
+  const assemblyBodyIndex = usesAssemblyFrame ? handleIndex : -1
+  if (usesAssemblyFrame) {
+    handleToIndex.set(ASSEMBLY_HANDLE, handleIndex)
+    handleIndex++
+  }
+
   // ── Resolve mate anchors & build mate records ────────────────────────
 
   const mateResults: Record<string, MateResult> = {}
   const mateRecords: MateWireRecord[] = []
-  const bodyCount = parts.length
+  const bodyCount = handleIndex  // parts + optional assembly frame
+
+  // Resolve a mate ref to its anchor + solver body index. ASSEMBLY_HANDLE routes
+  // to the static assembly-frame anchors; any other handle routes to that part
+  // instance's bundle. A missing bundle or missing anchor yields undefined,
+  // which the caller flags as a stale ref (fail-safe over fail-wrong).
+  const resolveRef = (ref: { part: string; anchor: string }): { anchor: Anchor | undefined; bodyIndex: number } => {
+    if (ref.part === ASSEMBLY_HANDLE) {
+      return { anchor: assemblyAnchors[ref.anchor], bodyIndex: assemblyBodyIndex }
+    }
+    const b = partBundles.get(ref.part)
+    return { anchor: b?.anchors[ref.anchor], bodyIndex: handleToIndex.get(ref.part) ?? -1 }
+  }
 
   for (const mate of mates) {
-    const result: MateResult = {}
-    let stale = false
-
-    const bundleA = partBundles.get(mate.ref_a.part)
-    const bundleB = partBundles.get(mate.ref_b.part)
-    if (!bundleA || !bundleB) {
-      result.stale = true
-      result.staleRefs = []
-      if (!bundleA) result.staleRefs.push('ref_a')
-      if (!bundleB) result.staleRefs.push('ref_b')
-      mateResults[mate.id] = result
+    const rA = resolveRef(mate.ref_a)
+    const rB = resolveRef(mate.ref_b)
+    const staleRefs: ('ref_a' | 'ref_b')[] = []
+    if (!rA.anchor) staleRefs.push('ref_a')
+    if (!rB.anchor) staleRefs.push('ref_b')
+    if (staleRefs.length > 0) {
+      mateResults[mate.id] = { stale: true, staleRefs }
       continue
     }
 
-    const anchorA = bundleA.anchors[mate.ref_a.anchor]
-    const anchorB = bundleB.anchors[mate.ref_b.anchor]
-
-    if (!anchorA) { stale = true; result.staleRefs = [...(result.staleRefs || []), 'ref_a'] }
-    if (!anchorB) { stale = true; result.staleRefs = [...(result.staleRefs || []), 'ref_b'] }
-
-    if (stale) {
-      result.stale = true
-      mateResults[mate.id] = result
-      continue
-    }
-
-    const bodyA = handleToIndex.get(mate.ref_a.part) ?? 0
-    const bodyB = handleToIndex.get(mate.ref_b.part) ?? 0
     const offset = typeof mate.offset === 'number' ? mate.offset : 0
     const ratio = typeof mate.ratio === 'number' ? mate.ratio : 1
     const radius = typeof mate.radius === 'number' ? mate.radius : 0
 
     mateRecords.push({
       kindCode: MATE_KIND_TO_U8[mate.kind] ?? 0,
-      bodyA,
-      bodyB,
-      anchorKindA: ANCHOR_KIND_TO_U8[anchorA!.kind] ?? 0,
-      anchorKindB: ANCHOR_KIND_TO_U8[anchorB!.kind] ?? 0,
-      pointA: anchorA!.point,
-      axisA: anchorA!.axis,
-      pointB: anchorB!.point,
-      axisB: anchorB!.axis,
+      bodyA: rA.bodyIndex,
+      bodyB: rB.bodyIndex,
+      anchorKindA: ANCHOR_KIND_TO_U8[rA.anchor!.kind] ?? 0,
+      anchorKindB: ANCHOR_KIND_TO_U8[rB.anchor!.kind] ?? 0,
+      pointA: rA.anchor!.point,
+      axisA: rA.anchor!.axis,
+      pointB: rB.anchor!.point,
+      axisB: rB.anchor!.axis,
       flip: !!mate.flip,
       offset,
       ratio,
@@ -363,8 +390,16 @@ export async function solveAssembly(
     paramsInitial[pi * BPB + 6] = t.qw
     // Parts are not flagged as "fixed" at this level; the fixed mask
     // comes from the PartInstance.fixed property in the full AssemblyDoc
-    // (not yet wired). For Stage 5b all bodies are free.
+    // (not yet wired). For Stage 5b all parts are free.
     pi++
+  }
+
+  // The assembly frame sits at identity and is pinned (grounded): its quaternion
+  // is the identity (qw = 1; the rest stay zero from Float32Array init) and its
+  // fixed-mask bit is set so the solver excludes it from the moving DOF.
+  if (usesAssemblyFrame) {
+    paramsInitial[assemblyBodyIndex * BPB + 6] = 1
+    fixedMask[Math.floor(assemblyBodyIndex / 8)] |= (1 << (assemblyBodyIndex % 8))
   }
 
   const transforms: Record<string, Transform3D> = {}

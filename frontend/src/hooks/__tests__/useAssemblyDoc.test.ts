@@ -41,12 +41,18 @@ describe('useAssemblyDoc', () => {
     expect(result.current.loading).toBe(false)
   })
 
-  it('does not prepend built-in features to an empty-feature assembly', async () => {
+  it('prepends assembly built-ins (not part built-ins) to an empty-feature assembly', async () => {
     const { result } = renderHook(() => useAssemblyDoc('B'))
     await tick()
     await act(async () => { h.loads.B.resolve({ content: 'kind: assembly\nfeatures: []', name: 'EmptyAsm' }) })
     await tick()
-    expect(result.current.doc?.features).toEqual([])
+    const feats = result.current.doc?.features ?? []
+    const ids = feats.map(f => f.id)
+    // Assembly gets its OWN coordinate frame, never the part built-ins.
+    expect(ids).toEqual(['AssemblyOrigin', 'AssemblyTop', 'AssemblyFront', 'AssemblyRight'])
+    expect(ids).not.toContain('Origin')
+    expect(feats[0].kind).toBe('origin')
+    expect(feats.slice(1).every(f => f.kind === 'plane')).toBe(true)
   })
 
   it('returns features when present on assembly doc', async () => {

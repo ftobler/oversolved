@@ -5,6 +5,7 @@ import type { AssemblyDoc, PartInstance, MateFeatureDef } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/builtins'
 
 export function useAssemblyDoc(uuid: string | undefined) {
   const [doc, setDoc] = useState<AssemblyDoc | null>(null)
@@ -38,6 +39,12 @@ export function useAssemblyDoc(uuid: string | undefined) {
         storeRef.current = store
         setIsCloudDoc(store === backendBundle.cloudDocuments)
         const parsed = (parseYaml(data.content) ?? {}) as AssemblyDoc
+        // An empty assembly starts with its own Origin + 3 planes (its coordinate
+        // frame), mirroring the part-editor empty-doc prepend but with assembly
+        // built-ins so the assembly never inherits part built-ins.
+        if (!parsed.features || parsed.features.length === 0) {
+          parsed.features = ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f }))
+        }
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)
