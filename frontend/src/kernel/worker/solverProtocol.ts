@@ -12,6 +12,7 @@
 
 import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
+import type { Transform3D } from '../../types/cad'
 
 /** Solve options that survive a structured clone (the OCC-free subset). */
 export interface SolveRequestOptions {
@@ -96,3 +97,79 @@ export interface SolveOkResponse {
 }
 
 export type SolveResponse = SolveOkResponse | WorkerErrResponse
+
+// ─── assembly protocol ──────────────────────────────────────────────────
+// Messages between the main thread and the Rust-only anchor solver worker.
+// The anchor solver sees no OCC, no solveLocally, no HandleTable; it solves
+// over anchors extracted from PartBundles. The main thread relays bundle
+// build requests to the OCC bundle-builder worker and fetches PartDoc
+// content from the document store.
+
+/** A single part reference in a solveAssembly request. */
+export interface PartInputSpec {
+  handle: string
+  doc_id: string
+  doc_rev: number
+  transform: Transform3D
+}
+
+/** Sent from the main thread to the anchor solver worker to solve an assembly. */
+export interface SolveAssemblyRequest {
+  id: number
+  kind: 'solveAssembly'
+  parts: PartInputSpec[]
+  revs: Record<string, number>
+}
+
+/** Successful assembly solve response from the anchor solver worker. */
+export interface AssemblySolveOkResponse {
+  id: number
+  kind: 'solveAssembly'
+  ok: true
+  /** For Stage 5a: echoed transforms. Stage 5b adds bodies + results. */
+  payload: {
+    transforms: Record<string, Transform3D>
+  }
+}
+
+export interface AssemblySolveErrResponse {
+  id: number
+  kind: 'solveAssembly'
+  ok: false
+  error: string
+}
+
+export type AssemblySolveResponse = AssemblySolveOkResponse | AssemblySolveErrResponse
+
+/** The anchor solver worker requests a relayed service from the main thread. */
+export interface AnchorRelayRequest {
+  kind: 'asr_relay'
+  requestId: number
+  subKind: 'partDocContent' | 'buildBundle'
+  doc_id: string
+  doc_rev?: number
+  spec?: Record<string, unknown>
+}
+
+/** The main thread's relay response back to the anchor solver worker. */
+export interface AnchorRelayOkResponse {
+  kind: 'asr_relayRes'
+  requestId: number
+  ok: true
+  payload: unknown
+}
+
+export interface AnchorRelayErrResponse {
+  kind: 'asr_relayRes'
+  requestId: number
+  ok: false
+  error: string
+}
+
+export type AnchorRelayResponse = AnchorRelayOkResponse | AnchorRelayErrResponse
+
+/** Every message the anchor solver worker receives from the main thread. */
+export type AssemblyWorkerRequest = SolveAssemblyRequest | AnchorRelayOkResponse | AnchorRelayErrResponse
+
+/** Every message the anchor solver worker sends to the main thread. */
+export type AssemblyWorkerResponse = AssemblySolveResponse | AnchorRelayRequest

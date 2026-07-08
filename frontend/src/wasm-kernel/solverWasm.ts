@@ -26,6 +26,7 @@ interface WebModule {
   default: (input?: unknown) => Promise<unknown>
   solve_sketch_bytes: SolveBytes
   detect_topology_bytes: TopologyBytes
+  solve_mate_bytes: SolveBytes
 }
 
 /** Base URL the `--target web` pkg is served from. Override per deployment. */
@@ -61,6 +62,11 @@ export function loadSolverWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> 
 /** Browser loader for the Rust area builder (`detect_topology_bytes`). */
 export function loadTopologyWasm(base = DEFAULT_BASE): Promise<TopologyBytes | null> {
   return loadWasmExport('detect_topology_bytes', base)
+}
+
+/** Browser loader for the Rust mate solver (`solve_mate_bytes`). */
+export function loadMateWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> {
+  return loadWasmExport('solve_mate_bytes', base)
 }
 
 /** Reset the memoized loader (tests / hot-reload). */
