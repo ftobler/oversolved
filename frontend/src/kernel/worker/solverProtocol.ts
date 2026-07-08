@@ -11,6 +11,7 @@
  */
 
 import type { RebuildValidation } from '../builder'
+import type { PartBundle } from '../partBundle'
 
 /** Solve options that survive a structured clone (the OCC-free subset). */
 export interface SolveRequestOptions {
@@ -24,6 +25,15 @@ export interface SolveRequest {
   kind?: 'solve'
   spec: Record<string, unknown>
   options: SolveRequestOptions
+}
+
+/** Build a PartBundle from a PartDoc spec Worker-side. */
+export interface BundleRequest {
+  id: number
+  kind: 'buildBundle'
+  spec: Record<string, unknown>
+  doc_id: string
+  doc_rev: number
 }
 
 /** Export options that survive a structured clone. */
@@ -42,7 +52,7 @@ export interface ExportRequest {
 }
 
 /** Either request the Worker can receive; discriminated by `kind`. */
-export type WorkerRequest = SolveRequest | ExportRequest
+export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest
 
 /** Shared error arm for every Worker response (solve and export alike). */
 export interface WorkerErrResponse {
@@ -59,6 +69,15 @@ export interface ExportOkResponse {
 }
 
 export type ExportResponse = ExportOkResponse | WorkerErrResponse
+
+/** Bundle response carries the mesh + edge payloads. Empty anchors dict in Stage 2b. */
+export interface BundleOkResponse {
+  id: number
+  ok: true
+  payload: PartBundle
+}
+
+export type BundleResponse = BundleOkResponse | WorkerErrResponse
 
 /** A BuildResponse with the Worker-only `_build_state` removed. */
 export interface SolvePayload {

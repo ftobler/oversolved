@@ -22,7 +22,10 @@ import { loadOccWorker } from '../occ/loadOccWorker'
 import type {
   SolveRequest, SolveResponse, SolvePayload,
   ExportRequest, ExportResponse, WorkerRequest,
+  BundleRequest, BundleResponse,
 } from './solverProtocol'
+import { toPartBundle } from '../partBundle'
+import type { BodyResult } from '../../types/cad'
 
 /** The engine signature [[handleSolveRequest]] depends on (production: solveLocally). */
 type SolveEngine = typeof solveLocally
@@ -73,6 +76,44 @@ export async function handleExportRequest(
 /** The transferable buffer in an export response (for postMessage's transfer arg). */
 export function exportTransferables(res: ExportResponse): Transferable[] {
   return res.ok && res.bytes ? [res.bytes.buffer] : []
+}
+
+// ─── bundle builder ──────────────────────────────────────────────────────
+// Builds a PartBundle from a PartDoc spec by running solveLocally and
+// extracting per-body meshes + edge curves. The anchors dict is empty in
+// Stage 2b (filled by Stage 2c).
+
+export async function handleBundleRequest(
+  req: BundleRequest,
+  solve: SolveEngine,
+): Promise<BundleResponse> {
+  try {
+    const response = await solve(req.spec, {})
+    if (!response) {
+      return { id: req.id, ok: false, error: 'OCC.js unavailable' }
+    }
+    const bundle = toPartBundle(
+      req.doc_id,
+      req.doc_rev,
+      response.bodies as Record<string, BodyResult>,
+    )
+    return { id: req.id, ok: true, payload: bundle }
+  } catch (e) {
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
+  }
+}
+
+/** The transferable ArrayBuffers in a bundle response (for postMessage's transfer arg). */
+export function bundleTransferables(res: BundleResponse): Transferable[] {
+  if (!res.ok) return []
+  const out: Transferable[] = []
+  for (const body of res.payload.bodies) {
+    const m = body.mesh
+    if (m.vertices instanceof Float32Array) out.push(m.vertices.buffer)
+    if (m.indices instanceof Uint32Array) out.push(m.indices.buffer)
+    if (m.faceIdsPerTriangle instanceof Uint32Array) out.push(m.faceIdsPerTriangle.buffer)
+  }
+  return out
 }
 
 // ─── mesh transfer ───
@@ -170,7 +211,7 @@ class WorkerActor {
 // --- Worker bootstrap (skipped on the main thread / in tests) -------------
 
 interface WorkerCtx {
-  postMessage(message: SolveResponse | ExportResponse, transfer: Transferable[]): void
+  postMessage(message: SolveResponse | ExportResponse | BundleResponse, transfer: Transferable[]): void
   onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null
 }
 
@@ -186,6 +227,11 @@ if (inWorker()) {
       actor.run(
         () => handleExportRequest(msg, exportLocally),
         (res) => { ctx.postMessage(res, exportTransferables(res)) },
+      )
+    } else if (msg.kind === 'buildBundle') {
+      actor.run(
+        () => handleBundleRequest(msg, solveLocally),
+        (res) => { ctx.postMessage(res, bundleTransferables(res)) },
       )
     } else {
       actor.run(
