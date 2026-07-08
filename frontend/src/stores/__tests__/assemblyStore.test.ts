@@ -1,0 +1,100 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
+
+describe('assemblyStore', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().setActivePartHandle(null)
+    useAssemblyStore.getState().setIsSolving(false)
+    useAssemblyStore.getState().setSolveError(null)
+  })
+
+  it('default state has empty fields and null doc', () => {
+    const state = useAssemblyStore.getState()
+    expect(state.doc).toBeNull()
+    expect(state.instances).toEqual([])
+    expect(state.mates).toEqual([])
+    expect(state.transforms).toEqual({})
+    expect(state.activePartHandle).toBeNull()
+    expect(state.isSolving).toBe(false)
+    expect(state.solveError).toBeNull()
+  })
+
+  it('setSnapshot replaces mirrored fields but preserves owned fields', () => {
+    const { getState } = useAssemblyStore
+    getState().setActivePartHandle('part-1')
+    getState().setIsSolving(true)
+    getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: { kind: 'assembly', features: [] },
+      activePartHandle: null,
+    })
+    // activePartHandle is a store-owned field, preserved from setter.
+    expect(getState().activePartHandle).toBe('part-1')
+    expect(getState().doc).toEqual({ kind: 'assembly', features: [] })
+  })
+
+  it('setActivePartHandle updates the handle and syncs via setSnapshot is preserved', () => {
+    const { getState } = useAssemblyStore
+    getState().setActivePartHandle('abc')
+    expect(getState().activePartHandle).toBe('abc')
+    // setSnapshot should not overwrite
+    getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      activePartHandle: 'ignored',
+    })
+    expect(getState().activePartHandle).toBe('abc')
+  })
+
+  it('setIsSolving toggles the flag', () => {
+    const { getState } = useAssemblyStore
+    expect(getState().isSolving).toBe(false)
+    getState().setIsSolving(true)
+    expect(getState().isSolving).toBe(true)
+    getState().setIsSolving(false)
+    expect(getState().isSolving).toBe(false)
+  })
+
+  it('setSolveError sets and clears error', () => {
+    const { getState } = useAssemblyStore
+    expect(getState().solveError).toBeNull()
+    getState().setSolveError('boom')
+    expect(getState().solveError).toBe('boom')
+    getState().setSolveError(null)
+    expect(getState().solveError).toBeNull()
+  })
+
+  it('round-trips a full AssemblyDoc through setSnapshot', () => {
+    const { getState } = useAssemblyStore
+    const doc = {
+      kind: 'assembly' as const,
+      features: [
+        { id: 'feat1', kind: 'part_instance' as const, instance: { handle: 'h1', doc_id: 'd1', doc_rev: 3, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } } },
+        { id: 'feat2', kind: 'mate' as const, mate: { kind: 'fixed' as const, ref_a: { part: 'h1', anchor: 'a1' }, ref_b: { part: 'h2', anchor: 'a2' } } },
+      ],
+    }
+    getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc,
+      instances: [doc.features[0].instance!],
+      mates: [doc.features[1].mate!],
+    })
+    expect(getState().doc).toEqual(doc)
+    expect(getState().instances).toHaveLength(1)
+    expect(getState().instances[0].handle).toBe('h1')
+    expect(getState().mates).toHaveLength(1)
+    expect(getState().mates[0].kind).toBe('fixed')
+  })
+
+  it('reset via DEFAULT_ASSEMBLY_EDITOR_DATA clears mirrored fields', () => {
+    const { getState } = useAssemblyStore
+    getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: { kind: 'assembly', features: [] },
+      instances: [{ handle: 'h1', doc_id: 'd1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+    })
+    getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    expect(getState().doc).toBeNull()
+    expect(getState().instances).toEqual([])
+  })
+})

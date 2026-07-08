@@ -78,6 +78,51 @@ describe('getBodiesToRender', () => {
     expect(items).toHaveLength(1)
     expect(items[0].featureId).toBe('body_no_creator')
   })
+
+  it('handles assembly bodies with mesh data (no edges/vertices)', () => {
+    const assemblyBodies: Record<string, BodyResult> = {
+      'body_handle1_0': {
+        id: 'body_handle1_0',
+        created_by: 'handle1',
+        modified_by: [],
+        mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3), triangle_to_face: new Uint32Array(1) },
+      } as unknown as BodyResult,
+      'body_handle2_0': {
+        id: 'body_handle2_0',
+        created_by: 'handle2',
+        modified_by: [],
+        mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3), triangle_to_face: new Uint32Array(1) },
+      } as unknown as BodyResult,
+    }
+    const items = getBodiesToRender(assemblyBodies, undefined, undefined, undefined)
+    expect(items).toHaveLength(2)
+    expect(items[0].featureId).toBe('handle1')
+    expect(items[0].edges).toEqual([])
+    expect(items[0].vertices).toBeUndefined()
+    expect(items[1].featureId).toBe('handle2')
+  })
+
+  it('handles assembly bodies with visibleBodies filter', () => {
+    const assemblyBodies: Record<string, BodyResult> = {
+      'body_a_0': {
+        id: 'body_a_0',
+        created_by: 'a',
+        modified_by: [],
+        mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3) },
+      } as unknown as BodyResult,
+      'body_b_0': {
+        id: 'body_b_0',
+        created_by: 'b',
+        modified_by: [],
+        mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3) },
+      } as unknown as BodyResult,
+    }
+    const visible = new Set(['body_a_0'])
+    const items = getBodiesToRender(assemblyBodies, undefined, undefined, visible)
+    expect(items).toHaveLength(2)
+    expect(items[0].visible).toBe(true)
+    expect(items[1].visible).toBe(false)
+  })
 })
 
 describe('computeEffectiveVisibleBodies', () => {

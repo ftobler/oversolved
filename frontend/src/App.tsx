@@ -3,7 +3,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
 import Documentation from '@/pages/Documentation'
 import Documents from '@/pages/Documents'
-import Part from '@/pages/Part'
+import DocumentPage from '@/pages/DocumentPage'
 import Registry from '@/pages/Registry'
 import Login from '@/pages/Login'
 import UserProfile from '@/pages/UserProfile'
@@ -25,7 +25,7 @@ function App() {
         <Route path="/login" element={hasBackend ? <Login /> : <Navigate to="/documents" replace />} />
         <Route path="/" element={<Navigate to="/documents" replace />} />
         <Route path="/documents" element={<Documents />} />
-        <Route path="/documents/:uuid" element={<Part />} />
+        <Route path="/documents/:uuid" element={<DocumentPage />} />
         <Route path="/docs" element={<Documentation />} />
         <Route path="/docs/:doc" element={<Documentation />} />
         <Route path="/registry" element={<Registry />} />

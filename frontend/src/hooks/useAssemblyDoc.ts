@@ -1,8 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { AssemblyDoc } from '@/types/cad'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { parse as parseYaml } from 'yaml'
+import { stringify as stringifyYaml } from 'yaml'
+import type { AssemblyDoc, PartInstance, MateFeatureDef } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 export function useAssemblyDoc(uuid: string | undefined) {
   const [doc, setDoc] = useState<AssemblyDoc | null>(null)
@@ -41,6 +43,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
         setDocName(data.name)
         setOwnerUsername(data.owner_username || '')
         setPermission(data.permission || 'owner')
+        useUnsavedChangesStore.getState().setDirty(false)
         setLoading(false)
       })
       .catch(e => {
@@ -51,52 +54,53 @@ export function useAssemblyDoc(uuid: string | undefined) {
     return () => { cancelled = true }
   }, [uuid])
 
-  const saveDoc = useCallback(async (document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {
+  const instances = useMemo(() => {
+    return (doc?.features ?? [])
+      .filter((f): f is typeof f & { instance: PartInstance } => f.kind === 'part_instance' && !!f.instance)
+      .map(f => f.instance!)
+  }, [doc])
+
+  const mates = useMemo(() => {
+    return (doc?.features ?? [])
+      .filter((f): f is typeof f & { mate: MateFeatureDef } => f.kind === 'mate' && !!f.mate)
+      .map(f => f.mate!)
+  }, [doc])
+
+  const saveDoc = useCallback(async (uuid: string, document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {
     try {
       const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
       if (screenshot) {
         const dataUrl = await screenshot()
-        if (dataUrl) {
-          body.preview_image = dataUrl.split(',')[1]
-        }
+        if (dataUrl) body.preview_image = dataUrl.split(',')[1]
       }
-      await storeRef.current.save(uuid!, body)
+      await storeRef.current.save(uuid, body)
+      useUnsavedChangesStore.getState().setDirty(false)
       return true
     } catch (e) {
       setError(parseHttpError(e, 'Failed to save document'))
       return false
     }
-  }, [uuid])
+  }, [])
 
-  const renameDoc = useCallback(async (name: string) => {
+  const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {
-      await storeRef.current.rename(uuid!, name)
+      await storeRef.current.rename(uuid, name)
       setDocName(name)
       return true
     } catch (e) {
       setError(parseHttpError(e, 'Failed to rename document'))
       return false
     }
-  }, [uuid])
+  }, [])
 
-  const cloneDoc = useCallback(async (): Promise<{ uuid: string }> => {
-    return storeRef.current.clone(uuid!)
-  }, [uuid])
+  const cloneDoc = useCallback(async (id: string): Promise<{ uuid: string }> => {
+    return storeRef.current.clone(id)
+  }, [])
 
   return {
-    doc,
-    setDoc,
-    docRef,
-    docName,
-    setDocName,
-    ownerUsername,
-    loading,
-    error,
-    setError,
-    permission,
-    isCloudDoc,
-    saveDoc,
-    renameDoc,
-    cloneDoc,
+    doc, setDoc, docRef, docName, setDocName, ownerUsername,
+    loading, error, setError, permission, isCloudDoc,
+    instances, mates,
+    saveDoc, renameDoc, cloneDoc,
   }
 }
