@@ -19,6 +19,7 @@ import type {
   AssemblyWorkerResponse,
   PartInputSpec,
 } from './solverProtocol'
+import type { MateSpec } from '../solveAssembly'
 import { extractErrorMessage } from '../errors'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
@@ -126,20 +127,24 @@ function ensureWorker(): AnchorSolverWorkerLike | null {
 }
 
 /**
- * Solve an assembly on the anchor solver worker. Stage 5a: echoes the placed
- * transforms for each part instance. Returns `null` when no worker can be
- * created (caller surfaces "local solver unavailable").
+ * Solve an assembly on the anchor solver worker. Stage 5b: sends mates and
+ * assemblyId alongside the parts; the worker runs the real orchestration
+ * (bundle building, anchor resolution, mate solve, transform application).
+ * Returns `null` when no worker can be created (caller surfaces "local solver
+ * unavailable").
  */
 export function solveAssemblyViaWorker(
+  assemblyId: string,
   parts: PartInputSpec[],
   revs: Record<string, number>,
+  mates: MateSpec[],
 ): Promise<AssemblySolveOkResponse | null> {
   const w = ensureWorker()
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<AssemblySolveOkResponse | null>((resolve, reject) => {
     pending.set(id, { resolve, reject })
-    const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', parts, revs }
+    const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', assemblyId, parts, revs, mates }
     w.postMessage(msg)
   })
 }

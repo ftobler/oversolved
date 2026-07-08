@@ -6,13 +6,16 @@
  * requests to the OCC bundle-builder worker and fetches PartDoc content from
  * the document store (main-thread-only).
  *
- * Stage 5a: scaffold + trivial solve (echo transforms, no mates). The relay
- * plumbing is wired end-to-end but not yet used by the solve handler.
+ * Stage 5b: real orchestration via `solveAssembly` — bundle get/miss/build/
+ * migrate chain, anchor resolve + stale flagging, solve_mate call, transform
+ * application, and assemblyCache for warm starts.
  */
 
 import { inWorker } from '../inWorker'
 import { extractErrorMessage } from '../errors'
-import { initAnchorSolver } from '../../wasm-kernel/anchorSolver'
+import { initAnchorSolver, getMateSolver } from '../../wasm-kernel/anchorSolver'
+import { solveAssembly } from '../solveAssembly'
+import type { AssemblyBuildResponse } from '../solveAssembly'
 import type { Transform3D } from '../../types/cad'
 import type {
   SolveAssemblyRequest,
@@ -79,31 +82,52 @@ export function createRelayService(
 }
 
 // ─── solveAssembly handler ───────────────────────────────────────────────
-// Stage 5a: trivial — echoes the placed transforms for each part instance.
-// No mate solve, no bundle building, no OCC. The relay service is available
-// as a parameter so Stage 5b can await bundle content.
+// Stage 5b: real orchestration — bundle get/miss/build/migrate, anchor
+// resolve, mate solve via WASM, transform application.
 
 export async function handleSolveAssembly(
   req: SolveAssemblyRequest,
-  _relay: RelayService,
+  relay: RelayService,
 ): Promise<AssemblySolveResponse> {
   try {
-    const transforms: Record<string, Transform3D> = {}
-    for (const part of req.parts) {
-      transforms[part.handle] = { ...part.transform }
+    await initAnchorSolver()
+    const solver = getMateSolver()
+
+    const result: AssemblyBuildResponse = await solveAssembly(
+      req.parts,
+      req.revs,
+      req.mates || [],
+      relay,
+      solver,
+    )
+
+    return {
+      id: req.id,
+      kind: 'solveAssembly',
+      ok: true,
+      payload: {
+        transforms: result.transforms,
+        bodies: result.bodies,
+        mateResults: result.mateResults,
+      },
     }
-    return { id: req.id, kind: 'solveAssembly', ok: true, payload: { transforms } }
   } catch (e) {
     return { id: req.id, kind: 'solveAssembly', ok: false, error: extractErrorMessage(e) }
   }
 }
 
 // ─── Actor pattern ───────────────────────────────────────────────────────
-// Serializes solveAssembly requests. Stage 5b adds mutable `assemblyCache`
-// state; the actor pattern protects it from concurrent access.
+// Serializes solveAssembly requests and guards mutable `assemblyCache`
+// state from concurrent access.
+
+interface AssemblyCacheEntry {
+  lastTransforms: Record<string, Transform3D>
+  lastMateResults: Record<string, unknown>
+}
 
 class WorkerActor {
   private queue: Promise<void> = Promise.resolve()
+  readonly assemblyCache = new Map<string, AssemblyCacheEntry>()
 
   run<T>(job: () => Promise<T>, respond: (res: T) => void): void {
     this.queue = this.queue.then(() => job().then(respond))

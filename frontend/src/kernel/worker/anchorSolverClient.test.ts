@@ -67,17 +67,19 @@ describe('solveAssemblyViaWorker', () => {
     ]
     const revs = { d1: 1 }
 
-    const resultPromise = solveAssemblyViaWorker(parts, revs)
+    const resultPromise = solveAssemblyViaWorker('asm-1', parts, revs, [])
 
     expect(fakeWorker.posted).toHaveLength(1)
     const req = fakeWorker.posted[0] as SolveAssemblyRequest
     expect(req.kind).toBe('solveAssembly')
+    expect(req.assemblyId).toBe('asm-1')
     expect(req.parts).toEqual(parts)
+    expect(req.mates).toEqual([])
 
     // Simulate worker response
     fakeWorker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: { p1: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } } },
+      payload: { transforms: { p1: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { p1: [] }, mateResults: {} },
     })
 
     const result = await resultPromise
@@ -90,12 +92,12 @@ describe('solveAssemblyViaWorker', () => {
 
   it('resolves null when no worker factory is available', async () => {
     setAnchorSolverWorkerForTest(() => null)
-    const result = await solveAssemblyViaWorker([], {})
+    const result = await solveAssemblyViaWorker('asm-1', [], {}, [])
     expect(result).toBeNull()
   })
 
   it('rejects when worker returns error', async () => {
-    const prom = solveAssemblyViaWorker([], {})
+    const prom = solveAssemblyViaWorker('asm-1', [], {}, [])
     const req = fakeWorker.posted[0] as SolveAssemblyRequest
 
     fakeWorker.reply({ id: req.id, kind: 'solveAssembly', ok: false, error: 'mate solver not loaded' })
@@ -104,17 +106,21 @@ describe('solveAssemblyViaWorker', () => {
 
   it('handles concurrent requests via single shared worker', async () => {
     const p1 = solveAssemblyViaWorker(
+      'asm-1',
       [{ handle: 'a', doc_id: 'd1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
       { d1: 1 },
+      [],
     )
     const p2 = solveAssemblyViaWorker(
+      'asm-2',
       [{ handle: 'b', doc_id: 'd2', doc_rev: 2, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
       { d2: 2 },
+      [],
     )
 
     const [r1, r2] = fakeWorker.posted as SolveAssemblyRequest[]
-    fakeWorker.reply({ id: r1.id, kind: 'solveAssembly', ok: true, payload: { transforms: { a: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } } } })
-    fakeWorker.reply({ id: r2.id, kind: 'solveAssembly', ok: true, payload: { transforms: { b: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } } } })
+    fakeWorker.reply({ id: r1.id, kind: 'solveAssembly', ok: true, payload: { transforms: { a: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { a: [] }, mateResults: {} } })
+    fakeWorker.reply({ id: r2.id, kind: 'solveAssembly', ok: true, payload: { transforms: { b: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { b: [] }, mateResults: {} } })
 
     const [v1, v2] = await Promise.all([p1, p2])
     expect(v1?.payload.transforms).toHaveProperty('a')
@@ -122,8 +128,8 @@ describe('solveAssemblyViaWorker', () => {
   })
 
   it('rejects all in-flight requests and resets on worker crash', async () => {
-    const p1 = solveAssemblyViaWorker([], {})
-    const p2 = solveAssemblyViaWorker([], {})
+    const p1 = solveAssemblyViaWorker('asm-1', [], {}, [])
+    const p2 = solveAssemblyViaWorker('asm-1', [], {}, [])
 
     fakeWorker.crash()
 
@@ -139,8 +145,10 @@ describe('relay plumbing', () => {
   async function sendRelay(req: AnchorRelayRequest): Promise<void> {
     // establish connection by starting a solve (we don't care about its outcome)
     solveAssemblyViaWorker(
+      '_asm',
       [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
       { _: 1 },
+      [],
     )
     // onmessage is now wired; simulate a relay request from the worker
     fakeWorker.reply(req)

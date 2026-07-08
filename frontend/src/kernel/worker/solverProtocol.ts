@@ -13,6 +13,7 @@
 import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
 import type { Transform3D } from '../../types/cad'
+import type { MateSpec, MateResult, MeshPayload } from '../solveAssembly'
 
 /** Solve options that survive a structured clone (the OCC-free subset). */
 export interface SolveRequestOptions {
@@ -117,8 +118,10 @@ export interface PartInputSpec {
 export interface SolveAssemblyRequest {
   id: number
   kind: 'solveAssembly'
+  assemblyId: string
   parts: PartInputSpec[]
   revs: Record<string, number>
+  mates: MateSpec[]
 }
 
 /** Successful assembly solve response from the anchor solver worker. */
@@ -126,9 +129,10 @@ export interface AssemblySolveOkResponse {
   id: number
   kind: 'solveAssembly'
   ok: true
-  /** For Stage 5a: echoed transforms. Stage 5b adds bodies + results. */
   payload: {
     transforms: Record<string, Transform3D>
+    bodies: Record<string, MeshPayload[]>
+    mateResults: Record<string, MateResult>
   }
 }
 

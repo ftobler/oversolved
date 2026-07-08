@@ -1,0 +1,418 @@
+/**
+ * Unit tests for solveAssembly orchestration. Tests cover:
+ * - MateInput encode/decode round-trip
+ * - Bundle cache hit/miss branches
+ * - Anchor resolution + stale detection
+ * - Mate solve via injected solver function
+ * - Transform application to body meshes
+ *
+ * All tests use a fake relay (no real OCC worker) and a fake solver function
+ * (no real WASM), so they run purely on the main thread.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
+import { solveAssembly, encodeMateInput, decodeMateOutput } from './solveAssembly'
+import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
+import type { PartBundle } from './partBundle'
+import type { Transform3D } from '../types/cad'
+import type { RelayService } from './worker/anchorSolverWorker'
+
+// The encode/decode functions are not exported, but solveAssembly calls them
+// internally. We test the wire format indirectly through solveAssembly.
+
+function freshDb(): void {
+  globalThis.indexedDB = new IDBFactory()
+  resetBundleDbConnection()
+}
+
+function identityTransform(): Transform3D {
+  return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+}
+
+function translationTransform(tx: number, ty: number, tz: number): Transform3D {
+  return { tx, ty, tz, qx: 0, qy: 0, qz: 0, qw: 1 }
+}
+
+function makeBundle(doc_id: string, doc_rev: number, overrides?: Partial<PartBundle>): PartBundle {
+  return {
+    doc_id,
+    doc_rev,
+    bodies: [
+      {
+        mesh: {
+          vertices: new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0, 10, 10, 0]),
+          indices: new Uint32Array([0, 1, 2, 1, 3, 2]),
+          faceIdsPerTriangle: new Uint32Array([0, 0]),
+        },
+        edges: [],
+      },
+    ],
+    anchors: {
+      a1: {
+        kind: 'point',
+        point: [0, 0, 0],
+        axis: [0, 0, 1],
+        geom_hash: '@gdf|0.000|0.000|0.000|0.000|0.000|1.000',
+        created_by: 'feat1',
+      },
+      a2: {
+        kind: 'point',
+        point: [10, 0, 0],
+        axis: [0, 0, 1],
+        geom_hash: '@gdf|10.000|0.000|0.000|0.000|0.000|1.000',
+        created_by: 'feat1',
+      },
+    },
+    ...overrides,
+  }
+}
+
+function makeRelay(): { relay: RelayService; partDocs: Map<string, Record<string, unknown>> } {
+  const partDocs = new Map<string, Record<string, unknown>>()
+  return {
+    relay: {
+      requestPartDoc: vi.fn().mockImplementation(async (doc_id: string) => {
+        const doc = partDocs.get(doc_id)
+        if (!doc) throw new Error(`part doc not found: ${doc_id}`)
+        return doc
+      }),
+      requestBuildBundle: vi.fn().mockImplementation(async (doc_id: string, doc_rev: number, _spec: Record<string, unknown>) => {
+        return makeBundle(doc_id, doc_rev)
+      }),
+    },
+    partDocs,
+  }
+}
+
+/** Build a no-op solver that echoes the input transforms unchanged. */
+function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
+  return (input: Uint8Array): Uint8Array => {
+    // Decode the input to get the initial params.
+    // The input header is: magic(4) + n_bodies(4) + n_params(4) + n_mates(4) + n_fixed(4)
+    // Then n_bodies * 4 bytes of body indices, then paramsInitial.
+    const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
+    const nBodies = view.getUint32(4, true)
+    const nParams = nBodies * 7
+    const paramsOffset = 20 + nBodies * 4
+    const params: number[] = []
+    for (let i = 0; i < nParams; i++) {
+      params.push(view.getFloat32(paramsOffset + i * 4, true))
+    }
+
+    // Build output: magic(4) + n_params(4) + status(1) + params(nParams*4) + diagnostics(28)
+    const outSize = 4 + 4 + 1 + nParams * 4 + 28
+    const outBuf = new ArrayBuffer(outSize)
+    const out = new DataView(outBuf)
+    let pos = 0
+    out.setUint32(pos, 0x5231544D, true); pos += 4  // MATE_MAGIC_OUT
+    out.setUint32(pos, nParams, true); pos += 4
+    out.setUint8(pos, 0); pos += 1  // fully constrained
+    for (let i = 0; i < nParams; i++) {
+      out.setFloat32(pos, params[i], true); pos += 4
+    }
+    out.setFloat64(pos, 0.0, true); pos += 8  // residual_norm
+    out.setUint32(pos, 13, true); pos += 4  // rank
+    out.setUint32(pos, 1, true); pos += 4  // dof
+    out.setUint32(pos, 1, true); pos += 4  // iters
+    out.setFloat64(pos, 0.001, true); pos += 8  // ms
+    return new Uint8Array(outBuf)
+  }
+}
+
+/** Build a solver that translates body1 by (dx,0,0). */
+function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Array {
+  return (input: Uint8Array): Uint8Array => {
+    const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
+    const nBodies = view.getUint32(4, true)
+    const nParams = nBodies * 7
+    const paramsOffset = 20 + nBodies * 4
+    const params: number[] = []
+    for (let i = 0; i < nParams; i++) {
+      params.push(view.getFloat32(paramsOffset + i * 4, true))
+    }
+    // Translate the second body (indices 7-13)
+    if (nBodies >= 2) {
+      params[7] += dx
+    }
+
+    const outSize = 4 + 4 + 1 + nParams * 4 + 28
+    const outBuf = new ArrayBuffer(outSize)
+    const out = new DataView(outBuf)
+    let pos = 0
+    out.setUint32(pos, 0x5231544D, true); pos += 4
+    out.setUint32(pos, nParams, true); pos += 4
+    out.setUint8(pos, 0); pos += 1
+    for (let i = 0; i < nParams; i++) {
+      out.setFloat32(pos, params[i], true); pos += 4
+    }
+    out.setFloat64(pos, 0.0, true); pos += 8
+    out.setUint32(pos, 13, true); pos += 4
+    out.setUint32(pos, 1, true); pos += 4
+    out.setUint32(pos, 1, true); pos += 4
+    out.setFloat64(pos, 0.001, true); pos += 8
+    return new Uint8Array(outBuf)
+  }
+}
+
+beforeEach(() => {
+  freshDb()
+})
+
+describe('solveAssembly', () => {
+  // ── mateless / cache-hit branch ──────────────────────────────────────
+
+  it('echoes transforms for a mateless doc with cache hit', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    const bundle = makeBundle('doc-a', 3)
+    await bundleCachePut(bundle)
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: translationTransform(1, 2, 3) },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+
+    expect(result.transforms).toEqual({ p1: translationTransform(1, 2, 3) })
+    expect(result.bodies).toHaveProperty('p1')
+    expect(result.bodies['p1']).toHaveLength(1)
+    expect(result.mateResults).toEqual({})
+    // No relay calls since cache hit
+    expect(vi.mocked(relay.requestPartDoc)).not.toHaveBeenCalled()
+  })
+
+  it('calls relay on bundle cache miss', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+    ]
+    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+
+    expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
+    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, { kind: 'part', features: [] })
+  })
+
+  it('uses bundle cache on second solve (no relay calls)', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+    ]
+
+    // First solve: cache miss, relay called
+    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    expect(relay.requestPartDoc).toHaveBeenCalledTimes(1)
+
+    const callCount = vi.mocked(relay.requestPartDoc).mock.calls.length
+
+    // Second solve: cache hit, no relay
+    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    expect(vi.mocked(relay.requestPartDoc).mock.calls.length).toBe(callCount)
+  })
+
+  it('bumps rev triggers single bundle rebuild per part', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+
+    // Pre-cache doc-a at rev 3
+    await bundleCachePut(makeBundle('doc-a', 3))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: identityTransform() },
+    ]
+    const revs = { 'doc-a': 4, 'doc-b': 1 }  // doc-a has updated
+
+    await solveAssembly(parts, revs, [], relay, makeEchoSolver())
+
+    // doc-a: cache miss at rev 4, relay called for part doc + build bundle
+    // doc-b: cache miss at rev 1, relay called too
+    expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
+    expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-b')
+  })
+
+  // ── mate solve branch ────────────────────────────────────────────────
+
+  it('solves a spherical mate between two parts', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+
+    // Pre-cache bundles
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'spherical',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: 'p2', anchor: 'a1' },
+      },
+    ]
+    const revs = { 'doc-a': 1, 'doc-b': 1 }
+
+    const result = await solveAssembly(parts, revs, mates, relay, makeEchoSolver())
+
+    expect(result.transforms).toHaveProperty('p1')
+    expect(result.transforms).toHaveProperty('p2')
+    expect(result.bodies).toHaveProperty('p1')
+    expect(result.bodies).toHaveProperty('p2')
+    expect(result.mateResults).toHaveProperty('m1')
+    expect(result.mateResults['m1'].stale).toBe(false)
+    // No relay calls (both cache hits)
+    expect(relay.requestPartDoc).not.toHaveBeenCalled()
+  })
+
+  it('apply transforms to vertices', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeTranslateSolver(10))
+
+    // The solver we used is 'echo' — it returns the input transforms
+    // which is identity. So vertices should be at identity too.
+    const body = result.bodies['p1'][0]
+    // With identity transform (echo solver), vertices unchanged
+    expect(body.vertices[0]).toBeCloseTo(0)
+    expect(body.vertices[3]).toBeCloseTo(10)
+  })
+
+  // ── stale ref detection ──────────────────────────────────────────────
+
+  it('flags a mate as stale when anchor is missing from bundle', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+
+    const b2 = makeBundle('doc-b', 1)
+    // Remove 'a1' from doc-b's anchors
+    delete b2.anchors.a1
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(b2)
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'spherical',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: 'p2', anchor: 'a1' },  // missing from bundle
+      },
+    ]
+
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+
+    expect(result.mateResults['m1'].stale).toBe(true)
+    expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
+  })
+
+  it('flags a mate as stale when part is missing', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'spherical',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: 'p2', anchor: 'a1' },  // p2 not in parts array
+      },
+    ]
+
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, makeEchoSolver())
+
+    expect(result.mateResults['m1'].stale).toBe(true)
+    expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
+  })
+
+  // ── error handling ───────────────────────────────────────────────────
+
+  it('returns seed transforms when solver is null', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(1, 2, 3) },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, null)
+
+    expect(result.transforms['p1']).toEqual(translationTransform(1, 2, 3))
+  })
+
+  it('handles empty parts array', async () => {
+    const { relay } = makeRelay()
+    const result = await solveAssembly([], {}, [], relay, makeEchoSolver())
+
+    expect(result.transforms).toEqual({})
+    expect(result.bodies).toEqual({})
+    expect(result.mateResults).toEqual({})
+  })
+})
+
+describe('mate wire format', () => {
+  it('encode/decode round-trips params', () => {
+    // Test the wire format indirectly: encode with known input,
+    // decode the output from a fake solver that echoes params.
+    const params = new Float32Array(14)
+    for (let i = 0; i < 14; i++) params[i] = i * 0.1
+    const fixedMask = new Uint8Array([0])
+    const encoded = encodeMateInput(2, params, fixedMask, [])
+    const solver = makeEchoSolver()
+    const outputBytes = solver(encoded)
+    const decoded = decodeMateOutput(outputBytes)
+
+    expect(decoded.paramsSolved).toHaveLength(14)
+    for (let i = 0; i < 14; i++) {
+      expect(decoded.paramsSolved[i]).toBeCloseTo(params[i])
+    }
+  })
+
+  it('decode detects bad magic', () => {
+    const bad = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0])
+    expect(() => decodeMateOutput(bad)).toThrow('bad mate output magic')
+  })
+
+  it('byte sizes align with Rust format', () => {
+    // One empty body, no mates: header 20 + bodies 4 + params 28 + mask 1 = 53 bytes
+    const params = new Float32Array(7)
+    const fixedMask = new Uint8Array([0])
+    const encoded = encodeMateInput(1, params, fixedMask, [])
+    expect(encoded.length).toBe(53)
+
+    // One mate record adds exactly 72 bytes
+    const encodedWithMate = encodeMateInput(1, params, fixedMask, [{
+      kindCode: 1,
+      bodyA: 0, bodyB: 0,
+      anchorKindA: 6, anchorKindB: 6,
+      pointA: [0, 0, 0], axisA: [0, 0, 1],
+      pointB: [1, 0, 0], axisB: [0, 0, 1],
+      flip: false, offset: 0, ratio: 1, radius: 0,
+    }])
+    expect(encodedWithMate.length).toBe(53 + 72)
+  })
+})

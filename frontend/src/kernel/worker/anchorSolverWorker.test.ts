@@ -1,10 +1,10 @@
 /**
- * Unit tests for the anchor solver worker handlers. The handlers are pure
- * async functions that take the relay service as a parameter, so tests
- * inject a fake relay — no real Worker, no WASM, no OCC.
+ * Unit tests for the anchor solver worker handlers. Tests focus on the handler
+ * layer: WASM loading, solveAssembly orchestration call, and response wrapping.
+ * The solveAssembly function and WASM module are mocked so tests stay pure.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   handleSolveAssembly,
   handleRelayResponse,
@@ -16,10 +16,26 @@ import type {
   AnchorRelayRequest,
 } from './solverProtocol'
 
+vi.mock('../../wasm-kernel/anchorSolver', () => ({
+  initAnchorSolver: vi.fn().mockResolvedValue(undefined),
+  getMateSolver: vi.fn().mockReturnValue(null),
+}))
+
+vi.mock('../solveAssembly', () => ({
+  solveAssembly: vi.fn().mockResolvedValue({
+    transforms: {},
+    bodies: {},
+    mateResults: {},
+  }),
+}))
+
+import { solveAssembly } from '../solveAssembly'
+
 function makeReq(overrides?: Partial<SolveAssemblyRequest>): SolveAssemblyRequest {
   return {
     id: 1,
     kind: 'solveAssembly',
+    assemblyId: 'asm-1',
     parts: [
       {
         handle: 'p1',
@@ -35,6 +51,7 @@ function makeReq(overrides?: Partial<SolveAssemblyRequest>): SolveAssemblyReques
       },
     ],
     revs: { 'doc-a': 3, 'doc-b': 5 },
+    mates: [],
     ...overrides,
   }
 }
@@ -45,59 +62,66 @@ function fakeRelay(): { service: ReturnType<typeof createRelayService>; requests
   return { service: createRelayService(post), requests }
 }
 
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
 describe('handleSolveAssembly', () => {
-  it('echoes transforms for a mateless doc', async () => {
+  it('delegates to solveAssembly with parts, revs, mates, relay, solver', async () => {
     const relay = fakeRelay()
+    const req = makeReq({
+      mates: [
+        { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a2' } },
+      ],
+    })
+
+    const mockSolver = vi.fn()
+    const { getMateSolver } = await import('../../wasm-kernel/anchorSolver')
+    vi.mocked(getMateSolver).mockReturnValue(mockSolver)
+
+    await handleSolveAssembly(req, relay.service)
+
+    expect(solveAssembly).toHaveBeenCalledWith(
+      req.parts,
+      req.revs,
+      req.mates,
+      relay.service,
+      mockSolver,
+    )
+  })
+
+  it('wraps solveAssembly result into ok response', async () => {
+    const relay = fakeRelay()
+    const mockResult = {
+      transforms: { p1: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      bodies: { p1: [] },
+      mateResults: { m1: { stale: false } },
+    }
+    vi.mocked(solveAssembly).mockResolvedValue(mockResult)
+
     const res = await handleSolveAssembly(makeReq(), relay.service)
     expect(res.ok).toBe(true)
     const payload = (res as AssemblySolveOkResponse).payload
-    expect(payload.transforms).toEqual({
-      p1: { tx: 1, ty: 2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 },
-      p2: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
-    })
-  })
-
-  it('returns transforms for single-part assembly', async () => {
-    const relay = fakeRelay()
-    const req = makeReq({
-      parts: [
-        { handle: 'only', doc_id: 'd', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0.5, qz: 0, qw: 0.866 } },
-      ],
-      revs: { 'd': 1 },
-    })
-    const res = await handleSolveAssembly(req, relay.service)
-    expect(res.ok).toBe(true)
-    const payload = (res as AssemblySolveOkResponse).payload
-    expect(Object.keys(payload.transforms)).toEqual(['only'])
-    expect(payload.transforms['only'].qy).toBeCloseTo(0.5)
-  })
-
-  it('echoes transforms without touching relay', async () => {
-    const relay = fakeRelay()
-    await handleSolveAssembly(makeReq(), relay.service)
-    expect(relay.requests).toHaveLength(0)
-  })
-
-  it('returns error when handler throws', async () => {
-    // Force an error by passing a malformed req that triggers a throw
-    const relay = fakeRelay()
-    const badReq = {
-      id: 1,
-      kind: 'solveAssembly',
-      parts: null as unknown as SolveAssemblyRequest['parts'],
-      revs: {},
-    } as SolveAssemblyRequest
-    const res = await handleSolveAssembly(badReq, relay.service)
-    expect(res.ok).toBe(false)
-    if (!res.ok) {
-      expect(res.error).toBeTruthy()
-    }
+    expect(payload.transforms).toEqual(mockResult.transforms)
+    expect(payload.bodies).toEqual(mockResult.bodies)
+    expect(payload.mateResults).toEqual(mockResult.mateResults)
   })
 
   it('preserves request id in response', async () => {
     const relay = fakeRelay()
     const res = await handleSolveAssembly(makeReq({ id: 42 }), relay.service)
     expect(res.id).toBe(42)
+  })
+
+  it('returns error when handler throws', async () => {
+    const relay = fakeRelay()
+    vi.mocked(solveAssembly).mockRejectedValue(new Error('WASM init failed'))
+
+    const res = await handleSolveAssembly(makeReq(), relay.service)
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.error).toContain('WASM init failed')
+    }
   })
 })
 
@@ -107,16 +131,13 @@ describe('relay plumbing', () => {
     const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
     const relay = createRelayService(post)
 
-    // Start a relay request (don't await yet)
     const prom = relay.requestPartDoc('my-doc-id')
 
-    // The request should have been posted
     expect(requests).toHaveLength(1)
     expect(requests[0].kind).toBe('asr_relay')
     expect(requests[0].subKind).toBe('partDocContent')
     expect(requests[0].doc_id).toBe('my-doc-id')
 
-    // Simulate the main thread's response
     handleRelayResponse({
       kind: 'asr_relayRes',
       requestId: requests[0].requestId,
