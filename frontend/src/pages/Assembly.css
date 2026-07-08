@@ -1,0 +1,119 @@
+/* Assembly editor tree + part picker. Shared layout classes
+   (.document-viewer, .doc-container, .doc-sidebar) come from Part.css. */
+
+.assembly-tree-title {
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  border-bottom: 1px solid #333;
+}
+
+.assembly-tree {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.assembly-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  color: #9aa0a6;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.assembly-tree-insert-btn,
+.assembly-tree-icon-btn {
+  background: none;
+  border: none;
+  color: #9aa0a6;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 3px;
+}
+
+.assembly-tree-insert-btn:hover,
+.assembly-tree-icon-btn:hover {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+.assembly-tree-icon-btn.active {
+  color: #6ab0ff;
+}
+
+.assembly-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.assembly-tree-instance {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 0.5rem 0 1rem;
+}
+
+.assembly-tree-open-btn {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e0e0e0;
+  cursor: pointer;
+  padding: 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assembly-tree-open-btn:hover {
+  color: #6ab0ff;
+}
+
+.assembly-tree-mate {
+  padding: 4px 1rem;
+  color: #cfcfcf;
+  font-size: 0.85rem;
+}
+
+.assembly-tree-empty {
+  padding: 4px 1rem;
+  color: #666;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.assembly-part-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.assembly-part-picker-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  color: #e0e0e0;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.assembly-part-picker-item:hover {
+  background: #2a2a2a;
+}
+
+.assembly-part-picker-item.selected {
+  border-color: #6ab0ff;
+  background: #1c2b3a;
+}
