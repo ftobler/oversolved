@@ -338,6 +338,7 @@ impl MateProblem {
     }
 
     /// Tangential signed-distance residual, formula selected by anchor kind pair.
+    #[allow(clippy::too_many_arguments)]
     fn tangential_residual(
         &self,
         ka: AnchorKind, kb: AnchorKind,
@@ -532,6 +533,7 @@ impl MateProblem {
     // ─── Jacobian fillers per residual kind ───
 
     /// Point coincidence: `p_a_world - p_b_world`.
+    #[allow(clippy::too_many_arguments)]
     fn fill_point_coincidence(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -558,6 +560,7 @@ impl MateProblem {
     }
 
     /// Point coincidence with axis offset: `p_a - p_b - offset * a_w`.
+    #[allow(clippy::too_many_arguments)]
     fn fill_point_coincidence_offset(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -588,6 +591,7 @@ impl MateProblem {
     }
 
     /// Axis cross product: `cross(a_w, b_w)` (3 residual components).
+    #[allow(clippy::too_many_arguments)]
     fn fill_axis_cross(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -623,6 +627,7 @@ impl MateProblem {
     }
 
     /// Axis dot product: `dot(a_w, b_w) - sign` (1 residual).
+    #[allow(clippy::too_many_arguments)]
     fn fill_axis_dot(
         &self, j: &mut DMatrix<f64>, row: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -643,6 +648,7 @@ impl MateProblem {
 
     /// Perpendicular displacement cross: `cross(p_a - p_b, a_w)` (3 residuals).
     /// Measures how far B's anchor point is from A's anchor axis.
+    #[allow(clippy::too_many_arguments)]
     fn fill_perp_cross(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -670,9 +676,8 @@ impl MateProblem {
             (0, 1, 1, 0), // cross_z: d_x*w_y - d_y*w_x → pos=(0, y=1), neg=(1, x=0)
         ];
 
-        for comp in 0..3 {
+        for (comp, &(pos_di, pos_wk, neg_di, neg_wk)) in perp_terms.iter().enumerate() {
             let r = row0 + comp;
-            let (pos_di, pos_wk, neg_di, neg_wk) = perp_terms[comp];
 
             // Translation A: d = pa_w - pb_w, so ∂d/∂t_a_i = +1 for i=pos_di,neg_di
             j[(r, off_a + pos_di)] = a_w[pos_wk];
@@ -705,6 +710,7 @@ impl MateProblem {
     /// Tangential Jacobian: uses finite-difference on the single residual.
     /// The Tangential residual formula switches surface types, so an analytic
     /// Jacobian is high-branch. FD for 1-residual mates is cheap.
+    #[allow(clippy::too_many_arguments)]
     fn fill_tangential(
         &self, j: &mut DMatrix<f64>, row: usize, mi: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -753,6 +759,7 @@ impl MateProblem {
 
     /// CopyRotation Jacobian: d(twist_b - ratio * twist_a) / d(q_a, q_b).
     /// Uses seed-frame world axes (constant) to measure roll — no axis differentiation.
+    #[allow(clippy::too_many_arguments)]
     fn fill_copy_rotation(
         &self, j: &mut DMatrix<f64>, row: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -784,6 +791,7 @@ impl MateProblem {
     }
 
     /// ParallelPlaneDistance: `dot(p_b - p_a, a_w) - offset`.
+    #[allow(clippy::too_many_arguments)]
     fn fill_parallel_plane_dist(
         &self, j: &mut DMatrix<f64>, row: usize,
         off_a: usize, off_b: usize, x: &[f64],
@@ -879,7 +887,7 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
         let svd = lm_result.jacobian.svd(true, false);
         let tol = 1e-6;
         let rank = svd.singular_values.iter().filter(|&&s| s > tol).count();
-        n.saturating_sub(rank as usize)
+        n.saturating_sub(rank)
     };
     let rank = (n - dof) as u32;
 

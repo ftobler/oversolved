@@ -278,16 +278,16 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let mut mates = Vec::with_capacity(n_mates);
     for _ in 0..n_mates {
         let kind_byte = r.u8()?;
-        let kind = MateKind::from_u8(kind_byte).ok_or_else(|| CodecError::BadKind(kind_byte))?;
+        let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
         let body_a_index = r.u32()?;
         let body_b_index = r.u32()?;
 
         let ak_a = r.u8()?;
         let anchor_kind_a = AnchorKind::from_u8(ak_a)
-            .ok_or_else(|| CodecError::BadKind(ak_a))?;
+            .ok_or(CodecError::BadKind(ak_a))?;
         let ak_b = r.u8()?;
         let anchor_kind_b = AnchorKind::from_u8(ak_b)
-            .ok_or_else(|| CodecError::BadKind(ak_b))?;
+            .ok_or(CodecError::BadKind(ak_b))?;
 
         let px_a = r.f32()? as f64;
         let py_a = r.f32()? as f64;
