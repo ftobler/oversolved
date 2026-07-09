@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyStore, setAssemblyCallbacks } from '@/stores/assemblyStore'
+import AssemblyViewport from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
@@ -64,6 +65,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     return () => setAssemblyCallbacks(null)
   }, [mutate, requestSolve])
 
+  // Nothing renders until the assembly has been solved once: the bodies dict is
+  // filled only by a solve, never by loading the doc.
+  const solvedOnce = useRef(false)
+  useEffect(() => {
+    if (!doc || solvedOnce.current) return
+    solvedOnce.current = true
+    requestSolve()
+  }, [doc, requestSolve])
+
   const openPicker = useCallback(() => setPickerOpen(true), [])
 
   const commands = useMemo(() => [
@@ -73,7 +83,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const handlePick = useCallback((docId: string, docRev: number) => {
     mutate(d => appendPartInstance(d, docId, docRev))
-  }, [mutate])
+    requestSolve()  // the new instance has no bodies until the assembly re-solves
+  }, [mutate, requestSolve])
 
   const handleOpenPart = useCallback((handle: string) => {
     const inst = instances.find(i => i.handle === handle)
@@ -84,7 +95,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const handleDelete = useCallback((handle: string) => {
     mutate(d => removeInstance(d, handle))
-  }, [mutate])
+    if (useAssemblyStore.getState().selectedPartHandle === handle) {
+      useAssemblyStore.getState().setSelectedPartHandle(null)
+    }
+    requestSolve()  // the removed instance's bodies must leave the scene
+  }, [mutate, requestSolve])
 
   const handleToggleVisible = useCallback((handle: string, visible: boolean) => {
     mutate(d => setInstanceVisible(d, handle, visible))
@@ -122,12 +137,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onToggleFixed={handleToggleFixed}
           />
         </aside>
-        <div className="doc-editor" style={{ flex: 1 }}>
-          <div style={{ padding: '2rem', color: '#e0e0e0' }}>
-            {instances.length === 0 && mates.length === 0 && (
-              <p>Empty assembly - insert parts to get started.</p>
-            )}
-          </div>
+        <div className="doc-editor assembly-viewport-host">
+          <AssemblyViewport />
+          {instances.length === 0 && mates.length === 0 && (
+            <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
+          )}
         </div>
       </div>
       <AssemblyPartPicker

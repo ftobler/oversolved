@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import type { Transform3D } from '@/types/cad'
 import {
+  composeTransforms,
   IDENTITY_TRANSFORM,
+  invertTransform,
   makeTransform,
   quatFromAxisAngle,
   quatMultiply,
   quatNormalize,
+  relativeTransform,
   rotateTransformAboutPoint,
   rotateVector,
   translateTransform,
@@ -105,5 +109,44 @@ describe('transformsEqual', () => {
     expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM })).toBe(true)
     expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, tx: 1e-12 })).toBe(true)
     expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, tx: 0.5 })).toBe(false)
+  })
+})
+
+describe('compose / invert', () => {
+  const placed: Transform3D = makeTransform([1, 2, 3], quatFromAxisAngle([1, 2, 3], 0.7))
+
+  // A transform and its inverse are only meaningful through the points they map.
+  function applyTo(t: Transform3D, p: Vec3): Vec3 {
+    const r = rotateVector([t.qx, t.qy, t.qz, t.qw], p)
+    return [r[0] + t.tx, r[1] + t.ty, r[2] + t.tz]
+  }
+
+  it('invert undoes the transform for any point', () => {
+    const p: Vec3 = [4, -5, 6]
+    expectVecClose(applyTo(invertTransform(placed), applyTo(placed, p)), p)
+    expect(transformsEqual(composeTransforms(placed, invertTransform(placed)), IDENTITY_TRANSFORM, 1e-6)).toBe(true)
+  })
+
+  it('compose applies the right operand first', () => {
+    const spin = makeTransform([0, 0, 0], quatFromAxisAngle(Z, HALF_PI))
+    const shift = makeTransform([1, 0, 0], [0, 0, 0, 1])
+    // spin ∘ shift: move to +X, then the spin swings it round to +Y.
+    expectVecClose(applyTo(composeTransforms(spin, shift), [0, 0, 0]), Y)
+    // shift ∘ spin: spinning the origin is a no-op, so only the shift shows.
+    expectVecClose(applyTo(composeTransforms(shift, spin), [0, 0, 0]), X)
+  })
+
+  it('relativeTransform carries base onto current', () => {
+    const current: Transform3D = makeTransform([-2, 7, 0], quatFromAxisAngle(X, 1.1))
+    const delta = relativeTransform(current, placed)
+    // Applying the delta on top of a point already placed by `base` lands the
+    // point where `current` would have placed it: exactly what the viewport does
+    // with vertices baked at the solved pose.
+    const p: Vec3 = [0.5, -1, 2]
+    expectVecClose(applyTo(delta, applyTo(placed, p)), applyTo(current, p))
+  })
+
+  it('is identity when current equals base (a part at rest gets no offset)', () => {
+    expect(transformsEqual(relativeTransform(placed, placed), IDENTITY_TRANSFORM, 1e-6)).toBe(true)
   })
 })

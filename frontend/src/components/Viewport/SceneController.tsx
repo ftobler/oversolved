@@ -42,9 +42,14 @@ interface SceneControllerProps {
   snapRef: React.MutableRefObject<THREE.Vector3 | null>
   cameraRef: React.MutableRefObject<THREE.Camera | null>
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
+  /**
+   * Overrides the sketch-drag orbit gate. The assembly viewport has no sketch
+   * drag; it blocks the camera while a part is being dragged instead.
+   */
+  orbitEnabled?: boolean
 }
 
-export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef }: SceneControllerProps) {
+export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled }: SceneControllerProps) {
   const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const cameraRefStable = useRef(camera)
@@ -121,7 +126,7 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   const drag = useSketchEditorStore(s => s.drag)
   const dragPending = useSketchEditorStore(s => s.dragPending)
   const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const orbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
+  const sketchOrbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
   const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
 
   return (
@@ -131,7 +136,7 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
         ctrlRef.current = ctrl
         controlsRef.current = ctrl
       }}
-      enabled={orbitEnabled}
+      enabled={orbitEnabled ?? sketchOrbitEnabled}
       mouseButtons={MOUSE_BUTTONS}
       enableRotate
       enableZoom

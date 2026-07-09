@@ -1,6 +1,25 @@
 /* Assembly editor tree + part picker. Shared layout classes
    (.document-viewer, .doc-container, .doc-sidebar) come from Part.css. */
 
+/* The viewport fills the editor pane absolutely, so the host must be its
+   positioning context; the hint floats over the empty scene. */
+.assembly-viewport-host {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.assembly-empty-hint {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: #9aa0a6;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .assembly-tree-title {
   padding: 0.75rem 1rem;
   font-weight: 600;

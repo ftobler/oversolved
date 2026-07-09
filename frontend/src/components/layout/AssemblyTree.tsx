@@ -65,10 +65,13 @@ export function AssemblyTree({
               >
                 {label}{inst.fixed ? ' (fixed)' : ''}
               </button>
+              {/* Row actions are not selections: without stopPropagation the
+                  row's onClick would re-select the part these buttons just hid,
+                  grounded, or deleted. */}
               <button
                 type="button"
                 className="assembly-tree-icon-btn"
-                onClick={() => onToggleVisible(inst.handle, !visible)}
+                onClick={(e) => { e.stopPropagation(); onToggleVisible(inst.handle, !visible) }}
                 title={visible ? 'Hide' : 'Show'}
                 aria-label={visible ? 'Hide part' : 'Show part'}
               >
@@ -79,7 +82,7 @@ export function AssemblyTree({
               <button
                 type="button"
                 className={`assembly-tree-icon-btn${inst.fixed ? ' active' : ''}`}
-                onClick={() => onToggleFixed(inst.handle, !inst.fixed)}
+                onClick={(e) => { e.stopPropagation(); onToggleFixed(inst.handle, !inst.fixed) }}
                 title={inst.fixed ? 'Unground' : 'Ground (fix)'}
                 aria-label={inst.fixed ? 'Unground part' : 'Ground part'}
               >
@@ -90,7 +93,7 @@ export function AssemblyTree({
               <button
                 type="button"
                 className="assembly-tree-icon-btn"
-                onClick={() => onDeleteInstance(inst.handle)}
+                onClick={(e) => { e.stopPropagation(); onDeleteInstance(inst.handle) }}
                 title="Delete"
                 aria-label="Delete part"
               >

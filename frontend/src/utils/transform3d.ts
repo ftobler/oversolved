@@ -98,6 +98,28 @@ export function rotateTransformAboutPoint(
   )
 }
 
+/** Inverse rigid transform: undoes `world = rotate(q, p) + t`. */
+export function invertTransform(t: Transform3D): Transform3D {
+  const qi: Quat = [-t.qx, -t.qy, -t.qz, t.qw]
+  return makeTransform(rotateVector(qi, [-t.tx, -t.ty, -t.tz]), qi)
+}
+
+/** `a ∘ b`: apply b to a point first, then a. */
+export function composeTransforms(a: Transform3D, b: Transform3D): Transform3D {
+  const qa = transformQuat(a)
+  const t = rotateVector(qa, transformTranslation(b))
+  return makeTransform([t[0] + a.tx, t[1] + a.ty, t[2] + a.tz], quatMultiply(qa, transformQuat(b)))
+}
+
+/**
+ * The transform that carries `base` onto `current` (`current ∘ base⁻¹`).
+ * The assembly viewport applies it as a group offset over vertices already
+ * baked at `base`, so a live drag moves the drawn part without re-meshing.
+ */
+export function relativeTransform(current: Transform3D, base: Transform3D): Transform3D {
+  return composeTransforms(current, invertTransform(base))
+}
+
 export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boolean {
   return (
     Math.abs(a.tx - b.tx) <= eps && Math.abs(a.ty - b.ty) <= eps && Math.abs(a.tz - b.tz) <= eps &&
