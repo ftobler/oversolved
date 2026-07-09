@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { solveViaWorker, exportViaWorker, setSolverWorkerForTest, type SolverWorkerLike } from './solverClient'
-import type { SolveResponse, ExportResponse, WorkerRequest } from './solverProtocol'
+import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
+
+type AnyResponse = SolveResponse | ExportResponse | BundleResponse
 
 // A controllable fake Worker: records posted requests and lets the test push
 // responses (or an error) back on demand.
 class FakeWorker implements SolverWorkerLike {
-  onmessage: ((e: { data: SolveResponse | ExportResponse }) => void) | null = null
+  onmessage: ((e: { data: AnyResponse }) => void) | null = null
   onerror: ((e: unknown) => void) | null = null
   posted: WorkerRequest[] = []
   terminated = false
@@ -16,7 +18,7 @@ class FakeWorker implements SolverWorkerLike {
   terminate(): void {
     this.terminated = true
   }
-  reply(res: SolveResponse | ExportResponse): void {
+  reply(res: AnyResponse): void {
     this.onmessage?.({ data: res })
   }
   crash(): void {

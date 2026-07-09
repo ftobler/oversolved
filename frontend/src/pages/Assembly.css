@@ -60,6 +60,10 @@
   padding: 0 0.5rem 0 1rem;
 }
 
+.assembly-tree-instance.selected {
+  background: #2a3a4a;
+}
+
 .assembly-tree-open-btn {
   flex: 1;
   text-align: left;

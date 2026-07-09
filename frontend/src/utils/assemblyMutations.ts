@@ -2,14 +2,11 @@
 // doc they return a new doc, never mutating the input. The AssemblyEditor wires
 // these to executeCommand handlers and to the tree's per-instance controls.
 
-import type { AssemblyDoc, AssemblyFeature, PartInstance } from '@/types/cad'
+import type { AssemblyDoc, AssemblyFeature, PartInstance, Transform3D } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations/helpers'
+import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
-// Identity placement: no rotation, no translation. Stage 6d makes it movable.
-export const IDENTITY_TRANSFORM = {
-  tx: 0, ty: 0, tz: 0,
-  qx: 0, qy: 0, qz: 0, qw: 1,
-} as const
+export { IDENTITY_TRANSFORM }
 
 function features(doc: AssemblyDoc): AssemblyFeature[] {
   return doc.features ?? []
@@ -81,4 +78,24 @@ export function setInstanceVisible(doc: AssemblyDoc, handle: string, visible: bo
 
 export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolean): AssemblyDoc {
   return updateInstance(doc, handle, inst => ({ ...inst, fixed }))
+}
+
+// Write a manipulated seed transform. A `fixed` (grounded) instance is the
+// assembly's static reference frame: it is pinned here rather than only in the
+// UI, so no manipulation path can move it even by mistake.
+export function setInstanceTransform(
+  doc: AssemblyDoc,
+  handle: string,
+  transform: Transform3D,
+): AssemblyDoc {
+  return updateInstance(doc, handle, inst => (
+    inst.fixed ? inst : { ...inst, transform: { ...transform } }
+  ))
+}
+
+export function findInstance(doc: AssemblyDoc, handle: string): PartInstance | undefined {
+  for (const f of features(doc)) {
+    if (f.kind === 'part_instance' && f.instance?.handle === handle) return f.instance
+  }
+  return undefined
 }

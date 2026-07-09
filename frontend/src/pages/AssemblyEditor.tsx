@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
-import { useAssemblyStore } from '@/stores/assemblyStore'
+import { useAssemblySolve } from '@/hooks/useAssemblySolve'
+import { useAssemblyStore, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
@@ -35,6 +36,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   } = useAssemblyDoc(uuid)
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
+  const { requestSolve } = useAssemblySolve(uuid, doc)
+  const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
 
   useEffect(() => {
     if (doc) {
@@ -53,6 +56,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     setDoc(prev => (prev ? fn(prev) : prev))
     useUnsavedChangesStore.getState().setDirty(true)
   }, [setDoc])
+
+  // The store owns the drag/gizmo state machine but not the document; give it
+  // the doc mutator and the one-solve-per-pointer-up trigger.
+  useEffect(() => {
+    setAssemblyCallbacks({ mutateDoc: mutate, requestSolve })
+    return () => setAssemblyCallbacks(null)
+  }, [mutate, requestSolve])
 
   const openPicker = useCallback(() => setPickerOpen(true), [])
 
@@ -82,7 +92,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const handleToggleFixed = useCallback((handle: string, fixed: boolean) => {
     mutate(d => setInstanceFixed(d, handle, fixed))
-  }, [mutate])
+    // Grounding changes which bodies the LM solver may move: the current solve
+    // is stale the moment the flag flips.
+    requestSolve()
+  }, [mutate, requestSolve])
+
+  const handleSelect = useCallback((handle: string) => {
+    useAssemblyStore.getState().setSelectedPartHandle(handle)
+  }, [])
 
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>
@@ -96,6 +113,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
           <AssemblyTree
             instances={instances}
             mates={mates}
+            selectedHandle={selectedPartHandle}
+            onSelectPart={handleSelect}
             onInsertPart={openPicker}
             onOpenPart={handleOpenPart}
             onDeleteInstance={handleDelete}

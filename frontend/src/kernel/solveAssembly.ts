@@ -255,7 +255,7 @@ export function decodeMateOutput(buf: Uint8Array): DecodedMateOutput {
 // ─── Main orchestration ───────────────────────────────────────────────────
 
 export async function solveAssembly(
-  parts: { handle: string; doc_id: string; doc_rev: number; transform: Transform3D }[],
+  parts: { handle: string; doc_id: string; doc_rev: number; transform: Transform3D; fixed?: boolean }[],
   revs: Record<string, number>,
   mates: MateSpec[],
   relay: RelayService,
@@ -388,9 +388,10 @@ export async function solveAssembly(
     paramsInitial[pi * BPB + 4] = t.qy
     paramsInitial[pi * BPB + 5] = t.qz
     paramsInitial[pi * BPB + 6] = t.qw
-    // Parts are not flagged as "fixed" at this level; the fixed mask
-    // comes from the PartInstance.fixed property in the full AssemblyDoc
-    // (not yet wired). For Stage 5b all parts are free.
+    // A grounded instance (PartInstance.fixed) is the assembly's static
+    // reference frame: pin it out of the moving DOF so mates pull the other
+    // parts onto it rather than dragging it off its placed pose.
+    if (part.fixed) fixedMask[Math.floor(pi / 8)] |= (1 << (pi % 8))
     pi++
   }
 

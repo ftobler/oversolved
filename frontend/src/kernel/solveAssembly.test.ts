@@ -502,6 +502,53 @@ describe('solveAssembly', () => {
     expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
   })
 
+  // ── grounded instances (Stage 6d) ────────────────────────────────────
+
+  it('pins a fixed part instance in the LM state and leaves free parts unpinned', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.fixedMask[0] & 0b01).toBe(0b01)  // body 0 grounded
+    expect(captured.input!.fixedMask[0] & 0b10).toBe(0)     // body 1 free
+  })
+
+  it('pins the grounded part alongside the assembly frame when a mate uses both', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'fixed',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: ASSEMBLY_HANDLE, anchor: ASSEMBLY_TOP_ID },
+      },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+
+    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.fixedMask[0] & 0b11).toBe(0b11)  // part + frame both pinned
+  })
+
   it('does not allocate an assembly frame body when no mate references it', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })

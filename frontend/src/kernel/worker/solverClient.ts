@@ -18,12 +18,14 @@ import type { BuildState } from '../types3d'
 import type {
   SolveRequestOptions, SolveResponse, SolveOkResponse,
   ExportRequestOptions, ExportResponse, ExportOkResponse, WorkerRequest,
+  BundleResponse, BundleOkResponse,
 } from './solverProtocol'
+import type { PartBundle } from '../partBundle'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
 export interface SolverWorkerLike {
   postMessage(msg: WorkerRequest): void
-  onmessage: ((e: { data: SolveResponse | ExportResponse }) => void) | null
+  onmessage: ((e: { data: SolveResponse | ExportResponse | BundleResponse }) => void) | null
   onerror: ((e: unknown) => void) | null
   terminate(): void
 }
@@ -31,7 +33,7 @@ export interface SolverWorkerLike {
 const EMPTY_BUILD_STATE: BuildState = Object.freeze({ feature_order: [], checkpoints: {} })
 
 /** Successful response carrying the value to extract for an in-flight request. */
-type OkResponse = SolveOkResponse | ExportOkResponse
+type OkResponse = SolveOkResponse | ExportOkResponse | BundleOkResponse
 
 // One in-flight request. `resolve` already closes over the per-request extractor
 // (solve fills `_build_state`, export pulls bytes), so the shared dispatcher in
@@ -58,7 +60,7 @@ let nextId = 1
 // Solve and export share the id counter, so an id lives in exactly one entry.
 const pending = new Map<number, Pending>()
 
-function onMessage(e: { data: SolveResponse | ExportResponse }): void {
+function onMessage(e: { data: SolveResponse | ExportResponse | BundleResponse }): void {
   const res = e.data
   const p = pending.get(res.id)
   if (!p) return  // stale or already-settled (e.g. after a crash drained pending)
@@ -139,6 +141,22 @@ export function exportViaWorker(
   return sendRequest(
     (id) => ({ id, kind: 'export', spec, options }),
     (res) => (res as ExportOkResponse).bytes,
+  )
+}
+
+/**
+ * Build a `PartBundle` (meshes + edges + anchors) for a part document on the OCC
+ * bundle-builder worker. The anchor solver worker cannot reach OCC itself, so
+ * the main thread relays its cache-miss builds through here.
+ */
+export function buildBundleViaWorker(
+  spec: Record<string, unknown>,
+  doc_id: string,
+  doc_rev: number,
+): Promise<PartBundle | null> {
+  return sendRequest(
+    (id) => ({ id, kind: 'buildBundle', spec, doc_id, doc_rev }),
+    (res) => (res as BundleOkResponse).payload,
   )
 }
 

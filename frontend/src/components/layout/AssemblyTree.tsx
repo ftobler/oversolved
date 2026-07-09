@@ -5,6 +5,9 @@ interface AssemblyTreeProps {
   mates: MateFeatureDef[]
   // Map from a part handle to a display label (part doc name), when known.
   labelFor?: (handle: string) => string
+  // The selected instance is the one the transform triad attaches to (Stage 6d).
+  selectedHandle?: string | null
+  onSelectPart?: (handle: string) => void
   onInsertPart: () => void
   onOpenPart: (handle: string) => void
   onDeleteInstance: (handle: string) => void
@@ -19,6 +22,8 @@ export function AssemblyTree({
   instances,
   mates,
   labelFor,
+  selectedHandle,
+  onSelectPart,
   onInsertPart,
   onOpenPart,
   onDeleteInstance,
@@ -44,8 +49,14 @@ export function AssemblyTree({
         {instances.map(inst => {
           const visible = inst.visible !== false
           const label = labelFor?.(inst.handle) || inst.doc_id
+          const selected = selectedHandle === inst.handle
           return (
-            <li key={inst.handle} className="assembly-tree-instance">
+            <li
+              key={inst.handle}
+              className={`assembly-tree-instance${selected ? ' selected' : ''}`}
+              aria-selected={selected}
+              onClick={() => onSelectPart?.(inst.handle)}
+            >
               <button
                 type="button"
                 className="assembly-tree-open-btn"
