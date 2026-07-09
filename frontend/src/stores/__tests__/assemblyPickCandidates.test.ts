@@ -21,7 +21,8 @@ const ENTITY_MATE_REFS: EntityMateRefs = {
 }
 
 const SOLVE_RESULT: AssemblySolveResult = {
-  transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {}, pickGeometry: [],
+  transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {},
+  pickGeometry: [], mateResults: {},
 }
 
 /** Resolver order at a corner: vertex wins, then the edge, then the face. */

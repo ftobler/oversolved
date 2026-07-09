@@ -30,10 +30,12 @@ interface AssemblyBodyProps {
   item: BodyRenderItem
   curves: EdgeCurve[]
   selected: boolean
+  /** A mate reference slot is armed, so a click aims rather than grabs. */
+  aiming: boolean
   onGrab: (point: Vec3, event: ThreeEvent<PointerEvent>) => void
 }
 
-export default function AssemblyBody({ item, curves, selected, onGrab }: AssemblyBodyProps) {
+export default function AssemblyBody({ item, curves, selected, aiming, onGrab }: AssemblyBodyProps) {
   const geometry = useMemo(() => {
     const { positions, indices } = buildBodyGeometry(item.mesh)
     const g = new THREE.BufferGeometry()
@@ -64,10 +66,11 @@ export default function AssemblyBody({ item, curves, selected, onGrab }: Assembl
         userData={{ fitBounds: true }}
         onPointerDown={(e) => {
           if (e.button !== 0) return
-          // Ctrl+click aims a mate reference (AssemblyViewport resolves it off
-          // the ID buffer). Grabbing the part on the same gesture would drag it
-          // away from the anchor the user was pointing at.
-          if (e.ctrlKey) return
+          // Ctrl+click aims a mate reference, and so does any click while a mate
+          // chip is armed (AssemblyViewport resolves both off the ID buffer).
+          // Grabbing the part on the same gesture would drag it away from the
+          // anchor the user was pointing at.
+          if (e.ctrlKey || aiming) return
           e.stopPropagation()
           onGrab([e.point.x, e.point.y, e.point.z], e)
         }}

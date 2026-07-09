@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
-import type { AssemblyDoc, PartInstance, MateFeatureDef } from '@/types/cad'
+import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { mateFeatures } from '@/utils/assemblyMutations'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/builtins'
 
 export function useAssemblyDoc(uuid: string | undefined) {
@@ -67,11 +68,9 @@ export function useAssemblyDoc(uuid: string | undefined) {
       .map(f => f.instance!)
   }, [doc])
 
-  const mates = useMemo(() => {
-    return (doc?.features ?? [])
-      .filter((f): f is typeof f & { mate: MateFeatureDef } => f.kind === 'mate' && !!f.mate)
-      .map(f => f.mate!)
-  }, [doc])
+  // Feature id included: `mateResults` is keyed by it, so the tree cannot mark a
+  // stale mate red without knowing which feature each row came from.
+  const mates = useMemo(() => (doc ? mateFeatures(doc) : []), [doc])
 
   const saveDoc = useCallback(async (uuid: string, document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {
     try {

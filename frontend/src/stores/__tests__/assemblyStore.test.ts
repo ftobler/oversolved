@@ -77,13 +77,14 @@ describe('assemblyStore', () => {
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
       doc,
       instances: [doc.features[0].instance!],
-      mates: [doc.features[1].mate!],
+      mates: [{ id: doc.features[1].id, mate: doc.features[1].mate! }],
     })
     expect(getState().doc).toEqual(doc)
     expect(getState().instances).toHaveLength(1)
     expect(getState().instances[0].handle).toBe('h1')
     expect(getState().mates).toHaveLength(1)
-    expect(getState().mates[0].kind).toBe('fixed')
+    expect(getState().mates[0].id).toBe('feat2')
+    expect(getState().mates[0].mate.kind).toBe('fixed')
   })
 
   it('reset via DEFAULT_ASSEMBLY_EDITOR_DATA clears mirrored fields', () => {

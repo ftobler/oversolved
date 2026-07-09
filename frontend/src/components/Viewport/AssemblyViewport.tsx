@@ -75,6 +75,9 @@ export default function AssemblyViewport() {
   const pickScopeEntity = useAssemblyStore(s => s.pickScopeEntity)
   const pickCandidates = useAssemblyStore(s => s.pickCandidates)
   const pickIndex = useAssemblyStore(s => s.pickIndex)
+  // An armed mate chip turns the whole scene into a reference picker: a plain
+  // click aims instead of grabbing, so authoring a mate never nudges a part.
+  const aiming = useAssemblyStore(s => s.activeMateField !== null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pipelineRef = useRef<IdPipeline | null>(null)
@@ -124,12 +127,15 @@ export default function AssemblyViewport() {
 
   const onPipelineReady = useCallback((p: IdPipeline) => { pipelineRef.current = p }, [])
   // A grounded part is the assembly's static frame: it selects, but it gets no
-  // gizmo, because there is nothing the gizmo could move.
+  // gizmo, because there is nothing the gizmo could move. Nor does any part while
+  // a mate chip is armed: the triad's arrows sit over the very geometry the user
+  // is aiming at, and grabbing one would move the part instead of picking it.
   const triadOrigin = useMemo(() => {
+    if (aiming) return null
     const inst = instances.find(i => i.handle === selectedPartHandle)
     if (!isManipulable(inst)) return null
     return gizmoOrigin(selectedPartHandle, groups, transforms, instances)
-  }, [selectedPartHandle, groups, transforms, instances])
+  }, [aiming, selectedPartHandle, groups, transforms, instances])
 
   // Frame the assembly once, when its first geometry lands.
   const fittedRef = useRef(false)
@@ -265,13 +271,14 @@ export default function AssemblyViewport() {
       return
     }
     // Ctrl+click aims a mate reference instead of grabbing the part (AssemblyBody
-    // declines the grab for the same modifier). Landing on the pixel that
-    // produced the current set advances the cycle, so a corner's seven entities
-    // are all reachable without moving the mouse.
-    if (e.button === 0 && e.ctrlKey) {
+    // declines the grab for the same modifier), and so does a plain click while a
+    // mate chip is armed. Landing on the pixel that produced the current set
+    // advances the cycle, so a corner's seven entities are all reachable without
+    // moving the mouse.
+    if (e.button === 0 && (e.ctrlKey || aiming)) {
       useAssemblyStore.getState().pickFromHitsOrCycle(resolveHitsAt(e))
     }
-  }, [adapter, resolveHitsAt])
+  }, [adapter, aiming, resolveHitsAt])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!adapter.isActive()) {
@@ -366,6 +373,7 @@ export default function AssemblyViewport() {
                 item={item}
                 curves={edgeCurves[item.bodyId] ?? EMPTY_CURVES}
                 selected={g.selected}
+                aiming={aiming}
                 onGrab={(point) => handleGrabBody(g.handle, point)}
               />
             ))}

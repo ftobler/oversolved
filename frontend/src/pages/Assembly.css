@@ -104,6 +104,143 @@
   padding: 4px 1rem;
   color: #cfcfcf;
   font-size: 0.85rem;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assembly-tree-mate.selected {
+  background: #2a3a4a;
+}
+
+/* A reference the solve could not resolve: its geometry is gone and the mate
+   waits for a manual re-pick. Never auto-retargeted, so never silently fine. */
+.assembly-tree-mate.stale {
+  color: #ff6b6b;
+}
+
+.mate-kind-menu {
+  border-bottom: 1px solid #333;
+  padding-bottom: 4px;
+}
+
+.mate-kind-option {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e0e0e0;
+  cursor: pointer;
+  padding: 4px 1rem;
+  font-size: 0.85rem;
+}
+
+.mate-kind-option:hover {
+  background: #2a2a2a;
+  color: #6ab0ff;
+}
+
+.mate-editor {
+  border-top: 1px solid #333;
+  padding: 0.5rem 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mate-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e0e0e0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.mate-ref-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mate-ref-title {
+  color: #9aa0a6;
+  font-size: 0.75rem;
+}
+
+.mate-ref-chip {
+  text-align: left;
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e0e0e0;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mate-ref-chip.empty {
+  color: #666;
+  font-style: italic;
+}
+
+.mate-ref-chip.stale {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.mate-ref-chip.picking {
+  border-color: #6ab0ff;
+  background: #1c2b3a;
+}
+
+.mate-editor-hint {
+  margin: 0;
+  color: #9aa0a6;
+  font-size: 0.75rem;
+}
+
+.mate-param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mate-param {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #cfcfcf;
+  font-size: 0.8rem;
+}
+
+.mate-param input[type='number'] {
+  width: 6rem;
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 3px;
+  color: #e0e0e0;
+  padding: 2px 4px;
+}
+
+.mate-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mate-editor-footer button {
+  background: #2a3a4a;
+  border: 1px solid #3a4a5a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  cursor: pointer;
+  padding: 3px 12px;
+  font-size: 0.8rem;
 }
 
 .assembly-tree-empty {

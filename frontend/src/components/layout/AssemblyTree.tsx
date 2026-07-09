@@ -1,18 +1,26 @@
-import type { PartInstance, MateFeatureDef } from '@/types/cad'
+import { useState } from 'react'
+import type { PartInstance, MateFeature, MateKind } from '@/types/cad'
+import type { MateResult } from '@/kernel/solveAssembly'
+import { MATE_KINDS, MATE_KIND_LABELS, mateSummary } from '@/utils/mateKinds'
 
 interface AssemblyTreeProps {
   instances: PartInstance[]
-  mates: MateFeatureDef[]
+  mates: MateFeature[]
+  // Per-mate solve outcome, keyed by feature id. A stale mate renders red.
+  mateResults?: Record<string, MateResult>
   // Map from a part handle to a display label (part doc name), when known.
-  labelFor?: (handle: string) => string
+  labelFor?: (handle: string) => string | undefined
   // The selected instance is the one the transform triad attaches to (Stage 6d).
   selectedHandle?: string | null
+  selectedMateId?: string | null
   onSelectPart?: (handle: string) => void
   onInsertPart: () => void
   onOpenPart: (handle: string) => void
   onDeleteInstance: (handle: string) => void
   onToggleVisible: (handle: string, visible: boolean) => void
   onToggleFixed: (handle: string, fixed: boolean) => void
+  onInsertMate?: (kind: MateKind) => void
+  onSelectMate?: (featureId: string) => void
 }
 
 // The assembly's feature tree: part instances (with visibility / ground / open
@@ -21,15 +29,20 @@ interface AssemblyTreeProps {
 export function AssemblyTree({
   instances,
   mates,
+  mateResults,
   labelFor,
   selectedHandle,
+  selectedMateId,
   onSelectPart,
   onInsertPart,
   onOpenPart,
   onDeleteInstance,
   onToggleVisible,
   onToggleFixed,
+  onInsertMate,
+  onSelectMate,
 }: AssemblyTreeProps) {
+  const [kindMenuOpen, setKindMenuOpen] = useState(false)
   return (
     <div className="assembly-tree">
       <div className="assembly-tree-header">
@@ -109,13 +122,52 @@ export function AssemblyTree({
 
       <div className="assembly-tree-header">
         <span>Mates ({mates.length})</span>
+        {onInsertMate && (
+          <button
+            type="button"
+            className="assembly-tree-insert-btn"
+            onClick={() => setKindMenuOpen(o => !o)}
+            title="Insert mate"
+            aria-label="Insert mate"
+            aria-expanded={kindMenuOpen}
+          >
+            <span className="material-icons-outlined">add</span>
+          </button>
+        )}
       </div>
+
+      {kindMenuOpen && onInsertMate && (
+        <ul className="assembly-tree-list mate-kind-menu">
+          {MATE_KINDS.map(kind => (
+            <li key={kind}>
+              <button
+                type="button"
+                className="mate-kind-option"
+                onClick={() => { setKindMenuOpen(false); onInsertMate(kind) }}
+              >
+                {MATE_KIND_LABELS[kind]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <ul className="assembly-tree-list">
-        {mates.map((m, i) => (
-          <li key={i} className="assembly-tree-mate">
-            {m.kind}: {m.ref_a.part}/{m.ref_a.anchor} - {m.ref_b.part}/{m.ref_b.anchor}
-          </li>
-        ))}
+        {mates.map(({ id, mate }) => {
+          const stale = !!mateResults?.[id]?.stale
+          const selected = selectedMateId === id
+          return (
+            <li
+              key={id}
+              className={`assembly-tree-mate${stale ? ' stale' : ''}${selected ? ' selected' : ''}`}
+              aria-selected={selected}
+              title={stale ? 'A reference no longer resolves; re-pick it.' : undefined}
+              onClick={() => onSelectMate?.(id)}
+            >
+              {mateSummary(mate.kind, mate.ref_a, mate.ref_b, labelFor)}
+            </li>
+          )
+        })}
         {mates.length === 0 && (
           <li className="assembly-tree-empty">No mates yet.</li>
         )}

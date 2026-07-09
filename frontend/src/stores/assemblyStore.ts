@@ -1,10 +1,18 @@
 import { create } from 'zustand'
-import type { AssemblyDoc, PartInstance, MateFeatureDef, MateRef, Transform3D, BodyResult } from '@/types/cad'
+import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
+import type { MateResult } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
+import { setMateRef } from '@/utils/assemblyMutations'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
+
+/** The mate reference slot a pick currently writes into; null when not authoring. */
+export interface MateFieldTarget {
+  featureId: string
+  field: MateRefField
+}
 
 /** One entity the ID buffer found under the cursor, resolver-ordered. */
 export interface EntityHit {
@@ -27,7 +35,9 @@ type UndoEntry = { doc: unknown; mutation: unknown }
 export interface AssemblyEditorData {
   doc: AssemblyDoc | null
   instances: PartInstance[]
-  mates: MateFeatureDef[]
+  mates: MateFeature[]
+  /** Per-mate solve outcome, keyed by feature id. `stale` drives the red rendering. */
+  mateResults: Record<string, MateResult>
   transforms: Record<string, Transform3D>
   bodies: Record<string, BodyResult>
   /** Analytic edges of the solved bodies, keyed by the same body id. */
@@ -40,6 +50,16 @@ export interface AssemblyEditorData {
   pickGeometry: AssemblyPickBody[]
   activePartHandle: string | null
   selectedPartHandle: string | null
+  /** The mate whose editor panel is open; null when no mate is being authored. */
+  selectedMateId: string | null
+  /** The reference slot an aimed pick writes into. Null means picks only aim. */
+  activeMateField: MateFieldTarget | null
+  /**
+   * A reference was written since the field was armed. Committing a pick does not
+   * re-solve (that would drop `pickCandidates` and kill the cycle), so the solve
+   * is owed until the field closes.
+   */
+  mateFieldDirty: boolean
   /**
    * The mate references under the last pick, resolver-ordered, and which one is
    * aimed. A pick keeps the whole set: at a corner the user cycles through it
@@ -68,6 +88,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   doc: null,
   instances: [],
   mates: [],
+  mateResults: {},
   transforms: {},
   bodies: {},
   edgeCurves: {},
@@ -76,6 +97,9 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   pickGeometry: [],
   activePartHandle: null,
   selectedPartHandle: null,
+  selectedMateId: null,
+  activeMateField: null,
+  mateFieldDirty: false,
   pickCandidates: [],
   pickIndex: -1,
   pickScopeEntity: null,
@@ -90,12 +114,14 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
 /** Everything one solve produces. Grouped so a new derived artifact (anchors,
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
-  AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry'
+  AssemblyEditorData,
+  'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry' | 'mateResults'
 >
 
 // Fields owned exclusively by the store (not overwritten by setSnapshot).
 const STORE_OWNED_FIELDS = [
   'activePartHandle', 'selectedPartHandle', 'manipulation',
+  'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
 ] as const
 
@@ -120,6 +146,12 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setSnapshot: (data: AssemblyEditorData) => void
   setActivePartHandle: (handle: string | null) => void
   setSelectedPartHandle: (handle: string | null) => void
+  /** Open a mate's editor. Closing the previous one settles its owed solve. */
+  setSelectedMateId: (featureId: string | null) => void
+  /** Arm a reference slot for the next pick; `null` disarms and re-solves if owed. */
+  setActiveMateField: (target: MateFieldTarget | null) => void
+  /** Push a mate edit to the solver, unless a chip is armed; then it is owed. */
+  requestSolveOrDefer: () => void
   setIsSolving: (solving: boolean) => void
   setSolveError: (error: string | null) => void
   setSolveResult: (result: AssemblySolveResult) => void
@@ -127,6 +159,8 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setPickFromHits: (hits: readonly EntityHit[]) => void
   /** A Ctrl+click: re-aim, or advance the cycle when it lands on the same set. */
   pickFromHitsOrCycle: (hits: readonly EntityHit[]) => void
+  /** Write the aimed reference into the armed mate slot. No-op when none is armed. */
+  commitAimToMateField: () => void
   /** Ctrl+click: aim the next candidate. No-op on an empty set. */
   cyclePickCandidate: () => void
   clearPickCandidates: () => void
@@ -158,6 +192,34 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   }),
   setActivePartHandle: (handle) => set({ activePartHandle: handle }),
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
+
+  setSelectedMateId: (featureId) => {
+    get().setActiveMateField(null)  // leaving a mate settles the solve its picks owe
+    set({ selectedMateId: featureId })
+  },
+
+  // Disarming is where an authored mate reaches the solver. Committing a pick
+  // cannot re-solve: setSolveResult drops the candidate set, so the second
+  // Ctrl+click on a corner would re-aim its first entity instead of advancing,
+  // and the entities behind the vertex would be unreachable.
+  setActiveMateField: (target) => {
+    const owed = target === null && get().mateFieldDirty
+    set(prev => ({ activeMateField: target, mateFieldDirty: owed ? false : prev.mateFieldDirty }))
+    if (owed) callbacks?.requestSolve()
+  },
+
+  // Any mate edit made while a chip is armed has to take the same deferral as a
+  // pick. Typing an offset mid-authoring would otherwise re-solve, drop the
+  // candidate set, and leave the armed field unable to cycle the corner it aims
+  // at. The edit is owed along with the picks and lands when the field closes.
+  requestSolveOrDefer: () => {
+    if (get().activeMateField) {
+      set({ mateFieldDirty: true })
+      return
+    }
+    callbacks?.requestSolve()
+  },
+
   setIsSolving: (solving) => set({ isSolving: solving }),
   setSolveError: (error) => set({ solveError: error }),
   setSolveResult: (result) => set({
@@ -183,9 +245,21 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const next = resolveCandidates(hits, prev.entityMateRefs, prev.pickScopeEntity)
     if (next.length > 0 && sameCandidateSet(next, prev.pickCandidates)) {
       prev.cyclePickCandidate()
-      return
+    } else {
+      set({ pickCandidates: next, pickIndex: next.length > 0 ? 0 : -1 })
     }
-    set({ pickCandidates: next, pickIndex: next.length > 0 ? 0 : -1 })
+    get().commitAimToMateField()
+  },
+
+  // An armed chip follows the aim: every click and every cycle rewrites the
+  // reference, so the triad the user sees highlighted is the one the mate holds.
+  // A hit on an anchor-less entity aims at nothing and therefore writes nothing.
+  commitAimToMateField: () => {
+    const { activeMateField, doc } = get()
+    const ref = get().activePickCandidate()
+    if (!activeMateField || !ref || !doc || !callbacks) return
+    callbacks.mutateDoc(d => setMateRef(d, activeMateField.featureId, activeMateField.field, ref))
+    set({ mateFieldDirty: true })
   },
 
   cyclePickCandidate: () => set((prev) => ({

@@ -2,19 +2,27 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
-import { useAssemblyStore, setAssemblyCallbacks } from '@/stores/assemblyStore'
+import { useAssemblyStore, setAssemblyCallbacks, type MateFieldTarget } from '@/stores/assemblyStore'
 import AssemblyViewport from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
+import { MateEditor } from '@/components/layout/MateEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import {
+  appendMate,
   appendPartInstance,
+  findMate,
+  mintFeatureId,
   removeInstance,
+  removeMate,
   setInstanceVisible,
   setInstanceFixed,
+  updateMate,
+  type MateParamPatch,
 } from '@/utils/assemblyMutations'
-import type { AssemblyDoc, PartInstance, AssemblyFeature } from '@/types/cad'
+import { MATE_KINDS } from '@/utils/mateKinds'
+import type { AssemblyDoc, MateKind, PartInstance, AssemblyFeature } from '@/types/cad'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
 
@@ -39,6 +47,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const { requestSolve } = useAssemblySolve(uuid, doc)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
+  const selectedMateId = useAssemblyStore(s => s.selectedMateId)
+  const activeMateField = useAssemblyStore(s => s.activeMateField)
+  const mateResults = useAssemblyStore(s => s.mateResults)
 
   useEffect(() => {
     if (doc) {
@@ -76,9 +87,21 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const openPicker = useCallback(() => setPickerOpen(true), [])
 
+  // Insert a mate with both references empty, open its editor and arm ref_a, so
+  // the very next click in the viewport aims the first reference. No solve yet:
+  // an unreferenced mate has nothing to constrain.
+  const handleInsertMate = useCallback((kind: MateKind) => {
+    const id = mintFeatureId()
+    mutate(d => appendMate(d, kind, id))
+    const store = useAssemblyStore.getState()
+    store.setSelectedMateId(id)
+    store.setActiveMateField({ featureId: id, field: 'ref_a' })
+  }, [mutate])
+
   const commands = useMemo(() => [
     { name: 'insert_part_instance', fn: openPicker },
-  ], [openPicker])
+    ...MATE_KINDS.map(kind => ({ name: `insert_mate_${kind}`, fn: () => handleInsertMate(kind) })),
+  ], [openPicker, handleInsertMate])
   useCommandRegistration(commands)
 
   const handlePick = useCallback((docId: string, docRev: number) => {
@@ -116,6 +139,50 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
   }, [])
 
+  const handleSelectMate = useCallback((featureId: string) => {
+    useAssemblyStore.getState().setSelectedMateId(featureId)
+  }, [])
+
+  const handleCloseMate = useCallback(() => {
+    // Disarming settles the solve the picks owe (assemblyStore.setActiveMateField).
+    useAssemblyStore.getState().setSelectedMateId(null)
+  }, [])
+
+  const handleDeleteMate = useCallback((featureId: string) => {
+    mutate(d => removeMate(d, featureId))
+    useAssemblyStore.getState().setSelectedMateId(null)
+    requestSolve()  // the freed DOF must let the parts settle back
+  }, [mutate, requestSolve])
+
+  const handleUpdateMate = useCallback((featureId: string, patch: MateParamPatch) => {
+    mutate(d => updateMate(d, featureId, patch))
+    // Deferred while a chip is armed: a solve here would drop the candidate set
+    // the armed field is still cycling.
+    useAssemblyStore.getState().requestSolveOrDefer()
+  }, [mutate])
+
+  const handleArmMateField = useCallback((target: MateFieldTarget | null) => {
+    useAssemblyStore.getState().setActiveMateField(target)
+  }, [])
+
+  // A mate reference names a part handle; the tree shows the part's document id.
+  const labelFor = useCallback(
+    (handle: string) => instances.find(i => i.handle === handle)?.doc_id,
+    [instances],
+  )
+
+  const selectedMate = doc && selectedMateId ? findMate(doc, selectedMateId) : undefined
+
+  // The mate went away by some path other than the editor's delete button (an
+  // undo, a reload). Its editor has already unmounted, so nothing is left to
+  // disarm the chip: the viewport would stay in aiming mode with picks writing
+  // into a feature that no longer exists.
+  useEffect(() => {
+    if (doc && selectedMateId && !selectedMate) {
+      useAssemblyStore.getState().setSelectedMateId(null)
+    }
+  }, [doc, selectedMateId, selectedMate])
+
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>
   }
@@ -128,14 +195,32 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
           <AssemblyTree
             instances={instances}
             mates={mates}
+            mateResults={mateResults}
+            labelFor={labelFor}
             selectedHandle={selectedPartHandle}
+            selectedMateId={selectedMateId}
             onSelectPart={handleSelect}
             onInsertPart={openPicker}
             onOpenPart={handleOpenPart}
             onDeleteInstance={handleDelete}
             onToggleVisible={handleToggleVisible}
             onToggleFixed={handleToggleFixed}
+            onInsertMate={handleInsertMate}
+            onSelectMate={handleSelectMate}
           />
+          {selectedMateId && selectedMate && (
+            <MateEditor
+              featureId={selectedMateId}
+              mate={selectedMate}
+              result={mateResults[selectedMateId]}
+              activeField={activeMateField}
+              labelFor={labelFor}
+              onArmField={handleArmMateField}
+              onUpdate={patch => handleUpdateMate(selectedMateId, patch)}
+              onDelete={() => handleDeleteMate(selectedMateId)}
+              onClose={handleCloseMate}
+            />
+          )}
         </aside>
         <div className="doc-editor assembly-viewport-host">
           <AssemblyViewport />

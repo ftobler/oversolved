@@ -364,6 +364,9 @@ export interface MateRef {
   anchor: string
 }
 
+/** The two reference slots of a mate. Mirrors `MateResult.staleRefs`. */
+export type MateRefField = 'ref_a' | 'ref_b'
+
 export type MateKind = 'fixed' | 'sliding' | 'rotating' | 'sliding_rotating' | 'tangential' | 'copy_rotation' | 'spherical' | 'parallel' | 'parallel_plane_distance'
 
 export interface MateFeatureDef {
@@ -375,6 +378,16 @@ export interface MateFeatureDef {
   offset?: NumberOrExpr
   angle?: NumberOrExpr
   radius?: NumberOrExpr
+}
+
+/**
+ * An `AssemblyFeature` narrowed to a mate. The feature id travels with the def
+ * because the solver keys `mateResults` by it: without the id a stale ref could
+ * not be traced back to the row that must render red.
+ */
+export interface MateFeature {
+  id: string
+  mate: MateFeatureDef
 }
 
 export interface PartInstance {

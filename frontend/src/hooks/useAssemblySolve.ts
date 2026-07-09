@@ -118,6 +118,9 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         entityMateRefs: buildEntityMateRefs(res.payload.bodies),
         anchors,
         pickGeometry: buildPickBodies(res.payload.bodies, anchors),
+        // Keyed by mate feature id. A mate whose reference no longer resolves
+        // comes back stale here, and that is the only thing that turns it red.
+        mateResults: res.payload.mateResults ?? {},
       })
     } catch (e) {
       useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
