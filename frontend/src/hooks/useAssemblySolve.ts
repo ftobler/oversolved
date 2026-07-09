@@ -14,6 +14,8 @@ import type { AssemblyDoc, AssemblyFeature, NumberOrExpr } from '@/types/cad'
 import { backendBundle } from '@/adapters/backend'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
+import { buildAnchorTable } from '@/utils/anchorGizmos'
+import { buildPickBodies } from '@/utils/assemblyPick'
 import { setRelayHandlers, solveAssemblyViaWorker } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
@@ -108,13 +110,15 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       const revs = await currentRevs(current)
       const res = await solveAssemblyViaWorker(uuid, parts, revs, mateSpecs(current))
       if (!res) throw new Error('assembly solver unavailable')
-      const s = useAssemblyStore.getState()
-      s.setSolveResult(
-        res.payload.transforms,
-        toBodyResults(res.payload.bodies),
-        toEdgeCurves(res.payload.bodies),
-        buildEntityMateRefs(res.payload.bodies),
-      )
+      const anchors = buildAnchorTable(res.payload.anchors)
+      useAssemblyStore.getState().setSolveResult({
+        transforms: res.payload.transforms,
+        bodies: toBodyResults(res.payload.bodies),
+        edgeCurves: toEdgeCurves(res.payload.bodies),
+        entityMateRefs: buildEntityMateRefs(res.payload.bodies),
+        anchors,
+        pickGeometry: buildPickBodies(res.payload.bodies, anchors),
+      })
     } catch (e) {
       useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
     } finally {

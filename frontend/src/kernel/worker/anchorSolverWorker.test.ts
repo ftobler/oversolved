@@ -95,6 +95,7 @@ describe('handleSolveAssembly', () => {
     const mockResult = {
       transforms: { p1: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
       bodies: { p1: [] },
+      anchors: {},
       mateResults: { m1: { stale: false } },
     }
     vi.mocked(solveAssembly).mockResolvedValue(mockResult)

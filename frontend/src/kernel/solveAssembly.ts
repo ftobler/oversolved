@@ -8,29 +8,23 @@
 
 import { bundleCacheGet, bundleCachePut } from './bundleCache'
 import { migrateBundle } from './partBundle'
-import type { PartBundle, BodyMesh, Anchor, EdgeCurve, EntityAnchorIndex } from './partBundle'
+import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
-import {
-  ASSEMBLY_HANDLE,
-  ASSEMBLY_ORIGIN_ID,
-  ASSEMBLY_TOP_ID,
-  ASSEMBLY_FRONT_ID,
-  ASSEMBLY_RIGHT_ID,
-} from '../utils/builtins'
+import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/builtins'
+
+export type { AnchorPose }
 
 // ─── Assembly built-in anchors (Stage 6c) ────────────────────────────────
 // The assembly's own coordinate frame, referencable by a mate as ground via
-// MateRef.part === ASSEMBLY_HANDLE. Normals follow the part-editor
-// Top/Front/Right convention (Viewport index.tsx:603-605): Front normal +Z,
-// Top normal +Y, Right normal +X. The frame is pinned at the world origin and
-// is never solved, so geom_hash/created_by are unused here.
-export const assemblyAnchors: Record<string, Anchor> = {
-  [ASSEMBLY_ORIGIN_ID]: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: '' },
-  [ASSEMBLY_TOP_ID]:    { kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0], geom_hash: '', created_by: '' },
-  [ASSEMBLY_FRONT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: '' },
-  [ASSEMBLY_RIGHT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0], geom_hash: '', created_by: '' },
-}
+// MateRef.part === ASSEMBLY_HANDLE. The frame is pinned at the world origin and
+// is never solved, so geom_hash/created_by are unused here — the poses come
+// from the same constant the viewport draws its built-in gizmos from.
+export const assemblyAnchors: Record<string, Anchor> = Object.fromEntries(
+  Object.entries(ASSEMBLY_BUILTIN_ANCHORS).map(
+    ([id, a]) => [id, { ...a, geom_hash: '', created_by: '' }],
+  ),
+)
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -55,6 +49,9 @@ export interface MateResult {
 export interface AssemblyBuildResponse {
   transforms: Record<string, Transform3D>
   bodies: Record<string, MeshPayload[]>
+  /** Part handle -> anchor id -> its pose. Assembly built-ins are not here: they
+   *  are static and the main thread folds them in (utils/anchorGizmos.ts). */
+  anchors: Record<string, Record<string, AnchorPose>>
   mateResults: Record<string, MateResult>
 }
 
@@ -480,13 +477,24 @@ export async function solveAssembly(
   // ── Apply transforms to body meshes ───────────────────────────────────
 
   const transformedBodies: Record<string, MeshPayload[]> = {}
+  const posedAnchors: Record<string, Record<string, AnchorPose>> = {}
   for (const part of parts) {
+    const t = transforms[part.handle]
+    // The anchors travel with the mesh: the solve consumed them at the seed
+    // pose, but a gizmo drawn at an un-posed anchor would sit where the part
+    // used to be.
+    const bundleAnchors = partBundles.get(part.handle)?.anchors ?? {}
+    const posed: Record<string, AnchorPose> = {}
+    for (const [id, a] of Object.entries(bundleAnchors)) {
+      posed[id] = { kind: a.kind, point: transformPoint(a.point, t), axis: rotateVec(a.axis, t) }
+    }
+    posedAnchors[part.handle] = posed
+
     const meshes = bodyMeshes.get(part.handle)
     if (!meshes) {
       transformedBodies[part.handle] = []
       continue
     }
-    const t = transforms[part.handle]
     const transformed: MeshPayload[] = meshes.map((m) => ({
       vertices: applyTransform(m.mesh.vertices, t),
       indices: m.mesh.indices,
@@ -499,5 +507,5 @@ export async function solveAssembly(
     transformedBodies[part.handle] = transformed
   }
 
-  return { transforms, bodies: transformedBodies, mateResults }
+  return { transforms, bodies: transformedBodies, anchors: posedAnchors, mateResults }
 }

@@ -1,8 +1,19 @@
 import { create } from 'zustand'
 import type { AssemblyDoc, PartInstance, MateFeatureDef, MateRef, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
-import { cycleIndex, resolveCandidates, type EntityMateRefs } from '@/utils/anchorCandidates'
+import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
+import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
+import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
+
+/** One entity the ID buffer found under the cursor, resolver-ordered. */
+export interface EntityHit {
+  entityKey: string
+}
+
+function sameEntityHits(a: readonly EntityHit[], b: readonly EntityHit[]): boolean {
+  return a.length === b.length && a.every((h, i) => h.entityKey === b[i].entityKey)
+}
 import {
   beginManipulation,
   commitManipulation,
@@ -23,7 +34,10 @@ export interface AssemblyEditorData {
   edgeCurves: Record<string, EdgeCurve[]>
   /** Entity pick id -> the mate refs it offers. The Stage 7 pick lookup. */
   entityMateRefs: EntityMateRefs
-  pickBodies: Record<string, BodyResult>
+  /** Solved-pose anchor geometry, by part handle plus the assembly's own frame. */
+  anchors: AnchorTable
+  /** ID-layer registration payloads for the solved scene. */
+  pickGeometry: AssemblyPickBody[]
   activePartHandle: string | null
   selectedPartHandle: string | null
   /**
@@ -36,6 +50,12 @@ export interface AssemblyEditorData {
   pickIndex: number
   /** Ctrl+hover entity scope: restricts picks to this one entity's anchors. */
   pickScopeEntity: string | null
+  /**
+   * The entities under the cursor right now. Empty is the resting state, and it
+   * is what keeps a part's ~54 anchors from all being drawn at once: gizmos
+   * exist only for what these hits resolve to.
+   */
+  hoverHits: EntityHit[]
   /** Live drag/gizmo state; null between manipulations. */
   manipulation: ManipulationSession | null
   isSolving: boolean
@@ -52,12 +72,14 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   bodies: {},
   edgeCurves: {},
   entityMateRefs: {},
-  pickBodies: {},
+  anchors: {},
+  pickGeometry: [],
   activePartHandle: null,
   selectedPartHandle: null,
   pickCandidates: [],
   pickIndex: -1,
   pickScopeEntity: null,
+  hoverHits: [],
   manipulation: null,
   isSolving: false,
   solveError: null,
@@ -65,10 +87,16 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   redoStack: [],
 }
 
+/** Everything one solve produces. Grouped so a new derived artifact (anchors,
+ *  pick geometry) cannot be added to the solve and forgotten at the store. */
+export type AssemblySolveResult = Pick<
+  AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry'
+>
+
 // Fields owned exclusively by the store (not overwritten by setSnapshot).
 const STORE_OWNED_FIELDS = [
   'activePartHandle', 'selectedPartHandle', 'manipulation',
-  'pickCandidates', 'pickIndex', 'pickScopeEntity',
+  'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
 ] as const
 
 /**
@@ -94,18 +122,18 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setSelectedPartHandle: (handle: string | null) => void
   setIsSolving: (solving: boolean) => void
   setSolveError: (error: string | null) => void
-  setSolveResult: (
-    transforms: Record<string, Transform3D>,
-    bodies: Record<string, BodyResult>,
-    edgeCurves: Record<string, EdgeCurve[]>,
-    entityMateRefs: EntityMateRefs,
-  ) => void
+  setSolveResult: (result: AssemblySolveResult) => void
   /** Resolve an ordered hit list into the candidate set, aiming its first entry. */
-  setPickFromHits: (hits: readonly { entityKey: string }[]) => void
+  setPickFromHits: (hits: readonly EntityHit[]) => void
+  /** A Ctrl+click: re-aim, or advance the cycle when it lands on the same set. */
+  pickFromHitsOrCycle: (hits: readonly EntityHit[]) => void
   /** Ctrl+click: aim the next candidate. No-op on an empty set. */
   cyclePickCandidate: () => void
   clearPickCandidates: () => void
   setPickScopeEntity: (entityKey: string | null) => void
+  /** Pointer moved: reveal the hovered entities' anchors; Ctrl narrows the scope. */
+  setHoverHits: (hits: readonly EntityHit[], ctrlKey: boolean) => void
+  clearHover: () => void
   /** The reference a mate pick chip would commit right now; the set is retained. */
   activePickCandidate: () => MateRef | null
   /** Pointer-down on a part body or its triad. No-op for a grounded instance. */
@@ -132,18 +160,33 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
   setIsSolving: (solving) => set({ isSolving: solving }),
   setSolveError: (error) => set({ solveError: error }),
-  setSolveResult: (transforms, bodies, edgeCurves, entityMateRefs) => set({
-    transforms, bodies, edgeCurves, entityMateRefs,
+  setSolveResult: (result) => set({
+    ...result,
     // A re-solve can retire the anchors the aimed candidate named (a rebuilt
     // bundle sheds an anchor its feature deleted), so the stale set is dropped
-    // rather than left pointing into the previous rev.
-    pickCandidates: [], pickIndex: -1,
+    // rather than left pointing into the previous rev. The hover goes with it:
+    // its entity keys are positional and a rebuilt body renumbers them.
+    pickCandidates: [], pickIndex: -1, hoverHits: [],
   }),
 
   setPickFromHits: (hits) => set((prev) => {
     const pickCandidates = resolveCandidates(hits, prev.entityMateRefs, prev.pickScopeEntity)
     return { pickCandidates, pickIndex: pickCandidates.length > 0 ? 0 : -1 }
   }),
+
+  // Clicking the same corner twice must advance the aim rather than reset it to
+  // the top candidate, or a user could never reach the face behind the vertex.
+  // Clicking elsewhere re-aims, because the old set no longer describes what is
+  // under the cursor.
+  pickFromHitsOrCycle: (hits) => {
+    const prev = get()
+    const next = resolveCandidates(hits, prev.entityMateRefs, prev.pickScopeEntity)
+    if (next.length > 0 && sameCandidateSet(next, prev.pickCandidates)) {
+      prev.cyclePickCandidate()
+      return
+    }
+    set({ pickCandidates: next, pickIndex: next.length > 0 ? 0 : -1 })
+  },
 
   cyclePickCandidate: () => set((prev) => ({
     pickIndex: cycleIndex(prev.pickCandidates.length, prev.pickIndex),
@@ -152,6 +195,21 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   clearPickCandidates: () => set({ pickCandidates: [], pickIndex: -1 }),
 
   setPickScopeEntity: (entityKey) => set({ pickScopeEntity: entityKey }),
+
+  // The scope rides the hover rather than latching: releasing Ctrl on the next
+  // move must widen the set back, or the user would be stuck aiming at whatever
+  // entity happened to be under the cursor when they pressed the key.
+  //
+  // A pointer resting on one face re-resolves the same hits every frame. Writing
+  // them back would hand the viewport a fresh array each time, and every visible
+  // triad would rebuild its geometry for a hover that never changed.
+  setHoverHits: (hits, ctrlKey) => set((prev) => {
+    const scope = hoverScopeEntity(hits, ctrlKey)
+    if (scope === prev.pickScopeEntity && sameEntityHits(hits, prev.hoverHits)) return {}
+    return { hoverHits: [...hits], pickScopeEntity: scope }
+  }),
+
+  clearHover: () => set({ hoverHits: [], pickScopeEntity: null }),
 
   activePickCandidate: () => {
     const { pickCandidates, pickIndex } = get()

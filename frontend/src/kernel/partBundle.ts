@@ -16,6 +16,14 @@ export interface Anchor {
   created_by: string
 }
 
+/**
+ * An anchor's geometry without its match descriptor. This is what leaves the
+ * solver for the main thread: `geom_hash` and `created_by` are rev-to-rev
+ * migration inputs, and a renderer that could see them would be tempted to
+ * match on them.
+ */
+export type AnchorPose = Pick<Anchor, 'kind' | 'point' | 'axis'>
+
 export interface EdgeCurve {
   id: string
   kind: 'line' | 'circle' | 'ellipse' | 'b-spline'

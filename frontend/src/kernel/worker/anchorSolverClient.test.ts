@@ -79,7 +79,7 @@ describe('solveAssemblyViaWorker', () => {
     // Simulate worker response
     fakeWorker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: { p1: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { p1: [] }, mateResults: {} },
+      payload: { transforms: { p1: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { p1: [] }, anchors: {}, mateResults: {} },
     })
 
     const result = await resultPromise
@@ -119,8 +119,8 @@ describe('solveAssemblyViaWorker', () => {
     )
 
     const [r1, r2] = fakeWorker.posted as SolveAssemblyRequest[]
-    fakeWorker.reply({ id: r1.id, kind: 'solveAssembly', ok: true, payload: { transforms: { a: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { a: [] }, mateResults: {} } })
-    fakeWorker.reply({ id: r2.id, kind: 'solveAssembly', ok: true, payload: { transforms: { b: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { b: [] }, mateResults: {} } })
+    fakeWorker.reply({ id: r1.id, kind: 'solveAssembly', ok: true, payload: { transforms: { a: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { a: [] }, anchors: {}, mateResults: {} } })
+    fakeWorker.reply({ id: r2.id, kind: 'solveAssembly', ok: true, payload: { transforms: { b: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { b: [] }, anchors: {}, mateResults: {} } })
 
     const [v1, v2] = await Promise.all([p1, p2])
     expect(v1?.payload.transforms).toHaveProperty('a')

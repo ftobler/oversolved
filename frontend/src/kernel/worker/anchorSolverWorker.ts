@@ -108,6 +108,7 @@ export async function handleSolveAssembly(
       payload: {
         transforms: result.transforms,
         bodies: result.bodies,
+        anchors: result.anchors,
         mateResults: result.mateResults,
       },
     }

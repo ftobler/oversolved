@@ -50,6 +50,23 @@ export function buildBodyGeometry(mesh: Mesh3D): {
   return { positions, indices }
 }
 
+/**
+ * Expand an indexed mesh into the triangle soup the ID layers register: one
+ * triangle is three unique vertices, so a per-triangle colour can carry a face
+ * id. Both the part editor's face registration and the assembly's pick geometry
+ * feed the same layer, so they must agree on this layout.
+ */
+export function toNonIndexedPositions(positions: Float32Array, indices: Uint32Array): Float32Array {
+  const out = new Float32Array(indices.length * 3)
+  for (let i = 0; i < indices.length; i++) {
+    const vi = indices[i] * 3
+    out[i * 3]     = positions[vi]
+    out[i * 3 + 1] = positions[vi + 1]
+    out[i * 3 + 2] = positions[vi + 2]
+  }
+  return out
+}
+
 export function getFaceIndices(faces: Mesh3D['faces'], i: number): [number, number, number] {
   if (faces instanceof Uint32Array) {
     return [faces[i * 3], faces[i * 3 + 1], faces[i * 3 + 2]]

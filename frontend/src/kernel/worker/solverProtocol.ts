@@ -13,7 +13,7 @@
 import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
 import type { Transform3D } from '../../types/cad'
-import type { MateSpec, MateResult, MeshPayload } from '../solveAssembly'
+import type { MateSpec, MateResult, MeshPayload, AnchorPose } from '../solveAssembly'
 
 /** Solve options that survive a structured clone (the OCC-free subset). */
 export interface SolveRequestOptions {
@@ -134,6 +134,7 @@ export interface AssemblySolveOkResponse {
   payload: {
     transforms: Record<string, Transform3D>
     bodies: Record<string, MeshPayload[]>
+    anchors: Record<string, Record<string, AnchorPose>>
     mateResults: Record<string, MateResult>
   }
 }

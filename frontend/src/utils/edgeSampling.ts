@@ -97,22 +97,42 @@ export function sampleEdgeCurve(curve: EdgeCurve, resolution: number = DEFAULT_C
   }
 }
 
+export interface IndexedCurveSegments {
+  /** Flat [x0,y0,z0, x1,y1,z1, ...] segment pairs for a THREE.LineSegments buffer. */
+  positions: Float32Array
+  /** Which curve each segment came from, so a pick on a segment names its edge. */
+  segmentToCurve: Uint32Array
+}
+
 /**
- * Flat [x0,y0,z0, x1,y1,z1, ...] segment pairs for a THREE.LineSegments buffer.
+ * Sample every curve and keep the segment -> curve join. The ID layer needs it:
+ * a hit lands on one segment and must resolve to the edge entity that owns it,
+ * and a dropped degenerate segment must not shift its neighbours' ownership.
+ *
  * Non-finite points are dropped segment-wise: one bad vertex from a degenerate
  * curve must not stretch a line across the scene.
  */
-export function buildCurveSegments(
+export function buildIndexedCurveSegments(
   curves: EdgeCurve[],
   resolution: number = DEFAULT_CURVE_RESOLUTION,
-): Float32Array {
+): IndexedCurveSegments {
   const parts: number[] = []
-  for (const curve of curves) {
+  const owners: number[] = []
+  curves.forEach((curve, curveIndex) => {
     const pts = sampleEdgeCurve(curve, resolution)
     for (let i = 0; i < pts.length - 1; i++) {
       if (!isFiniteVec(pts[i]) || !isFiniteVec(pts[i + 1])) continue
       parts.push(...pts[i], ...pts[i + 1])
+      owners.push(curveIndex)
     }
-  }
-  return new Float32Array(parts)
+  })
+  return { positions: new Float32Array(parts), segmentToCurve: Uint32Array.from(owners) }
+}
+
+/** The visible overlay's buffer: the same sampling, minus the ownership join. */
+export function buildCurveSegments(
+  curves: EdgeCurve[],
+  resolution: number = DEFAULT_CURVE_RESOLUTION,
+): Float32Array {
+  return buildIndexedCurveSegments(curves, resolution).positions
 }

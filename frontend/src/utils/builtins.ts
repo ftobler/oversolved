@@ -5,6 +5,7 @@
 // through adapters/backend.
 
 import type { PartFeature, AssemblyFeature } from '@/types/cad'
+import type { AnchorPose } from '@/kernel/partBundle'
 
 export const BUILTIN_FEATURE_DEFAULTS: PartFeature[] = [
   { id: 'Origin', kind: 'origin' },
@@ -33,6 +34,21 @@ export const ASSEMBLY_BUILTIN_DEFAULTS: AssemblyFeature[] = [
 ]
 
 export const ASSEMBLY_BUILTIN_IDS = new Set(ASSEMBLY_BUILTIN_DEFAULTS.map(f => f.id))
+
+/**
+ * The assembly frame as matable geometry, pinned at the world origin. Normals
+ * follow the part editor's convention (Viewport/index.tsx): Front faces +Z, Top
+ * faces +Y, Right faces +X. One source of truth: the solver reads these to
+ * resolve a `__assembly` mate ref, and the viewport reads them to draw the same
+ * anchors' gizmos. If the two ever disagreed, a user would pick one plane and
+ * mate to another.
+ */
+export const ASSEMBLY_BUILTIN_ANCHORS: Record<string, AnchorPose> = {
+  [ASSEMBLY_ORIGIN_ID]: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1] },
+  [ASSEMBLY_TOP_ID]:    { kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0] },
+  [ASSEMBLY_FRONT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
+  [ASSEMBLY_RIGHT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
+}
 
 // Reserved part handle addressing the assembly's own frame in a MateRef. A real
 // PartInstance handle is randomId(8) (see assemblyMutations), which never yields

@@ -1,13 +1,15 @@
 // The assembly editor's scene. Stage 6f: three earlier stages deferred their
 // render work here — 6c's assembly origin + planes, 6d's drag and triad-gizmo
-// pointer surface, and (next) 6e's edge curves.
+// pointer surface, and 6e's edge curves. Stage 7.5 added the ID-picking driver
+// and hover-gated anchor gizmos on top.
 //
 // This is NOT the part editor's Viewport. That one is bound to partEditorStore
 // and sketchEditorStore, which stay single-part by design, so the assembly gets
 // its own shell over the same scene furniture (SceneController, EnvLight,
 // CubeGizmoCanvas). What the shell computes is nothing: the render list comes
-// from utils/assemblyRender.ts and every gesture goes through
-// utils/assemblyPointer.ts, both viewport-free and unit-tested.
+// from utils/assemblyRender.ts, every gesture goes through
+// utils/assemblyPointer.ts, and the anchor set under the cursor comes from
+// utils/anchorGizmos.ts — all viewport-free and unit-tested.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, type ThreeEvent } from '@react-three/fiber'
@@ -20,15 +22,20 @@ import SceneController from '@/components/Viewport/SceneController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent } from '@/components/Viewport/cameraController'
-import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
-import { Dot } from '@/components/Geometry3D/VertexDots'
-import { COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
 import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
+import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
+import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
 import TriadGizmo from '@/components/Viewport/assembly/TriadGizmo'
 import type { EdgeCurve } from '@/kernel/partBundle'
-import { useAssemblyStore } from '@/stores/assemblyStore'
+import IdPickingDriver from '@/picking/IdPickingDriver'
+import type { IdPipeline } from '@/picking'
 import {
-  ASSEMBLY_PLANE_SIZE,
+  EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, VERTEX_LAYER_NAME,
+} from '@/picking'
+import { useAssemblyStore } from '@/stores/assemblyStore'
+import { resolveAnchorGizmos } from '@/utils/anchorGizmos'
+import {
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
   gizmoOrigin,
@@ -37,6 +44,13 @@ import { createAssemblyPointerAdapter, type GizmoMode } from '@/utils/assemblyPo
 import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
 import type { Vec3 } from '@/utils/transform3d'
+
+// Everything an assembly can mate to: a part's B-rep entities and the
+// assembly's own frame. The sketch layers never render here, but naming the
+// set explicitly keeps a future layer from silently becoming pickable.
+const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, ORIGIN_LAYER_NAME,
+])
 
 // Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
 // [] per render would rebuild every body's line geometry on every frame.
@@ -54,8 +68,16 @@ export default function AssemblyViewport() {
   const transforms = useAssemblyStore(s => s.transforms)
   const manipulation = useAssemblyStore(s => s.manipulation)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
+  const pickGeometry = useAssemblyStore(s => s.pickGeometry)
+  const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
+  const anchors = useAssemblyStore(s => s.anchors)
+  const hoverHits = useAssemblyStore(s => s.hoverHits)
+  const pickScopeEntity = useAssemblyStore(s => s.pickScopeEntity)
+  const pickCandidates = useAssemblyStore(s => s.pickCandidates)
+  const pickIndex = useAssemblyStore(s => s.pickIndex)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const pipelineRef = useRef<IdPipeline | null>(null)
   const pvRef = useRef<Pv[]>([])
   const hoverRef = useRef<Hit | null>(null)
   const snapRef = useRef<THREE.Vector3 | null>(null)
@@ -89,6 +111,18 @@ export default function AssemblyViewport() {
     [bodies, instances, manipulation, selectedPartHandle],
   )
   const builtins = useMemo(() => getAssemblyBuiltinsToRender(doc), [doc])
+
+  // Nothing is drawn until the cursor rests on an entity: this is the whole of
+  // the hover gate. The aimed candidate is highlighted only while it is still
+  // under the cursor; moving away leaves the pick standing but undrawn.
+  const gizmos = useMemo(
+    () => resolveAnchorGizmos(
+      hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates[pickIndex] ?? null,
+    ),
+    [hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates, pickIndex],
+  )
+
+  const onPipelineReady = useCallback((p: IdPipeline) => { pipelineRef.current = p }, [])
   // A grounded part is the assembly's static frame: it selects, but it gets no
   // gizmo, because there is nothing the gizmo could move.
   const triadOrigin = useMemo(() => {
@@ -128,6 +162,75 @@ export default function AssemblyViewport() {
     }
   }, [raycaster])
 
+  // The ID buffer is read in drawing-buffer pixels; the pointer speaks CSS.
+  const resolveHitsAt = useCallback((e: { clientX: number; clientY: number }) => {
+    const gl = glRef.current
+    const pipeline = pipelineRef.current
+    if (!gl || !pipeline) return []
+    const canvas = gl.domElement
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return []
+    const cursor = {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    }
+    return pipeline.resolveAllSync(gl, cursor, { allowedLayers: ASSEMBLY_PICK_LAYERS })
+  }, [])
+
+  // One GPU readback per frame at most. A pointermove fires far faster than the
+  // ID buffer can be re-read, and a sync readback stalls the pipeline.
+  const hoverFrame = useRef(0)
+  const hoverEvent = useRef<{ clientX: number; clientY: number; ctrlKey: boolean } | null>(null)
+
+  // Dropping the hover means dropping the frame that would restore it. A move
+  // from a fraction of a frame ago is still queued when the user grabs the part
+  // or leaves the pane, and letting it land would re-draw the anchors the clear
+  // was for, with nothing left to clear them again.
+  const clearHover = useCallback(() => {
+    if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current)
+    hoverFrame.current = 0
+    hoverEvent.current = null
+    useAssemblyStore.getState().clearHover()
+  }, [])
+
+  const scheduleHover = useCallback((e: React.PointerEvent) => {
+    // A held button means an orbit is in progress. Every frame of it would
+    // re-render the ID buffer and read it back, to answer a question the user is
+    // not asking while swinging the camera around.
+    if (e.buttons !== 0) {
+      clearHover()
+      return
+    }
+    hoverEvent.current = { clientX: e.clientX, clientY: e.clientY, ctrlKey: e.ctrlKey }
+    if (hoverFrame.current) return
+    hoverFrame.current = requestAnimationFrame(() => {
+      hoverFrame.current = 0
+      const pending = hoverEvent.current
+      if (!pending) return
+      useAssemblyStore.getState().setHoverHits(resolveHitsAt(pending), pending.ctrlKey)
+    })
+  }, [clearHover, resolveHitsAt])
+
+  useEffect(() => () => { if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current) }, [])
+
+  // Ctrl narrows the hover scope, and the user may press or release it without
+  // moving the mouse. Re-deriving from the hits already in hand keeps the drawn
+  // set honest without another readback.
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => {
+      if (e.key !== 'Control') return
+      const store = useAssemblyStore.getState()
+      if (store.hoverHits.length === 0) return
+      store.setHoverHits(store.hoverHits, e.type === 'keydown')
+    }
+    window.addEventListener('keydown', sync)
+    window.addEventListener('keyup', sync)
+    return () => {
+      window.removeEventListener('keydown', sync)
+      window.removeEventListener('keyup', sync)
+    }
+  }, [])
+
   const handleGrabBody = useCallback((handle: string, point: Vec3) => {
     const camera = cameraRef.current
     if (!camera) return
@@ -135,32 +238,53 @@ export default function AssemblyViewport() {
     // so the part follows the cursor exactly under any view direction.
     const forward = camera.getWorldDirection(new THREE.Vector3())
     if (adapter.onBodyPointerDown(handle, point, [forward.x, forward.y, forward.z])) {
+      // The ID buffer keeps the solved pose while the drag offsets the drawn
+      // part, so anchors held over from before the grab would trail behind it.
+      clearHover()
       setManipulating(true)
     }
-  }, [adapter])
+  }, [adapter, clearHover])
 
   const handleGrabGizmo = useCallback((mode: GizmoMode, axis: Vec3, e: ThreeEvent<PointerEvent>) => {
     if (!selectedPartHandle || !triadOrigin) return
     const ray = rayFromEvent(e)
     if (!ray) return
     if (adapter.onGizmoPointerDown(selectedPartHandle, mode, axis, triadOrigin, ray)) {
+      clearHover()  // the gizmo moves the part too; same stale-anchor trail
       setManipulating(true)
     }
-  }, [adapter, rayFromEvent, selectedPartHandle, triadOrigin])
+  }, [adapter, clearHover, rayFromEvent, selectedPartHandle, triadOrigin])
 
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
   // grazes the pane edge, and guarantees the release reaches us wherever it
   // lands — otherwise a session would hang with the camera locked.
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (adapter.isActive()) e.currentTarget.setPointerCapture(e.pointerId)
-  }, [adapter])
+    if (adapter.isActive()) {
+      e.currentTarget.setPointerCapture(e.pointerId)
+      return
+    }
+    // Ctrl+click aims a mate reference instead of grabbing the part (AssemblyBody
+    // declines the grab for the same modifier). Landing on the pixel that
+    // produced the current set advances the cycle, so a corner's seven entities
+    // are all reachable without moving the mouse.
+    if (e.button === 0 && e.ctrlKey) {
+      useAssemblyStore.getState().pickFromHitsOrCycle(resolveHitsAt(e))
+    }
+  }, [adapter, resolveHitsAt])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!adapter.isActive()) return
+    if (!adapter.isActive()) {
+      scheduleHover(e)
+      return
+    }
     const ray = rayFromEvent(e)
     if (ray) adapter.onPointerMove(ray)
-  }, [adapter, rayFromEvent])
+  }, [adapter, rayFromEvent, scheduleHover])
+
+  // The cursor left the pane, so nothing is under it. Gizmos drawn from the last
+  // hover would sit there advertising a pick the pointer can no longer make.
+  const handlePointerLeave = useCallback(() => { clearHover() }, [clearHover])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
@@ -204,6 +328,7 @@ export default function AssemblyViewport() {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onPointerLeave={handlePointerLeave}
       onContextMenu={handleContextMenu}
     >
       <Canvas
@@ -225,17 +350,13 @@ export default function AssemblyViewport() {
           orbitEnabled={!manipulating}
         />
 
+        <IdPickingDriver onReady={onPipelineReady} />
+        <AssemblyPickLayers bodies={pickGeometry} />
+
         <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
         <EnvLight />
 
-        {builtins.map(b => (b.kind === 'origin' ? (
-          <Dot key={b.id} x={0} y={0} px={4} color={COLOR_INACTIVE} billboard renderOrder={999} depthTest={false} />
-        ) : (
-          <group key={b.id} rotation={b.rotation}>
-            <PlaneSurface size={ASSEMBLY_PLANE_SIZE} />
-            <PlaneLabel x={-ASSEMBLY_PLANE_SIZE / 2} y={ASSEMBLY_PLANE_SIZE / 2}>{b.label}</PlaneLabel>
-          </group>
-        )))}
+        {builtins.map(b => <AssemblyBuiltin key={b.id} item={b} />)}
 
         {groups.map(g => (
           <group key={g.handle} position={g.position} quaternion={g.quaternion}>
@@ -250,6 +371,8 @@ export default function AssemblyViewport() {
             ))}
           </group>
         ))}
+
+        <AnchorGizmos gizmos={gizmos} />
 
         {triadOrigin && <TriadGizmo origin={triadOrigin} onGrab={handleGrabGizmo} />}
       </Canvas>

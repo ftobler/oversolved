@@ -1,7 +1,7 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
 import type { Mesh3D } from '@/types/cad'
-import { buildBodyGeometry, faceCount } from '@/components/Geometry3D/bodyGeometry'
+import { buildBodyGeometry, faceCount, toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
 
 /**
  * Hook used by Body3D to register a body's per-face geometry with the
@@ -29,13 +29,7 @@ export function useFaceIdRegistration(params: {
       const numTris = faceCount(mesh.faces)
       if (numTris === 0) return false
       const { positions, indices } = buildBodyGeometry(mesh)
-      const nonIndexed = new Float32Array(indices.length * 3)
-      for (let i = 0; i < indices.length; i++) {
-        const vi = indices[i] * 3
-        nonIndexed[i * 3]     = positions[vi]
-        nonIndexed[i * 3 + 1] = positions[vi + 1]
-        nonIndexed[i * 3 + 2] = positions[vi + 2]
-      }
+      const nonIndexed = toNonIndexedPositions(positions, indices)
       const tri2face = triangle_to_face instanceof Uint32Array
         ? triangle_to_face
         : Uint32Array.from(triangle_to_face)

@@ -1,8 +1,8 @@
 // A part instance's mesh + analytic edges in the assembly scene. Deliberately
-// not Body3D: that component registers face/edge/vertex ID layers and reads
-// sketchEditorStore, both of which are part-editor concerns. Assembly picking is
-// anchor-based and arrives with Stage 7; until then a body is a shaded mesh that
-// can be grabbed and dragged.
+// not Body3D: that component registers face/edge/vertex ID layers from ancestry
+// queries and reads sketchEditorStore, both part-editor concerns. The assembly's
+// ID layers are keyed by the bundle's positional entity ids instead, and are
+// registered once for the whole scene by AssemblyPickLayers.
 //
 // The edges are the "B-rep feeling" (tier 1): sampled from the bundle's analytic
 // curves rather than pulled off the tessellation, so a hole's rim stays a circle
@@ -64,6 +64,10 @@ export default function AssemblyBody({ item, curves, selected, onGrab }: Assembl
         userData={{ fitBounds: true }}
         onPointerDown={(e) => {
           if (e.button !== 0) return
+          // Ctrl+click aims a mate reference (AssemblyViewport resolves it off
+          // the ID buffer). Grabbing the part on the same gesture would drag it
+          // away from the anchor the user was pointing at.
+          if (e.ctrlKey) return
           e.stopPropagation()
           onGrab([e.point.x, e.point.y, e.point.z], e)
         }}

@@ -499,6 +499,61 @@ describe('solveAssembly', () => {
     expect(result.bodies['p2'][0].edges[0].endpoints[0][0]).toBeCloseTo(-100)
   })
 
+  // ── posed anchors (Stage 7.5) ────────────────────────────────────────
+
+  it('carries the anchors into the solved pose, points moved and axes only rotated', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1, {
+      anchors: {
+        a1: { kind: 'plane', point: [1, 0, 0], axis: [1, 0, 0], geom_hash: 'g1', created_by: 'feat1' },
+      },
+    }))
+
+    // 90° about +Z, then lifted 3 in z. No mates, so the placed transform is
+    // echoed straight back and the anchor must land under exactly it.
+    const s = Math.SQRT1_2
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+
+    const posed = result.anchors['p1'].a1
+    expect(posed.point[0]).toBeCloseTo(0)
+    expect(posed.point[1]).toBeCloseTo(1)
+    expect(posed.point[2]).toBeCloseTo(3)  // the translation
+    expect(posed.axis[0]).toBeCloseTo(0)
+    expect(posed.axis[1]).toBeCloseTo(1)
+    expect(posed.axis[2]).toBeCloseTo(0)   // a direction takes no translation
+    expect(posed.kind).toBe('plane')
+  })
+
+  it('does not ship the match descriptors: they are migration inputs, not render data', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [{ handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() }]
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+
+    expect(Object.keys(result.anchors['p1'].a1).sort()).toEqual(['axis', 'kind', 'point'])
+  })
+
+  it('gives two instances of one part independently posed anchors', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(100, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(-100, 0, 0) },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+
+    expect(result.anchors['p1'].a1.point[0]).toBeCloseTo(100)
+    expect(result.anchors['p2'].a1.point[0]).toBeCloseTo(-100)
+  })
+
   // ── stale ref detection ──────────────────────────────────────────────
 
   it('flags a mate as stale when anchor is missing from bundle', async () => {

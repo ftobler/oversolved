@@ -3,6 +3,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import {
   DEFAULT_CURVE_RESOLUTION,
   buildCurveSegments,
+  buildIndexedCurveSegments,
   sampleEdgeCurve,
   segmentCount,
 } from '@/utils/edgeSampling'
@@ -213,5 +214,36 @@ describe('buildCurveSegments', () => {
   it('defaults to the full-turn resolution constant', () => {
     const out = buildCurveSegments([circle(0, 2 * Math.PI)])
     expect(out).toHaveLength(DEFAULT_CURVE_RESOLUTION * 6)
+  })
+})
+
+describe('buildIndexedCurveSegments', () => {
+  it('carries the same positions the visible overlay draws', () => {
+    const curves = [line, circle(0, 2 * Math.PI)]
+    expect([...buildIndexedCurveSegments(curves).positions]).toEqual([...buildCurveSegments(curves)])
+  })
+
+  it('names the curve each segment came from', () => {
+    const { segmentToCurve } = buildIndexedCurveSegments([line, circle(0, Math.PI)], 8)
+    expect(segmentToCurve[0]).toBe(0)
+    expect(segmentToCurve.filter(i => i === 0)).toHaveLength(1)  // the line is one segment
+    expect(segmentToCurve.filter(i => i === 1)).toHaveLength(4)  // a half turn of 8
+  })
+
+  it('keeps ownership when a degenerate segment is dropped', () => {
+    const broken: EdgeCurve = {
+      id: 'e', kind: 'line', point: [0, 0, 0],
+      endpoints: [[0, 0, 0], [NaN, 0, 0]],
+    }
+    // The broken curve contributes nothing, so the surviving segment must still
+    // name curve 1 -- not curve 0, which it would if indices were positional.
+    const { positions, segmentToCurve } = buildIndexedCurveSegments([broken, line])
+    expect(positions).toHaveLength(6)
+    expect([...segmentToCurve]).toEqual([1])
+  })
+
+  it('has one owner per segment', () => {
+    const { positions, segmentToCurve } = buildIndexedCurveSegments([line, ellipse, spline])
+    expect(segmentToCurve.length).toBe(positions.length / 6)
   })
 })

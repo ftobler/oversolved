@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
+import type { AssemblySolveResult } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 
 const PART = 'h1'
@@ -19,6 +20,10 @@ const ENTITY_MATE_REFS: EntityMateRefs = {
   [FREEFORM]: [],
 }
 
+const SOLVE_RESULT: AssemblySolveResult = {
+  transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {}, pickGeometry: [],
+}
+
 /** Resolver order at a corner: vertex wins, then the edge, then the face. */
 const CORNER_HITS = [{ entityKey: VERT }, { entityKey: EDGE }, { entityKey: FACE }]
 
@@ -28,7 +33,7 @@ beforeEach(() => {
   getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
   getState().clearPickCandidates()
   getState().setPickScopeEntity(null)
-  getState().setSolveResult({}, {}, {}, ENTITY_MATE_REFS)
+  getState().setSolveResult(SOLVE_RESULT)
 })
 
 describe('assemblyStore pick candidates', () => {
@@ -85,7 +90,7 @@ describe('assemblyStore pick candidates', () => {
 
   it('a re-solve drops the set, so no aim survives into a rebuilt bundle', () => {
     getState().setPickFromHits(CORNER_HITS)
-    getState().setSolveResult({}, {}, {}, ENTITY_MATE_REFS)
+    getState().setSolveResult(SOLVE_RESULT)
     expect(getState().pickCandidates).toEqual([])
     expect(getState().activePickCandidate()).toBeNull()
   })
@@ -103,5 +108,99 @@ describe('assemblyStore pick candidates', () => {
     getState().clearPickCandidates()
     expect(getState().pickCandidates).toEqual([])
     expect(getState().pickIndex).toBe(-1)
+  })
+})
+
+// Stage 7.5: the hover gate. Anchors are drawn only for what the cursor names,
+// and Ctrl narrows that to one entity.
+describe('assemblyStore hover', () => {
+  it('nothing is hovered by default, so nothing is drawn', () => {
+    expect(getState().hoverHits).toEqual([])
+    expect(getState().pickScopeEntity).toBeNull()
+  })
+
+  it('a hover records every entity under the cursor, resolver-ordered', () => {
+    getState().setHoverHits(CORNER_HITS, false)
+    expect(getState().hoverHits.map(h => h.entityKey)).toEqual([VERT, EDGE, FACE])
+    expect(getState().pickScopeEntity).toBeNull()
+  })
+
+  it('Ctrl+hover scopes to the winning entity', () => {
+    getState().setHoverHits(CORNER_HITS, true)
+    expect(getState().pickScopeEntity).toBe(VERT)
+  })
+
+  it('re-resolving the same hits does not churn state: a resting pointer must not rebuild the gizmos', () => {
+    getState().setHoverHits(CORNER_HITS, false)
+    const first = getState().hoverHits
+    getState().setHoverHits([...CORNER_HITS], false)
+    expect(getState().hoverHits).toBe(first)
+  })
+
+  it('the same hits under a changed Ctrl state do update the scope', () => {
+    getState().setHoverHits(CORNER_HITS, false)
+    getState().setHoverHits(CORNER_HITS, true)
+    expect(getState().pickScopeEntity).toBe(VERT)
+  })
+
+  it('releasing Ctrl over the same hits widens the scope again', () => {
+    getState().setHoverHits(CORNER_HITS, true)
+    getState().setHoverHits(CORNER_HITS, false)
+    expect(getState().pickScopeEntity).toBeNull()
+  })
+
+  it('leaving the viewport drops the hover and its scope', () => {
+    getState().setHoverHits(CORNER_HITS, true)
+    getState().clearHover()
+    expect(getState().hoverHits).toEqual([])
+    expect(getState().pickScopeEntity).toBeNull()
+  })
+
+  it('a re-solve drops the hover: its entity keys are positional and a rebuild renumbers them', () => {
+    getState().setHoverHits(CORNER_HITS, false)
+    getState().setSolveResult(SOLVE_RESULT)
+    expect(getState().hoverHits).toEqual([])
+  })
+
+  it('setSnapshot leaves the hover alone (it is store-owned, not document state)', () => {
+    getState().setHoverHits(CORNER_HITS, false)
+    getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, entityMateRefs: ENTITY_MATE_REFS })
+    expect(getState().hoverHits).toHaveLength(3)
+  })
+})
+
+describe('assemblyStore pickFromHitsOrCycle', () => {
+  it('the first Ctrl+click aims the top candidate', () => {
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    expect(getState().activePickCandidate()).toEqual({ part: PART, anchor: 'a_v' })
+  })
+
+  it('clicking the same corner again advances the cycle instead of resetting it', () => {
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    expect(getState().activePickCandidate()).toEqual({ part: PART, anchor: 'a_e' })
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    expect(getState().activePickCandidate()).toEqual({ part: PART, anchor: 'a_f' })
+  })
+
+  it('clicking a different entity re-aims rather than advancing', () => {
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    getState().pickFromHitsOrCycle(CORNER_HITS)  // aim is now the edge
+    getState().pickFromHitsOrCycle([{ entityKey: FACE }])
+    expect(getState().pickCandidates).toEqual([{ part: PART, anchor: 'a_f' }])
+    expect(getState().pickIndex).toBe(0)
+  })
+
+  it('clicking an anchor-less entity clears the aim', () => {
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    getState().pickFromHitsOrCycle([{ entityKey: FREEFORM }])
+    expect(getState().pickCandidates).toEqual([])
+    expect(getState().activePickCandidate()).toBeNull()
+  })
+
+  it('honours the Ctrl+hover scope: a scoped corner click aims that entity only', () => {
+    getState().setHoverHits([{ entityKey: EDGE }], true)  // Ctrl+hover pins the edge
+    getState().pickFromHitsOrCycle(CORNER_HITS)
+    expect(getState().pickCandidates).toEqual([{ part: PART, anchor: 'a_e' }])
   })
 })
