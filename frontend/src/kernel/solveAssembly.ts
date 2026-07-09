@@ -7,8 +7,8 @@
 // It is a pure async function over typed-array inputs — no React, no DOM.
 
 import { bundleCacheGet, bundleCachePut } from './bundleCache'
-import { migrateAnchors } from './partBundle'
-import type { PartBundle, BodyMesh, Anchor, EdgeCurve } from './partBundle'
+import { migrateBundle } from './partBundle'
+import type { PartBundle, BodyMesh, Anchor, EdgeCurve, EntityAnchorIndex } from './partBundle'
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import {
@@ -63,6 +63,10 @@ export interface MeshPayload {
   indices: Uint32Array
   faceIdsPerTriangle: Uint32Array
   edges: EdgeCurve[]  // solved-pose analytic curves; the viewport renders them crisp
+  // Anchor ids per picked entity (Stage 7). Ids, not geometry, so the solved
+  // transform leaves them untouched: the same entity names the same anchor at
+  // every pose. Absent for a bundle cached before Stage 7.
+  entityAnchors?: EntityAnchorIndex
 }
 
 // ─── Anchor kind mapping (TS → Rust u8) ──────────────────────────────────
@@ -328,10 +332,7 @@ export async function solveAssembly(
       prevBundle = await bundleCacheGet(part.doc_id, r)
       if (prevBundle) break
     }
-    if (prevBundle) {
-      const migrated = migrateAnchors(prevBundle, { anchors: bundle.anchors })
-      bundle = { ...bundle, anchors: migrated }
-    }
+    if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
 
     await bundleCachePut(bundle)
     partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
@@ -493,6 +494,7 @@ export async function solveAssembly(
       // `?? []`: a bundle cached before edges existed still solves, it just
       // renders without them. Same fail-safe posture as the sampler's chord.
       edges: (m.edges ?? []).map(e => transformEdgeCurve(e, t)),
+      entityAnchors: m.entityAnchors,
     }))
     transformedBodies[part.handle] = transformed
   }

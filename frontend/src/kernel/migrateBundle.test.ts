@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { migrateAnchors } from './partBundle'
-import type { Anchor, AnchorKind } from './partBundle'
+import { migrateBundle } from './partBundle'
+import type { Anchor, AnchorKind, EntityAnchorIndex, PartBundle } from './partBundle'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ function mA(kind: AnchorKind, point: [number, number, number],
 }
 
 function bundle(anchors: Record<string, Anchor>) {
-  return { anchors }
+  return { doc_id: 'doc', doc_rev: 1, bodies: [], anchors }
 }
 
 function ids(result: Record<string, Anchor>): string[] {
@@ -34,7 +34,7 @@ const FEATURE_A = 'feat_a'
 const FEATURE_B = 'feat_b'
 const FEATURE_C = 'feat_c'
 
-describe('migrateAnchors', () => {
+describe('migrateBundle', () => {
   // ── Tier 1: same-rev rebuild (exact geom_hash) ─────────────────────────
 
   it('migrates every id via tier 1 when geom_hashes are unchanged', () => {
@@ -50,7 +50,7 @@ describe('migrateAnchors', () => {
       { label: 'n3', kind: 'line', point: [5,0,0], axis: [1,0,0], geom_hash: '@gde|line|5,0,0|1,0,0|10', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect(ids(result)).toEqual(['old_1', 'old_2', 'old_3'])
     // Points are preserved from the new bundle geometry.
     expect(result['old_1'].point).toEqual([0, 0, 0])
@@ -71,7 +71,7 @@ describe('migrateAnchors', () => {
       { label: 'n1', kind: 'plane', point: [5,0,0], axis: [0,0,1], geom_hash: '@gdf|5,0,0|0,0,1', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect(ids(result)).toEqual(['old_face1'])
     expect(result['old_face1'].point).toEqual([5, 0, 0]) // new geometry
     expect(result['old_face1'].geom_hash).toBe('@gdf|5,0,0|0,0,1')
@@ -89,7 +89,7 @@ describe('migrateAnchors', () => {
       { label: 'n2', kind: 'line', point: [5,0,0], axis: [1,0,0], geom_hash: '@gde|line|5,0,0|1,0,0|10', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect(ids(result).sort()).toEqual(['old_edge', 'old_face'].sort())
     expect(result['old_face'].point).toEqual([3, 0, 0]) // migrated via tier 2
     expect(result['old_edge'].point).toEqual([5, 0, 0]) // via tier 1
@@ -108,7 +108,7 @@ describe('migrateAnchors', () => {
       { label: 'n_b2', kind: 'line', point: [10,5,0], axis: [0,1,0], geom_hash: '@gde|line|10,5,0|0,1,0|10', created_by: FEATURE_B },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     // old_a1 dies (feature gone). old_b1 migrates via tier 1. n_b2 keeps fresh id.
     expect('old_a1' in result).toBe(false)
     expect('old_b1' in result).toBe(true)
@@ -133,7 +133,7 @@ describe('migrateAnchors', () => {
       { label: 'n_sym2', kind: 'plane', point: [-10,0,0], axis: [0,0,1], geom_hash: '@gdf|-10,0,0|0,0,1', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     // old_sym dies — fail-safe over fail-wrong.
     expect('old_sym' in result).toBe(false)
     // Both new anchors keep their fresh ids.
@@ -151,7 +151,7 @@ describe('migrateAnchors', () => {
       { label: 'n_near', kind: 'plane', point: [2,0,0], axis: [0,0,1], geom_hash: '@gdf|2,0,0|0,0,1', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     // Nearest candidate [2,0,0] wins.
     expect('old_a' in result).toBe(true)
     expect(result['old_a'].point).toEqual([2, 0, 0])
@@ -171,7 +171,7 @@ describe('migrateAnchors', () => {
       { label: 'n_new', kind: 'cylinder', point: [20,0,0], axis: [1,0,0], geom_hash: '@gdf|20,0,0|1,0,0', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect('old_a1' in result).toBe(true) // migrated via tier 1
     expect('n_new' in result).toBe(true)  // kept fresh id
     expect(result['n_new'].kind).toBe('cylinder')
@@ -187,7 +187,7 @@ describe('migrateAnchors', () => {
       { label: 'n2', kind: 'line', point: [5,0,0], axis: [1,0,0], geom_hash: '@gde|5,0,0|1,0,0|10', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle({}), bundle(news))
+    const result = migrateBundle(bundle({}), bundle(news)).anchors
     expect(ids(result)).toEqual(['n1', 'n2'])
   })
 
@@ -205,7 +205,7 @@ describe('migrateAnchors', () => {
       { label: 'n3', kind: 'plane', point: [50,0,0], axis: [0,0,1], geom_hash: '@gdf|50,0,0|0,0,1', created_by: FEATURE_C }, // new feature
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect('old_t1' in result).toBe(true)  // tier 1 survive
     expect('old_t2' in result).toBe(true)  // tier 2 survive (unique FEATURE_A + plane)
     expect('old_die' in result).toBe(false) // dies (FEATURE_B gone)
@@ -229,7 +229,7 @@ describe('migrateAnchors', () => {
       { label: 'n_edge2', kind: 'circle', point: [5.2,0,0], axis: [0,0,1], geom_hash: '@gde|circle|5.2,0,0|0,0,1|2', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect('old_edge_t1' in result).toBe(true) // tier 1
     expect('old_edge_t2' in result).toBe(true) // tier 2 (unique FEATURE_A + circle)
   })
@@ -246,7 +246,7 @@ describe('migrateAnchors', () => {
       { label: 'n_v2', kind: 'point', point: [10.2,0,0], axis: [0,0,1], geom_hash: '@gdv|10.2,0,0', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     expect('old_v1' in result).toBe(true) // tier 1
     expect('old_v2' in result).toBe(true) // tier 2
   })
@@ -263,7 +263,7 @@ describe('migrateAnchors', () => {
       { label: 'n_line', kind: 'line', point: [0.1,0,0], axis: [1,0,0], geom_hash: '@gde|line|0.1,0,0|1,0,0|10', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     // Tier 1 fails (geom_hash changed). Tier 2: only n_line matches kind='line'.
     expect('old_line' in result).toBe(true)
     expect(result['old_line'].point).toEqual([0.1, 0, 0])
@@ -282,11 +282,89 @@ describe('migrateAnchors', () => {
       { label: 'n_a1', kind: 'plane', point: [0.1,0,0], axis: [0,0,1], geom_hash: '@gdf|0.1,0,0|0,0,1', created_by: FEATURE_A },
     ])
 
-    const result = migrateAnchors(bundle(old), bundle(news))
+    const result = migrateBundle(bundle(old), bundle(news)).anchors
     // old_a migrates via tier 2 (unique FEATURE_A + plane).
     expect('old_a' in result).toBe(true)
     // old_b dies — no FEATURE_B anchors in the new bundle.
     expect('old_b' in result).toBe(false)
     expect(Object.keys(result).length).toBe(1)
+  })
+})
+
+// ── Stage 7: the entity index migrates with the dict, or picks go stale ─────
+
+describe('migrateBundle entity index', () => {
+  const EMPTY_MESH = {
+    vertices: new Float32Array(0),
+    indices: new Uint32Array(0),
+    faceIdsPerTriangle: new Uint32Array(0),
+  }
+
+  function bundleWithIndex(
+    anchors: Record<string, Anchor>, entityAnchors: EntityAnchorIndex,
+  ): PartBundle {
+    return { doc_id: 'doc', doc_rev: 1, bodies: [{ mesh: EMPTY_MESH, edges: [], entityAnchors }], anchors }
+  }
+
+  it('rewrites the entity index to the migrated ids, so a pick names what the solver resolves', () => {
+    const old = makeAnchors([
+      { label: 'old_f', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+    ])
+    // Same face, moved by a dimension edit: tier-1 misses, tier-2 re-finds it.
+    const news = makeAnchors([
+      { label: 'fresh_f', kind: 'plane', point: [0,0,7], axis: [0,0,1], geom_hash: '@gdf|0,0,7|0,0,1', created_by: FEATURE_A },
+    ])
+    const next = bundleWithIndex(news, { faces: [['fresh_f']], edges: [], vertices: [] })
+
+    const migrated = migrateBundle(bundle(old), next)
+    expect(Object.keys(migrated.anchors)).toEqual(['old_f'])
+    expect(migrated.bodies[0].entityAnchors!.faces).toEqual([['old_f']])
+  })
+
+  it('every id the index names still resolves in the migrated dict', () => {
+    const old = makeAnchors([
+      { label: 'old_f', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+    ])
+    const news = makeAnchors([
+      { label: 'fresh_f', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+      { label: 'fresh_e', kind: 'line', point: [5,0,0], axis: [1,0,0], geom_hash: '@gde|5,0,0|1,0,0', created_by: FEATURE_B },
+    ])
+    const next = bundleWithIndex(news, { faces: [['fresh_f']], edges: [['fresh_e']], vertices: [] })
+
+    const migrated = migrateBundle(bundle(old), next)
+    const named = [
+      ...migrated.bodies[0].entityAnchors!.faces.flat(),
+      ...migrated.bodies[0].entityAnchors!.edges.flat(),
+    ]
+    for (const id of named) expect(migrated.anchors[id]).toBeDefined()
+    // fresh_e had no ancestor, so it keeps its fresh id in both places.
+    expect(named).toContain('fresh_e')
+  })
+
+  it('leaves an unmatable entity empty through migration', () => {
+    const old = makeAnchors([
+      { label: 'old_f', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+    ])
+    const news = makeAnchors([
+      { label: 'fresh_f', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+    ])
+    const next = bundleWithIndex(news, { faces: [[], ['fresh_f']], edges: [], vertices: [] })
+
+    const migrated = migrateBundle(bundle(old), next)
+    expect(migrated.bodies[0].entityAnchors!.faces).toEqual([[], ['old_f']])
+  })
+
+  it('passes a pre-Stage-7 bundle through without inventing an index', () => {
+    const news = makeAnchors([
+      { label: 'n1', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+    ])
+    const old = makeAnchors([
+      { label: 'old_1', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
+    ])
+    const next: PartBundle = { doc_id: 'doc', doc_rev: 1, bodies: [{ mesh: EMPTY_MESH, edges: [] }], anchors: news }
+
+    const migrated = migrateBundle(bundle(old), next)
+    expect(Object.keys(migrated.anchors)).toEqual(['old_1'])
+    expect(migrated.bodies[0].entityAnchors).toBeUndefined()
   })
 })

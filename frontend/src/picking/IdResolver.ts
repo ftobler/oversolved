@@ -24,33 +24,46 @@ export interface ResolveOptions {
 }
 
 /**
- * Decode an N x N RGBA pixel window into a single hit by nearest non-empty
- * pixel to the window center.
+ * Decode an N x N RGBA pixel window into EVERY distinct entity it covers, each
+ * carrying its nearest pixel's distance, ordered by layer priority (highest
+ * first) then by distance (nearest first).
+ *
+ * This is the pick contract the assembly's mate authoring needs (Stage 7): a
+ * single pixel at a corner covers three faces, three edges and a vertex, and a
+ * mate ref may legitimately be any of them. The singleton resolvers below are
+ * defined as this list's first element, so a hover, a click and a candidate set
+ * can never disagree about what "the" hit is.
  *
  * `pixels` is laid out row-major, row 0 = top row of the window in canvas
  * coordinates (the caller is responsible for matching `readRenderTargetPixels`'s
  * y-flipped origin; this resolver is geometry-agnostic).
  */
-export function resolvePixelWindow(
+export function resolvePixelWindowAll(
   pixels: Uint8Array,
   windowSize: number,
   registry: IdRegistry,
   allowedLayers?: ReadonlySet<string>,
   layerPriority?: Readonly<Record<string, number>>,
-): ResolvedHit | null {
-  if (windowSize <= 0) return null
+): ResolvedHit[] {
+  if (windowSize <= 0) return []
   if (pixels.length < windowSize * windowSize * 4) {
     throw new Error(`resolvePixelWindow: buffer too small for ${windowSize}x${windowSize}`)
   }
 
   const center = (windowSize - 1) / 2
 
-  // Per-priority-level best hit (closest to cursor within that level).
-  const bestPerPrio = new Map<number, ResolvedHit>()
-  let highestPrio = -Infinity
+  // Nearest pixel per distinct entity id. `scanIndex` is where that nearest
+  // pixel sat in the row-major scan: it breaks a distance tie toward whichever
+  // entity reached the tied distance first, which is the rule the single-hit
+  // resolver has always used. Without it a tie would fall to first-*seen* order,
+  // and an entity whose first pixel was far but whose nearest pixel is tied
+  // would jump ahead of one that was near all along.
+  interface Candidate { hit: ResolvedHit; prio: number; scanIndex: number }
+  const bestPerId = new Map<number, Candidate>()
 
+  let scanIndex = 0
   for (let y = 0; y < windowSize; y++) {
-    for (let x = 0; x < windowSize; x++) {
+    for (let x = 0; x < windowSize; x++, scanIndex++) {
       const i = (y * windowSize + x) * 4
       const a = pixels[i + 3]
       if (a === 0) continue
@@ -63,18 +76,38 @@ export function resolvePixelWindow(
       const dx = x - center
       const dy = y - center
       const dist = Math.hypot(dx, dy)
-      const prio = layerPriority?.[rec.layer] ?? 0
-      if (prio > highestPrio) highestPrio = prio
 
-      const existing = bestPerPrio.get(prio)
-      if (!existing || dist < existing.distancePx) {
-        bestPerPrio.set(prio, { id, layer: rec.layer, entityKey: rec.entityKey, distancePx: dist })
+      const existing = bestPerId.get(id)
+      if (!existing) {
+        bestPerId.set(id, {
+          hit: { id, layer: rec.layer, entityKey: rec.entityKey, distancePx: dist },
+          prio: layerPriority?.[rec.layer] ?? 0,
+          scanIndex,
+        })
+      } else if (dist < existing.hit.distancePx) {
+        existing.hit.distancePx = dist
+        existing.scanIndex = scanIndex
       }
     }
   }
 
-  if (highestPrio === -Infinity) return null
-  return bestPerPrio.get(highestPrio) ?? null
+  return [...bestPerId.values()]
+    .sort((p, q) => (q.prio - p.prio) || (p.hit.distancePx - q.hit.distancePx) || (p.scanIndex - q.scanIndex))
+    .map(c => c.hit)
+}
+
+/**
+ * Decode an N x N RGBA pixel window into a single hit: the nearest non-empty
+ * pixel within the highest-priority layer present.
+ */
+export function resolvePixelWindow(
+  pixels: Uint8Array,
+  windowSize: number,
+  registry: IdRegistry,
+  allowedLayers?: ReadonlySet<string>,
+  layerPriority?: Readonly<Record<string, number>>,
+): ResolvedHit | null {
+  return resolvePixelWindowAll(pixels, windowSize, registry, allowedLayers, layerPriority)[0] ?? null
 }
 
 /**
@@ -108,6 +141,11 @@ export class IdResolver {
    */
   decode(scratch: Uint8Array, windowSize: number, opts?: ResolveOptions): ResolvedHit | null {
     return resolvePixelWindow(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
+  }
+
+  /** Every entity the window covers, priority-then-distance ordered. */
+  decodeAll(scratch: Uint8Array, windowSize: number, opts?: ResolveOptions): ResolvedHit[] {
+    return resolvePixelWindowAll(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
   }
 
   getScratchBuffer(windowSize: number): Uint8Array {

@@ -312,6 +312,32 @@ export class IdPipeline {
     cursorPx: { x: number; y: number },
     opts?: ResolveOptions,
   ): ResolvedHit | null {
+    const read = this.readWindow(renderer, cursorPx, opts)
+    if (!read) return null
+    return this.resolver.decode(read.scratch, read.windowSize, { ...opts, layerPriority: this.getLayerPriority() })
+  }
+
+  /**
+   * Every entity under the cursor, not just the winner. The mate pick chip
+   * consumes this: at a corner one pixel names several matable entities, and the
+   * user cycles among them. `resolveAllSync(...)[0]` is `resolveSync(...)`.
+   */
+  resolveAllSync(
+    renderer: THREE.WebGLRenderer,
+    cursorPx: { x: number; y: number },
+    opts?: ResolveOptions,
+  ): ResolvedHit[] {
+    const read = this.readWindow(renderer, cursorPx, opts)
+    if (!read) return []
+    return this.resolver.decodeAll(read.scratch, read.windowSize, { ...opts, layerPriority: this.getLayerPriority() })
+  }
+
+  /** Blit the pixel window under the cursor into the resolver's scratch buffer. */
+  private readWindow(
+    renderer: THREE.WebGLRenderer,
+    cursorPx: { x: number; y: number },
+    opts?: ResolveOptions,
+  ): { scratch: Uint8Array; windowSize: number } | null {
     if (this.target.isDirty()) return null  // render target is stale
     const w = this.target.getWidth()
     const h = this.target.getHeight()
@@ -361,7 +387,7 @@ export class IdPipeline {
       scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
     }
 
-    return this.resolver.decode(scratch, windowSize, { ...opts, layerPriority: this.getLayerPriority() })
+    return { scratch, windowSize }
   }
 
   /**

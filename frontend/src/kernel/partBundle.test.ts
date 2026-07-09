@@ -264,7 +264,7 @@ describe('extractBodyAnchors', () => {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: { vertices: [], faces: [], face_queries: fqs, face_data: fds },
     }
-    const anchors = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractBodyAnchors(body, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(5)
     const kinds = vals.map((a) => a.kind).sort()
@@ -285,7 +285,7 @@ describe('extractBodyAnchors', () => {
         face_data: [{ centroid: [10, 10, 5], normal: [0, 0, 1], area: 1, surface_type: 'face' }],
       },
     }
-    const anchors = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractBodyAnchors(body, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(0)
   })
 
@@ -305,7 +305,7 @@ describe('extractBodyAnchors', () => {
         makeQuery([`@gde|spline|1,0,0|0,0,0|0`, `@${EX_FEATURE}`], 'edge'),
       ],
     }
-    const anchors = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractBodyAnchors(body, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(2)
     expect(vals[0].kind).toBe('line')
@@ -332,7 +332,7 @@ describe('extractBodyAnchors', () => {
         makeQuery([`@gdv|10,10,0`, `@${EX_FEATURE}`], 'vertex'),
       ],
     }
-    const anchors = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractBodyAnchors(body, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(3)
     for (const a of vals) {
@@ -352,7 +352,7 @@ describe('extractBodyAnchors', () => {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: { vertices: [], faces: [] },
     }
-    const anchors = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractBodyAnchors(body, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(0)
   })
 
@@ -377,9 +377,82 @@ describe('extractBodyAnchors', () => {
       vertices: [[0, 0, 0]],
       vertex_queries: [makeQuery([`@gdv|0,0,0`, `@${EX_FEATURE}`], 'vertex')],
     }
-    const anchors = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractBodyAnchors(body, mintFactory())
     const keys = Object.keys(anchors)
     expect(keys).toHaveLength(4)  // 2 faces + 1 edge + 1 vertex
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+// ── Stage 7: the entity -> anchor join a pick resolves through ──────────────
+
+describe('extractBodyAnchors entity index', () => {
+  function mintFactory(): () => string {
+    let n = 0
+    return () => { n++; return `a${n}` }
+  }
+
+  /** One flat face, one freeform face, one line edge, one ellipse edge, one vertex. */
+  function mixedBody(): BodyResult {
+    return {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [
+          makeQuery(['@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface'),
+          makeQuery(['@gdf|1,1,1|0,0,1', `@${EX_FEATURE}`], 'face'),
+        ],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
+          { centroid: [1, 1, 1], normal: [0, 0, 1], area: 1, surface_type: 'face' },
+        ],
+      },
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+        { kind: 'ellipse', center: [0, 0, 0], a: 5, b: 3, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 1 },
+      ],
+      edge_queries: [
+        makeQuery(['@gde|5,0,0|1,0,0', `@${EX_FEATURE}`], 'edge'),
+        makeQuery(['@gde|0,0,0|0,0,1', `@${EX_FEATURE}`], 'edge'),
+      ],
+      vertices: [[0, 0, 0]],
+      vertex_queries: [makeQuery(['@gdv|0,0,0', `@${EX_FEATURE}`], 'vertex')],
+    }
+  }
+
+  it('names every anchor it minted, under the entity that owns it', () => {
+    const { anchors, entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    const named = [
+      ...entityAnchors.faces.flat(), ...entityAnchors.edges.flat(), ...entityAnchors.vertices.flat(),
+    ]
+    expect(named.sort()).toEqual(Object.keys(anchors).sort())
+  })
+
+  it('keeps a slot for every entity, so the positional join to the mesh holds', () => {
+    const { entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    expect(entityAnchors.faces).toHaveLength(2)
+    expect(entityAnchors.edges).toHaveLength(2)
+    expect(entityAnchors.vertices).toHaveLength(1)
+  })
+
+  it('leaves the unmatable entities empty rather than shifting their neighbours', () => {
+    const { entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    expect(entityAnchors.faces[0]).toHaveLength(1)   // flatface
+    expect(entityAnchors.faces[1]).toEqual([])       // freeform
+    expect(entityAnchors.edges[0]).toHaveLength(1)   // line
+    expect(entityAnchors.edges[1]).toEqual([])       // ellipse
+  })
+
+  it('resolves each entity to the anchor whose geometry it carries', () => {
+    const { anchors, entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    expect(anchors[entityAnchors.faces[0][0]].kind).toBe('plane')
+    expect(anchors[entityAnchors.edges[0][0]].kind).toBe('line')
+    expect(anchors[entityAnchors.vertices[0][0]].kind).toBe('point')
+  })
+
+  it('toPartBundle carries the index onto each BodyMesh', () => {
+    const bundle = toPartBundle('doc1', 3, { b1: mixedBody() })
+    expect(bundle.bodies[0].entityAnchors!.faces[0][0]).toBeDefined()
+    expect(bundle.anchors[bundle.bodies[0].entityAnchors!.faces[0][0]]).toBeDefined()
   })
 })

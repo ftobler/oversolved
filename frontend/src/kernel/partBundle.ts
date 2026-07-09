@@ -36,6 +36,22 @@ export interface EdgeCurve {
   points?: [number, number, number][]  // b-spline: the tessellated polyline
 }
 
+/**
+ * Which anchors a picked entity offers as mate references (Stage 7). Indexed
+ * positionally: `faces[i]` for the B-rep face `faceIdsPerTriangle` names, and
+ * `edges[i]` / `vertices[i]` for the i-th edge / vertex of the source body.
+ *
+ * One entity maps to a LIST, never a single id: a pick contract that returned a
+ * singleton could not express the corner where three faces, three edges and a
+ * vertex all sit under one pixel. An entity with no matable anchor (a freeform
+ * face, an ellipse edge) carries an empty list: not an error, just not matable.
+ */
+export interface EntityAnchorIndex {
+  faces: string[][]
+  edges: string[][]
+  vertices: string[][]
+}
+
 export interface BodyMesh {
   mesh: {
     vertices: Float32Array
@@ -43,6 +59,9 @@ export interface BodyMesh {
     faceIdsPerTriangle: Uint32Array
   }
   edges: EdgeCurve[]
+  // Optional so a bundle cached before Stage 7 still solves; it just offers no
+  // mate picks until its part is rebuilt at a new rev.
+  entityAnchors?: EntityAnchorIndex
 }
 
 export interface PartBundle {
@@ -232,8 +251,9 @@ export function toPartBundle(
   const mintAnchorId = (): string => { anchorCounter++; return `${prefix}_a${anchorCounter}` }
   const allAnchors: Record<string, Anchor> = {}
   for (const body of Object.values(bodyResults)) {
-    bodies.push(toBodyMesh(body))
-    Object.assign(allAnchors, extractBodyAnchors(body, mintAnchorId))
+    const { anchors, entityAnchors } = extractBodyAnchors(body, mintAnchorId)
+    bodies.push({ ...toBodyMesh(body), entityAnchors })
+    Object.assign(allAnchors, anchors)
   }
   return { doc_id, doc_rev, bodies, anchors: allAnchors }
 }
@@ -289,71 +309,89 @@ function findDescriptorInQuery(query: string, prefix: string): string | null {
   return endIdx === -1 ? query.slice(idx) : query.slice(idx, endIdx)
 }
 
+export interface BodyAnchorExtraction {
+  anchors: Record<string, Anchor>
+  /** Positional entity → anchor-id lists, the join a pick needs (Stage 7). */
+  entityAnchors: EntityAnchorIndex
+}
+
 /**
  * Extract all supported anchors from a single BodyResult.
  * Skips freeform (bspline) faces, ellipse/spline edges. All vertices are kept.
+ * A skipped entity keeps its slot in `entityAnchors` with an empty list, so the
+ * positional join to `faceIdsPerTriangle` / `edges` / `vertices` stays intact.
  * @param mintId factory for unique anchor ids within this bundle.
  */
 export function extractBodyAnchors(
   bodyResult: BodyResult,
   mintId: () => string,
-): Record<string, Anchor> {
+): BodyAnchorExtraction {
   const anchors: Record<string, Anchor> = {}
+  const entityAnchors: EntityAnchorIndex = { faces: [], edges: [], vertices: [] }
   const created_by = bodyResult.created_by || ''
+
+  const emit = (slot: string[][], anchor: Anchor): void => {
+    const id = mintId()
+    anchors[id] = anchor
+    slot[slot.length - 1].push(id)
+  }
 
   // Face anchors: centroid + normal from face_data, kind from surface_type.
   const fqs = bodyResult.mesh?.face_queries
   const fds = bodyResult.mesh?.face_data
   if (fqs && fds) {
     for (let i = 0; i < fqs.length; i++) {
+      entityAnchors.faces.push([])
       const desc = findDescriptorInQuery(fqs[i], 'gdf|')
       if (!desc) continue
       const kind = faceTypeToAnchorKind(fds[i]?.surface_type)
       if (!kind) continue
-      anchors[mintId()] = {
+      emit(entityAnchors.faces, {
         kind,
         point: fds[i].centroid,
         axis: fds[i].normal,
         geom_hash: desc,
         created_by,
-      }
+      })
     }
   }
 
   // Edge anchors: representative point + axis from EdgeData.
   if (bodyResult.edges && bodyResult.edge_queries) {
     for (let i = 0; i < bodyResult.edges.length; i++) {
+      entityAnchors.edges.push([])
       const ed = bodyResult.edges[i]
       const kind = edgeAnchorKind(ed)
       if (!kind) continue
       const desc = findDescriptorInQuery(bodyResult.edge_queries[i], 'gde|')
       if (!desc) continue
-      anchors[mintId()] = {
+      emit(entityAnchors.edges, {
         kind,
         point: edgeAnchorPoint(ed),
         axis: edgeAnchorAxis(ed),
         geom_hash: desc,
         created_by,
-      }
+      })
     }
   }
 
   // Vertex anchors: point from vertices array.
   if (bodyResult.vertices && bodyResult.vertex_queries) {
     for (let i = 0; i < bodyResult.vertices.length; i++) {
+      entityAnchors.vertices.push([])
       const desc = findDescriptorInQuery(bodyResult.vertex_queries[i], 'gdv|')
       if (!desc) continue
-      anchors[mintId()] = {
+      emit(entityAnchors.vertices, {
         kind: 'point',
         point: bodyResult.vertices[i] as Vec3,
         axis: [0, 0, 1],
         geom_hash: desc,
         created_by,
-      }
+      })
     }
   }
 
-  return anchors
+  return { anchors, entityAnchors }
 }
 
 // ── Anchor migration (Stage 3) ─────────────────────────────────────────────
@@ -363,29 +401,26 @@ function distSq(a: Vec3, b: Vec3): number {
 }
 
 /**
- * Migrate anchor ids from an old bundle to a new bundle, so mate refs survive
- * rev-to-rev. Pure function over two anchor dicts — no OCC, no worker.
+ * Match the new bundle's freshly minted anchor ids back onto the old bundle's,
+ * so mate refs survive rev-to-rev. Pure function over two anchor dicts: no OCC,
+ * no worker. Returns `newId -> oldId` for every anchor that found its ancestor;
+ * an unmatched new anchor is absent (it keeps its fresh id) and an unmatched old
+ * id simply dies, taking any mate ref that held it to stale-red.
  *
  * Tier 1: exact `geom_hash` match transfers the old id.
  * Tier 2: same `created_by` + same `kind`, unique candidate or nearest by
  *         position. If the nearest is a tie, the old id dies.
- *
- * New anchors with no inbound old id keep their freshly minted ids.
- * Old ids that found no match simply disappear from the result.
  */
-export function migrateAnchors(
-  oldBundle: Pick<PartBundle, 'anchors'>,
-  newBundle: Pick<PartBundle, 'anchors'>,
-): Record<string, Anchor> {
-  const oldAnchors = oldBundle.anchors
-  const newAnchors = newBundle.anchors
+export function anchorIdRemap(
+  oldAnchors: Record<string, Anchor>,
+  newAnchors: Record<string, Anchor>,
+): Map<string, string> {
+  const remap = new Map<string, string>()
   const oldIds = Object.keys(oldAnchors)
   const newIds = Object.keys(newAnchors)
 
-  if (oldIds.length === 0) return { ...newAnchors }
+  if (oldIds.length === 0) return remap
 
-  // Result starts with all new anchors keyed by their fresh ids.
-  const result: Record<string, Anchor> = { ...newAnchors }
   const newIdConsumed = new Set<string>()
   const oldIdMigrated = new Set<string>()
 
@@ -403,8 +438,7 @@ export function migrateAnchors(
     const oldA = oldAnchors[oldId]
     const newId = newByGeomHash.get(oldA.geom_hash)
     if (newId && newId !== '' && !newIdConsumed.has(newId)) {
-      delete result[newId]
-      result[oldId] = { ...newAnchors[newId] }
+      remap.set(newId, oldId)
       newIdConsumed.add(newId)
       oldIdMigrated.add(oldId)
     }
@@ -435,8 +469,7 @@ export function migrateAnchors(
     if (candidates.length === 1) {
       // Unique candidate — direct match.
       const newId = candidates[0]
-      delete result[newId]
-      result[oldId] = { ...newAnchors[newId] }
+      remap.set(newId, oldId)
       newIdConsumed.add(newId)
       oldIdMigrated.add(oldId)
       newByCreatedByKind.set(key, [])
@@ -456,8 +489,7 @@ export function migrateAnchors(
         }
       }
       if (bestId && Math.abs(bestDist - secondBestDist) >= TIE_EPSILON_SQ) {
-        delete result[bestId]
-        result[oldId] = { ...newAnchors[bestId] }
+        remap.set(bestId, oldId)
         newIdConsumed.add(bestId)
         oldIdMigrated.add(oldId)
         // Remove consumed candidate from pool.
@@ -468,5 +500,41 @@ export function migrateAnchors(
     }
   }
 
-  return result
+  return remap
+}
+
+function remapEntityAnchors(index: EntityAnchorIndex, remap: Map<string, string>): EntityAnchorIndex {
+  const rewrite = (slots: string[][]): string[][] =>
+    slots.map(ids => ids.map(id => remap.get(id) ?? id))
+  return {
+    faces: rewrite(index.faces),
+    edges: rewrite(index.edges),
+    vertices: rewrite(index.vertices),
+  }
+}
+
+/**
+ * Bundle finalization: rewrite a freshly built bundle's anchor ids to the
+ * lineage the newest prior cached bundle established. The anchor dict and the
+ * per-body `entityAnchors` join must be rewritten together, because a mate ref resolves
+ * through the dict, a pick resolves through the join, and the two disagreeing
+ * would let a pick offer an id the solver cannot find.
+ */
+export function migrateBundle(
+  prev: Pick<PartBundle, 'anchors'>,
+  next: PartBundle,
+): PartBundle {
+  const remap = anchorIdRemap(prev.anchors, next.anchors)
+  if (remap.size === 0) return next
+
+  const anchors: Record<string, Anchor> = {}
+  for (const [newId, anchor] of Object.entries(next.anchors)) {
+    anchors[remap.get(newId) ?? newId] = { ...anchor }
+  }
+  const bodies = next.bodies.map(body => (
+    body.entityAnchors
+      ? { ...body, entityAnchors: remapEntityAnchors(body.entityAnchors, remap) }
+      : body
+  ))
+  return { ...next, anchors, bodies }
 }

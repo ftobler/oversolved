@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import type { AssemblyDoc, PartInstance, MateFeatureDef, Transform3D, BodyResult } from '@/types/cad'
+import type { AssemblyDoc, PartInstance, MateFeatureDef, MateRef, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
+import { cycleIndex, resolveCandidates, type EntityMateRefs } from '@/utils/anchorCandidates'
 import type { Vec3 } from '@/utils/transform3d'
 import {
   beginManipulation,
@@ -20,9 +21,21 @@ export interface AssemblyEditorData {
   bodies: Record<string, BodyResult>
   /** Analytic edges of the solved bodies, keyed by the same body id. */
   edgeCurves: Record<string, EdgeCurve[]>
+  /** Entity pick id -> the mate refs it offers. The Stage 7 pick lookup. */
+  entityMateRefs: EntityMateRefs
   pickBodies: Record<string, BodyResult>
   activePartHandle: string | null
   selectedPartHandle: string | null
+  /**
+   * The mate references under the last pick, resolver-ordered, and which one is
+   * aimed. A pick keeps the whole set: at a corner the user cycles through it
+   * rather than re-clicking pixels until the right entity happens to win.
+   * `pickIndex` is -1 exactly when the set is empty.
+   */
+  pickCandidates: MateRef[]
+  pickIndex: number
+  /** Ctrl+hover entity scope: restricts picks to this one entity's anchors. */
+  pickScopeEntity: string | null
   /** Live drag/gizmo state; null between manipulations. */
   manipulation: ManipulationSession | null
   isSolving: boolean
@@ -38,9 +51,13 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   transforms: {},
   bodies: {},
   edgeCurves: {},
+  entityMateRefs: {},
   pickBodies: {},
   activePartHandle: null,
   selectedPartHandle: null,
+  pickCandidates: [],
+  pickIndex: -1,
+  pickScopeEntity: null,
   manipulation: null,
   isSolving: false,
   solveError: null,
@@ -49,7 +66,10 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
 }
 
 // Fields owned exclusively by the store (not overwritten by setSnapshot).
-const STORE_OWNED_FIELDS = ['activePartHandle', 'selectedPartHandle', 'manipulation'] as const
+const STORE_OWNED_FIELDS = [
+  'activePartHandle', 'selectedPartHandle', 'manipulation',
+  'pickCandidates', 'pickIndex', 'pickScopeEntity',
+] as const
 
 /**
  * Host callbacks the AssemblyEditor registers, mirroring `setSketchCallback`
@@ -78,7 +98,16 @@ interface AssemblyEditorState extends AssemblyEditorData {
     transforms: Record<string, Transform3D>,
     bodies: Record<string, BodyResult>,
     edgeCurves: Record<string, EdgeCurve[]>,
+    entityMateRefs: EntityMateRefs,
   ) => void
+  /** Resolve an ordered hit list into the candidate set, aiming its first entry. */
+  setPickFromHits: (hits: readonly { entityKey: string }[]) => void
+  /** Ctrl+click: aim the next candidate. No-op on an empty set. */
+  cyclePickCandidate: () => void
+  clearPickCandidates: () => void
+  setPickScopeEntity: (entityKey: string | null) => void
+  /** The reference a mate pick chip would commit right now; the set is retained. */
+  activePickCandidate: () => MateRef | null
   /** Pointer-down on a part body or its triad. No-op for a grounded instance. */
   beginPartManipulation: (handle: string) => boolean
   /** `delta` / `angle` are measured from pointer-down, not from the last frame. */
@@ -103,7 +132,31 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
   setIsSolving: (solving) => set({ isSolving: solving }),
   setSolveError: (error) => set({ solveError: error }),
-  setSolveResult: (transforms, bodies, edgeCurves) => set({ transforms, bodies, edgeCurves }),
+  setSolveResult: (transforms, bodies, edgeCurves, entityMateRefs) => set({
+    transforms, bodies, edgeCurves, entityMateRefs,
+    // A re-solve can retire the anchors the aimed candidate named (a rebuilt
+    // bundle sheds an anchor its feature deleted), so the stale set is dropped
+    // rather than left pointing into the previous rev.
+    pickCandidates: [], pickIndex: -1,
+  }),
+
+  setPickFromHits: (hits) => set((prev) => {
+    const pickCandidates = resolveCandidates(hits, prev.entityMateRefs, prev.pickScopeEntity)
+    return { pickCandidates, pickIndex: pickCandidates.length > 0 ? 0 : -1 }
+  }),
+
+  cyclePickCandidate: () => set((prev) => ({
+    pickIndex: cycleIndex(prev.pickCandidates.length, prev.pickIndex),
+  })),
+
+  clearPickCandidates: () => set({ pickCandidates: [], pickIndex: -1 }),
+
+  setPickScopeEntity: (entityKey) => set({ pickScopeEntity: entityKey }),
+
+  activePickCandidate: () => {
+    const { pickCandidates, pickIndex } = get()
+    return pickIndex >= 0 ? pickCandidates[pickIndex] ?? null : null
+  },
 
   beginPartManipulation: (handle) => {
     const doc = get().doc
