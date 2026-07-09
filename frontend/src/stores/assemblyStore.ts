@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AssemblyDoc, PartInstance, MateFeatureDef, Transform3D, BodyResult } from '@/types/cad'
+import type { EdgeCurve } from '@/kernel/partBundle'
 import type { Vec3 } from '@/utils/transform3d'
 import {
   beginManipulation,
@@ -17,6 +18,8 @@ export interface AssemblyEditorData {
   mates: MateFeatureDef[]
   transforms: Record<string, Transform3D>
   bodies: Record<string, BodyResult>
+  /** Analytic edges of the solved bodies, keyed by the same body id. */
+  edgeCurves: Record<string, EdgeCurve[]>
   pickBodies: Record<string, BodyResult>
   activePartHandle: string | null
   selectedPartHandle: string | null
@@ -34,6 +37,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   mates: [],
   transforms: {},
   bodies: {},
+  edgeCurves: {},
   pickBodies: {},
   activePartHandle: null,
   selectedPartHandle: null,
@@ -70,7 +74,11 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setSelectedPartHandle: (handle: string | null) => void
   setIsSolving: (solving: boolean) => void
   setSolveError: (error: string | null) => void
-  setSolveResult: (transforms: Record<string, Transform3D>, bodies: Record<string, BodyResult>) => void
+  setSolveResult: (
+    transforms: Record<string, Transform3D>,
+    bodies: Record<string, BodyResult>,
+    edgeCurves: Record<string, EdgeCurve[]>,
+  ) => void
   /** Pointer-down on a part body or its triad. No-op for a grounded instance. */
   beginPartManipulation: (handle: string) => boolean
   /** `delta` / `angle` are measured from pointer-down, not from the last frame. */
@@ -95,7 +103,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
   setIsSolving: (solving) => set({ isSolving: solving }),
   setSolveError: (error) => set({ solveError: error }),
-  setSolveResult: (transforms, bodies) => set({ transforms, bodies }),
+  setSolveResult: (transforms, bodies, edgeCurves) => set({ transforms, bodies, edgeCurves }),
 
   beginPartManipulation: (handle) => {
     const doc = get().doc

@@ -25,6 +25,7 @@ import { Dot } from '@/components/Geometry3D/VertexDots'
 import { COLOR_INACTIVE } from '@/components/Geometry3D/constants'
 import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
 import TriadGizmo from '@/components/Viewport/assembly/TriadGizmo'
+import type { EdgeCurve } from '@/kernel/partBundle'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import {
   ASSEMBLY_PLANE_SIZE,
@@ -37,6 +38,10 @@ import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
 import type { Vec3 } from '@/utils/transform3d'
 
+// Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
+// [] per render would rebuild every body's line geometry on every frame.
+const EMPTY_CURVES: EdgeCurve[] = []
+
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
 const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none' }
@@ -44,6 +49,7 @@ const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 
 export default function AssemblyViewport() {
   const doc = useAssemblyStore(s => s.doc)
   const bodies = useAssemblyStore(s => s.bodies)
+  const edgeCurves = useAssemblyStore(s => s.edgeCurves)
   const instances = useAssemblyStore(s => s.instances)
   const transforms = useAssemblyStore(s => s.transforms)
   const manipulation = useAssemblyStore(s => s.manipulation)
@@ -237,6 +243,7 @@ export default function AssemblyViewport() {
               <AssemblyBody
                 key={item.key}
                 item={item}
+                curves={edgeCurves[item.bodyId] ?? EMPTY_CURVES}
                 selected={g.selected}
                 onGrab={(point) => handleGrabBody(g.handle, point)}
               />

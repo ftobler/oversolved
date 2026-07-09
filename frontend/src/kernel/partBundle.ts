@@ -21,8 +21,19 @@ export interface EdgeCurve {
   kind: 'line' | 'circle' | 'ellipse' | 'b-spline'
   point: [number, number, number]
   axis?: [number, number, number]
-  radius?: number
+  radius?: number  // circle radius; ellipse semi-major
   endpoints: [[number, number, number], [number, number, number]]
+
+  // Parametric fields, carried for rendering only (utils/edgeSampling.ts); the
+  // mate solve never reads them. Endpoints alone cannot reconstruct a curve: a
+  // full circle's two endpoints coincide, an ellipse has no minor radius on the
+  // wire, and a spline's interior is gone. Optional because a bundle cached
+  // before these existed still has to sample (it degrades to a chord).
+  x_axis?: [number, number, number]  // in-plane origin of the sweep; angles measure from here
+  minor_radius?: number              // ellipse semi-minor
+  angle_start?: number
+  angle_end?: number
+  points?: [number, number, number][]  // b-spline: the tessellated polyline
 }
 
 export interface BodyMesh {
@@ -116,6 +127,9 @@ export function toEdgeCurve(ed: EdgeData, edgeQuery: string): EdgeCurve {
         axis: ed.axis,
         radius: ed.radius,
         endpoints: [startPt, endPt],
+        x_axis: ed.x_axis,
+        angle_start: ed.angle_start,
+        angle_end: ed.angle_end,
       }
     }
     case 'ellipse': {
@@ -127,6 +141,10 @@ export function toEdgeCurve(ed: EdgeData, edgeQuery: string): EdgeCurve {
         axis: ed.axis,
         radius: ed.a,
         endpoints: [startPt, endPt],
+        x_axis: ed.x_axis,
+        minor_radius: ed.b,
+        angle_start: ed.angle_start,
+        angle_end: ed.angle_end,
       }
     }
     case 'spline': {
@@ -136,6 +154,7 @@ export function toEdgeCurve(ed: EdgeData, edgeQuery: string): EdgeCurve {
         id, kind: 'b-spline',
         point: pts[midIdx],
         endpoints: [pts[0], pts[pts.length - 1]],
+        points: pts,
       }
     }
   }

@@ -13,7 +13,7 @@ import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, AssemblyFeature, NumberOrExpr } from '@/types/cad'
 import { backendBundle } from '@/adapters/backend'
 import { useAssemblyStore } from '@/stores/assemblyStore'
-import { toBodyResults } from '@/utils/assemblyBodies'
+import { toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { setRelayHandlers, solveAssemblyViaWorker } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
@@ -109,7 +109,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       const res = await solveAssemblyViaWorker(uuid, parts, revs, mateSpecs(current))
       if (!res) throw new Error('assembly solver unavailable')
       const s = useAssemblyStore.getState()
-      s.setSolveResult(res.payload.transforms, toBodyResults(res.payload.bodies))
+      s.setSolveResult(
+        res.payload.transforms,
+        toBodyResults(res.payload.bodies),
+        toEdgeCurves(res.payload.bodies),
+      )
     } catch (e) {
       useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
     } finally {

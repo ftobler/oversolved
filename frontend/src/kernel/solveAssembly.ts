@@ -8,7 +8,7 @@
 
 import { bundleCacheGet, bundleCachePut } from './bundleCache'
 import { migrateAnchors } from './partBundle'
-import type { PartBundle, BodyMesh, Anchor } from './partBundle'
+import type { PartBundle, BodyMesh, Anchor, EdgeCurve } from './partBundle'
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import {
@@ -62,6 +62,7 @@ export interface MeshPayload {
   vertices: Float32Array
   indices: Uint32Array
   faceIdsPerTriangle: Uint32Array
+  edges: EdgeCurve[]  // solved-pose analytic curves; the viewport renders them crisp
 }
 
 // ─── Anchor kind mapping (TS → Rust u8) ──────────────────────────────────
@@ -130,6 +131,39 @@ function applyTransform(vertices: Float32Array, t: Transform3D): Float32Array {
     out[i + 2] = rz + t.tz
   }
   return out
+}
+
+type Pt3 = [number, number, number]
+
+/** Rotate a free vector: a direction takes the rotation but not the translation. */
+function rotateVec(v: Pt3, t: Transform3D): Pt3 {
+  const qi = qInv(t.qx, t.qy, t.qz, t.qw)
+  const [rx, ry, rz] = qMul(
+    ...qMul(t.qx, t.qy, t.qz, t.qw, v[0], v[1], v[2], 0),
+    qi[0], qi[1], qi[2], qi[3],
+  )
+  return [rx, ry, rz]
+}
+
+function transformPoint(p: Pt3, t: Transform3D): Pt3 {
+  const [rx, ry, rz] = rotateVec(p, t)
+  return [rx + t.tx, ry + t.ty, rz + t.tz]
+}
+
+/**
+ * Carry a curve into the part's solved pose. Radii and sweep angles are
+ * rigid-motion invariant, so only points move and only directions rotate —
+ * which is exactly why the curves stay analytic instead of being re-fitted.
+ */
+function transformEdgeCurve(e: EdgeCurve, t: Transform3D): EdgeCurve {
+  return {
+    ...e,
+    point: transformPoint(e.point, t),
+    axis: e.axis ? rotateVec(e.axis, t) : undefined,
+    x_axis: e.x_axis ? rotateVec(e.x_axis, t) : undefined,
+    endpoints: [transformPoint(e.endpoints[0], t), transformPoint(e.endpoints[1], t)],
+    points: e.points?.map(p => transformPoint(p, t)),
+  }
 }
 
 // ─── Mate input byte encoding ────────────────────────────────────────────
@@ -456,6 +490,9 @@ export async function solveAssembly(
       vertices: applyTransform(m.mesh.vertices, t),
       indices: m.mesh.indices,
       faceIdsPerTriangle: m.mesh.faceIdsPerTriangle,
+      // `?? []`: a bundle cached before edges existed still solves, it just
+      // renders without them. Same fail-safe posture as the sampler's chord.
+      edges: (m.edges ?? []).map(e => transformEdgeCurve(e, t)),
     }))
     transformedBodies[part.handle] = transformed
   }
