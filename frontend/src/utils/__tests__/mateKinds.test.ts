@@ -13,7 +13,7 @@ import {
   mateRefLabel,
   mateSummary,
 } from '@/utils/mateKinds'
-import { ASSEMBLY_HANDLE } from '@/utils/builtins'
+import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 
 describe('MATE_KINDS', () => {
   it('covers every MateKind the solver maps to a Rust kind code', () => {

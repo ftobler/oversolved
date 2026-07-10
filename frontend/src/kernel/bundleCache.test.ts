@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { bundleCacheGet, bundleCachePut, bundleCacheHas, resetBundleDbConnection } from './bundleCache'
+import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, resetBundleDbConnection } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
 function freshDb(): void {
@@ -122,5 +122,54 @@ describe('bundleCache', () => {
 
     expect([...loadedA!.bodies[0].mesh.indices]).toEqual([0, 1, 2])
     expect([...loadedB!.bodies[0].mesh.indices]).toEqual([9, 9, 9])
+  })
+
+  it('latestRev misses for a doc_id that was never cached', async () => {
+    expect(await bundleCacheLatestRev('nope')).toBeUndefined()
+  })
+
+  it('tracks the latest cached rev per doc_id and evicts the oldest beyond N=3', async () => {
+    await bundleCachePut(fixtureBundle('d', 1))
+    await bundleCachePut(fixtureBundle('d', 5))
+    await bundleCachePut(fixtureBundle('d', 9))
+
+    expect(await bundleCacheLatestRev('d')).toBe(9)
+    expect(await bundleCacheGet('d', 4)).toBeUndefined()  // never cached
+
+    await bundleCachePut(fixtureBundle('d', 12))
+
+    expect(await bundleCacheLatestRev('d')).toBe(12)
+    expect(await bundleCacheGet('d', 1)).toBeUndefined()  // evicted: oldest beyond N=3
+    expect(await bundleCacheGet('d', 5)).toBeDefined()
+    expect(await bundleCacheGet('d', 9)).toBeDefined()
+    expect(await bundleCacheGet('d', 12)).toBeDefined()
+  })
+
+  it('upgrades a v1 database to v2 without throwing, and treats every pre-existing record as a miss', async () => {
+    // Simulate a database left behind by the pre-Stage-F code: only the
+    // `bundles` store exists, no `latest` store.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open('oversolved-bundles', 1)
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore('bundles', { keyPath: 'key' })
+      }
+      req.onsuccess = () => {
+        const db = req.result
+        const tx = db.transaction('bundles', 'readwrite')
+        tx.objectStore('bundles').put({ key: 'docA@1', payload: fixtureBundle('docA', 1) })
+        tx.oncomplete = () => { db.close(); resolve() }
+        tx.onerror = () => reject(tx.error)
+      }
+      req.onerror = () => reject(req.error)
+    })
+
+    resetBundleDbConnection()
+
+    // The module now opens at DB_VERSION 2, triggering the upgrade. A bundle
+    // is a derivable artifact, so the migration is delete-and-rebuild: no
+    // throw, and the old record reads back as a miss instead of being
+    // backfilled into the new `latest` index.
+    await expect(bundleCacheGet('docA', 1)).resolves.toBeUndefined()
+    await expect(bundleCacheLatestRev('docA')).resolves.toBeUndefined()
   })
 })

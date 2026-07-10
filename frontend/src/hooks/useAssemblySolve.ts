@@ -82,6 +82,10 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   docRef.current = doc
   const inFlight = useRef(false)
   const queued = useRef(false)
+  // Cached for one coalesced burst (see the effect below) so a trailing
+  // queued solve reuses the rev map instead of re-issuing `documents.list()`.
+  // Cleared once the burst drains, so the next burst reads fresh revs.
+  const burstRevs = useRef<Record<string, number> | null>(null)
   // A solve is requested by bumping a token, never by calling runSolve inline:
   // callers ask for it in the same event that mutates the doc (a drag commit
   // writes the transform, then re-solves), and the mutated doc only reaches
@@ -107,7 +111,8 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     store.setSolveError(null)
     try {
       const parts = partSpecs(current)
-      const revs = await currentRevs(current)
+      if (!burstRevs.current) burstRevs.current = await currentRevs(current)
+      const revs = burstRevs.current
       const res = await solveAssemblyViaWorker(uuid, parts, revs, mateSpecs(current))
       if (!res) throw new Error('assembly solver unavailable')
       const anchors = buildAnchorTable(res.payload.anchors)
@@ -154,6 +159,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         }
       } finally {
         inFlight.current = false
+        burstRevs.current = null
       }
     })()
   }, [solveToken, runSolve])

@@ -9,6 +9,8 @@ import {
   handleSolveAssembly,
   handleRelayResponse,
   createRelayService,
+  RELAY_TIMEOUT_MS,
+  WorkerActor,
 } from './anchorSolverWorker'
 import type {
   SolveAssemblyRequest,
@@ -204,5 +206,79 @@ describe('relay plumbing', () => {
 
     await expect(p1).resolves.toBe('one')
     await expect(p2).resolves.toBe('two')
+  })
+
+  it('relayRequest rejects on its own if the main thread never responds', async () => {
+    vi.useFakeTimers()
+    try {
+      const post = (): void => {}
+      const relay = createRelayService(post)
+
+      const prom = relay.requestPartDoc('never-answered')
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(RELAY_TIMEOUT_MS)
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a late relay response after the timeout already fired is a no-op', async () => {
+    vi.useFakeTimers()
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post)
+
+      const prom = relay.requestPartDoc('slow-doc')
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(RELAY_TIMEOUT_MS)
+      await assertion
+
+      expect(() => handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: true,
+        payload: 'too-late',
+      })).not.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('WorkerActor', () => {
+  it('runs jobs serialized, one after another', async () => {
+    const actor = new WorkerActor()
+    const order: number[] = []
+    actor.run(() => Promise.resolve(1), (res) => order.push(res))
+    actor.run(() => Promise.resolve(2), (res) => order.push(res))
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    expect(order).toEqual([1, 2])
+  })
+
+  it('a job whose respond throws does not prevent the next job from running', async () => {
+    const actor = new WorkerActor()
+    const errors: unknown[] = []
+    let secondRan = false
+
+    actor.run(
+      () => Promise.resolve('first'),
+      () => { throw new Error('respond blew up (e.g. non-cloneable payload)') },
+      (err) => errors.push(err),
+    )
+    actor.run(
+      () => Promise.resolve('second'),
+      () => { secondRan = true },
+    )
+
+    // Let both queued .then/.catch links settle.
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(errors).toHaveLength(1)
+    expect(secondRan).toBe(true)
   })
 })

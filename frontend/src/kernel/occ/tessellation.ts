@@ -225,7 +225,14 @@ export function solidToMesh(
         faceIdx, fd.centroid, fd.normal, fd.surface_type, center, half, opts,
       )
       fd.classifiers = classifiers
-      if (query) faceQueries.push(query)
+      // Push a placeholder even when `buildFaceQuery` returns null, so
+      // `face_queries[i]` always lines up with `face_data[i]`.
+      // `extractBodyAnchors` zips the two by index; a shorter `face_queries`
+      // would shift every anchor past the gap onto the WRONG face's geometry
+      // instead of just skipping the one face with no query. An empty string
+      // is a safe placeholder: `findDescriptorInQuery('', ...)` returns null,
+      // so that face is (correctly) skipped, same as it would have been.
+      faceQueries.push(query ?? '')
     }
     mesh.face_queries = faceQueries
     return mesh
@@ -317,7 +324,9 @@ export function readShapeFaceMetadata(
       classifiers,
       surface_frame: face.surfaceFrame ?? undefined,
     })
-    if (query) face_queries.push(query)
+    // Placeholder on a null query, same reasoning as solidToMesh above: keeps
+    // face_queries[i] aligned with face_data[i] for extractBodyAnchors's zip.
+    face_queries.push(query ?? '')
   })
   return { face_data, face_queries }
 }

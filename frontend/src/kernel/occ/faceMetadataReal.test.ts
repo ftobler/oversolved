@@ -171,4 +171,32 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
       table.assertNoLeaks()
     }
   })
+
+  // spec 4: `face_queries` must stay aligned with `face_data` even when
+  // `buildFaceQuery` returns null for every face (no `createdBy` passed, the
+  // exact call shape spec 1 above uses). `extractBodyAnchors` zips the two by
+  // index; a `face_queries` shorter than `face_data` would shift every anchor
+  // past the gap onto another face's geometry instead of just skipping the
+  // face with no query.
+  it('keeps face_queries and face_data the same length when no face has a query', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    try {
+      const mesh = solidToMesh(occ, table, h)  // no createdBy -> every query is null
+      expect(mesh.face_queries.length).toBe(mesh.face_data.length)
+      expect(mesh.face_queries.length).toBe(6)
+
+      const scope = new DisposeScope()
+      try {
+        const meta = readShapeFaceMetadata(occ, scope, table.get(h))
+        expect(meta.face_queries.length).toBe(meta.face_data.length)
+        expect(meta.face_queries.length).toBe(6)
+      } finally {
+        scope.dispose()
+      }
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
 })

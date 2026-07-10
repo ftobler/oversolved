@@ -226,6 +226,33 @@ describe('toPartBundle', () => {
     expect(typeof bundle.anchors).toBe('object')
     expect(Object.keys(bundle.anchors).length).toBeGreaterThanOrEqual(0)
   })
+
+  it('mints anchor ids from a wide random prefix, so two builds of the same doc never collide', () => {
+    // Math.random().toString(36).slice(2, 6) (the old minter) can collapse to
+    // a single character -- (0.5).toString(36) === '0.i' -- making it
+    // plausible for two builds of the same doc to draw the same prefix.
+    // migrateBundle then writes `anchors[remap.get(newId) ?? newId]`, so a
+    // fresh id from one build colliding with a migrated-to id from another
+    // silently drops an anchor. randomId(8) draws from a 2^64 keyspace, which
+    // makes that collision practically impossible.
+    const bodies: Record<string, BodyResult> = {
+      b1: {
+        id: 'b1', created_by: 'ex1', modified_by: [],
+        mesh: {
+          vertices: [], faces: [],
+          face_queries: [makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface')],
+          face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
+        },
+      },
+    }
+    const bundleA = toPartBundle('doc1', 1, bodies)
+    const bundleB = toPartBundle('doc1', 2, bodies)
+    const idsA = Object.keys(bundleA.anchors)
+    const idsB = Object.keys(bundleB.anchors)
+    expect(idsA).toHaveLength(1)
+    expect(idsB).toHaveLength(1)
+    expect(idsA.some(id => idsB.includes(id))).toBe(false)
+  })
 })
 
 // ── Anchor extraction (Stage 2c) ─────────────────────────────────────────

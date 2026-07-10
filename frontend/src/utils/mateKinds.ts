@@ -10,7 +10,7 @@
 // relative roll about the shared axis, a control no other mate kind reads.
 
 import type { MateKind, MateRef } from '@/types/cad'
-import { ASSEMBLY_HANDLE } from '@/utils/builtins'
+import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 
 /** Insert order in the UI: the workhorse first, the rare joints after. */
 export const MATE_KINDS: readonly MateKind[] = [

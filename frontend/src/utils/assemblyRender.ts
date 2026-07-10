@@ -27,7 +27,7 @@ import {
   ASSEMBLY_ORIGIN_ID,
   ASSEMBLY_RIGHT_ID,
   ASSEMBLY_TOP_ID,
-} from '@/utils/builtins'
+} from '@/utils/assemblyBuiltins'
 
 /** Matches the part editor's reference planes (ReferencePlane.tsx). */
 export const ASSEMBLY_PLANE_SIZE = 100

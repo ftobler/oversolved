@@ -6,12 +6,12 @@
 // This module runs inside the anchor solver worker (Rust-only, no OCC).
 // It is a pure async function over typed-array inputs — no React, no DOM.
 
-import { bundleCacheGet, bundleCachePut } from './bundleCache'
+import { bundleCacheGet, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
 import { migrateBundle } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
-import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/builtins'
+import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 export type { AnchorPose }
@@ -341,11 +341,13 @@ export async function solveAssembly(
     }
 
     // Migrate anchors against the newest prior cached bundle of the same doc.
-    // Walk revs downward; the newest one holds the most recent id lineage.
+    // `bundleCacheLatestRev` is the Stage F index lookup (one IndexedDB get);
+    // it replaces a downward scan that used to issue up to `currentRev - 1`
+    // separate `bundleCacheGet` transactions.
     let prevBundle: { anchors: Record<string, Anchor> } | undefined
-    for (let r = currentRev - 1; r >= 1; r--) {
-      prevBundle = await bundleCacheGet(part.doc_id, r)
-      if (prevBundle) break
+    const latestCachedRev = await bundleCacheLatestRev(part.doc_id)
+    if (latestCachedRev !== undefined && latestCachedRev < currentRev) {
+      prevBundle = await bundleCacheGet(part.doc_id, latestCachedRev)
     }
     if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
 

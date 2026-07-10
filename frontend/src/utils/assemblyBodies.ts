@@ -15,7 +15,7 @@ import {
 import {
   ASSEMBLY_BUILTIN_IDS,
   ASSEMBLY_HANDLE,
-} from '@/utils/builtins'
+} from '@/utils/assemblyBuiltins'
 
 // Body ids are scoped by part handle, so two instances of the same part never
 // collide in the flat dict.

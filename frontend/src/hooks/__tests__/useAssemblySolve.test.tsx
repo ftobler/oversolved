@@ -145,6 +145,30 @@ describe('useAssemblySolve', () => {
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
   })
 
+  it('two requestSolve calls in one burst call documents.list() once', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    h.solveAssemblyViaWorker.mockImplementationOnce(async () => { await gate; return okResponse })
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
+
+    await act(async () => { result.current.requestSolve() })
+    expect(h.list).toHaveBeenCalledTimes(1)  // fetched for the in-flight solve
+
+    // Queues a trailing solve while the first is blocked -- reuses the
+    // burst's already-fetched rev map instead of listing again.
+    await act(async () => { result.current.requestSolve() })
+    expect(h.list).toHaveBeenCalledTimes(1)
+
+    await act(async () => { release(); await gate })
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    expect(h.list).toHaveBeenCalledTimes(1)
+
+    // A fresh burst after this one drains re-fetches: revs are not cached forever.
+    await act(async () => { result.current.requestSolve() })
+    expect(h.list).toHaveBeenCalledTimes(2)
+  })
+
   it('surfaces a solver failure as a store error rather than throwing', async () => {
     h.solveAssemblyViaWorker.mockResolvedValue(null)
     const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))

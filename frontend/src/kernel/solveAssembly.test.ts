@@ -14,8 +14,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } from './solveAssembly'
-import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
-import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/builtins'
+import { bundleCachePut, bundleCacheGet, resetBundleDbConnection } from './bundleCache'
+
+// Wraps the real bundleCacheGet in a spy (delegating to the actual
+// implementation) so the Stage F test below can assert call count without
+// disturbing the fake-indexeddb-backed behaviour every other test relies on.
+vi.mock('./bundleCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./bundleCache')>()
+  return { ...actual, bundleCacheGet: vi.fn(actual.bundleCacheGet) }
+})
+import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/assemblyBuiltins'
 import { sampleEdgeCurve } from '../utils/edgeSampling'
 import { BUNDLE_SCHEMA, type AnchorKind, type PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
@@ -341,6 +349,29 @@ describe('solveAssembly', () => {
     // doc-b: cache miss at rev 1, relay called too
     expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
     expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-b')
+  })
+
+  it('a big rev jump with only an old rev cached issues exactly one bundleCacheGet for the migration lookup', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    await bundleCachePut(makeBundle('doc-a', 3))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+    ]
+
+    vi.mocked(bundleCacheGet).mockClear()
+
+    await solveAssembly(parts, { 'doc-a': 800 }, [], relay, makeEchoSolver())
+
+    // One get for the top-of-loop cache-hit check at rev 800 (a miss), then
+    // exactly one more for the Stage F `latestRev` migration lookup (rev 3) --
+    // not the old downward scan that would have issued 799 separate gets.
+    expect(vi.mocked(bundleCacheGet).mock.calls).toEqual([
+      ['doc-a', 800],
+      ['doc-a', 3],
+    ])
   })
 
   // ── mate solve branch ────────────────────────────────────────────────

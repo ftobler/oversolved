@@ -5,6 +5,7 @@
 // IndexedDb keyed by (doc_id, doc_rev); a miss triggers a cold rebuild.
 
 import type { EdgeData, BodyResult, FaceData } from '../types/cad'
+import { randomId } from '../utils/yamlMutations/helpers'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
 
@@ -265,7 +266,12 @@ export function toPartBundle(
   bodyResults: Record<string, BodyResult>,
 ): PartBundle {
   const bodies: BodyMesh[] = []
-  const prefix = Math.random().toString(36).slice(2, 6)
+  // Math.random().toString(36) can yield a single character (e.g. (0.5) ->
+  // '0.i'), so two builds could mint the same prefix. migrateBundle then
+  // silently overwrites one migrated anchor with a fresh one of the same id.
+  // randomId(8) is the same minter the rest of the project uses for ids that
+  // must not collide.
+  const prefix = randomId(8)
   let anchorCounter = 0
   const mintAnchorId = (): string => { anchorCounter++; return `${prefix}_a${anchorCounter}` }
   const allAnchors: Record<string, Anchor> = {}

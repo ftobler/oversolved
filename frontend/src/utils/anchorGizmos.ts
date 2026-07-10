@@ -14,7 +14,7 @@
 import type { AnchorPose } from '@/kernel/partBundle'
 import type { MateRef } from '@/types/cad'
 import { resolveCandidates, type EntityMateRefs } from '@/utils/anchorCandidates'
-import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/builtins'
+import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { cross, dot, normalize } from '@/utils/gizmoMath'
 import type { Vec3 } from '@/utils/transform3d'
 

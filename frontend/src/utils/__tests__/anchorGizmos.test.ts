@@ -17,7 +17,7 @@ import {
   assemblyEntityKey,
   type EntityMateRefs,
 } from '@/utils/anchorCandidates'
-import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '@/utils/builtins'
+import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 import type { Vec3 } from '@/utils/transform3d'
 
 const PART = 'h1'

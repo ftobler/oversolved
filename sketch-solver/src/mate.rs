@@ -208,9 +208,7 @@ impl MateInput {
             .map(|b| (b >> bit) & 1 == 1)
             .unwrap_or(false)
     }
-}
 
-impl MateInput {
     pub fn n_bodies(&self) -> usize {
         self.bodies.len()
     }

@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
-import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/builtins'
+import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 import {
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,

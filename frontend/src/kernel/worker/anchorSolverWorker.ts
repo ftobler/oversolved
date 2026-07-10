@@ -8,7 +8,7 @@
  *
  * Stage 5b: real orchestration via `solveAssembly` — bundle get/miss/build/
  * migrate chain, anchor resolve + stale flagging, solve_mate call, transform
- * application, and assemblyCache for warm starts.
+ * application.
  */
 
 import { inWorker } from '../inWorker'
@@ -16,7 +16,6 @@ import { extractErrorMessage } from '../errors'
 import { initAnchorSolver, getMateSolver } from '../../wasm-kernel/anchorSolver'
 import { solveAssembly } from '../solveAssembly'
 import type { AssemblyBuildResponse } from '../solveAssembly'
-import type { Transform3D } from '../../types/cad'
 import type {
   SolveAssemblyRequest,
   AssemblySolveResponse,
@@ -39,7 +38,13 @@ export interface RelayService {
 let nextRelayId = 1
 const relayPending = new Map<number, { resolve: (val: unknown) => void; reject: (err: Error) => void }>()
 
-/** Send a relay request and await the main-thread response. */
+// If the main thread never answers (tab backgrounded mid-navigation, a
+// listener that got detached, etc), an un-timed-out relay would hang
+// `solveAssembly` forever with `isSolving: true` and no banner. Exported so
+// tests can drive it with fake timers instead of waiting out the real delay.
+export const RELAY_TIMEOUT_MS = 30_000
+
+/** Send a relay request and await the main-thread response, or time out. */
 function relayRequest(
   subKind: 'partDocContent' | 'buildBundle',
   params: { doc_id: string; doc_rev?: number; spec?: Record<string, unknown> },
@@ -47,7 +52,14 @@ function relayRequest(
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const requestId = nextRelayId++
-    relayPending.set(requestId, { resolve, reject })
+    const timeout = setTimeout(() => {
+      relayPending.delete(requestId)
+      reject(new Error(`relay request '${subKind}' timed out after ${RELAY_TIMEOUT_MS}ms`))
+    }, RELAY_TIMEOUT_MS)
+    relayPending.set(requestId, {
+      resolve: (val) => { clearTimeout(timeout); resolve(val) },
+      reject: (err) => { clearTimeout(timeout); reject(err) },
+    })
     post({
       kind: 'asr_relay',
       requestId,
@@ -119,20 +131,23 @@ export async function handleSolveAssembly(
 }
 
 // ─── Actor pattern ───────────────────────────────────────────────────────
-// Serializes solveAssembly requests and guards mutable `assemblyCache`
-// state from concurrent access.
+// Serializes solveAssembly requests onto one chained promise so two solves
+// never race each other inside the same Worker.
 
-interface AssemblyCacheEntry {
-  lastTransforms: Record<string, Transform3D>
-  lastMateResults: Record<string, unknown>
-}
-
-class WorkerActor {
+export class WorkerActor {
   private queue: Promise<void> = Promise.resolve()
-  readonly assemblyCache = new Map<string, AssemblyCacheEntry>()
 
-  run<T>(job: () => Promise<T>, respond: (res: T) => void): void {
-    this.queue = this.queue.then(() => job().then(respond))
+  // `.catch` keeps `this.queue` itself always resolving. Without it, one
+  // rejection (job() throwing, or respond() throwing on a non-cloneable
+  // payload) would poison the chain: every `.then` chained after a rejected
+  // promise never runs, so every solve requested after the first failure
+  // would silently never execute. `onError`, when given, lets the caller
+  // still surface the failure (e.g. post an error response) instead of it
+  // being swallowed outright.
+  run<T>(job: () => Promise<T>, respond: (res: T) => void, onError?: (err: unknown) => void): void {
+    this.queue = this.queue
+      .then(() => job().then(respond))
+      .catch(err => onError?.(err))
   }
 }
 
@@ -162,6 +177,9 @@ if (inWorker()) {
       actor.run(
         () => handleSolveAssembly(msg, relay),
         (res) => { ctx.postMessage(res) },
+        (err) => {
+          ctx.postMessage({ id: msg.id, kind: 'solveAssembly', ok: false, error: extractErrorMessage(err) })
+        },
       )
     }
   }

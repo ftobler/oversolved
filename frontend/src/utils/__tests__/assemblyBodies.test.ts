@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
 import { toBodyResults, toEdgeCurves, assemblyBodyId, buildEntityMateRefs } from '@/utils/assemblyBodies'
 import { assemblyBuiltinEntityKey, assemblyEntityKey } from '@/utils/anchorCandidates'
-import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '@/utils/builtins'
+import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
 
 const edge = (x: number): EdgeCurve => ({

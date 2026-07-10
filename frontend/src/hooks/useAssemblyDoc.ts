@@ -6,7 +6,7 @@ import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { mateFeatures } from '@/utils/assemblyMutations'
-import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/builtins'
+import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 
 export function useAssemblyDoc(uuid: string | undefined) {
   const [doc, setDoc] = useState<AssemblyDoc | null>(null)

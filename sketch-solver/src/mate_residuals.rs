@@ -966,6 +966,22 @@ fn twist_gradient(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> [f64; 4] 
     [dua * w[0], dua * w[1], dua * w[2], dub]
 }
 
+/// `residual_norm` is an L2 norm over `m` residuals, so it grows with the
+/// number of mates even when every individual residual is converged to the
+/// same tolerance -- an absolute threshold here would flag a large,
+/// correctly-solved assembly as overconstrained. Scale to an RMS-per-residual
+/// figure so the threshold means the same thing regardless of problem size.
+fn mate_status(residual_norm: f64, m: usize, dof: usize) -> MateStatus {
+    let rms_residual = if m > 0 { residual_norm / (m as f64).sqrt() } else { 0.0 };
+    if rms_residual > 1e-4 {
+        MateStatus::Overconstrained
+    } else if dof > 0 {
+        MateStatus::Underconstrained
+    } else {
+        MateStatus::FullyConstrained
+    }
+}
+
 // ─── Solve entry point ───
 
 /// Run the mate solver: build a Problem, call solve_lm, compute status, build output.
@@ -992,13 +1008,7 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
     };
     let rank = (n - dof) as u32;
 
-    let status = if lm_result.residual_norm > 1e-4 {
-        MateStatus::Overconstrained
-    } else if dof > 0 {
-        MateStatus::Underconstrained
-    } else {
-        MateStatus::FullyConstrained
-    };
+    let status = mate_status(lm_result.residual_norm, m, dof);
 
     let params_solved: Vec<f32> = lm_result.x.iter().map(|&v| v as f32).collect();
 
@@ -1052,10 +1062,6 @@ mod tests {
         let half = (deg.to_radians() / 2.0).sin();
         let cos_half = (deg.to_radians() / 2.0).cos();
         (half as f32, cos_half as f32)
-    }
-
-    fn default_mate_ref() -> MateRef {
-        mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point)
     }
 
     /// Two bodies: body 0 at origin (grounded), body 1 at (5, 0, 0).
@@ -1217,6 +1223,19 @@ mod tests {
         let qw = out.params_solved[13] as f64;
         let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
         assert!((roll_deg - 30.0).abs() < 1.0, "roll should hold at 30 deg, got {}", roll_deg);
+    }
+
+    #[test]
+    fn overconstrained_threshold_scales_with_problem_size_not_absolute_residual() {
+        // A residual_norm of 0.005 would trip the old absolute 1e-4 threshold
+        // regardless of how many residuals it is spread across. For a "large
+        // assembly" (m = 10_000) that is actually converged fine per-residual
+        // (rms = 0.005 / sqrt(10_000) = 5e-5), the scaled threshold correctly
+        // does not flag it -- the old absolute threshold would have.
+        assert_eq!(mate_status(0.005, 10_000, 0), MateStatus::FullyConstrained);
+        // Same absolute residual_norm, concentrated in a single residual
+        // (m = 1): genuinely overconstrained, still flagged.
+        assert_eq!(mate_status(0.005, 1, 0), MateStatus::Overconstrained);
     }
 
     #[test]

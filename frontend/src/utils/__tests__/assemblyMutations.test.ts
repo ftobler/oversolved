@@ -16,7 +16,7 @@ import {
   updateMate,
   IDENTITY_TRANSFORM,
 } from '@/utils/assemblyMutations'
-import { ASSEMBLY_HANDLE } from '@/utils/builtins'
+import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 
 const emptyDoc: AssemblyDoc = { kind: 'assembly', features: [] }
 
