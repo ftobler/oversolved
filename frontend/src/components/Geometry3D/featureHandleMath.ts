@@ -2,6 +2,8 @@
 // project the cursor ray onto the handle's world axis and convert the travel
 // to a field value. Kept renderer-free so it unit-tests without a viewport.
 
+import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
+
 export type Vec3 = readonly [number, number, number]
 
 function dot(a: Vec3, b: Vec3): number {
@@ -127,4 +129,14 @@ export function labelOffsetPx(
   const sy = screenDir[1] / len
   const support = halfW * Math.abs(sx) + halfH * Math.abs(sy)
   return [sx * (gap + support), sy * (gap + support)]
+}
+
+/**
+ * Arrow (shaft, cone, label) color. At rest the handle wears the same violet as
+ * the preview wireframe it drives, so the arrow reads as part of the preview
+ * rather than as a selected entity. Hover and drag brighten it to white, the
+ * project-wide "you are touching this" signal.
+ */
+export function handleColor(hovered: boolean, dragging: boolean): string {
+  return hovered || dragging ? COLOR_HOVER : COLOR_PREVIEW_EDGE
 }

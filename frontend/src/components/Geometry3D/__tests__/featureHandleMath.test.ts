@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx } from '../featureHandleMath'
+import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '../featureHandleMath'
+import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
 
 describe('closestAxisParam', () => {
   it('hits the exact axis point when the ray crosses the axis', () => {
@@ -145,5 +146,18 @@ describe('labelOffsetPx', () => {
 
   it('falls back to above-the-tip when the arrow is seen end-on', () => {
     expect(labelOffsetPx([0, 0], 40, 9, 8)).toEqual([0, -17])
+  })
+})
+
+describe('handleColor', () => {
+  it('matches the preview wireframe violet at rest', () => {
+    expect(handleColor(false, false)).toBe(COLOR_PREVIEW_EDGE)
+  })
+
+  it('brightens to the hover white while hovered or dragging', () => {
+    expect(handleColor(true, false)).toBe(COLOR_HOVER)
+    expect(handleColor(false, true)).toBe(COLOR_HOVER)
+    // A drag continuing outside the hover zone stays white.
+    expect(handleColor(true, true)).toBe(COLOR_HOVER)
   })
 })
