@@ -54,10 +54,11 @@ export function applySetPartTransmission(doc: PartDoc, bodyId: string, transmiss
 
 // ─── Sketch admin ───
 
-export function applyAddSketch(doc: PartDoc, featureId: string, label?: string): void {
+export function applyAddSketch(doc: PartDoc, featureId: string, label?: string, plane?: string): void {
   if (!doc.features) doc.features = []
   const feature: PartFeature = { id: featureId, kind: 'sketch' }
   if (label) feature.label = label
+  if (plane) feature.plane = plane  // pre-bound plane skips the pick step
   doc.features.push(feature)
 }
 

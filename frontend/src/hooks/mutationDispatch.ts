@@ -130,7 +130,7 @@ export const mutationHandlers: MutationHandlers = {
   set_feature_plane: (next, m) =>
     applySetFeaturePlane(next, m.featureId, m.plane),
   add_sketch: (next, m) =>
-    applyAddSketch(next, m.featureId, m.label),
+    applyAddSketch(next, m.featureId, m.label, m.plane),
   delete_feature: (next, m) =>
     applyDeleteFeature(next, m.featureId),
   set_feature_visibility: (next, m) =>

@@ -40,6 +40,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onSetPartColorPopover: () => {},
     onToggleConstraintTiles: () => {},
     onExportBody: () => {},
+    onNewSketchOnPlane: () => {},
     onShowContextMenu: () => {},
   }
 }
@@ -130,6 +131,83 @@ describe('buildContextMenu', () => {
     )
     expect(findLabel(result.items, 'Show')).toBeTruthy()
     expect(findLabel(result.items, 'Hide')).toBeUndefined()
+  })
+
+  it('offers New Sketch on a user-defined plane, keyed by its feature query', () => {
+    const features = [makeFeature({ id: 'plane1', kind: 'plane' })]
+    let plane: string | undefined
+    const callbacks = defaultCallbacks()
+    callbacks.onNewSketchOnPlane = (p) => { plane = p }
+    const result = buildContextMenu(defaultInput({ targetId: 'plane1', features }), callbacks)
+    findLabel(result.items, 'New Sketch')!.onClick()
+    expect(plane).toBe('@plane1')
+  })
+
+  it('offers New Sketch on a built-in plane, keyed by its builtin query', () => {
+    const features = [makeFeature({ id: 'Front', kind: 'plane' })]
+    let plane: string | undefined
+    const callbacks = defaultCallbacks()
+    callbacks.onNewSketchOnPlane = (p) => { plane = p }
+    const result = buildContextMenu(
+      defaultInput({ targetId: 'Front', features, builtInIds: new Set(['Front']) }),
+      callbacks,
+    )
+    findLabel(result.items, 'New Sketch')!.onClick()
+    expect(plane).toBe('@builtin_plane_front')
+  })
+
+  it('offers New Sketch when a plane is hovered in the viewport', () => {
+    const features = [makeFeature({ id: 'Top', kind: 'plane' })]
+    let plane: string | undefined
+    const callbacks = defaultCallbacks()
+    callbacks.onNewSketchOnPlane = (p) => { plane = p }
+    const result = buildContextMenu(
+      defaultInput({
+        hoveredSelectionId: '@builtin_plane_top',
+        features,
+        builtInIds: new Set(['Top']),
+      }),
+      callbacks,
+    )
+    expect(result.items).toHaveLength(1)
+    findLabel(result.items, 'New Sketch')!.onClick()
+    expect(plane).toBe('@builtin_plane_top')
+  })
+
+  it('does not offer New Sketch for a hovered id that is no plane', () => {
+    const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
+    const result = buildContextMenu(
+      defaultInput({ hoveredSelectionId: '@sketch1', features }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+  })
+
+  it('does not offer New Sketch while a sketch edit session is open', () => {
+    const features = [
+      makeFeature({ id: 'plane1', kind: 'plane' }),
+      makeFeature({ id: 'sketch1', kind: 'sketch' }),
+    ]
+    const treeMenu = buildContextMenu(
+      defaultInput({ targetId: 'plane1', features, activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(treeMenu.items, 'New Sketch')).toBeUndefined()
+
+    const viewportMenu = buildContextMenu(
+      defaultInput({ hoveredSelectionId: '@plane1', features, activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(viewportMenu.items, 'New Sketch')).toBeUndefined()
+  })
+
+  it('does not offer New Sketch on a sketch target', () => {
+    const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
+    const result = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
   })
 
   it('contains Align to Face when hovered surface is present', () => {

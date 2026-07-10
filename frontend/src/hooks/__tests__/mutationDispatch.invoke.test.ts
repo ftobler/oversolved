@@ -290,6 +290,14 @@ describe('mutationHandlers forward doc-level + part-style mutations', () => {
     expect(feature(doc, 'S1')!.visible).toBe(false)
   })
 
+  it('add_sketch carries an optional plane query', () => {
+    const doc = sketchDoc()
+    mutationHandlers.add_sketch(doc, { type: 'add_sketch', featureId: 'S2', label: 'Sketch 2', plane: '@builtin_plane_top' })
+    expect(feature(doc, 'S2')!.plane).toBe('@builtin_plane_top')
+    mutationHandlers.add_sketch(doc, { type: 'add_sketch', featureId: 'S3' })
+    expect(feature(doc, 'S3')!.plane).toBeUndefined()
+  })
+
   it('rename_feature / set_feature_suppression', () => {
     const doc = sketchDoc()
     mutationHandlers.rename_feature(doc, { type: 'rename_feature', featureId: 'S1', label: 'Renamed' })

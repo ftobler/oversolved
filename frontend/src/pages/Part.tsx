@@ -207,6 +207,7 @@ export default function Part() {
   }, [uuid, reSolve, docRef])
 
   const pendingSketchOnFaceId = useRef<string | null>(null)
+  const pendingEditSketchId = useRef<string | null>(null)
   const clearPlaneSelection = useCallback(() => {
     setActivePickField(null)
     pendingSketchOnFaceId.current = null
@@ -380,6 +381,18 @@ export default function Part() {
     handleMutation({ type: 'add_sketch', featureId, label })
     setActivePickField({ featureId, field: 'plane' })
   }, [doc, features, handleMutation, setActivePickField])
+
+  const handleNewSketchOnPlane = useCallback((plane: string) => {
+    if (!doc) return
+    const featureId = randomId(18)
+    const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
+    const label = `sketch ${sketchCount + 1}`
+    setRollbackForNewFeature(features)
+    handleMutation({ type: 'add_sketch', featureId, label, plane })
+    // enterEditSketch resolves the feature out of `features`, which React has
+    // not re-rendered with the new sketch yet. Defer to the effect below.
+    pendingEditSketchId.current = featureId
+  }, [doc, features, handleMutation])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
@@ -641,6 +654,16 @@ export default function Part() {
     }
   }, [planeSelectionFeatureId, editingFeatureId, features, enterEditFeature, setMode])
 
+  // A sketch created with its plane already bound needs no pick step, so it
+  // drops straight into sketch edit once the new feature reaches `features`.
+  useEffect(() => {
+    const featureId = pendingEditSketchId.current
+    if (!featureId) return
+    if (!features.some(f => f.id === featureId)) return
+    pendingEditSketchId.current = null
+    enterEditSketch(featureId)
+  }, [features, enterEditSketch])
+
   const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
     const store = useSketchEditorStore.getState()
     const input: BuildContextMenuInput = {
@@ -681,12 +704,13 @@ export default function Part() {
         }
       },
       onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
+      onNewSketchOnPlane: handleNewSketchOnPlane,
       onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
     }
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
   }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
-    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane,
+    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels,
     viewportRef, docRef, startPreviewMode])
 
