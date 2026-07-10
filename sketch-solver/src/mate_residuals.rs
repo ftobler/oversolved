@@ -9,10 +9,10 @@
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
 //! - Sliding:            axis cross (3) + perp displacement cross (3) + seed-relative roll pin (1)
-//!                       -- prismatic: slide is the only free DOF
+//!   -- prismatic: slide is the only free DOF
 //! - Rotating:           point coincidence (3) + axis cross (3)
 //! - SlidingRotating:    axis cross (3) + perp displacement cross (3)
-//!                       -- cylindrical: slide + roll are free DOF
+//!   -- cylindrical: slide + roll are free DOF
 //! - Tangential:         signed-distance formula (1), surface-pair dependent
 //! - CopyRotation:       roll_b - ratio * roll_a around seed-frame axes (1)
 //! - ParallelPlaneDistance: dot(diff, normal) - offset (1) + axis-dot parallelism w/ flip (1)
