@@ -30,6 +30,7 @@ vi.mock('@/utils/geometry/sketchHelpers', () => ({
   sampleArcCCW: () => [[0, 0, 0], [1, 0, 0]],
   pointTo3D: (p: [number, number]) => [p[0], p[1], 0],
   allFinite: () => true,
+  entityCenter: () => null,
   p2w: () => 1,
 }))
 

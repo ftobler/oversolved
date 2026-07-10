@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/utils/geometry/sketchHelpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite, entityCenter } from '@/utils/geometry/sketchHelpers'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
@@ -203,7 +203,13 @@ function ProjectedEntityLine({ points, featureId, entityId, isEditing }: {
 // Amber while the sketch is being edited; grey (COLOR_INACTIVE) otherwise, so
 // projected geometry matches the rest of the sketch. renderOrder mirrors the
 // active sketch lines (RENDER_ORDER_EDITING) so it shares the same z-index.
+//
+// A projected conic also draws its center dot, at the same `vertex:*:center` id
+// buildSketchVertices registers for it. Without the dot the center stayed a
+// pickable, snappable point that nothing drew -- it surfaced only when a drag
+// put the snap indicator on top of it.
 export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sketch: Sketch; featureId: string; isEditing?: boolean }) {
+  const dotColor = isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
   return (
     <>
       {Object.entries(sketch)
@@ -215,7 +221,18 @@ export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sk
             const pt = entity as PointEntity
             return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} isEditing={isEditing} />
           }
-          return <ProjectedEntityLine key={id} points={pts} featureId={featureId} entityId={id} isEditing={isEditing} />
+          const center = entityCenter(entity)
+          return (
+            <Fragment key={id}>
+              <ProjectedEntityLine points={pts} featureId={featureId} entityId={id} isEditing={isEditing} />
+              {center && (
+                <VertexDot
+                  x={center[0]} y={center[1]} px={2.5} baseColor={dotColor}
+                  featureId={featureId} entityId={id} vertexKey="center" isEditing={isEditing}
+                />
+              )}
+            </Fragment>
+          )
         })}
     </>
   )

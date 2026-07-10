@@ -152,6 +152,18 @@ export function ellipseAxisPoints(
   }
 }
 
+/** Center of a conic entity, or null for a curve that has none (line, spline,
+ *  point). A projected circular edge carries its center onto the sketch plane --
+ *  a tilted circle lowers to an ellipse whose center is still the projected
+ *  circle center -- so the center is a handle of the curve, not a separate
+ *  entity. Returns null on a non-finite center so callers never draw at NaN. */
+export function entityCenter(entity: Entity): [number, number] | null {
+  const kind = getEntityKind(entity)
+  if (kind !== 'circle' && kind !== 'arc' && kind !== 'ellipse') return null
+  const c = (entity as Circle | Arc | Ellipse).center
+  return allFinite(c[0], c[1]) ? [c[0], c[1]] : null
+}
+
 export function getEntityBounds(entity: Entity): { minX: number; maxX: number; minY: number; maxY: number } {
   const kind = getEntityKind(entity)
   if (kind === 'arc') {
