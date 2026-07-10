@@ -4,6 +4,7 @@ import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
+import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 
 // ─── Internals ───
 
@@ -184,6 +185,17 @@ export function applyMoveVertex(
   if (indices) {
     params[indices[0]] = round(to[0])
     params[indices[1]] = round(to[1])
+    return
+  }
+  // Ellipse axis endpoints are derived from center/a/b/theta, so like the arc
+  // endpoints below they have no direct param pair. Invert the drop position
+  // back into (a, b, theta) (params: [cx, cy, a, b, theta]).
+  if (kind === 'ellipse' && isEllipseAxisKey(vertexKey)) {
+    const next = ellipseAxisDrag(params, vertexKey, to)
+    if (!next) return
+    params[2] = round(next.a)
+    params[3] = round(next.b)
+    params[4] = round(next.theta)
     return
   }
   // Arc start/end are derived (center + radius at an angle), so they have no

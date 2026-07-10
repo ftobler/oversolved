@@ -129,28 +129,12 @@ export function sampleBezier(
   return pts
 }
 
-// The 4 ellipse control points: positive/negative ends of the major and minor
-// axes. These vertex keys are shared across query resolution (geometryMapping),
-// constraint lowering (lowerSketch SEL_CODE / partDocToSketches), picking, and
-// rendering -- and mirror PointSelector Major/MajorNeg/Minor/MinorNeg in the
-// Rust solver. A point_distance from 'center' to 'major1'/'minor1' dimensions
-// the major/minor radius.
-export const ELLIPSE_AXIS_KEYS = ['major1', 'major2', 'minor1', 'minor2'] as const
-export type EllipseAxisKey = typeof ELLIPSE_AXIS_KEYS[number]
-
-/** The 4 axis endpoints of an ellipse, derived from center/a/b/theta(deg). */
-export function ellipseAxisPoints(
-  cx: number, cy: number, a: number, b: number, thetaDeg: number,
-): Record<EllipseAxisKey, [number, number]> {
-  const th = thetaDeg * (Math.PI / 180)
-  const ct = Math.cos(th), st = Math.sin(th)
-  return {
-    major1: [cx + a * ct, cy + a * st],
-    major2: [cx - a * ct, cy - a * st],
-    minor1: [cx - b * st, cy + b * ct],
-    minor2: [cx + b * st, cy - b * ct],
-  }
-}
+// The ellipse axis keys and their derived-point math live in `ellipseAxis.ts`,
+// which imports nothing so the kernel drag path can use it inside the worker.
+// Re-exported here because this module is the geometry entry point most sketch
+// callers already reach for.
+export { ELLIPSE_AXIS_KEYS, ellipseAxisPoints, ellipseAxisDrag, isEllipseAxisKey } from './ellipseAxis'
+export type { EllipseAxisKey } from './ellipseAxis'
 
 /** Center of a conic entity, or null for a curve that has none (line, spline,
  *  point). A projected circular edge carries its center onto the sketch plane --

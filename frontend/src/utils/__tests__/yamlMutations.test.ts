@@ -91,6 +91,56 @@ describe('applyMoveVertex', () => {
     expect(doc.features![0].initial!.arc1[3]).toBeCloseTo(190, 4)
   })
 
+  // ell1 = [cx, cy, a, b, theta]; the 4 axis handles are derived points like the
+  // arc endpoints above, so a drag maps the drop position back into a/b/theta.
+  // They used to silently no-op: VERTEX_INDICES['ellipse'] only maps 'center'.
+  const makeEllipseDoc = (params: number[] = [0, 0, 10, 5, 0]): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [
+      {
+        id: 'Sketch1', kind: 'sketch',
+        initial: { ell1: params },
+        entities: [{ id: 'ell1', kind: 'ellipse' }],
+        constraints: [],
+      },
+    ],
+  })
+
+  it('moves ellipse center', () => {
+    const doc = makeEllipseDoc()
+    applyMoveVertex(doc, 'Sketch1', 'ell1', 'center', [3, 4])
+    expect(doc.features![0].initial!.ell1).toEqual([3, 4, 10, 5, 0])
+  })
+
+  it('moves an ellipse major handle by mapping the drop point into a/theta', () => {
+    const doc = makeEllipseDoc()
+    // major1 sits at (10,0). Drop it straight above the center: a = 12, theta = 90.
+    applyMoveVertex(doc, 'Sketch1', 'ell1', 'major1', [0, 12])
+    expect(doc.features![0].initial!.ell1).toEqual([0, 0, 12, 5, 90])
+  })
+
+  it('moves an ellipse minor handle by resizing b only', () => {
+    const doc = makeEllipseDoc()
+    // The off-axis x component is projected away: no rotation, a unchanged.
+    applyMoveVertex(doc, 'Sketch1', 'ell1', 'minor1', [7, 9])
+    expect(doc.features![0].initial!.ell1).toEqual([0, 0, 10, 9, 0])
+  })
+
+  it('no-ops an ellipse major handle dropped on the center', () => {
+    const doc = makeEllipseDoc()
+    applyMoveVertex(doc, 'Sketch1', 'ell1', 'major1', [0, 0])
+    expect(doc.features![0].initial!.ell1).toEqual([0, 0, 10, 5, 0])
+  })
+
+  // The construction flag is presentation only: it must never gate a drag.
+  it('moves a construction line endpoint like an ordinary one', () => {
+    const doc = makeSampleDoc()
+    doc.features![0].entities![0].construction = true
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'end', [15, 5])
+    expect(doc.features![0].initial!.line1).toEqual([0, 0, 15, 5])
+  })
+
   it('no-ops for unknown entity', () => {
     const doc = makeSampleDoc()
     applyMoveVertex(doc, 'Sketch1', 'nonexistent', 'start', [0, 0])
