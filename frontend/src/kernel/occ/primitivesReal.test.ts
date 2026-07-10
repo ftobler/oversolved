@@ -16,7 +16,9 @@ import {
   faceCentroid,
   faceNormal,
   faceArea,
+  faceSurfaceFrame,
   faceSurfaceType,
+  makeBezierEdge,
   makeFaceFromWire,
   makePrism,
   makeWire,
@@ -24,7 +26,7 @@ import {
   type Vec3,
 } from './primitives'
 import { revolveFace } from './prismLineage'
-import type { OccModule, OccShape } from './occTypes'
+import type { OccDisposable, OccModule, OccShape } from './occTypes'
 
 const oc = await loadOcc()
 
@@ -110,6 +112,118 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
 
     table.release(h)
     table.assertNoLeaks()
+  })
+
+  it('faceSurfaceFrame reads a spherical cap anchor point as the sphere centre, not a surface centroid', () => {
+    // No sphere primitive exists in the feature builder yet (only box / sketch+extrude /
+    // cylinder), so this constructs the analytic solid directly, as the box/cylinder
+    // tests above do. BRepPrimAPI_MakeSphere_7(center, radius, angle1, angle2) builds a
+    // spherical cap (here: equator to pole) -- a PARTIAL sphere, so its surface centroid
+    // is off-centre and only faceSurfaceFrame gets the true centre right.
+    const scope = new DisposeScope()
+    try {
+      const center = scope.track(new occ.gp_Pnt_3(1, 2, 3))
+      const MakeSphere = (occ as unknown as {
+        BRepPrimAPI_MakeSphere_7: new (
+          p: typeof center, r: number, a1: number, a2: number,
+        ) => { Shape(): OccShape } & OccDisposable
+      }).BRepPrimAPI_MakeSphere_7
+      const capShape = scope.track(new MakeSphere(center, 5, 0, Math.PI / 2)).Shape()
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(capShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let cap: OccShape | null = null
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+        if (faceSurfaceType(occ, scope, f) === 'sphereface') cap = f
+      }
+      expect(cap).not.toBeNull()
+      const frame = faceSurfaceFrame(occ, scope, cap!)
+      expect(frame).not.toBeNull()
+      expect(frame!.origin[0]).toBeCloseTo(1, 6)
+      expect(frame!.origin[1]).toBeCloseTo(2, 6)
+      expect(frame!.origin[2]).toBeCloseTo(3, 6)
+      expect(frame!.radius).toBeCloseTo(5, 6)
+      // The cap's centroid sits up near its pole, nowhere near the sphere's centre --
+      // exactly why extractBodyAnchors must read frame.origin, never faceCentroid.
+      const centroid = faceCentroid(occ, scope, cap!)
+      const dist = Math.hypot(centroid[0] - frame!.origin[0], centroid[1] - frame!.origin[1], centroid[2] - frame!.origin[2])
+      expect(dist).toBeGreaterThan(2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('faceSurfaceFrame returns null for a plane (the caller already has the right axis: the normal)', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
+    const scope = new DisposeScope()
+    try {
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(table.get(h), E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let checked = 0
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+        expect(faceSurfaceFrame(occ, scope, f)).toBeNull()
+        checked++
+      }
+      expect(checked).toBe(6)
+    } finally {
+      scope.dispose()
+      table.release(h)
+    }
+  })
+
+  it('faceSurfaceFrame returns null for a surface class it does not model (a Bezier-profile prism wall)', () => {
+    const scope = new DisposeScope()
+    try {
+      const bez = makeBezierEdge(occ, scope, [[0, 0, 0], [3, 2, 0], [6, -2, 0], [10, 0, 0]])
+      const line = scope.track(
+        new occ.BRepBuilderAPI_MakeEdge_3(scope.track(new occ.gp_Pnt_3(10, 0, 0)), scope.track(new occ.gp_Pnt_3(0, 0, 0))),
+      ).Edge()
+      const wire = makeWire(occ, scope, [bez, line])
+      const face = makeFaceFromWire(occ, scope, wire)
+      const prism = makePrism(occ, scope, face, [0, 0, 1], 5)
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(prism, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let sawNonPlanar = false
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+        if (faceSurfaceType(occ, scope, f) !== 'flatface') {
+          sawNonPlanar = true
+          expect(faceSurfaceFrame(occ, scope, f)).toBeNull()
+        }
+      }
+      expect(sawNonPlanar).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('faceSurfaceFrame reads the exact axis/origin/radius of a cylinder built at a non-axis-aligned orientation', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const n = 1 / Math.sqrt(3)
+    const h = buildCylinder(occ, table, { center: [2, 3, 4], axis: [n, n, n], radius: 3, height: 10, owner: 'c' })
+    const scope = new DisposeScope()
+    try {
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(table.get(h), E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let wall: ReturnType<typeof faceSurfaceFrame> = null
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+        if (faceSurfaceType(occ, scope, f) === 'cylinderface') wall = faceSurfaceFrame(occ, scope, f)
+      }
+      expect(wall).not.toBeNull()
+      expect(wall!.origin[0]).toBeCloseTo(2, 6)
+      expect(wall!.origin[1]).toBeCloseTo(3, 6)
+      expect(wall!.origin[2]).toBeCloseTo(4, 6)
+      expect(wall!.axis[0]).toBeCloseTo(n, 6)
+      expect(wall!.axis[1]).toBeCloseTo(n, 6)
+      expect(wall!.axis[2]).toBeCloseTo(n, 6)
+      expect(wall!.radius).toBeCloseTo(3, 6)
+    } finally {
+      scope.dispose()
+      table.release(h)
+    }
   })
 
   it('builds an extruded square equivalent to a box', () => {

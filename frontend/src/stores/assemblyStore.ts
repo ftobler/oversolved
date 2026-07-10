@@ -4,7 +4,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { MateResult } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { setMateRef } from '@/utils/assemblyMutations'
+import { findMate, setMateRef } from '@/utils/assemblyMutations'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
@@ -258,6 +258,14 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const { activeMateField, doc } = get()
     const ref = get().activePickCandidate()
     if (!activeMateField || !ref || !doc || !callbacks) return
+    // Refuse a pick that would make both refs name the same part: the solver
+    // guards against this too (a mate needs two different parts), but doing
+    // it here gives the user feedback at the click instead of after the next
+    // solve, and does not leave a half-armed field pointing at a dead end.
+    const mate = findMate(doc, activeMateField.featureId)
+    const otherField: MateRefField = activeMateField.field === 'ref_a' ? 'ref_b' : 'ref_a'
+    const otherRef = mate?.[otherField]
+    if (otherRef && otherRef.part === ref.part) return
     callbacks.mutateDoc(d => setMateRef(d, activeMateField.featureId, activeMateField.field, ref))
     set({ mateFieldDirty: true })
   },

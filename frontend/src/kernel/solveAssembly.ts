@@ -12,6 +12,7 @@ import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorI
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/builtins'
+import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 export type { AnchorPose }
 
@@ -80,7 +81,7 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
   line: 4,
   circle: 5,
   point: 6,
-  torus: 0,  // no dedicated Rust variant, fall back to plane
+  torus: 7,
 }
 
 // ─── Mate kind mapping (TS → Rust u8) ────────────────────────────────────
@@ -102,57 +103,58 @@ const MATE_MAGIC_OUT = 0x5231_544D // "MTR1"
 const BPB = 7  // bytes per body (tx,ty,tz,qx,qy,qz,qw) = 7 f32s = 28 bytes
 
 // ─── Quaternion math for transform application ───────────────────────────
+//
+// Delegates to utils/transform3d.ts rather than carrying a private copy: that
+// module already gets this right (makeTransform normalizes, quatToAxisAngle
+// normalizes and explains why) and is what the STEP export path already goes
+// through. The one place normalization must actually happen is the solve
+// boundary below (decodeMateOutput's raw floats -> Transform3D via
+// makeTransform); every function here inherits a unit quaternion from that
+// single call site and never re-normalizes.
 
-function qMul(
-  a1: number, a2: number, a3: number, a4: number,
-  b1: number, b2: number, b3: number, b4: number,
-): [number, number, number, number] {
-  return [
-    a4 * b1 + a1 * b4 + a2 * b3 - a3 * b2,
-    a4 * b2 - a1 * b3 + a2 * b4 + a3 * b1,
-    a4 * b3 + a1 * b2 - a2 * b1 + a3 * b4,
-    a4 * b4 - a1 * b1 - a2 * b2 - a3 * b3,
-  ]
-}
-
-function qInv(qx: number, qy: number, qz: number, qw: number): [number, number, number, number] {
-  return [-qx, -qy, -qz, qw]
-}
-
-function applyTransform(vertices: Float32Array, t: Transform3D): Float32Array {
-  const out = new Float32Array(vertices.length)
-  const qi = qInv(t.qx, t.qy, t.qz, t.qw)
-  for (let i = 0; i < vertices.length; i += 3) {
-    const vx = vertices[i]
-    const vy = vertices[i + 1]
-    const vz = vertices[i + 2]
-    // rotated = q * v * q⁻¹
-    const [rx, ry, rz] = qMul(
-      ...qMul(t.qx, t.qy, t.qz, t.qw, vx, vy, vz, 0),
-      qi[0], qi[1], qi[2], qi[3],
-    )
-    out[i] = rx + t.tx
-    out[i + 1] = ry + t.ty
-    out[i + 2] = rz + t.tz
-  }
-  return out
-}
-
-type Pt3 = [number, number, number]
+type Pt3 = Vec3
 
 /** Rotate a free vector: a direction takes the rotation but not the translation. */
 function rotateVec(v: Pt3, t: Transform3D): Pt3 {
-  const qi = qInv(t.qx, t.qy, t.qz, t.qw)
-  const [rx, ry, rz] = qMul(
-    ...qMul(t.qx, t.qy, t.qz, t.qw, v[0], v[1], v[2], 0),
-    qi[0], qi[1], qi[2], qi[3],
-  )
-  return [rx, ry, rz]
+  return rotateVector([t.qx, t.qy, t.qz, t.qw], v)
 }
 
 function transformPoint(p: Pt3, t: Transform3D): Pt3 {
   const [rx, ry, rz] = rotateVec(p, t)
   return [rx + t.tx, ry + t.ty, rz + t.tz]
+}
+
+/** Quaternion to row-major 3x3 rotation matrix (assumes a unit quaternion). */
+function quatToMat3(qx: number, qy: number, qz: number, qw: number): number[] {
+  const x2 = qx + qx, y2 = qy + qy, z2 = qz + qz
+  const xx = qx * x2, xy = qx * y2, xz = qx * z2
+  const yy = qy * y2, yz = qy * z2, zz = qz * z2
+  const wx = qw * x2, wy = qw * y2, wz = qw * z2
+  return [
+    1 - (yy + zz), xy - wz, xz + wy,
+    xy + wz, 1 - (xx + zz), yz - wx,
+    xz - wy, yz + wx, 1 - (xx + yy),
+  ]
+}
+
+/**
+ * Apply a rigid transform to a flat vertex array. Hoists the rotation matrix
+ * once per part instead of running the quaternion sandwich product per
+ * vertex: a 100k-vertex part is 100k matrix-vector products instead of
+ * 200k+ small-array allocations, on the path a drag pointer-up runs.
+ */
+function applyTransform(vertices: Float32Array, t: Transform3D): Float32Array {
+  const out = new Float32Array(vertices.length)
+  const m = quatToMat3(t.qx, t.qy, t.qz, t.qw)
+  for (let i = 0; i < vertices.length; i += 3) {
+    const vx = vertices[i]
+    const vy = vertices[i + 1]
+    const vz = vertices[i + 2]
+    out[i] = m[0] * vx + m[1] * vy + m[2] * vz + t.tx
+    out[i + 1] = m[3] * vx + m[4] * vy + m[5] * vz + t.ty
+    out[i + 2] = m[6] * vx + m[7] * vy + m[8] * vz + t.tz
+  }
+  return out
 }
 
 /**
@@ -275,12 +277,21 @@ interface DecodedMateOutput {
   ms: number
 }
 
-export function decodeMateOutput(buf: Uint8Array): DecodedMateOutput {
+// `expectedParams` (bodyCount * BPB) is the caller's own body count, not
+// anything read from the buffer: a WASM-side bug or a stale worker reply
+// could return a params array shorter than the bodies the caller is about to
+// index into. Without this check a short buffer reads `undefined` past the
+// end of the typed array and produces NaN transforms silently instead of an
+// error the caller can fall back from (see the seed-echo catch below).
+export function decodeMateOutput(buf: Uint8Array, expectedParams: number): DecodedMateOutput {
   const r = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
   let pos = 0
   if (r.getUint32(pos, true) !== MATE_MAGIC_OUT) throw new Error('bad mate output magic')
   pos += 4
   const nParams = r.getUint32(pos, true); pos += 4
+  if (nParams !== expectedParams) {
+    throw new Error(`mate output has ${nParams} params, expected ${expectedParams}`)
+  }
   const overallStatus = r.getUint8(pos); pos += 1
   const paramsSolved = new Float32Array(nParams)
   for (let i = 0; i < nParams; i++) {
@@ -376,6 +387,17 @@ export async function solveAssembly(
   }
 
   for (const mate of mates) {
+    // A mate needs two different parts. The MateEditor refuses this pick at
+    // the click (commitAimToMateField), but a hand-edited YAML can still
+    // author it, and if it reaches here unguarded, off_a === off_b makes the
+    // Jacobian fillers write both bodies' contributions into the same cell
+    // (see mate_residuals.rs) -- LM would descend a fabricated gradient
+    // instead of failing loudly. Reject before anchors are even resolved.
+    if (mate.ref_a.part === mate.ref_b.part) {
+      mateResults[mate.id] = { stale: true, error: 'a mate needs two different parts' }
+      continue
+    }
+
     const rA = resolveRef(mate.ref_a)
     const rB = resolveRef(mate.ref_b)
     const staleRefs: ('ref_a' | 'ref_b')[] = []
@@ -383,6 +405,23 @@ export async function solveAssembly(
     if (!rB.anchor) staleRefs.push('ref_b')
     if (staleRefs.length > 0) {
       mateResults[mate.id] = { stale: true, staleRefs }
+      continue
+    }
+
+    // An unknown mate/anchor kind (a newer-build document, or a typo in a
+    // hand-edited YAML) must not silently coerce into `fixed`/`plane` -- that
+    // turned a mismatch into a rigid weld or the wrong tangential formula with
+    // no sign anything went wrong. Fail the mate loud and red instead.
+    const kindCode = MATE_KIND_TO_U8[mate.kind]
+    if (kindCode === undefined) {
+      mateResults[mate.id] = { stale: true, error: `unsupported mate kind '${mate.kind}'` }
+      continue
+    }
+    const anchorKindA = ANCHOR_KIND_TO_U8[rA.anchor!.kind]
+    const anchorKindB = ANCHOR_KIND_TO_U8[rB.anchor!.kind]
+    if (anchorKindA === undefined || anchorKindB === undefined) {
+      const badKind = anchorKindA === undefined ? rA.anchor!.kind : rB.anchor!.kind
+      mateResults[mate.id] = { stale: true, error: `unsupported anchor kind '${badKind}'` }
       continue
     }
 
@@ -397,11 +436,11 @@ export async function solveAssembly(
     const angle = angleDeg * (Math.PI / 180)
 
     mateRecords.push({
-      kindCode: MATE_KIND_TO_U8[mate.kind] ?? 0,
+      kindCode,
       bodyA: rA.bodyIndex,
       bodyB: rB.bodyIndex,
-      anchorKindA: ANCHOR_KIND_TO_U8[rA.anchor!.kind] ?? 0,
-      anchorKindB: ANCHOR_KIND_TO_U8[rB.anchor!.kind] ?? 0,
+      anchorKindA,
+      anchorKindB,
       pointA: rA.anchor!.point,
       axisA: rA.anchor!.axis,
       pointB: rB.anchor!.point,
@@ -456,19 +495,28 @@ export async function solveAssembly(
   if (solveMateFn && mateRecords.length > 0) {
     try {
       const outputBytes = solveMateFn(encoded)
-      const decoded = decodeMateOutput(outputBytes)
+      const decoded = decodeMateOutput(outputBytes, paramCount)
 
+      // The boundary: the unit-norm constraint on qx..qw is a SOFT residual
+      // (mate_residuals.rs), so the solved quaternion is unit only to within
+      // LM's tolerance. makeTransform normalizes here, once, so every
+      // downstream consumer (posed anchors, transformed meshes, transformed
+      // edge curves) inherits a unit quaternion and never has to again.
       for (let i = 0; i < parts.length; i++) {
         const handle = parts[i].handle
-        transforms[handle] = {
-          tx: decoded.paramsSolved[i * BPB + 0],
-          ty: decoded.paramsSolved[i * BPB + 1],
-          tz: decoded.paramsSolved[i * BPB + 2],
-          qx: decoded.paramsSolved[i * BPB + 3],
-          qy: decoded.paramsSolved[i * BPB + 4],
-          qz: decoded.paramsSolved[i * BPB + 5],
-          qw: decoded.paramsSolved[i * BPB + 6],
-        }
+        transforms[handle] = makeTransform(
+          [
+            decoded.paramsSolved[i * BPB + 0],
+            decoded.paramsSolved[i * BPB + 1],
+            decoded.paramsSolved[i * BPB + 2],
+          ],
+          [
+            decoded.paramsSolved[i * BPB + 3],
+            decoded.paramsSolved[i * BPB + 4],
+            decoded.paramsSolved[i * BPB + 5],
+            decoded.paramsSolved[i * BPB + 6],
+          ],
+        )
       }
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e)

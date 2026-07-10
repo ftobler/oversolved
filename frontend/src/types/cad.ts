@@ -140,6 +140,15 @@ export interface FaceData {
   normal: [number, number, number]
   area?: number
   surface_type?: string     // eg 'flatface' / 'cylinderface' / 'coneface' / ...
+  // Additive (multi-part-assembly-postfix Stage A): a curved face's analytic
+  // rotation axis + a point on it, distinct from `normal` (radial on a
+  // cylinder/cone). Absent for a plane and for anything read before this
+  // field existed.
+  surface_frame?: {
+    axis: [number, number, number]
+    origin: [number, number, number]
+    radius?: number
+  }
 }
 
 export interface Mesh3D {

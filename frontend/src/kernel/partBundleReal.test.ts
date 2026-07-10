@@ -281,8 +281,8 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     for (const id of ids1) expect(ids2.has(id)).toBe(false)
   })
 
-  it('cylindrical hole face produces a cylinder anchor, planar faces produce plane anchors', () => {
-    // A sketch with a circle cutout → a through-hole.
+  it('cylindrical hole face produces a coaxial cylinder anchor (Stage A: axis, not the radial normal)', () => {
+    // A sketch with a circle cutout → a through-hole, extruded along Z.
     const holeSketchSpec = {
       id: 'sk_hole', kind: 'sketch' as const, label: 'Hole sketch',
       plane: '@builtin_plane_front',
@@ -310,12 +310,44 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     expect(cylinderAnchors.length).toBeGreaterThanOrEqual(1)
     for (const a of cylinderAnchors) {
       expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
-      // cylinder axis = normal of the cylindrical surface
-      expect(a.axis.length).toBe(3)
+      // The bore runs along Z: the anchor axis must be the bore's rotation
+      // axis, not the radial surface normal `faceNormal` reads (which pointed
+      // sideways, e.g. [-1,0,0], before Stage A).
+      expect(Math.abs(a.axis[2])).toBeCloseTo(1, 5)
+      expect(Math.abs(a.axis[0])).toBeCloseTo(0, 5)
+      expect(Math.abs(a.axis[1])).toBeCloseTo(0, 5)
+      // The point lies on the bore centreline (x=5, y=5), not on the wall
+      // (radius 2 away from the centreline).
+      expect(a.point[0]).toBeCloseTo(5, 5)
+      expect(a.point[1]).toBeCloseTo(5, 5)
     }
 
     // Planar faces still produce plane anchors (box end faces + hole end)
     const planeAnchors = vals.filter((a) => a.kind === 'plane')
     expect(planeAnchors.length).toBeGreaterThan(0)
+  })
+
+  it('a fillet (partial cylinder) anchor point is on the fillet axis, not on the fillet surface', () => {
+    const spec: { features: Array<Record<string, unknown>> } = {
+      features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)],
+    }
+    const pre = run(spec)
+    const edgeQueries = (pre.bodies['body_ex1'] as BodyResult).edge_queries ?? []
+    // The vertical edge at the (0,0) corner sorts first (compareEdgeSortKeys,
+    // type_order 0 = line, then lexicographic by rounded coords).
+    const cornerEdge = edgeQueries[0]
+    spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [cornerEdge], radius: 1 })
+    const result = run(spec)
+    const bundle = toPartBundle('doc11', 1, result.bodies as Record<string, BodyResult>)
+    const filletAnchors = Object.values(bundle.anchors).filter((a) => a.kind === 'cylinder')
+    expect(filletAnchors.length).toBeGreaterThanOrEqual(1)
+    const fillet = filletAnchors[0]
+    // Axis parallel to the box's vertical edges (Z).
+    expect(Math.abs(fillet.axis[2])).toBeCloseTo(1, 5)
+    // A corner fillet of radius 1 at (0,0) has its rotation axis inset to
+    // (1,1): ON the axis. The old centroid-based point sat ON the curved
+    // surface instead, off-axis by roughly the radius.
+    expect(fillet.point[0]).toBeCloseTo(1, 3)
+    expect(fillet.point[1]).toBeCloseTo(1, 3)
   })
 })

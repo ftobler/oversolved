@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors } from './partBundle'
-import type { EdgeData, BodyResult } from '../types/cad'
+import type { EdgeData, BodyResult, FaceData } from '../types/cad'
 
 describe('toEdgeCurve', () => {
   it('converts a line edge to an EdgeCurve with midpoint + normalized axis + endpoints', () => {
@@ -246,19 +246,24 @@ describe('extractBodyAnchors', () => {
   }
 
   it('emits face anchors for flatface, cylinderface, coneface, sphereface, torusface', () => {
-    const types: [string, string][] = [
-      ['flatface', 'plane'],
-      ['cylinderface', 'cylinder'],
-      ['coneface', 'cone'],
-      ['sphereface', 'sphere'],
-      ['torusface', 'torus'],
+    // Curved kinds carry a surface_frame (Stage A); flatface has none because
+    // the normal already IS its axis.
+    const types: [string, string, [number, number, number] | null][] = [
+      ['flatface', 'plane', null],
+      ['cylinderface', 'cylinder', [1, 0, 0]],
+      ['coneface', 'cone', [1, 0, 0]],
+      ['sphereface', 'sphere', [0, 0, 1]],
+      ['torusface', 'torus', [1, 0, 0]],
     ]
     const fqs: string[] = []
-    const fds: { centroid: [number, number, number]; normal: [number, number, number]; surface_type: string; area: number }[] = []
+    const fds: FaceData[] = []
     for (let i = 0; i < types.length; i++) {
-      const [st] = types[i]
+      const [st, , axis] = types[i]
       fqs.push(makeQuery([`@gdf|0,0,${i}|0,0,1`, `@${EX_FEATURE}`], st))
-      fds.push({ centroid: [0, 0, i], normal: [0, 0, 1], area: 1, surface_type: st })
+      fds.push({
+        centroid: [0, 0, i], normal: [0, 0, 1], area: 1, surface_type: st,
+        surface_frame: axis ? { axis, origin: [5, 5, i] } : undefined,
+      })
     }
     const body: BodyResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
@@ -273,6 +278,31 @@ describe('extractBodyAnchors', () => {
       expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
       expect(a.created_by).toBe(EX_FEATURE)
     }
+    // The plane anchor keeps the centroid/normal; the curved anchors take
+    // their point/axis from surface_frame, not from centroid/normal.
+    const plane = vals.find((a) => a.kind === 'plane')!
+    expect(plane.point).toEqual([0, 0, 0])
+    expect(plane.axis).toEqual([0, 0, 1])
+    const cylinder = vals.find((a) => a.kind === 'cylinder')!
+    expect(cylinder.point).toEqual([5, 5, 1])
+    expect(cylinder.axis).toEqual([1, 0, 0])
+    const sphere = vals.find((a) => a.kind === 'sphere')!
+    expect(sphere.point).toEqual([5, 5, 3])
+    expect(sphere.axis).toEqual([0, 0, 1])
+  })
+
+  it('emits no anchor for a curved face with no surface_frame (fail-safe, not fail-wrong)', () => {
+    const fq = makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'cylinderface')
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [fq],
+        face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'cylinderface' }],
+      },
+    }
+    const { anchors } = extractBodyAnchors(body, mintFactory())
+    expect(Object.keys(anchors)).toHaveLength(0)
   })
 
   it('skips faces with unsupported surface type (bspline)', () => {

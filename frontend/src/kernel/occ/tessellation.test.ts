@@ -13,6 +13,7 @@ function quad(centroid: Vec3, normal: Vec3, corners: [Vec3, Vec3, Vec3, Vec3]): 
     centroid,
     normal,
     surfaceType: 'flatface',
+    surfaceFrame: null,
   }
 }
 
@@ -73,6 +74,7 @@ describe('assembleMesh', () => {
       centroid: [0, 0, 0],
       normal: [0, 0, 1],
       surfaceType: 'cylinderface',
+      surfaceFrame: { axis: [0, 0, 1], origin: [0, 0, 0] },
     }
     const flat = quad([5, 5, 5], [1, 0, 0], [
       [5, 5, 5],
@@ -104,6 +106,7 @@ describe('assembleMesh', () => {
       centroid: [9, 9, 9],
       normal: [1, 0, 0],
       surfaceType: 'flatface',
+      surfaceFrame: null,
     }
     const real = quad([0, 0, 0], [0, 0, 1], [
       [0, 0, 0],

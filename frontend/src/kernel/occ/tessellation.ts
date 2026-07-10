@@ -17,12 +17,14 @@ import {
   edgeToGeom,
   faceCentroid,
   faceNormal,
+  faceSurfaceFrame,
   faceSurfaceType,
   readEdgeSamplePoints,
   readSolidEdges,
   readSolidVertices,
   tessellateFace,
   type EdgeSortKey,
+  type SurfaceFrame,
   type SurfaceType,
   type Vec3,
 } from './primitives'
@@ -39,6 +41,12 @@ export interface FaceDatum {
   area: number
   surface_type: SurfaceType
   classifiers?: string[]
+  // Additive (multi-part-assembly-postfix Stage A): the curved-surface rotation
+  // axis, distinct from `normal` (which is radial on a cylinder/cone). Absent
+  // for a plane (normal already IS the axis) and for a bundle built before this
+  // field existed -- the anchor extractor falls back to no-anchor, never to
+  // `normal`, when this is missing on a curved face.
+  surface_frame?: SurfaceFrame
 }
 
 export interface TessMesh {
@@ -64,6 +72,7 @@ export interface RawFaceGeom {
   centroid: Vec3
   normal: Vec3
   surfaceType: SurfaceType
+  surfaceFrame: SurfaceFrame | null
 }
 
 /** Mirror of `_sort_shape_faces`: tessellate + classify every face (unsorted). */
@@ -86,6 +95,7 @@ export function readShapeFaces(
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
       surfaceType: faceSurfaceType(oc, scope, face),
+      surfaceFrame: faceSurfaceFrame(oc, scope, face),
     })
   }
   return raw
@@ -146,7 +156,13 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
       rf.triangles,
     )
     if (triangleCount > 0) {
-      faceData.push({ centroid: rf.centroid, normal: rf.normal, area, surface_type: rf.surfaceType })
+      faceData.push({
+        centroid: rf.centroid,
+        normal: rf.normal,
+        area,
+        surface_type: rf.surfaceType,
+        surface_frame: rf.surfaceFrame ?? undefined,
+      })
     }
   })
 
@@ -275,13 +291,14 @@ export function readShapeFaceMetadata(
 ): { face_data: FaceDatum[]; face_queries: string[] } {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  const faces: FaceSortItem[] = []
+  const faces: (FaceSortItem & { surfaceFrame: SurfaceFrame | null })[] = []
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     faces.push({
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
       surfaceType: faceSurfaceType(oc, scope, face),
+      surfaceFrame: faceSurfaceFrame(oc, scope, face),
     })
   }
   faces.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
@@ -298,6 +315,7 @@ export function readShapeFaceMetadata(
       area: 0,
       surface_type: face.surfaceType,
       classifiers,
+      surface_frame: face.surfaceFrame ?? undefined,
     })
     if (query) face_queries.push(query)
   })

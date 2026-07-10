@@ -195,6 +195,41 @@ export interface OccSurfaceAdaptor extends OccDisposable {
   Plane(): OccPln
   /** Point + first derivatives at (u, v); p/du/dv are caller-allocated out-params. */
   D1(u: number, v: number, p: OccXYZ, du: OccXYZ, dv: OccXYZ): void
+  /** Only valid when GetType() is GeomAbs_Cylinder. */
+  Cylinder(): OccAnalyticCylinder
+  /** Only valid when GetType() is GeomAbs_Cone. */
+  Cone(): OccAnalyticCone
+  /** Only valid when GetType() is GeomAbs_Sphere. */
+  Sphere(): OccAnalyticSphere
+  /** Only valid when GetType() is GeomAbs_Torus. */
+  Torus(): OccAnalyticTorus
+}
+
+/** gp_Cylinder read accessors (BRepAdaptor_Surface.Cylinder()). */
+export interface OccAnalyticCylinder extends OccDisposable {
+  Axis(): OccAxisDir
+  Position(): OccAx3
+  Radius(): number
+}
+
+/** gp_Cone read accessors (BRepAdaptor_Surface.Cone()). */
+export interface OccAnalyticCone extends OccDisposable {
+  Axis(): OccAxisDir
+  Position(): OccAx3
+  RefRadius(): number
+}
+
+/** gp_Sphere read accessors (BRepAdaptor_Surface.Sphere()). */
+export interface OccAnalyticSphere extends OccDisposable {
+  Position(): OccAx3
+  Radius(): number
+}
+
+/** gp_Torus read accessors (BRepAdaptor_Surface.Torus()). */
+export interface OccAnalyticTorus extends OccDisposable {
+  Axis(): OccAxisDir
+  Position(): OccAx3
+  MajorRadius(): number
 }
 
 /** gp_Pnt2d / gp_Dir2d: a 2D point or direction on a face's parameter space. */

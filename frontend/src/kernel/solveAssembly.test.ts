@@ -17,7 +17,7 @@ import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } fro
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/builtins'
 import { sampleEdgeCurve } from '../utils/edgeSampling'
-import type { PartBundle } from './partBundle'
+import { BUNDLE_SCHEMA, type AnchorKind, type PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 
@@ -41,6 +41,7 @@ function makeBundle(doc_id: string, doc_rev: number, overrides?: Partial<PartBun
   return {
     doc_id,
     doc_rev,
+    schema: BUNDLE_SCHEMA,
     bodies: [
       {
         mesh: {
@@ -138,6 +139,42 @@ function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Array {
     if (nBodies >= 2) {
       params[7] += dx
     }
+
+    const outSize = 4 + 4 + 1 + nParams * 4 + 28
+    const outBuf = new ArrayBuffer(outSize)
+    const out = new DataView(outBuf)
+    let pos = 0
+    out.setUint32(pos, 0x5231544D, true); pos += 4
+    out.setUint32(pos, nParams, true); pos += 4
+    out.setUint8(pos, 0); pos += 1
+    for (let i = 0; i < nParams; i++) {
+      out.setFloat32(pos, params[i], true); pos += 4
+    }
+    out.setFloat64(pos, 0.0, true); pos += 8
+    out.setUint32(pos, 13, true); pos += 4
+    out.setUint32(pos, 1, true); pos += 4
+    out.setUint32(pos, 1, true); pos += 4
+    out.setFloat64(pos, 0.001, true); pos += 8
+    return new Uint8Array(outBuf)
+  }
+}
+
+/**
+ * An echo solver that scales `bodyIndex`'s whole quaternion by `scale` before
+ * returning it -- standing in for the soft unit-norm residual only holding
+ * |q| to within LM's tolerance, not exactly (Stage C).
+ */
+function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Uint8Array) => Uint8Array {
+  return (input: Uint8Array): Uint8Array => {
+    const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
+    const nBodies = view.getUint32(4, true)
+    const nParams = nBodies * 7
+    const paramsOffset = 20 + nBodies * 4
+    const params: number[] = []
+    for (let i = 0; i < nParams; i++) {
+      params.push(view.getFloat32(paramsOffset + i * 4, true))
+    }
+    for (let c = 3; c < 7; c++) params[bodyIndex * 7 + c] *= scale
 
     const outSize = 4 + 4 + 1 + nParams * 4 + 28
     const outBuf = new ArrayBuffer(outSize)
@@ -386,6 +423,42 @@ describe('solveAssembly', () => {
     // With identity transform (echo solver), vertices unchanged
     expect(body.vertices[0]).toBeCloseTo(0)
     expect(body.vertices[3]).toBeCloseTo(10)
+  })
+
+  it('normalizes a solved quaternion that is unit only to solver tolerance (qw = 1.02), leaving vertex distances from the origin unchanged', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1, {
+      bodies: [{
+        mesh: {
+          vertices: new Float32Array([3, 4, 0, 0, 0, 5]),  // distances 5 and 5 from origin
+          indices: new Uint32Array([]),
+          faceIdsPerTriangle: new Uint32Array([]),
+        },
+        edges: [],
+      }],
+    }))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: identityTransform() },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    // Body index 1 is p2 (p1 is index 0).
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeScaledQwSolver(1, 1.02))
+
+    const t = result.transforms['p2']
+    expect(Math.hypot(t.qx, t.qy, t.qz, t.qw)).toBeCloseTo(1, 6)
+
+    const verts = result.bodies['p2'][0].vertices
+    const dist0 = Math.hypot(verts[0], verts[1], verts[2])
+    const dist1 = Math.hypot(verts[3], verts[4], verts[5])
+    expect(dist0).toBeCloseTo(5, 5)
+    expect(dist1).toBeCloseTo(5, 5)
   })
 
   // ── edge curves ──────────────────────────────────────────────────────
@@ -725,6 +798,116 @@ describe('solveAssembly', () => {
     expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
   })
 
+  it('flags a mate stale with an error, not fixed, for an unknown mate kind', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'bad', kind: 'not_a_real_kind', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+      { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(result.mateResults['bad'].stale).toBe(true)
+    expect(result.mateResults['bad'].error).toContain('not_a_real_kind')
+    expect(result.mateResults['ok'].stale).toBe(false)
+    // The unknown mate contributes zero bytes to the encoded buffer -- not
+    // coerced into a `fixed` (kindCode 0) record.
+    expect(captured.input!.mates).toHaveLength(1)
+  })
+
+  it('flags a mate stale with an error for an unknown anchor kind', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1, {
+      // `as AnchorKind`: simulates a bundle built by a newer app version that
+      // added a kind this build's union doesn't know about yet.
+      anchors: {
+        a1: { kind: 'not_a_real_anchor_kind' as AnchorKind, point: [0, 0, 0], axis: [0, 0, 1], geom_hash: 'g', created_by: 'f' },
+        a2: { kind: 'point', point: [1, 0, 0], axis: [0, 0, 1], geom_hash: 'g2', created_by: 'f' },
+      },
+    }))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'bad', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+      { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(result.mateResults['bad'].stale).toBe(true)
+    expect(result.mateResults['bad'].error).toContain('not_a_real_anchor_kind')
+    expect(result.mateResults['ok'].stale).toBe(false)
+    expect(captured.input!.mates).toHaveLength(1)
+  })
+
+  it('flags a mate stale with the two-parts message when both refs name the same part, and other mates still solve', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'self', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p1', anchor: 'a2' } },
+      { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(result.mateResults['self'].stale).toBe(true)
+    expect(result.mateResults['self'].error).toBe('a mate needs two different parts')
+    expect(result.mateResults['ok'].stale).toBe(false)
+    expect(captured.input!.mates).toHaveLength(1)
+  })
+
+  it('sets solveError and falls back to seed transforms when the solve output has the wrong param count', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    // A solver that returns an output for only one body when two were sent.
+    const shortSolver = (): Uint8Array => {
+      const w = new DataView(new ArrayBuffer(20 + 7 * 4 + 24))
+      w.setUint32(0, 0x5231_544D, true)  // MATE_MAGIC_OUT
+      w.setUint32(4, 7, true)  // nParams = 7, but the caller expects 14
+      w.setUint8(8, 0)
+      return new Uint8Array(w.buffer)
+    }
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, shortSolver)
+
+    expect(result.solveError).toContain('params')
+    expect(result.mateResults['m1'].error).toContain('params')
+    expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
+  })
+
   // ── grounded instances (Stage 6d) ────────────────────────────────────
 
   it('pins a fixed part instance in the LM state and leaves free parts unpinned', async () => {
@@ -805,7 +988,7 @@ describe('mate wire format', () => {
     const encoded = encodeMateInput(2, params, fixedMask, [])
     const solver = makeEchoSolver()
     const outputBytes = solver(encoded)
-    const decoded = decodeMateOutput(outputBytes)
+    const decoded = decodeMateOutput(outputBytes, 14)
 
     expect(decoded.paramsSolved).toHaveLength(14)
     for (let i = 0; i < 14; i++) {
@@ -815,7 +998,15 @@ describe('mate wire format', () => {
 
   it('decode detects bad magic', () => {
     const bad = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0])
-    expect(() => decodeMateOutput(bad)).toThrow('bad mate output magic')
+    expect(() => decodeMateOutput(bad, 0)).toThrow('bad mate output magic')
+  })
+
+  it('decode detects a params-count mismatch (short buffer, e.g. wrong bodyCount)', () => {
+    const params = new Float32Array(7)
+    const fixedMask = new Uint8Array([0])
+    const encoded = encodeMateInput(1, params, fixedMask, [])
+    const outputBytes = makeEchoSolver()(encoded)
+    expect(() => decodeMateOutput(outputBytes, 14)).toThrow(/params/)
   })
 
   it('byte sizes align with Rust format', () => {

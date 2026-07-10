@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { bundleCacheGet, bundleCachePut, bundleCacheHas, resetBundleDbConnection } from './bundleCache'
-import type { PartBundle } from './partBundle'
+import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
@@ -14,6 +14,7 @@ function fixtureBundle(doc_id: string, doc_rev: number): PartBundle {
   return {
     doc_id,
     doc_rev,
+    schema: BUNDLE_SCHEMA,
     bodies: [
       {
         mesh: {
@@ -80,6 +81,13 @@ describe('bundleCache', () => {
     const bundle = fixtureBundle('docA', 1)
     await bundleCachePut(bundle)
     expect(await bundleCacheHas('docA', 1)).toBe(true)
+  })
+
+  it('a stored bundle with an older schema reads back as a miss', async () => {
+    const bundle = { ...fixtureBundle('docA', 1), schema: BUNDLE_SCHEMA - 1 }
+    await bundleCachePut(bundle)
+    expect(await bundleCacheGet('docA', 1)).toBeUndefined()
+    expect(await bundleCacheHas('docA', 1)).toBe(false)
   })
 
   it('two revs of the same doc_id coexist as separate entries', async () => {

@@ -40,13 +40,18 @@ export const MATE_KIND_LABELS: Record<MateKind, string> = {
 /** The scalar/boolean parameters a mate kind actually consumes in the solve. */
 export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
 
-// Which kind reads which parameter, per mate.rs's wire-format doc comment:
-// offset serves Fixed / Sliding / ParallelPlaneDistance / Tangential; ratio is
+// Which kind reads which parameter, per mate_residuals.rs's residual formulas:
+// offset serves Fixed / ParallelPlaneDistance / Tangential; ratio is
 // CopyRotation's alone; radius is Tangential's mate-side fallback; angle is
 // Fixed's seed-relative roll, alone (see mate_residuals.rs's Fixed residual).
+// `sliding` does NOT read offset: an offset along a prismatic joint's axis
+// would pin its only translational DOF, which is a driven joint (a motor),
+// not a mate -- mates constrain, they do not command. `sliding`'s own roll is
+// pinned unconditionally (seed-relative, no wire field), the same answer
+// `angle` reaches for `fixed` roll: a mate holds what it was seeded with.
 const MATE_PARAMS: Record<MateKind, readonly MateParam[]> = {
   fixed: ['offset', 'angle'],
-  sliding: ['offset'],
+  sliding: [],
   rotating: [],
   sliding_rotating: [],
   spherical: [],

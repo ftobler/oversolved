@@ -107,7 +107,11 @@ impl MateKind {
 
 /// Anchor surface kinds used by the Tangential mate to select the
 /// correct signed-distance formula (plane-plane, plane-cylinder,
-/// cylinder-cylinder).
+/// cylinder-cylinder). `Torus` has no dedicated formula (a real
+/// torus/cylinder tangency formula is a solver research task, not asked
+/// for yet); it lands in `tangential_residual`'s point-to-point fallback,
+/// which is honest about the gap instead of silently reusing `Plane`'s
+/// formula (the TS-side `?? 0` coercion this variant replaces).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorKind {
     Plane = 0,
@@ -117,6 +121,7 @@ pub enum AnchorKind {
     Line = 4,
     Circle = 5,
     Point = 6,
+    Torus = 7,
 }
 
 impl AnchorKind {
@@ -129,6 +134,7 @@ impl AnchorKind {
             4 => AnchorKind::Line,
             5 => AnchorKind::Circle,
             6 => AnchorKind::Point,
+            7 => AnchorKind::Torus,
             _ => return None,
         })
     }
@@ -677,11 +683,11 @@ mod tests {
 
     #[test]
     fn anchor_kinds_round_trip() {
-        for code in 0..=6u8 {
+        for code in 0..=7u8 {
             let kind = AnchorKind::from_u8(code).unwrap();
             assert_eq!(kind.to_u8(), code);
         }
-        assert_eq!(AnchorKind::from_u8(7), None);
+        assert_eq!(AnchorKind::from_u8(8), None);
     }
 
     #[test]

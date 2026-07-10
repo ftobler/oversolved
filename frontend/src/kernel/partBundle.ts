@@ -4,7 +4,7 @@
 // worker never touches OCC or runs solveLocally. The bundle is cached in
 // IndexedDb keyed by (doc_id, doc_rev); a miss triggers a cold rebuild.
 
-import type { EdgeData, BodyResult } from '../types/cad'
+import type { EdgeData, BodyResult, FaceData } from '../types/cad'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
 
@@ -75,9 +75,20 @@ export interface BodyMesh {
 export interface PartBundle {
   doc_id: string
   doc_rev: number
+  schema: number
   bodies: BodyMesh[]
   anchors: Record<string, Anchor>
 }
+
+/**
+ * Bumped whenever a bundle field's MEANING changes in a way that would strand
+ * a cached bundle with stale semantics (not just a new optional field). Stage
+ * A's `surface_frame`-derived anchor axes is the first such change: a bundle
+ * cached under an older schema keeps its wrong cylinder/cone/sphere/torus axes
+ * forever unless the cache treats a schema mismatch as a miss. See
+ * `bundleCache.bundleCacheGet`.
+ */
+export const BUNDLE_SCHEMA = 1
 
 // ── Conversion from BuildResponse output ──────────────────────────────────
 
@@ -263,7 +274,7 @@ export function toPartBundle(
     bodies.push({ ...toBodyMesh(body), entityAnchors })
     Object.assign(allAnchors, anchors)
   }
-  return { doc_id, doc_rev, bodies, anchors: allAnchors }
+  return { doc_id, doc_rev, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
 }
 
 // ── Anchor extraction (Stage 2c) ─────────────────────────────────────────
@@ -293,6 +304,22 @@ function edgeAnchorPoint(ed: EdgeData): Vec3 {
       return ed.points[midIdx]
     }
   }
+}
+
+/**
+ * A face anchor's point + axis. A plane's axis IS its normal (unchanged). A
+ * curved face's axis comes ONLY from `surface_frame` (Stage A) -- never from
+ * `normal`, which is radial on a cylinder/cone and would make a coaxial mate
+ * align two radial vectors instead of two axes. No frame (a bundle built
+ * before this field existed, or an unreadable surface class) means no anchor:
+ * fail-safe over fail-wrong.
+ */
+function faceAnchorPointAxis(kind: AnchorKind, fd: FaceData): { point: Vec3; axis: Vec3 } | null {
+  if (kind === 'plane') return { point: fd.centroid, axis: fd.normal }
+  const frame = fd.surface_frame
+  if (!frame) return null
+  if (kind === 'sphere') return { point: frame.origin, axis: [0, 0, 1] }
+  return { point: frame.origin, axis: frame.axis }
 }
 
 function edgeAnchorAxis(ed: EdgeData): Vec3 {
@@ -354,10 +381,12 @@ export function extractBodyAnchors(
       if (!desc) continue
       const kind = faceTypeToAnchorKind(fds[i]?.surface_type)
       if (!kind) continue
+      const pa = faceAnchorPointAxis(kind, fds[i])
+      if (!pa) continue
       emit(entityAnchors.faces, {
         kind,
-        point: fds[i].centroid,
-        axis: fds[i].normal,
+        point: pa.point,
+        axis: pa.axis,
         geom_hash: desc,
         created_by,
       })

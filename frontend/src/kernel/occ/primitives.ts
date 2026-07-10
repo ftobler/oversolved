@@ -424,6 +424,75 @@ export function faceNormal(oc: OccModule, scope: DisposeScope, face: OccShape): 
   return [n.X() * sign, n.Y() * sign, n.Z() * sign]
 }
 
+/**
+ * A curved face's analytic rotation frame: the axis a cylinder/cone/torus
+ * turns about (a sphere has no axis) and a point ON that axis, read directly
+ * off the adaptor's analytic surface. This is deliberately NOT `faceNormal`:
+ * a cylinder's normal is radial, not axial, and an anchor that mates on the
+ * normal aligns two radial vectors instead of coinciding two axes. See
+ * `faceSurfaceFrame`.
+ */
+export interface SurfaceFrame {
+  axis: Vec3
+  origin: Vec3
+  radius?: number
+}
+
+/**
+ * Read a curved face's analytic rotation axis + a point on it, straight off
+ * `BRepAdaptor_Surface`'s typed surface accessor. Returns null for a plane
+ * (the caller already has the right axis: the face normal) and for any
+ * surface class without a dedicated reader (B-spline, Bezier, ...). Never
+ * falls back to `faceNormal`: a wrong axis is worse than no anchor, so an
+ * unreadable surface yields no frame and the caller must not emit an anchor
+ * for it (see `extractBodyAnchors`).
+ */
+export function faceSurfaceFrame(oc: OccModule, scope: DisposeScope, face: OccShape): SurfaceFrame | null {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  const t = adaptor.GetType().value
+  const S = oc.GeomAbs_SurfaceType
+  if (t === S.GeomAbs_Cylinder.value) {
+    const cyl = scope.track(adaptor.Cylinder())
+    const axis = cyl.Axis().Direction()
+    const origin = cyl.Position().Location()
+    return {
+      axis: [axis.X(), axis.Y(), axis.Z()],
+      origin: [origin.X(), origin.Y(), origin.Z()],
+      radius: cyl.Radius(),
+    }
+  }
+  if (t === S.GeomAbs_Cone.value) {
+    const cone = scope.track(adaptor.Cone())
+    const axis = cone.Axis().Direction()
+    const origin = cone.Position().Location()
+    return {
+      axis: [axis.X(), axis.Y(), axis.Z()],
+      origin: [origin.X(), origin.Y(), origin.Z()],
+      radius: cone.RefRadius(),
+    }
+  }
+  if (t === S.GeomAbs_Sphere.value) {
+    const sph = scope.track(adaptor.Sphere())
+    const origin = sph.Position().Location()
+    return {
+      axis: [0, 0, 1],  // a sphere has no rotation axis; [0,0,1] is a convention only
+      origin: [origin.X(), origin.Y(), origin.Z()],
+      radius: sph.Radius(),
+    }
+  }
+  if (t === S.GeomAbs_Torus.value) {
+    const tor = scope.track(adaptor.Torus())
+    const axis = tor.Axis().Direction()
+    const origin = tor.Position().Location()
+    return {
+      axis: [axis.X(), axis.Y(), axis.Z()],
+      origin: [origin.X(), origin.Y(), origin.Z()],
+      radius: tor.MajorRadius(),
+    }
+  }
+  return null
+}
+
 // --- edge / vertex geometry readers ---------------------------------------
 
 const TWO_PI = 2 * Math.PI

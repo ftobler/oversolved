@@ -16,7 +16,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { loadPkgNodeExport } from '../wasm-kernel/loadPkgNode'
-import type { PartBundle } from './partBundle'
+import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 
@@ -36,6 +36,7 @@ function planeBundle(doc_id: string, doc_rev: number): PartBundle {
   return {
     doc_id,
     doc_rev,
+    schema: BUNDLE_SCHEMA,
     bodies: [{
       mesh: {
         vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),

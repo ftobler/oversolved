@@ -48,6 +48,33 @@ describe('mateParams', () => {
     }
   })
 
+  // Stronger than "the wire can carry it": restates, per kind, exactly which
+  // params mate_residuals.rs's residual formulas actually read (the Rust doc
+  // comment at the top of that file). A kind offering a param its own residual
+  // ignores is a dead control -- e.g. `sliding` used to offer `offset`, which
+  // the solver never read (Stage D: an offset along a prismatic joint's slide
+  // axis would pin its only free DOF, a driven joint, not a mate).
+  it('offers exactly the params the matching residual reads, per mate_residuals.rs', () => {
+    const RUST_READS: Record<MateKind, readonly string[]> = {
+      fixed: ['offset', 'angle'],
+      spherical: [],
+      parallel: ['flip'],
+      sliding: [],
+      rotating: [],
+      sliding_rotating: [],
+      tangential: ['offset', 'radius'],
+      copy_rotation: ['ratio'],
+      parallel_plane_distance: ['offset', 'flip'],
+    }
+    for (const kind of MATE_KINDS) {
+      expect([...mateParams(kind)].sort()).toEqual([...RUST_READS[kind]].sort())
+    }
+  })
+
+  it('sliding offers no offset (Stage D: an offset would pin the joint\'s only free DOF)', () => {
+    expect(mateParams('sliding')).toEqual([])
+  })
+
   it('gives fixed its offset and angle', () => {
     expect(mateParams('fixed')).toEqual(['offset', 'angle'])
   })
@@ -73,6 +100,7 @@ describe('mateParams', () => {
   it('gives the free-DOF joints no parameters at all', () => {
     expect(mateParams('spherical')).toEqual([])
     expect(mateParams('sliding_rotating')).toEqual([])
+    expect(mateParams('sliding')).toEqual([])
   })
 })
 

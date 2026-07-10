@@ -56,6 +56,25 @@ describe('quaternion primitives', () => {
     const full: Quat = quatMultiply(half, half)
     expectVecClose(rotateVector(full, X), [-1, 0, 0])
   })
+
+  // solveAssembly's soft unit-norm residual only holds |q| to within LM's
+  // tolerance, not exactly. rotateVector's two-cross-product form is
+  // |q|-sensitive (unlike a true rotation it does not preserve vector
+  // length), so a non-unit q fed straight in silently stretches every
+  // vertex/anchor/edge it touches. This is exactly why solveAssembly
+  // normalizes ONCE at the decode boundary (via makeTransform) instead of
+  // trusting the solver's q directly.
+  it('rotateVector does not preserve length for a non-unit quaternion (documents why the boundary normalizes)', () => {
+    const unit = quatFromAxisAngle(Z, HALF_PI)
+    const nonUnit: Quat = [unit[0] * 1.01, unit[1] * 1.01, unit[2] * 1.01, unit[3] * 1.01]
+    expect(Math.hypot(...rotateVector(unit, X))).toBeCloseTo(1, 9)
+    expect(Math.hypot(...rotateVector(nonUnit, X))).not.toBeCloseTo(1, 2)
+  })
+
+  it('makeTransform normalizes a non-unit quaternion before storing it', () => {
+    const t = makeTransform([0, 0, 0], [0, 0, 0, 1.01])
+    expect(Math.hypot(t.qx, t.qy, t.qz, t.qw)).toBeCloseTo(1, 9)
+  })
 })
 
 describe('quatToAxisAngle', () => {

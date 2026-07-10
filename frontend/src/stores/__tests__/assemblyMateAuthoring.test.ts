@@ -124,6 +124,18 @@ describe('arming a mate reference slot', () => {
     getState().pickFromHitsOrCycle(CORNER_HITS)
     expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_e' })
   })
+
+  it('arming ref_b and picking a candidate on the part already in ref_a leaves the document unchanged', () => {
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])  // ref_a -> PART
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    const before = getState().doc
+    getState().pickFromHitsOrCycle([{ entityKey: EDGE }])  // also on PART: refused
+    const mate = currentMate('m1')
+    expect(mate.ref_a).toEqual({ part: PART, anchor: 'a_v' })
+    expect(mate.ref_b).toEqual({ part: '', anchor: '' })
+    expect(getState().doc).toBe(before)
+  })
 })
 
 describe('closing a mate field', () => {

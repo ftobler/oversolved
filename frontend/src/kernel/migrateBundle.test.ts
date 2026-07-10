@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { migrateBundle } from './partBundle'
+import { migrateBundle, BUNDLE_SCHEMA } from './partBundle'
 import type { Anchor, AnchorKind, EntityAnchorIndex, PartBundle } from './partBundle'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -10,8 +10,8 @@ function mA(kind: AnchorKind, point: [number, number, number],
   return { kind, point, axis, geom_hash, created_by }
 }
 
-function bundle(anchors: Record<string, Anchor>) {
-  return { doc_id: 'doc', doc_rev: 1, bodies: [], anchors }
+function bundle(anchors: Record<string, Anchor>): PartBundle {
+  return { doc_id: 'doc', doc_rev: 1, schema: BUNDLE_SCHEMA, bodies: [], anchors }
 }
 
 function ids(result: Record<string, Anchor>): string[] {
@@ -303,7 +303,10 @@ describe('migrateBundle entity index', () => {
   function bundleWithIndex(
     anchors: Record<string, Anchor>, entityAnchors: EntityAnchorIndex,
   ): PartBundle {
-    return { doc_id: 'doc', doc_rev: 1, bodies: [{ mesh: EMPTY_MESH, edges: [], entityAnchors }], anchors }
+    return {
+      doc_id: 'doc', doc_rev: 1, schema: BUNDLE_SCHEMA,
+      bodies: [{ mesh: EMPTY_MESH, edges: [], entityAnchors }], anchors,
+    }
   }
 
   it('rewrites the entity index to the migrated ids, so a pick names what the solver resolves', () => {
@@ -361,7 +364,10 @@ describe('migrateBundle entity index', () => {
     const old = makeAnchors([
       { label: 'old_1', kind: 'plane', point: [0,0,0], axis: [0,0,1], geom_hash: '@gdf|0,0,0|0,0,1', created_by: FEATURE_A },
     ])
-    const next: PartBundle = { doc_id: 'doc', doc_rev: 1, bodies: [{ mesh: EMPTY_MESH, edges: [] }], anchors: news }
+    const next: PartBundle = {
+      doc_id: 'doc', doc_rev: 1, schema: BUNDLE_SCHEMA,
+      bodies: [{ mesh: EMPTY_MESH, edges: [] }], anchors: news,
+    }
 
     const migrated = migrateBundle(bundle(old), next)
     expect(Object.keys(migrated.anchors)).toEqual(['old_1'])
