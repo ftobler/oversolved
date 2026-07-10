@@ -12,6 +12,8 @@ import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, tes
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { ToolId, ToolContext } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
+import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
+import { randomId } from '@/utils/yamlMutations/helpers'
 
 // Callbacks dispatched from pure-layer store actions back into React state.
 // Registered by Part.tsx on mount via setSketchCallback(); torn down on unmount.
@@ -254,6 +256,7 @@ interface SketchEditorState {
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
   addDimensionPick: (pick: DimensionPick) => void
+  addBrepDimensionPick: (query: string, opts: { isVertexPick: boolean; sourceKind?: string | null }) => void
   clearDimensionPicks: () => void
   setDimensionCursorWorld: (p: [number, number] | null) => void
   finalizeDimensionPlacement: (clientPos: [number, number]) => void
@@ -584,14 +587,41 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     set({ dimensionPicks: next })
   },
 
+  // A dimension constraint can only name sketch elements, so a body edge or
+  // vertex picked with the dimension tool is projected into the active sketch
+  // first and the pick targets that projection.
+  addBrepDimensionPick: (query, { isVertexPick, sourceKind }) => {
+    const { activeFeatureId, dimensionPicks } = get()
+    if (!activeFeatureId) return
+    const onMutation = requireMutation('addBrepDimensionPick')
+    if (!onMutation) return
+    const sketch = _sketchCbs.getSketch?.(activeFeatureId) ?? null
+    const { mutations, pick } = planBrepDimensionPick({
+      query,
+      featureId: activeFeatureId,
+      sketch,
+      picks: dimensionPicks,
+      isVertexPick,
+      sourceKind,
+      newEntityId: () => randomId(12),
+    })
+    for (const m of mutations) onMutation(m)
+    get().addDimensionPick(pick)
+  },
+
   clearDimensionPicks: () => set({ dimensionPicks: [] }),
 
   setDimensionCursorWorld: (p) => set({ dimensionCursorWorld: p }),
 
   finalizeDimensionPlacement: (clientPos) => {
-    const { dimensionPicks, activeFeatureId, dimensionCursorWorld } = get()
-    if (!activeFeatureId || dimensionPicks.length === 0) return
+    const { activeFeatureId, dimensionCursorWorld } = get()
+    if (!activeFeatureId || get().dimensionPicks.length === 0) return
     const sketch = _sketchCbs.getSketch?.(activeFeatureId) ?? null
+    // A projection picked before its solve landed carries the kind it was
+    // declared with, which the lowerer may since have promoted (tilted circle
+    // -> ellipse). Take the solved kind so the dim resolves against the real
+    // geometry.
+    const dimensionPicks = refreshProjectedPickKinds(get().dimensionPicks, sketch, activeFeatureId)
     const resolved = resolveDimension(dimensionPicks, sketch ?? undefined, activeFeatureId)
     if (!resolved) {
       // Vertex-only or otherwise undimensionable: silently drop and let the

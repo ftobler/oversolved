@@ -112,7 +112,7 @@ export const mutationHandlers: MutationHandlers = {
   add_entity_with_constraint: (next, m) =>
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId),
   add_projected_entity: (next, m) =>
-    applyAddProjectedEntity(next, m.featureId, m.kind, m.source),
+    applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
   add_point_at_intersection: (next, m) =>
     applyAddPointAtIntersection(next, m.featureId, m.at, m.curveEntityIds),
   add_dock: (next, m) =>

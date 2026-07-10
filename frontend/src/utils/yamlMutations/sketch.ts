@@ -405,13 +405,18 @@ export function applyAddProjectedEntity(
   featureId: string,
   kind: string,
   source: string,
+  entityId?: string,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.entities) feature.entities = []
   const existing = new Set(feature.entities.map(e => e.id))
-  let eid = randomId(12)
-  while (existing.has(eid)) eid = randomId(12)
+  // A caller that must reference the projection right away (the dimension tool
+  // targets it with the pick it makes in the same click) supplies the id. It is
+  // taken as given: re-rolling it would orphan the reference the caller holds,
+  // so a supplied id must already be unique within the feature.
+  let eid = entityId ?? randomId(12)
+  while (!entityId && existing.has(eid)) eid = randomId(12)
   feature.entities.push({ id: eid, kind, source })
 }
 

@@ -6,6 +6,7 @@ import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { parseQuery } from '@/utils/query'
+import { projectedKindForEdge } from '@/tools/dimensionProjection'
 import { circumcircle, arcAnglesFromRadiusPoint, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 
 export interface DrawSnapState {
@@ -318,14 +319,8 @@ export function computeDrawClick(
           const tr = q.typeRestriction
           if (tr === 'edge' || tr === 'straightedge') {
             // The query alone can't tell a line from a circle/arc; the hovered
-            // edge's curve kind (when known) selects the base entity kind. A
-            // tilted circle still picks 'circle' here -- the projection lowerer
-            // promotes it to an ellipse once it sees the plane orientation.
-            if (snap.hoveredSourceKind === 'circle') kind = 'circle'
-            else if (snap.hoveredSourceKind === 'arc') kind = 'arc'
-            else if (snap.hoveredSourceKind === 'ellipse') kind = 'ellipse'
-            else if (snap.hoveredSourceKind === 'spline') kind = 'spline'
-            else kind = 'line'
+            // edge's curve kind (when known) selects the base entity kind.
+            kind = projectedKindForEdge(snap.hoveredSourceKind)
           } else if (tr === 'face' || tr === 'flatface' || tr === 'cylinderface') {
             isFace = true
           }

@@ -128,6 +128,12 @@ describe('applyAddProjectedEntity', () => {
     expect(added.source).toBe('@otherSketch/edge/0')
   })
 
+  it('honours a caller-supplied entity id', () => {
+    const doc = makeSketchDoc()
+    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@otherSketch/edge/0', 'proj1')
+    expect(doc.features![0].entities![2].id).toBe('proj1')
+  })
+
   it('no-ops for unknown feature', () => {
     const doc = makeSketchDoc()
     applyAddProjectedEntity(doc, 'NoSuchFeature', 'line', '@other/edge/0')
