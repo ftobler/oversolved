@@ -11,12 +11,14 @@
 // Presentational: every mutation leaves through a callback, so the panel's logic
 // (mateKinds.ts, assemblyMutations.ts) stays viewport-free and unit-tested.
 
+import { useState } from 'react'
 import type { MateFeatureDef, MateRef, MateRefField } from '@/types/cad'
 import type { MateResult } from '@/kernel/solveAssembly'
 import type { MateFieldTarget } from '@/stores/assemblyStore'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import {
-  MATE_KIND_LABELS, MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel, type MateParam,
+  MATE_ANGLE_LIMIT_DEG, MATE_KIND_LABELS, MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel,
+  type MateParam,
 } from '@/utils/mateKinds'
 
 interface MateEditorProps {
@@ -54,6 +56,34 @@ export function MateEditor({
   featureId, mate, result, activeField, labelFor, onArmField, onUpdate, onDelete, onClose,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
+  // Rejected entry is a local UI concern, not a document state: the mate keeps
+  // whatever angle it last held, and the message clears the moment a value
+  // within range is entered or a button lands in range.
+  const [angleError, setAngleError] = useState<string | null>(null)
+  // The box's own text, not `mate.angle` directly: a rejected keystroke must
+  // stay visible (so the user sees what they typed and why it was rejected)
+  // rather than snapping back to the last committed value mid-entry. Resynced
+  // from the document whenever the committed angle changes from elsewhere (a
+  // +/-90 click, a different mate selected) -- done inline during render
+  // (the React-recommended way to adjust state on a prop change) rather than
+  // in an effect, which would commit the stale text for one extra render.
+  const [angleText, setAngleText] = useState(() => numericValue(mate.angle))
+  const [syncedFor, setSyncedFor] = useState<{ featureId: string; angle: unknown }>({
+    featureId, angle: mate.angle,
+  })
+  if (syncedFor.featureId !== featureId || syncedFor.angle !== mate.angle) {
+    setSyncedFor({ featureId, angle: mate.angle })
+    setAngleText(numericValue(mate.angle))
+  }
+
+  const commitAngle = (next: number) => {
+    if (Math.abs(next) > MATE_ANGLE_LIMIT_DEG) {
+      setAngleError(`Angle must stay within ±${MATE_ANGLE_LIMIT_DEG}°`)
+      return
+    }
+    setAngleError(null)
+    onUpdate({ angle: next })
+  }
 
   const renderParam = (param: MateParam) => {
     if (param === 'flip') {
@@ -66,6 +96,38 @@ export function MateEditor({
           />
           <span>{MATE_PARAM_LABELS.flip}</span>
         </label>
+      )
+    }
+    if (param === 'angle') {
+      const current = typeof mate.angle === 'number' ? mate.angle : 0
+      return (
+        <div key={param} className="mate-param-angle">
+          <label className="mate-param">
+            <span>{MATE_PARAM_LABELS.angle}</span>
+            <input
+              type="number"
+              aria-label={MATE_PARAM_LABELS.angle}
+              value={angleText}
+              placeholder="0"
+              onChange={e => {
+                const raw = e.target.value
+                setAngleText(raw)
+                if (raw === '') { setAngleError(null); onUpdate({ angle: undefined }); return }
+                const next = Number(raw)
+                if (!Number.isNaN(next)) commitAngle(next)
+              }}
+            />
+          </label>
+          <div className="mate-angle-buttons">
+            <button type="button" onClick={() => commitAngle(current - 90)}>
+              -90&deg;
+            </button>
+            <button type="button" onClick={() => commitAngle(current + 90)}>
+              +90&deg;
+            </button>
+          </div>
+          {angleError && <p className="mate-angle-error">{angleError}</p>}
+        </div>
       )
     }
     return (

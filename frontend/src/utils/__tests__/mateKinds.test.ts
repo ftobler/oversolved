@@ -39,9 +39,8 @@ describe('mateParams', () => {
   // encodeMateInput (kernel/solveAssembly.ts) writes exactly these per mate. A
   // parameter offered outside this set would be authored into the document and
   // then dropped at the wire, which is worse than not offering it: the user sees
-  // a number that does nothing. `angle` is the live example: the schema has it,
-  // the Rust `Mate` struct does not.
-  const WIRE_PARAMS = ['flip', 'offset', 'ratio', 'radius']
+  // a number that does nothing.
+  const WIRE_PARAMS = ['flip', 'offset', 'ratio', 'radius', 'angle']
 
   it('never offers a parameter the wire format cannot carry', () => {
     for (const kind of MATE_KINDS) {
@@ -49,8 +48,13 @@ describe('mateParams', () => {
     }
   })
 
-  it('gives fixed its offset', () => {
-    expect(mateParams('fixed')).toEqual(['offset'])
+  it('gives fixed its offset and angle', () => {
+    expect(mateParams('fixed')).toEqual(['offset', 'angle'])
+  })
+
+  it('offers angle only where the solver reads it (fixed alone)', () => {
+    const withAngle = MATE_KINDS.filter(k => mateParams(k).includes('angle'))
+    expect(withAngle).toEqual(['fixed'])
   })
 
   it('gives copy_rotation only its ratio', () => {

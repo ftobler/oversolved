@@ -26,6 +26,7 @@ import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
 import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
+import RollGuideGizmo, { type RollGuideSpec } from '@/components/Viewport/assembly/RollGuideGizmo'
 import TriadGizmo from '@/components/Viewport/assembly/TriadGizmo'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import IdPickingDriver from '@/picking/IdPickingDriver'
@@ -34,7 +35,7 @@ import {
   EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, VERTEX_LAYER_NAME,
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
-import { resolveAnchorGizmos } from '@/utils/anchorGizmos'
+import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import {
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
@@ -62,6 +63,8 @@ const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 
 
 export default function AssemblyViewport() {
   const doc = useAssemblyStore(s => s.doc)
+  const mates = useAssemblyStore(s => s.mates)
+  const selectedMateId = useAssemblyStore(s => s.selectedMateId)
   const bodies = useAssemblyStore(s => s.bodies)
   const edgeCurves = useAssemblyStore(s => s.edgeCurves)
   const instances = useAssemblyStore(s => s.instances)
@@ -124,6 +127,29 @@ export default function AssemblyViewport() {
     ),
     [hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates, pickIndex],
   )
+
+  // The roll-guide arrow (Stage 3): only a selected `fixed` mate has one, drawn
+  // about ref_a's anchor axis so it moves with whichever body the roll is
+  // measured against. A stale ref_a (anchor missing from the solved table)
+  // simply draws nothing rather than a guide floating at the origin.
+  //
+  // `mates` is a fresh array of fresh wrapper objects on every doc mutation
+  // (useAssemblyDoc.ts derives it via `useMemo(() => mateFeatures(doc), [doc])`),
+  // so depending on it directly would rebuild the guide's geometry on every
+  // unrelated edit -- another part dragged, a different mate renamed. The find
+  // below is cheap and runs every render; the memo instead keys on the handful
+  // of primitive values that actually change what the guide draws, so its
+  // identity (and RollGuideGizmo's own geometry memo) survives an unrelated
+  // re-render or re-solve.
+  const selectedMate = selectedMateId ? mates.find(m => m.id === selectedMateId)?.mate : undefined
+  const rollGuideAnchor = selectedMate && selectedMate.kind === 'fixed'
+    ? lookupAnchor(anchors, selectedMate.ref_a)
+    : undefined
+  const rollGuideAngleDeg = typeof selectedMate?.angle === 'number' ? selectedMate.angle : 0
+  const rollGuideSpec = useMemo((): RollGuideSpec | null => {
+    if (!rollGuideAnchor) return null
+    return { point: [...rollGuideAnchor.point] as Vec3, axis: [...rollGuideAnchor.axis] as Vec3, angleDeg: rollGuideAngleDeg }
+  }, [rollGuideAnchor, rollGuideAngleDeg])
 
   const onPipelineReady = useCallback((p: IdPipeline) => { pipelineRef.current = p }, [])
   // A grounded part is the assembly's static frame: it selects, but it gets no
@@ -381,6 +407,7 @@ export default function AssemblyViewport() {
         ))}
 
         <AnchorGizmos gizmos={gizmos} />
+        <RollGuideGizmo spec={rollGuideSpec} />
 
         {triadOrigin && <TriadGizmo origin={triadOrigin} onGrab={handleGrabGizmo} />}
       </Canvas>

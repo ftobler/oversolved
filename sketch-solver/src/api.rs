@@ -90,6 +90,7 @@ mod tests {
                 offset: 0.0,
                 ratio: 1.0,
                 radius: 0.0,
+                angle: 0.0,
             }],
         };
         let bytes = encode_mate_input(&input);

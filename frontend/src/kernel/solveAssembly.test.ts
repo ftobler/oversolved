@@ -168,6 +168,7 @@ interface DecodedMateRecord {
   axisA: [number, number, number]
   pointB: [number, number, number]
   axisB: [number, number, number]
+  angle: number
 }
 
 interface DecodedInput {
@@ -206,7 +207,8 @@ function decodeInput(input: Uint8Array): DecodedInput {
     const pointB = readVec()
     const axisB = readVec()
     pos += 1 + 4 + 4 + 4  // flags + offset + ratio + radius
-    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB })
+    const angle = v.getFloat32(pos, true); pos += 4
+    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, angle })
   }
   return { nBodies, fixedMask, mates }
 }
@@ -339,6 +341,32 @@ describe('solveAssembly', () => {
     expect(result.mateResults['m1'].stale).toBe(false)
     // No relay calls (both cache hits)
     expect(relay.requestPartDoc).not.toHaveBeenCalled()
+  })
+
+  it('encodes a fixed mate angle authored in degrees as radians on the wire', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      {
+        id: 'm1',
+        kind: 'fixed',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: 'p2', anchor: 'a1' },
+        angle: 90,
+      },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(captured.input!.mates[0].angle).toBeCloseTo(Math.PI / 2)
   })
 
   it('apply transforms to vertices', async () => {
@@ -797,15 +825,35 @@ describe('mate wire format', () => {
     const encoded = encodeMateInput(1, params, fixedMask, [])
     expect(encoded.length).toBe(53)
 
-    // One mate record adds exactly 72 bytes
+    // One mate record adds exactly 76 bytes
     const encodedWithMate = encodeMateInput(1, params, fixedMask, [{
       kindCode: 1,
       bodyA: 0, bodyB: 0,
       anchorKindA: 6, anchorKindB: 6,
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [1, 0, 0], axisB: [0, 0, 1],
-      flip: false, offset: 0, ratio: 1, radius: 0,
+      flip: false, offset: 0, ratio: 1, radius: 0, angle: 0,
     }])
-    expect(encodedWithMate.length).toBe(53 + 72)
+    expect(encodedWithMate.length).toBe(53 + 76)
+  })
+
+  it('places angle at the documented offset in the mate record', () => {
+    // Record layout after the 53-byte header+body+params+mask prefix (1 body):
+    // kind(1) + bodyA(4) + bodyB(4) + anchorKinds(2) + pointA(12) + axisA(12)
+    // + pointB(12) + axisB(12) + flags(1) + offset(4) + ratio(4) + radius(4) = 72,
+    // then angle is the trailing f32 at byte 72 of the record.
+    const params = new Float32Array(7)
+    const fixedMask = new Uint8Array([0])
+    const encoded = encodeMateInput(1, params, fixedMask, [{
+      kindCode: 0,
+      bodyA: 0, bodyB: 0,
+      anchorKindA: 0, anchorKindB: 0,
+      pointA: [0, 0, 0], axisA: [0, 0, 1],
+      pointB: [0, 0, 0], axisB: [0, 0, 1],
+      flip: false, offset: 0, ratio: 1, radius: 0, angle: Math.PI / 4,
+    }])
+    const recordStart = 53
+    const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+    expect(view.getFloat32(recordStart + 72, true)).toBeCloseTo(Math.PI / 4)
   })
 })

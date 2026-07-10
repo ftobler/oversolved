@@ -187,6 +187,8 @@ export interface MateWireRecord {
   offset: number
   ratio: number
   radius: number
+  /** Radians. Fixed's seed-relative roll target; see mate_residuals.rs. */
+  angle: number
 }
 
 function pinnedMaskBytes(nBodies: number): number {
@@ -204,12 +206,12 @@ export function encodeMateInput(
   // bodies: n_bodies * 4
   // params: bodyCount * 7 * 4
   // fixedMask: maskLen
-  // mates: n_mates * 72
+  // mates: n_mates * 76
   const headerSize = 20
   const bodiesSize = bodyCount * 4
   const paramsSize = params.length * 4
   const maskSize = maskLen
-  const matesSize = mates.length * 72
+  const matesSize = mates.length * 76
   const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
@@ -257,6 +259,7 @@ export function encodeMateInput(
     w.setFloat32(pos, m.offset, true); pos += 4
     w.setFloat32(pos, m.ratio, true); pos += 4
     w.setFloat32(pos, m.radius, true); pos += 4
+    w.setFloat32(pos, m.angle, true); pos += 4
   }
 
   return new Uint8Array(buf)
@@ -386,6 +389,12 @@ export async function solveAssembly(
     const offset = typeof mate.offset === 'number' ? mate.offset : 0
     const ratio = typeof mate.ratio === 'number' ? mate.ratio : 1
     const radius = typeof mate.radius === 'number' ? mate.radius : 0
+    // angle is authored in degrees (the mate editor's +/-90 buttons and free-angle
+    // box); the Rust side measures roll in radians via twist(), same units atan2
+    // returns. offset is millimetres and passes through unconverted -- do not
+    // "fix" this into a degrees-to-radians conversion too.
+    const angleDeg = typeof mate.angle === 'number' ? mate.angle : 0
+    const angle = angleDeg * (Math.PI / 180)
 
     mateRecords.push({
       kindCode: MATE_KIND_TO_U8[mate.kind] ?? 0,
@@ -401,6 +410,7 @@ export async function solveAssembly(
       offset,
       ratio,
       radius,
+      angle,
     })
     mateResults[mate.id] = { stale: false }
   }

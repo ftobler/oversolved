@@ -319,6 +319,82 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     expect(screen.queryByLabelText('Ratio')).toBeNull()
   })
 
+  describe('fixed mate angle', () => {
+    it('clicking +90 twice stores angle: 180', async () => {
+      await renderWithMate('fixed')
+      disarm()
+      fireEvent.click(screen.getByRole('button', { name: '+90°' }))
+      await tick()
+      fireEvent.click(screen.getByRole('button', { name: '+90°' }))
+      await tick()
+      expect(mateDef().angle).toBe(180)
+    })
+
+    it('a third +90 click is rejected rather than wrapping to -90', async () => {
+      await renderWithMate('fixed')
+      disarm()
+      const plus90 = () => screen.getByRole('button', { name: '+90°' })
+      fireEvent.click(plus90())
+      await tick()
+      fireEvent.click(plus90())
+      await tick()
+      fireEvent.click(plus90())
+      await tick()
+      expect(mateDef().angle).toBe(180)
+      expect(screen.getByText(/must stay within/)).toBeTruthy()
+    })
+
+    it('typing an out-of-range angle is rejected with a visible message', async () => {
+      await renderWithMate('fixed')
+      disarm()
+      fireEvent.change(screen.getByLabelText('Angle'), { target: { value: '270' } })
+      await tick()
+      expect(mateDef().angle).toBeUndefined()
+      expect(screen.getByText(/must stay within/)).toBeTruthy()
+    })
+
+    it('an angle edit re-solves once no chip is armed, like offset', async () => {
+      await renderWithMate('fixed')
+      await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
+      disarm()
+      fireEvent.change(screen.getByLabelText('Angle'), { target: { value: '45' } })
+      await tick()
+      expect(mateDef().angle).toBe(45)
+      await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+    })
+
+    it('a rejected keystroke keeps the digits the user typed visible', async () => {
+      await renderWithMate('fixed')
+      disarm()
+      const input = screen.getByLabelText('Angle') as HTMLInputElement
+      // Typed digit by digit: "2" -> "27" both commit (in range), "270" is
+      // rejected. The box must still show "270", not snap back to "27" --
+      // a controlled input bound straight to the last-committed value would
+      // erase the very keystroke that triggered the rejection.
+      fireEvent.change(input, { target: { value: '2' } })
+      await tick()
+      fireEvent.change(input, { target: { value: '27' } })
+      await tick()
+      fireEvent.change(input, { target: { value: '270' } })
+      await tick()
+      expect(input.value).toBe('270')
+      expect(mateDef().angle).toBe(27)
+      expect(screen.getByText(/must stay within/)).toBeTruthy()
+    })
+
+    it('an angle edit while a chip is armed defers its solve to the disarm', async () => {
+      await renderWithMate('fixed')
+      await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
+      fireEvent.change(screen.getByLabelText('Angle'), { target: { value: '45' } })
+      await tick()
+      expect(mateDef().angle).toBe(45)
+      expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+
+      disarm()
+      await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+    })
+  })
+
   // Fail-safe over fail-wrong: the dead ref is retained for a manual re-pick, and
   // the row goes red rather than silently re-targeting a different face.
   it('a stale ref renders the mate red with the dead reference retained', async () => {

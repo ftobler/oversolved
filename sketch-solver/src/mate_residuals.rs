@@ -5,7 +5,7 @@
 //! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
 //!
 //! Residuals per mate kind:
-//! - Fixed:              point coincidence + offset (3) + axis cross (3)
+//! - Fixed:              point coincidence + offset (3) + axis cross (3) + seed-relative roll (1)
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
 //! - Sliding:            axis cross (3) + perp displacement cross (3)
@@ -40,8 +40,13 @@ pub struct MateProblem {
     grounded: Vec<bool>,
     /// Total residual count m.
     m: usize,
-    /// Seed-frame world axes for CopyRotation (fixed at problem build time).
+    /// Seed-frame world axes for CopyRotation and Fixed (fixed at problem build time).
     seed_axes: Vec<Option<([f64; 3], [f64; 3])>>,
+    /// Fixed's roll offset at the seed pose: `twist_b(x0) - twist_a(x0)`, measured
+    /// about `seed_axes`. The roll residual holds relative to this, not to zero,
+    /// so a `Fixed` mate authored with `angle = 0` reproduces whatever roll the
+    /// two bodies already had when the mate was placed instead of snapping them.
+    fixed_roll_delta: Vec<f64>,
 }
 
 impl MateProblem {
@@ -55,7 +60,7 @@ impl MateProblem {
         let mut mate_residual_count = 0usize;
         for m in &input.mates {
             mate_residual_count += match m.kind {
-                MateKind::Fixed => 6,
+                MateKind::Fixed => 7,
                 MateKind::Spherical => 3,
                 MateKind::Parallel => 1,
                 MateKind::Sliding => 6,
@@ -69,15 +74,28 @@ impl MateProblem {
 
         let m = mate_residual_count + n_bodies + 7 * grounded.iter().filter(|&&g| g).count();
 
-        // Precompute seed-frame world axes for CopyRotation mates.
+        // Precompute seed-frame world axes for CopyRotation and Fixed mates, plus
+        // Fixed's seed-relative roll offset (the twist difference the two bodies
+        // already had at the seed pose, about those same fixed axes).
         let mut seed_axes: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
+        let mut fixed_roll_delta: Vec<f64> = vec![0.0; input.mates.len()];
         for (i, m) in input.mates.iter().enumerate() {
-            if m.kind == MateKind::CopyRotation {
+            if m.kind == MateKind::CopyRotation || m.kind == MateKind::Fixed {
                 let off_a = m.a.body_index as usize * 7;
                 let off_b = m.b.body_index as usize * 7;
                 let a_w = world_direction(&x0, off_a, &m.a.geometry.axis);
                 let b_w = world_direction(&x0, off_b, &m.b.geometry.axis);
-                seed_axes[i] = Some((normalise_axis(&a_w), normalise_axis(&b_w)));
+                let seed_a = normalise_axis(&a_w);
+                let seed_b = normalise_axis(&b_w);
+                seed_axes[i] = Some((seed_a, seed_b));
+
+                if m.kind == MateKind::Fixed {
+                    let qa = (x0[off_a + 3], x0[off_a + 4], x0[off_a + 5], x0[off_a + 6]);
+                    let qb = (x0[off_b + 3], x0[off_b + 4], x0[off_b + 5], x0[off_b + 6]);
+                    let twist_a0 = twist_angle(qa.0, qa.1, qa.2, qa.3, &seed_a);
+                    let twist_b0 = twist_angle(qb.0, qb.1, qb.2, qb.3, &seed_b);
+                    fixed_roll_delta[i] = twist_b0 - twist_a0;
+                }
             }
         }
 
@@ -89,6 +107,7 @@ impl MateProblem {
             grounded,
             m,
             seed_axes,
+            fixed_roll_delta,
         }
     }
 
@@ -227,6 +246,16 @@ impl MateProblem {
                     r.push(cx);
                     r.push(cy);
                     r.push(cz);
+                    // Seed-relative roll: the axis cross above has rank 2, not 3 --
+                    // once the axes are parallel, rolling body B about the shared
+                    // axis leaves it at zero. This 7th residual is the missing rank.
+                    let (seed_a_w, seed_b_w) = self.seed_axes[mi]
+                        .unwrap_or(([0.0, 0.0, 1.0], [0.0, 0.0, 1.0]));
+                    let (qxa, qya, qza, qwa) = self.get_quat(x, mate.a.body_index as usize);
+                    let (qxb, qyb, qzb, qwb) = self.get_quat(x, mate.b.body_index as usize);
+                    let twist_a = twist_angle(qxa, qya, qza, qwa, &seed_a_w);
+                    let twist_b = twist_angle(qxb, qyb, qzb, qwb, &seed_b_w);
+                    r.push((twist_b - twist_a) - (self.fixed_roll_delta[mi] + mate.angle));
                 }
                 MateKind::Spherical => {
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
@@ -423,6 +452,16 @@ impl MateProblem {
                         &mate.b.geometry.axis,
                     );
                     row += 3;
+                    // Seed-relative roll. Same derivative form as CopyRotation's
+                    // twist_b - ratio*twist_a with ratio = 1 (the additive seed
+                    // delta and `angle` are constants, so they drop out of dq).
+                    self.fill_copy_rotation(
+                        &mut j, row, off_a, off_b, x,
+                        &mate.a.geometry.axis,
+                        &mate.b.geometry.axis,
+                        1.0,
+                    );
+                    row += 1;
                 }
                 MateKind::Spherical => {
                     self.fill_point_coincidence(
@@ -759,6 +798,8 @@ impl MateProblem {
 
     /// CopyRotation Jacobian: d(twist_b - ratio * twist_a) / d(q_a, q_b).
     /// Uses seed-frame world axes (constant) to measure roll — no axis differentiation.
+    /// Also reused by Fixed's seed-relative roll residual with ratio = 1: that
+    /// residual only differs by an additive constant, which drops out of dq.
     #[allow(clippy::too_many_arguments)]
     fn fill_copy_rotation(
         &self, j: &mut DMatrix<f64>, row: usize,
@@ -933,7 +974,20 @@ mod tests {
     }
 
     fn mate(kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: f64, ratio: f64, radius: f64) -> Mate {
-        Mate { kind, a, b, flip, offset, ratio, radius }
+        Mate { kind, a, b, flip, offset, ratio, radius, angle: 0.0 }
+    }
+
+    fn mate_with_angle(
+        kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: f64, ratio: f64, radius: f64, angle: f64,
+    ) -> Mate {
+        Mate { kind, a, b, flip, offset, ratio, radius, angle }
+    }
+
+    /// (qz, qw) for a pure roll of `deg` degrees about world Z, qx = qy = 0.
+    fn quat_roll_z(deg: f64) -> (f32, f32) {
+        let half = (deg.to_radians() / 2.0).sin();
+        let cos_half = (deg.to_radians() / 2.0).cos();
+        (half as f32, cos_half as f32)
     }
 
     fn default_mate_ref() -> MateRef {
@@ -1065,6 +1119,102 @@ mod tests {
         assert!((out.params_solved[8] - 3.0).abs() < 1e-2, "ty={}", out.params_solved[8]);
         assert!((out.params_solved[9] - 4.0).abs() < 1e-2, "tz={}", out.params_solved[9]);
         assert!(out.diagnostics.residual_norm < 1e-3);
+        // The regression test for the whole feature: a single Fixed mate against a
+        // grounded body must pin all 6 DOF, not 5. Before the roll residual this
+        // reported Underconstrained with dof == 1 (the free roll about the shared
+        // axis) even though the name promised otherwise.
+        assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
+        assert_eq!(out.diagnostics.dof, 0);
+    }
+
+    #[test]
+    fn fixed_mate_holds_seeded_roll() {
+        // Body 1 seeded with a 30 degree roll about the shared Z axis. With
+        // angle == 0 (hardcoded pre-wire), the seed-relative residual must hold
+        // that roll exactly rather than snapping it to zero -- existing assemblies
+        // must keep solving to the pose they already had.
+        let (qz, qw) = quat_roll_z(30.0);
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
+                0.0, 0.0, 0.0, 0.0, 0.0, qz, qw, // body 1: 30 deg about Z
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
+        assert_eq!(out.diagnostics.dof, 0);
+        let qz = out.params_solved[12] as f64;
+        let qw = out.params_solved[13] as f64;
+        let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
+        assert!((roll_deg - 30.0).abs() < 1.0, "roll should hold at 30 deg, got {}", roll_deg);
+    }
+
+    #[test]
+    fn fixed_mate_resists_torque_from_another_mate() {
+        // Body 1 seeded at 30 deg roll about Z and also carrying a Parallel mate
+        // between the same two axes -- a mate that on its own would happily leave
+        // roll free. Before the roll residual the two mates together still left
+        // roll undetermined (Parallel does not touch it either); after, Fixed pins
+        // it and the combined system reports zero DOF with the roll held.
+        let (qz, qw) = quat_roll_z(30.0);
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, qz, qw,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![
+                mate(MateKind::Fixed,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Parallel,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 0.0, 1.0, 0.0),
+            ],
+        };
+        let out = solve_mate(&input);
+        // The Parallel mate is redundant with Fixed's own axis-cross residual (both
+        // want the same two axes parallel), so the combined Jacobian's rank is
+        // unchanged: FullyConstrained, not Overconstrained. Asserted strictly, not
+        // as an either/or -- a regression that quietly flips this to Overconstrained
+        // must fail here, not hide behind the other branch.
+        assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
+        assert_eq!(out.diagnostics.dof, 0);
+        let qz = out.params_solved[12] as f64;
+        let qw = out.params_solved[13] as f64;
+        let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
+        assert!((roll_deg - 30.0).abs() < 1.0, "roll should hold at 30 deg, got {}", roll_deg);
+    }
+
+    #[test]
+    fn rotating_keeps_one_free_dof() {
+        // Rotating shares its residual prefix with Fixed (point coincidence + axis
+        // cross); it must not pick up the roll residual by a copy-paste into the
+        // wrong arm. A revolute joint's whole purpose is the free roll.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Rotating,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        assert_eq!(out.diagnostics.dof, 1);
+        assert_eq!(out.overall_status, MateStatus::Underconstrained.to_u8());
     }
 
     #[test]
@@ -1342,6 +1492,31 @@ mod tests {
         // The ratio is 1, so rolls should be approximately equal.
         assert!((roll1 - roll0).abs() < 0.2, "roll1={}, roll0={}", roll1, roll0);
         assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    #[test]
+    fn fixed_mate_with_angle_rolls_to_ninety_degrees() {
+        // Both bodies start at identity (zero seed-relative roll). angle = pi/2
+        // should solve body 1 to exactly 90 degrees of roll about the shared axis.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_angle(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0, std::f64::consts::FRAC_PI_2)],
+        };
+        let out = solve_mate(&input);
+        assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
+        assert_eq!(out.diagnostics.dof, 0);
+        let qz = out.params_solved[12] as f64;
+        let qw = out.params_solved[13] as f64;
+        let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
+        assert!((roll_deg - 90.0).abs() < 1.0, "roll should be ~90 deg, got {}", roll_deg);
     }
 
     #[test]

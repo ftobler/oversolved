@@ -20,7 +20,7 @@
 //! mates:          n_mates x mate-record (see below)
 //! ```
 //!
-//! ## Mate record (fixed length, 72 bytes)
+//! ## Mate record (fixed length, 76 bytes)
 //!
 //! ```text
 //!   u8   kind_code
@@ -36,7 +36,13 @@
 //!   f32  offset              // linear offset along axis (Fixed / ParallelPlaneDistance / Sliding / Tangential)
 //!   f32  ratio               // for CopyRotation (gear-like ratio)
 //!   f32  radius              // for Tangential (mate-side radius fallback)
+//!   f32  angle               // radians, for Fixed's seed-relative roll (TS encodes degrees -> radians)
 //! ```
+//!
+//! There is no version field on this record and nothing persists it: the buffer
+//! is built and consumed within a single solve, main thread to WASM, so widening
+//! it needs no migration and no dual-read. Contrast the part-bundle format next
+//! door, which *is* persisted and does need one.
 //!
 //! ## Output buffer layout
 //!
@@ -164,6 +170,9 @@ pub struct Mate {
     /// Mate-side radius for Tangential when the geometry itself does
     /// not carry one (e.g. a tangent point on a plane to a virtual cylinder).
     pub radius: f64,
+    /// Fixed's seed-relative roll target, in radians. Read only by `Fixed`; see
+    /// the seed-relative roll residual in `mate_residuals.rs`.
+    pub angle: f64,
 }
 
 /// Description of a rigid body in the parameter vector.
@@ -309,6 +318,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         let offset = r.f32()? as f64;
         let ratio = r.f32()? as f64;
         let radius = r.f32()? as f64;
+        let angle = r.f32()? as f64;
 
         mates.push(Mate {
             kind,
@@ -332,6 +342,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
             offset,
             ratio,
             radius,
+            angle,
         });
     }
 
@@ -404,6 +415,7 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         w.f32(m.offset as f32);
         w.f32(m.ratio as f32);
         w.f32(m.radius as f32);
+        w.f32(m.angle as f32);
     }
     w.into_bytes()
 }
@@ -489,6 +501,7 @@ mod tests {
             offset: 0.0,
             ratio: 1.0,
             radius: 0.0,
+            angle: 0.0,
         };
         MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
@@ -556,11 +569,22 @@ mod tests {
     #[test]
     fn mate_input_bad_kind_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
-        // In the new 72-byte record, kind_code is at offset:
+        // In the 76-byte record, kind_code is at offset:
         // header(20) + bodies(8) + params_initial(56) + fixed_mask(1) = 85
         // + kind_code is first byte of mate record
         bytes[85] = 0xff; // kind_code in first mate record
         assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadKind(_))));
+    }
+
+    // A buffer built to the pre-widen 72-byte stride (missing the trailing angle
+    // f32) must fail loudly rather than silently reading the next record's
+    // kind_code as an angle -- there is only one mate here, so the missing bytes
+    // run the reader off the end of the buffer.
+    #[test]
+    fn mate_input_old_72_byte_stride_rejected() {
+        let bytes = encode_mate_input(&sample_input());
+        let truncated = &bytes[..bytes.len() - 4];
+        assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
     }
 
     #[test]
@@ -594,6 +618,7 @@ mod tests {
                 offset: 0.0,
                 ratio: 1.0,
                 radius: 0.0,
+                angle: 0.0,
             }],
         };
         let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
@@ -639,6 +664,7 @@ mod tests {
                 offset: 1.5,
                 ratio: 2.0,
                 radius: 3.0,
+                angle: 0.7,
             }],
         };
         let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
@@ -646,6 +672,7 @@ mod tests {
         assert!((m.offset - 1.5).abs() < 1e-4);
         assert!((m.ratio - 2.0).abs() < 1e-4);
         assert!((m.radius - 3.0).abs() < 1e-4);
+        assert!((m.angle - 0.7).abs() < 1e-4);
     }
 
     #[test]

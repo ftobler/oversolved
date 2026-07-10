@@ -5,11 +5,9 @@
 //
 // The parameter table is the single source of truth for "which inputs does this
 // mate show". It is bounded by the wire, not by the schema: `encodeMateInput`
-// (kernel/solveAssembly.ts) writes exactly `flip`, `offset`, `ratio` and
-// `radius` per mate. `MateFeatureDef.angle` is in the document schema but the
-// Rust `Mate` struct has no field for it, so offering an angle box would let a
-// user author a number that never reaches the solver. Left out until the wire
-// format carries it.
+// (kernel/solveAssembly.ts) writes exactly `flip`, `offset`, `ratio`, `radius`
+// and `angle` per mate. `angle` is `fixed`-only: it rotates body B's seed-
+// relative roll about the shared axis, a control no other mate kind reads.
 
 import type { MateKind, MateRef } from '@/types/cad'
 import { ASSEMBLY_HANDLE } from '@/utils/builtins'
@@ -40,13 +38,14 @@ export const MATE_KIND_LABELS: Record<MateKind, string> = {
 }
 
 /** The scalar/boolean parameters a mate kind actually consumes in the solve. */
-export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius'
+export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
 
 // Which kind reads which parameter, per mate.rs's wire-format doc comment:
 // offset serves Fixed / Sliding / ParallelPlaneDistance / Tangential; ratio is
-// CopyRotation's alone; radius is Tangential's mate-side fallback.
+// CopyRotation's alone; radius is Tangential's mate-side fallback; angle is
+// Fixed's seed-relative roll, alone (see mate_residuals.rs's Fixed residual).
 const MATE_PARAMS: Record<MateKind, readonly MateParam[]> = {
-  fixed: ['offset'],
+  fixed: ['offset', 'angle'],
   sliding: ['offset'],
   rotating: [],
   sliding_rotating: [],
@@ -66,7 +65,14 @@ export const MATE_PARAM_LABELS: Record<MateParam, string> = {
   flip: 'Flip',
   ratio: 'Ratio',
   radius: 'Radius',
+  angle: 'Angle',
 }
+
+/** `angle`'s wrap limit: `twist()` (mate_residuals.rs) extracts an angle from a
+ *  quaternion, which wraps at +/-180 degrees. Widening past that must be
+ *  rejected at entry, not silently wrapped -- a mate is a lock, and a wrapped
+ *  value would lock the wrong roll without telling anyone. */
+export const MATE_ANGLE_LIMIT_DEG = 180
 
 /** A slot no pick has filled yet. Both halves empty; never a partial. */
 export const EMPTY_MATE_REF: MateRef = { part: '', anchor: '' }

@@ -184,10 +184,9 @@ export function setMateRef(
 
 /**
  * The tunable half of a mate: `kind` and the two refs have their own setters.
- * Bounded by what `encodeMateInput` puts on the wire, which is why `angle` is
- * absent even though `MateFeatureDef` declares it (see utils/mateKinds.ts).
+ * Bounded by what `encodeMateInput` puts on the wire (see utils/mateKinds.ts).
  */
-export type MateParamPatch = Partial<Pick<MateFeatureDef, 'flip' | 'ratio' | 'offset' | 'radius'>>
+export type MateParamPatch = Partial<Pick<MateFeatureDef, 'flip' | 'ratio' | 'offset' | 'radius' | 'angle'>>
 
 /**
  * Patch a mate's parameters. An `undefined` value deletes the key rather than
