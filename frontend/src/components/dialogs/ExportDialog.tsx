@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Spinner } from '@/components/shared/Spinner'
 import '@/components/dialogs/ExportDialog.css'
 
 export type ExportFormat = 'step' | 'stl'
@@ -6,7 +7,7 @@ export type ExportFormat = 'step' | 'stl'
 export interface ExportDialogProps {
   isOpen: boolean
   defaultName: string
-  onDownload: (format: ExportFormat, tessellation: number, fileName: string) => void
+  onDownload: (format: ExportFormat, tessellation: number, fileName: string) => void | Promise<void>
   onCancel: () => void
 }
 
@@ -20,6 +21,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
   const [format, setFormat] = useState<ExportFormat>('step')
   const [tessellation, setTessellation] = useState(0.5)
   const [fileName, setFileName] = useState(`${defaultName}.step`)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleFormatChange = (newFormat: ExportFormat) => {
     setFormat(newFormat)
@@ -28,18 +30,35 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
 
   if (!isOpen) return null
 
-  const handleDownload = () => {
-    onDownload(format, format === 'stl' ? tessellation : 0, fileName)
+  // The worker rebuild + tessellation + STEP/STL serialisation can take seconds on
+  // a heavy body. Freeze the whole dialog for the duration: there is no way to
+  // abort an in-flight worker export, so a cancel would only desync the UI.
+  const handleDownload = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      await onDownload(format, format === 'stl' ? tessellation : 0, fileName)
+    } catch (e) {
+      console.error('Export failed:', e)  // the parent reports it; never leave the dialog stuck busy
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleCancel = () => {
+    if (isExporting) return
+    onCancel()
   }
 
   return (
-    <div className="export-dialog-overlay" onClick={onCancel}>
-      <div className="export-dialog" onClick={e => e.stopPropagation()}>
+    <div className="export-dialog-overlay" onClick={handleCancel}>
+      <div className="export-dialog" onClick={e => e.stopPropagation()} aria-busy={isExporting}>
         <div className="export-dialog-header">
           <h2 className="export-dialog-title">Export Model</h2>
           <button
             className="export-dialog-close-btn"
-            onClick={onCancel}
+            onClick={handleCancel}
+            disabled={isExporting}
             title="Close"
             type="button"
           >
@@ -57,6 +76,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
                   name="format"
                   value="step"
                   checked={format === 'step'}
+                  disabled={isExporting}
                   onChange={() => handleFormatChange('step')}
                 />
                 <span>STEP</span>
@@ -67,6 +87,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
                   name="format"
                   value="stl"
                   checked={format === 'stl'}
+                  disabled={isExporting}
                   onChange={() => handleFormatChange('stl')}
                 />
                 <span>STL</span>
@@ -84,6 +105,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
                   max="1"
                   step="0.1"
                   value={tessellation}
+                  disabled={isExporting}
                   onChange={e => setTessellation(parseFloat(e.target.value))}
                   className="export-dialog-slider"
                 />
@@ -97,17 +119,33 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
             <input
               className="export-dialog-filename-input"
               value={fileName}
+              disabled={isExporting}
               onChange={e => setFileName(e.target.value)}
             />
           </div>
         </div>
 
         <div className="export-dialog-buttons">
-          <button className="export-dialog-btn export-dialog-btn-cancel" onClick={onCancel}>
+          <button
+            className="export-dialog-btn export-dialog-btn-cancel"
+            onClick={handleCancel}
+            disabled={isExporting}
+          >
             Cancel
           </button>
-          <button className="export-dialog-btn export-dialog-btn-download" onClick={handleDownload}>
-            Download
+          <button
+            className="export-dialog-btn export-dialog-btn-download"
+            onClick={handleDownload}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <>
+                <Spinner className="export-dialog-spinner" />
+                <span>Generating...</span>
+              </>
+            ) : (
+              'Download'
+            )}
           </button>
         </div>
       </div>
