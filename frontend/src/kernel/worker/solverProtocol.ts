@@ -155,6 +155,8 @@ export interface AssemblySolveOkResponse {
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
     mateResults: Record<string, MateResult>
+    /** The mate solve trapped; transforms are the placed seeds. */
+    solveError?: string
   }
 }
 

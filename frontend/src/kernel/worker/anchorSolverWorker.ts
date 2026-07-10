@@ -110,6 +110,7 @@ export async function handleSolveAssembly(
         bodies: result.bodies,
         anchors: result.anchors,
         mateResults: result.mateResults,
+        solveError: result.solveError,
       },
     }
   } catch (e) {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyStore, setAssemblyCallbacks, type MateFieldTarget } from '@/stores/assemblyStore'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import AssemblyViewport from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
@@ -51,6 +52,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const mateResults = useAssemblyStore(s => s.mateResults)
+  const solveError = useAssemblyStore(s => s.solveError)
 
   useEffect(() => {
     if (doc) {
@@ -240,6 +242,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
         </aside>
         <div className="doc-editor assembly-viewport-host">
           <AssemblyViewport />
+          {solveError && (
+            <ErrorBanner
+              message={`Solver error: ${solveError}`}
+              onDismiss={() => useAssemblyStore.getState().setSolveError(null)}
+            />
+          )}
           {instances.length === 0 && mates.length === 0 && (
             <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
           )}

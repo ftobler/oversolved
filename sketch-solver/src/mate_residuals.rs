@@ -869,16 +869,12 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
     let n = problem.n;
     let m = problem.m;
 
-    let start = std::time::Instant::now();
-
     let x0_f64: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
 
     let residuals_fn = problem.residuals_fn();
     let jacobian_fn = problem.jacobian_fn();
 
     let lm_result = lm::solve_lm(&x0_f64, &residuals_fn, &jacobian_fn);
-
-    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     // Rank analysis via SVD.
     let dof = if m == 0 || n == 0 {
@@ -909,7 +905,11 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
             rank,
             dof: dof as u32,
             iters: lm_result.iters,
-            ms: elapsed_ms,
+            // Wall-clock is measured by the JS host (it has performance.now());
+            // the crate has no portable clock on wasm32-unknown-unknown. An
+            // `Instant::now()` here panics the moment a mate reaches a browser,
+            // and `solve.rs` avoids it for the same reason.
+            ms: 0.0,
         },
     }
 }

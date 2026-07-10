@@ -122,6 +122,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // comes back stale here, and that is the only thing that turns it red.
         mateResults: res.payload.mateResults ?? {},
       })
+      // The solve came back, but the mate solver itself trapped and the
+      // transforms are the placed seeds. Nothing moved; say why.
+      if (res.payload.solveError) {
+        useAssemblyStore.getState().setSolveError(res.payload.solveError)
+      }
     } catch (e) {
       useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
     } finally {

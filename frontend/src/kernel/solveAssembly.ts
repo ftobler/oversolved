@@ -53,6 +53,10 @@ export interface AssemblyBuildResponse {
    *  are static and the main thread folds them in (utils/anchorGizmos.ts). */
   anchors: Record<string, Record<string, AnchorPose>>
   mateResults: Record<string, MateResult>
+  /** The mate solve failed and every transform below is the placed seed, not a
+   *  solution. Set so the editor can say so: a silent seed echo is
+   *  indistinguishable from a mate that solved to exactly where it started. */
+  solveError?: string
 }
 
 export interface MeshPayload {
@@ -437,6 +441,7 @@ export async function solveAssembly(
 
   const transforms: Record<string, Transform3D> = {}
   const encoded = encodeMateInput(bodyCount, paramsInitial, fixedMask, mateRecords)
+  let solveError: string | undefined
 
   if (solveMateFn && mateRecords.length > 0) {
     try {
@@ -457,14 +462,16 @@ export async function solveAssembly(
       }
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e)
-      // Fall back to seed transforms on solve failure
+      // Fall back to seed transforms so the scene still draws, but say so. A
+      // WASM trap here is a solver bug, not a modelling one, and the guard used
+      // to be `if (!mateResults[mate.id])` -- which never fired, because every
+      // solvable mate was already recorded above. The failure was invisible.
+      solveError = errMsg
       for (const part of parts) {
         transforms[part.handle] = { ...part.transform }
       }
       for (const mate of mates) {
-        if (!mateResults[mate.id]) {
-          mateResults[mate.id] = { stale: false, error: errMsg }
-        }
+        mateResults[mate.id] = { ...mateResults[mate.id], error: errMsg }
       }
     }
   } else {
@@ -507,5 +514,5 @@ export async function solveAssembly(
     transformedBodies[part.handle] = transformed
   }
 
-  return { transforms, bodies: transformedBodies, anchors: posedAnchors, mateResults }
+  return { transforms, bodies: transformedBodies, anchors: posedAnchors, mateResults, solveError }
 }
