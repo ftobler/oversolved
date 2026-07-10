@@ -11,6 +11,16 @@
  * Crash handling: a Worker-level error rejects every in-flight solve and drops
  * the Worker; the next solve respawns it and rebuilds from feature 0 (the AST
  * lives in main-thread JS, so no user work is lost).
+ *
+ * Hang handling: some OCC operations (notably ShapeUpgrade_UnifySameDomain's
+ * face merge on self-overlapping geometry, e.g. a circular_array whose axis runs
+ * through the source body) can spin forever inside the WASM engine rather than
+ * throw. That loop is synchronous and un-interruptible from JS, so the only way
+ * to recover is to kill the Worker. A per-request watchdog terminates a Worker
+ * that has not replied within `solveTimeoutMs` and rejects the in-flight
+ * requests with a timeout error (same drop-and-respawn path as a crash), turning
+ * an unrecoverable tab freeze into a reported "solver timed out" failure the user
+ * can act on (e.g. suppress the offending feature).
  */
 
 import type { BuildResponse } from '../builder'
@@ -39,7 +49,13 @@ type OkResponse = SolveOkResponse | ExportOkResponse
 interface Pending {
   resolve: (res: OkResponse) => void
   reject: (e: unknown) => void
+  timer: ReturnType<typeof setTimeout> | null
 }
+
+// Watchdog ceiling for a single Worker request. Generous enough that a heavy but
+// finite solve/export finishes normally; a request still pending past it is
+// treated as a hung Worker and force-killed. Adjustable for tests.
+let solveTimeoutMs = 30000
 
 function defaultFactory(): SolverWorkerLike | null {
   try {
@@ -62,6 +78,7 @@ function onMessage(e: { data: SolveResponse | ExportResponse }): void {
   const res = e.data
   const p = pending.get(res.id)
   if (!p) return  // stale or already-settled (e.g. after a crash drained pending)
+  if (p.timer) clearTimeout(p.timer)
   pending.delete(res.id)
   if (!res.ok) {
     p.reject(new Error(res.error))
@@ -70,15 +87,29 @@ function onMessage(e: { data: SolveResponse | ExportResponse }): void {
   p.resolve(res)
 }
 
-function onError(): void {
-  // A hard Worker trap loses the checkpoint cache. Fail every in-flight request
-  // and drop the Worker; the next request respawns a fresh one that rebuilds
-  // from feature 0.
-  const err = new Error('solver worker crashed')
-  for (const p of pending.values()) p.reject(err)
+// Fail every in-flight request and drop the Worker; the next request respawns a
+// fresh one that rebuilds from feature 0 (the AST lives in main-thread JS, so no
+// user work is lost). Shared by the crash trap and the hang watchdog.
+function dropWorker(err: Error): void {
+  for (const p of pending.values()) {
+    if (p.timer) clearTimeout(p.timer)
+    p.reject(err)
+  }
   pending.clear()
   worker?.terminate()
   worker = null
+}
+
+function onError(): void {
+  // A hard Worker trap loses the checkpoint cache.
+  dropWorker(new Error('solver worker crashed'))
+}
+
+function onTimeout(): void {
+  // A request outran the watchdog: the Worker is presumed stuck in an
+  // un-interruptible synchronous loop (see the file header). Killing it is the
+  // only recovery.
+  dropWorker(new Error('solver worker timed out'))
 }
 
 function ensureWorker(): SolverWorkerLike | null {
@@ -104,7 +135,8 @@ function sendRequest<T>(
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<T | null>((resolve, reject) => {
-    pending.set(id, { resolve: (res) => resolve(extract(res)), reject })
+    const timer = setTimeout(onTimeout, solveTimeoutMs)
+    pending.set(id, { resolve: (res) => resolve(extract(res)), reject, timer })
     w.postMessage(buildMsg(id))
   })
 }
@@ -148,7 +180,14 @@ export function setSolverWorkerForTest(
 ): void {
   worker?.terminate()
   worker = null
+  for (const p of pending.values()) if (p.timer) clearTimeout(p.timer)
   pending.clear()
   nextId = 1
+  solveTimeoutMs = 30000
   workerFactory = factory ?? defaultFactory
+}
+
+/** @internal test-only: override the watchdog ceiling (ms). */
+export function setSolverTimeoutForTest(ms: number): void {
+  solveTimeoutMs = ms
 }
