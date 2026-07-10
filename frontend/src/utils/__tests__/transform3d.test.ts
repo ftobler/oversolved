@@ -8,6 +8,7 @@ import {
   quatFromAxisAngle,
   quatMultiply,
   quatNormalize,
+  quatToAxisAngle,
   relativeTransform,
   rotateTransformAboutPoint,
   rotateVector,
@@ -54,6 +55,40 @@ describe('quaternion primitives', () => {
     const half = quatFromAxisAngle(Z, HALF_PI)
     const full: Quat = quatMultiply(half, half)
     expectVecClose(rotateVector(full, X), [-1, 0, 0])
+  })
+})
+
+describe('quatToAxisAngle', () => {
+  it('round-trips quatFromAxisAngle', () => {
+    const axis: Vec3 = [1, 2, -2]  // length 3, so the unit axis is [1/3, 2/3, -2/3]
+    const r = quatToAxisAngle(quatFromAxisAngle(axis, 1.1))
+    expectVecClose(r.axis, [1 / 3, 2 / 3, -2 / 3])
+    expect(r.angle).toBeCloseTo(1.1, 6)
+  })
+
+  it('reports a zero angle for the identity rotation', () => {
+    expect(quatToAxisAngle([0, 0, 0, 1]).angle).toBe(0)
+  })
+
+  it('survives a quaternion that is unit only to solver tolerance', () => {
+    // acos of a w a hair past 1 is NaN, which would poison the gp_Trsf.
+    const r = quatToAxisAngle([0, 0, 0, 1 + 1e-7])
+    expect(r.angle).toBe(0)
+    expect(Number.isNaN(r.angle)).toBe(false)
+  })
+
+  it('recovers a half-turn, whose axis the vector part alone still carries', () => {
+    const r = quatToAxisAngle([0, 0, 1, 0])
+    expectVecClose(r.axis, Z)
+    expect(r.angle).toBeCloseTo(Math.PI, 9)
+  })
+
+  it('reads a negated quaternion as the same rotation of a point', () => {
+    const q = quatFromAxisAngle(Z, HALF_PI)
+    const neg: Quat = [-q[0], -q[1], -q[2], -q[3]]
+    const r = quatToAxisAngle(neg)
+    // The axis flips and the angle becomes 2pi - theta: the same net rotation.
+    expectVecClose(rotateVector(quatFromAxisAngle(r.axis, r.angle), X), rotateVector(q, X))
   })
 })
 

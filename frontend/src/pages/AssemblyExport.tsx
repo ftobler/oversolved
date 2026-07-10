@@ -1,0 +1,88 @@
+import { forwardRef, useImperativeHandle, useState } from 'react'
+import { parse as parseYaml } from 'yaml'
+import ExportDialog from '@/components/dialogs/ExportDialog'
+import type { ExportFormat } from '@/components/dialogs/ExportDialog'
+import { useAssemblyStore } from '@/stores/assemblyStore'
+import { useNotify } from '@/contexts/ToastContext'
+import { backendBundle } from '@/adapters/backend'
+import { exportAssemblyViaWorker } from '@/kernel/worker/solverClient'
+import { downloadBlob } from '@/utils/core/downloadBlob'
+import { assemblyStlBytes, buildExportParts, exportableInstances } from '@/utils/assemblyExport'
+import type { AssemblyDoc, PartInstance } from '@/types/cad'
+
+export interface AssemblyExportHandle {
+  openExport: () => void
+}
+
+/** Load and parse each referenced PartDoc once, keyed by doc id. */
+async function loadPartContents(instances: PartInstance[]): Promise<Record<string, Record<string, unknown>>> {
+  const ids = [...new Set(instances.map(i => i.doc_id))]
+  const loaded = await Promise.all(ids.map(id => backendBundle.documents.load(id)))
+  const out: Record<string, Record<string, unknown>> = {}
+  ids.forEach((id, i) => {
+    out[id] = (parseYaml(loaded[i].content) ?? {}) as Record<string, unknown>
+  })
+  return out
+}
+
+interface AssemblyExportProps {
+  doc: AssemblyDoc | null
+  docName: string | null
+}
+
+/**
+ * The assembly's export dialog. STEP rehydrates every part's B-rep on the OCC
+ * worker and compounds the placed solids; STL re-encodes the solved bundle
+ * meshes in place. See `utils/assemblyExport.ts` for why the two paths differ.
+ */
+const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
+  function AssemblyExport({ doc, docName }, ref) {
+    const notify = useNotify()
+    const [isOpen, setIsOpen] = useState(false)
+
+    useImperativeHandle(ref, () => ({ openExport: () => setIsOpen(true) }))
+
+    const handleDownload = async (format: ExportFormat, tessellation: number, fileName: string) => {
+      if (!doc) return
+      const instances = exportableInstances(doc)
+      if (instances.length === 0) {
+        notify('Export failed: the assembly has no visible parts', 'error')
+        setIsOpen(false)
+        return
+      }
+      try {
+        const transforms = useAssemblyStore.getState().transforms
+        const bytes = format === 'stl'
+          ? assemblyStlBytes(useAssemblyStore.getState().bodies, instances)
+          : await exportAssemblyViaWorker(
+            buildExportParts(instances, transforms, await loadPartContents(instances)),
+            { format, tessellation },
+          )
+        if (!bytes) {
+          notify('Export failed: no solid geometry to export', 'error')
+          return
+        }
+        const mime = format === 'step' ? 'application/step' : 'model/stl'
+        const name = fileName || `${docName || 'assembly'}.${format}`
+        downloadBlob(new Blob([bytes as BlobPart], { type: mime }), name)
+      } catch (e) {
+        console.error('Assembly export error:', e)
+        notify(`Export error: ${e instanceof Error ? e.message : e}`, 'error')
+      } finally {
+        setIsOpen(false)
+      }
+    }
+
+    return (
+      <ExportDialog
+        isOpen={isOpen}
+        defaultName={docName || 'assembly'}
+        showTessellation={false}
+        onDownload={handleDownload}
+        onCancel={() => setIsOpen(false)}
+      />
+    )
+  }
+)
+
+export default AssemblyExport

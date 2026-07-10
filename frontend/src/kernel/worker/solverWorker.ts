@@ -15,7 +15,7 @@
  * the host cannot rebuild from the main-thread AST.
  */
 
-import { solveLocally, exportLocally, setOccLoader } from '../solveLocally'
+import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader } from '../solveLocally'
 import { extractErrorMessage } from '../errors'
 import { inWorker } from '../inWorker'
 import { loadOccWorker } from '../occ/loadOccWorker'
@@ -23,6 +23,7 @@ import type {
   SolveRequest, SolveResponse, SolvePayload,
   ExportRequest, ExportResponse, WorkerRequest,
   BundleRequest, BundleResponse,
+  ExportAssemblyRequest,
 } from './solverProtocol'
 import { toPartBundle } from '../partBundle'
 import type { BodyResult } from '../../types/cad'
@@ -76,6 +77,26 @@ export async function handleExportRequest(
 /** The transferable buffer in an export response (for postMessage's transfer arg). */
 export function exportTransferables(res: ExportResponse): Transferable[] {
   return res.ok && res.bytes ? [res.bytes.buffer] : []
+}
+
+/** The engine signature [[handleExportAssemblyRequest]] depends on. */
+type ExportAssemblyEngine = typeof exportAssemblyLocally
+
+/**
+ * Rebuild every part of an assembly, place it at its solved transform, and
+ * serialise the compound. Shares the export response shape (and so the
+ * zero-copy byte transfer) with the single-part export.
+ */
+export async function handleExportAssemblyRequest(
+  req: ExportAssemblyRequest,
+  exportFn: ExportAssemblyEngine,
+): Promise<ExportResponse> {
+  try {
+    const bytes = await exportFn(req.parts, req.options)
+    return { id: req.id, ok: true, bytes }
+  } catch (e) {
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
+  }
 }
 
 // ─── bundle builder ──────────────────────────────────────────────────────
@@ -226,6 +247,11 @@ if (inWorker()) {
     if (msg.kind === 'export') {
       actor.run(
         () => handleExportRequest(msg, exportLocally),
+        (res) => { ctx.postMessage(res, exportTransferables(res)) },
+      )
+    } else if (msg.kind === 'exportAssembly') {
+      actor.run(
+        () => handleExportAssemblyRequest(msg, exportAssemblyLocally),
         (res) => { ctx.postMessage(res, exportTransferables(res)) },
       )
     } else if (msg.kind === 'buildBundle') {

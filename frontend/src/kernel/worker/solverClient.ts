@@ -19,6 +19,7 @@ import type {
   SolveRequestOptions, SolveResponse, SolveOkResponse,
   ExportRequestOptions, ExportResponse, ExportOkResponse, WorkerRequest,
   BundleResponse, BundleOkResponse,
+  AssemblyExportPartSpec,
 } from './solverProtocol'
 import type { PartBundle } from '../partBundle'
 
@@ -140,6 +141,22 @@ export function exportViaWorker(
 ): Promise<Uint8Array | null> {
   return sendRequest(
     (id) => ({ id, kind: 'export', spec, options }),
+    (res) => (res as ExportOkResponse).bytes,
+  )
+}
+
+/**
+ * Build every part of an assembly on the Worker, place each at its solved
+ * transform, and serialise the compound to STEP/STL bytes. Returns `null` when
+ * the Worker can't be created, OCC.js is unavailable, or no part produced a
+ * solid body (caller surfaces an error notice).
+ */
+export function exportAssemblyViaWorker(
+  parts: AssemblyExportPartSpec[],
+  options: ExportRequestOptions,
+): Promise<Uint8Array | null> {
+  return sendRequest(
+    (id) => ({ id, kind: 'exportAssembly', parts, options }),
     (res) => (res as ExportOkResponse).bytes,
   )
 }

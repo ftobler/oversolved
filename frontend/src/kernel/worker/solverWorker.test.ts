@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables } from './solverWorker'
-import type { SolveRequest, ExportRequest, BundleRequest } from './solverProtocol'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables } from './solverWorker'
+import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest } from './solverProtocol'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
+import type { Transform3D } from '../../types/cad'
 
 const REQ: SolveRequest = { id: 7, spec: { id: 'doc1' }, options: { rollbackPosition: 2 } }
 
@@ -93,6 +94,41 @@ describe('handleExportRequest', () => {
     })
     expect(res).toEqual({ id: 9, ok: false, error: 'export boom' })
     expect(exportTransferables(res)).toEqual([])
+  })
+})
+
+describe('handleExportAssemblyRequest', () => {
+  const PLACED: Transform3D = { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+  const REQ_A: ExportAssemblyRequest = {
+    id: 11,
+    kind: 'exportAssembly',
+    parts: [{ spec: { id: 'partA' }, transform: PLACED }],
+    options: { format: 'step' },
+  }
+
+  it('passes the placed parts and options through, and marks the bytes transferable', async () => {
+    const bytes = new Uint8Array([5, 6])
+    let seen: unknown[] = []
+    const res = await handleExportAssemblyRequest(REQ_A, async (parts, options) => {
+      seen = [parts, options]
+      return bytes
+    })
+    expect(seen).toEqual([[{ spec: { id: 'partA' }, transform: PLACED }], { format: 'step' }])
+    expect(res).toEqual({ id: 11, ok: true, bytes })
+    expect(exportTransferables(res)).toEqual([bytes.buffer])
+  })
+
+  it('forwards a null engine result (no OCC, or no solid in any part)', async () => {
+    const res = await handleExportAssemblyRequest(REQ_A, async () => null)
+    expect(res).toEqual({ id: 11, ok: true, bytes: null })
+    expect(exportTransferables(res)).toEqual([])
+  })
+
+  it('catches a throw into an error response rather than killing the Worker', async () => {
+    const res = await handleExportAssemblyRequest(REQ_A, async () => {
+      throw new Error('assembly export boom')
+    })
+    expect(res).toEqual({ id: 11, ok: false, error: 'assembly export boom' })
   })
 })
 

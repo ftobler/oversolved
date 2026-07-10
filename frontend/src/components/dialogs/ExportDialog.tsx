@@ -8,6 +8,12 @@ export interface ExportDialogProps {
   defaultName: string
   onDownload: (format: ExportFormat, tessellation: number, fileName: string) => void
   onCancel: () => void
+  /**
+   * Offer the STL tessellation knob. The assembly export writes STL straight
+   * from the already-tessellated bundle meshes, so there is no deflection left
+   * to choose and the slider would be an inert control.
+   */
+  showTessellation?: boolean
 }
 
 function swapExtension(name: string, newExt: string): string {
@@ -16,7 +22,13 @@ function swapExtension(name: string, newExt: string): string {
   return `${base}.${newExt}`
 }
 
-export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel }: ExportDialogProps) {
+export default function ExportDialog({
+  isOpen,
+  defaultName,
+  onDownload,
+  onCancel,
+  showTessellation = true,
+}: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('step')
   const [tessellation, setTessellation] = useState(0.5)
   const [fileName, setFileName] = useState(`${defaultName}.step`)
@@ -74,7 +86,7 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
             </div>
           </div>
 
-          {format === 'stl' && (
+          {format === 'stl' && showTessellation && (
             <div className="export-dialog-section">
               <label className="export-dialog-label">Tessellation Detail</label>
               <div className="export-dialog-slider-row">

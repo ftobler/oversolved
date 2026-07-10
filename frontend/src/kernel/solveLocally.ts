@@ -18,10 +18,11 @@ import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
-import { copyShape } from './occ/transforms'
+import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
+import type { Transform3D } from '../types/cad'
 
 let occModule: OccModule | null = null
 let occLoading: Promise<OccModule | null> | null = null
@@ -329,11 +330,21 @@ function resolveExportShape(
   }
   const solids = Object.values(bodies).filter((b) => b.shape != null)
   if (solids.length === 0) return null
-  if (solids.length === 1) return table.get<OccShape>(solids[0].shape!)
+  return compoundOf(oc, scope, solids.map((b) => table.get<OccShape>(b.shape!)))
+}
+
+/**
+ * A compound of `shapes`, or the lone shape when there is only one. Disjoint
+ * solids assemble (never boolean-fuse): overlapping parts of an assembly are a
+ * modelling fact to export, not an error to resolve.
+ */
+function compoundOf(oc: OccModule, scope: DisposeScope, shapes: OccShape[]): OccShape | null {
+  if (shapes.length === 0) return null
+  if (shapes.length === 1) return shapes[0]
   const builder = scope.track(new oc.BRep_Builder())
   const compound = scope.track(new oc.TopoDS_Compound())
   builder.MakeCompound(compound)
-  for (const body of solids) builder.Add(compound, table.get<OccShape>(body.shape!))
+  for (const shape of shapes) builder.Add(compound, shape)
   return compound
 }
 
@@ -358,11 +369,73 @@ export async function exportLocally(
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table))
     const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null)
     if (!shape) return null
-    if (opts.format === 'step') return stepShapeToBytes(oc, scope, shape)
-    // STL deflection params mirror the old server export: linear = tess*2,
-    // angular = tess*0.6. Default to the dialog's 0.5 if no value came through.
-    const tess = opts.tessellation && opts.tessellation > 0 ? opts.tessellation : 0.5
-    return shapeToStlBytes(oc, scope, shape, tess * 2, tess * 0.6)
+    return serialiseShape(oc, scope, shape, opts)
+  } finally {
+    scope.dispose()
+    table.disposeAll()
+  }
+}
+
+// ─── assembly export ───
+
+/** One part instance to export: its PartDoc spec and its solved world placement. */
+export interface AssemblyExportPart {
+  spec: Record<string, unknown>
+  transform: Transform3D
+}
+
+function serialiseShape(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  opts: Pick<LocalExportOptions, 'format' | 'tessellation'>,
+): Uint8Array {
+  if (opts.format === 'step') return stepShapeToBytes(oc, scope, shape)
+  // STL deflection params mirror the old server export: linear = tess*2,
+  // angular = tess*0.6. Default to the dialog's 0.5 if no value came through.
+  const tess = opts.tessellation && opts.tessellation > 0 ? opts.tessellation : 0.5
+  return shapeToStlBytes(oc, scope, shape, tess * 2, tess * 0.6)
+}
+
+/**
+ * Build every part of an assembly, move it to its solved placement, and
+ * serialise the union as one STEP/STL file. Returns ``null`` when OCC.js is
+ * unavailable or no part produced a solid body.
+ *
+ * This is the heavy path: the anchor solver holds only meshes, so analytic
+ * output has to rehydrate each part's B-rep by re-running its feature stack.
+ * Exports are rare, so the cost is paid here rather than kept warm in a cache.
+ * The mesh-only alternative (`utils/assemblyExport.ts`) needs no OCC at all.
+ *
+ * Every part shares one ``HandleTable``: a part placed at identity gets an
+ * identity ``gp_Trsf``, and ``BRepBuilderAPI_Transform`` then hands back a shape
+ * that still shares its source TShape (the reason ``copyShape`` exists). Freeing
+ * a per-part table would pull that geometry out from under the compound.
+ */
+export async function exportAssemblyLocally(
+  parts: AssemblyExportPart[],
+  opts: LocalExportOptions,
+): Promise<Uint8Array | null> {
+  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
+  if (!oc) return null
+
+  const scope = new DisposeScope()
+  const table = new HandleTable({ finalizerGuard: false })
+  try {
+    const placed: OccShape[] = []
+    for (const part of parts) {
+      const response = build(part.spec, { prevState: null }, buildDeps(oc, scope, table))
+      // A part with no solid (an empty doc, a sketch-only doc) contributes
+      // nothing rather than failing the whole export.
+      const shape = resolveExportShape(oc, scope, table, response._build_state, null)
+      if (!shape) continue
+      // `transformCopy` hands back a fresh shape nobody owns: the compound is
+      // read (serialised) before `scope.dispose()`, so the scope is its owner.
+      placed.push(scope.track(transformCopy(oc, scope, shape, makeRigidTrsf(oc, scope, part.transform))))
+    }
+    const compound = compoundOf(oc, scope, placed)
+    if (!compound) return null
+    return serialiseShape(oc, scope, compound, opts)
   } finally {
     scope.dispose()
     table.disposeAll()

@@ -53,8 +53,27 @@ export interface ExportRequest {
   options: ExportRequestOptions
 }
 
+/** One part instance of an assembly export: its PartDoc spec + solved placement. */
+export interface AssemblyExportPartSpec {
+  spec: Record<string, unknown>
+  transform: Transform3D
+}
+
+/**
+ * Build every part of an assembly Worker-side, place it, and serialise the
+ * union. Routed to the OCC bundle-builder worker because the anchor solver holds
+ * meshes only and cannot rehydrate B-rep. `options.bodyId` is meaningless here
+ * and ignored: an assembly exports whole.
+ */
+export interface ExportAssemblyRequest {
+  id: number
+  kind: 'exportAssembly'
+  parts: AssemblyExportPartSpec[]
+  options: ExportRequestOptions
+}
+
 /** Either request the Worker can receive; discriminated by `kind`. */
-export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest
+export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest
 
 /** Shared error arm for every Worker response (solve and export alike). */
 export interface WorkerErrResponse {

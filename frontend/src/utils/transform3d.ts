@@ -45,6 +45,20 @@ export function quatFromAxisAngle(axis: Vec3, angle: number): Quat {
   return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(half)]
 }
 
+/**
+ * Inverse of [[quatFromAxisAngle]]: the rotation `q` encodes, as an axis through
+ * the origin plus an angle in [0, 2pi). A rotation of zero has no distinguished
+ * axis, so it reports `+Z` and callers must key off `angle` alone. The input is
+ * normalized first: a solver's quaternion is only unit to within its residual
+ * tolerance, and `acos` of a `w` a hair past 1 is NaN.
+ */
+export function quatToAxisAngle(q: Quat): { axis: Vec3; angle: number } {
+  const [x, y, z, w] = quatNormalize(q)
+  const s = Math.sqrt(Math.max(0, 1 - w * w))  // = sin(angle/2), never negative
+  if (s < 1e-9) return { axis: [0, 0, 1], angle: 0 }
+  return { axis: [x / s, y / s, z / s], angle: 2 * Math.acos(Math.min(1, Math.max(-1, w))) }
+}
+
 export function rotateVector(q: Quat, v: Vec3): Vec3 {
   const [x, y, z, w] = q
   // v' = v + 2 * cross(q_vec, cross(q_vec, v) + w * v)

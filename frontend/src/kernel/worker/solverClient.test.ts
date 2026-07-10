@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { solveViaWorker, exportViaWorker, setSolverWorkerForTest, type SolverWorkerLike } from './solverClient'
+import { solveViaWorker, exportViaWorker, exportAssemblyViaWorker, setSolverWorkerForTest, type SolverWorkerLike } from './solverClient'
 import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
 
 type AnyResponse = SolveResponse | ExportResponse | BundleResponse
@@ -121,6 +121,46 @@ describe('solveViaWorker', () => {
       const p = exportViaWorker({ id: 'd' }, { format: 'step' })
       fake.crash()
       await expect(p).rejects.toThrow('solver worker crashed')
+    })
+  })
+
+  describe('exportAssemblyViaWorker', () => {
+    const PLACED = { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    it('posts an exportAssembly request carrying every placed part', async () => {
+      const parts = [{ spec: { id: 'a' }, transform: PLACED }, { spec: { id: 'b' }, transform: PLACED }]
+      const p = exportAssemblyViaWorker(parts, { format: 'step' })
+      const req = fake.posted[0]
+      expect(req.kind).toBe('exportAssembly')
+      expect(req).toMatchObject({ parts, options: { format: 'step' } })
+      const bytes = new Uint8Array([7])
+      fake.reply({ id: req.id, ok: true, bytes })
+      await expect(p).resolves.toBe(bytes)
+    })
+
+    it('resolves null when no part produced a solid', async () => {
+      const p = exportAssemblyViaWorker([], { format: 'step' })
+      fake.reply({ id: fake.posted[0].id, ok: true, bytes: null })
+      await expect(p).resolves.toBeNull()
+    })
+
+    it('shares the id space with solve, so a reply reaches its own caller', async () => {
+      const solveP = solveViaWorker({ id: 's' })
+      const exportP = exportAssemblyViaWorker([{ spec: { id: 'a' }, transform: PLACED }], { format: 'stl' })
+      expect(created).toHaveLength(1)
+      const [solveReq, exportReq] = fake.posted
+      expect(solveReq.id).not.toBe(exportReq.id)
+      const bytes = new Uint8Array([3])
+      fake.reply({ id: exportReq.id, ok: true, bytes })
+      fake.reply({ id: solveReq.id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await expect(exportP).resolves.toBe(bytes)
+      await expect(solveP).resolves.not.toBeNull()
+    })
+
+    it('rejects on an error response', async () => {
+      const p = exportAssemblyViaWorker([{ spec: {}, transform: PLACED }], { format: 'step' })
+      fake.reply({ id: fake.posted[0].id, ok: false, error: 'STEP export: Write failed' })
+      await expect(p).rejects.toThrow('Write failed')
     })
   })
 

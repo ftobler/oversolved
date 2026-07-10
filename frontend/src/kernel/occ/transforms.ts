@@ -6,6 +6,8 @@
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccTrsf } from './occTypes'
 import type { Vec3 } from './primitives'
+import type { Transform3D } from '../../types/cad'
+import { quatToAxisAngle } from '../../utils/transform3d'
 
 export function makeTranslationTrsf(oc: OccModule, scope: DisposeScope, dx: number, dy: number, dz: number): OccTrsf {
   const t = scope.track(new oc.gp_Trsf_1())
@@ -68,6 +70,28 @@ export function transformCopy(oc: OccModule, scope: DisposeScope, shape: OccShap
 export function copyShape(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape {
   const maker = scope.track(new oc.BRepBuilderAPI_Copy_2(shape, true, false))
   return maker.Shape()
+}
+
+/**
+ * A part's solved assembly placement as one gp_Trsf: `p -> rotate(q, p) + t`,
+ * the same convention `utils/transform3d.ts` and the mate solver's 7-param
+ * bodies use.
+ *
+ * Multiply order is load-bearing. `gp_Trsf::Multiply(T)` computes `this = this * T`,
+ * and `(A * B)(p) == A(B(p))` -- the RIGHT factor acts on the point first. So the
+ * translation is multiplied in before the rotation, or the part would be rotated
+ * about the world origin after being carried out to its placed position.
+ */
+export function makeRigidTrsf(oc: OccModule, scope: DisposeScope, t: Transform3D): OccTrsf {
+  const combined = scope.track(new oc.gp_Trsf_1())
+  if (t.tx !== 0 || t.ty !== 0 || t.tz !== 0) {
+    combined.Multiply(makeTranslationTrsf(oc, scope, t.tx, t.ty, t.tz))
+  }
+  const { axis, angle } = quatToAxisAngle([t.qx, t.qy, t.qz, t.qw])
+  if (angle !== 0) {
+    combined.Multiply(makeRotationTrsf(oc, scope, [0, 0, 0], axis, angle))
+  }
+  return combined
 }
 
 interface TransformParams {

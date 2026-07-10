@@ -9,6 +9,7 @@ import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { MateEditor } from '@/components/layout/MateEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
+import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import {
   appendMate,
   appendPartInstance,
@@ -87,6 +88,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const openPicker = useCallback(() => setPickerOpen(true), [])
 
+  const exportRef = useRef<AssemblyExportHandle>(null)
+  const openExport = useCallback(() => exportRef.current?.openExport(), [])
+
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. No solve yet:
   // an unreferenced mate has nothing to constrain.
@@ -100,8 +104,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const commands = useMemo(() => [
     { name: 'insert_part_instance', fn: openPicker },
+    { name: 'export_assembly', fn: openExport },
     ...MATE_KINDS.map(kind => ({ name: `insert_mate_${kind}`, fn: () => handleInsertMate(kind) })),
-  ], [openPicker, handleInsertMate])
+  ], [openPicker, openExport, handleInsertMate])
   useCommandRegistration(commands)
 
   const handlePick = useCallback((docId: string, docRev: number) => {
@@ -191,7 +196,18 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     <div className="document-viewer">
       <div className="doc-container">
         <aside className="doc-sidebar">
-          <div className="assembly-tree-title">{docName || 'Untitled Assembly'}</div>
+          <div className="assembly-tree-title">
+            <span>{docName || 'Untitled Assembly'}</span>
+            <button
+              type="button"
+              className="assembly-tree-icon-btn"
+              onClick={openExport}
+              title="Export assembly"
+              aria-label="Export assembly"
+            >
+              <span className="material-icons-outlined">download</span>
+            </button>
+          </div>
           <AssemblyTree
             instances={instances}
             mates={mates}
@@ -235,6 +251,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
         onClose={() => setPickerOpen(false)}
         onPick={handlePick}
       />
+      <AssemblyExport ref={exportRef} doc={doc} docName={docName} />
     </div>
   )
 }
