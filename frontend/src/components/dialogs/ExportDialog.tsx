@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Spinner } from '@/components/shared/Spinner'
 import '@/components/dialogs/ExportDialog.css'
 
-export type ExportFormat = 'step' | 'stl'
+export type ExportFormat = 'step' | 'stl' | 'yaml'
 
 export interface ExportDialogProps {
   isOpen: boolean
@@ -91,6 +91,17 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
                   onChange={() => handleFormatChange('stl')}
                 />
                 <span>STL</span>
+              </label>
+              <label className="export-dialog-radio">
+                <input
+                  type="radio"
+                  name="format"
+                  value="yaml"
+                  checked={format === 'yaml'}
+                  disabled={isExporting}
+                  onChange={() => handleFormatChange('yaml')}
+                />
+                <span>YAML</span>
               </label>
             </div>
           </div>

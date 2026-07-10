@@ -45,6 +45,20 @@ describe('ExportDialog', () => {
     expect(onDownload).toHaveBeenCalledWith('stl', 0.5, 'part.stl')
   })
 
+  it('exports YAML without a tessellation detail control', async () => {
+    const onDownload = vi.fn()
+    render(<ExportDialog isOpen defaultName="part" onDownload={onDownload} onCancel={vi.fn()} />)
+
+    fireEvent.click(screen.getByLabelText('STL'))
+    fireEvent.click(screen.getByLabelText('YAML'))
+    expect(screen.queryByText('Tessellation Detail')).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    })
+    expect(onDownload).toHaveBeenCalledWith('yaml', 0, 'part.yaml')
+  })
+
   it('shows a wait state and freezes the controls while the export runs', async () => {
     const gate = deferred<void>()
     const onDownload = vi.fn(() => gate.promise)
