@@ -67,12 +67,13 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   )
 }
 
-/** Cross/plus marker at constant pixel size for a projected reference point.
+/** Dot marker at constant pixel size for a projected reference point. Drawn like
+ *  a sketch point (same size and grow-on-hover as VertexDot) so a projection
+ *  reads as a point of the sketch, only in the projected colour.
  *
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
  *  is visual-only — no R3F event props. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = false }: { x: number; y: number; featureId: string; entityId: string; isEditing?: boolean }) {
-  const groupRef = useScreenScale<THREE.Group>(7)
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
   const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
@@ -84,11 +85,6 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = fa
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
   return (
-    <group ref={groupRef} position={[x, y, 0]}>
-      {/* '+' cross: vertical bar */}
-      <Line points={[[0, -1, 0], [0, 1, 0]]} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
-      {/* '+' cross: horizontal bar */}
-      <Line points={[[-1, 0, 0], [1, 0, 0]]} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
-    </group>
+    <Dot x={x} y={y} px={hovered ? 7 : 5} color={color} billboard renderOrder={renderOrder} depthTest={depthTest} />
   )
 }
