@@ -1,5 +1,6 @@
 import { CONSTRAINTS, ENTITIES } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { projectSelection } from '@/tools/projectSelectionCommand'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
 export interface ShowMessagePayload {
@@ -37,10 +38,17 @@ export function buildCommandEntries(
     // entity (e.g. ellipse) automatically gets its set_tool_<activeTool> command
     // -- the toolbar button dispatches set_tool_<activeTool>, so a missing entry
     // silently makes the tool unclickable.
-    ...ENTITIES.filter(e => e.activeTool).map(e => ({
+    ...ENTITIES.filter(e => e.activeTool && e.activeTool !== 'project').map(e => ({
       name: 'set_tool_' + e.activeTool,
       fn: () => getState().setActiveTool(e.activeTool!),
     })),
+    // Project is a selection action first, a pick tool second: with something
+    // already selected it projects the whole selection and consumes it, so the
+    // click that invoked the tool is also the click that finished it. Only an
+    // empty (or unprojectable) selection falls through to the pick flow.
+    { name: 'set_tool_project', fn: () => {
+      if (!projectSelection()) getState().setActiveTool('project')
+    }},
     { name: 'set_tool_rect',         fn: () => getState().setActiveTool('rect') },
     { name: 'set_tool_center_rect',  fn: () => getState().setActiveTool('center_rect') },
     // N-gon and center_rect are compound drawing tools with no ENTITIES entry, so
