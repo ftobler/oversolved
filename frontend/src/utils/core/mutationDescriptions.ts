@@ -160,6 +160,8 @@ export function describeMutation(m: Mutation): string {
       return `reorder pick field ${m.field} in ${m.featureId}`
     case 'set_feature_suppression':
       return `${m.suppressed ? 'suppress' : 'unsuppress'} ${m.featureId}`
+    case 'set_rollback':
+      return m.position === null ? 'move rollback to end' : `move rollback to ${m.position}`
     case 'edit_session':
       return `edit session on ${m.featureId}`
     default:

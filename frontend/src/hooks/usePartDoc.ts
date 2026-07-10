@@ -6,6 +6,8 @@ import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
+import { applySetRollback } from '@/utils/yamlMutations'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
@@ -69,6 +71,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
     }
     handler?.(next, m)
+
+    // The rollback bar is document content, but only a user-parked position is:
+    // during an edit the bar is pinned just after the edited feature, which is
+    // transient. Outside an edit, mirroring the store into every doc edit means
+    // an append or delete can never leave a stale position behind (adding a
+    // feature moves the bar to the end, and that must reach the doc too).
+    const editorStore = usePartEditorStore.getState()
+    if (editorStore.editingFeatureId === null) {
+      applySetRollback(next, editorStore.rollbackPosition)
+    }
 
     docRef.current = next
     setDoc(next)

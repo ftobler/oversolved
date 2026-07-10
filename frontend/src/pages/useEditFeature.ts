@@ -77,7 +77,9 @@ export function useEditFeature({
     setEditForcedVisible(new Set())
     store.setEditingFeatureId(null)
     store.setPickBoundary(null)
-    store.setRollbackPosition(null)
+    // Entering an edit pins the bar just after the edited feature; leaving it
+    // returns the bar to where the user parked it (null = end of stack).
+    store.setRollbackPosition(docRef.current?.rollback ?? null)
     if (docRef.current) reSolve(docRef.current)
   }, [docRef, reSolve, clearPlaneSelection])
 

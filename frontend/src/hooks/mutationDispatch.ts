@@ -249,5 +249,9 @@ export const mutationHandlers: MutationHandlers = {
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
   set_feature_suppression: (next, m) =>
     applySetFeatureSuppression(next, m.featureId, m.suppressed),
+  // doc.rollback is written by the rollback mirror in handleMutation, which is
+  // the single writer for it; this mutation exists to carry the undo entry and
+  // trigger the re-solve.
+  set_rollback: () => {},
   edit_session: () => {},  // undo-only marker; no doc mutation needed
 }

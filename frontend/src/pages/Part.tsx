@@ -160,7 +160,10 @@ export default function Part() {
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
       rollbackInitialized.current = true
-      usePartEditorStore.getState().setRollbackPosition(extractFeatures(doc).length)
+      // Reopen the document where the user parked the bar. A saved position past
+      // the end (doc hand-edited, features removed) falls back to the end.
+      const count = extractFeatures(doc).length
+      usePartEditorStore.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
     }
   }, [doc])
 
@@ -540,9 +543,9 @@ export default function Part() {
     e.dataTransfer.effectAllowed = 'move'
   }, [])
 
-  // User-initiated rollback drag: update the store and re-solve. The previous
-  // "source: user|handler" tag is gone — instead we update the store and call
-  // reSolve directly. No effect indirection needed.
+  // User-initiated rollback drag: update the store, then persist the position
+  // into the document. handleMutation writes doc.rollback from the store, marks
+  // the doc dirty, and re-solves, so the bar survives a save/reload round trip.
   const handleUserRollbackChange = useCallback((pos: number | null) => {
     const store = usePartEditorStore.getState()
     store.setRollbackPosition(pos)
@@ -556,9 +559,8 @@ export default function Part() {
     } else {
       store.setPickBoundary(null)
     }
-    // Bypass cache: a user-initiated rollback change should always re-solve.
-    if (docRef.current) reSolve(docRef.current, { bypassCache: true })
-  }, [docRef, reSolve, doc])
+    handleMutation({ type: 'set_rollback', position: pos })
+  }, [handleMutation, doc])
 
   const toggleVisibility = useCallback((featureId: string) => {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeaturesWithEdit.has(featureId) })

@@ -342,6 +342,9 @@ export interface PartDoc {
   oversolved?: number
   version?: number
   kind?: string
+  // Feature-tree rollback bar position, as an index into `features`. Absent
+  // means "end of stack"; a rolled-back doc reopens where the user left it.
+  rollback?: number
   features?: PartFeature[]
   part_style?: Record<string, PartStyleEntry>
 }
@@ -775,4 +778,5 @@ export type Mutation =
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
+  | { type: 'set_rollback'; position: number | null }
   | { type: 'edit_session'; featureId: string; description?: string }

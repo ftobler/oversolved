@@ -85,6 +85,19 @@ export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: n
   doc.features.splice(insertIndex, 0, feature)
 }
 
+// Persists where the user parked the rollback bar. "At the end of the stack"
+// is the overwhelmingly common case and carries no information, so it is
+// written as the absence of the key rather than as features.length -- that
+// also keeps the field from going stale when features are appended later.
+export function applySetRollback(doc: PartDoc, position: number | null): void {
+  const featureCount = doc.features?.length ?? 0
+  if (position === null || position >= featureCount) {
+    delete doc.rollback
+    return
+  }
+  doc.rollback = Math.max(0, position)
+}
+
 export function applySetFeatureSuppression(doc: PartDoc, featureId: string, suppressed: boolean): void {
   if (BUILTIN_FEATURE_IDS.has(featureId)) return
   const feature = findFeature(doc, featureId)

@@ -81,6 +81,7 @@ export const ALL_MUTATION_TYPES = [
   'reorder_features',
   'reorder_pick_field',
   'set_feature_suppression',
+  'set_rollback',
   'edit_session',
 ]
 
