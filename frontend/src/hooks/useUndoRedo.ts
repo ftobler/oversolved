@@ -37,12 +37,13 @@ export function useUndoRedo(
         if (preDoc) setToStack(r => [...r, { doc: preDoc, mutation: entry.mutation }])
         docRef.current = entry.doc
         setDoc(entry.doc)
-        // Undo/redo always exits any edit and snaps rollback to the end of the
-        // restored doc — there is no meaningful in-edit state to preserve.
+        // Undo/redo always exits any edit — there is no meaningful in-edit state
+        // to preserve — and restores the rollback the doc was saved with, which
+        // is the end of the stack unless the user had parked the bar earlier.
         const store = usePartEditorStore.getState()
         store.setEditingFeatureId(null)
         store.setPickBoundary(null)
-        store.setRollbackPosition(entry.doc.features?.length ?? 0)
+        store.setRollbackPosition(entry.doc.rollback ?? entry.doc.features?.length ?? 0)
         reSolve(entry.doc)
         return next
       })

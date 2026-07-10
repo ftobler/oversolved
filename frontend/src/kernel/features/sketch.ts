@@ -24,6 +24,7 @@ import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
+import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { solveTopology, reconcileMaterializedContacts, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
@@ -324,6 +325,13 @@ export interface DragContext {
     radiusIndex: number
     angleIndex: number
   }
+  /** Set for an ellipse major/minor axis-endpoint drag. Like `arcEndpoint`, the
+   *  handle is derived (from center/a/b/theta) rather than a direct param pair,
+   *  so the cursor XY is inverted into the entity's params each frame. */
+  ellipseAxis?: {
+    key: EllipseAxisKey
+    paramOffset: number
+  }
 }
 
 /**
@@ -398,6 +406,22 @@ export function prepareDragContext(
           isEdgeDrag: false,
           entityParamOffset: ent.offset,
           entityCoordPairs: [],
+        }
+      }
+      // Ellipse axis endpoints are derived from center + a/b/theta, so like the
+      // arc endpoints below they have no direct param pair in VERTEX_INDICES.
+      // Pin them by inverting the cursor into a/b/theta each frame.
+      if (ent.kind === 'ellipse' && isEllipseAxisKey(dragVertexKey)) {
+        input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
+        return {
+          input,
+          layout,
+          params0: [...input.params],
+          cursorIndices: [ent.offset + 2, ent.offset + 3],
+          isEdgeDrag: false,
+          entityParamOffset: ent.offset,
+          entityCoordPairs: [],
+          ellipseAxis: { key: dragVertexKey, paramOffset: ent.offset },
         }
       }
       // Arc start/end are derived from center + radius + angle, so they have no
@@ -564,6 +588,17 @@ export function solveSketchDrag(
       let ang = (Math.atan2(dy, dx) * 180) / Math.PI
       ang += Math.round((prev - ang) / 360) * 360
       input.params[angleIndex] = ang
+    } else if (ctx.ellipseAxis) {
+      // Invert the cursor into the ellipse's a/b/theta. The center comes from the
+      // warm start, as for the arc endpoint above; a null result (cursor on the
+      // center) leaves the warm-start params, holding the last good frame.
+      const off = ctx.ellipseAxis.paramOffset
+      const next = ellipseAxisDrag(input.params.slice(off, off + 5), ctx.ellipseAxis.key, cursorWorld)
+      if (next) {
+        input.params[off + 2] = next.a
+        input.params[off + 3] = next.b
+        input.params[off + 4] = next.theta
+      }
     } else {
       input.params[cursorIndices[0]] = cursorWorld[0]
       input.params[cursorIndices[1]] = cursorWorld[1]

@@ -11,6 +11,7 @@ import { sketchVertexAdapter } from './sketchVertexAdapter'
 import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
 import { getToolAllowedLayers } from '@/registry/toolPickConfig'
+import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
@@ -70,6 +71,17 @@ function cursorFromEvent(e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement
  */
 export function hitToSelectionKey(hit: ResolvedHit): string {
   return hit.entityKey
+}
+
+/**
+ * Whether a click on `layer` should be auto-projected into the sketch being
+ * dimensioned rather than toggled into the normal selection. Only meaningful
+ * while the dimension tool is active inside a sketch.
+ */
+function isBrepDimensionPick(layer: string): boolean {
+  if (layer !== EDGE_LAYER_NAME && layer !== VERTEX_LAYER_NAME) return false
+  const state = useSketchEditorStore.getState()
+  return state.activeTool === 'dimension' && state.activeFeatureId !== null
 }
 
 /**
@@ -209,6 +221,14 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {
         sketchVertexAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+      } else if (isBrepDimensionPick(hit.layer)) {
+        // Dimensioning a body edge / vertex from inside a sketch: project it
+        // into the sketch and dimension the projection. Faces are excluded --
+        // a face lowers to a whole wire, which names no single dim target.
+        useSketchEditorStore.getState().addBrepDimensionPick(hit.entityKey, {
+          isVertexPick: hit.layer === VERTEX_LAYER_NAME,
+          sourceKind: findEdgeKindForQuery(hit.entityKey) ?? null,
+        })
       } else {
         // face / edge / vertex (B-rep) / plane / origin
         useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))

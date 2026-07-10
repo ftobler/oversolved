@@ -513,7 +513,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
     expect(parts[0].spec.id).toBe('part-1')
 
     await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
-    expect(h.downloadBlob.mock.calls[0][1]).toBe('My Assembly.step')
+    expect(h.downloadBlob.mock.calls[0][1]).toBe('My_Assembly.step')
     expect(screen.queryByText('Export Model')).toBeNull()  // dialog closes
   })
 
@@ -525,7 +525,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
 
     expect(h.exportAssemblyViaWorker).not.toHaveBeenCalled()
     const [blob, name] = h.downloadBlob.mock.calls[0]
-    expect(name).toBe('My Assembly.stl')
+    expect(name).toBe('My_Assembly.stl')
     // 84-byte prefix + one 50-byte triangle: the solved mesh, re-encoded.
     expect(blob.size).toBe(84 + 50)
   })

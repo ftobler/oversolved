@@ -210,6 +210,30 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(prepareDragContext(circle, 'C1', 'center')).not.toBeNull()
   })
 
+  // The 4 ellipse axis handles are derived from center/a/b/theta rather than
+  // being direct param pairs, so without an explicit branch prepareDragContext
+  // fell through to null: the drag never engaged and the handle looked frozen.
+  it('engages on an ellipse axis handle and drives it to the cursor', () => {
+    const ellipse = {
+      id: 'ellipseSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'E1', kind: 'ellipse' }],
+      initial: { E1: [0, 0, 10, 5, 0] },
+      constraints: [],
+    } as unknown as PartFeature
+
+    expect(prepareDragContext(ellipse, 'E1', 'center')).not.toBeNull()
+    for (const key of ['major1', 'major2', 'minor1', 'minor2']) {
+      expect(prepareDragContext(ellipse, 'E1', key)).not.toBeNull()
+    }
+
+    // Drag major1 straight up: the solved ellipse must have a ~= 12, theta ~= 90.
+    const ctx = prepareDragContext(ellipse, 'E1', 'major1')!
+    const result = solveSketchDrag(ctx, ctx.params0, [0, 12])!
+    const solved = result.geometry.E1
+    expect(solved[2]).toBeCloseTo(12, 3)
+    expect(solved[4]).toBeCloseTo(90, 3)
+  })
+
   it('returns null for a non-sketch feature instead of throwing', () => {
     const notASketch = { id: 'ext1', kind: 'extrude' } as unknown as PartFeature
     expect(prepareDragContext(notASketch, 'x', 'start')).toBeNull()

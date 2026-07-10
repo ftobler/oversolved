@@ -352,6 +352,9 @@ export interface PartDoc {
   oversolved?: number
   version?: number
   kind?: string
+  // Feature-tree rollback bar position, as an index into `features`. Absent
+  // means "end of stack"; a rolled-back doc reopens where the user left it.
+  rollback?: number
   features?: PartFeature[]
   part_style?: Record<string, PartStyleEntry>
 }
@@ -784,7 +787,7 @@ export type Mutation =
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string }
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string }
-  | { type: 'add_projected_entity'; featureId: string; kind: string; source: string }
+  | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
   | { type: 'add_point_at_intersection'; featureId: string; at: Point; curveEntityIds: string[] }
   | { type: 'add_dock'; featureId: string; at: Point; hostConstraintId: string }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
@@ -793,7 +796,7 @@ export type Mutation =
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }
-  | { type: 'add_sketch'; featureId: string; label?: string }
+  | { type: 'add_sketch'; featureId: string; label?: string; plane?: string }
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
   | { type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef }
@@ -853,4 +856,5 @@ export type Mutation =
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
+  | { type: 'set_rollback'; position: number | null }
   | { type: 'edit_session'; featureId: string; description?: string }

@@ -4,6 +4,7 @@ import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
+import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 
 // ─── Internals ───
 
@@ -184,6 +185,17 @@ export function applyMoveVertex(
   if (indices) {
     params[indices[0]] = round(to[0])
     params[indices[1]] = round(to[1])
+    return
+  }
+  // Ellipse axis endpoints are derived from center/a/b/theta, so like the arc
+  // endpoints below they have no direct param pair. Invert the drop position
+  // back into (a, b, theta) (params: [cx, cy, a, b, theta]).
+  if (kind === 'ellipse' && isEllipseAxisKey(vertexKey)) {
+    const next = ellipseAxisDrag(params, vertexKey, to)
+    if (!next) return
+    params[2] = round(next.a)
+    params[3] = round(next.b)
+    params[4] = round(next.theta)
     return
   }
   // Arc start/end are derived (center + radius at an angle), so they have no
@@ -405,13 +417,18 @@ export function applyAddProjectedEntity(
   featureId: string,
   kind: string,
   source: string,
+  entityId?: string,
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.entities) feature.entities = []
   const existing = new Set(feature.entities.map(e => e.id))
-  let eid = randomId(12)
-  while (existing.has(eid)) eid = randomId(12)
+  // A caller that must reference the projection right away (the dimension tool
+  // targets it with the pick it makes in the same click) supplies the id. It is
+  // taken as given: re-rolling it would orphan the reference the caller holds,
+  // so a supplied id must already be unique within the feature.
+  let eid = entityId ?? randomId(12)
+  while (!entityId && existing.has(eid)) eid = randomId(12)
   feature.entities.push({ id: eid, kind, source })
 }
 

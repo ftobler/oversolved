@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { Line } from '@react-three/drei'
 import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite } from '@/utils/geometry/sketchHelpers'
+import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite, entityCenter } from '@/utils/geometry/sketchHelpers'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
@@ -162,45 +162,77 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
   )
 }
 
+// Polyline of a projected curve, or null for a projected point (which draws as
+// a dot, not a line).
+function projectedEntityPoints(entity: Entity): [number, number, number][] | null {
+  if ('start' in entity && 'end' in entity && 'radius' in entity) {
+    const arc = entity as Arc
+    return sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
+  } else if ('start' in entity && 'end' in entity) {
+    const line = entity as LineSegment
+    return [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
+  } else if ('center' in entity && 'a' in entity) {
+    const el = entity as Ellipse
+    return sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
+  } else if ('p1' in entity) {
+    const sp = entity as Spline
+    return sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
+  } else if ('center' in entity) {
+    const circ = entity as Circle
+    return sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
+  }
+  return null
+}
+
+// One projected curve. Hover highlights it white and lifts it to the top layer,
+// exactly like a real sketch entity (EntityItem) -- projected geometry is
+// pickable (buildSketchSegments registers it), so it must answer the pointer.
+function ProjectedEntityLine({ points, featureId, entityId, isEditing }: {
+  points: [number, number, number][]; featureId: string; entityId: string; isEditing: boolean
+}) {
+  const entId = `entity:${featureId}:${entityId}`
+  // Hover state is driven by the ID-buffer dispatcher.
+  const hovered = useSketchEditorStore(s => s.hoveredSelectionId === entId)
+
+  const color = hovered ? COLOR_HOVER : isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, hovered })
+  return <Line points={points} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
+}
+
 // Renders all projected entities in the sketch (those with projected: true).
 // Amber while the sketch is being edited; grey (COLOR_INACTIVE) otherwise, so
 // projected geometry matches the rest of the sketch. renderOrder mirrors the
 // active sketch lines (RENDER_ORDER_EDITING) so it shares the same z-index.
+//
+// A projected conic also draws its center dot, at the same `vertex:*:center` id
+// buildSketchVertices registers for it. Without the dot the center stayed a
+// pickable, snappable point that nothing drew -- it surfaced only when a drag
+// put the snap indicator on top of it.
 export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sketch: Sketch; featureId: string; isEditing?: boolean }) {
-  const color = isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
-  // While editing, draw on top; when only visible, depth-test at its plane like
-  // the rest of the sketch/area. Explicit values so the layer resets cleanly.
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing })
+  const dotColor = isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
   return (
     <>
       {Object.entries(sketch)
         .filter(([id, e]) => isProjectedEntity(e as Entity) && id !== '_origin')
         .map(([id, e]) => {
           const entity = e as Entity
-          if ('start' in entity && 'end' in entity && 'radius' in entity) {
-            const arc = entity as Arc
-            const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('start' in entity && 'end' in entity) {
-            const line = entity as LineSegment
-            const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('center' in entity && 'a' in entity) {
-            const el = entity as Ellipse
-            const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('p1' in entity) {
-            const sp = entity as Spline
-            const pts = sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('center' in entity) {
-            const circ = entity as Circle
-            const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else {
+          const pts = projectedEntityPoints(entity)
+          if (!pts) {
             const pt = entity as PointEntity
             return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} isEditing={isEditing} />
           }
+          const center = entityCenter(entity)
+          return (
+            <Fragment key={id}>
+              <ProjectedEntityLine points={pts} featureId={featureId} entityId={id} isEditing={isEditing} />
+              {center && (
+                <VertexDot
+                  x={center[0]} y={center[1]} px={2.5} baseColor={dotColor}
+                  featureId={featureId} entityId={id} vertexKey="center" isEditing={isEditing}
+                />
+              )}
+            </Fragment>
+          )
         })}
     </>
   )

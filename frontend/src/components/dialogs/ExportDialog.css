@@ -68,7 +68,7 @@
   margin: 12px;
 }
 
-.export-dialog-close-btn:hover {
+.export-dialog-close-btn:hover:not(:disabled) {
   background: #333;
   color: #ccc;
 }
@@ -165,9 +165,14 @@
   border: none;
   background: #333;
   color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 35px;
 }
 
-.export-dialog-btn:hover {
+.export-dialog-btn:hover:not(:disabled) {
   background: #444;
   color: #fff;
 }
@@ -177,8 +182,43 @@
   color: #fff;
 }
 
-.export-dialog-btn-download:hover {
+.export-dialog-btn-download:hover:not(:disabled) {
   background: #3a6a9a;
+}
+
+.export-dialog-btn:disabled,
+.export-dialog-close-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* The download button keeps its accent while busy so the spinner reads as
+   progress rather than as a dead control. */
+.export-dialog-btn-download:disabled {
+  opacity: 1;
+  background: #24486b;
+}
+
+.export-dialog-spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  animation: export-dialog-spin 1s linear infinite;
+}
+
+.export-dialog-spinner circle {
+  stroke: #fff;
+  stroke-dasharray: 80, 200;
+  stroke-dashoffset: 0;
+}
+
+@keyframes export-dialog-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.export-dialog[aria-busy='true'] .export-dialog-body {
+  opacity: 0.6;
 }
 
 @media (max-width: 768px) {

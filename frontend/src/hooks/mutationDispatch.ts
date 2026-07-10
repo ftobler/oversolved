@@ -112,7 +112,7 @@ export const mutationHandlers: MutationHandlers = {
   add_entity_with_constraint: (next, m) =>
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId),
   add_projected_entity: (next, m) =>
-    applyAddProjectedEntity(next, m.featureId, m.kind, m.source),
+    applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
   add_point_at_intersection: (next, m) =>
     applyAddPointAtIntersection(next, m.featureId, m.at, m.curveEntityIds),
   add_dock: (next, m) =>
@@ -130,7 +130,7 @@ export const mutationHandlers: MutationHandlers = {
   set_feature_plane: (next, m) =>
     applySetFeaturePlane(next, m.featureId, m.plane),
   add_sketch: (next, m) =>
-    applyAddSketch(next, m.featureId, m.label),
+    applyAddSketch(next, m.featureId, m.label, m.plane),
   delete_feature: (next, m) =>
     applyDeleteFeature(next, m.featureId),
   set_feature_visibility: (next, m) =>
@@ -249,5 +249,9 @@ export const mutationHandlers: MutationHandlers = {
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
   set_feature_suppression: (next, m) =>
     applySetFeatureSuppression(next, m.featureId, m.suppressed),
+  // doc.rollback is written by the rollback mirror in handleMutation, which is
+  // the single writer for it; this mutation exists to carry the undo entry and
+  // trigger the re-solve.
+  set_rollback: () => {},
   edit_session: () => {},  // undo-only marker; no doc mutation needed
 }

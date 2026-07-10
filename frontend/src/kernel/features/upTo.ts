@@ -108,6 +108,21 @@ export function upToDistance(cut: CutPlane, profileOrigin: number[], directionVe
 }
 
 /**
+ * Point the sweep at its terminator. A target sitting behind the profile flips
+ * the extrude rather than failing: with `up_to` the picked element, not the
+ * direction toggle, decides which way the material grows, so either side of the
+ * profile is a valid pick. Throws when the terminator passes through the profile
+ * origin, where neither direction has any reach.
+ */
+export function orientToTarget(cut: CutPlane, profileOrigin: number[], directionVec: Vec3): Vec3 {
+  const signed = upToDistance(cut, profileOrigin, directionVec)
+  if (Math.abs(signed) <= 1e-9) {
+    throw new Error('extrude up_to: target passes through the profile; no distance to extrude')
+  }
+  return signed > 0 ? directionVec : (directionVec.map((c) => -c) as Vec3)
+}
+
+/**
  * Trim an over-length extrude solid at the cut plane, keeping the side the
  * profile sits on. Built as a boolean Common with a half-space box whose cap
  * lies in the cut plane, so the result terminates exactly on the plane for any

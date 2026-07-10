@@ -9,10 +9,9 @@ import {
 } from '@/stores/sketchEditorStore'
 import { useFeatureHandleIdRegistration, featureHandleKey } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
-import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx } from '@/components/Geometry3D/featureHandleMath'
+import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
 import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import { p2w } from '@/utils/geometry/sketchHelpers'
-import { COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import { evalExpr } from '@/kernel/evalExpr'
 import type { FeatureHandleData, Mutation, PartFeature, SketchData } from '@/types/cad'
 
@@ -309,7 +308,7 @@ function HandleArrow({ featureId, feature, handle }: {
     if (f > pxToWorld * 1.25 || f < pxToWorld * 0.8) setPxToWorld(f)
   })
 
-  const color = activeDrag || hovered ? COLOR_HOVER : COLOR_SELECTED
+  const color = handleColor(hovered, !!activeDrag)
   const opacity = draggable ? 1 : 0.45
   const displayValue = roundHandleValue(activeDrag ? activeDrag.currentValue : handle.value)
   const showLabel = !!activeDrag || hovered

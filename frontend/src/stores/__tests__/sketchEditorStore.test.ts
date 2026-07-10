@@ -1192,6 +1192,101 @@ describe('sketchEditorStore', () => {
       expect(picks[1]).toEqual(c)
     })
 
+    it('addBrepDimensionPick projects a body edge, then dimensions the projection', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'circle' })
+
+      expect(handler).toHaveBeenCalledTimes(1)
+      const m = handler.mock.calls[0][0]
+      expect(m).toMatchObject({ type: 'add_projected_entity', featureId: 'S1', kind: 'circle', source: '?b1/edge:3' })
+
+      const picks = useSketchEditorStore.getState().dimensionPicks
+      expect(picks).toEqual([
+        { isVertex: false, target: `entity:S1:${m.entityId}`, entityKind: 'circle', source: '?b1/edge:3' },
+      ])
+      setSketchCallback('getSketch', null)
+    })
+
+    it('addBrepDimensionPick projects the same edge once when picked twice before the solve', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))  // the projection has not solved yet
+      const pick = () => useSketchEditorStore.getState()
+        .addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      pick()
+      pick()
+
+      expect(handler).toHaveBeenCalledTimes(1)
+      const picks = useSketchEditorStore.getState().dimensionPicks
+      expect(picks).toHaveLength(2)
+      expect(picks[0].target).toBe(picks[1].target)
+      setSketchCallback('getSketch', null)
+    })
+
+    it('addBrepDimensionPick reuses a projection the sketch already carries', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        P1: { start: [0, 0], end: [10, 0], projected: true, source: '?b1/edge:3' },
+      } as never))
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(useSketchEditorStore.getState().dimensionPicks).toEqual([
+        { isVertex: false, target: 'entity:S1:P1', entityKind: 'line', source: '?b1/edge:3' },
+      ])
+      setSketchCallback('getSketch', null)
+    })
+
+    it('addBrepDimensionPick does nothing outside a sketch', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.setState({ activeFeatureId: null })
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false })
+      expect(handler).not.toHaveBeenCalled()
+      expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+    })
+
+    it('a projected body edge dimensions as a length once solved', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        P1: { start: [0, 0], end: [7, 0], projected: true, source: '?b1/edge:3' },
+      } as never))
+      // Clicking the same edge twice is the same-entity path to a length dim.
+      const store = useSketchEditorStore.getState()
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      expect(dialog.defaultValue).toBe('7')
+      dialog.onConfirm('7')
+      expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({
+        type: 'add_constraint', kind: 'length', targets: ['entity:S1:P1'],
+      }))
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalize adopts the solved kind of a projection the lowerer promoted', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      // The tilted body circle was picked as 'circle'; the solve lowered it to
+      // an ellipse, which has no dimension rule -- the dim must not resolve as
+      // a diameter against geometry that has no radius.
+      setSketchCallback('getSketch', () => ({
+        P1: { center: [0, 0], a: 2, b: 1, theta: 0, projected: true, source: '?b1/edge:3' },
+      } as never))
+      useSketchEditorStore.setState({
+        dimensionPicks: [{ isVertex: false, target: 'entity:S1:P1', entityKind: 'circle' }],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      setSketchCallback('getSketch', null)
+    })
+
     it('clearDimensionPicks resets to empty', () => {
       useSketchEditorStore.setState({ dimensionPicks: [
         { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },

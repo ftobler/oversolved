@@ -21,7 +21,7 @@ export function PlaneSelector({
       ? selectionId.split(':').slice(2).join(':')
       : selectionId
     onMutation({ type: 'set_feature_plane', featureId: fid, plane })
-  })
+  }, { features })
 
   return (
     <div className="plane-editor">

@@ -14,6 +14,20 @@ function normalizeBodyRef(ref: string): string {
 }
 
 /**
+ * Convert a viewport selection ID to a body reference for a field that names a
+ * whole body (circular_array source_body). Picking a face of the body is the
+ * natural gesture, so a `face:` selection yields its inner ancestry query and a
+ * `?` query passes through untouched: both resolve to the owning body in the
+ * kernel's `resolveBody`.
+ */
+export function resolveBodyPickRef(id: string): string {
+  if (id.startsWith('face:')) {
+    return id.split(':').slice(2).join(':')
+  }
+  return normalizeBodyRef(id)
+}
+
+/**
  * Convert a viewport selection ID to a body reference for a merge/boolean
  * target field (extrude/revolve merge_target). Unlike resolveBodyPickRef, a
  * `?` ancestry query is coerced to `@body_<first-segment>` rather than passed

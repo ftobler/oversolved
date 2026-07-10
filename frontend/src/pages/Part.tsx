@@ -38,6 +38,8 @@ import type { BuildContextMenuInput, BuildContextMenuCallbacks } from './buildCo
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
+import { builtinPlaneTransform, planeTransformNormal } from '@/components/Geometry3D/bodySnapProjection'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
@@ -158,7 +160,10 @@ export default function Part() {
   useEffect(() => {
     if (doc && !rollbackInitialized.current) {
       rollbackInitialized.current = true
-      usePartEditorStore.getState().setRollbackPosition(extractFeatures(doc).length)
+      // Reopen the document where the user parked the bar. A saved position past
+      // the end (doc hand-edited, features removed) falls back to the end.
+      const count = extractFeatures(doc).length
+      usePartEditorStore.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
     }
   }, [doc])
 
@@ -207,6 +212,7 @@ export default function Part() {
   }, [uuid, reSolve, docRef])
 
   const pendingSketchOnFaceId = useRef<string | null>(null)
+  const pendingEditSketchId = useRef<string | null>(null)
   const clearPlaneSelection = useCallback(() => {
     setActivePickField(null)
     pendingSketchOnFaceId.current = null
@@ -381,6 +387,18 @@ export default function Part() {
     setActivePickField({ featureId, field: 'plane' })
   }, [doc, features, handleMutation, setActivePickField])
 
+  const handleNewSketchOnPlane = useCallback((plane: string) => {
+    if (!doc) return
+    const featureId = randomId(18)
+    const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
+    const label = `sketch ${sketchCount + 1}`
+    setRollbackForNewFeature(features)
+    handleMutation({ type: 'add_sketch', featureId, label, plane })
+    // enterEditSketch resolves the feature out of `features`, which React has
+    // not re-rendered with the new sketch yet. Defer to the effect below.
+    pendingEditSketchId.current = featureId
+  }, [doc, features, handleMutation])
+
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -525,9 +543,9 @@ export default function Part() {
     e.dataTransfer.effectAllowed = 'move'
   }, [])
 
-  // User-initiated rollback drag: update the store and re-solve. The previous
-  // "source: user|handler" tag is gone — instead we update the store and call
-  // reSolve directly. No effect indirection needed.
+  // User-initiated rollback drag: update the store, then persist the position
+  // into the document. handleMutation writes doc.rollback from the store, marks
+  // the doc dirty, and re-solves, so the bar survives a save/reload round trip.
   const handleUserRollbackChange = useCallback((pos: number | null) => {
     const store = usePartEditorStore.getState()
     store.setRollbackPosition(pos)
@@ -541,9 +559,8 @@ export default function Part() {
     } else {
       store.setPickBoundary(null)
     }
-    // Bypass cache: a user-initiated rollback change should always re-solve.
-    if (docRef.current) reSolve(docRef.current, { bypassCache: true })
-  }, [docRef, reSolve, doc])
+    handleMutation({ type: 'set_rollback', position: pos })
+  }, [handleMutation, doc])
 
   const toggleVisibility = useCallback((featureId: string) => {
     handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeaturesWithEdit.has(featureId) })
@@ -620,6 +637,17 @@ export default function Part() {
     viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent
   }, [activeSketchFeatureId, features])
 
+  // Built-in planes never reach the kernel, so only user-defined ones carry a
+  // solved plane_transform; the built-ins are derived locally from their query.
+  const handleNormalToPlane = useCallback((planeFeatureId: string) => {
+    const transform = BUILT_IN_IDS.has(planeFeatureId)
+      ? builtinPlaneTransform(builtinSelectionId(planeFeatureId))
+      : solveResults?.[planeFeatureId]?.plane_transform
+    if (!transform) return
+    const [ox, oy, oz] = transform.origin
+    viewportRef.current?.alignCameraToFace(planeTransformNormal(transform), [ox, oy, oz])
+  }, [solveResults])
+
   useEffect(() => {
     if (planeSelectionFeatureId) {
       pendingSketchOnFaceId.current = planeSelectionFeatureId
@@ -640,6 +668,16 @@ export default function Part() {
       }
     }
   }, [planeSelectionFeatureId, editingFeatureId, features, enterEditFeature, setMode])
+
+  // A sketch created with its plane already bound needs no pick step, so it
+  // drops straight into sketch edit once the new feature reaches `features`.
+  useEffect(() => {
+    const featureId = pendingEditSketchId.current
+    if (!featureId) return
+    if (!features.some(f => f.id === featureId)) return
+    pendingEditSketchId.current = null
+    enterEditSketch(featureId)
+  }, [features, enterEditSketch])
 
   const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
     const store = useSketchEditorStore.getState()
@@ -666,6 +704,7 @@ export default function Part() {
       onFeatureRename: handleFeatureRename,
       onBodyRename: handleBodyRename,
       onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
+      onNormalToPlane: handleNormalToPlane,
       onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
       onToggleConstraintTiles: () => {
         const s = useSketchEditorStore.getState()
@@ -681,12 +720,13 @@ export default function Part() {
         }
       },
       onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
+      onNewSketchOnPlane: handleNewSketchOnPlane,
       onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
     }
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
   }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
-    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane,
+    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels,
     viewportRef, docRef, startPreviewMode])
 

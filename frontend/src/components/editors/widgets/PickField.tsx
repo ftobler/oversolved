@@ -47,7 +47,7 @@ export function PickFieldWidget({
     if (index >= 0) removeAt(index)
   }
 
-  const pickState = usePickField(fid, field.key, pickCallback, { multi: isMulti, onUnpick: unpickCallback })
+  const pickState = usePickField(fid, field.key, pickCallback, { multi: isMulti, onUnpick: unpickCallback, features })
 
   return (
     <div className="feature-field-row feature-field-row--stacked">

@@ -3,7 +3,7 @@
 // table are unused here and passed as null.
 
 import { describe, it, expect } from 'vitest'
-import { resolveUpToPlane, upToDistance } from './upTo'
+import { resolveUpToPlane, upToDistance, orientToTarget, type CutPlane } from './upTo'
 import type { Repository } from '../query'
 import type { OccModule } from '../occ/occTypes'
 import type { DisposeScope } from '../occ/disposeScope'
@@ -46,5 +46,36 @@ describe('upToDistance', () => {
   it('is the signed distance to the plane along the direction', () => {
     expect(upToDistance({ origin: [0, 0, 7], normal: [0, 0, 1] }, [0, 0, 0], [0, 0, 1])).toBeCloseTo(7)
     expect(upToDistance({ origin: [0, 0, -5], normal: [0, 0, 1] }, [0, 0, 0], [0, 0, 1])).toBeCloseTo(-5)
+  })
+})
+
+describe('orientToTarget', () => {
+  const zPlane = (z: number): CutPlane => ({ origin: [0, 0, z], normal: [0, 0, 1] })
+
+  // Componentwise, because negating a zero component yields -0.
+  function expectDir(actual: number[], expected: number[]): void {
+    for (let i = 0; i < 3; i++) expect(actual[i]).toBeCloseTo(expected[i])
+  }
+
+  it('keeps the direction when the target is ahead', () => {
+    expectDir(orientToTarget(zPlane(7), [0, 0, 0], [0, 0, 1]), [0, 0, 1])
+  })
+
+  it('reverses the direction when the target is behind', () => {
+    expectDir(orientToTarget(zPlane(-5), [0, 0, 0], [0, 0, 1]), [0, 0, -1])
+  })
+
+  it('reverses a reversed direction back when the target is ahead of the profile', () => {
+    expectDir(orientToTarget(zPlane(7), [0, 0, 0], [0, 0, -1]), [0, 0, 1])
+  })
+
+  it('works for an oblique direction and a tilted plane', () => {
+    const s = Math.SQRT1_2
+    const cut: CutPlane = { origin: [0, 0, -3], normal: [0, -s, s] }
+    expectDir(orientToTarget(cut, [0, 0, 0], [0, s, s]), [0, -s, -s])
+  })
+
+  it('throws when the target passes through the profile', () => {
+    expect(() => orientToTarget(zPlane(0), [0, 0, 0], [0, 0, 1])).toThrow(/no distance to extrude/)
   })
 })

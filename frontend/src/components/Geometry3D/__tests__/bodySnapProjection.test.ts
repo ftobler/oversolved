@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   projectWorldToSketch,
   builtinPlaneTransform,
+  planeTransformNormal,
   buildBodySnapSketch,
   BODY_SNAP_FEAT_PREFIX,
 } from '@/components/Geometry3D/bodySnapProjection'
@@ -29,6 +30,19 @@ describe('builtinPlaneTransform', () => {
 
   it('returns null for unknown plane', () => {
     expect(builtinPlaneTransform('unknown_plane')).toBeNull()
+  })
+})
+
+describe('planeTransformNormal', () => {
+  it('reads the builtin plane normals as the third rotation row', () => {
+    expect(planeTransformNormal(FRONT_PT)).toEqual([0, 0, 1])
+    expect(planeTransformNormal(TOP_PT)).toEqual([0, 1, 0])
+    expect(planeTransformNormal(RIGHT_PT)).toEqual([1, 0, 0])
+  })
+
+  it('reads the normal of an arbitrary rotation', () => {
+    const t: PlaneTransform = { rotation: [1, 0, 0,  0, 0, 1,  0, -1, 0], origin: [4, 5, 6] }
+    expect(planeTransformNormal(t)).toEqual([0, -1, 0])
   })
 })
 

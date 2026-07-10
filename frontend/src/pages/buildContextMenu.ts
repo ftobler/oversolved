@@ -1,5 +1,6 @@
 import type { PartFeature } from '@/types/cad'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
@@ -11,6 +12,32 @@ import contextColorIcon from '@/assets/icons/context-color.svg'
 import iconRenameIcon from '@/assets/icons/rename.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
 import constraintTileIcon from '@/assets/icons/constraint-coincident.svg'
+import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
+
+// The query a sketch stores to reference a plane. Built-in planes carry a fixed
+// query id that differs from their feature id ('Front' -> '@builtin_plane_front').
+function planeQuery(featureId: string, builtInIds: Set<string>): string {
+  return builtInIds.has(featureId) ? builtinSelectionId(featureId) : `@${featureId}`
+}
+
+function findPlaneByQuery(
+  query: string,
+  features: PartFeature[],
+  builtInIds: Set<string>,
+): PartFeature | undefined {
+  return features.find(f => f.kind === 'plane' && planeQuery(f.id, builtInIds) === query)
+}
+
+// Point the camera down the plane's normal. Planes are named by feature id here
+// (not by query) because the caller resolves the transform from the solve result,
+// which is keyed by feature id.
+function normalToPlaneItem(featureId: string, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Normal to',
+    icon: contextCameraIcon,
+    onClick: () => callbacks.onNormalToPlane(featureId),
+  }
+}
 
 export interface BuildContextMenuInput {
   pos: [number, number]
@@ -36,10 +63,12 @@ export interface BuildContextMenuCallbacks {
   onFeatureRename: (featureId: string, label: string) => void
   onBodyRename: (bodyId: string, label: string) => void
   onAlignToFace: (normal: [number, number, number], center: [number, number, number]) => void
+  onNormalToPlane: (featureId: string) => void
   onAlignCameraToSketchPlane: () => void
   onToggleConstraintTiles: () => void
   onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
   onExportBody: (bodyId: string, name: string) => void
+  onNewSketchOnPlane: (planeQuery: string) => void
   onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
 }
 
@@ -65,11 +94,39 @@ export function buildContextMenu(
     builtInIds,
   } = input
 
-  if (hoveredSelectionId && hoveredFaceNormal && hoveredFaceCenter) {
+  // Creating a sketch enters its edit session, which cannot nest inside the
+  // one an active sketch already holds. Exit first.
+  const canStartSketch = !activeSketchFeatureId
+
+  // Only a viewport right-click has no targetId. The feature tree always names
+  // its target, and must not be hijacked by whatever the pointer last hovered
+  // in the viewport (hover is not cleared when the pointer leaves the canvas).
+  const hoveredInViewport = targetId ? null : hoveredSelectionId
+
+  // A plane hovered in the viewport carries no face geometry, so it never
+  // reaches the face branch below.
+  const hoveredPlane = hoveredInViewport
+    ? findPlaneByQuery(hoveredInViewport, features, builtInIds)
+    : undefined
+  if (hoveredPlane) {
+    const items: ContextMenuItem[] = []
+    if (canStartSketch) {
+      items.push({
+        label: 'New Sketch',
+        icon: featureSketchIcon,
+        onClick: () => callbacks.onNewSketchOnPlane(planeQuery(hoveredPlane.id, builtInIds)),
+      })
+    }
+    items.push(normalToPlaneItem(hoveredPlane.id, callbacks))
+    return { items }
+  }
+
+  if (hoveredInViewport && hoveredFaceNormal && hoveredFaceCenter) {
     return {
       items: [
         {
-          label: 'Align to Face',
+          label: 'Normal to',
+          icon: contextCameraIcon,
           onClick: () => callbacks.onAlignToFace(hoveredFaceNormal, hoveredFaceCenter),
         },
       ],
@@ -150,6 +207,14 @@ export function buildContextMenu(
   if (featureId && featureId !== activeSketchFeatureId) {
     const target = features.find(f => f.id === featureId)
     if (target?.kind === 'plane') {
+      if (canStartSketch) {
+        items.push({
+          label: 'New Sketch',
+          icon: featureSketchIcon,
+          onClick: () => callbacks.onNewSketchOnPlane(planeQuery(target.id, builtInIds)),
+        })
+      }
+      items.push(normalToPlaneItem(target.id, callbacks))
       if (!builtInIds.has(target.id)) {
         items.push({
           label: 'Edit',

@@ -5,7 +5,7 @@ import type { Mutation, Entity } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
-import { parseQuery } from '@/utils/query'
+import { projectionMutationsForId } from '@/tools/projectionMutations'
 import { circumcircle, arcAnglesFromRadiusPoint, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 
 export interface DrawSnapState {
@@ -278,79 +278,18 @@ export function computeDrawClick(
     const hid = snap.hoveredSelectionId
     if (!hid) return nothing
 
-    // Sketch entity pick: entity:<featureId>:<entityId>
-    if (hid.startsWith('entity:')) {
-      const parts = hid.split(':')
-      if (parts.length < 3) return nothing
-      const sourceFeatureId = parts[1]
-      const sourceEntityId = parts[2]
-      if (sourceFeatureId === featureId) return nothing
-
-      const source = `@${sourceFeatureId}/${sourceEntityId}`
-      // Projection is carried by `source`, not by a distinct entity kind: emit
-      // the base geometric kind of the source curve plus the source query.
-      let kind = 'line'
-      const entity = otherSketches?.[sourceFeatureId]?.[sourceEntityId]
-        ?? sketch?.[sourceEntityId]
-      if (entity) {
-        const ek = getEntityKind(entity)
-        if (ek === 'arc') kind = 'arc'
-        else if (ek === 'circle') kind = 'circle'
-        else if (ek === 'ellipse') kind = 'ellipse'
-        else if (ek === 'spline') kind = 'spline'
-        else if (ek === 'point') kind = 'point'
-      }
-      return {
-        mutations: [{ type: 'add_projected_entity', featureId, kind, source }],
-        nextDrawPoints: null,
-        nextDrawSnap: null,
-        clearTool: true,
-      }
-    }
-
-    // Body geometry pick: ancestry query from face/edge/vertex layer
-    if (hid.startsWith('?')) {
-      let kind = 'point'
-      let isFace = false
-      try {
-        const q = parseQuery(hid)
-        if (q.kind === 'ancestry' && q.typeRestriction) {
-          const tr = q.typeRestriction
-          if (tr === 'edge' || tr === 'straightedge') {
-            // The query alone can't tell a line from a circle/arc; the hovered
-            // edge's curve kind (when known) selects the base entity kind. A
-            // tilted circle still picks 'circle' here -- the projection lowerer
-            // promotes it to an ellipse once it sees the plane orientation.
-            if (snap.hoveredSourceKind === 'circle') kind = 'circle'
-            else if (snap.hoveredSourceKind === 'arc') kind = 'arc'
-            else if (snap.hoveredSourceKind === 'ellipse') kind = 'ellipse'
-            else if (snap.hoveredSourceKind === 'spline') kind = 'spline'
-            else kind = 'line'
-          } else if (tr === 'face' || tr === 'flatface' || tr === 'cylinderface') {
-            isFace = true
-          }
-        }
-      } catch { /* parse failure: keep default point */ }
-
-      // A face pick projects its whole boundary as a closed wire: one projected
-      // entity per boundary edge. Without resolved boundary edges (older body or
-      // no topology) fall back to projecting the face centroid as a point.
-      if (isFace && snap.hoveredFaceEdges && snap.hoveredFaceEdges.length > 0) {
-        const mutations: Mutation[] = snap.hoveredFaceEdges.map((e) => ({
-          type: 'add_projected_entity', featureId, kind: e.kind, source: e.source,
-        }))
-        return { mutations, nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
-      }
-
-      return {
-        mutations: [{ type: 'add_projected_entity', featureId, kind, source: hid }],
-        nextDrawPoints: null,
-        nextDrawSnap: null,
-        clearTool: true,
-      }
-    }
-
-    return nothing
+    // The hovered pick already carries its own kind/face-boundary answers, so
+    // the resolvers ignore the queried id and hand back the hover state.
+    const mutations = projectionMutationsForId(hid, featureId, {
+      entityKind: (fid, eid) => {
+        const entity = otherSketches?.[fid]?.[eid] ?? sketch?.[eid]
+        return entity ? getEntityKind(entity) : null
+      },
+      edgeKind: () => snap.hoveredSourceKind ?? null,
+      faceEdges: () => snap.hoveredFaceEdges ?? null,
+    })
+    if (mutations.length === 0) return nothing
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
   }
 
   return nothing

@@ -1,4 +1,5 @@
 import { forwardRef, useState, useImperativeHandle } from 'react'
+import { stringify as stringifyYaml } from 'yaml'
 import ExportDialog from '@/components/dialogs/ExportDialog'
 import ShareDialog from '@/components/dialogs/ShareDialog'
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
@@ -41,6 +42,23 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
 
     const handleExportDownload = async (format: ExportFormat, tessellation: number, fileName: string) => {
       if (!doc?.features) return
+      // The YAML source is the document itself, so it needs no kernel round-trip
+      // and no geometry: serialise the in-memory doc exactly as `saveDoc` stores
+      // it, builtins included, so the file re-imports as the same document. A
+      // body selection cannot narrow a feature tree, so it is ignored here.
+      if (format === 'yaml') {
+        try {
+          const blob = new Blob([stringifyYaml(doc)], { type: 'application/yaml' })
+          downloadBlob(blob, fileName || `${exportDefaultName}.yaml`)
+        } catch (e) {
+          console.error('Export error:', e)
+          notify(`Export error: ${e instanceof Error ? e.message : e}`, 'error')
+        } finally {
+          setExportTargetBodyId(null)
+          setExportDialogOpen(false)
+        }
+        return
+      }
       // Export runs entirely in the WASM kernel (the same builder that solves the
       // doc), so it works offline / zero-backend with no network round-trip. The
       // Worker rebuilds the document, resolves the export shape (single body or a

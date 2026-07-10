@@ -44,6 +44,12 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
 
     const handleDownload = async (format: ExportFormat, tessellation: number, fileName: string) => {
       if (!doc) return
+      if (format === 'yaml') {
+        // The dialog hides YAML for assemblies; guard the worker path anyway.
+        notify('Export failed: YAML is not supported for assemblies', 'error')
+        setIsOpen(false)
+        return
+      }
       const instances = exportableInstances(doc)
       if (instances.length === 0) {
         notify('Export failed: the assembly has no visible parts', 'error')
@@ -78,6 +84,7 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
         isOpen={isOpen}
         defaultName={docName || 'assembly'}
         showTessellation={false}
+        showYaml={false}
         onDownload={handleDownload}
         onCancel={() => setIsOpen(false)}
       />

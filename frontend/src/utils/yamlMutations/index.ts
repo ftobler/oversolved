@@ -80,6 +80,7 @@ export {
   applyAddSketch,
   applyDeleteFeature,
   applyReorderFeatures,
+  applySetRollback,
   applySetFeatureSuppression,
   applySetFeatureVisibility,
   applyRenameFeature,

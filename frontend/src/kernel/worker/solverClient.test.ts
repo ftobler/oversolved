@@ -1,5 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { solveViaWorker, exportViaWorker, exportAssemblyViaWorker, setSolverWorkerForTest, type SolverWorkerLike } from './solverClient'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import {
+  solveViaWorker, exportViaWorker, exportAssemblyViaWorker,
+  setSolverWorkerForTest, setSolverTimeoutForTest,
+  type SolverWorkerLike,
+} from './solverClient'
 import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
 
 type AnyResponse = SolveResponse | ExportResponse | BundleResponse
@@ -161,6 +165,44 @@ describe('solveViaWorker', () => {
       const p = exportAssemblyViaWorker([{ spec: {}, transform: PLACED }], { format: 'step' })
       fake.reply({ id: fake.posted[0].id, ok: false, error: 'STEP export: Write failed' })
       await expect(p).rejects.toThrow('Write failed')
+    })
+  })
+
+  describe('hang watchdog', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('terminates a hung worker and rejects the in-flight request when the watchdog fires', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p = solveViaWorker({ id: 'd' })  // worker never replies
+      vi.advanceTimersByTime(1000)
+      await expect(p).rejects.toThrow('solver worker timed out')
+      expect(created[0].terminated).toBe(true)
+      // Dropped worker respawns fresh on the next solve, rebuilding from feature 0.
+      const p2 = solveViaWorker({ id: 'e' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('fails every in-flight request when one hangs (shared worker is killed)', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p1 = solveViaWorker({ id: 'a' })
+      const p2 = exportViaWorker({ id: 'b' }, { format: 'step' })
+      vi.advanceTimersByTime(1000)
+      await expect(p1).rejects.toThrow('solver worker timed out')
+      await expect(p2).rejects.toThrow('solver worker timed out')
+    })
+
+    it('clears the watchdog on a normal reply so a settled request is never killed', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p = solveViaWorker({ id: 'd' })
+      fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await expect(p).resolves.not.toBeNull()
+      vi.advanceTimersByTime(5000)  // past the ceiling: no spurious terminate
+      expect(created[0].terminated).toBe(false)
     })
   })
 

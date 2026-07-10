@@ -467,6 +467,10 @@ export interface DimensionPick {
   isVertex: boolean
   target: string
   entityKind?: string | null
+  /** For a pick auto-projected from B-rep geometry: the source query it was
+   *  projected from. Lets a repeat pick of the same body element find the
+   *  projection made earlier in this gesture, before its solve has landed. */
+  source?: string
 }
 
 export interface ResolvedDimension {

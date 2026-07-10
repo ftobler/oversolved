@@ -863,6 +863,13 @@
   flex-shrink: 0;
 }
 
+/* Buttons overlap by 4px. `gap` rejects negative lengths, so cancel the
+   toolbar's 4px gap and pull 4px further. Scoped to button-to-button
+   adjacency to leave .toolbar-separator and .mode-selector spacing intact. */
+.editor-btn + .editor-btn {
+  margin-left: -8px;
+}
+
 .editor-btn:hover {
   background: #222;
   color: #4fc3f7;

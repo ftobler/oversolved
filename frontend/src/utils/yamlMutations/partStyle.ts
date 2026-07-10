@@ -54,10 +54,11 @@ export function applySetPartTransmission(doc: PartDoc, bodyId: string, transmiss
 
 // ─── Sketch admin ───
 
-export function applyAddSketch(doc: PartDoc, featureId: string, label?: string): void {
+export function applyAddSketch(doc: PartDoc, featureId: string, label?: string, plane?: string): void {
   if (!doc.features) doc.features = []
   const feature: PartFeature = { id: featureId, kind: 'sketch' }
   if (label) feature.label = label
+  if (plane) feature.plane = plane  // pre-bound plane skips the pick step
   doc.features.push(feature)
 }
 
@@ -82,6 +83,19 @@ export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: n
   // at the same effective position the user hovered over.
   const insertIndex = fromIndex < clampedTo ? clampedTo - 1 : clampedTo
   doc.features.splice(insertIndex, 0, feature)
+}
+
+// Persists where the user parked the rollback bar. "At the end of the stack"
+// is the overwhelmingly common case and carries no information, so it is
+// written as the absence of the key rather than as features.length -- that
+// also keeps the field from going stale when features are appended later.
+export function applySetRollback(doc: PartDoc, position: number | null): void {
+  const featureCount = doc.features?.length ?? 0
+  if (position === null || position >= featureCount) {
+    delete doc.rollback
+    return
+  }
+  doc.rollback = Math.max(0, position)
 }
 
 export function applySetFeatureSuppression(doc: PartDoc, featureId: string, suppressed: boolean): void {

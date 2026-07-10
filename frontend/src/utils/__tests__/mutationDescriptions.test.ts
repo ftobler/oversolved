@@ -29,6 +29,7 @@ const EMPTY_MUTATION: Record<string, unknown> = {
   fromIndex: 0,
   toIndex: 0,
   suppressed: false,
+  position: 0,
 }
 
 describe('describeMutation', () => {
