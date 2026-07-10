@@ -162,45 +162,60 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
   )
 }
 
+// Polyline of a projected curve, or null for a projected point (which draws as
+// a dot, not a line).
+function projectedEntityPoints(entity: Entity): [number, number, number][] | null {
+  if ('start' in entity && 'end' in entity && 'radius' in entity) {
+    const arc = entity as Arc
+    return sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
+  } else if ('start' in entity && 'end' in entity) {
+    const line = entity as LineSegment
+    return [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
+  } else if ('center' in entity && 'a' in entity) {
+    const el = entity as Ellipse
+    return sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
+  } else if ('p1' in entity) {
+    const sp = entity as Spline
+    return sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
+  } else if ('center' in entity) {
+    const circ = entity as Circle
+    return sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
+  }
+  return null
+}
+
+// One projected curve. Hover highlights it white and lifts it to the top layer,
+// exactly like a real sketch entity (EntityItem) -- projected geometry is
+// pickable (buildSketchSegments registers it), so it must answer the pointer.
+function ProjectedEntityLine({ points, featureId, entityId, isEditing }: {
+  points: [number, number, number][]; featureId: string; entityId: string; isEditing: boolean
+}) {
+  const entId = `entity:${featureId}:${entityId}`
+  // Hover state is driven by the ID-buffer dispatcher.
+  const hovered = useSketchEditorStore(s => s.hoveredSelectionId === entId)
+
+  const color = hovered ? COLOR_HOVER : isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, hovered })
+  return <Line points={points} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
+}
+
 // Renders all projected entities in the sketch (those with projected: true).
 // Amber while the sketch is being edited; grey (COLOR_INACTIVE) otherwise, so
 // projected geometry matches the rest of the sketch. renderOrder mirrors the
 // active sketch lines (RENDER_ORDER_EDITING) so it shares the same z-index.
 export function ProjectedEntities({ sketch, featureId, isEditing = false }: { sketch: Sketch; featureId: string; isEditing?: boolean }) {
-  const color = isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
-  // While editing, draw on top; when only visible, depth-test at its plane like
-  // the rest of the sketch/area. Explicit values so the layer resets cleanly.
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing })
   return (
     <>
       {Object.entries(sketch)
         .filter(([id, e]) => isProjectedEntity(e as Entity) && id !== '_origin')
         .map(([id, e]) => {
           const entity = e as Entity
-          if ('start' in entity && 'end' in entity && 'radius' in entity) {
-            const arc = entity as Arc
-            const pts = sampleArcCCW(arc.center[0], arc.center[1], arc.radius, arc.angle_start, arc.angle_end)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('start' in entity && 'end' in entity) {
-            const line = entity as LineSegment
-            const pts: [number, number, number][] = [[line.start[0], line.start[1], 0], [line.end[0], line.end[1], 0]]
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('center' in entity && 'a' in entity) {
-            const el = entity as Ellipse
-            const pts = sampleEllipse(el.center[0], el.center[1], el.a, el.b, el.theta)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('p1' in entity) {
-            const sp = entity as Spline
-            const pts = sampleBezier(sp.p1, sp.p2, sp.p3, sp.p4)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else if ('center' in entity) {
-            const circ = entity as Circle
-            const pts = sampleArc(circ.center[0], circ.center[1], circ.radius, 0, 0)
-            return <Line key={id} points={pts} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-          } else {
+          const pts = projectedEntityPoints(entity)
+          if (!pts) {
             const pt = entity as PointEntity
             return <ProjectedOriginPoint key={id} x={pt.x} y={pt.y} featureId={featureId} entityId={id} isEditing={isEditing} />
           }
+          return <ProjectedEntityLine key={id} points={pts} featureId={featureId} entityId={id} isEditing={isEditing} />
         })}
     </>
   )

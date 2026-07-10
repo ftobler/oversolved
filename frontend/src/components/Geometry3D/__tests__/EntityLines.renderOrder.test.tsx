@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { LineSegment, Sketch } from '@/types/cad'
-import { COLOR_PROJECTED, COLOR_INACTIVE, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
+import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
 const MockDashedLine = vi.fn((_props: Record<string, unknown>) => null)
@@ -166,5 +166,38 @@ describe('ProjectedEntities color and render order', () => {
     expect(props.color).toBe(COLOR_INACTIVE)
     const ro = props.renderOrder as number | undefined
     expect(ro == null || ro === 0).toBe(true)
+  })
+
+  it('turns white and rises to the top layer on hover while editing', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    resetStore({ hoveredSelectionId: 'entity:sketch1:p1' })
+    render(<ProjectedEntities sketch={SKETCH} featureId="sketch1" isEditing={true} />)
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(props.color).toBe(COLOR_HOVER)
+    expect(props.renderOrder).toBe(RENDER_ORDER_HIGHLIGHT)
+    expect(props.depthTest).toBe(false)
+    expect(props.lineWidth).toBe(2)
+  })
+
+  it('turns white on hover even when the sketch is only visible', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    resetStore({ hoveredSelectionId: 'entity:sketch1:p1' })
+    render(<ProjectedEntities sketch={SKETCH} featureId="sketch1" isEditing={false} />)
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(props.color).toBe(COLOR_HOVER)
+  })
+
+  it('hovering one projected entity leaves the others amber', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    const twoLines = { p1: PROJECTED_LINE, p2: PROJECTED_LINE } as unknown as Sketch
+    resetStore({ hoveredSelectionId: 'entity:sketch1:p2' })
+    render(<ProjectedEntities sketch={twoLines} featureId="sketch1" isEditing={true} />)
+
+    const first = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    const second = MockLine.mock.calls[1]?.[0] as Record<string, unknown>
+    expect(first.color).toBe(COLOR_PROJECTED)
+    expect(second.color).toBe(COLOR_HOVER)
   })
 })
