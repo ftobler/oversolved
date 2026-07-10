@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Spinner } from '@/components/shared/Spinner'
+import { defaultExportFileName, ensureExtension, swapExtension } from '@/utils/core/exportFileName'
 import '@/components/dialogs/ExportDialog.css'
 
 export type ExportFormat = 'step' | 'stl' | 'yaml'
@@ -11,17 +12,20 @@ export interface ExportDialogProps {
   onCancel: () => void
 }
 
-function swapExtension(name: string, newExt: string): string {
-  const lastDot = name.lastIndexOf('.')
-  const base = lastDot > 0 ? name.slice(0, lastDot) : name
-  return `${base}.${newExt}`
-}
-
 export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('step')
   const [tessellation, setTessellation] = useState(0.5)
-  const [fileName, setFileName] = useState(`${defaultName}.step`)
+  const [fileName, setFileName] = useState(() => defaultExportFileName(defaultName, 'step'))
   const [isExporting, setIsExporting] = useState(false)
+  const wasOpen = useRef(isOpen)
+
+  // The dialog stays mounted between exports, so the document name only reaches
+  // it after the first open. Re-seed the field on every open, but never while it
+  // is open: that would wipe whatever the user typed.
+  useEffect(() => {
+    if (isOpen && !wasOpen.current) setFileName(defaultExportFileName(defaultName, format))
+    wasOpen.current = isOpen
+  }, [isOpen, defaultName, format])
 
   const handleFormatChange = (newFormat: ExportFormat) => {
     setFormat(newFormat)
@@ -35,9 +39,11 @@ export default function ExportDialog({ isOpen, defaultName, onDownload, onCancel
   // abort an in-flight worker export, so a cancel would only desync the UI.
   const handleDownload = async () => {
     if (isExporting) return
+    const name = ensureExtension(fileName, format)  // the user may have deleted the extension
+    setFileName(name)
     setIsExporting(true)
     try {
-      await onDownload(format, format === 'stl' ? tessellation : 0, fileName)
+      await onDownload(format, format === 'stl' ? tessellation : 0, name)
     } catch (e) {
       console.error('Export failed:', e)  // the parent reports it; never leave the dialog stuck busy
     } finally {

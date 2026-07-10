@@ -59,6 +59,38 @@ describe('ExportDialog', () => {
     expect(onDownload).toHaveBeenCalledWith('yaml', 0, 'part.yaml')
   })
 
+  it('seeds the file name from the document name when it opens', async () => {
+    const props = { onDownload: vi.fn(), onCancel: vi.fn() }
+    const { rerender } = render(<ExportDialog isOpen={false} defaultName="export" {...props} />)
+
+    // The dialog outlives a single export, so it is mounted before the document
+    // name is known: the name must land on the field when it is opened.
+    rerender(<ExportDialog isOpen defaultName="motor mount" {...props} />)
+    expect(screen.getByDisplayValue('motor_mount.step')).toBeInTheDocument()
+  })
+
+  it('keeps an edited file name while the dialog stays open', async () => {
+    const props = { onDownload: vi.fn(), onCancel: vi.fn() }
+    const { rerender } = render(<ExportDialog isOpen defaultName="motor mount" {...props} />)
+
+    fireEvent.change(screen.getByDisplayValue('motor_mount.step'), { target: { value: 'custom.step' } })
+    rerender(<ExportDialog isOpen defaultName="motor mount" {...props} />)
+    expect(screen.getByDisplayValue('custom.step')).toBeInTheDocument()
+  })
+
+  it('re-adds the extension when the user deleted it', async () => {
+    const onDownload = vi.fn()
+    render(<ExportDialog isOpen defaultName="part" onDownload={onDownload} onCancel={vi.fn()} />)
+
+    fireEvent.change(screen.getByDisplayValue('part.step'), { target: { value: 'bracket' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    })
+
+    expect(onDownload).toHaveBeenCalledWith('step', 0, 'bracket.step')
+    expect(screen.getByDisplayValue('bracket.step')).toBeInTheDocument()
+  })
+
   it('shows a wait state and freezes the controls while the export runs', async () => {
     const gate = deferred<void>()
     const onDownload = vi.fn(() => gate.promise)
