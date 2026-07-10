@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { isPickAllowed } from '@/utils/query/pickOrder'
 
 /**
  * Layer-2 pick-field consumer. A pick chip is a consumer of normal selection,
@@ -17,6 +18,11 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
  * of `normalSelection` is that toggle-off, so we call `onUnpick(selectionId)`
  * to let the editor dispatch the matching remove mutation.
  *
+ * `features` is the build-order stack. Passing it enables the circular-dependency
+ * guard: this is the one choke point every pick chip funnels through, so the
+ * rule "you may only pick from features before you" is enforced here once
+ * instead of in each editor.
+ *
  * Returns `{ isPicking, toggle }`: `toggle` activates this field (clearing any
  * other active field) or deactivates it if already active.
  */
@@ -24,10 +30,15 @@ export function usePickField(
   featureId: string,
   field: string,
   onPick: (selectionId: string) => void,
-  opts?: { multi?: boolean; onUnpick?: (selectionId: string) => void },
+  opts?: {
+    multi?: boolean
+    onUnpick?: (selectionId: string) => void
+    features?: readonly { id: string }[]
+  },
 ): { isPicking: boolean; toggle: () => void } {
   const multi = opts?.multi ?? false
   const onUnpick = opts?.onUnpick
+  const features = opts?.features
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isPicking = activePickField?.featureId === featureId && activePickField?.field === field
@@ -37,6 +48,13 @@ export function usePickField(
     const s = useSketchEditorStore.getState()
     for (const id of s.normalSelection) {
       if (!s.chipOwnedSelection.has(id)) {
+        if (features && !isPickAllowed(id, featureId, features)) {
+          // Circular dependency: the host would reference its own output or a
+          // later feature's. Drop the pick but keep the field open (unlike an
+          // accepted pick) so the user can go straight for valid geometry.
+          s.clearNormalSelection()
+          return
+        }
         onPick(id)
         s.clearNormalSelection()
         if (!multi) s.setActivePickField(null)
@@ -56,7 +74,7 @@ export function usePickField(
         return
       }
     }
-  }, [normalSelection, isPicking, onPick, onUnpick, multi])
+  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()

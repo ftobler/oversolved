@@ -30,7 +30,7 @@ export function PlaneEditor({
   usePickField(fid, pickingField ?? '', (selectionId) => {
     const value = emitAbsoluteSelectionQuery(selectionId)
     onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value })
-  })
+  }, { features })
 
   const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
     const isPicking = pickingField === field
