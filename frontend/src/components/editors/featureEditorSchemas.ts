@@ -2,7 +2,7 @@ import type { FeatureEditorSchema } from './FeatureEditor'
 import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
-import { resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
+import { resolveBodyPickRef, resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 
 function stripFacePrefix(selectionId: string): string {
   return selectionId.startsWith('face:') ? selectionId.split(':').slice(2).join(':') : selectionId
@@ -216,8 +216,11 @@ export const ARRAY_SCHEMA: FeatureEditorSchema = {
 export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_circular_array',
   subKey: 'circular_array',
-  defaults: { operation: 'add', include_source: true, count: 4 },
+  defaults: { source_body: '', operation: 'add', include_source: true, count: 4 },
   fields: [
+    // Empty means "the first body in the store", which is what the solver falls back to.
+    { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
+      emptyText: '(first body)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
     { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
