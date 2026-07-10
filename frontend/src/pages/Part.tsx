@@ -38,6 +38,8 @@ import type { BuildContextMenuInput, BuildContextMenuCallbacks } from './buildCo
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
+import { builtinPlaneTransform, planeTransformNormal } from '@/components/Geometry3D/bodySnapProjection'
+import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
@@ -633,6 +635,17 @@ export default function Part() {
     viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent
   }, [activeSketchFeatureId, features])
 
+  // Built-in planes never reach the kernel, so only user-defined ones carry a
+  // solved plane_transform; the built-ins are derived locally from their query.
+  const handleNormalToPlane = useCallback((planeFeatureId: string) => {
+    const transform = BUILT_IN_IDS.has(planeFeatureId)
+      ? builtinPlaneTransform(builtinSelectionId(planeFeatureId))
+      : solveResults?.[planeFeatureId]?.plane_transform
+    if (!transform) return
+    const [ox, oy, oz] = transform.origin
+    viewportRef.current?.alignCameraToFace(planeTransformNormal(transform), [ox, oy, oz])
+  }, [solveResults])
+
   useEffect(() => {
     if (planeSelectionFeatureId) {
       pendingSketchOnFaceId.current = planeSelectionFeatureId
@@ -689,6 +702,7 @@ export default function Part() {
       onFeatureRename: handleFeatureRename,
       onBodyRename: handleBodyRename,
       onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
+      onNormalToPlane: handleNormalToPlane,
       onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
       onToggleConstraintTiles: () => {
         const s = useSketchEditorStore.getState()
@@ -710,7 +724,7 @@ export default function Part() {
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
   }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
-    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane, handleNewSketchOnPlane,
+    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels,
     viewportRef, docRef, startPreviewMode])
 

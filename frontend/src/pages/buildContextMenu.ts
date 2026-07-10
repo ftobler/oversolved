@@ -28,6 +28,17 @@ function findPlaneByQuery(
   return features.find(f => f.kind === 'plane' && planeQuery(f.id, builtInIds) === query)
 }
 
+// Point the camera down the plane's normal. Planes are named by feature id here
+// (not by query) because the caller resolves the transform from the solve result,
+// which is keyed by feature id.
+function normalToPlaneItem(featureId: string, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Normal to',
+    icon: contextCameraIcon,
+    onClick: () => callbacks.onNormalToPlane(featureId),
+  }
+}
+
 export interface BuildContextMenuInput {
   pos: [number, number]
   targetId: string | undefined
@@ -52,6 +63,7 @@ export interface BuildContextMenuCallbacks {
   onFeatureRename: (featureId: string, label: string) => void
   onBodyRename: (bodyId: string, label: string) => void
   onAlignToFace: (normal: [number, number, number], center: [number, number, number]) => void
+  onNormalToPlane: (featureId: string) => void
   onAlignCameraToSketchPlane: () => void
   onToggleConstraintTiles: () => void
   onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
@@ -86,28 +98,35 @@ export function buildContextMenu(
   // one an active sketch already holds. Exit first.
   const canStartSketch = !activeSketchFeatureId
 
+  // Only a viewport right-click has no targetId. The feature tree always names
+  // its target, and must not be hijacked by whatever the pointer last hovered
+  // in the viewport (hover is not cleared when the pointer leaves the canvas).
+  const hoveredInViewport = targetId ? null : hoveredSelectionId
+
   // A plane hovered in the viewport carries no face geometry, so it never
-  // reaches the Align to Face branch below.
-  const hoveredPlane = hoveredSelectionId && canStartSketch
-    ? findPlaneByQuery(hoveredSelectionId, features, builtInIds)
+  // reaches the face branch below.
+  const hoveredPlane = hoveredInViewport
+    ? findPlaneByQuery(hoveredInViewport, features, builtInIds)
     : undefined
   if (hoveredPlane) {
-    return {
-      items: [
-        {
-          label: 'New Sketch',
-          icon: featureSketchIcon,
-          onClick: () => callbacks.onNewSketchOnPlane(planeQuery(hoveredPlane.id, builtInIds)),
-        },
-      ],
+    const items: ContextMenuItem[] = []
+    if (canStartSketch) {
+      items.push({
+        label: 'New Sketch',
+        icon: featureSketchIcon,
+        onClick: () => callbacks.onNewSketchOnPlane(planeQuery(hoveredPlane.id, builtInIds)),
+      })
     }
+    items.push(normalToPlaneItem(hoveredPlane.id, callbacks))
+    return { items }
   }
 
-  if (hoveredSelectionId && hoveredFaceNormal && hoveredFaceCenter) {
+  if (hoveredInViewport && hoveredFaceNormal && hoveredFaceCenter) {
     return {
       items: [
         {
-          label: 'Align to Face',
+          label: 'Normal to',
+          icon: contextCameraIcon,
           onClick: () => callbacks.onAlignToFace(hoveredFaceNormal, hoveredFaceCenter),
         },
       ],
@@ -195,6 +214,7 @@ export function buildContextMenu(
           onClick: () => callbacks.onNewSketchOnPlane(planeQuery(target.id, builtInIds)),
         })
       }
+      items.push(normalToPlaneItem(target.id, callbacks))
       if (!builtInIds.has(target.id)) {
         items.push({
           label: 'Edit',

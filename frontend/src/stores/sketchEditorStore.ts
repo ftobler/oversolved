@@ -176,7 +176,7 @@ interface SketchEditorState {
   hoveredSnapKind: SnapKind | null
   // Constraint tile hover — highlights related entities/vertices.
   hoveredConstraintEntityIds: Set<string>
-  // Face geometry for "Align to Face" context menu.
+  // Face geometry for the "Normal to" context menu entry.
   hoveredFaceNormal: [number, number, number] | null
   hoveredFaceCenter: [number, number, number] | null
   setHoveredVertex: (id: string | null, position: [number, number] | null, snapKind?: SnapKind | null) => void

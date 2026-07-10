@@ -23,6 +23,15 @@ export function projectWorldToSketch(
   ]
 }
 
+/** World-space normal of a plane transform. Its rotation stores the axes as rows
+ *  [x_axis, y_axis, normal], so the last triplet is the normal. */
+export function planeTransformNormal(
+  planeTransform: Pick<PlaneTransform, 'rotation'>,
+): [number, number, number] {
+  const r = planeTransform.rotation
+  return [r[6], r[7], r[8]]
+}
+
 /** Derive a PlaneTransform for a builtin sketch plane when no backend transform is available. */
 export function builtinPlaneTransform(plane: string): PlaneTransform | null {
   const p = plane.startsWith('@') ? plane.slice(1) : plane
