@@ -3,6 +3,7 @@ import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import {
   appendMate,
   appendPartInstance,
+  emptyAssemblyDoc,
   findMate,
   mateFeatures,
   mintFeatureId,
@@ -306,5 +307,22 @@ describe('mateFeatures / findMate', () => {
 
   it('treats an undefined features list as empty', () => {
     expect(mateFeatures({ kind: 'assembly' } as AssemblyDoc)).toEqual([])
+  })
+})
+
+describe('emptyAssemblyDoc', () => {
+  it('is what DocumentPage routes to the assembly editor on', () => {
+    expect(emptyAssemblyDoc().kind).toBe('assembly')
+  })
+
+  it('leaves features empty so useAssemblyDoc prepends the assembly built-ins', () => {
+    // Baking the origin + 3 planes in here would give them a second minting site.
+    expect(emptyAssemblyDoc().features).toEqual([])
+  })
+
+  it('returns a fresh doc each call (no shared features array)', () => {
+    const a = emptyAssemblyDoc()
+    const b = emptyAssemblyDoc()
+    expect(a.features).not.toBe(b.features)
   })
 })

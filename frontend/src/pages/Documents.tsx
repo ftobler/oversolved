@@ -12,6 +12,8 @@ import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments, importStepFile } from '@/stores/documentStore'
 import type { DocSummary, DocumentStore } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
+import { stringify as stringifyYaml } from 'yaml'
+import { emptyAssemblyDoc } from '@/utils/assemblyMutations'
 import type { TrashDoc } from '@/adapters/trash'
 import { useAuth } from '@/contexts/AuthContext'
 import '@/pages/Documents.css'
@@ -66,6 +68,7 @@ export default function Documents() {
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [newDocPublic, setNewDocPublic] = useState(false)
+  const [newDocKind, setNewDocKind] = useState<'part' | 'assembly'>('part')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
@@ -167,7 +170,14 @@ export default function Documents() {
     }
 
     try {
-      await activeStore.create(newDocName.trim(), { is_public: newDocPublic })
+      const { uuid } = await activeStore.create(newDocName.trim(), { is_public: newDocPublic })
+      // `create` always makes an empty document, and empty content parses to a
+      // part (DocumentPage routes on `kind`). An assembly is therefore a create
+      // + save of its seed content, the same two-step handleImportFile uses, so
+      // neither store adapter nor the backend learns what a `kind` is.
+      if (newDocKind === 'assembly') {
+        await activeStore.save(uuid, { content: stringifyYaml(emptyAssemblyDoc()) })
+      }
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
@@ -488,8 +498,11 @@ export default function Documents() {
               {sortBy === 'alphabetical' ? 'sort_by_alpha' : sortBy === 'date_newest_first' ? 'update' : 'history'}
             </span>
           </button>
-          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocPublic(activeFilter === 'public') }} title="Add document">
+          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('part'); setNewDocPublic(activeFilter === 'public') }} title="Add part">
             <span className="material-icons">add</span>
+          </button>
+          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('assembly'); setNewDocPublic(activeFilter === 'public') }} title="Add assembly">
+            <span className="material-icons">account_tree</span>
           </button>
           <label className="toolbar-btn btn-import" title="Import STEP, YAML, or .oversolved bundle">
             <input
@@ -538,14 +551,14 @@ export default function Documents() {
           {notice && <p className="status notice">{notice}</p>}
           <Dialog
             isOpen={showAddForm}
-            title="Create New Document"
+            title={newDocKind === 'assembly' ? 'Create New Assembly' : 'Create New Part'}
             onClose={() => setShowAddForm(false)}
             onConfirm={handleAddDocument}
             confirmLabel="Create"
           >
             <input
               type="text"
-              placeholder="Document name"
+              placeholder={newDocKind === 'assembly' ? 'Assembly name' : 'Document name'}
               value={newDocName}
               onChange={e => setNewDocName(e.target.value)}
               onKeyDown={e => {
