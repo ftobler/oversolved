@@ -23,7 +23,7 @@ import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
-import { resolveUpToPlane, upToDistance, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
+import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -167,10 +167,8 @@ export function solveExtrude(
     const faceNormalVec = faceNormal(oc, scope, cqFaces[0])
     const reverseVec = faceNormalVec.map((n) => -n) as Vec3
     if (cutPlane !== null) {
-      const dirVec = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
-      if (upToDistance(cutPlane, faceCentroid(oc, scope, cqFaces[0]), dirVec) <= 1e-9) {
-        throw new Error('extrude up_to: target is behind the extrude direction')
-      }
+      const nominal = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
+      const dirVec = orientToTarget(cutPlane, faceCentroid(oc, scope, cqFaces[0]), nominal)
       let tool = makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH)
       for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, dirVec, UP_TO_REACH))
       toolShape = trimAtPlane(oc, scope, tool, cutPlane, dirVec)
@@ -206,19 +204,19 @@ export function solveExtrude(
       distance,
     )
     const length = cutPlane !== null ? UP_TO_REACH : effectiveDistance
-    if (cutPlane !== null && upToDistance(cutPlane, effectivePlane.origin, directionVec as Vec3) <= 1e-9) {
-      throw new Error('extrude up_to: target is behind the extrude direction')
-    }
+    const sweepDir = cutPlane !== null
+      ? orientToTarget(cutPlane, effectivePlane.origin, directionVec as Vec3)
+      : (directionVec as Vec3)
     const lineage = extrudeProfileWithLineage(
       oc,
       scope,
       allLoops,
       effectivePlane,
-      directionVec as Vec3,
+      sweepDir,
       length,
       firstSketchId,
     )
-    toolShape = cutPlane !== null ? trimAtPlane(oc, scope, lineage.solid, cutPlane, directionVec as Vec3) : lineage.solid
+    toolShape = cutPlane !== null ? trimAtPlane(oc, scope, lineage.solid, cutPlane, sweepDir) : lineage.solid
     Object.assign(faceLineage, lineage.faceLineage)
     Object.assign(edgeLineage, lineage.edgeLineage)
   }

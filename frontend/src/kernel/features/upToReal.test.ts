@@ -127,7 +127,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
-  it('errors when the up_to target is behind the extrude direction', () => {
+  it('auto-reverses when the up_to target is behind the extrude direction', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
     try {
@@ -136,15 +136,39 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const c = faceCentroid(occ, scope, face)
-      // Plane 5 behind the profile along the extrude direction.
+      // Plane 5 behind the profile along the extrude direction: the pick, not the
+      // direction toggle, decides which way the material grows.
       const planeEntry = { origin: [c[0] - 5 * n[0], c[1] - 5 * n[1], c[2] - 5 * n[2]], normal: n }
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: loop, distance: 999, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
+        repoReturning(planeEntry), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      expect(vol).toBeCloseTo(500, 2)  // 100 area * 5, swept backwards
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('errors when the up_to target passes through the profile', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
+      const n = faceNormal(occ, scope, face) as Vec3
+      const c = faceCentroid(occ, scope, face)
+      const planeEntry = { origin: [c[0], c[1], c[2]], normal: n }
       expect(() =>
         solveExtrude(
           occ, scope, table,
           { id: 'ex2', extrude: { sketch: loop, distance: 5, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
           repoReturning(planeEntry), bodyStore,
         ),
-      ).toThrow(/behind/)
+      ).toThrow(/no distance to extrude/)
     } finally {
       scope.dispose()
     }
