@@ -98,18 +98,20 @@ export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolea
   return updateInstance(doc, handle, inst => ({ ...inst, fixed }))
 }
 
-// Toggle a part's ground flag without moving anything on screen.
+// Toggle a part's ground flag while keeping the doc's seeds in step with what is
+// on screen.
 //
-// The seed transforms in the doc are stale between solves: only the dragged
+// The seed transforms in the doc go stale between solves: only the dragged
 // part's seed is written back, so every other part is displayed at its solved
-// pose while its seed still holds an old value. If we merely flip `fixed` and
-// re-solve, the mate solver restarts from those stale seeds, relaxes the whole
-// assembly off its current configuration, and the part visibly jumps.
+// pose while its seed still holds an old value. Left alone, the next solve would
+// restart the mate solver from those stale seeds and relax the whole assembly
+// off its current configuration.
 //
-// So we first bake the current solved pose of every instance into its seed
-// (`transforms`, keyed by handle), then set the toggled part's flag. The next
-// solve then starts from the exact current configuration, which already
-// satisfies the mates, so it is a fixed point and nothing moves.
+// So we bake the current solved pose of every instance into its seed
+// (`transforms`, keyed by handle) and set the toggled part's flag. The caller
+// does not re-solve on the toggle itself (nothing needs to move); the next real
+// solve then starts from the exact current, already mate-satisfying
+// configuration and holds it.
 export function setInstanceFixedFromSolved(
   doc: AssemblyDoc,
   handle: string,

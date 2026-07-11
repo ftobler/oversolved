@@ -208,6 +208,19 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
   })
 
+  // Grounding a part that is already in place must not re-solve: a re-solve can
+  // slide the whole assembly along the solver's gauge freedom, which the user
+  // sees as the camera jumping. The flag flips; nothing re-poses.
+  it('ground toggle does not trigger a re-solve', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByLabelText('Ground part'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+  })
+
   it('delete removes the instance', async () => {
     await renderLoaded()
     await insertPart('Bracket')

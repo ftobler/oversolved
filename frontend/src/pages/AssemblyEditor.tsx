@@ -211,17 +211,22 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => setBuiltinVisible(d, id, visible))
   }, [mutate])
 
-  // Ground/unground a part without moving anything. The seed transforms in the
-  // doc are stale between solves (only the dragged part's seed is written back),
-  // so flipping the flag and re-solving would restart the mate solver from those
-  // stale seeds and drift the whole assembly. Bake every part's current solved
-  // pose into its seed first: the next solve then starts at the current, already
-  // mate-satisfying configuration and holds it.
+  // Ground/unground a part without moving anything on screen, including the
+  // camera. Grounding a part that is already in place adds no geometric
+  // constraint (the part is at its solved pose), so the current view is already
+  // correct and there is nothing to re-solve. Re-solving would only risk drift:
+  // with no fixed anchor the mate solver has gauge freedom and can slide the
+  // whole assembly along zero-gradient directions, which reads as the camera
+  // jumping. So we do NOT re-solve here; we only flip the flag.
+  //
+  // We still bake every part's current solved pose into its seed. That keeps the
+  // doc's seeds in step with what is on screen, so the next real solve (a drag,
+  // a mate edit) starts from the current configuration instead of stale seeds
+  // and the new ground state takes effect cleanly then.
   const groundOrUnground = useCallback((handle: string, fixed: boolean) => {
     const transforms = useAssemblyStore.getState().transforms
     mutate(d => setInstanceFixedFromSolved(d, handle, fixed, transforms))
-    requestSolve()
-  }, [mutate, requestSolve])
+  }, [mutate])
 
   const handleToggleFixed = groundOrUnground
 

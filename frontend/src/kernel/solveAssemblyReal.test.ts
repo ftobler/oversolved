@@ -182,6 +182,41 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(result.transforms['pb'].tx).toBe(30)
   })
 
+  // Grounding a part must not shift the assembly in world space (the user reads
+  // that as the camera jumping). With no part fixed the solver has translational
+  // gauge freedom, so the meeting point floats. The UI grounds by first baking
+  // every part's current solved pose into its seed, then flipping the flag: the
+  // re-solve then starts from a zero-residual configuration and holds it. This
+  // asserts the world poses are preserved across that toggle.
+  it('grounding at the current solved pose leaves world positions put', async () => {
+    // No part fixed: solve to the floating meeting point.
+    const free = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+    const first = await solveAssembly(free, revs, mates, relay, solveMate!)
+    const a0 = first.transforms['pa']
+    const b0 = first.transforms['pb']
+
+    // Ground pa the way the UI does: bake the solved poses into the seeds, then
+    // mark pa fixed. Re-solve and expect nothing to move.
+    const grounded = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: { ...a0 }, fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { ...b0 } },
+    ]
+    const second = await solveAssembly(grounded, revs, mates, relay, solveMate!)
+    const a1 = second.transforms['pa']
+    const b1 = second.transforms['pb']
+
+    expect(Math.hypot(a1.tx - a0.tx, a1.ty - a0.ty, a1.tz - a0.tz)).toBeLessThan(0.01)
+    expect(Math.hypot(b1.tx - b0.tx, b1.ty - b0.ty, b1.tz - b0.tz)).toBeLessThan(0.01)
+  })
+
   it('bakes the solved transform into the rendered vertices', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
