@@ -200,10 +200,11 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(instances[0].handle).not.toBe(instances[1].handle)
   })
 
-  it('ground toggle marks the instance fixed', async () => {
+  it('ground toggle (in the options menu) marks the instance fixed', async () => {
     await renderLoaded()
     await insertPart('Bracket')
-    fireEvent.click(screen.getByLabelText('Ground part'))
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Ground (fix)'))
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
   })
@@ -215,7 +216,8 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await renderLoaded()
     await insertPart('Bracket')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
-    fireEvent.click(screen.getByLabelText('Ground part'))
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Ground (fix)'))
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
@@ -264,12 +266,26 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
   })
 
-  it('opening a part sets activePartHandle and navigates without disturbing the assembly', async () => {
+  it('clicking a part row selects it without opening the part document', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     const handle = useAssemblyStore.getState().instances[0].handle
     await waitFor(() => screen.getByText('Bracket'))
     fireEvent.click(screen.getByText('Bracket'))
+    await tick()
+    // A click selects, it does not navigate into the part.
+    expect(useAssemblyStore.getState().selectedPartHandle).toBe(handle)
+    expect(useAssemblyStore.getState().activePartHandle).toBeNull()
+    expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
+  })
+
+  it('the options menu opens the part document', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    const handle = useAssemblyStore.getState().instances[0].handle
+    await waitFor(() => screen.getByText('Bracket'))
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Open'))
     await tick()
     expect(useAssemblyStore.getState().activePartHandle).toBe(handle)
     expect(navigateSpy).toHaveBeenCalledWith('/documents/part-1')

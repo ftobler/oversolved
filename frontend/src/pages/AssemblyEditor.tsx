@@ -68,6 +68,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [mateMenuOpen, setMateMenuOpen] = useState(false)
   const [editingInstanceHandle, setEditingInstanceHandle] = useState<string | null>(null)
+  // Which mate has its inline parameter editor open. Distinct from the store's
+  // selectedMateId: a plain row click selects (highlights), the pencil edits.
+  const [editingMateId, setEditingMateId] = useState<string | null>(null)
   const { requestSolve } = useAssemblySolve(uuid, doc)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
@@ -165,6 +168,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => appendMate(d, kind, id))
     const store = useAssemblyStore.getState()
     store.setSelectedMateId(id)
+    setEditingMateId(id)  // a fresh mate opens straight into its editor to pick refs
     store.setActiveMateField({ featureId: id, field: 'ref_a' })
   }, [mutate])
 
@@ -263,19 +267,33 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()
   }, [mutate, requestSolve])
 
-  // Selecting a mate opens (and edits) it. Snapshot the current def so Cancel
-  // reverts. Insert already primed the snapshot for the mate it created.
+  // A plain row click selects the mate: it highlights (and, going forward, will
+  // light up its two parts and mated geometry in the viewport). It does not open
+  // the editor. Selecting away from a mate mid-edit closes that editor, keeping
+  // whatever live edits were made (Cancel is the explicit revert).
   const handleSelectMate = useCallback((featureId: string) => {
+    if (editingMateId && editingMateId !== featureId) {
+      mateSnapshot.current = null
+      setEditingMateId(null)
+    }
+    useAssemblyStore.getState().setSelectedMateId(featureId)
+  }, [editingMateId])
+
+  // The pencil opens the inline editor. Snapshot the current def so Cancel
+  // reverts. Insert already primed the snapshot for the mate it created.
+  const handleEditMate = useCallback((featureId: string) => {
     if (mateSnapshot.current?.id !== featureId) {
       const def = doc ? findMate(doc, featureId) : undefined
       mateSnapshot.current = def ? { id: featureId, def: { ...def } } : null
     }
     useAssemblyStore.getState().setSelectedMateId(featureId)
+    setEditingMateId(featureId)
   }, [doc])
 
   // Accept: leaving the mate disarms its field, which settles the owed solve.
   const handleCommitMate = useCallback(() => {
     mateSnapshot.current = null
+    setEditingMateId(null)
     useAssemblyStore.getState().setSelectedMateId(null)
   }, [])
 
@@ -285,6 +303,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     store.setActiveMateField(null)  // stop aiming before we rewrite the slots
     if (snap) mutate(d => replaceMate(d, snap.id, snap.def))
     mateSnapshot.current = null
+    setEditingMateId(null)
     store.setSelectedMateId(null)
     requestSolve()  // restore the solved pose the reverted refs imply
   }, [mutate, requestSolve])
@@ -292,6 +311,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const handleDeleteMate = useCallback((featureId: string) => {
     mutate(d => removeMate(d, featureId))
     mateSnapshot.current = null
+    setEditingMateId(null)
     useAssemblyStore.getState().setSelectedMateId(null)
     requestSolve()  // the freed DOF must let the parts settle back
   }, [mutate, requestSolve])
@@ -333,6 +353,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   useEffect(() => {
     if (doc && selectedMateId && !selectedMate) {
       useAssemblyStore.getState().setSelectedMateId(null)
+      // editingMateId is left as-is: no row matches a vanished mate's id, so its
+      // editor is already gone. It is overwritten the next time one is edited.
     }
   }, [doc, selectedMateId, selectedMate])
 
@@ -381,6 +403,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             labelFor={labelFor}
             selectedHandle={selectedPartHandle}
             selectedMateId={selectedMateId}
+            editingMateId={editingMateId}
             editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
             onOpenPart={handleOpenPart}
@@ -394,6 +417,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onCancelInstance={handleCancelInstance}
             renderInstanceEditor={renderInstanceEditor}
             onSelectMate={handleSelectMate}
+            onEditMate={handleEditMate}
             onCommitMate={handleCommitMate}
             onCancelMate={handleCancelMate}
             onDeleteMate={handleDeleteMate}

@@ -33,8 +33,12 @@ interface AssemblyTreeProps {
   labelFor?: (handle: string) => string | undefined
   // The selected instance is the one the transform triad attaches to (Stage 6d).
   selectedHandle?: string | null
-  // The mate whose inline editor is open. Selecting a mate is editing it.
+  // The selected mate: highlighted in the tree (and, going forward, its two
+  // parts and mated geometry in the viewport). Selecting does not open the editor.
   selectedMateId?: string | null
+  // The mate whose inline editor is open. Opened from the row's edit action, not
+  // a plain click, so a click can select without diving into the parameter form.
+  editingMateId?: string | null
   // The instance whose inline editor is open.
   editingInstanceHandle?: string | null
   onSelectPart?: (handle: string) => void
@@ -50,6 +54,8 @@ interface AssemblyTreeProps {
   // Rendered inside the instance's row while it is being edited.
   renderInstanceEditor: (instance: PartInstance) => ReactNode
   onSelectMate?: (featureId: string) => void
+  // Open the mate's inline editor (the row's pencil action).
+  onEditMate?: (featureId: string) => void
   onCommitMate: () => void
   onCancelMate: () => void
   onDeleteMate: (featureId: string) => void
@@ -73,6 +79,7 @@ export function AssemblyTree({
   labelFor,
   selectedHandle,
   selectedMateId,
+  editingMateId,
   editingInstanceHandle,
   onSelectPart,
   onOpenPart,
@@ -86,6 +93,7 @@ export function AssemblyTree({
   onCancelInstance,
   renderInstanceEditor,
   onSelectMate,
+  onEditMate,
   onCommitMate,
   onCancelMate,
   onDeleteMate,
@@ -153,7 +161,13 @@ export function AssemblyTree({
             const selected = selectedHandle === inst.handle
             const editing = editingInstanceHandle === inst.handle
             const menuItems: ContextMenuItem[] = [
+              { label: 'Open', icon: featurePartIcon, onClick: () => onOpenPart(inst.handle) },
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
+              {
+                label: inst.fixed ? 'Unground' : 'Ground (fix)',
+                icon: constraintFixedIcon,
+                onClick: () => onToggleFixed(inst.handle, !inst.fixed),
+              },
               { label: 'Delete', icon: contextDeleteIcon, className: 'danger', onClick: () => onDeleteInstance(inst.handle) },
             ]
             return (
@@ -165,14 +179,18 @@ export function AssemblyTree({
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={featurePartIcon} alt="" />
-                  <button
-                    type="button"
-                    className="feature-name assembly-open-name"
-                    onClick={() => onOpenPart(inst.handle)}
-                    title="Open part"
-                  >
-                    {label}{inst.fixed ? ' (fixed)' : ''}
-                  </button>
+                  <span className="feature-name">{label}</span>
+                  {/* A grounded part carries the fixed glyph, greyed, after its
+                      name -- the mark of the static frame without stealing a row
+                      action. Opening the part now lives in the tridot menu. */}
+                  {inst.fixed && (
+                    <img
+                      className="feature-fixed-badge"
+                      src={constraintFixedIcon}
+                      alt="Grounded"
+                      title="Grounded"
+                    />
+                  )}
                   {/* Row actions are not selections: without stopPropagation the
                       row's onClick would re-select the part these buttons just
                       hid, grounded, or opened a menu on. */}
@@ -216,15 +234,6 @@ export function AssemblyTree({
                         >
                           <img src={visible ? iconEyeIcon : iconEyeOffIcon} alt={visible ? 'Visible' : 'Hidden'} />
                         </button>
-                        <button
-                          type="button"
-                          className={`feature-visibility-btn${inst.fixed ? ' active' : ''}`}
-                          onClick={(e) => { e.stopPropagation(); onToggleFixed(inst.handle, !inst.fixed) }}
-                          title={inst.fixed ? 'Unground' : 'Ground (fix)'}
-                          aria-label={inst.fixed ? 'Unground part' : 'Ground part'}
-                        >
-                          <img src={constraintFixedIcon} alt={inst.fixed ? 'Grounded' : 'Ground'} />
-                        </button>
                       </>
                     )}
                     <button
@@ -259,15 +268,16 @@ export function AssemblyTree({
             const defaultName = `${MATE_KIND_LABELS[mate.kind] ?? mate.kind} ${kindOrdinal[mate.kind]}`
             const name = mate.label || defaultName
             const stale = !!mateResults?.[id]?.stale
-            const editing = selectedMateId === id
+            const selected = selectedMateId === id
+            const editing = editingMateId === id
             const menuItems: ContextMenuItem[] = [
               { label: 'Delete', icon: contextDeleteIcon, className: 'danger', onClick: () => onDeleteMate(id) },
             ]
             return (
               <li
                 key={id}
-                className={`feature-item mate-item${stale ? ' stale' : ''}${editing ? ' editing' : ''}`}
-                aria-selected={editing}
+                className={`feature-item mate-item${stale ? ' stale' : ''}${selected ? ' selected' : ''}${editing ? ' editing' : ''}`}
+                aria-selected={selected}
                 title={stale ? 'A reference no longer resolves; re-pick it.' : undefined}
                 onClick={() => onSelectMate?.(id)}
               >
@@ -298,7 +308,7 @@ export function AssemblyTree({
                       <button
                         type="button"
                         className="feature-edit-btn"
-                        onClick={(e) => { e.stopPropagation(); onSelectMate?.(id) }}
+                        onClick={(e) => { e.stopPropagation(); onEditMate?.(id) }}
                         title="Edit mate"
                         aria-label="Edit mate"
                       >
