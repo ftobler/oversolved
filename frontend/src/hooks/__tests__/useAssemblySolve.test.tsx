@@ -21,7 +21,21 @@ vi.mock('@/adapters/backend', () => ({
 }))
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentRevs } from '@/hooks/useAssemblySolve'
-import { useAssemblyStore } from '@/stores/assemblyStore'
+import {
+  useAssemblyStore,
+  setAssemblyCallbacks,
+  DEFAULT_ASSEMBLY_EDITOR_DATA,
+} from '@/stores/assemblyStore'
+import { assemblyBodyId } from '@/utils/assemblyBodies'
+
+function meshPayload() {
+  return {
+    vertices: new Float32Array([0, 0, 0]),
+    indices: new Uint32Array([0]),
+    faceIdsPerTriangle: new Uint32Array([0]),
+    edges: [],
+  }
+}
 
 function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstance {
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
@@ -177,6 +191,47 @@ describe('useAssemblySolve', () => {
 
     expect(useAssemblyStore.getState().solveError).toMatch(/unavailable/)
     expect(useAssemblyStore.getState().isSolving).toBe(false)
+  })
+
+  it('a live drag drops the grabbed part from the re-keyed body/edge dicts', async () => {
+    // The grabbed part is pinned in the solve at pose+delta and comes back
+    // re-baked there. The render group applies the drag offset on top, so the
+    // solved mesh must be dropped or the part would draw at pose+2*delta -- the
+    // doubled-drag bug. The drop must survive toBodyResults re-keying the dict
+    // from bare handle (`p1`) to `p1:body_0`.
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: docWith(instance('p1'), instance('p2')),
+      transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+    })
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([10, 0, 0])
+
+    h.solveAssemblyViaWorker.mockResolvedValue({
+      id: 1, kind: 'solveAssembly' as const, ok: true as const,
+      payload: {
+        // Keyed by handle: the grabbed part comes back pinned at pose+delta.
+        transforms: { p1: { ...IDENTITY_TRANSFORM, tx: 10 }, p2: { ...IDENTITY_TRANSFORM } },
+        bodies: { p1: [meshPayload()], p2: [meshPayload()] },
+        mateResults: {},
+      },
+    })
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
+    await act(async () => { result.current.requestSolve() })
+
+    const store = useAssemblyStore.getState()
+    // The follower lands in the store; the grabbed part is dropped so the live
+    // offset is the only thing that moves it.
+    expect(store.bodies[assemblyBodyId('p2', 0)]).toBeDefined()
+    expect(store.bodies[assemblyBodyId('p1', 0)]).toBeUndefined()
+    expect(store.edgeCurves[assemblyBodyId('p1', 0)]).toBeUndefined()
+    // Its transform is likewise held at the pre-drag pose, not the pinned one.
+    expect(store.transforms.p1).toMatchObject({ tx: 0 })
+
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().cancelPartManipulation()
   })
 
   it('registers relay handlers that reach the document store and the OCC bundle builder', async () => {

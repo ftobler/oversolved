@@ -146,15 +146,18 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       if (!res) throw new Error('assembly solver unavailable')
 
       if (live) {
-        const transforms = res.payload.transforms
-        const bodies = toBodyResults(res.payload.bodies)
-        const edgeCurves = toEdgeCurves(res.payload.bodies)
         // Drop the grabbed part: it is drawn from its pre-drag mesh under the
-        // live offset, so re-posing it here would double the drag delta.
+        // live offset, so re-posing it here would double the drag delta. It must
+        // be dropped from the raw handle-keyed payload before toBodyResults/
+        // toEdgeCurves re-key it to `handle:body_i` -- deleting by bare handle
+        // after the re-key misses, and the doubled pose is the bug it prevents.
         const grab = manip!.handle
+        const transforms = res.payload.transforms
         delete transforms[grab]
-        delete bodies[grab]
-        delete edgeCurves[grab]
+        const payloadBodies = { ...res.payload.bodies }
+        delete payloadBodies[grab]
+        const bodies = toBodyResults(payloadBodies)
+        const edgeCurves = toEdgeCurves(payloadBodies)
         useAssemblyStore.getState().setDragSolveResult({
           transforms,
           bodies,
