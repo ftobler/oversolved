@@ -4,7 +4,7 @@ import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyStore, setAssemblyCallbacks, type MateFieldTarget } from '@/stores/assemblyStore'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
-import AssemblyViewport from '@/components/Viewport/AssemblyViewport'
+import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
@@ -134,8 +134,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const exportRef = useRef<AssemblyExportHandle>(null)
   const openExport = useCallback(() => exportRef.current?.openExport(), [])
 
+  const viewportRef = useRef<AssemblyViewportHandle>(null)
   const handleSave = useCallback(() => {
-    if (uuid && doc) saveDoc(uuid, doc)
+    // Capture a thumbnail of the solved scene on save, like the part editor. The
+    // capturer is optional: the save still proceeds when the viewport is absent.
+    if (uuid && doc) saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
   }, [uuid, doc, saveDoc])
 
   const handleClone = useCallback(async () => {
@@ -449,7 +452,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             </button>
           </div>
           <div className="assembly-viewport-host">
-            <AssemblyViewport />
+            <AssemblyViewport ref={viewportRef} />
             {solveError && (
               <ErrorBanner
                 message={`Solver error: ${solveError}`}

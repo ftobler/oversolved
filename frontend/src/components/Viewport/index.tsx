@@ -19,6 +19,7 @@ import SceneController from '@/components/Viewport/SceneController'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
+import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
@@ -286,45 +287,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return gl.domElement.toDataURL('image/png')
   }, [])
 
-  const captureScreenshotForSaving = useCallback(async (): Promise<string | null> => {
-    const gl = glRef.current
-    const scene = sceneRef.current
-    const camera = cameraRef.current as THREE.OrthographicCamera | null
-    if (!gl || !scene || !camera) return null
-
-    const originalSize = gl.getSize(new THREE.Vector2())
-    const smallWidth = Math.floor(originalSize.width / 4)
-    const smallHeight = Math.floor(originalSize.height / 4)
-
-    await new Promise<void>(resolve => setTimeout(resolve, 0))
-
-    gl.setSize(smallWidth, smallHeight)
-    gl.render(scene, camera)
-    const dataUrl = gl.domElement.toDataURL('image/png')
-
-    gl.setSize(originalSize.width, originalSize.height)
-
-    const img = new Image()
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Failed to load image'))
-      img.src = dataUrl
-    })
-
-    const MAX_SIZE = 1024
-    const finalScale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1)
-    const newWidth = Math.floor(img.width * finalScale)
-    const newHeight = Math.floor(img.height * finalScale)
-
-    const canvas = document.createElement('canvas')
-    canvas.width = newWidth
-    canvas.height = newHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-
-    ctx.drawImage(img, 0, 0, newWidth, newHeight)
-    return canvas.toDataURL('image/png')
-  }, [])
+  const captureScreenshotForSaving = useCallback(
+    (): Promise<string | null> => captureThumbnail(glRef.current, sceneRef.current, cameraRef.current),
+    [],
+  )
 
   // Auto-fit: frame a document's content once, when its geometry first becomes
   // available. `fitPending` is armed by autoZoomToFit() (called imperatively on

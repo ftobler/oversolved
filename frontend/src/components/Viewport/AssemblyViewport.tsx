@@ -11,7 +11,7 @@
 // utils/assemblyPointer.ts, and the anchor set under the cursor comes from
 // utils/anchorGizmos.ts — all viewport-free and unit-tested.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Canvas, type ThreeEvent } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -42,6 +42,7 @@ import {
   gizmoOrientation,
   gizmoOrigin,
 } from '@/utils/assemblyRender'
+import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import { createAssemblyPointerAdapter, type GizmoMode } from '@/utils/assemblyPointer'
 import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
@@ -62,7 +63,13 @@ const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
 const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none' }
 
-export default function AssemblyViewport() {
+// The assembly editor grabs a preview of the solved scene on save, exactly as
+// the part editor does; that is the whole of what it needs from the viewport.
+export interface AssemblyViewportHandle {
+  captureScreenshotForSaving: () => Promise<string | null>
+}
+
+export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewport(_props, ref) {
   const doc = useAssemblyStore(s => s.doc)
   const mates = useAssemblyStore(s => s.mates)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
@@ -112,6 +119,10 @@ export default function AssemblyViewport() {
     glRef.current = state.gl
     sceneRef.current = state.scene
   }, [])
+
+  useImperativeHandle(ref, () => ({
+    captureScreenshotForSaving: () => captureThumbnail(glRef.current, sceneRef.current, cameraRef.current),
+  }), [])
 
   const groups = useMemo(
     () => getAssemblyPartGroups(bodies, instances, manipulation, selectedPartHandle),
@@ -440,4 +451,4 @@ export default function AssemblyViewport() {
       />
     </div>
   )
-}
+})

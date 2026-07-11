@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { ReactNode } from 'react'
+import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   loadContent: 'kind: assembly\nfeatures: []',
   partContent: 'features: []',
   list: [] as Array<{ uuid: string; name: string; meta?: { rev: number } }>,
+  save: vi.fn(),
+  captureScreenshotForSaving: vi.fn(),
   solveAssemblyViaWorker: vi.fn(),
   setRelayHandlers: vi.fn(),
   buildBundleViaWorker: vi.fn(),
@@ -36,14 +38,20 @@ vi.mock('@/adapters/backend', () => ({
         name: 'My Assembly',
       })),
       list: vi.fn(async () => h.list),
+      save: h.save,
     },
   },
 }))
 
 // The viewport needs WebGL; its logic is covered viewport-free (assemblyRender,
-// assemblyPointer). The page's job here is to mount it and drive the solve.
+// assemblyPointer). The page's job here is to mount it and drive the solve. The
+// mock forwards a ref exposing the thumbnail capturer, so the save path can be
+// asserted end to end without a GL context.
 vi.mock('@/components/Viewport/AssemblyViewport', () => ({
-  default: () => <div data-testid="assembly-viewport" />,
+  default: forwardRef((_props, ref) => {
+    useImperativeHandle(ref, () => ({ captureScreenshotForSaving: h.captureScreenshotForSaving }))
+    return <div data-testid="assembly-viewport" />
+  }),
 }))
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
   solveAssemblyViaWorker: h.solveAssemblyViaWorker,
@@ -77,6 +85,8 @@ describe('AssemblyEditor (Stage 6b)', () => {
     h.solveAssemblyViaWorker.mockResolvedValue({
       payload: { transforms: {}, bodies: {}, mateResults: {} },
     })
+    h.save.mockResolvedValue(undefined)
+    h.captureScreenshotForSaving.mockResolvedValue('data:image/png;base64,QVNN')
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setActivePartHandle(null)
     useAssemblyStore.getState().setSelectedPartHandle(null)
@@ -110,6 +120,17 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(screen.getByText(/Empty assembly/)).toBeTruthy()
     expect(screen.getByLabelText('Insert part')).toBeTruthy()
   })
+
+  it('captures a viewport thumbnail and saves it as preview_image', async () => {
+    await renderLoaded()
+    fireEvent.click(screen.getByLabelText('Save'))
+    await waitFor(() => expect(h.save).toHaveBeenCalledTimes(1))
+    expect(h.captureScreenshotForSaving).toHaveBeenCalled()
+    const [savedUuid, body] = h.save.mock.calls[0]
+    expect(savedUuid).toBe('asm-1')
+    // saveDoc strips the data: prefix, storing the raw base64 the backend expects.
+    expect(body.preview_image).toBe('QVNN')
+  }, 10000)
 
   it('mounts the assembly viewport and solves once on load', async () => {
     await renderLoaded()
