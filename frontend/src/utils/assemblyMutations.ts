@@ -98,6 +98,23 @@ export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolea
   return updateInstance(doc, handle, inst => ({ ...inst, fixed }))
 }
 
+// Ground the instance at a given pose. Grounding must pin the part where it
+// currently sits (its solved pose), not at the stale seed transform: otherwise
+// flipping `fixed` snaps the part back to wherever its seed happened to be
+// (often the origin). Callers pass the current solved transform so the seed and
+// the pin agree, then the solver holds it exactly there.
+export function groundInstanceAtPose(
+  doc: AssemblyDoc,
+  handle: string,
+  transform: Transform3D,
+): AssemblyDoc {
+  return updateInstance(doc, handle, inst => ({
+    ...inst,
+    transform: { ...transform },
+    fixed: true,
+  }))
+}
+
 // Show or hide one of the assembly's own built-in features (an origin or a
 // plane), keyed by feature id. Reference geometry is hidden by default, so this
 // is what a tree eye toggle writes.

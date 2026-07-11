@@ -27,6 +27,7 @@ import {
   setInstanceVisible,
   setInstanceFixed,
   setInstancePosition,
+  groundInstanceAtPose,
   setMateLabel,
   updateMate,
   type MateParamPatch,
@@ -211,12 +212,25 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => setBuiltinVisible(d, id, visible))
   }, [mutate])
 
-  const handleToggleFixed = useCallback((handle: string, fixed: boolean) => {
-    mutate(d => setInstanceFixed(d, handle, fixed))
+  // Grounding pins a part where it currently sits. The visible pose is the
+  // solved transform (assemblyStore.transforms), not the instance's seed, so
+  // fixing must copy that pose into the seed; otherwise the part snaps back to
+  // its seed (often the origin). Ungrounding just clears the flag.
+  const groundOrUnground = useCallback((handle: string, fixed: boolean) => {
+    if (fixed) {
+      const solved = useAssemblyStore.getState().transforms[handle]
+      mutate(d => solved
+        ? groundInstanceAtPose(d, handle, solved)
+        : setInstanceFixed(d, handle, true))
+    } else {
+      mutate(d => setInstanceFixed(d, handle, false))
+    }
     // Grounding changes which bodies the LM solver may move: the current solve
     // is stale the moment the flag flips.
     requestSolve()
   }, [mutate, requestSolve])
+
+  const handleToggleFixed = groundOrUnground
 
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
@@ -244,10 +258,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()  // undo any live position/ground edit
   }, [mutate, requestSolve])
 
-  const handleSetGrounded = useCallback((handle: string, grounded: boolean) => {
-    mutate(d => setInstanceFixed(d, handle, grounded))
-    requestSolve()
-  }, [mutate, requestSolve])
+  const handleSetGrounded = groundOrUnground
 
   const handleSetPosition = useCallback((handle: string, pos: { tx: number; ty: number; tz: number }) => {
     mutate(d => setInstancePosition(d, handle, pos))

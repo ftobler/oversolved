@@ -13,6 +13,7 @@ import {
   setBuiltinVisible,
   setInstanceVisible,
   setInstanceFixed,
+  groundInstanceAtPose,
   setMateRef,
   updateMate,
   IDENTITY_TRANSFORM,
@@ -135,6 +136,20 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     const handle = instances(doc)[0].handle
     setInstanceFixed(doc, handle, true)
     expect(instances(doc)[0].fixed).toBeUndefined()
+  })
+
+  // Grounding must pin the part at its solved pose, not its seed: the flag and
+  // the transform are written together so the solver holds it exactly there.
+  it('groundInstanceAtPose writes the solved pose and sets fixed', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(doc)[0].handle
+    const pose = { tx: 5, ty: -2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 }
+    const next = groundInstanceAtPose(doc, handle, pose)
+    expect(instances(next)[0].fixed).toBe(true)
+    expect(instances(next)[0].transform).toEqual(pose)
+    // Input is untouched, and the written transform is a copy (not aliased).
+    expect(instances(doc)[0].fixed).toBeUndefined()
+    expect(instances(next)[0].transform).not.toBe(pose)
   })
 
   // The assembly frame's reserved MateRef handle must never be a value a real
