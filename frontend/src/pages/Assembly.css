@@ -39,24 +39,6 @@
   font-weight: 600;
 }
 
-/* The insert-mate dropdown in the editor toolbar floats over the viewport. */
-.assembly-mate-menu-anchor {
-  position: relative;
-  display: inline-flex;
-}
-
-.assembly-mate-menu-popover {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 10;
-  min-width: 140px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
 /* Assembly toolbar buttons use material icons rather than the part editor's
    svg <img> glyphs; size them to match the .editor-btn img rule. */
 .editor-btn .material-icons-outlined {
@@ -137,9 +119,19 @@
   color: #ff6b6b;
 }
 
+/* The insert-mate menu lives in the sidebar (not a toolbar popover, which the
+   editor toolbar's overflow clipped): same panel framing as the mate editor. */
+.mate-kind-picker {
+  border-top: 1px solid #333;
+  padding: 0.5rem 0 0.75rem;
+}
+
+.mate-kind-picker .mate-editor-header {
+  padding: 0 1rem;
+}
+
 .mate-kind-menu {
-  border-bottom: 1px solid #333;
-  padding-bottom: 4px;
+  padding-top: 4px;
 }
 
 .mate-kind-option {

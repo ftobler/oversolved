@@ -241,6 +241,35 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onToggleFixed={handleToggleFixed}
             onSelectMate={handleSelectMate}
           />
+          {mateMenuOpen && (
+            <div className="mate-kind-picker">
+              <div className="mate-editor-header">
+                <span>Insert mate</span>
+                <button
+                  type="button"
+                  className="assembly-tree-icon-btn"
+                  onClick={() => setMateMenuOpen(false)}
+                  title="Close"
+                  aria-label="Close mate menu"
+                >
+                  <span className="material-icons-outlined">close</span>
+                </button>
+              </div>
+              <ul className="assembly-tree-list mate-kind-menu">
+                {MATE_KINDS.map(kind => (
+                  <li key={kind}>
+                    <button
+                      type="button"
+                      className="mate-kind-option"
+                      onClick={() => { setMateMenuOpen(false); handleInsertMate(kind) }}
+                    >
+                      {MATE_KIND_LABELS[kind]}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {selectedMateId && selectedMate && (
             <MateEditor
               featureId={selectedMateId}
@@ -266,33 +295,16 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             >
               <span className="material-icons-outlined">add_box</span>
             </button>
-            <div className="assembly-mate-menu-anchor">
-              <button
-                className={`editor-btn ${mateMenuOpen ? 'active' : ''}`}
-                title="Insert mate"
-                aria-label="Insert mate"
-                aria-expanded={mateMenuOpen}
-                onClick={() => setMateMenuOpen(o => !o)}
-                disabled={readOnly}
-              >
-                <span className="material-icons-outlined">link</span>
-              </button>
-              {mateMenuOpen && (
-                <ul className="assembly-tree-list mate-kind-menu assembly-mate-menu-popover">
-                  {MATE_KINDS.map(kind => (
-                    <li key={kind}>
-                      <button
-                        type="button"
-                        className="mate-kind-option"
-                        onClick={() => { setMateMenuOpen(false); handleInsertMate(kind) }}
-                      >
-                        {MATE_KIND_LABELS[kind]}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <button
+              className={`editor-btn ${mateMenuOpen ? 'active' : ''}`}
+              title="Insert mate"
+              aria-label="Insert mate"
+              aria-expanded={mateMenuOpen}
+              onClick={() => setMateMenuOpen(o => !o)}
+              disabled={readOnly}
+            >
+              <span className="material-icons-outlined">link</span>
+            </button>
             <div className="toolbar-separator" />
             <button
               className="editor-btn"
