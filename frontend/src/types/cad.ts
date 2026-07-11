@@ -383,6 +383,9 @@ export type MateKind = 'fixed' | 'sliding' | 'rotating' | 'sliding_rotating' | '
 
 export interface MateFeatureDef {
   kind: MateKind
+  // User-facing name shown in the tree. Absent means "use the default", a
+  // kind + ordinal like 'Fixed 1' computed at render time. Renaming writes it.
+  label?: string
   ref_a: MateRef
   ref_b: MateRef
   flip?: boolean

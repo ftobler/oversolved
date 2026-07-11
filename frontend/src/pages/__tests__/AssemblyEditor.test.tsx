@@ -90,11 +90,17 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
   }
 
+  // The tree now labels an instance by its document name, so a same-named part
+  // already in the tree collides with the picker item text. Scope the lookup to
+  // the picker so a second insert of the same part still finds the right node.
+  const pickerItem = (name: string) =>
+    screen.getAllByText(name).find(el => el.closest('.assembly-part-picker-item'))
+
   async function insertPart(name: string) {
     act(() => { executeCommand('insert_part_instance') })
     // Picker lists owned docs (minus the assembly itself).
-    await waitFor(() => screen.getByText(name))
-    fireEvent.click(screen.getByText(name))
+    await waitFor(() => expect(pickerItem(name)).toBeTruthy())
+    fireEvent.click(pickerItem(name)!)
     fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
     await tick()
   }
@@ -125,7 +131,8 @@ describe('AssemblyEditor (Stage 6b)', () => {
     const handle = useAssemblyStore.getState().instances[0].handle
     useAssemblyStore.getState().setSelectedPartHandle(handle)
 
-    fireEvent.click(screen.getByLabelText('Delete part'))
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Delete'))
     await tick()
     await tick()  // let the delete's re-solve settle
 
@@ -136,8 +143,8 @@ describe('AssemblyEditor (Stage 6b)', () => {
   it('insert_part_instance command appends an instance shown in the tree', async () => {
     await renderLoaded()
     await insertPart('Bracket')
-    // Tree lists the instance (label falls back to doc_id).
-    expect(screen.getByText('part-1')).toBeTruthy()
+    // Tree lists the instance by the part document's name, not its uuid.
+    await waitFor(() => expect(screen.getByText('Bracket')).toBeTruthy())
     const instances = useAssemblyStore.getState().instances
     expect(instances).toHaveLength(1)
     expect(instances[0].doc_id).toBe('part-1')
@@ -183,16 +190,52 @@ describe('AssemblyEditor (Stage 6b)', () => {
   it('delete removes the instance', async () => {
     await renderLoaded()
     await insertPart('Bracket')
-    fireEvent.click(screen.getByLabelText('Delete part'))
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Delete'))
     await tick()
     expect(useAssemblyStore.getState().instances).toHaveLength(0)
+  })
+
+  it('editing an instance opens the pink inline editor and grounds via its checkbox', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    const grounded = screen.getByLabelText('Grounded') as HTMLInputElement
+    expect(grounded.checked).toBe(false)
+    fireEvent.click(grounded)
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
+  })
+
+  it('cancelling an instance edit reverts the grounded flag from the snapshot', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.click(screen.getByLabelText('Grounded'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()  // let the revert's re-solve settle
+    expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
+  })
+
+  it('editing an instance sets its position from the numeric fields', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
   })
 
   it('opening a part sets activePartHandle and navigates without disturbing the assembly', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     const handle = useAssemblyStore.getState().instances[0].handle
-    fireEvent.click(screen.getByText('part-1'))
+    await waitFor(() => screen.getByText('Bracket'))
+    fireEvent.click(screen.getByText('Bracket'))
     await tick()
     expect(useAssemblyStore.getState().activePartHandle).toBe(handle)
     expect(navigateSpy).toHaveBeenCalledWith('/documents/part-1')
@@ -263,7 +306,10 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     expect(useAssemblyStore.getState().mates).toHaveLength(1)
     expect(mateDef().kind).toBe('spherical')
     expect(useAssemblyStore.getState().activeMateField).toEqual({ featureId: mateId(), field: 'ref_a' })
-    expect(screen.getByText(/Spherical: Pick a reference to Pick a reference/)).toBeTruthy()
+    // The row shows the mate's default name; its inline editor shows two empty
+    // reference chips prompting a pick.
+    expect(screen.getByText('Spherical 1')).toBeTruthy()
+    expect(screen.getAllByText('Pick a reference')).toHaveLength(2)
   })
 
   it('picks on two different parts populate ref_a and ref_b as MateRefs', async () => {
@@ -304,7 +350,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await tick()
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
   })
 
@@ -430,17 +476,41 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     h.solveAssemblyViaWorker.mockResolvedValue({
       payload: { transforms: {}, bodies: {}, mateResults: { [id]: { stale: true, staleRefs: ['ref_a'] } } },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
     await waitFor(() => expect(useAssemblyStore.getState().mateResults[id]?.stale).toBe(true))
 
-    expect(document.querySelector('.assembly-tree-mate.stale')).toBeTruthy()
+    expect(document.querySelector('.mate-item.stale')).toBeTruthy()
     expect(mateDef().ref_a).toEqual({ part: 'hA', anchor: 'a_v' })
+  })
+
+  it('renaming a mate writes its label and shows it in the tree', async () => {
+    await renderWithMate('fixed')
+    disarm()
+    fireEvent.change(screen.getByLabelText('Mate name'), { target: { value: 'top clamp' } })
+    await tick()
+    expect(mateDef().label).toBe('top clamp')
+    expect(screen.getByText('top clamp')).toBeTruthy()
+  })
+
+  it('cancelling a mate edit reverts its parameters and closes the editor', async () => {
+    await renderWithMate('fixed')
+    disarm()
+    fireEvent.change(screen.getByLabelText('Offset'), { target: { value: '5' } })
+    await tick()
+    expect(mateDef().offset).toBe(5)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()  // let the revert's re-solve settle
+    expect(useAssemblyStore.getState().selectedMateId).toBeNull()
+    expect(mateDef().offset).toBeUndefined()
   })
 
   it('deleting a mate drops it and re-solves', async () => {
     await renderWithMate('fixed')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
-    fireEvent.click(screen.getByLabelText('Delete mate'))
+    fireEvent.click(screen.getByLabelText('Mate options'))
+    fireEvent.click(screen.getByText('Delete'))
     await tick()
     expect(useAssemblyStore.getState().mates).toHaveLength(0)
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))

@@ -1,5 +1,8 @@
-// The mate authoring panel (Stage 8). Two reference chips and the parameters the
-// mate's kind actually reads.
+// The mate authoring body (Stage 8). Two reference chips and the parameters the
+// mate's kind actually reads. Rendered inline inside the mate's tree row, below
+// the pink editing header the tree draws (kind label + accept/reject/delete), so
+// this component owns only the fields, mirroring the part editor's feature
+// editors that expand inside the feature-item.
 //
 // The chips are NOT the part editor's PickChip: that one consumes
 // sketchEditorStore's normalSelection, which the assembly scene never writes.
@@ -17,7 +20,7 @@ import type { MateResult } from '@/kernel/solveAssembly'
 import type { MateFieldTarget } from '@/stores/assemblyStore'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import {
-  MATE_ANGLE_LIMIT_DEG, MATE_KIND_LABELS, MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel,
+  MATE_ANGLE_LIMIT_DEG, MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel,
   type MateParam,
 } from '@/utils/mateKinds'
 
@@ -27,10 +30,11 @@ interface MateEditorProps {
   result?: MateResult
   activeField: MateFieldTarget | null
   labelFor?: (handle: string) => string | undefined
+  // Placeholder shown when the mate has no explicit label ('Fixed 1').
+  defaultName: string
   onArmField: (target: MateFieldTarget | null) => void
   onUpdate: (patch: MateParamPatch) => void
-  onDelete: () => void
-  onClose: () => void
+  onRename: (label: string | undefined) => void
 }
 
 const REF_FIELDS: readonly MateRefField[] = ['ref_a', 'ref_b']
@@ -53,7 +57,7 @@ function numericValue(v: unknown): string {
 }
 
 export function MateEditor({
-  featureId, mate, result, activeField, labelFor, onArmField, onUpdate, onDelete, onClose,
+  featureId, mate, result, activeField, labelFor, defaultName, onArmField, onUpdate, onRename,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
   // Rejected entry is a local UI concern, not a document state: the mate keeps
@@ -149,19 +153,19 @@ export function MateEditor({
   }
 
   return (
-    <div className="mate-editor">
-      <div className="mate-editor-header">
-        <span>{MATE_KIND_LABELS[mate.kind] ?? mate.kind}</span>
-        <button
-          type="button"
-          className="assembly-tree-icon-btn"
-          onClick={onDelete}
-          title="Delete mate"
-          aria-label="Delete mate"
-        >
-          <span className="material-icons-outlined">delete</span>
-        </button>
-      </div>
+    // Clicks inside the editor must not bubble to the row, whose onClick would
+    // re-select the mate and disarm the field a chip just armed.
+    <div className="mate-editor" onClick={e => e.stopPropagation()}>
+      <label className="mate-name-row">
+        <span className="mate-ref-title">Name</span>
+        <input
+          type="text"
+          aria-label="Mate name"
+          value={mate.label ?? ''}
+          placeholder={defaultName}
+          onChange={e => onRename(e.target.value)}
+        />
+      </label>
 
       {REF_FIELDS.map(field => {
         const picking = activeField?.featureId === featureId && activeField.field === field
@@ -185,10 +189,6 @@ export function MateEditor({
       )}
 
       <div className="mate-param-list">{mateParams(mate.kind).map(renderParam)}</div>
-
-      <div className="mate-editor-footer">
-        <button type="button" onClick={onClose}>Done</button>
-      </div>
     </div>
   )
 }

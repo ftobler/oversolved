@@ -9,25 +9,36 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { MateEditor } from '@/components/layout/MateEditor'
+import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
+import { backendBundle } from '@/adapters/backend'
 import {
   appendMate,
   appendPartInstance,
+  findInstance,
   findMate,
   mintFeatureId,
   removeInstance,
   removeMate,
+  replaceInstance,
+  replaceMate,
   setBuiltinVisible,
   setInstanceVisible,
   setInstanceFixed,
+  setInstancePosition,
+  setMateLabel,
   updateMate,
   type MateParamPatch,
 } from '@/utils/assemblyMutations'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
-import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
+import { MATE_KINDS, MATE_KIND_LABELS, EMPTY_MATE_REF } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
-import type { AssemblyDoc, MateKind, PartInstance, AssemblyFeature } from '@/types/cad'
+import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance, AssemblyFeature } from '@/types/cad'
+import featurePartIcon from '@/assets/icons/feature-part.svg'
+import mateIcon from '@/assets/icons/constraint-coincident.svg'
+import exportIcon from '@/assets/icons/icon-download.svg'
+import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
 
@@ -56,12 +67,33 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const readOnly = permission === 'view'
   const [pickerOpen, setPickerOpen] = useState(false)
   const [mateMenuOpen, setMateMenuOpen] = useState(false)
+  const [editingInstanceHandle, setEditingInstanceHandle] = useState<string | null>(null)
   const { requestSolve } = useAssemblySolve(uuid, doc)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const mateResults = useAssemblyStore(s => s.mateResults)
   const solveError = useAssemblyStore(s => s.solveError)
+
+  // Snapshots taken when editing begins, so Cancel can revert every live edit
+  // (mates and instances edit the doc in place; there is no other undo point).
+  const mateSnapshot = useRef<{ id: string; def: MateFeatureDef } | null>(null)
+  const instanceSnapshot = useRef<{ handle: string; inst: PartInstance } | null>(null)
+
+  // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
+  const [docNames, setDocNames] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let cancelled = false
+    backendBundle.documents.list()
+      .then(list => {
+        if (cancelled) return
+        const map: Record<string, string> = {}
+        for (const d of list) map[d.uuid] = d.name
+        setDocNames(map)
+      })
+      .catch(() => { /* names are a nicety; fall back to the uuid */ })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (doc) {
@@ -119,9 +151,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. No solve yet:
-  // an unreferenced mate has nothing to constrain.
+  // an unreferenced mate has nothing to constrain. The snapshot is the empty
+  // mate, so Cancel restores it to that pre-edit state.
   const handleInsertMate = useCallback((kind: MateKind) => {
     const id = mintFeatureId()
+    mateSnapshot.current = {
+      id,
+      def: { kind, ref_a: { ...EMPTY_MATE_REF }, ref_b: { ...EMPTY_MATE_REF } },
+    }
     mutate(d => appendMate(d, kind, id))
     const store = useAssemblyStore.getState()
     store.setSelectedMateId(id)
@@ -147,13 +184,19 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     navigate(`/documents/${inst.doc_id}`)
   }, [instances, navigate])
 
+  const handleOpenPartNewTab = useCallback((handle: string) => {
+    const inst = instances.find(i => i.handle === handle)
+    if (inst) window.open(`/documents/${inst.doc_id}`, '_blank')
+  }, [instances])
+
   const handleDelete = useCallback((handle: string) => {
     mutate(d => removeInstance(d, handle))
     if (useAssemblyStore.getState().selectedPartHandle === handle) {
       useAssemblyStore.getState().setSelectedPartHandle(null)
     }
+    if (editingInstanceHandle === handle) setEditingInstanceHandle(null)
     requestSolve()  // the removed instance's bodies must leave the scene
-  }, [mutate, requestSolve])
+  }, [mutate, requestSolve, editingInstanceHandle])
 
   const handleToggleVisible = useCallback((handle: string, visible: boolean) => {
     mutate(d => setInstanceVisible(d, handle, visible))
@@ -176,17 +219,67 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
   }, [])
 
-  const handleSelectMate = useCallback((featureId: string) => {
-    useAssemblyStore.getState().setSelectedMateId(featureId)
+  // Instance edit: snapshot for revert, open the inline editor, and attach the
+  // gizmo to the part being edited.
+  const handleEditInstance = useCallback((handle: string) => {
+    const inst = doc ? findInstance(doc, handle) : undefined
+    instanceSnapshot.current = inst ? { handle, inst: { ...inst } } : null
+    setEditingInstanceHandle(handle)
+    useAssemblyStore.getState().setSelectedPartHandle(handle)
+  }, [doc])
+
+  const handleCommitInstance = useCallback(() => {
+    instanceSnapshot.current = null
+    setEditingInstanceHandle(null)
   }, [])
 
-  const handleCloseMate = useCallback(() => {
-    // Disarming settles the solve the picks owe (assemblyStore.setActiveMateField).
+  const handleCancelInstance = useCallback(() => {
+    const snap = instanceSnapshot.current
+    if (snap) mutate(d => replaceInstance(d, snap.handle, snap.inst))
+    instanceSnapshot.current = null
+    setEditingInstanceHandle(null)
+    requestSolve()  // undo any live position/ground edit
+  }, [mutate, requestSolve])
+
+  const handleSetGrounded = useCallback((handle: string, grounded: boolean) => {
+    mutate(d => setInstanceFixed(d, handle, grounded))
+    requestSolve()
+  }, [mutate, requestSolve])
+
+  const handleSetPosition = useCallback((handle: string, pos: { tx: number; ty: number; tz: number }) => {
+    mutate(d => setInstancePosition(d, handle, pos))
+    requestSolve()
+  }, [mutate, requestSolve])
+
+  // Selecting a mate opens (and edits) it. Snapshot the current def so Cancel
+  // reverts. Insert already primed the snapshot for the mate it created.
+  const handleSelectMate = useCallback((featureId: string) => {
+    if (mateSnapshot.current?.id !== featureId) {
+      const def = doc ? findMate(doc, featureId) : undefined
+      mateSnapshot.current = def ? { id: featureId, def: { ...def } } : null
+    }
+    useAssemblyStore.getState().setSelectedMateId(featureId)
+  }, [doc])
+
+  // Accept: leaving the mate disarms its field, which settles the owed solve.
+  const handleCommitMate = useCallback(() => {
+    mateSnapshot.current = null
     useAssemblyStore.getState().setSelectedMateId(null)
   }, [])
 
+  const handleCancelMate = useCallback(() => {
+    const snap = mateSnapshot.current
+    const store = useAssemblyStore.getState()
+    store.setActiveMateField(null)  // stop aiming before we rewrite the slots
+    if (snap) mutate(d => replaceMate(d, snap.id, snap.def))
+    mateSnapshot.current = null
+    store.setSelectedMateId(null)
+    requestSolve()  // restore the solved pose the reverted refs imply
+  }, [mutate, requestSolve])
+
   const handleDeleteMate = useCallback((featureId: string) => {
     mutate(d => removeMate(d, featureId))
+    mateSnapshot.current = null
     useAssemblyStore.getState().setSelectedMateId(null)
     requestSolve()  // the freed DOF must let the parts settle back
   }, [mutate, requestSolve])
@@ -198,14 +291,23 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useAssemblyStore.getState().requestSolveOrDefer()
   }, [mutate])
 
+  // Renaming is a pure label edit: no solve, it constrains nothing.
+  const handleRenameMate = useCallback((featureId: string, label: string | undefined) => {
+    mutate(d => setMateLabel(d, featureId, label))
+  }, [mutate])
+
   const handleArmMateField = useCallback((target: MateFieldTarget | null) => {
     useAssemblyStore.getState().setActiveMateField(target)
   }, [])
 
-  // A mate reference names a part handle; the tree shows the part's document id.
+  // A mate reference names a part handle; the tree shows the part's document name.
   const labelFor = useCallback(
-    (handle: string) => instances.find(i => i.handle === handle)?.doc_id,
-    [instances],
+    (handle: string) => {
+      const inst = instances.find(i => i.handle === handle)
+      if (!inst) return undefined
+      return docNames[inst.doc_id] || inst.doc_id
+    },
+    [instances, docNames],
   )
 
   const builtins = useMemo(() => getAssemblyBuiltins(doc), [doc])
@@ -221,6 +323,28 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       useAssemblyStore.getState().setSelectedMateId(null)
     }
   }, [doc, selectedMateId, selectedMate])
+
+  const renderInstanceEditor = useCallback((inst: PartInstance) => (
+    <PartInstanceEditor
+      instance={inst}
+      onSetGrounded={g => handleSetGrounded(inst.handle, g)}
+      onSetPosition={pos => handleSetPosition(inst.handle, pos)}
+    />
+  ), [handleSetGrounded, handleSetPosition])
+
+  const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }, defaultName: string) => (
+    <MateEditor
+      featureId={mate.id}
+      mate={mate.mate}
+      result={mateResults[mate.id]}
+      activeField={activeMateField}
+      labelFor={labelFor}
+      defaultName={defaultName}
+      onArmField={handleArmMateField}
+      onUpdate={patch => handleUpdateMate(mate.id, patch)}
+      onRename={label => handleRenameMate(mate.id, label)}
+    />
+  ), [mateResults, activeMateField, labelFor, handleArmMateField, handleUpdateMate, handleRenameMate])
 
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>
@@ -245,13 +369,23 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             labelFor={labelFor}
             selectedHandle={selectedPartHandle}
             selectedMateId={selectedMateId}
+            editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
             onOpenPart={handleOpenPart}
+            onOpenPartNewTab={handleOpenPartNewTab}
             onDeleteInstance={handleDelete}
             onToggleVisible={handleToggleVisible}
             onToggleFixed={handleToggleFixed}
             onToggleBuiltinVisible={handleToggleBuiltinVisible}
+            onEditInstance={handleEditInstance}
+            onCommitInstance={handleCommitInstance}
+            onCancelInstance={handleCancelInstance}
+            renderInstanceEditor={renderInstanceEditor}
             onSelectMate={handleSelectMate}
+            onCommitMate={handleCommitMate}
+            onCancelMate={handleCancelMate}
+            onDeleteMate={handleDeleteMate}
+            renderMateEditor={(m, defaultName) => renderMateEditor(m, defaultName)}
           />
           {mateMenuOpen && (
             <div className="mate-kind-picker">
@@ -259,12 +393,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
                 <span>Insert mate</span>
                 <button
                   type="button"
-                  className="assembly-tree-icon-btn"
+                  className="feature-context-btn"
                   onClick={() => setMateMenuOpen(false)}
                   title="Close"
                   aria-label="Close mate menu"
                 >
-                  <span className="material-icons-outlined">close</span>
+                  <img src={cancelIcon} alt="Close" />
                 </button>
               </div>
               <ul className="assembly-tree-list mate-kind-menu">
@@ -282,19 +416,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               </ul>
             </div>
           )}
-          {selectedMateId && selectedMate && (
-            <MateEditor
-              featureId={selectedMateId}
-              mate={selectedMate}
-              result={mateResults[selectedMateId]}
-              activeField={activeMateField}
-              labelFor={labelFor}
-              onArmField={handleArmMateField}
-              onUpdate={patch => handleUpdateMate(selectedMateId, patch)}
-              onDelete={() => handleDeleteMate(selectedMateId)}
-              onClose={handleCloseMate}
-            />
-          )}
         </aside>
         <div className="doc-editor">
           <div className="editor-toolbar">
@@ -305,7 +426,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               onClick={openPicker}
               disabled={readOnly}
             >
-              <span className="material-icons-outlined">add_box</span>
+              <img src={featurePartIcon} alt="Insert part" />
             </button>
             <button
               className={`editor-btn ${mateMenuOpen ? 'active' : ''}`}
@@ -315,7 +436,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               onClick={() => setMateMenuOpen(o => !o)}
               disabled={readOnly}
             >
-              <span className="material-icons-outlined">link</span>
+              <img src={mateIcon} alt="Insert mate" />
             </button>
             <div className="toolbar-separator" />
             <button
@@ -324,7 +445,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               aria-label="Export assembly"
               onClick={openExport}
             >
-              <span className="material-icons-outlined">download</span>
+              <img src={exportIcon} alt="Export assembly" />
             </button>
           </div>
           <div className="assembly-viewport-host">

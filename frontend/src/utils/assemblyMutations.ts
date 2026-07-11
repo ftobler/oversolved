@@ -123,6 +123,27 @@ export function setInstanceTransform(
   ))
 }
 
+// Write the instance's translation from a numeric edit in the inline editor.
+// Unlike setInstanceTransform this ignores `fixed`: a manual position edit is an
+// explicit reseat, not a solver manipulation, so the grounded pin must not veto
+// it. Orientation is left untouched (still gizmo-driven).
+export function setInstancePosition(
+  doc: AssemblyDoc,
+  handle: string,
+  pos: { tx: number; ty: number; tz: number },
+): AssemblyDoc {
+  return updateInstance(doc, handle, inst => ({
+    ...inst,
+    transform: { ...inst.transform, tx: pos.tx, ty: pos.ty, tz: pos.tz },
+  }))
+}
+
+// Restore a whole instance to a prior snapshot. The inline editor's Cancel path
+// reverts the live edits it applied (position, grounded flag) in one write.
+export function replaceInstance(doc: AssemblyDoc, handle: string, inst: PartInstance): AssemblyDoc {
+  return updateInstance(doc, handle, () => ({ ...inst }))
+}
+
 export function findInstance(doc: AssemblyDoc, handle: string): PartInstance | undefined {
   for (const f of features(doc)) {
     if (f.kind === 'part_instance' && f.instance?.handle === handle) return f.instance
@@ -182,6 +203,23 @@ function updateMateFeature(
       return { ...f, mate: patch(f.mate) }
     }),
   }
+}
+
+// Restore a whole mate def to a prior snapshot. The inline editor's Cancel path
+// reverts every live edit (refs, params) it applied since editing began.
+export function replaceMate(doc: AssemblyDoc, featureId: string, def: MateFeatureDef): AssemblyDoc {
+  return updateMateFeature(doc, featureId, () => ({ ...def }))
+}
+
+// Rename a mate. An empty/undefined label deletes the key so the tree falls back
+// to the computed default ('Fixed 1'); a YAML round-trip must not leave `null`.
+export function setMateLabel(doc: AssemblyDoc, featureId: string, label: string | undefined): AssemblyDoc {
+  return updateMateFeature(doc, featureId, m => {
+    const next = { ...m }
+    if (label && label.trim()) next.label = label
+    else delete next.label
+    return next
+  })
 }
 
 /** Write a picked reference into one of the mate's two slots. */
