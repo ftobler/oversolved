@@ -69,6 +69,17 @@ describe('deriveAnchorFrame', () => {
   it('falls back to the world frame on a degenerate axis rather than emitting NaN', () => {
     expect(deriveAnchorFrame([0, 0, 0])).toEqual([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
   })
+
+  it('turns the secondary arms with a supplied part basis instead of the world', () => {
+    // A part rolled 90 deg about its own Z (the anchor axis): the in-plane arms
+    // must follow the part's X/Y, not stay world-aligned.
+    const rolled: Vec3[] = [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]
+    const [primary, u, v] = deriveAnchorFrame([0, 0, 1], rolled)
+    expect(primary).toEqual([0, 0, 1])
+    // The secondary arms lie along the part's rolled X/Y, up to sign.
+    for (const arm of [u, v]) expect(Math.abs(arm[2])).toBeCloseTo(0, 9)
+    expect(Math.max(Math.abs(dot(u, rolled[0])), Math.abs(dot(u, rolled[1])))).toBeCloseTo(1, 9)
+  })
 })
 
 describe('buildAnchorTable', () => {

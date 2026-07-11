@@ -54,20 +54,24 @@ function worldFrame(): [Vec3, Vec3, Vec3] {
 
 /**
  * A display frame around the anchor's primary axis. The two secondary axes are
- * derived from the least-aligned world axis, so the same anchor always draws
- * the same triad; they carry no meaning and never enter the solve (v1 takes
- * roll from the mate's seed frame, not from an anchor-side tangent).
+ * derived from the least-aligned reference axis, so the same anchor always
+ * draws the same triad. They carry no meaning and never enter the solve (v1
+ * takes roll from the mate's seed frame, not from an anchor-side tangent); they
+ * exist only to orient the gizmo. Passing the part's own basis as `refAxes`
+ * makes the secondary rings turn with the part rather than staying world-locked,
+ * so the gizmo reads as attached to the part. The default world basis is right
+ * for the assembly's own frame, whose anchors carry no part rotation.
  *
  * A degenerate axis (a vertex anchor's placeholder, a zeroed direction) falls
  * back to the world frame rather than emitting NaNs into the render tree.
  */
-export function deriveAnchorFrame(axis: Vec3): [Vec3, Vec3, Vec3] {
+export function deriveAnchorFrame(axis: Vec3, refAxes: readonly Vec3[] = WORLD_AXES): [Vec3, Vec3, Vec3] {
   const primary = normalize(axis)
   if (!primary) return worldFrame()
 
-  let least = WORLD_AXES[0]
+  let least = refAxes[0]
   let leastDot = Infinity
-  for (const w of WORLD_AXES) {
+  for (const w of refAxes) {
     const d = Math.abs(dot(primary, w))
     if (d < leastDot) { leastDot = d; least = w }
   }
@@ -99,6 +103,7 @@ export function resolveAnchorGizmos(
   table: Readonly<AnchorTable>,
   scopeEntityKey?: string | null,
   aimedRef?: MateRef | null,
+  basisByPart?: Readonly<Record<string, readonly Vec3[]>>,
 ): AnchorGizmo[] {
   const out: AnchorGizmo[] = []
   for (const ref of resolveCandidates(hits, entityMateRefs, scopeEntityKey)) {
@@ -108,7 +113,7 @@ export function resolveAnchorGizmos(
       key: `${ref.part}|${ref.anchor}`,
       ref,
       point: [...anchor.point] as Vec3,
-      axes: deriveAnchorFrame([...anchor.axis] as Vec3),
+      axes: deriveAnchorFrame([...anchor.axis] as Vec3, basisByPart?.[ref.part]),
       aimed: !!aimedRef && aimedRef.part === ref.part && aimedRef.anchor === ref.anchor,
     })
   }

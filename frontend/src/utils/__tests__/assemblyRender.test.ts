@@ -6,6 +6,7 @@ import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 import {
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
+  gizmoOrientation,
   gizmoOrigin,
 } from '@/utils/assemblyRender'
 import type { ManipulationSession } from '@/utils/partManipulation'
@@ -140,5 +141,31 @@ describe('gizmoOrigin', () => {
     const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1', { transform: { ...IDENTITY_TRANSFORM, tz: 7 } })], null, 'p1')
     expect(gizmoOrigin('p1', groups, {}, [instance('p1', { transform: { ...IDENTITY_TRANSFORM, tz: 7 } })])).toEqual([0, 0, 7])
     expect(gizmoOrigin(null, groups, solved, [instance('p1')])).toBeNull()
+  })
+})
+
+describe('gizmoOrientation', () => {
+  it('matches the part-s solved orientation, so the triad tilts with the part', () => {
+    const q = quatFromAxisAngle([0, 0, 1], Math.PI / 2)
+    const solved: Record<string, Transform3D> = { p1: makeTransform([0, 0, 0], q) }
+    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], null, 'p1')
+    const o = gizmoOrientation('p1', groups, solved, [instance('p1')])!
+    expect(o[2]).toBeCloseTo(Math.SQRT1_2, 6)
+    expect(o[3]).toBeCloseTo(Math.SQRT1_2, 6)
+  })
+
+  it('composes a live gizmo rotation onto the solved orientation', () => {
+    // Solved at +90-deg about Z, then dragged another +90; the triad shows 180.
+    const solved: Record<string, Transform3D> = { p1: makeTransform([0, 0, 0], quatFromAxisAngle([0, 0, 1], Math.PI / 2)) }
+    const drag = session('p1', IDENTITY_TRANSFORM, makeTransform([0, 0, 0], quatFromAxisAngle([0, 0, 1], Math.PI / 2)))
+    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], drag, 'p1')
+    const o = gizmoOrientation('p1', groups, solved, [instance('p1')])!
+    expect(o[2]).toBeCloseTo(1, 6)  // sin(90 deg) about Z
+    expect(o[3]).toBeCloseTo(0, 6)  // cos(90 deg)
+  })
+
+  it('is null with no selection', () => {
+    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], null, 'p1')
+    expect(gizmoOrientation(null, groups, {}, [instance('p1')])).toBeNull()
   })
 })

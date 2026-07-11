@@ -113,6 +113,25 @@ export function getAssemblyPartGroups(
   return groups
 }
 
+// The part's current world pose: its solved transform carried along by any live
+// drag offset. The triad gizmo reads both its origin and its orientation off
+// this, so the gizmo sits on the part and turns with it. Null when the handle
+// has no pose yet.
+function gizmoPose(
+  handle: string | null,
+  groups: AssemblyPartGroup[],
+  transforms: Record<string, Transform3D>,
+  instances: PartInstance[],
+): Transform3D | null {
+  if (!handle) return null
+  const group = groups.find(g => g.handle === handle)
+  if (!group) return null
+  const solved = transforms[handle] ?? instances.find(i => i.handle === handle)?.transform
+  if (!solved) return null
+  const offset = makeTransform(group.position, group.quaternion)
+  return composeTransforms(offset, solved)
+}
+
 /**
  * Where the triad gizmo sits: the part's drawn origin, i.e. its solved origin
  * carried along by any live drag offset. Null when the handle has no pose yet.
@@ -123,11 +142,20 @@ export function gizmoOrigin(
   transforms: Record<string, Transform3D>,
   instances: PartInstance[],
 ): Vec3 | null {
-  if (!handle) return null
-  const group = groups.find(g => g.handle === handle)
-  if (!group) return null
-  const solved = transforms[handle] ?? instances.find(i => i.handle === handle)?.transform
-  if (!solved) return null
-  const offset = makeTransform(group.position, group.quaternion)
-  return transformTranslation(composeTransforms(offset, solved))
+  const pose = gizmoPose(handle, groups, transforms, instances)
+  return pose ? transformTranslation(pose) : null
+}
+
+/**
+ * The part's world orientation, so the triad's arrows and rings align with the
+ * part's own axes rather than the world's. Null when the handle has no pose yet.
+ */
+export function gizmoOrientation(
+  handle: string | null,
+  groups: AssemblyPartGroup[],
+  transforms: Record<string, Transform3D>,
+  instances: PartInstance[],
+): Quat | null {
+  const pose = gizmoPose(handle, groups, transforms, instances)
+  return pose ? transformQuat(pose) : null
 }

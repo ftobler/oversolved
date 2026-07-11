@@ -39,12 +39,13 @@ import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import {
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
+  gizmoOrientation,
   gizmoOrigin,
 } from '@/utils/assemblyRender'
 import { createAssemblyPointerAdapter, type GizmoMode } from '@/utils/assemblyPointer'
 import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
-import type { Vec3 } from '@/utils/transform3d'
+import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
 
 // Everything an assembly can mate to: a part's B-rep entities and the
 // assembly's own frame. The sketch layers never render here, but naming the
@@ -118,14 +119,30 @@ export default function AssemblyViewport() {
   )
   const builtins = useMemo(() => getAssemblyBuiltinsToRender(doc), [doc])
 
+  // Each part's world basis, so a hovered anchor's display rings turn with the
+  // part instead of staying world-locked. Anchors are hover-only and cleared on
+  // grab, so the solved transform (not the live drag pose) is the right frame.
+  const partBases = useMemo(() => {
+    const out: Record<string, [Vec3, Vec3, Vec3]> = {}
+    for (const handle of Object.keys(transforms)) {
+      const q = transformQuat(transforms[handle])
+      out[handle] = [
+        rotateVector(q, [1, 0, 0]),
+        rotateVector(q, [0, 1, 0]),
+        rotateVector(q, [0, 0, 1]),
+      ]
+    }
+    return out
+  }, [transforms])
+
   // Nothing is drawn until the cursor rests on an entity: this is the whole of
   // the hover gate. The aimed candidate is highlighted only while it is still
   // under the cursor; moving away leaves the pick standing but undrawn.
   const gizmos = useMemo(
     () => resolveAnchorGizmos(
-      hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates[pickIndex] ?? null,
+      hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates[pickIndex] ?? null, partBases,
     ),
-    [hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates, pickIndex],
+    [hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates, pickIndex, partBases],
   )
 
   // The roll-guide arrow (Stage 3): only a selected `fixed` mate has one, drawn
@@ -156,11 +173,13 @@ export default function AssemblyViewport() {
   // gizmo, because there is nothing the gizmo could move. Nor does any part while
   // a mate chip is armed: the triad's arrows sit over the very geometry the user
   // is aiming at, and grabbing one would move the part instead of picking it.
-  const triadOrigin = useMemo(() => {
+  const triad = useMemo(() => {
     if (aiming) return null
     const inst = instances.find(i => i.handle === selectedPartHandle)
     if (!isManipulable(inst)) return null
-    return gizmoOrigin(selectedPartHandle, groups, transforms, instances)
+    const origin = gizmoOrigin(selectedPartHandle, groups, transforms, instances)
+    const orientation = gizmoOrientation(selectedPartHandle, groups, transforms, instances)
+    return origin && orientation ? { origin, orientation } : null
   }, [aiming, selectedPartHandle, groups, transforms, instances])
 
   // Frame the assembly once, when its first geometry lands.
@@ -278,14 +297,14 @@ export default function AssemblyViewport() {
   }, [adapter, clearHover])
 
   const handleGrabGizmo = useCallback((mode: GizmoMode, axis: Vec3, e: ThreeEvent<PointerEvent>) => {
-    if (!selectedPartHandle || !triadOrigin) return
+    if (!selectedPartHandle || !triad) return
     const ray = rayFromEvent(e)
     if (!ray) return
-    if (adapter.onGizmoPointerDown(selectedPartHandle, mode, axis, triadOrigin, ray)) {
+    if (adapter.onGizmoPointerDown(selectedPartHandle, mode, axis, triad.origin, ray)) {
       clearHover()  // the gizmo moves the part too; same stale-anchor trail
       setManipulating(true)
     }
-  }, [adapter, clearHover, rayFromEvent, selectedPartHandle, triadOrigin])
+  }, [adapter, clearHover, rayFromEvent, selectedPartHandle, triad])
 
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
@@ -409,7 +428,7 @@ export default function AssemblyViewport() {
         <AnchorGizmos gizmos={gizmos} />
         <RollGuideGizmo spec={rollGuideSpec} />
 
-        {triadOrigin && <TriadGizmo origin={triadOrigin} onGrab={handleGrabGizmo} />}
+        {triad && <TriadGizmo origin={triad.origin} orientation={triad.orientation} onGrab={handleGrabGizmo} />}
       </Canvas>
 
       <CubeGizmoCanvas

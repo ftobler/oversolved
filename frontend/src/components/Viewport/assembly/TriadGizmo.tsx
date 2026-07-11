@@ -1,8 +1,9 @@
-// The selected part's transform gizmo: one arrow per world axis (slide) and one
-// ring per world axis (swing). The handles only report which axis and which mode
-// were grabbed; all the ray math lives in utils/gizmoMath.ts and the gesture
-// state in utils/assemblyPointer.ts, so the interaction is testable without a
-// canvas.
+// The selected part's transform gizmo: one arrow per part axis (slide) and one
+// ring per part axis (swing). The gizmo is rotated into the part's local frame,
+// so a tilted part gets a tilted triad; the axis each handle reports is that
+// local axis expressed in world space, which is the frame the ray math in
+// utils/gizmoMath.ts and the gesture state in utils/assemblyPointer.ts already
+// operate in, so the interaction stays testable without a canvas.
 //
 // Screen-scaled so the gizmo keeps its size as the user zooms, which also means
 // a big and a small part get the same grab targets.
@@ -10,7 +11,7 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import type { GizmoMode } from '@/utils/assemblyPointer'
-import type { Vec3 } from '@/utils/transform3d'
+import { rotateVector, type Quat, type Vec3 } from '@/utils/transform3d'
 
 const GIZMO_PIXELS = 90
 const ARROW_LENGTH = 1
@@ -32,20 +33,24 @@ const AXES: { axis: Vec3; color: string; arrowRotation: [number, number, number]
 
 interface TriadGizmoProps {
   origin: Vec3
+  /** The part's world orientation; the triad is drawn in this frame. */
+  orientation: Quat
   onGrab: (mode: GizmoMode, axis: Vec3, event: ThreeEvent<PointerEvent>) => void
 }
 
-export default function TriadGizmo({ origin, onGrab }: TriadGizmoProps) {
+export default function TriadGizmo({ origin, orientation, onGrab }: TriadGizmoProps) {
   const ref = useScreenScale(GIZMO_PIXELS)
 
+  // The handles carry the local axis; the ray math wants it in world space, so
+  // rotate it by the part orientation the group is also drawn in.
   const grab = (mode: GizmoMode, axis: Vec3) => (e: ThreeEvent<PointerEvent>) => {
     if (e.button !== 0) return
     e.stopPropagation()
-    onGrab(mode, axis, e)
+    onGrab(mode, rotateVector(orientation, axis), e)
   }
 
   return (
-    <group position={origin}>
+    <group position={origin} quaternion={orientation}>
       <group ref={ref} renderOrder={1000}>
         {AXES.map(({ axis, color, arrowRotation, ringRotation }) => (
           <group key={color}>
