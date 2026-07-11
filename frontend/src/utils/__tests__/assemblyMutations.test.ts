@@ -13,7 +13,7 @@ import {
   setBuiltinVisible,
   setInstanceVisible,
   setInstanceFixed,
-  groundInstanceAtPose,
+  setInstanceFixedFromSolved,
   setMateRef,
   updateMate,
   IDENTITY_TRANSFORM,
@@ -138,18 +138,40 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(instances(doc)[0].fixed).toBeUndefined()
   })
 
-  // Grounding must pin the part at its solved pose, not its seed: the flag and
-  // the transform are written together so the solver holds it exactly there.
-  it('groundInstanceAtPose writes the solved pose and sets fixed', () => {
+  // Toggling ground must not move anything: it bakes every part's current
+  // solved pose into its seed so the next solve restarts at the current, already
+  // mate-satisfying configuration, and only the toggled part's flag changes.
+  it('setInstanceFixedFromSolved bakes all solved poses and flips one flag', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    const [a, b] = instances(doc)
+    const poseA = { tx: 5, ty: -2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 }
+    const poseB = { tx: 1, ty: 1, tz: 1, qx: 0, qy: 0, qz: 0, qw: 1 }
+    const next = setInstanceFixedFromSolved(doc, a.handle, true, {
+      [a.handle]: poseA,
+      [b.handle]: poseB,
+    })
+    const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
+    // Both seeds are updated to their solved poses; only A's flag flips.
+    expect(map[a.handle].transform).toEqual(poseA)
+    expect(map[a.handle].fixed).toBe(true)
+    expect(map[b.handle].transform).toEqual(poseB)
+    expect(map[b.handle].fixed).toBeUndefined()
+    // The written transforms are copies, not aliases of the solved map.
+    expect(map[a.handle].transform).not.toBe(poseA)
+    // Input doc is untouched.
+    expect(instances(doc)[0].fixed).toBeUndefined()
+  })
+
+  // A part missing from the solved map (e.g. never solved) keeps its own seed
+  // rather than losing its pose.
+  it('setInstanceFixedFromSolved keeps the seed when no solved pose exists', () => {
     const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     const handle = instances(doc)[0].handle
-    const pose = { tx: 5, ty: -2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 }
-    const next = groundInstanceAtPose(doc, handle, pose)
+    const seed = instances(doc)[0].transform
+    const next = setInstanceFixedFromSolved(doc, handle, true, {})
+    expect(instances(next)[0].transform).toEqual(seed)
     expect(instances(next)[0].fixed).toBe(true)
-    expect(instances(next)[0].transform).toEqual(pose)
-    // Input is untouched, and the written transform is a copy (not aliased).
-    expect(instances(doc)[0].fixed).toBeUndefined()
-    expect(instances(next)[0].transform).not.toBe(pose)
   })
 
   // The assembly frame's reserved MateRef handle must never be a value a real

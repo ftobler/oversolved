@@ -25,9 +25,8 @@ import {
   replaceMate,
   setBuiltinVisible,
   setInstanceVisible,
-  setInstanceFixed,
   setInstancePosition,
-  groundInstanceAtPose,
+  setInstanceFixedFromSolved,
   setMateLabel,
   updateMate,
   type MateParamPatch,
@@ -212,21 +211,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => setBuiltinVisible(d, id, visible))
   }, [mutate])
 
-  // Grounding pins a part where it currently sits. The visible pose is the
-  // solved transform (assemblyStore.transforms), not the instance's seed, so
-  // fixing must copy that pose into the seed; otherwise the part snaps back to
-  // its seed (often the origin). Ungrounding just clears the flag.
+  // Ground/unground a part without moving anything. The seed transforms in the
+  // doc are stale between solves (only the dragged part's seed is written back),
+  // so flipping the flag and re-solving would restart the mate solver from those
+  // stale seeds and drift the whole assembly. Bake every part's current solved
+  // pose into its seed first: the next solve then starts at the current, already
+  // mate-satisfying configuration and holds it.
   const groundOrUnground = useCallback((handle: string, fixed: boolean) => {
-    if (fixed) {
-      const solved = useAssemblyStore.getState().transforms[handle]
-      mutate(d => solved
-        ? groundInstanceAtPose(d, handle, solved)
-        : setInstanceFixed(d, handle, true))
-    } else {
-      mutate(d => setInstanceFixed(d, handle, false))
-    }
-    // Grounding changes which bodies the LM solver may move: the current solve
-    // is stale the moment the flag flips.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => setInstanceFixedFromSolved(d, handle, fixed, transforms))
     requestSolve()
   }, [mutate, requestSolve])
 

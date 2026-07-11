@@ -98,21 +98,40 @@ export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolea
   return updateInstance(doc, handle, inst => ({ ...inst, fixed }))
 }
 
-// Ground the instance at a given pose. Grounding must pin the part where it
-// currently sits (its solved pose), not at the stale seed transform: otherwise
-// flipping `fixed` snaps the part back to wherever its seed happened to be
-// (often the origin). Callers pass the current solved transform so the seed and
-// the pin agree, then the solver holds it exactly there.
-export function groundInstanceAtPose(
+// Toggle a part's ground flag without moving anything on screen.
+//
+// The seed transforms in the doc are stale between solves: only the dragged
+// part's seed is written back, so every other part is displayed at its solved
+// pose while its seed still holds an old value. If we merely flip `fixed` and
+// re-solve, the mate solver restarts from those stale seeds, relaxes the whole
+// assembly off its current configuration, and the part visibly jumps.
+//
+// So we first bake the current solved pose of every instance into its seed
+// (`transforms`, keyed by handle), then set the toggled part's flag. The next
+// solve then starts from the exact current configuration, which already
+// satisfies the mates, so it is a fixed point and nothing moves.
+export function setInstanceFixedFromSolved(
   doc: AssemblyDoc,
   handle: string,
-  transform: Transform3D,
+  fixed: boolean,
+  transforms: Record<string, Transform3D>,
 ): AssemblyDoc {
-  return updateInstance(doc, handle, inst => ({
-    ...inst,
-    transform: { ...transform },
-    fixed: true,
-  }))
+  return {
+    ...doc,
+    features: features(doc).map(f => {
+      if (f.kind !== 'part_instance' || !f.instance) return f
+      const inst = f.instance
+      const solved = transforms[inst.handle]
+      return {
+        ...f,
+        instance: {
+          ...inst,
+          transform: solved ? { ...solved } : inst.transform,
+          fixed: inst.handle === handle ? fixed : inst.fixed,
+        },
+      }
+    }),
+  }
 }
 
 // Show or hide one of the assembly's own built-in features (an origin or a
