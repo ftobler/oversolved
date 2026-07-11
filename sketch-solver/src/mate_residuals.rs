@@ -64,6 +64,14 @@ pub struct MateProblem {
     fixed_axis_sign: Vec<f64>,
 }
 
+/// How much stiffer the LM step damps a body's rotation params than its
+/// translation params. It weights only the Marquardt damping term (which shapes
+/// each step, not the residual), so an underdetermined solve descends toward
+/// sliding a part rather than spinning it, while a mate that genuinely needs a
+/// rotation still converges to it -- the damping never enters the convergence
+/// condition. See `rotation_damp_scale` and `lm::solve_lm_damped`.
+const ROT_DAMP_SCALE: f64 = 100.0;
+
 /// Residual count contributed by one mate of `kind`. A standalone function (not
 /// inlined into `MateProblem::new`) so `mate_residual_count_matches_actual_residuals_pushed`
 /// can drive it directly: a future arm that bumps this without bumping the
@@ -164,6 +172,25 @@ impl MateProblem {
         let roll_a = delta_twist(&self.x0, x, off_a, &mate.a.geometry.axis);
         let roll_b = delta_twist(&self.x0, x, off_b, &mate.b.geometry.axis);
         (roll_b - sign * roll_a) - sign * extra_angle
+    }
+
+    /// Per-param multiplier on the LM Marquardt damping term: rotation params of
+    /// ungrounded bodies are damped `ROT_DAMP_SCALE` times stiffer than their
+    /// translation, so a step trades a spin for a slide where the constraints
+    /// leave the choice open. Grounded bodies are pinned regardless, so their
+    /// scale is left at 1.0.
+    fn rotation_damp_scale(&self) -> Vec<f64> {
+        let mut scale = vec![1.0; self.n];
+        for bi in 0..self.bodies.len() {
+            if self.grounded[bi] {
+                continue;
+            }
+            let off = bi * 7;
+            for j in 3..7 {
+                scale[off + j] = ROT_DAMP_SCALE;
+            }
+        }
+        scale
     }
 
     /// Build the residuals closure for `solve_lm`.
@@ -1113,7 +1140,12 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
     let residuals_fn = problem.residuals_fn();
     let jacobian_fn = problem.jacobian_fn();
 
-    let lm_result = lm::solve_lm(&x0_f64, &residuals_fn, &jacobian_fn);
+    // Rotation params are damped stiffer than translation so an underdetermined
+    // solve slides a part rather than spinning it (ROT_DAMP_SCALE). This weights
+    // only the LM step, never the residual, so the reported diagnostics below are
+    // untouched and a mate that needs a rotation still reaches it.
+    let damp_scale = problem.rotation_damp_scale();
+    let lm_result = lm::solve_lm_damped(&x0_f64, &residuals_fn, &jacobian_fn, &damp_scale);
 
     // Rank analysis via SVD.
     let dof = if m == 0 || n == 0 {
@@ -2185,6 +2217,61 @@ mod tests {
             assert_eq!(pushed - 2, want, "kind {:?} pushed {} mate residuals, want {}", kind, pushed - 2, want);
             assert_eq!(p.m, pushed, "MateProblem.m disagrees with residuals().len() for {:?}", kind);
         }
+    }
+
+    #[test]
+    fn rotation_damp_scale_stiffens_only_free_body_rotation() {
+        // body 0 grounded, body 1 free. The damping scale must lift the four
+        // rotation params of the free body and leave translation (and the whole
+        // grounded body) at 1.0.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001], // body 0 grounded
+            mates: vec![],
+        };
+        let p = MateProblem::new(&input);
+        let scale = p.rotation_damp_scale();
+        assert_eq!(scale.len(), 14);
+        assert!(scale[0..7].iter().all(|&s| s == 1.0), "grounded body stays at 1.0");
+        assert!(scale[7..10].iter().all(|&s| s == 1.0), "free-body translation stays at 1.0");
+        assert!(scale[10..14].iter().all(|&s| s == ROT_DAMP_SCALE), "free-body rotation is stiffened");
+        assert!(ROT_DAMP_SCALE > 1.0);
+    }
+
+    #[test]
+    fn free_body_reaches_point_more_by_translating_than_rotating() {
+        // A single spherical coincidence a free body could satisfy by either
+        // translating or turning 90 deg (its anchor is offset from its origin).
+        // The rotation damping tips LM toward the slide: it ends far closer to the
+        // pure-translation solution (q ~ identity) than to the 90 deg turn
+        // (qz ~ -0.707), while still meeting the coincidence exactly.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded at origin
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1 free, seed identity
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(
+                MateKind::Spherical,
+                mate_ref(0, 3.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point), // world target (3,0,0)
+                mate_ref(1, 0.0, 3.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point), // body-local (0,3,0)
+                false, 0.0, 1.0, 0.0,
+            )],
+        };
+        let out = solve_mate(&input);
+        // Clearly nearer the slide than the turn: a pure 90 deg turn would read
+        // qw = 0.707, qz = -0.707, tx = 0. Instead most of the motion is in tx and
+        // the body barely rotates. The bias is deliberately gentle, so a little
+        // rotation remains; the point is the solve favors the slide.
+        assert!(out.params_solved[13] > 0.9, "qw near 1 (little rotation), got {}", out.params_solved[13]);
+        assert!(out.params_solved[12].abs() < 0.35, "qz well short of the -0.707 turn, got {}", out.params_solved[12]);
+        assert!(out.params_solved[7] > 1.5, "tx carried most of the motion, got {}", out.params_solved[7]);
+        assert!(out.diagnostics.residual_norm < 1e-3, "coincidence met, got {}", out.diagnostics.residual_norm);
     }
 
     fn compare_jacobians(analytical: &DMatrix<f64>, fd: &DMatrix<f64>, tol: f64) {

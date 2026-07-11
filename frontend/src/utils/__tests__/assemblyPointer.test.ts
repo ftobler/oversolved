@@ -65,11 +65,11 @@ describe('assembly pointer adapter (body drag)', () => {
 
     // Pointer drags to (3, 4) in the plane z = 0 facing the camera.
     adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
-    expect(requestSolve).not.toHaveBeenCalled()  // no per-frame mate solve
+    expect(requestSolve).toHaveBeenCalledTimes(1)  // live solve: the rest follows
 
     adapter.onPointerUp()
 
-    expect(requestSolve).toHaveBeenCalledTimes(1)
+    expect(requestSolve).toHaveBeenCalledTimes(2)  // plus the final commit solve
     expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3, ty: 4, tz: 0 })
     expect(adapter.isActive()).toBe(false)
   })
@@ -110,12 +110,13 @@ describe('assembly pointer adapter (body drag)', () => {
     const { host, requestSolve, adapter } = mountHost(initial)
 
     adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
-    adapter.onPointerMove(ray([5, 0, 10], [0, 0, -1]))
-    adapter.cancel()
+    adapter.onPointerMove(ray([5, 0, 10], [0, 0, -1]))  // one live solve
+    adapter.cancel()  // one restore solve
     adapter.onPointerUp()
 
     expect(host.doc).toBe(initial)
-    expect(requestSolve).not.toHaveBeenCalled()
+    // Live tick then restore, but a cancelled drag never mutates the doc.
+    expect(requestSolve).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -131,11 +132,11 @@ describe('assembly pointer adapter (triad gizmo)', () => {
 
     // Grab the X arrow while sighting down -Z at x = 1, then slide to x = 6.
     expect(adapter.onGizmoPointerDown('p1', 'translate', [1, 0, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(true)
-    adapter.onPointerMove(ray([6, 3, 10], [0, 0, -1]))
+    adapter.onPointerMove(ray([6, 3, 10], [0, 0, -1]))  // live solve
     adapter.onPointerUp()
 
     expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 5, ty: 0, tz: 0 })
-    expect(requestSolve).toHaveBeenCalledTimes(1)
+    expect(requestSolve).toHaveBeenCalledTimes(2)  // live tick + commit
   })
 
   it('a ring drag swings the part about that axis', () => {

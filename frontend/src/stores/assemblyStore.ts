@@ -6,7 +6,7 @@ import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } 
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
 import { findMate, setMateRef } from '@/utils/assemblyMutations'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
-import type { Vec3 } from '@/utils/transform3d'
+import { transformsEqual, type Vec3 } from '@/utils/transform3d'
 
 /** The mate reference slot a pick currently writes into; null when not authoring. */
 export interface MateFieldTarget {
@@ -155,6 +155,13 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setIsSolving: (solving: boolean) => void
   setSolveError: (error: string | null) => void
   setSolveResult: (result: AssemblySolveResult) => void
+  /**
+   * A live-drag solve: merge the follower parts' new poses over the current
+   * scene. Unlike setSolveResult it leaves the pick/hover/anchor state alone (a
+   * drag has none) and does not clear the grabbed part's own entries, which the
+   * caller drops so it keeps rendering from its drag offset.
+   */
+  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'mateResults'>) => void
   /** Resolve an ordered hit list into the candidate set, aiming its first entry. */
   setPickFromHits: (hits: readonly EntityHit[]) => void
   /** A Ctrl+click: re-aim, or advance the cycle when it lands on the same set. */
@@ -230,6 +237,13 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // its entity keys are positional and a rebuilt body renumbers them.
     pickCandidates: [], pickIndex: -1, hoverHits: [],
   }),
+
+  setDragSolveResult: (result) => set((prev) => ({
+    transforms: { ...prev.transforms, ...result.transforms },
+    bodies: { ...prev.bodies, ...result.bodies },
+    edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
+    mateResults: result.mateResults,
+  })),
 
   setPickFromHits: (hits) => set((prev) => {
     const pickCandidates = resolveCandidates(hits, prev.entityMateRefs, prev.pickScopeEntity)
@@ -307,13 +321,25 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return true
   },
 
-  dragPartTranslate: (delta) => set((prev) => (
-    prev.manipulation ? { manipulation: dragTranslate(prev.manipulation, delta) } : {}
-  )),
+  // Every move re-solves so the rest of the assembly follows the dragged part
+  // live (the host runs one coalesced solve per burst, pinning this part where
+  // the pointer put it). A click that never leaves the seed pose asks for no
+  // solve, so a plain select stays free.
+  dragPartTranslate: (delta) => {
+    const { manipulation } = get()
+    if (!manipulation) return
+    const next = dragTranslate(manipulation, delta)
+    set({ manipulation: next })
+    if (!transformsEqual(next.current, next.seed)) callbacks?.requestSolve()
+  },
 
-  rotatePartGizmo: (axis, angle, pivot) => set((prev) => (
-    prev.manipulation ? { manipulation: gizmoRotate(prev.manipulation, axis, angle, pivot) } : {}
-  )),
+  rotatePartGizmo: (axis, angle, pivot) => {
+    const { manipulation } = get()
+    if (!manipulation) return
+    const next = gizmoRotate(manipulation, axis, angle, pivot)
+    set({ manipulation: next })
+    if (!transformsEqual(next.current, next.seed)) callbacks?.requestSolve()
+  },
 
   endPartManipulation: () => {
     const { manipulation, doc } = get()
@@ -326,5 +352,14 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },
 
-  cancelPartManipulation: () => set({ manipulation: null }),
+  cancelPartManipulation: () => {
+    const { manipulation } = get()
+    // The live solves moved the followers to track the abandoned drag; a solve
+    // against the untouched doc puts them back at their pre-drag poses. The
+    // grabbed part restores itself, drawn from its own bodies once the offset is
+    // gone. A session that never moved has nothing to restore.
+    const moved = manipulation != null && !transformsEqual(manipulation.current, manipulation.seed)
+    set({ manipulation: null })
+    if (moved) callbacks?.requestSolve()
+  },
 }))

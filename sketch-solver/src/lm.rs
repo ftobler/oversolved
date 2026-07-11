@@ -66,7 +66,22 @@ pub fn solve_lm(
     f: &impl Fn(&[f64]) -> Vec<f64>,
     jac: &impl Fn(&[f64]) -> DMatrix<f64>,
 ) -> LmResult {
+    solve_lm_damped(x0, f, jac, &vec![1.0; x0.len()])
+}
+
+/// As `solve_lm`, but `damp_scale[i]` multiplies the Marquardt damping on param
+/// `i` (the `lambda·diag(JᵀJ)` term only). A scale above 1 shrinks that param's
+/// step, biasing the descent away from it where the constraints leave a choice;
+/// it never enters the residual or the convergence test, so the solution a fully
+/// constrained problem reaches is unchanged. `damp_scale` must have length `n`.
+pub fn solve_lm_damped(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac: &impl Fn(&[f64]) -> DMatrix<f64>,
+    damp_scale: &[f64],
+) -> LmResult {
     let n = x0.len();
+    debug_assert_eq!(damp_scale.len(), n, "damp_scale must have one entry per param");
     let mut x = x0.to_vec();
     let mut r = f(&x);
     let m = r.len();
@@ -106,12 +121,19 @@ pub fn solve_lm(
     // 1e4+. A small absolute pull toward the seed bounds those free directions to
     // their drawn position while staying negligible against any real curvature, so
     // well-constrained solves are unaffected (the gradient at x=x0 is unchanged).
+    // `damp_scale` weights this anchor per param as well as the Marquardt term.
+    // The anchor is what resolves an underdetermined direction (there the
+    // curvature is zero and only this pull acts), so weighting it is what makes a
+    // free rotation-vs-translation choice settle on the slide: unlike the
+    // Marquardt term it does not vanish as lambda shrinks. Still O(mu), so a
+    // rotation a mate actually constrains is unmoved.
     let mu = 1e-8 * max_diag;
     let x0v = DVector::from_column_slice(x0);
+    let scale_v = DVector::from_column_slice(damp_scale);
     // Augmented objective 0.5||r||² + 0.5·μ·||x - x0||² -- the gradient/damping and
     // the accept test must use the SAME cost or step acceptance is inconsistent.
     let anchor_cost = |xs: &[f64]| -> f64 {
-        0.5 * mu * (0..n).map(|i| (xs[i] - x0[i]).powi(2)).sum::<f64>()
+        0.5 * mu * (0..n).map(|i| damp_scale[i] * (xs[i] - x0[i]).powi(2)).sum::<f64>()
     };
     let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x);
 
@@ -120,7 +142,8 @@ pub fn solve_lm(
         iters += 1;
         let rv = DVector::from_vec(r.clone());
         let xv = DVector::from_column_slice(&x);
-        let g = jacm.transpose() * &rv + mu * (&xv - &x0v); // gradient Jᵀr + μ(x - x0)
+        // gradient Jᵀr + μ·scale·(x - x0)
+        let g = jacm.transpose() * &rv + mu * scale_v.component_mul(&(&xv - &x0v));
 
         if g.amax() < GTOL {
             break;
@@ -131,10 +154,10 @@ pub fn solve_lm(
         for _ in 0..30 {
             let mut a = jtj.clone();
             for i in 0..n {
-                // Marquardt scaling: damp proportional to each column's curvature,
-                // plus the absolute seed-anchor floor `mu` so flat (free)
-                // directions stay finite.
-                a[(i, i)] += lambda * jtj[(i, i)].max(1e-12) + mu;
+                // Marquardt scaling: damp proportional to each column's curvature
+                // (times the caller's per-param `damp_scale`), plus the absolute
+                // seed-anchor floor `mu` so flat (free) directions stay finite.
+                a[(i, i)] += (lambda * jtj[(i, i)].max(1e-12) + mu) * damp_scale[i];
             }
             let Some(delta) = a.clone().lu().solve(&(-&g)) else {
                 lambda *= LAMBDA_UP;

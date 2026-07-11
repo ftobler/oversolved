@@ -21,6 +21,7 @@ import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec } from '@/kernel/solveAssembly'
 import { extractErrorMessage } from '@/kernel/errors'
+import { composeTransforms, relativeTransform } from '@/utils/transform3d'
 
 // A mate offset/angle authored as an expression string is not evaluated here;
 // expression binding arrives with the mate authoring UI (Stage 8).
@@ -86,6 +87,10 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   // queued solve reuses the rev map instead of re-issuing `documents.list()`.
   // Cleared once the burst drains, so the next burst reads fresh revs.
   const burstRevs = useRef<Record<string, number> | null>(null)
+  // The rev map from the last full solve. A live drag tick reuses it rather than
+  // re-listing documents: no part is edited mid-drag, so the bundles are all
+  // cache hits and a solve stays OCC-free and fast.
+  const lastRevs = useRef<Record<string, number> | null>(null)
   // A solve is requested by bumping a token, never by calling runSolve inline:
   // callers ask for it in the same event that mutates the doc (a drag commit
   // writes the transform, then re-solves), and the mutated doc only reaches
@@ -107,14 +112,58 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     const current = docRef.current
     if (!current) return
     const store = useAssemblyStore.getState()
-    store.setIsSolving(true)
-    store.setSolveError(null)
+    // A drag in progress means a live tick: pin the grabbed part where the
+    // pointer put it and let the mates pull the rest. Read fresh each run so the
+    // final run after pointer-up (manipulation cleared) is an ordinary full solve.
+    const manip = store.manipulation
+    const live = manip !== null
+    if (!live) {
+      store.setIsSolving(true)
+      store.setSolveError(null)
+    }
     try {
-      const parts = partSpecs(current)
-      if (!burstRevs.current) burstRevs.current = await currentRevs(current)
-      const revs = burstRevs.current
+      let parts = partSpecs(current)
+      if (live) {
+        // Pin the grabbed part at its drawn world pose -- the same compose the
+        // viewport gizmo uses -- and ground it, so the solve moves only the
+        // others. Its own bodies/transform are left untouched below, so it keeps
+        // rendering from its drag offset.
+        const solvedGrab = store.transforms[manip!.handle] ?? manip!.seed
+        const pinned = composeTransforms(relativeTransform(manip!.current, manip!.seed), solvedGrab)
+        parts = parts.map(p => (p.handle === manip!.handle ? { ...p, transform: pinned, fixed: true } : p))
+      }
+      // Revs are stable across a drag burst; a live tick reuses the last full
+      // solve's map, the standard burst reads once and caches it.
+      let revs: Record<string, number>
+      if (live && lastRevs.current) {
+        revs = lastRevs.current
+      } else {
+        if (!burstRevs.current) burstRevs.current = await currentRevs(current)
+        revs = burstRevs.current
+        lastRevs.current = revs
+      }
       const res = await solveAssemblyViaWorker(uuid, parts, revs, mateSpecs(current))
       if (!res) throw new Error('assembly solver unavailable')
+
+      if (live) {
+        const transforms = res.payload.transforms
+        const bodies = toBodyResults(res.payload.bodies)
+        const edgeCurves = toEdgeCurves(res.payload.bodies)
+        // Drop the grabbed part: it is drawn from its pre-drag mesh under the
+        // live offset, so re-posing it here would double the drag delta.
+        const grab = manip!.handle
+        delete transforms[grab]
+        delete bodies[grab]
+        delete edgeCurves[grab]
+        useAssemblyStore.getState().setDragSolveResult({
+          transforms,
+          bodies,
+          edgeCurves,
+          mateResults: res.payload.mateResults ?? {},
+        })
+        return
+      }
+
       const anchors = buildAnchorTable(res.payload.anchors)
       useAssemblyStore.getState().setSolveResult({
         transforms: res.payload.transforms,
@@ -133,9 +182,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         useAssemblyStore.getState().setSolveError(res.payload.solveError)
       }
     } catch (e) {
-      useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
+      // A live tick fails quietly: the pointer-up solve is the one that must
+      // surface a persistent error, and a per-frame banner would only flicker.
+      if (!live) useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
     } finally {
-      useAssemblyStore.getState().setIsSolving(false)
+      if (!live) useAssemblyStore.getState().setIsSolving(false)
     }
   }, [uuid])
 
