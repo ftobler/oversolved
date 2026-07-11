@@ -98,6 +98,18 @@ export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolea
   return updateInstance(doc, handle, inst => ({ ...inst, fixed }))
 }
 
+// Show or hide one of the assembly's own built-in features (an origin or a
+// plane), keyed by feature id. Reference geometry is hidden by default, so this
+// is what a tree eye toggle writes.
+export function setBuiltinVisible(doc: AssemblyDoc, id: string, visible: boolean): AssemblyDoc {
+  return {
+    ...doc,
+    features: features(doc).map(f => (
+      f.id === id && (f.kind === 'origin' || f.kind === 'plane') ? { ...f, visible } : f
+    )),
+  }
+}
+
 // Write a manipulated seed transform. A `fixed` (grounded) instance is the
 // assembly's static reference frame: it is pinned here rather than only in the
 // UI, so no manipulation path can move it even by mistake.

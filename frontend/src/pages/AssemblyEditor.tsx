@@ -18,11 +18,13 @@ import {
   mintFeatureId,
   removeInstance,
   removeMate,
+  setBuiltinVisible,
   setInstanceVisible,
   setInstanceFixed,
   updateMate,
   type MateParamPatch,
 } from '@/utils/assemblyMutations'
+import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import type { AssemblyDoc, MateKind, PartInstance, AssemblyFeature } from '@/types/cad'
@@ -157,6 +159,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => setInstanceVisible(d, handle, visible))
   }, [mutate])
 
+  // Showing/hiding a reference plane is a pure render change: no re-solve, since
+  // the assembly frame is pinned at the world origin and constrains nothing.
+  const handleToggleBuiltinVisible = useCallback((id: string, visible: boolean) => {
+    mutate(d => setBuiltinVisible(d, id, visible))
+  }, [mutate])
+
   const handleToggleFixed = useCallback((handle: string, fixed: boolean) => {
     mutate(d => setInstanceFixed(d, handle, fixed))
     // Grounding changes which bodies the LM solver may move: the current solve
@@ -200,6 +208,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     [instances],
   )
 
+  const builtins = useMemo(() => getAssemblyBuiltins(doc), [doc])
+
   const selectedMate = doc && selectedMateId ? findMate(doc, selectedMateId) : undefined
 
   // The mate went away by some path other than the editor's delete button (an
@@ -229,6 +239,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
         <aside className="doc-sidebar">
           <AssemblyTree
             instances={instances}
+            builtins={builtins}
             mates={mates}
             mateResults={mateResults}
             labelFor={labelFor}
@@ -239,6 +250,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onDeleteInstance={handleDelete}
             onToggleVisible={handleToggleVisible}
             onToggleFixed={handleToggleFixed}
+            onToggleBuiltinVisible={handleToggleBuiltinVisible}
             onSelectMate={handleSelectMate}
           />
           {mateMenuOpen && (

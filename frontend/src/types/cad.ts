@@ -417,6 +417,9 @@ export interface AssemblyFeature {
   instance?: PartInstance
   mate?: MateFeatureDef
   definition?: PlaneDef
+  // Origin/plane built-ins only: hidden unless explicitly shown. A part
+  // instance carries its own visibility on `instance.visible` instead.
+  visible?: boolean
 }
 
 export interface AssemblyDoc {

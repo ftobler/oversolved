@@ -1,9 +1,12 @@
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { MateResult } from '@/kernel/solveAssembly'
+import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { mateSummary } from '@/utils/mateKinds'
 
 interface AssemblyTreeProps {
   instances: PartInstance[]
+  // The assembly's own origin and reference planes, hidden by default.
+  builtins: AssemblyBuiltinListItem[]
   mates: MateFeature[]
   // Per-mate solve outcome, keyed by feature id. A stale mate renders red.
   mateResults?: Record<string, MateResult>
@@ -17,6 +20,7 @@ interface AssemblyTreeProps {
   onDeleteInstance: (handle: string) => void
   onToggleVisible: (handle: string, visible: boolean) => void
   onToggleFixed: (handle: string, fixed: boolean) => void
+  onToggleBuiltinVisible: (id: string, visible: boolean) => void
   onSelectMate?: (featureId: string) => void
 }
 
@@ -25,6 +29,7 @@ interface AssemblyTreeProps {
 // through the callbacks so the logic stays viewport-free and testable.
 export function AssemblyTree({
   instances,
+  builtins,
   mates,
   mateResults,
   labelFor,
@@ -35,10 +40,37 @@ export function AssemblyTree({
   onDeleteInstance,
   onToggleVisible,
   onToggleFixed,
+  onToggleBuiltinVisible,
   onSelectMate,
 }: AssemblyTreeProps) {
   return (
     <div className="assembly-tree">
+      <div className="assembly-tree-header">
+        <span>Origin</span>
+      </div>
+
+      <ul className="assembly-tree-list">
+        {builtins.map(b => (
+          <li key={b.id} className="assembly-tree-instance">
+            <span className="assembly-tree-open-btn">{b.label}</span>
+            <button
+              type="button"
+              className="assembly-tree-icon-btn"
+              onClick={(e) => { e.stopPropagation(); onToggleBuiltinVisible(b.id, !b.visible) }}
+              title={b.visible ? 'Hide' : 'Show'}
+              aria-label={b.visible ? `Hide ${b.label}` : `Show ${b.label}`}
+            >
+              <span className="material-icons-outlined">
+                {b.visible ? 'visibility' : 'visibility_off'}
+              </span>
+            </button>
+          </li>
+        ))}
+        {builtins.length === 0 && (
+          <li className="assembly-tree-empty">No origin.</li>
+        )}
+      </ul>
+
       <div className="assembly-tree-header">
         <span>Parts ({instances.length})</span>
       </div>

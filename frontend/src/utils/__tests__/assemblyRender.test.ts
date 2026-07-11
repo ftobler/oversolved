@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 import {
+  getAssemblyBuiltins,
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
   gizmoOrientation,
@@ -35,9 +36,12 @@ function session(handle: string, seed: Transform3D, current: Transform3D): Manip
   return { handle, seed, current }
 }
 
+// The defaults carry no `visible`, so they are hidden; shown() flags them on.
+const shownDefaults = ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f, visible: true }))
+
 describe('getAssemblyBuiltinsToRender', () => {
-  it('puts the assembly origin and its three planes in the render list', () => {
-    const doc: AssemblyDoc = { kind: 'assembly', features: [...ASSEMBLY_BUILTIN_DEFAULTS] }
+  it('draws the origin and its three planes once they are shown', () => {
+    const doc: AssemblyDoc = { kind: 'assembly', features: shownDefaults }
     const items = getAssemblyBuiltinsToRender(doc)
 
     expect(items.map(i => i.id)).toEqual(['AssemblyOrigin', 'AssemblyTop', 'AssemblyFront', 'AssemblyRight'])
@@ -48,11 +52,24 @@ describe('getAssemblyBuiltinsToRender', () => {
     expect(items.find(i => i.id === 'AssemblyRight')!.rotation).toEqual([0, Math.PI / 2, 0])
   })
 
+  it('draws nothing by default: reference geometry is hidden until shown', () => {
+    const doc: AssemblyDoc = { kind: 'assembly', features: [...ASSEMBLY_BUILTIN_DEFAULTS] }
+    expect(getAssemblyBuiltinsToRender(doc)).toEqual([])
+  })
+
+  it('draws only the shown built-ins', () => {
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f, visible: f.id === 'AssemblyTop' })),
+    }
+    expect(getAssemblyBuiltinsToRender(doc).map(i => i.id)).toEqual(['AssemblyTop'])
+  })
+
   it('ignores part instances, mates and an absent doc', () => {
     const doc: AssemblyDoc = {
       kind: 'assembly',
       features: [
-        ...ASSEMBLY_BUILTIN_DEFAULTS,
+        ...shownDefaults,
         { id: 'f1', kind: 'part_instance', instance: instance('p1') },
       ],
     }
@@ -61,8 +78,30 @@ describe('getAssemblyBuiltinsToRender', () => {
   })
 
   it('does not render a part built-in that happens to share a feature id', () => {
-    const doc: AssemblyDoc = { kind: 'assembly', features: [{ id: 'Top', kind: 'plane' }] }
+    const doc: AssemblyDoc = { kind: 'assembly', features: [{ id: 'Top', kind: 'plane', visible: true }] }
     expect(getAssemblyBuiltinsToRender(doc)).toEqual([])
+  })
+})
+
+describe('getAssemblyBuiltins', () => {
+  it('lists every built-in with its visibility, hidden by default', () => {
+    const doc: AssemblyDoc = { kind: 'assembly', features: [...ASSEMBLY_BUILTIN_DEFAULTS] }
+    const rows = getAssemblyBuiltins(doc)
+    expect(rows.map(r => r.id)).toEqual(['AssemblyOrigin', 'AssemblyTop', 'AssemblyFront', 'AssemblyRight'])
+    expect(rows.every(r => r.visible === false)).toBe(true)
+    expect(rows.find(r => r.id === 'AssemblyTop')!.label).toBe('Top')
+  })
+
+  it('reflects a shown built-in', () => {
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f, visible: f.id === 'AssemblyFront' })),
+    }
+    expect(getAssemblyBuiltins(doc).find(r => r.id === 'AssemblyFront')!.visible).toBe(true)
+  })
+
+  it('lists nothing for an absent doc', () => {
+    expect(getAssemblyBuiltins(null)).toEqual([])
   })
 })
 

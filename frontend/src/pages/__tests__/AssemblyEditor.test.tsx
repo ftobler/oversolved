@@ -144,6 +144,25 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(instances[0].doc_rev).toBe(5)
   })
 
+  it('lists the assembly origin planes hidden by default and toggles one visible', async () => {
+    await renderLoaded()
+    // The Origin section lists the frame's origin and three reference planes,
+    // each with a Show affordance because they start hidden.
+    for (const label of ['Origin', 'Top', 'Front', 'Right']) {
+      expect(screen.getByLabelText(`Show ${label}`)).toBeTruthy()
+    }
+
+    fireEvent.click(screen.getByLabelText('Show Top'))
+    await tick()
+
+    // The eye flips to Hide and the doc records the plane as shown.
+    expect(screen.getByLabelText('Hide Top')).toBeTruthy()
+    const top = (useAssemblyStore.getState().doc?.features ?? []).find(f => f.id === 'AssemblyTop')
+    expect(top?.visible).toBe(true)
+    // Showing a plane never triggers a solve: it constrains nothing.
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+  })
+
   it('two instances of the same part get distinct handles', async () => {
     await renderLoaded()
     await insertPart('Bracket')

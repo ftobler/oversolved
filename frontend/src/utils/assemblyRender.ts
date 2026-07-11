@@ -50,12 +50,40 @@ const BUILTIN_RENDER: Record<string, AssemblyBuiltinItem> = {
   [ASSEMBLY_RIGHT_ID]:  { id: ASSEMBLY_RIGHT_ID,  kind: 'plane',  label: 'Right',  rotation: [0, Math.PI / 2, 0] },
 }
 
-/** The assembly's own frame, in document order. Non-builtin features are ignored. */
+/** One row in the tree's Origin section: a built-in and whether it is shown. */
+export interface AssemblyBuiltinListItem {
+  id: string
+  kind: 'origin' | 'plane'
+  label: string
+  visible: boolean
+}
+
+/**
+ * The assembly's own frame as tree rows, in document order, whatever their
+ * visibility. The tree lists them so a hidden plane can be shown again; the
+ * viewport draws only the shown ones (getAssemblyBuiltinsToRender).
+ */
+export function getAssemblyBuiltins(doc: AssemblyDoc | null): AssemblyBuiltinListItem[] {
+  const items: AssemblyBuiltinListItem[] = []
+  for (const f of doc?.features ?? []) {
+    const item = BUILTIN_RENDER[f.id]
+    if (item && item.kind === f.kind) {
+      items.push({ id: item.id, kind: item.kind, label: item.label, visible: f.visible === true })
+    }
+  }
+  return items
+}
+
+/**
+ * The assembly's own frame to draw, in document order. Built-ins are hidden by
+ * default (they are reference geometry, not part of the model), so only a
+ * feature explicitly flagged `visible` renders. Non-builtin features are ignored.
+ */
 export function getAssemblyBuiltinsToRender(doc: AssemblyDoc | null): AssemblyBuiltinItem[] {
   const items: AssemblyBuiltinItem[] = []
   for (const f of doc?.features ?? []) {
     const item = BUILTIN_RENDER[f.id]
-    if (item && item.kind === f.kind) items.push(item)
+    if (item && item.kind === f.kind && f.visible === true) items.push(item)
   }
   return items
 }

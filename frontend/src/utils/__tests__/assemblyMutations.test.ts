@@ -10,13 +10,14 @@ import {
   mintInstanceHandle,
   removeInstance,
   removeMate,
+  setBuiltinVisible,
   setInstanceVisible,
   setInstanceFixed,
   setMateRef,
   updateMate,
   IDENTITY_TRANSFORM,
 } from '@/utils/assemblyMutations'
-import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
+import { ASSEMBLY_HANDLE, ASSEMBLY_BUILTIN_DEFAULTS, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 
 const emptyDoc: AssemblyDoc = { kind: 'assembly', features: [] }
 
@@ -147,6 +148,27 @@ describe('setInstanceVisible / setInstanceFixed', () => {
       expect(handle).not.toBe(ASSEMBLY_HANDLE)
       doc = appendPartInstance(doc, `doc-${i}`, 1)
     }
+  })
+})
+
+describe('setBuiltinVisible', () => {
+  const withBuiltins: AssemblyDoc = { kind: 'assembly', features: ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f })) }
+
+  it('shows and hides the named built-in only', () => {
+    const shown = setBuiltinVisible(withBuiltins, ASSEMBLY_TOP_ID, true)
+    const map = Object.fromEntries((shown.features ?? []).map(f => [f.id, f.visible]))
+    expect(map[ASSEMBLY_TOP_ID]).toBe(true)
+    expect(map.AssemblyFront).toBeUndefined()  // untouched, still hidden
+
+    const hidden = setBuiltinVisible(shown, ASSEMBLY_TOP_ID, false)
+    expect((hidden.features ?? []).find(f => f.id === ASSEMBLY_TOP_ID)!.visible).toBe(false)
+  })
+
+  it('leaves a part instance that shares no id untouched, and does not mutate the input', () => {
+    const doc = appendPartInstance(withBuiltins, 'doc-A', 1)
+    const next = setBuiltinVisible(doc, ASSEMBLY_TOP_ID, true)
+    expect((next.features ?? []).filter(f => f.kind === 'part_instance')).toHaveLength(1)
+    expect((withBuiltins.features ?? []).find(f => f.id === ASSEMBLY_TOP_ID)!.visible).toBeUndefined()
   })
 })
 
