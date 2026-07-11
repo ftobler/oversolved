@@ -1,7 +1,6 @@
-import { useState } from 'react'
-import type { PartInstance, MateFeature, MateKind } from '@/types/cad'
+import type { PartInstance, MateFeature } from '@/types/cad'
 import type { MateResult } from '@/kernel/solveAssembly'
-import { MATE_KINDS, MATE_KIND_LABELS, mateSummary } from '@/utils/mateKinds'
+import { mateSummary } from '@/utils/mateKinds'
 
 interface AssemblyTreeProps {
   instances: PartInstance[]
@@ -14,12 +13,10 @@ interface AssemblyTreeProps {
   selectedHandle?: string | null
   selectedMateId?: string | null
   onSelectPart?: (handle: string) => void
-  onInsertPart: () => void
   onOpenPart: (handle: string) => void
   onDeleteInstance: (handle: string) => void
   onToggleVisible: (handle: string, visible: boolean) => void
   onToggleFixed: (handle: string, fixed: boolean) => void
-  onInsertMate?: (kind: MateKind) => void
   onSelectMate?: (featureId: string) => void
 }
 
@@ -34,28 +31,16 @@ export function AssemblyTree({
   selectedHandle,
   selectedMateId,
   onSelectPart,
-  onInsertPart,
   onOpenPart,
   onDeleteInstance,
   onToggleVisible,
   onToggleFixed,
-  onInsertMate,
   onSelectMate,
 }: AssemblyTreeProps) {
-  const [kindMenuOpen, setKindMenuOpen] = useState(false)
   return (
     <div className="assembly-tree">
       <div className="assembly-tree-header">
         <span>Parts ({instances.length})</span>
-        <button
-          type="button"
-          className="assembly-tree-insert-btn"
-          onClick={onInsertPart}
-          title="Insert part"
-          aria-label="Insert part"
-        >
-          <span className="material-icons-outlined">add</span>
-        </button>
       </div>
 
       <ul className="assembly-tree-list">
@@ -122,35 +107,7 @@ export function AssemblyTree({
 
       <div className="assembly-tree-header">
         <span>Mates ({mates.length})</span>
-        {onInsertMate && (
-          <button
-            type="button"
-            className="assembly-tree-insert-btn"
-            onClick={() => setKindMenuOpen(o => !o)}
-            title="Insert mate"
-            aria-label="Insert mate"
-            aria-expanded={kindMenuOpen}
-          >
-            <span className="material-icons-outlined">add</span>
-          </button>
-        )}
       </div>
-
-      {kindMenuOpen && onInsertMate && (
-        <ul className="assembly-tree-list mate-kind-menu">
-          {MATE_KINDS.map(kind => (
-            <li key={kind}>
-              <button
-                type="button"
-                className="mate-kind-option"
-                onClick={() => { setKindMenuOpen(false); onInsertMate(kind) }}
-              >
-                {MATE_KIND_LABELS[kind]}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
 
       <ul className="assembly-tree-list">
         {mates.map(({ id, mate }) => {

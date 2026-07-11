@@ -20,35 +20,49 @@
   z-index: 1;
 }
 
-.assembly-tree-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  font-weight: 600;
-  color: #e0e0e0;
-  border-bottom: 1px solid #333;
-}
-
 .assembly-tree {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
 }
 
+/* Match the part editor's .sidebar-header so both editors' section titles read
+   as the same UI: same weight, size and muted color, with the insert button
+   pushed to the right edge. */
 .assembly-tree-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 1rem;
-  color: #9aa0a6;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  padding: 8px 12px 4px;
+  color: #666;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.assembly-tree-insert-btn,
+/* The insert-mate dropdown in the editor toolbar floats over the viewport. */
+.assembly-mate-menu-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.assembly-mate-menu-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  min-width: 140px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Assembly toolbar buttons use material icons rather than the part editor's
+   svg <img> glyphs; size them to match the .editor-btn img rule. */
+.editor-btn .material-icons-outlined {
+  font-size: 20px;
+}
+
 .assembly-tree-icon-btn {
   background: none;
   border: none;
@@ -60,7 +74,6 @@
   border-radius: 3px;
 }
 
-.assembly-tree-insert-btn:hover,
 .assembly-tree-icon-btn:hover {
   background: #2a2a2a;
   color: #e0e0e0;

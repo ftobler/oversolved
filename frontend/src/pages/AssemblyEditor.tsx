@@ -23,7 +23,8 @@ import {
   updateMate,
   type MateParamPatch,
 } from '@/utils/assemblyMutations'
-import { MATE_KINDS } from '@/utils/mateKinds'
+import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
+import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import type { AssemblyDoc, MateKind, PartInstance, AssemblyFeature } from '@/types/cad'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
@@ -44,9 +45,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     docName,
     instances,
     mates,
+    permission,
+    saveDoc,
+    renameDoc,
+    cloneDoc,
   } = useAssemblyDoc(uuid)
   const navigate = useNavigate()
+  const readOnly = permission === 'view'
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [mateMenuOpen, setMateMenuOpen] = useState(false)
   const { requestSolve } = useAssemblySolve(uuid, doc)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
@@ -92,6 +99,21 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const exportRef = useRef<AssemblyExportHandle>(null)
   const openExport = useCallback(() => exportRef.current?.openExport(), [])
+
+  const handleSave = useCallback(() => {
+    if (uuid && doc) saveDoc(uuid, doc)
+  }, [uuid, doc, saveDoc])
+
+  const handleClone = useCallback(async () => {
+    if (!uuid) return
+    const data = await cloneDoc(uuid)
+    navigate(`/documents/${data.uuid}`)
+  }, [uuid, cloneDoc, navigate])
+
+  const handleRename = useCallback(
+    (name: string) => renameDoc(uuid, name),
+    [renameDoc, uuid],
+  )
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. No solve yet:
@@ -196,20 +218,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   return (
     <div className="document-viewer">
+      <AssemblyToolbar
+        readOnly={readOnly}
+        docName={docName}
+        onRename={handleRename}
+        handleSave={handleSave}
+        handleClone={handleClone}
+      />
       <div className="doc-container">
         <aside className="doc-sidebar">
-          <div className="assembly-tree-title">
-            <span>{docName || 'Untitled Assembly'}</span>
-            <button
-              type="button"
-              className="assembly-tree-icon-btn"
-              onClick={openExport}
-              title="Export assembly"
-              aria-label="Export assembly"
-            >
-              <span className="material-icons-outlined">download</span>
-            </button>
-          </div>
           <AssemblyTree
             instances={instances}
             mates={mates}
@@ -218,12 +235,10 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             selectedHandle={selectedPartHandle}
             selectedMateId={selectedMateId}
             onSelectPart={handleSelect}
-            onInsertPart={openPicker}
             onOpenPart={handleOpenPart}
             onDeleteInstance={handleDelete}
             onToggleVisible={handleToggleVisible}
             onToggleFixed={handleToggleFixed}
-            onInsertMate={handleInsertMate}
             onSelectMate={handleSelectMate}
           />
           {selectedMateId && selectedMate && (
@@ -240,19 +255,71 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             />
           )}
         </aside>
-        <div className="doc-editor assembly-viewport-host">
-          <AssemblyViewport />
-          {solveError && (
-            <ErrorBanner
-              message={`Solver error: ${solveError}`}
-              onDismiss={() => useAssemblyStore.getState().setSolveError(null)}
-            />
-          )}
-          {instances.length === 0 && mates.length === 0 && (
-            <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
-          )}
+        <div className="doc-editor">
+          <div className="editor-toolbar">
+            <button
+              className="editor-btn"
+              title="Insert part"
+              aria-label="Insert part"
+              onClick={openPicker}
+              disabled={readOnly}
+            >
+              <span className="material-icons-outlined">add_box</span>
+            </button>
+            <div className="assembly-mate-menu-anchor">
+              <button
+                className={`editor-btn ${mateMenuOpen ? 'active' : ''}`}
+                title="Insert mate"
+                aria-label="Insert mate"
+                aria-expanded={mateMenuOpen}
+                onClick={() => setMateMenuOpen(o => !o)}
+                disabled={readOnly}
+              >
+                <span className="material-icons-outlined">link</span>
+              </button>
+              {mateMenuOpen && (
+                <ul className="assembly-tree-list mate-kind-menu assembly-mate-menu-popover">
+                  {MATE_KINDS.map(kind => (
+                    <li key={kind}>
+                      <button
+                        type="button"
+                        className="mate-kind-option"
+                        onClick={() => { setMateMenuOpen(false); handleInsertMate(kind) }}
+                      >
+                        {MATE_KIND_LABELS[kind]}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="toolbar-separator" />
+            <button
+              className="editor-btn"
+              title="Export assembly"
+              aria-label="Export assembly"
+              onClick={openExport}
+            >
+              <span className="material-icons-outlined">download</span>
+            </button>
+          </div>
+          <div className="assembly-viewport-host">
+            <AssemblyViewport />
+            {solveError && (
+              <ErrorBanner
+                message={`Solver error: ${solveError}`}
+                onDismiss={() => useAssemblyStore.getState().setSolveError(null)}
+              />
+            )}
+            {instances.length === 0 && mates.length === 0 && (
+              <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
+            )}
+          </div>
         </div>
       </div>
+      <footer className="doc-footer">
+        <p>Copyright 2026 - Oversolved</p>
+      </footer>
       <AssemblyPartPicker
         isOpen={pickerOpen}
         selfUuid={uuid}

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { ReactNode } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
@@ -8,6 +9,10 @@ import { findMate } from '@/utils/assemblyMutations'
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateSpy,
+  // AppHeader (rendered via AssemblyToolbar) navigates with <Link>; a plain
+  // anchor is enough for these tests, which assert on useNavigate instead.
+  Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
+    <a href={to} {...props}>{children}</a>,
 }))
 
 const h = vi.hoisted(() => ({
@@ -422,7 +427,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
   })
 
-  it('inserts a mate from the tree kind menu', async () => {
+  it('inserts a mate from the toolbar kind menu', async () => {
     renderEditor()
     await tick()
     await tick()
