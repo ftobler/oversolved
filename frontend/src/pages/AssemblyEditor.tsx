@@ -16,6 +16,7 @@ import { backendBundle } from '@/adapters/backend'
 import {
   appendMate,
   appendPartInstance,
+  bakeSolvedTransforms,
   findInstance,
   findMate,
   mintFeatureId,
@@ -312,7 +313,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [mutate, requestSolve])
 
   const handleDeleteMate = useCallback((featureId: string) => {
-    mutate(d => removeMate(d, featureId))
+    // Freeze the on-screen configuration into the seeds before dropping the
+    // constraint. The doc's seeds are stale (only a dragged part's seed is
+    // written back), so re-solving straight from them would restart the mate
+    // solver at the placement poses and snap every part -- especially the one the
+    // deleted mate positioned -- back to its drop spot, reading as parts
+    // vanishing. Baked first, the re-solve relaxes only the freed DOF.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => removeMate(bakeSolvedTransforms(d, transforms), featureId))
     mateSnapshot.current = null
     setEditingMateId(null)
     useAssemblyStore.getState().setSelectedMateId(null)

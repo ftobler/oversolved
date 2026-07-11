@@ -3,6 +3,7 @@ import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import {
   appendMate,
   appendPartInstance,
+  bakeSolvedTransforms,
   emptyAssemblyDoc,
   findMate,
   mateFeatures,
@@ -185,6 +186,36 @@ describe('setInstanceVisible / setInstanceFixed', () => {
       expect(handle).not.toBe(ASSEMBLY_HANDLE)
       doc = appendPartInstance(doc, `doc-${i}`, 1)
     }
+  })
+})
+
+describe('bakeSolvedTransforms', () => {
+  it('writes each instance solved pose into its seed, leaving flags alone', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
+    const [a, b] = instances(doc)
+    const poseA = { tx: 5, ty: -2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 }
+    const poseB = { tx: 9, ty: 8, tz: 7, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    const next = bakeSolvedTransforms(doc, { [a.handle]: poseA, [b.handle]: poseB })
+    const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
+    expect(map[a.handle].transform).toEqual(poseA)
+    expect(map[b.handle].transform).toEqual(poseB)
+    // Grounded flag untouched: baking is not a ground toggle.
+    expect(map[a.handle].fixed).toBe(true)
+    expect(map[b.handle].fixed).toBeUndefined()
+    // The written transform is a copy, not an alias of the solved map.
+    expect(map[a.handle].transform).not.toBe(poseA)
+    // Input doc is untouched.
+    expect(instances(doc)[0].transform).toEqual(IDENTITY_TRANSFORM)
+  })
+
+  it('keeps the seed for a part missing from the solved map', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const seed = instances(doc)[0].transform
+    const next = bakeSolvedTransforms(doc, {})
+    expect(instances(next)[0].transform).toEqual(seed)
   })
 })
 

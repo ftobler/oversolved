@@ -217,6 +217,38 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(Math.hypot(b1.tx - b0.tx, b1.ty - b0.ty, b1.tz - b0.tz)).toBeLessThan(0.01)
   })
 
+  // The delete-mate bug: a part positioned only by a mate is drawn at its solved
+  // pose while its doc seed still holds the far-away drop pose. Deleting the mate
+  // re-solves with no constraint left, so the solver echoes that stale seed and
+  // the part snaps back to the drop spot -- reading as the part vanishing. The UI
+  // fix (bakeSolvedTransforms) writes the solved pose into the seed first; this
+  // asserts both halves of that so a regression on either is caught.
+  it('a deleted mate snaps a part back to its stale seed unless the pose is baked', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(300, 0, 0) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+    // With the mate, pb solves onto pa at the origin, far from its drop seed.
+    const mated = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    expect(dist(mated.transforms['pb'])).toBeLessThan(0.01)
+
+    // Delete the mate, leaving the stale drop seed: pb springs back to (300,0,0).
+    const stale = await solveAssembly(parts, revs, [], relay, solveMate!)
+    expect(dist(stale.transforms['pb'])).toBeGreaterThan(100)
+
+    // Bake the solved pose into pb's seed first (what the UI now does), then the
+    // seed-echo holds the on-screen pose instead of teleporting the part.
+    const baked = parts.map(p => p.handle === 'pb'
+      ? { ...p, transform: { ...mated.transforms['pb'] } } : p)
+    const settled = await solveAssembly(baked, revs, [], relay, solveMate!)
+    expect(dist(settled.transforms['pb'])).toBeLessThan(0.01)
+  })
+
   it('bakes the solved transform into the rendered vertices', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },

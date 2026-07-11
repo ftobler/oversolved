@@ -136,6 +136,33 @@ export function setInstanceFixedFromSolved(
   }
 }
 
+// Freeze every instance's current solved pose into its seed transform, mirroring
+// what setInstanceFixedFromSolved bakes but without touching any grounded flag.
+//
+// The doc's seeds go stale between solves: only a dragged part's seed is written
+// back on pointer-up, so every other part is drawn at its solved pose while its
+// seed still holds the placement pose. A re-solve after a structural edit (a mate
+// deleted) restarts the mate solver from those stale seeds, which relaxes the
+// whole assembly off the configuration on screen -- a part positioned only by the
+// removed mate snaps back to its drop pose and looks like it vanished. Baking
+// first makes the next solve start from the current, already mate-satisfying
+// poses and only relax the freed DOF. A part with no solved pose (never solved)
+// keeps its own seed rather than losing it.
+export function bakeSolvedTransforms(
+  doc: AssemblyDoc,
+  transforms: Record<string, Transform3D>,
+): AssemblyDoc {
+  return {
+    ...doc,
+    features: features(doc).map(f => {
+      if (f.kind !== 'part_instance' || !f.instance) return f
+      const solved = transforms[f.instance.handle]
+      if (!solved) return f
+      return { ...f, instance: { ...f.instance, transform: { ...solved } } }
+    }),
+  }
+}
+
 // Show or hide one of the assembly's own built-in features (an origin or a
 // plane), keyed by feature id. Reference geometry is hidden by default, so this
 // is what a tree eye toggle writes.
