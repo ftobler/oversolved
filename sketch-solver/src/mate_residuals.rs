@@ -5,7 +5,7 @@
 //! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
 //!
 //! Residuals per mate kind:
-//! - Fixed:              point coincidence + offset (3) + axis cross (3) + seed-relative roll (1)
+//! - Fixed:              point coincidence + offset (3) + signed axis difference (3) + seed-relative roll (1)
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
 //! - Sliding:            axis cross (3) + perp displacement cross (3) + seed-relative roll pin (1)
@@ -57,6 +57,11 @@ pub struct MateProblem {
     /// (twist_a - twist_a0)`), so authoring a gear mate on two already-rotated
     /// bodies links their FUTURE rotation instead of snapping them together.
     seed_twist: Vec<(f64, f64)>,
+    /// Per-mate sign for `Fixed`'s signed axis-difference residual: +1 if the
+    /// two anchor axes point the same way at the seed pose, -1 if opposed. Frozen
+    /// at build time so the weld holds whichever alignment it was placed with and
+    /// never flips normal-to-antinormal between solves. 1.0 for non-Fixed mates.
+    fixed_axis_sign: Vec<f64>,
 }
 
 /// Residual count contributed by one mate of `kind`. A standalone function (not
@@ -94,6 +99,7 @@ impl MateProblem {
         // axes.
         let mut seed_axes: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
         let mut seed_twist: Vec<(f64, f64)> = vec![(0.0, 0.0); input.mates.len()];
+        let mut fixed_axis_sign: Vec<f64> = vec![1.0; input.mates.len()];
         for (i, m) in input.mates.iter().enumerate() {
             let wants_seed_roll = matches!(
                 m.kind,
@@ -113,6 +119,12 @@ impl MateProblem {
                 let twist_a0 = twist_angle(qa.0, qa.1, qa.2, qa.3, &seed_a);
                 let twist_b0 = twist_angle(qb.0, qb.1, qb.2, qb.3, &seed_b);
                 seed_twist[i] = (twist_a0, twist_b0);
+
+                // Freeze which way `Fixed` aligns the axes from the seed dot sign,
+                // so the weld holds its placed orientation. Perpendicular seeds
+                // (dot ~ 0) have no preferred side; default to +1.
+                let dot = seed_a[0] * seed_b[0] + seed_a[1] * seed_b[1] + seed_a[2] * seed_b[2];
+                fixed_axis_sign[i] = if dot < 0.0 { -1.0 } else { 1.0 };
             }
         }
 
@@ -125,34 +137,33 @@ impl MateProblem {
             m,
             seed_axes,
             seed_twist,
+            fixed_axis_sign,
         }
     }
 
-    /// Seed-relative roll: `(twist_b - twist_a) - ((twist_b0 - twist_a0) + extra_angle)`.
-    /// Shared by `Fixed`'s authored-angle roll pin (`extra_angle = mate.angle`)
-    /// and `Sliding`'s plain roll pin (`extra_angle = 0.0`; `Sliding` has no
-    /// `angle` param on the wire, see mateKinds.ts).
+    /// Seed-relative roll: `(roll_b - sign * roll_a) - sign * extra_angle`, where
+    /// each `roll_*` is how far that body has rolled about its OWN anchor axis
+    /// since the seed pose. Shared by `Fixed`'s authored-angle roll pin
+    /// (`extra_angle = mate.angle`) and `Sliding`'s plain roll pin
+    /// (`extra_angle = 0.0`; `Sliding` has no `angle` param on the wire, see
+    /// mateKinds.ts). `sign` is the seed axis-alignment sign (see
+    /// `fixed_axis_sign`): anti-parallel anchors roll in opposite senses about
+    /// the shared world axis, so `roll_b` tracks `-roll_a`.
     ///
-    /// Each twist is measured about the body's CURRENT world axis, not the
-    /// stored seed axis: `twist_angle(q, R(q)*axis)` isolates roll about the
-    /// body's own axis and is insensitive to swing, so it keeps constraining
-    /// roll about the shared axis even after a body swings 90 deg to align its
-    /// anchor with the other. Measuring about the fixed seed-pose axis left roll
-    /// unconstrained (dof 1) for any Fixed mate whose two anchors were not
-    /// already parallel -- the ordinary case of welding two arbitrarily placed
-    /// parts. The seed reference `seed_twist` was itself computed about
-    /// `world_direction(x0, ..)` (the current axis AT the seed pose), so this is
-    /// consistent: at the seed the two agree and the residual is zero.
+    /// Roll is measured on the delta rotation from the seed,
+    /// `q_delta = conj(q0) * q`, about the body-LOCAL axis -- not on the absolute
+    /// quaternion. The absolute twist `twist_angle(q, R(q)*axis)` is singular when
+    /// the body sits at a 180 deg rotation (`qw = 0`), which is exactly where a
+    /// face-to-face weld lands (part flipped to mate the two faces), and there it
+    /// left roll unconstrained (dof 1). `q_delta` stays near identity regardless
+    /// of the body's absolute pose, so it is well-conditioned across the swing
+    /// that aligns the anchors; it is zero at the seed, holding the placed roll.
     fn seed_roll_residual(&self, x: &[f64], mi: usize, off_a: usize, off_b: usize, extra_angle: f64) -> f64 {
         let mate = &self.mates[mi];
-        let a_w = normalise_axis(&world_direction(x, off_a, &mate.a.geometry.axis));
-        let b_w = normalise_axis(&world_direction(x, off_b, &mate.b.geometry.axis));
-        let (twist_a0, twist_b0) = self.seed_twist[mi];
-        let (qxa, qya, qza, qwa) = self.get_quat(x, off_a / 7);
-        let (qxb, qyb, qzb, qwb) = self.get_quat(x, off_b / 7);
-        let twist_a = twist_angle(qxa, qya, qza, qwa, &a_w);
-        let twist_b = twist_angle(qxb, qyb, qzb, qwb, &b_w);
-        (twist_b - twist_a) - ((twist_b0 - twist_a0) + extra_angle)
+        let sign = self.fixed_axis_sign[mi];
+        let roll_a = delta_twist(&self.x0, x, off_a, &mate.a.geometry.axis);
+        let roll_b = delta_twist(&self.x0, x, off_b, &mate.b.geometry.axis);
+        (roll_b - sign * roll_a) - sign * extra_angle
     }
 
     /// Build the residuals closure for `solve_lm`.
@@ -282,17 +293,20 @@ impl MateProblem {
                     r.push(pa[0] - pb[0] - mate.offset * a_w[0]);
                     r.push(pa[1] - pb[1] - mate.offset * a_w[1]);
                     r.push(pa[2] - pb[2] - mate.offset * a_w[2]);
-                    // Axis cross product: cross(a_w, b_w).
+                    // Axis alignment with a DEFINITE sign: a_w - sign * b_w.
+                    // cross(a_w, b_w) vanishes for both parallel and anti-parallel
+                    // b_w, so the weld could settle either way and flip a part
+                    // normal-to-antinormal between solves. The signed difference
+                    // is zero only when b_w points the way it did at the seed, so
+                    // the solve holds the placed orientation instead of choosing.
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    let cx = a_w[1] * b_w[2] - a_w[2] * b_w[1];
-                    let cy = a_w[2] * b_w[0] - a_w[0] * b_w[2];
-                    let cz = a_w[0] * b_w[1] - a_w[1] * b_w[0];
-                    r.push(cx);
-                    r.push(cy);
-                    r.push(cz);
-                    // Seed-relative roll: the axis cross above has rank 2, not 3 --
-                    // once the axes are parallel, rolling body B about the shared
-                    // axis leaves it at zero. This 7th residual is the missing rank.
+                    let s = self.fixed_axis_sign[mi];
+                    r.push(a_w[0] - s * b_w[0]);
+                    r.push(a_w[1] - s * b_w[1]);
+                    r.push(a_w[2] - s * b_w[2]);
+                    // Seed-relative roll: the axis difference above is rank 2 (both
+                    // are unit vectors), so rolling body B about the shared axis
+                    // leaves it at zero. This 7th residual is the missing rank.
                     r.push(self.seed_roll_residual(x, mi, off_a, off_b, mate.angle));
                 }
                 MateKind::Spherical => {
@@ -509,11 +523,12 @@ impl MateProblem {
                         mate.offset,
                     );
                     row += 3;
-                    // Axis cross.
-                    self.fill_axis_cross(
+                    // Signed axis difference: a_w - sign * b_w.
+                    self.fill_axis_difference(
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                        self.fixed_axis_sign[mi],
                     );
                     row += 3;
                     // Seed-relative roll about each body's current world axis.
@@ -737,6 +752,28 @@ impl MateProblem {
             for qi in 0..4 {
                 j[(r, off_a + 3 + qi)] += da_cross_b[qi][comp];
                 j[(r, off_b + 3 + qi)] += a_cross_db[qi][comp];
+            }
+        }
+    }
+
+    /// Signed axis difference: `a_w - sign * b_w` (3 residual components). Only
+    /// the quaternions carry the axes, so the translation columns stay zero.
+    #[allow(clippy::too_many_arguments)]
+    fn fill_axis_difference(
+        &self, j: &mut DMatrix<f64>, row0: usize,
+        off_a: usize, off_b: usize, x: &[f64],
+        axis_a: &[f64; 3], axis_b: &[f64; 3], sign: f64,
+    ) {
+        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
+        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
+        let da = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
+        let db = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, axis_b);
+
+        for comp in 0..3 {
+            let r = row0 + comp;
+            for qi in 0..4 {
+                j[(r, off_a + 3 + qi)] += da[qi][comp];
+                j[(r, off_b + 3 + qi)] += -sign * db[qi][comp];
             }
         }
     }
@@ -1000,6 +1037,36 @@ fn cross3(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
 fn twist_angle(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> f64 {
     let proj = qx * w[0] + qy * w[1] + qz * w[2];
     2.0 * proj.atan2(qw)
+}
+
+/// Quaternion conjugate (inverse for a unit quaternion). Layout (qx, qy, qz, qw).
+fn quat_conj(q: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
+    (-q.0, -q.1, -q.2, q.3)
+}
+
+/// Hamilton product a ⊗ b. Layout (qx, qy, qz, qw).
+fn quat_mul(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
+    let (ax, ay, az, aw) = a;
+    let (bx, by, bz, bw) = b;
+    (
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    )
+}
+
+/// Roll of a body about its own anchor `axis` (body-local) since the seed pose.
+/// Measured as the twist of the seed-relative delta rotation
+/// `q_delta = conj(q0) * q` about the local axis. `q_delta` stays near identity
+/// no matter the body's absolute orientation, so this is free of the 180 deg
+/// singularity that `twist_angle(q, R(q)*axis)` has (see `seed_roll_residual`).
+fn delta_twist(x0: &[f64], x: &[f64], off: usize, axis: &[f64; 3]) -> f64 {
+    let q0 = (x0[off + 3], x0[off + 4], x0[off + 5], x0[off + 6]);
+    let q = (x[off + 3], x[off + 4], x[off + 5], x[off + 6]);
+    let d = quat_mul(quat_conj(q0), q);
+    let ax = normalise_axis(axis);
+    twist_angle(d.0, d.1, d.2, d.3, &ax)
 }
 
 /// Gradient of twist_angle w.r.t. quaternion components.
@@ -1316,8 +1383,8 @@ mod tests {
             ],
         };
         let out = solve_mate(&input);
-        // The Parallel mate is redundant with Fixed's own axis-cross residual (both
-        // want the same two axes parallel), so the combined Jacobian's rank is
+        // The Parallel mate is redundant with Fixed's own axis-alignment residual
+        // (both want the same two axes parallel), so the combined Jacobian's rank is
         // unchanged: FullyConstrained, not Overconstrained. Asserted strictly, not
         // as an either/or -- a regression that quietly flips this to Overconstrained
         // must fail here, not hide behind the other branch.
@@ -2214,5 +2281,38 @@ mod tests {
         let qw = out.params_solved[13] as f64;
         let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
         assert!((roll_deg - 60.0).abs() < 1.5, "roll should be ~60 deg, got {}", roll_deg);
+    }
+
+    #[test]
+    fn fixed_mate_holds_anti_parallel_seed_without_flipping() {
+        // Body 1's anchor axis points opposite body 0's at the seed (its local +Z
+        // maps to world -Z via a 180 deg roll about X). A weld placed face-to-face
+        // like this must HOLD the anti-parallel alignment, not snap the part 180 deg
+        // to parallel. The old cross-product axis residual was blind to the sign and
+        // let it flip; the signed difference freezes the placed side.
+        let h = 90.0_f64.to_radians().sin(); // sin(90) = 1 -> 180 deg rotation quat
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, +Z axis
+                0.0, 0.0, 0.0, h as f32, 0.0, 0.0, 0.0, // body 1: 180 deg about X -> axis -Z
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        assert_eq!(out.diagnostics.dof, 0);
+        assert!(out.diagnostics.residual_norm < 1e-3);
+        // Body 1's world axis stays -Z: it did not flip to +Z. Rotating its local
+        // +Z by the solved quaternion must land near (0, 0, -1).
+        let q = (
+            out.params_solved[10] as f64, out.params_solved[11] as f64,
+            out.params_solved[12] as f64, out.params_solved[13] as f64,
+        );
+        let axis_w = rotate_vec(q.0, q.1, q.2, q.3, &[0.0, 0.0, 1.0]);
+        assert!(axis_w[2] < -0.9, "axis should stay anti-parallel (-Z), got {:?}", axis_w);
     }
 }
