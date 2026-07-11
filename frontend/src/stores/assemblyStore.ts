@@ -76,6 +76,18 @@ export interface AssemblyEditorData {
    * exist only for what these hits resolve to.
    */
   hoverHits: EntityHit[]
+  /**
+   * B-rep entities selected for measurement, keyed by `assemblyEntityKey`. This
+   * is the assembly's own selection, live only when no mate field is armed: the
+   * viewport is a dock-connector picker while authoring a mate and a plain B-rep
+   * selector otherwise. Positional keys renumber on re-solve, so a solve clears
+   * it (as it does hoverHits).
+   */
+  selection: Set<string>
+  /** The single entity under the cursor in B-rep selection mode; null when none. */
+  hoveredEntity: string | null
+  /** The ID-buffer debug renderpass overlay (mirrors the part editor's showDebugHit). */
+  showPickDebug: boolean
   /** Live drag/gizmo state; null between manipulations. */
   manipulation: ManipulationSession | null
   isSolving: boolean
@@ -104,6 +116,9 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   pickIndex: -1,
   pickScopeEntity: null,
   hoverHits: [],
+  selection: new Set(),
+  hoveredEntity: null,
+  showPickDebug: false,
   manipulation: null,
   isSolving: false,
   solveError: null,
@@ -123,6 +138,7 @@ const STORE_OWNED_FIELDS = [
   'activePartHandle', 'selectedPartHandle', 'manipulation',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
+  'selection', 'hoveredEntity', 'showPickDebug',
 ] as const
 
 /**
@@ -175,6 +191,12 @@ interface AssemblyEditorState extends AssemblyEditorData {
   /** Pointer moved: reveal the hovered entities' anchors; Ctrl narrows the scope. */
   setHoverHits: (hits: readonly EntityHit[], ctrlKey: boolean) => void
   clearHover: () => void
+  /** Add or remove one B-rep entity from the measurement selection. */
+  toggleSelection: (entityKey: string) => void
+  clearSelection: () => void
+  /** The lone entity highlighted under the cursor in B-rep selection mode. */
+  setHoveredEntity: (entityKey: string | null) => void
+  setShowPickDebug: (enabled: boolean) => void
   /** The reference a mate pick chip would commit right now; the set is retained. */
   activePickCandidate: () => MateRef | null
   /** Pointer-down on a part body or its triad. No-op for a grounded instance. */
@@ -234,8 +256,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // A re-solve can retire the anchors the aimed candidate named (a rebuilt
     // bundle sheds an anchor its feature deleted), so the stale set is dropped
     // rather than left pointing into the previous rev. The hover goes with it:
-    // its entity keys are positional and a rebuilt body renumbers them.
+    // its entity keys are positional and a rebuilt body renumbers them. The
+    // B-rep selection is positional too, so it clears for the same reason.
     pickCandidates: [], pickIndex: -1, hoverHits: [],
+    selection: new Set(), hoveredEntity: null,
   }),
 
   setDragSolveResult: (result) => set((prev) => ({
@@ -306,6 +330,23 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   }),
 
   clearHover: () => set({ hoverHits: [], pickScopeEntity: null }),
+
+  toggleSelection: (entityKey) => set((prev) => {
+    const next = new Set(prev.selection)
+    if (next.has(entityKey)) next.delete(entityKey)
+    else next.add(entityKey)
+    return { selection: next }
+  }),
+
+  clearSelection: () => set((prev) => (prev.selection.size === 0 ? {} : { selection: new Set() })),
+
+  // A hover that lands on the same entity re-sets an equal string, which Zustand
+  // treats as a no-op; only a real change re-renders the highlight.
+  setHoveredEntity: (entityKey) => set((prev) => (
+    prev.hoveredEntity === entityKey ? {} : { hoveredEntity: entityKey }
+  )),
+
+  setShowPickDebug: (enabled) => set({ showPickDebug: enabled }),
 
   activePickCandidate: () => {
     const { pickCandidates, pickIndex } = get()

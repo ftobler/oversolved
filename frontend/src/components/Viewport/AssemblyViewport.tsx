@@ -26,8 +26,11 @@ import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
 import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
+import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblySelectionHighlight'
 import RollGuideGizmo, { type RollGuideSpec } from '@/components/Viewport/assembly/RollGuideGizmo'
 import TriadGizmo from '@/components/Viewport/assembly/TriadGizmo'
+import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
+import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import IdPickingDriver from '@/picking/IdPickingDriver'
 import type { IdPipeline } from '@/picking'
@@ -86,8 +89,13 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   const pickScopeEntity = useAssemblyStore(s => s.pickScopeEntity)
   const pickCandidates = useAssemblyStore(s => s.pickCandidates)
   const pickIndex = useAssemblyStore(s => s.pickIndex)
+  const selection = useAssemblyStore(s => s.selection)
+  const hoveredEntity = useAssemblyStore(s => s.hoveredEntity)
+  const showPickDebug = useAssemblyStore(s => s.showPickDebug)
   // An armed mate chip turns the whole scene into a reference picker: a plain
   // click aims instead of grabbing, so authoring a mate never nudges a part.
+  // With no chip armed the viewport is a plain B-rep selector instead (faces,
+  // edges, planes for measurement), which is the part editor's normal mode.
   const aiming = useAssemblyStore(s => s.activeMateField !== null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -252,7 +260,9 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current)
     hoverFrame.current = 0
     hoverEvent.current = null
-    useAssemblyStore.getState().clearHover()
+    const store = useAssemblyStore.getState()
+    store.clearHover()  // the aiming-mode anchor hover
+    store.setHoveredEntity(null)  // the selection-mode B-rep hover
   }, [])
 
   const scheduleHover = useCallback((e: React.PointerEvent) => {
@@ -269,7 +279,17 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
       hoverFrame.current = 0
       const pending = hoverEvent.current
       if (!pending) return
-      useAssemblyStore.getState().setHoverHits(resolveHitsAt(pending), pending.ctrlKey)
+      const store = useAssemblyStore.getState()
+      const hits = resolveHitsAt(pending)
+      // Aiming reveals the hovered entity's anchor triads; the plain selector
+      // just highlights the single top entity a click would toggle. Read the
+      // mode from the store, not a captured prop, so a mid-hover mode switch is
+      // never one frame stale.
+      if (store.activeMateField !== null) {
+        store.setHoverHits(hits, pending.ctrlKey)
+      } else {
+        store.setHoveredEntity(hits[0]?.entityKey ?? null)
+      }
     })
   }, [clearHover, resolveHitsAt])
 
@@ -317,11 +337,20 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     }
   }, [adapter, clearHover, rayFromEvent, selectedPartHandle, triad])
 
+  // Pointer-down screen position, kept so pointer-up can tell a click from a
+  // drag: a body grab (which fires on the R3F mesh handler before this one) is
+  // still a select if the pointer never moved.
+  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
+
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
   // grazes the pane edge, and guarantees the release reaches us wherever it
   // lands — otherwise a session would hang with the camera locked.
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // Record before the active-gesture early-out: the mesh handler has already
+    // opened the grab by the time this bubbles up, so an early return here would
+    // lose the down position a plain select needs.
+    if (e.button === 0) pointerDownPos.current = { x: e.clientX, y: e.clientY }
     if (adapter.isActive()) {
       e.currentTarget.setPointerCapture(e.pointerId)
       return
@@ -351,10 +380,22 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    if (!adapter.isActive()) return
-    adapter.onPointerUp()  // commits the seed transform and asks for one re-solve
-    setManipulating(false)
-  }, [adapter])
+    const down = pointerDownPos.current
+    pointerDownPos.current = null
+    if (adapter.isActive()) {
+      adapter.onPointerUp()  // commits the seed transform and asks for one re-solve
+      setManipulating(false)
+    }
+    // Selection mode: a left click that never became a drag toggles the top
+    // entity under the cursor into the measurement set. A grab that moved the
+    // part committed above and is not a select. Aiming and Ctrl clicks are the
+    // mate picker's, handled on pointer-down, so they never fall through here.
+    const store = useAssemblyStore.getState()
+    if (store.activeMateField !== null || e.button !== 0 || !down || e.ctrlKey) return
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= CLICK_THRESHOLD_PX) return
+    const hits = resolveHitsAt(e)
+    if (hits.length > 0) store.toggleSelection(hits[0].entityKey)
+  }, [adapter, resolveHitsAt])
 
   // The browser tore the gesture away (a touch became a scroll, the pointer was
   // lost). Abandon it rather than commit a pose the user never released on.
@@ -379,7 +420,12 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
   const onPointerMissed = useCallback(() => {
     if (adapter.isActive()) return
-    useAssemblyStore.getState().setSelectedPartHandle(null)
+    const store = useAssemblyStore.getState()
+    store.setSelectedPartHandle(null)
+    // An empty-space click clears the B-rep selection too, the same "click off to
+    // deselect" the part editor gives. Not while aiming: the mate picker owns the
+    // click there and a miss simply aims at nothing.
+    if (store.activeMateField === null) store.clearSelection()
   }, [adapter])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
@@ -415,6 +461,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
         <IdPickingDriver onReady={onPipelineReady} />
         <AssemblyPickLayers bodies={pickGeometry} />
+        {showPickDebug && <IdDebugOverlay />}
 
         <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
         <EnvLight />
@@ -436,7 +483,21 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
           </group>
         ))}
 
-        <AnchorGizmos gizmos={gizmos} />
+        {/* B-rep selection highlight, only in the plain selector mode: the
+            aiming mode shows anchor triads over the same geometry instead. It is
+            also hidden mid-drag, where the pickGeometry it reads still holds the
+            pre-drag pose and would leave the highlight detached from the part. */}
+        {!aiming && !manipulating && (
+          <AssemblySelectionHighlight
+            pickBodies={pickGeometry}
+            selection={selection}
+            hovered={hoveredEntity}
+          />
+        )}
+
+        {/* Anchor triads are the dock-connector picker: shown only while a mate
+            field is armed. Out of that mode a stale hover must draw nothing. */}
+        {aiming && <AnchorGizmos gizmos={gizmos} />}
         <RollGuideGizmo spec={rollGuideSpec} />
 
         {triad && <TriadGizmo origin={triad.origin} orientation={triad.orientation} onGrab={handleGrabGizmo} />}

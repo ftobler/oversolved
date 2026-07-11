@@ -7,6 +7,11 @@ describe('assemblyStore', () => {
     useAssemblyStore.getState().setActivePartHandle(null)
     useAssemblyStore.getState().setIsSolving(false)
     useAssemblyStore.getState().setSolveError(null)
+    // selection/hoveredEntity/showPickDebug are store-owned, so setSnapshot does
+    // not reset them; clear explicitly to keep the selection tests isolated.
+    useAssemblyStore.getState().clearSelection()
+    useAssemblyStore.getState().setHoveredEntity(null)
+    useAssemblyStore.getState().setShowPickDebug(false)
   })
 
   it('default state has empty fields and null doc', () => {
@@ -97,5 +102,59 @@ describe('assemblyStore', () => {
     getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     expect(getState().doc).toBeNull()
     expect(getState().instances).toEqual([])
+  })
+
+  describe('B-rep selection', () => {
+    const EMPTY_SOLVE = {
+      transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
+      anchors: {}, pickGeometry: [], mateResults: {},
+    }
+
+    it('toggleSelection adds then removes an entity key', () => {
+      const { getState } = useAssemblyStore
+      getState().toggleSelection('P|0|face|2')
+      expect([...getState().selection]).toEqual(['P|0|face|2'])
+      getState().toggleSelection('P|0|face|2')
+      expect(getState().selection.size).toBe(0)
+    })
+
+    it('accumulates multiple selected entities', () => {
+      const { getState } = useAssemblyStore
+      getState().toggleSelection('a')
+      getState().toggleSelection('b')
+      expect(getState().selection).toEqual(new Set(['a', 'b']))
+    })
+
+    it('clearSelection empties the set', () => {
+      const { getState } = useAssemblyStore
+      getState().toggleSelection('a')
+      getState().clearSelection()
+      expect(getState().selection.size).toBe(0)
+    })
+
+    it('setHoveredEntity is a no-op when the key is unchanged', () => {
+      const { getState } = useAssemblyStore
+      getState().setHoveredEntity('a')
+      const first = getState().selection  // any stable ref to detect a re-set
+      getState().setHoveredEntity('a')
+      expect(getState().hoveredEntity).toBe('a')
+      expect(getState().selection).toBe(first)
+    })
+
+    it('a re-solve clears selection and hover (positional keys renumber)', () => {
+      const { getState } = useAssemblyStore
+      getState().toggleSelection('P|0|face|2')
+      getState().setHoveredEntity('P|0|edge|1')
+      getState().setSolveResult(EMPTY_SOLVE)
+      expect(getState().selection.size).toBe(0)
+      expect(getState().hoveredEntity).toBeNull()
+    })
+
+    it('setShowPickDebug toggles the debug renderpass flag', () => {
+      const { getState } = useAssemblyStore
+      expect(getState().showPickDebug).toBe(false)
+      getState().setShowPickDebug(true)
+      expect(getState().showPickDebug).toBe(true)
+    })
   })
 })

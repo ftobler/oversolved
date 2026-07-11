@@ -34,11 +34,13 @@ import {
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { MATE_KINDS, MATE_KIND_LABELS, EMPTY_MATE_REF } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
+import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
 import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance, AssemblyFeature } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import mateIcon from '@/assets/icons/constraint-coincident.svg'
 import exportIcon from '@/assets/icons/icon-download.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
+import measurementIcon from '@/assets/icons/measurement.svg'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
 
@@ -77,6 +79,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const mateResults = useAssemblyStore(s => s.mateResults)
   const solveError = useAssemblyStore(s => s.solveError)
+  const showPickDebug = useAssemblyStore(s => s.showPickDebug)
 
   // Snapshots taken when editing begins, so Cancel can revert every live edit
   // (mates and instances edit the doc in place; there is no other undo point).
@@ -500,6 +503,20 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       </div>
       <footer className="doc-footer">
         <p>Copyright 2026 - Oversolved</p>
+        <AssemblyMeasurementDisplay measurementIcon={measurementIcon} />
+        <div className="debug-buttons">
+          <button
+            className="footer-debug-btn"
+            title={showPickDebug ? 'Hide debug collision rendering' : 'Show debug collision rendering'}
+            onClick={() => useAssemblyStore.getState().setShowPickDebug(!showPickDebug)}
+          >
+            {showPickDebug ? (
+              <span className="material-icons-outlined">visibility</span>
+            ) : (
+              <span className="material-icons-outlined">visibility_off</span>
+            )}
+          </button>
+        </div>
       </footer>
       <AssemblyPartPicker
         isOpen={pickerOpen}
