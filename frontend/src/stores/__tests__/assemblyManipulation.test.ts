@@ -60,6 +60,29 @@ describe('assemblyStore part manipulation', () => {
     expect(useAssemblyStore.getState().manipulation).toBeNull()
   })
 
+  it('commit bakes each follower solved pose into its seed, not just the grabbed part', () => {
+    const { host } = mountHost(docWith(instance('p1'), instance('p2')))
+    // A prior solve left p2 (a follower) displayed away from its placement seed.
+    useAssemblyStore.getState().setSnapshot({
+      ...useAssemblyStore.getState(),
+      transforms: {
+        p1: { ...IDENTITY_TRANSFORM },
+        p2: { ...IDENTITY_TRANSFORM, tx: 20, ty: 0, tz: 0 },
+      },
+    })
+    const s = useAssemblyStore.getState()
+
+    s.beginPartManipulation('p1')
+    s.dragPartTranslate([3, 0, 0])
+    useAssemblyStore.getState().endPartManipulation()
+
+    // The grabbed part lands its dragged pose; the follower's seed is refreshed
+    // to its solved pose so the pointer-up solve does not restart from a stale
+    // placement seed.
+    expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3 })
+    expect(findInstance(host.doc, 'p2')!.transform).toMatchObject({ tx: 20 })
+  })
+
   it('gizmo rotation composes onto the instance quaternion and re-solves live then on commit', () => {
     const { host, requestSolve } = mountHost(docWith(instance('p1')))
     const s = useAssemblyStore.getState()

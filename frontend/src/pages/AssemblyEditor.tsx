@@ -184,7 +184,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   useCommandRegistration(commands)
 
   const handlePick = useCallback((docId: string, docRev: number) => {
-    mutate(d => appendPartInstance(d, docId, docRev))
+    // Bake the placed parts' solved poses into their seeds before adding one, so
+    // the re-solve that pulls in the new part keeps the existing assembly where
+    // it is on screen rather than restarting the whole solve from stale seeds.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => appendPartInstance(bakeSolvedTransforms(d, transforms), docId, docRev))
     requestSolve()  // the new instance has no bodies until the assembly re-solves
   }, [mutate, requestSolve])
 
@@ -201,7 +205,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [instances])
 
   const handleDelete = useCallback((handle: string) => {
-    mutate(d => removeInstance(d, handle))
+    // Freeze the on-screen poses first (same reason as handleDeleteMate):
+    // removing a part frees the mates that referenced it, so a re-solve straight
+    // from the stale placement seeds could snap the remaining parts back to their
+    // drop spots. Baked first, only the freed DOF relaxes.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => removeInstance(bakeSolvedTransforms(d, transforms), handle))
     if (useAssemblyStore.getState().selectedPartHandle === handle) {
       useAssemblyStore.getState().setSelectedPartHandle(null)
     }
@@ -267,7 +276,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const handleSetGrounded = groundOrUnground
 
   const handleSetPosition = useCallback((handle: string, pos: { tx: number; ty: number; tz: number }) => {
-    mutate(d => setInstancePosition(d, handle, pos))
+    // Bake first, then apply the reseat: the manual position overrides only the
+    // edited part, while every other part's seed is refreshed to its solved pose
+    // so the re-solve does not drag the rest of the assembly off screen from
+    // stale seeds. Baking before setInstancePosition also lets the edited part
+    // keep its solved orientation rather than the stale seed's.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => setInstancePosition(bakeSolvedTransforms(d, transforms), handle, pos))
     requestSolve()
   }, [mutate, requestSolve])
 

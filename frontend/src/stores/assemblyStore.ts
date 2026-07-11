@@ -4,7 +4,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { MateResult } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { findMate, setMateRef } from '@/utils/assemblyMutations'
+import { bakeSolvedTransforms, findMate, setMateRef } from '@/utils/assemblyMutations'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import { transformsEqual, type Vec3 } from '@/utils/transform3d'
 
@@ -389,7 +389,15 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const { changed } = commitManipulation(doc, manipulation)
     // A click that never moved the part must not dirty the doc or re-solve.
     if (!changed) return
-    callbacks.mutateDoc(d => commitManipulation(d, manipulation).doc)
+    // Bake every follower's live-solved pose into its seed before committing the
+    // grabbed part's new seed. A drag otherwise writes back only the grabbed
+    // part, leaving the followers' seeds at their placement poses; the cold
+    // pointer-up solve would then restart from those stale seeds and could
+    // relax the whole assembly off the pose the drag just previewed. Baking
+    // first (commitManipulation then overwrites the grabbed part) keeps the
+    // seeds in step with the screen, the same discipline the ground toggle uses.
+    const solved = get().transforms
+    callbacks.mutateDoc(d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation).doc)
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },
 
