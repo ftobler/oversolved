@@ -218,9 +218,12 @@ describe('build with mock solvers', () => {
     expect(r.pick_bodies).toBeDefined()
   })
 
-  it('pick_bodies carry real tessellated meshes from the checkpoint', () => {
-// A body that exists at the pick checkpoint must come back with real mesh/edge geometry
-// (collision for picking), not an empty placeholder.
+  it('pick_bodies carry real tessellated meshes for a mid-stack boundary (lazy)', () => {
+// A body that exists at a mid-stack pick checkpoint must come back with real
+// mesh/edge geometry (collision for picking). Under lazy checkpoint meshing the
+// intermediate checkpoint carries an EMPTY bodies_snapshot, so the mesh is
+// produced on demand by the pick path's tessellate fallback, not read from a
+// pre-stored snapshot.
     let created = false
     const deps = makeDeps({
       trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
@@ -251,9 +254,10 @@ describe('build with mock solvers', () => {
     )
     const pick = r.pick_bodies as Record<string, { mesh?: unknown }> | undefined
     expect(pick?.body_a?.mesh).toBeDefined()
-    // The checkpoint snapshot itself carries the real mesh, not `{}`.
+    // f1 is not the final feature, so its checkpoint snapshot is lazy (empty):
+    // the pick mesh above came from the on-demand tessellate fallback.
     const cp = r._build_state.checkpoints.f1
-    expect((cp.bodies_snapshot as Record<string, { mesh?: unknown }>).body_a.mesh).toBeDefined()
+    expect(Object.keys(cp.bodies_snapshot as object).length).toBe(0)
   })
 
   it('calls deps.tessellateBodies with the body store', () => {
