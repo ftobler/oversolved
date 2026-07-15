@@ -36,6 +36,24 @@ describe('EdgeIdLayer', () => {
     expect(reg.lookupKey(EDGE_LAYER_NAME, 'edge@B')).toBeDefined()
   })
 
+  it('perPrimitivePickKeys gives colliding queries distinct ids, both carrying the query', () => {
+    // Regression lock for the chamfer/curved-edge collision: two edges with the
+    // same query string must not share one ID. With per-primitive pick keys the
+    // IDs are distinct and each record still reports the (shared) query.
+    const dup = { bodyKey: 'b', segmentPositions: new Float32Array([
+      0, 0, 0,  1, 0, 0,   // seg 0 (edge 0)
+      0, 1, 0,  0, 2, 0,   // seg 1 (edge 1)
+    ]), segmentToEdge: new Uint32Array([0, 1]), edgeQueries: ['edge@dup', 'edge@dup'], perPrimitivePickKeys: true }
+    layer.registerBody(dup)
+    const seg = layer.scene.children[0] as import('three').LineSegments
+    const colorAttr = seg.geometry.getAttribute('aColor')
+    const id0 = rgbToId(colorAttr.getX(0) * 255, colorAttr.getY(0) * 255, colorAttr.getZ(0) * 255)
+    const id1 = rgbToId(colorAttr.getX(2) * 255, colorAttr.getY(2) * 255, colorAttr.getZ(2) * 255)
+    expect(id0).not.toBe(id1)
+    expect(reg.lookup(id0)!.entityKey).toBe('edge@dup')
+    expect(reg.lookup(id1)!.entityKey).toBe('edge@dup')
+  })
+
   it('each segment produces 2 vertices', () => {
     layer.registerBody(makeReg())
     const seg = layer.scene.children[0] as import('three').LineSegments

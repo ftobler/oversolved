@@ -160,12 +160,17 @@ interface SketchEditorState {
    // SELECTION SUBSYSTEM
   // Hovered selection — always reflects what entity/face/plane is directly under cursor.
   hoveredSelectionId: string | null
+  // Per-primitive pick key of the hovered b-rep primitive (bodyKey#index). Set
+  // alongside hoveredSelectionId for edges so hover highlight can isolate the
+  // single primitive under the cursor even when its query string is not unique.
+  hoveredPickKey: string | null
   // Normal selection — traditional selection, persists until explicitly changed.
   normalSelection: Set<string>
   // Derived domain of the current normal selection.
   selectionDomain: SelectionDomain
   isPointerDown: boolean
   setHoveredSelectionId: (id: string | null) => void
+  setHoveredPickKey: (key: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
   toggleNormalSelection: (id: string) => void
@@ -297,6 +302,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectionDomain: 'sketch_2d',
   hoveredSelectionId: null,
+  hoveredPickKey: null,
   isPointerDown: false,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
@@ -355,6 +361,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setHoveredSelectionId: (id) => set(s => {
     if (s.hoveredSelectionId === id) return s
     return { hoveredSelectionId: id }
+  }),
+
+  setHoveredPickKey: (key) => set(s => {
+    if (s.hoveredPickKey === key) return s
+    return { hoveredPickKey: key }
   }),
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),

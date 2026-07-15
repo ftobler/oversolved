@@ -25,6 +25,7 @@ import {
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
+import { bodyKeyFor, primitivePickKey } from '@/picking/pickKey'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -84,6 +85,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
+  const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
 
@@ -288,14 +290,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(COLOR_HOVER)
 
+    const bodyKey = bodyKeyFor(featureId, bodyId)
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
-      const edgeQuery = edgeQueries?.[edgeIdx] ?? topoFallbackQuery(featureId, 'edge', edgeIdx)
       let color: THREE.Color
       if (interactive) {
         if (getIsEdgeSelected(edgeIdx)) {
           color = selectedColor
-        } else if (edgeQuery === hoveredSelectionId) {
+        // Hover isolates the single hovered primitive by its pick key, not its
+        // query: two edges sharing a query must not co-highlight on hover.
+        } else if (hoveredPickKey !== null && primitivePickKey(bodyKey, edgeIdx) === hoveredPickKey) {
           color = hoverColor
         } else {
           color = defaultColor
@@ -314,7 +318,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredSelectionId, edgeColor, interactive, edgeQueries, featureId])
+  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredPickKey, edgeColor, interactive, featureId, bodyId])
 
   // Always update the color attribute -- faceColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.

@@ -40,9 +40,15 @@ export const brepVertexAdapter = {
  * Shared hover handler for adapters that simply set hoveredSelectionId.
  * Used by brepEdgeAdapter, brepVertexAdapter, planeAdapter, and the
  * sketch-surface inline handler in useIdBufferPointerDispatch.
+ *
+ * `pickKey` (when present) is the per-primitive identity of the hovered b-rep
+ * primitive; it lets the highlight isolate the single primitive under the
+ * cursor even when its query string collides with a sibling's.
  */
-export function setSelectionIdOnHover(entityKey: string): void {
-  useSketchEditorStore.getState().setHoveredSelectionId(entityKey)
+export function setSelectionIdOnHover(entityKey: string, pickKey?: string): void {
+  const s = useSketchEditorStore.getState()
+  s.setHoveredSelectionId(entityKey)
+  s.setHoveredPickKey(pickKey ?? null)
 }
 
 /**
@@ -52,6 +58,7 @@ export function setSelectionIdOnHover(entityKey: string): void {
 export function clearAllHover(): void {
   const s = useSketchEditorStore.getState()
   s.setHoveredSelectionId(null)
+  s.setHoveredPickKey(null)
   s.setHoveredVertex(null, null, null)
   s.setHoveredFaceGeometry(null, null)
   clearAllBodyHover()

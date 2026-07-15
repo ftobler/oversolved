@@ -5,6 +5,11 @@ export interface ResolvedHit {
   id: number
   layer: string
   entityKey: string
+  /** Per-primitive allocation identity (unique in the ID buffer). Used to
+   *  isolate the single hovered primitive; equals `entityKey` for layers that
+   *  pass no explicit pick key. Optional so hand-built hits (tests) can omit it;
+   *  the real resolver always populates it. */
+  pickKey?: string
   /** Pixel distance from the cursor center. */
   distancePx: number
 }
@@ -68,7 +73,7 @@ export function resolvePixelWindow(
 
       const existing = bestPerPrio.get(prio)
       if (!existing || dist < existing.distancePx) {
-        bestPerPrio.set(prio, { id, layer: rec.layer, entityKey: rec.entityKey, distancePx: dist })
+        bestPerPrio.set(prio, { id, layer: rec.layer, entityKey: rec.entityKey, pickKey: rec.pickKey, distancePx: dist })
       }
     }
   }
