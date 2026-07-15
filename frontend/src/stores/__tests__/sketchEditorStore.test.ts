@@ -59,6 +59,33 @@ describe('sketchEditorStore', () => {
       expect(sel.has('entity:S1:L1')).toBe(true)
       expect(sel.has('vertex:S1:L1:start')).toBe(true)
     })
+
+    it('records the pickKey in the live channel alongside the query', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('edge@q', 'ex1/b0#3')
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('edge@q')).toBe(true)
+      expect(s.selectedPickKeys.has('ex1/b0#3')).toBe(true)
+    })
+
+    it('drops the pickKey when the query is toggled back off', () => {
+      const { toggleNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('edge@q', 'ex1/b0#3')
+      toggleNormalSelection('edge@q', 'ex1/b0#3')
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('edge@q')).toBe(false)
+      expect(s.selectedPickKeys.has('ex1/b0#3')).toBe(false)
+    })
+
+    it('leaves the pickKey channel untouched for selections with no pickKey', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      expect(useSketchEditorStore.getState().selectedPickKeys.size).toBe(0)
+    })
+
+    it('clearNormalSelection empties the live pickKey channel', () => {
+      useSketchEditorStore.getState().toggleNormalSelection('edge@q', 'ex1/b0#3')
+      useSketchEditorStore.getState().clearNormalSelection()
+      expect(useSketchEditorStore.getState().selectedPickKeys.size).toBe(0)
+    })
   })
 
   describe('addToNormalSelection', () => {

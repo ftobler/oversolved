@@ -238,8 +238,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           sourceKind: findEdgeKindForQuery(hit.entityKey) ?? null,
         })
       } else {
-        // face / edge / vertex (B-rep) / plane / origin
-        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))
+        // face / edge / vertex (B-rep) / plane / origin. Carry the hit's
+        // per-primitive pickKey so the highlight isolates the exact primitive
+        // clicked even when its query collides with a sibling's. pickKey equals
+        // the query for layers with no per-primitive identity (planes, origin),
+        // so this is a no-op there.
+        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit), hit.pickKey)
       }
       setLastClickIdHit(true)
     }

@@ -26,6 +26,7 @@ import {
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor, primitivePickKey } from '@/picking/pickKey'
+import { computePrimitiveSelection } from '@/picking/selectionHighlight'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -87,6 +88,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const selectedPickKeys = useSketchEditorStore(s => s.selectedPickKeys)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
 
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
@@ -132,10 +134,22 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
   const isBodySelected = normalSelection.has('@' + bodyId)
 
-  const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
-    const query = edgeQueries?.[edgeIndex] ?? topoFallbackQuery(featureId, 'edge', edgeIndex)
-    return normalSelection.has(query)
-  }, [normalSelection, featureId, edgeQueries])
+  // Edge highlight is decoupled from the raw query set: the exact clicked edge
+  // (its pickKey) wins, and a sibling sharing its query does not co-highlight.
+  // Persisted picks (no live pickKey after a re-solve) fall back to query
+  // membership. See computePrimitiveSelection.
+  const edgeSelectionFlags = useMemo(() => {
+    const bodyKey = bodyKeyFor(featureId, bodyId)
+    const numEdges = Math.max(edgeQueries?.length ?? 0, edges.length)
+    const resolved = Array.from({ length: numEdges }, (_, i) =>
+      edgeQueries?.[i] ?? topoFallbackQuery(featureId, 'edge', i))
+    return computePrimitiveSelection(bodyKey, resolved, normalSelection, selectedPickKeys)
+  }, [featureId, bodyId, edgeQueries, edges, normalSelection, selectedPickKeys])
+
+  const getIsEdgeSelected = useCallback(
+    (edgeIndex: number): boolean => edgeSelectionFlags[edgeIndex] ?? false,
+    [edgeSelectionFlags],
+  )
 
   const geometry = useMemo(() => {
     const indexed = new THREE.BufferGeometry()
