@@ -8,7 +8,15 @@
  * Communicates with the parent via IPC (process.send / process.on).
  */
 
-import { solveLocally } from '@kernel/solveLocally'
+import { solveLocally, setOccLoader } from '@/kernel/solveLocally'
+import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+
+setOccLoader(loadOcc)
+setSketchSolver(loadSolver())
+setSketchTopology(loadTopology())
 
 process.on('message', async ({ id, spec, options }) => {
   try {

@@ -4,8 +4,8 @@
 
 import type { SelectionDomain } from '@/types/cad'
 
-export const devOnly = import.meta.env.DEV
-export const testMode = import.meta.env.MODE === 'test'
+export const devOnly = import.meta.env?.DEV ?? false
+export const testMode = import.meta.env?.MODE === 'test'
 
 /**
  * Emit a fail-loud signal when an invariant is violated.

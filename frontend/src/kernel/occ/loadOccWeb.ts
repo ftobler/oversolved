@@ -23,7 +23,7 @@ export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | nul
     console.log('[loadOccWeb] returning cached promise')
     return cached
   }
-  if (import.meta.env.MODE === 'test') {
+  if (import.meta.env?.MODE === 'test') {
     console.log('[loadOccWeb] test environment, skipping')
     return Promise.resolve(null)
   }
