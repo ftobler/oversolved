@@ -27,10 +27,10 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
-import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash } from '../geomHash'
+import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash, faceGeometryHash } from '../geomHash'
 import { edgeDescriptorOf, emitEdgeDescriptor, emitVertexDescriptor } from '../geomDescriptor'
 import { buildFaceQuery, faceTokens, edgeLineageTokens } from '../faceQuery'
-import { ref, makeAncestryQuery } from '../query'
+import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
@@ -180,6 +180,7 @@ interface SolidMeshOptions extends TessellateOptions {
   bodyId?: string
   profileQueries?: string[] | null
   faceLineage?: Record<string, string[]> | null
+  faceNames?: Record<string, string> | null
 }
 
 /**
@@ -235,6 +236,7 @@ function classifyFace(
   // A geom-keyed face lineage suppresses the body-wide profile blob so a single
   // per-face token is not shadowed by a cap (mirrors the edge path / Python).
   const fallbackPq = isGeomKeyedLineage(opts.faceLineage, 'gface_') ? null : opts.profileQueries
+  const uuid = opts.faceNames ? (opts.faceNames[faceGeometryHash(centroid, normal)] ?? null) : null
   const query = buildFaceQuery(
     opts.createdBy,
     opts.bodyId,
@@ -245,6 +247,7 @@ function classifyFace(
     fallbackPq,
     faceTokens(centroid, normal, opts.faceLineage ?? null),
     classifiers,
+    uuid,
   )
   return { classifiers, query }
 }
@@ -328,6 +331,7 @@ interface SolidEdgesOptions {
   bodyId?: string
   profileQueries?: string[] | null
   edgeLineage?: Record<string, string[]> | null
+  edgeNames?: Record<string, string> | null
 }
 
 interface SolidEdgesResult {
@@ -415,9 +419,14 @@ export function solidToEdges(
         const geomToken = desc
           ? emitEdgeDescriptor(desc)
           : ref(edgeGeometryHash(ed as unknown as Record<string, unknown>))
+        const uuid = opts.edgeNames
+          ? (opts.edgeNames[edgeGeometryHash(ed as unknown as Record<string, unknown>)] ?? null)
+          : null
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
         if (bodyId) {
-          const ids = [geomToken, ref(createdBy), ref(bodyId)]
+          const ids: string[] = []
+          if (uuid) ids.push(constructionUuidToken(uuid))
+          ids.push(geomToken, ref(createdBy), ref(bodyId))
           const eTokens = edgeLineageTokens(ed as unknown as Record<string, unknown>, opts.edgeLineage ?? null)
           if (eTokens.length) ids.push(...eTokens)
           else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)

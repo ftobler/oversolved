@@ -4,7 +4,7 @@
 
 import { faceGeometryHash, edgeGeometryHash } from "./geomHash"
 import { emitFaceDescriptor } from "./geomDescriptor"
-import { ref, makeAncestryQuery } from "./query"
+import { ref, makeAncestryQuery, constructionUuidToken } from "./query"
 
 /** Ancestry query string for a face, or null if createdBy is absent. */
 export function buildFaceQuery(
@@ -17,14 +17,17 @@ export function buildFaceQuery(
   profileQueries: string[] | null = null,
   faceTokens: string[] | null = null,
   classifiers: string[] | null = null,
+  uuid: string | null = null,
 ): string | null {
   if (!createdBy) return null
   if (bodyId) {
-    // The descriptor token replaces the old gface_/gnormal_ digest pair: it
-    // carries centroid+normal in the clear, so the resolver can match with
-    // tolerance when the centroid drifts instead of going stale (see
-    // geomDescriptor.ts). Digests remain the lineage-map keys only.
-    const ids = [emitFaceDescriptor(centroid, normal), ref(createdBy), ref(bodyId)]
+    // The construction UUID (query-naming-by-construction) is the primary
+    // identity token, emitted first. The descriptor token stays alongside it as
+    // a tolerant fallback until Stage 6 removes it; digests remain lineage-map
+    // keys only.
+    const ids: string[] = []
+    if (uuid) ids.push(constructionUuidToken(uuid))
+    ids.push(emitFaceDescriptor(centroid, normal), ref(createdBy), ref(bodyId))
     if (faceTokens && faceTokens.length) ids.push(...faceTokens)
     else if (profileQueries && profileQueries.length) ids.push(...profileQueries)
     // Classifier tokens (spatial role) ride the id list; the resolver

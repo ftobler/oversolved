@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import fixture from "./occ/__fixtures__/faceQueries.json"
 import { buildFaceQuery, faceTokens, edgeLineageTokens } from "./faceQuery"
+import { constructionUuidToken, parseAncestry } from "./query"
 
 type BuildArgs = {
   created_by: string | null
@@ -35,6 +36,26 @@ describe("buildFaceQuery wire-format pin", () => {
       expect(result).toBe(c.expected)
     })
   }
+})
+
+// Stage 4 (query-naming-by-construction): the construction UUID rides the query
+// as the first, primary identity token, alongside the descriptor for now.
+describe("buildFaceQuery emits the @u| construction token", () => {
+  const uuid = "u_deadbeefcafe0001"
+  it("prepends @u| as the first id when a uuid is given", () => {
+    const q = buildFaceQuery("f1", "body_0", 0, [1, 2, 3], [0, 0, 1], "plane", null, null, null, uuid)
+    expect(q).not.toBeNull()
+    const [ids] = parseAncestry(q as string)
+    expect(ids[0]).toBe(constructionUuidToken(uuid))
+    // Dual-run: the descriptor stays alongside the UUID until Stage 6.
+    expect(ids.some((i) => i.startsWith("@gdf|"))).toBe(true)
+  })
+  it("omits @u| when no uuid is given (unchanged legacy shape)", () => {
+    const q = buildFaceQuery("f1", "body_0", 0, [1, 2, 3], [0, 0, 1], "plane")
+    expect(q).not.toBeNull()
+    const [ids] = parseAncestry(q as string)
+    expect(ids.some((i) => i.startsWith("@u|"))).toBe(false)
+  })
 })
 
 describe("faceTokens / edgeLineageTokens parity", () => {
