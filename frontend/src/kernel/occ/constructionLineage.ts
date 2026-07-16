@@ -9,7 +9,7 @@ import type { OccModule, OccShape } from './occTypes'
 import { edgeToGeom, faceCentroid, faceNormal, faceArea } from './primitives'
 import { faceGh, edgeGh } from './lineageHash'
 import { normalToFrame, projectWorldToFrame } from '../types3d'
-import { deriveEdgeUuid, orderSplitChildren, type SplitChild } from '../constructionName'
+import { deriveEdgeUuid, deriveSeamEdgeUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 
 /**
  * A child face centroid expressed in its split parent's normalized in-plane
@@ -80,11 +80,17 @@ export function deriveEdgeNames(
   const edgeNames: Record<string, string> = {}
   const edgeAncestry: Record<string, string[]> = {}
   const byPair: Record<string, string[]> = {}  // "uuidA|uuidB" -> [edge gh...]
+  const bySingle: Record<string, string[]> = {}  // "uuidA" -> [seam edge gh...]
   for (const [egh, uuidSet] of Object.entries(adjacency)) {
     const distinct = [...uuidSet]
-    if (distinct.length !== 2) continue
-    const pairKey = [...distinct].sort().join('|')
-    ;(byPair[pairKey] ??= []).push(egh)
+    // Two named faces -> a normal edge; one named face -> a seam edge (e.g. a
+    // cylinder's lateral seam). Both must get a UUID so no pickable edge is left
+    // with only the ambiguous createdBy+classifiers fallback query.
+    if (distinct.length === 2) {
+      (byPair[[...distinct].sort().join('|')] ??= []).push(egh)
+    } else if (distinct.length === 1) {
+      (bySingle[distinct[0]] ??= []).push(egh)
+    }
   }
   for (const [pairKey, eghs] of Object.entries(byPair)) {
     const [a, b] = pairKey.split('|')
@@ -103,6 +109,22 @@ export function deriveEdgeNames(
       const tokens: string[] = []
       for (const fu of [a, b]) for (const t of faceAncestry[fu] ?? []) if (!tokens.includes(t)) tokens.push(t)
       edgeAncestry[uuid] = tokens
+    })
+  }
+  for (const [faceUuid, eghs] of Object.entries(bySingle)) {
+    let ordered: string[] | null = eghs
+    if (eghs.length > 1) {
+      const children: SplitChild<string>[] = eghs.map((egh) => ({
+        item: egh,
+        key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+      }))
+      ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
+    }
+    if (ordered === null) continue
+    ordered.forEach((egh, i) => {
+      const uuid = deriveSeamEdgeUuid(faceUuid, eghs.length > 1 ? i : 0)
+      edgeNames[egh] = uuid
+      edgeAncestry[uuid] = [...(faceAncestry[faceUuid] ?? [])]
     })
   }
   return { edgeNames, edgeAncestry }

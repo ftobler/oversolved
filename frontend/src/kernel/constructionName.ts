@@ -76,6 +76,19 @@ export function deriveEdgeUuid(faceUuidA: string, faceUuidB: string, multiplicit
 }
 
 /**
+ * A seam edge lies on a single face (e.g. a cylinder's lateral seam), so it has
+ * no face pair to derive from. Its identity is that one face's UUID plus a
+ * `|seam` role marker, so the path can never collide with a two-face edge path
+ * (which is always `uuidA|uuidB` with distinct halves). `multiplicity` orders
+ * the rare case of one face carrying more than one seam edge.
+ */
+export function deriveSeamEdgeUuid(faceUuid: string, multiplicity = 0): string {
+  const base = `${faceUuid}|seam`
+  const path = multiplicity > 0 ? `${base}|${multiplicity}` : base
+  return EDGE_UUID_PREFIX + shortHash(path)
+}
+
+/**
  * A vertex is where >=3 faces meet, so its identity is the (unordered) set of
  * adjacent face UUIDs. `multiplicity` handles >1 vertex per face set, mirroring
  * `deriveEdgeUuid`.

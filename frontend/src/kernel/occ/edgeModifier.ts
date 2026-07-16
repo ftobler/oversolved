@@ -203,6 +203,18 @@ function extractNames(
   const faceNames: Names = {}
   const faceAncestry: Lineage = {}
 
+  // Modified()/Generated() hand back faces carrying a FORWARD orientation, but
+  // every downstream consumer (deriveEdgeNames, tessellation, registration)
+  // explores faces from the built SOLID, where the shell orients each face
+  // outward. faceGh is normal-signed, so the two disagree for any face the op
+  // reshaped, leaving its edges unnamed. Canonicalize every minted key to the
+  // built-solid face reached by IsSame (orientation-independent identity).
+  const builtFaces = exploreFaces(oc, scope, newShape)
+  const builtGh = (f: OccShape): string => {
+    const same = builtFaces.find((bf) => (bf as OccSubShape).IsSame(f as OccSubShape))
+    return faceGh(oc, scope, asFace(oc, same ?? f))
+  }
+
   // Step 1: old named faces -> output faces via Modified() (subshape identity).
   for (const oldF of exploreFaces(oc, scope, oldShape)) {
     const uuid = old.faceNames[faceGh(oc, scope, asFace(oc, oldF))]
@@ -221,7 +233,7 @@ function extractNames(
       faceNames[faceGh(oc, scope, asFace(oc, oldF))] = uuid
       faceAncestry[uuid] = [...ancestry]
     } else if (mods.length === 1) {
-      faceNames[faceGh(oc, scope, asFace(oc, mods[0]))] = uuid
+      faceNames[builtGh(mods[0])] = uuid
       faceAncestry[uuid] = [...ancestry]
     } else {
       const ordered = orderSplitChildren(
@@ -230,7 +242,7 @@ function extractNames(
       if (ordered === null) continue  // ambiguous -> ancestral fallback
       ordered.forEach((m, i) => {
         const childUuid = mintFaceUuid(splitFacePath(uuid, i))
-        faceNames[faceGh(oc, scope, asFace(oc, m))] = childUuid
+        faceNames[builtGh(m)] = childUuid
         faceAncestry[childUuid] = [...ancestry]
       })
     }
@@ -252,7 +264,7 @@ function extractNames(
     for (const g of generated) for (const gf of exploreFaces(oc, scope, g)) genFaces.push(gf)
     const base = mintFaceUuid(filletFacePath(old.createdBy, edgeUuid))
     const assign = (face: OccShape, uuid: string): void => {
-      const gh = faceGh(oc, scope, asFace(oc, face))
+      const gh = builtGh(face)
       if (gh in faceNames) return
       faceNames[gh] = uuid
       faceAncestry[uuid] = [...edgeAncestry]
