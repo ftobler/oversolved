@@ -319,10 +319,7 @@ function genId(): string {
 
 export class Repository {
   elements = new Map<string, unknown>()
-  // canonical frozenset key -> entry (preserves insertion order, like dict)
   ancestral = new Map<string, AncestralEntry>()
-  byGeomHash = new Map<string, string[]>()
-  // construction UUID -> registered element ids (the primary identity index)
   byUuid = new Map<string, string[]>()
   featureIndex = new Map<string, number>()
 
@@ -330,10 +327,7 @@ export class Repository {
     this.featureIndex = new Map(featureOrder.map((fid, i) => [fid, i]))
   }
 
-  private pruneGeomHash(): void {
-    for (const [h, eids] of [...this.byGeomHash]) {
-      if (!eids.some(eid => this.elements.has(eid))) this.byGeomHash.delete(h)
-    }
+  private pruneUuid(): void {
     for (const [u, eids] of [...this.byUuid]) {
       if (!eids.some(eid => this.elements.has(eid))) this.byUuid.delete(u)
     }
@@ -346,7 +340,6 @@ export class Repository {
   registerAncestor(
     ancestors: string[],
     obj: unknown,
-    geomHash: string | null = null,
     uuid: string | null = null,
   ): string {
     const id = genId()
@@ -358,11 +351,6 @@ export class Repository {
     }
     entry.eids.push(id)
     this.elements.set(id, obj)
-    if (geomHash !== null) {
-      const list = this.byGeomHash.get(geomHash) ?? []
-      list.push(id)
-      this.byGeomHash.set(geomHash, list)
-    }
     if (uuid !== null) {
       const list = this.byUuid.get(uuid) ?? []
       list.push(id)
@@ -389,7 +377,7 @@ export class Repository {
         this.ancestral.delete(key)
       }
     }
-    this.pruneGeomHash()
+    this.pruneUuid()
   }
 
   featureIdxOfElement(eid: string): number | null {
@@ -466,7 +454,6 @@ export class Repository {
   ): unknown {
     const orderFilter = this.orderFilter(currentFeatureId)
 
-    const hashIds = ids.filter(isGeomHashId)
     const classifierIds = ids.filter(isClassifierId)
     const descriptorIds = ids.filter(isGeomDescriptorId)
     const uuidIds = ids.filter(isConstructionUuidId)
@@ -478,11 +465,7 @@ export class Repository {
         !isConstructionUuidId(i),
     )
 
-    // Primary tier: construction UUID exact match (query-naming-by-construction).
-    // 99.99%+ of resolutions land here; it short-circuits the ancestral scan. A
-    // UUID that no longer names any element (an upstream edit changed the slot)
-    // falls through to the ancestral net below. >1 hit is impossible by
-    // construction, so it fails loud rather than guessing.
+    // Primary tier: construction UUID exact match.
     for (const tok of uuidIds) {
       const uuid = parseConstructionUuidId(tok)
       if (uuid === null) continue
@@ -518,9 +501,6 @@ export class Repository {
       if (exactMatches.length) {
         candidateIds = exactMatches
       } else {
-        // Collect every distinct coercion result; >1 distinct is ambiguous and
-        // must fail loud (fail-safe over fail-wrong). Same-object coercions
-        // (several faces -> one solid) dedupe to a single clean result.
         const coercedResults: unknown[] = []
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
@@ -542,8 +522,6 @@ export class Repository {
     }
 
     if (candidateIds.length > 1 && classifierIds.length) {
-      // Stable tier BEFORE the geom hash: narrow ancestral siblings by spatial
-      // role. Graceful: applied only when it leaves a non-empty set.
       const wanted = new Set(classifierIds.map(c => c.slice(1)))
       const narrowed = candidateIds.filter(eid => {
         const el = this.elements.get(eid)
@@ -554,10 +532,8 @@ export class Repository {
     }
 
     if (candidateIds.length > 1 && descriptorIds.length) {
-      // Descriptor tier (query-descriptor-identity): tolerance matching against
-      // the candidates' registered geometry. Gate by kind/orientation, then
-      // tight window, then nearest-with-margin; a near-tie refuses to narrow so
-      // the >1 leftover fails loud below (fail-safe over fail-wrong).
+      // Descriptor tier: vertex identity (@gdv|), pending vertex construction
+      // UUID emission. Face/edge descriptors were removed in Stage 6.
       for (const dTok of descriptorIds) {
         if (candidateIds.length <= 1) break
         const qd = parseGeomDescriptorId(dTok)
@@ -566,24 +542,6 @@ export class Repository {
           eid => [eid, descriptorOfElement(this.elements.get(eid))] as [string, GeomDescriptor | null],
         )
         candidateIds = narrowByDescriptor(qd, pairs)
-      }
-    }
-
-    if (candidateIds.length > 1 && hashIds.length) {
-      // Legacy digest tie-break (pre-descriptor docs): precise element hash
-      // first, then the @gnormal_ orientation-only fallback, staying within the
-      // ancestry-matched set so @gnormal_ never reaches across lineages.
-      const preciseHashes = hashIds.filter(h => !h.startsWith("@gnormal_")).map(h => h.slice(1))
-      const normalHashes = hashIds.filter(h => h.startsWith("@gnormal_")).map(h => h.slice(1))
-      for (const tier of [preciseHashes, normalHashes]) {
-        if (candidateIds.length <= 1) break
-        for (const geomHashStr of tier) {
-          const hashSet = new Set(
-            (this.byGeomHash.get(geomHashStr) ?? []).filter(eid => this.elements.has(eid)),
-          )
-          const narrowed = candidateIds.filter(eid => hashSet.has(eid))
-          if (narrowed.length) candidateIds = narrowed
-        }
       }
     }
 
@@ -601,26 +559,8 @@ export class Repository {
       if (partialCandidates.length === 1) return this.elements.get(partialCandidates[0]) ?? null
     }
 
-    if (!candidateIds.length && hashIds.length) {
-      // No ancestry matched: resolve by the precise hash only. The @gnormal_
-      // fallback is skipped here (without an ancestry bound it would match
-      // across unrelated lineages).
-      const preciseHashes = hashIds.filter(h => !h.startsWith("@gnormal_")).map(h => h.slice(1))
-      const geomHashStr = preciseHashes.length ? preciseHashes[0] : hashIds[0].slice(1)
-      let fallbackIds = (this.byGeomHash.get(geomHashStr) ?? []).filter(eid => this.elements.has(eid))
-      if (typeRestriction !== null) {
-        fallbackIds = fallbackIds.filter(eid => objType(this.elements.get(eid)) === typeRestriction)
-      }
-      candidateIds = orderFilter(fallbackIds)
-    }
-
     if (!candidateIds.length && descriptorIds.length) {
-      // Descriptor analogue of the precise-hash-only rule: without an ancestry
-      // bound, match TIGHT only. Nearest-with-margin is deliberately excluded
-      // here -- a loose global match could reach across unrelated lineages.
-      // First-parseable-descriptor wins (mirrors the legacy preciseHashes[0]
-      // first-wins); a query with mixed descriptor kinds is unusual and the
-      // second token simply goes unused at this tier.
+      // Descriptor-only fallback: without an ancestry bound, match TIGHT only.
       const qd = descriptorIds.map(parseGeomDescriptorId).find(d => d !== null) ?? null
       if (qd !== null) {
         const fallbackIds: string[] = []
@@ -717,7 +657,6 @@ export function evictAncestryAndRegister(
   ancestorIds: string[],
   payload: Record<string, unknown>,
   indexTag: string | null = null,
-  geomHash: string | null = null,
   uuid: string | null = null,
 ): string {
   const key = canonical(ancestorIds)
@@ -737,15 +676,11 @@ export function evictAncestryAndRegister(
     repo.ancestral.delete(key)
   }
 
-  // prune stale geom-hash / uuid entries (matches Python _prune_geom_hash)
-  for (const [h, eids] of [...repo.byGeomHash]) {
-    if (!eids.some(eid => repo.elements.has(eid))) repo.byGeomHash.delete(h)
-  }
   for (const [u, eids] of [...repo.byUuid]) {
     if (!eids.some(eid => repo.elements.has(eid))) repo.byUuid.delete(u)
   }
 
-  return repo.registerAncestor(ancestorIds, payload, geomHash, uuid)
+  return repo.registerAncestor(ancestorIds, payload, uuid)
 }
 
 // ─── Plane/point helpers (port of solver_plane) ───

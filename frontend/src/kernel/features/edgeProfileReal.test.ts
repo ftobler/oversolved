@@ -66,7 +66,8 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
       createdBy: body.created_by,
       bodyId: body.id,
       profileQueries: body.profile_queries,
-      edgeLineage: body.edge_lineage,
+      edgeAncestry: body.edge_ancestry ?? null,
+      edgeNames: body.edge_names ?? null,
     })
     const out: string[] = []
     for (let i = 0; i < edges.length; i++) {

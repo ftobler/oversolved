@@ -98,7 +98,7 @@ function tessellateBodies(
       const mesh = solidToMesh(oc, table, body.shape, {
         createdBy: body.created_by || '',
         bodyId: body.id,
-        faceLineage: body.face_lineage ?? null,
+        faceAncestry: body.face_ancestry ?? null,
         faceNames: body.face_names ?? null,
         profileQueries: body.profile_queries ?? [],
       })
@@ -106,7 +106,7 @@ function tessellateBodies(
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
-        edgeLineage: body.edge_lineage ?? null,
+        edgeAncestry: body.edge_ancestry ?? null,
         edgeNames: body.edge_names ?? null,
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {
@@ -154,7 +154,7 @@ export function extractBrepMetadata(
       const { face_data, face_queries } = readShapeFaceMetadata(oc, scope, solid, {
         createdBy: body.created_by || '',
         bodyId: body.id,
-        faceLineage: body.face_lineage ?? null,
+        faceAncestry: body.face_ancestry ?? null,
         faceNames: body.face_names ?? null,
         profileQueries: body.profile_queries ?? [],
       })
@@ -170,7 +170,7 @@ export function extractBrepMetadata(
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
-        edgeLineage: body.edge_lineage ?? null,
+        edgeAncestry: body.edge_ancestry ?? null,
         edgeNames: body.edge_names ?? null,
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {

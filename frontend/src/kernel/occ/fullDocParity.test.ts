@@ -263,7 +263,8 @@ function tessellateBodies(
       const mesh = solidToMesh(ocMod, table, body.shape, {
         createdBy: body.created_by || '',
         bodyId: body.id,
-        faceLineage: body.face_lineage ?? null,
+        faceAncestry: body.face_ancestry ?? null,
+        faceNames: body.face_names ?? null,
         profileQueries: body.profile_queries ?? [],
       })
       const edges = solidToEdges(ocMod, table, body.shape).edges

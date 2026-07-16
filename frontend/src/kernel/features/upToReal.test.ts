@@ -53,7 +53,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
   function bottomLoop(table: HandleTable, body: Body): string[] {
     const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
       createdBy: body.created_by, bodyId: body.id,
-      profileQueries: body.profile_queries, edgeLineage: body.edge_lineage,
+      profileQueries: body.profile_queries,
+      edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
     })
     const out: string[] = []
     for (let i = 0; i < edges.length; i++) {

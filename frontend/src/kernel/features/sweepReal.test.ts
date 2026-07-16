@@ -156,7 +156,8 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
             try {
               const mesh = solidToMesh(oc!, table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id,
-                faceLineage: body.face_lineage ?? null, profileQueries: body.profile_queries ?? [],
+                faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
+                profileQueries: body.profile_queries ?? [],
               })
               out[body.id] = { mesh, edges: [], edge_queries: [] }
             } catch { /* non-fatal */ }

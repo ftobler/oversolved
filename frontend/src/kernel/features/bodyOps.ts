@@ -173,7 +173,7 @@ export function applyBodyOperation(
         diff,
         oldTargetShape: oldShape,
         toolShape,
-        faceLineage: existingBody.face_lineage,
+        faceLineage: existingBody.face_lineage ?? {},
         toolFaceLineage: tlFace,
       })
       const names = transferBooleanNames(oc, scope, {
@@ -297,7 +297,7 @@ export function applyBodyOperation(
         diff,
         oldTargetShape: oldShape,
         toolShape,
-        faceLineage: existingBody.face_lineage,
+        faceLineage: existingBody.face_lineage ?? {},
         toolFaceLineage: tlFace,
       })
       const names = transferBooleanNames(oc, scope, {

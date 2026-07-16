@@ -114,8 +114,8 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         if (exp.volume !== null && body.shape !== null) {
           expect(volumeOf(occ, scope, table.get<OccShape>(body.shape))).toBeCloseTo(exp.volume, 3)
         }
-        expect(sortLineage(body.face_lineage)).toEqual(sortLineage(exp.face_lineage))
-        expect(sortLineage(body.edge_lineage)).toEqual(sortLineage(exp.edge_lineage))
+        expect(sortLineage(body.face_lineage ?? {})).toEqual(sortLineage(exp.face_lineage))
+        expect(sortLineage(body.edge_lineage ?? {})).toEqual(sortLineage(exp.edge_lineage))
       }
     } finally {
       scope.dispose()

@@ -48,7 +48,7 @@ export class SharedHarness {
               const mesh = solidToMesh(this.oc, this.table, body.shape, {
                 createdBy: body.created_by || '',
                 bodyId: body.id,
-                faceLineage: body.face_lineage ?? null,
+                faceAncestry: body.face_ancestry ?? null,
                 faceNames: body.face_names ?? null,
                 profileQueries: body.profile_queries ?? [],
               })
@@ -56,7 +56,7 @@ export class SharedHarness {
                 createdBy: body.created_by || '',
                 bodyId: body.id,
                 profileQueries: body.profile_queries ?? [],
-                edgeLineage: body.edge_lineage ?? null,
+                edgeAncestry: body.edge_ancestry ?? null,
                 edgeNames: body.edge_names ?? null,
               })
               const vertexResult = solidToVertices(this.oc, this.table, body.shape, {

@@ -108,11 +108,13 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
             try {
               const mesh = solidToMesh(oc!, table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id,
-                faceLineage: body.face_lineage ?? null, profileQueries: body.profile_queries ?? [],
+                faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
+                profileQueries: body.profile_queries ?? [],
               })
               const edgeResult = solidToEdges(oc!, table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id,
-                profileQueries: body.profile_queries ?? [], edgeLineage: body.edge_lineage ?? null,
+                profileQueries: body.profile_queries ?? [],
+                edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
               })
               const vertexResult = solidToVertices(oc!, table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id, profileQueries: body.profile_queries ?? [],

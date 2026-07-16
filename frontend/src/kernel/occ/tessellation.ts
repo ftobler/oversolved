@@ -27,9 +27,9 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
-import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash, faceGeometryHash } from '../geomHash'
-import { edgeDescriptorOf, emitEdgeDescriptor, emitVertexDescriptor } from '../geomDescriptor'
-import { buildFaceQuery, faceTokens, edgeLineageTokens } from '../faceQuery'
+import { geometryClassifiers, edgeGeometryHash, faceGeometryHash } from '../geomHash'
+import { emitVertexDescriptor } from '../geomDescriptor'
+import { buildFaceQuery } from '../faceQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
 
@@ -179,7 +179,7 @@ interface SolidMeshOptions extends TessellateOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
-  faceLineage?: Record<string, string[]> | null
+  faceAncestry?: Record<string, string[]> | null
   faceNames?: Record<string, string> | null
 }
 
@@ -233,10 +233,9 @@ function classifyFace(
   opts: SolidMeshOptions,
 ): { classifiers: string[]; query: string | null } {
   const classifiers = geometryClassifiers(centroid, center, half)
-  // A geom-keyed face lineage suppresses the body-wide profile blob so a single
-  // per-face token is not shadowed by a cap (mirrors the edge path / Python).
-  const fallbackPq = isGeomKeyedLineage(opts.faceLineage, 'gface_') ? null : opts.profileQueries
   const uuid = opts.faceNames ? (opts.faceNames[faceGeometryHash(centroid, normal)] ?? null) : null
+  const ancestorTokens = (uuid && opts.faceAncestry) ? (opts.faceAncestry[uuid] ?? null) : null
+  const fallbackPq = ancestorTokens ? null : opts.profileQueries
   const query = buildFaceQuery(
     opts.createdBy,
     opts.bodyId,
@@ -245,7 +244,7 @@ function classifyFace(
     normal,
     surfaceType,
     fallbackPq,
-    faceTokens(centroid, normal, opts.faceLineage ?? null),
+    ancestorTokens,
     classifiers,
     uuid,
   )
@@ -330,7 +329,7 @@ interface SolidEdgesOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
-  edgeLineage?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
   edgeNames?: Record<string, string> | null
 }
 
@@ -406,34 +405,25 @@ export function solidToEdges(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)
-      // With a geom-keyed edge lineage map the body-wide profile blob is
-      // suppressed so per-edge tokens are not shadowed (mirrors Python).
-      const fallbackPq = isGeomKeyedLineage(opts.edgeLineage, 'gedge_') ? null : (opts.profileQueries ?? null)
       for (const ed of edges) {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
-        // Descriptor token instead of the old gedge_ digest: tolerant identity
-        // in persisted queries (query-descriptor-identity). The digest stays a
-        // fail-safe fallback for the rare edge whose dict carries no geometry.
-        const desc = edgeDescriptorOf(ed as unknown as Record<string, unknown>)
-        const geomToken = desc
-          ? emitEdgeDescriptor(desc)
-          : ref(edgeGeometryHash(ed as unknown as Record<string, unknown>))
         const uuid = opts.edgeNames
           ? (opts.edgeNames[edgeGeometryHash(ed as unknown as Record<string, unknown>)] ?? null)
           : null
+        const ancestorTokens = (uuid && opts.edgeAncestry) ? (opts.edgeAncestry[uuid] ?? null) : null
+        const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
         if (bodyId) {
           const ids: string[] = []
           if (uuid) ids.push(constructionUuidToken(uuid))
-          ids.push(geomToken, ref(createdBy), ref(bodyId))
-          const eTokens = edgeLineageTokens(ed as unknown as Record<string, unknown>, opts.edgeLineage ?? null)
-          if (eTokens.length) ids.push(...eTokens)
+          ids.push(ref(createdBy), ref(bodyId))
+          if (ancestorTokens && ancestorTokens.length) ids.push(...ancestorTokens)
           else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         } else {
-          const ids = [geomToken, ref(createdBy)]
+          const ids = [ref(createdBy)]
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         }

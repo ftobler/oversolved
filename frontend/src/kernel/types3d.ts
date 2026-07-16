@@ -37,15 +37,15 @@ export interface Body {
   sketch_id: string
   brep_diff: BrepDiff | null
   profile_queries: string[]
-  face_lineage: Record<string, string[]>
-  edge_lineage: Record<string, string[]>
+  face_lineage?: Record<string, string[]>
+  edge_lineage?: Record<string, string[]>
   /**
-   * Construction-by-name identity (query-naming-by-construction.md), carried
-   * alongside the geom-hash lineage until it fully replaces it. `face_names`/
+   * Construction-by-name identity (query-naming-by-construction). `face_names`/
    * `edge_names` map the in-build copy-stable geom-hash key to a construction
    * UUID; `face_ancestry`/`edge_ancestry` map each UUID to its ancestral fallback
-   * tokens. The geom-hash key is a transient in-build join only (decision a in the
-   * plan); it never enters a persisted query.
+   * tokens. The geom-hash key is a transient in-build join only; it never enters
+   * a persisted query. Stage 6 removed `face_lineage`/`edge_lineage` (geom-hash
+   * identity), replaced by the ancestry maps above.
    */
   face_names?: Record<string, string>
   edge_names?: Record<string, string>

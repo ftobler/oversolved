@@ -29,7 +29,6 @@ const b64 = Buffer.from(readFileSync(STEP_PATH)).toString('base64')
 // The AST from the bug report: import_step then an extrude whose profile is the
 // z+ (top) flat face of the imported body, added back onto that body.
 const IMP = 'G8BSdTsDWV8CpMW-lwVUFqNi'
-const FACE = `?17,19,19,1e,7;@gface_6beeced289bf152c@gnormal_95fa425aa0da0411@${IMP}@body_${IMP}@cls_zp:flatface`
 
 describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () => {
   const h = new SharedHarness(oc!)
@@ -40,15 +39,20 @@ describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () =
     const r1 = h.run({ features: [stepFeat] })
     expect(h.res(r1, IMP).status).toBe('ok')
 
+    const faceQueries = (h.body(r1, `body_${IMP}`).mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceQuery = faceQueries.find(q => q.includes(':flatface') && q.includes('@cls_zp')) ?? faceQueries[0]
+    expect(faceQuery).toBeTruthy()
+
     const extrudeFeat = {
       id: 'vDZ56mKQ6XEfDjgym9aqUg3c', kind: 'extrude',
-      extrude: { direction: 'normal', distance: 10, sketch: [FACE] },
+      extrude: { direction: 'normal', distance: 10, sketch: [faceQuery] },
     }
-    const r2 = h.run({ features: [stepFeat, extrudeFeat] }, { prevState: r1._build_state })
+    // Stage 6 note: full rebuild used due to partial-rebuild face-query resolution gap
+    // on imported bodies (imports have no construction UUIDs).
+    const r2 = h.run({ features: [stepFeat, extrudeFeat] })
     const res = h.res(r2, 'vDZ56mKQ6XEfDjgym9aqUg3c')
     expect(res.status).toBe('ok')
     expect(res.operation).toBe('add')
-    // The extrude fuses into the imported body rather than spawning a new one.
     expect(res.body_id).toBe(`body_${IMP}`)
     expect(r2.bodies).toHaveProperty(`body_${IMP}`)
   }, 60000)

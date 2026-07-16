@@ -11,7 +11,6 @@ import {
 } from './builder'
 import { resolve3dGeometry, projectTo2d } from './features/projectionLowering'
 import { Repository, makeAncestryQuery, ref, canonical } from './query'
-import { edgeGeometryHash } from './geomHash'
 import { repoFromSnapshot } from './builder'
 import type { BuildState, FeatureCheckpoint, Body } from './types3d'
 
@@ -29,7 +28,7 @@ function checkpoint(spec: Record<string, unknown>): FeatureCheckpoint {
   return {
     spec,
     result: {},
-    repo_snapshot: { elements: {}, ancestral: {}, byGeomHash: {} },
+    repo_snapshot: { elements: {}, ancestral: {}, byUuid: {} },
     body_store_snapshot: {},
     bodies_snapshot: {},
   }
@@ -300,6 +299,7 @@ describe('build with mock solvers', () => {
     // the OCC path produced degenerate overlapping copies that hung the kernel
     // (translate.yaml real-doc anchor). The edge must be queryable WHEN f2 solves.
     const edge = { kind: 'line', start: [0, 0, 0], end: [0, 10, 0] }
+    const edgePayload = { type: 'straightedge', kind: 'line', start: [0, 0, 0], end: [0, 10, 0], body_id: 'body_f1', created_by: 'f1', edge_index: 0 }
     let resolvedDuringF2: unknown = undefined
     const makeBody = (): Body => ({
       id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1 as unknown as Body['shape'], sketch_id: '',
@@ -312,8 +312,9 @@ describe('build with mock solvers', () => {
       trySolveFeature: (feature, repo, bodyStore): FeatureResult => {
         if (feature.id === 'f1') {
           bodyStore['body_f1'] = makeBody()
+          repo.registerAncestor(['@body_f1/edge0', '@f1', '@body_f1'], edgePayload)
         } else if (feature.id === 'f2') {
-          const q = makeAncestryQuery(['@' + edgeGeometryHash(edge)], 'straightedge')
+          const q = makeAncestryQuery(['@body_f1/edge0', '@f1'], 'straightedge')
           resolvedDuringF2 = repo.query(q)
         }
         return { status: 'ok' }
@@ -770,7 +771,7 @@ describe('repo serialization', () => {
     const snapshot = {
       elements: { id1: { ...payload }, id2: { ...payload } },
       ancestral: { [key]: { set: ['@ex1face0', '@ex1'], eids: ['id1', 'id2'] } },
-      byGeomHash: {},
+      byUuid: {},
     }
     const repo = repoFromSnapshot(snapshot)
     const entry = repo.ancestral.get(key)

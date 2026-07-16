@@ -5,8 +5,7 @@
 import { sha256Hex } from './sha256'
 import { extractErrorMessage } from './errors'
 import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'
-import { faceGeometryHash, faceNormalHash, edgeGeometryHash, vertexGeometryHash, isGeomKeyedLineage } from './geomHash'
-import { faceTokens, edgeLineageTokens } from './faceQuery'
+import { faceGeometryHash, edgeGeometryHash, vertexGeometryHash } from './geomHash'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { normalToFrame } from './types3d'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
@@ -175,8 +174,6 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
     sketch_id: body.sketch_id,
     brep_diff: body.brep_diff,
     profile_queries: [...body.profile_queries],
-    face_lineage: { ...body.face_lineage },
-    edge_lineage: { ...body.edge_lineage },
     ...(body.face_names ? { face_names: { ...body.face_names } } : {}),
     ...(body.edge_names ? { edge_names: { ...body.edge_names } } : {}),
     ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),
@@ -190,9 +187,6 @@ function _snapshotRepo(repo: Repository): Record<string, unknown> {
     elements: Object.fromEntries(repo.elements),
     ancestral: Object.fromEntries(
       [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
-    ),
-    byGeomHash: Object.fromEntries(
-      [...repo.byGeomHash.entries()].map(([k, v]) => [k, [...v]])
     ),
     byUuid: Object.fromEntries(
       [...repo.byUuid.entries()].map(([k, v]) => [k, [...v]])
@@ -240,9 +234,6 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
       Object.entries(repoSnapshot.ancestral as Record<string, { set: string[]; eids: string[] }>).map(
         ([k, v]) => [k, { set: new Set(v.set), eids: [...v.eids] }]
       )
-    )
-    repo.byGeomHash = new Map(
-      Object.entries(repoSnapshot.byGeomHash as Record<string, string[]>).map(([k, v]) => [k, [...v]])
     )
     repo.byUuid = new Map(
       Object.entries((repoSnapshot.byUuid as Record<string, string[]>) ?? {}).map(([k, v]) => [k, [...v]])
@@ -440,12 +431,13 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       emitWire(absolute(faceCreatedBy)),
       emitWire(absolute(body.id)),
     ]
-    if (isGeomKeyedLineage(body.face_lineage, 'gface_')) {
-      ancestorIds.push(...faceTokens(centroid, normal, body.face_lineage))
+    const uuid = body.face_names?.[geomHash] ?? null
+    const ancestryTokens = (uuid && body.face_ancestry) ? (body.face_ancestry[uuid] ?? null) : null
+    if (ancestryTokens && ancestryTokens.length) {
+      ancestorIds.push(...ancestryTokens)
     } else if (body.profile_queries.length) {
       ancestorIds.push(...body.profile_queries)
     }
-    const uuid = body.face_names?.[geomHash] ?? null
     const { x_axis, y_axis } = normalToFrame(normal)
     const payload = {
       type: faceInfo.surface_type ?? 'face',
@@ -467,9 +459,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       continue
     }
     const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))
-    const eid = evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash, uuid)
-    const nhash = faceNormalHash(normal)
-    globalRepo.byGeomHash.set(nhash, [...(globalRepo.byGeomHash.get(nhash) ?? []), eid])
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
@@ -526,15 +516,16 @@ function _registerBrepEdgeAncestry(
       emitWire(absolute(edgeCreatedBy)),
       emitWire(absolute(body.id)),
     ]
-    if (isGeomKeyedLineage(body.edge_lineage, 'gedge_')) {
-      ancestorIds.push(...edgeLineageTokens(edge, body.edge_lineage))
+    const uuid = body.edge_names?.[geomHash] ?? null
+    const ancestryTokens = (uuid && body.edge_ancestry) ? (body.edge_ancestry[uuid] ?? null) : null
+    if (ancestryTokens && ancestryTokens.length) {
+      ancestorIds.push(...ancestryTokens)
     } else if (body.profile_queries.length) {
       ancestorIds.push(...body.profile_queries)
     }
-    const uuid = body.edge_names?.[geomHash] ?? null
     const payload = { ...edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx), ...(uuid !== null ? { uuid } : {}) }
     const indexTag = emitWire(absolute(body.id, `edge${idx}`))
-    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash, uuid)
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
@@ -568,7 +559,7 @@ function _registerBrepVertexAncestry(
       origin: pt,
     }
     const indexTag = emitWire(absolute(body.id, `vertex${idx}`))
-    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag)
   }
 }
 
@@ -654,9 +645,6 @@ function _snapshotWithBrepGeometry(
     elements: Object.fromEntries(repo.elements),
     ancestral: Object.fromEntries(
       [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
-    ),
-    byGeomHash: Object.fromEntries(
-      [...repo.byGeomHash.entries()].map(([k, v]) => [k, [...v]])
     ),
     byUuid: Object.fromEntries(
       [...repo.byUuid.entries()].map(([k, v]) => [k, [...v]])
