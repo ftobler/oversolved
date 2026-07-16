@@ -534,6 +534,7 @@ function _registerBrepVertexAncestry(
   body: Body,
   vertices: Array<number[]>,
   vertexQueries: string[],
+  vertexUuids: Array<string | null>,
   deps?: BuildDeps,
 ): void {
   if (!body.created_by || !vertexQueries.length) return
@@ -551,15 +552,17 @@ function _registerBrepVertexAncestry(
       emitWire(absolute(body.id)),
     ]
     if (body.profile_queries.length) ancestorIds.push(...body.profile_queries)
+    const uuid = vertexUuids[idx] ?? null
     const payload = {
       type: 'vertex',
       body_id: body.id,
       created_by: vertexCreatedBy,
       vertex_index: idx,
       origin: pt,
+      ...(uuid !== null ? { uuid } : {}),
     }
     const indexTag = emitWire(absolute(body.id, `vertex${idx}`))
-    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag)
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
@@ -606,7 +609,8 @@ function _registerBodyFaces(
     if (edges.length) _registerBrepEdgeAncestry(globalRepo, body, edges, edgeQueries, deps)
     const verts = (out.vertices as number[][]) ?? []
     const vertQueries = (out.vertex_queries as string[]) ?? verts.map(() => '')
-    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, vertQueries, deps)
+    const vertUuids = (out.vertex_uuids as Array<string | null>) ?? []
+    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, vertQueries, vertUuids, deps)
   } catch {
     // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
     // in Python (it logs a warning and continues).
@@ -632,8 +636,9 @@ function _snapshotWithBrepGeometry(
     }
     const vertices = (bodyOut['vertices'] as Array<number[]>) ?? []
     const vertexQueries = (bodyOut['vertex_queries'] as string[]) ?? []
+    const vertexUuids = (bodyOut['vertex_uuids'] as Array<string | null>) ?? []
     if (vertices.length && vertexQueries.length) {
-      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries, deps)
+      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries, vertexUuids, deps)
     }
     if (body.created_by) {
       _registerSolidAncestry(repo, body)

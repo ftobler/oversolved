@@ -113,6 +113,7 @@ function tessellateBodies(
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
+        faceNames: body.face_names ?? null,
       })
       // Per-face boundary edge queries: a face pick projects as a closed wire.
       mesh.face_edge_queries = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
@@ -122,6 +123,7 @@ function tessellateBodies(
         edge_queries: edgeResult.edge_queries,
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
+        vertex_uuids: vertexResult.vertex_uuids,
       }
     } catch {
       // Non-fatal: a body that fails to tessellate still has valid topology.
@@ -177,6 +179,7 @@ export function extractBrepMetadata(
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
+        faceNames: body.face_names ?? null,
       })
       out[bodyId] = {
         mesh,
@@ -184,6 +187,7 @@ export function extractBrepMetadata(
         edge_queries: edgeResult.edge_queries,
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
+        vertex_uuids: vertexResult.vertex_uuids,
       }
     } catch {
       // Non-fatal: a body whose B-rep cannot be read just lacks ancestry, as in

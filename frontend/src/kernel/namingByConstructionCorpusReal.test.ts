@@ -93,6 +93,11 @@ function edgeQueries(r: BuildResponse, bodyId: string): string[] {
   return body?.edge_queries ?? []
 }
 
+function vertexQueries(r: BuildResponse, bodyId: string): string[] {
+  const body = (r.bodies as Record<string, { vertex_queries?: string[] }>)[bodyId]
+  return body?.vertex_queries ?? []
+}
+
 /** The face query carrying a specific construction UUID (the @u| token). */
 function faceQueryWithUuid(r: BuildResponse, bodyId: string, uuid: string): string | undefined {
   return faceQueries(r, bodyId).find((q) => q.includes(`@u|${uuid}`))
@@ -142,6 +147,42 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     expect(el, 'the captured query must still resolve after the edit').not.toBeNull()
     expect(el?.uuid, 'it must resolve to the same construction slot').toBe(capturedUuid)
     expect(repo._lastTier, 'a stable-UUID face resolves on the primary UUID tier').toBe('uuid')
+  })
+
+  it('box vertices: every vertex query carries a unique @u| UUID', () => {
+    // A box's 8 corner vertices each meet exactly 3 named faces, so each earns a
+    // construction UUID (Stage 7c). The set must be unique -- a duplicate vertex
+    // query is the exact "grouped selection" defect the coverage lock guards.
+    const s1 = { features: [rectSketch('sk1', 10, 10), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' }] }
+    const r1 = h.run(s1)
+    const vqs = vertexQueries(r1, 'body_ex1')
+    expect(vqs.length, 'a box has 8 vertices').toBe(8)
+    const withUuid = vqs.filter((q) => UUID_RE.test(q))
+    expect(withUuid.length, 'every box vertex meets 3 named faces, so all earn a @u| UUID').toBe(8)
+    const uuids = withUuid.map((q) => uuidOf(q))
+    expect(new Set(uuids).size, 'the 8 vertex UUIDs must be unique').toBe(8)
+    for (const u of uuids) expect(u.startsWith('v_'), 'vertex UUIDs use the v_ prefix').toBe(true)
+  })
+
+  it('extrude length 10->11: a vertex resolves by UUID', () => {
+    // A vertex is named by the set of faces meeting at it, all length-independent,
+    // so the corner keeps its exact minted UUID across a pure length edit and the
+    // persisted query resolves on the primary UUID tier.
+    const s1 = { features: [rectSketch('sk1', 10, 10), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' }] }
+    const r1 = h.run(s1)
+    const q = vertexQueries(r1, 'body_ex1').find((x) => UUID_RE.test(x))
+    expect(q, 'a vertex query should carry a @u| token').toBeDefined()
+    const capturedUuid = uuidOf(q!)
+
+    const s2 = { features: [rectSketch('sk1', 10, 10), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 11, direction: 'normal', operation: 'new' }] }
+    const r2 = h.run(s2, { prevState: r1._build_state })
+
+    const repo = repoOf(r2)
+    const el = repo.query(q!) as ResolvedEl
+    expect(el, 'the captured vertex query must still resolve after the edit').not.toBeNull()
+    expect(el?.uuid, 'it must resolve to the same construction slot').toBe(capturedUuid)
+    expect(el?.type, 'the resolved element is a vertex').toBe('vertex')
+    expect(repo._lastTier, 'a stable-UUID vertex resolves on the primary UUID tier').toBe('uuid')
   })
 
   it('extrude length 10->11: a rim edge resolves by UUID', () => {

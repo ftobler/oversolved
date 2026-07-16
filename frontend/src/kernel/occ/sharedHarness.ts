@@ -63,6 +63,7 @@ export class SharedHarness {
                 createdBy: body.created_by || '',
                 bodyId: body.id,
                 profileQueries: body.profile_queries ?? [],
+                faceNames: body.face_names ?? null,
               })
               out[body.id] = {
                 mesh,
@@ -70,6 +71,7 @@ export class SharedHarness {
                 edge_queries: edgeResult.edge_queries,
                 vertices: vertexResult.vertices,
                 vertex_queries: vertexResult.vertex_queries,
+                vertex_uuids: vertexResult.vertex_uuids,
               }
             } catch { /* non-fatal */ }
           }
