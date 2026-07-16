@@ -158,6 +158,10 @@ export function solveRevolve(
   const profileQueries: string[] = []
   const faceLineage: Lineage = {}
   const edgeLineage: Lineage = {}
+  const faceNames: Record<string, string> = {}
+  const edgeNames: Record<string, string> = {}
+  const faceAncestry: Lineage = {}
+  const edgeAncestry: Lineage = {}
 
   for (const sketchRef of sketchRefs) {
     let resolved
@@ -226,6 +230,9 @@ export function solveRevolve(
     }
   } else {
     if (direction === 'symmetric') {
+      // The two halves are minted with no createdBy: their side faces come from
+      // the same profile entities, so a shared UUID would collide; the fused
+      // solid falls back to ancestral naming (documented limitation).
       const half = angle / 2.0
       const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId)
       const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId)
@@ -234,10 +241,14 @@ export function solveRevolve(
       Object.assign(edgeLineage, pos.edgeLineage, neg.edgeLineage)
     } else {
       const eff = direction === 'reverse' ? -angle : angle
-      const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId)
+      const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId)
       toolShape = lineage.solid
       Object.assign(faceLineage, lineage.faceLineage)
       Object.assign(edgeLineage, lineage.edgeLineage)
+      Object.assign(faceNames, lineage.faceNames)
+      Object.assign(edgeNames, lineage.edgeNames)
+      Object.assign(faceAncestry, lineage.faceAncestry)
+      Object.assign(edgeAncestry, lineage.edgeAncestry)
     }
   }
 
@@ -266,6 +277,10 @@ export function solveRevolve(
     profileQueries,
     faceLineage,
     edgeLineage,
+    faceNames,
+    edgeNames,
+    faceAncestry,
+    edgeAncestry,
   })
   Object.assign(result, opResult)
 

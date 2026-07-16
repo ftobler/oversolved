@@ -177,6 +177,10 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
     profile_queries: [...body.profile_queries],
     face_lineage: { ...body.face_lineage },
     edge_lineage: { ...body.edge_lineage },
+    ...(body.face_names ? { face_names: { ...body.face_names } } : {}),
+    ...(body.edge_names ? { edge_names: { ...body.edge_names } } : {}),
+    ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),
+    ...(body.edge_ancestry ? { edge_ancestry: { ...body.edge_ancestry } } : {}),
     ...(body.imported ? { imported: true } : {}),
   }
 }

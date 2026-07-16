@@ -400,6 +400,10 @@ export function solveSweep(
   const profileQueries: string[] = []
   const faceLineage: Lineage = {}
   const edgeLineage: Lineage = {}
+  const faceNames: Record<string, string> = {}
+  const edgeNames: Record<string, string> = {}
+  const faceAncestry: Lineage = {}
+  const edgeAncestry: Lineage = {}
 
   for (const sketchRef of [...new Set(regionRefs)]) {
     let resolved
@@ -463,9 +467,13 @@ export function solveSweep(
   const result: { [key: string]: unknown; status: string; body_id: string } = { status: 'ok', body_id: bodyId }
   const operation = ((merged.operation as string) ?? 'add') as BodyOperation
 
-  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId)
+  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId)
   Object.assign(faceLineage, lineage.faceLineage)
   Object.assign(edgeLineage, lineage.edgeLineage)
+  Object.assign(faceNames, lineage.faceNames)
+  Object.assign(edgeNames, lineage.edgeNames)
+  Object.assign(faceAncestry, lineage.faceAncestry)
+  Object.assign(edgeAncestry, lineage.edgeAncestry)
 
   const opResult = applyBodyOperation(oc, scope, table, {
     toolShape: lineage.solid,
@@ -479,6 +487,10 @@ export function solveSweep(
     profileQueries,
     faceLineage,
     edgeLineage,
+    faceNames,
+    edgeNames,
+    faceAncestry,
+    edgeAncestry,
   })
   Object.assign(result, opResult)
 

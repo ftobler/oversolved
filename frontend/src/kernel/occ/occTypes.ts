@@ -47,6 +47,10 @@ export interface OccPrismBuilder extends OccDisposable {
   Shape(): OccShape
   /** Sub-shapes generated from a profile sub-shape: the lineage sharp edge. */
   Generated(s: OccShape): OccListOfShape
+  /** The start (profile-side) generated shape; used to name the start cap. */
+  FirstShape?(): OccShape
+  /** The end (swept-to) generated shape; used to name the end cap. */
+  LastShape?(): OccShape
 }
 
 export interface OccListOfShape extends OccDisposable {

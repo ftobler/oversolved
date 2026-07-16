@@ -40,6 +40,18 @@ export interface Body {
   face_lineage: Record<string, string[]>
   edge_lineage: Record<string, string[]>
   /**
+   * Construction-by-name identity (query-naming-by-construction.md), carried
+   * alongside the geom-hash lineage until it fully replaces it. `face_names`/
+   * `edge_names` map the in-build copy-stable geom-hash key to a construction
+   * UUID; `face_ancestry`/`edge_ancestry` map each UUID to its ancestral fallback
+   * tokens. The geom-hash key is a transient in-build join only (decision a in the
+   * plan); it never enters a persisted query.
+   */
+  face_names?: Record<string, string>
+  edge_names?: Record<string, string>
+  face_ancestry?: Record<string, string[]>
+  edge_ancestry?: Record<string, string[]>
+  /**
    * True when the body's geometry originates from a STEP import (as opposed to
    * native modelling). Imported B-rep carries freeform faces and STEP tolerances
    * that make ShapeUpgrade_UnifySameDomain's face fold spin uncatchably, so

@@ -36,6 +36,11 @@ export interface ApplyBodyOperationInput {
   faceLineage?: Record<string, string[]> | null
   /** The tool body's per-edge lineage. */
   edgeLineage?: Record<string, string[]> | null
+  /** The tool body's construction-name maps (query-naming-by-construction). */
+  faceNames?: Record<string, string> | null
+  edgeNames?: Record<string, string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
 }
 
 export interface ApplyBodyOperationResult {
@@ -44,6 +49,13 @@ export interface ApplyBodyOperationResult {
   operation?: string
   body_ids?: string[]
   solver_warning?: string
+}
+
+interface NameMaps {
+  faceNames?: Record<string, string> | null
+  edgeNames?: Record<string, string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
 }
 
 function newBody(
@@ -55,6 +67,7 @@ function newBody(
   faceLineage: Record<string, string[]>,
   edgeLineage: Record<string, string[]>,
   imported = false,
+  names: NameMaps = {},
 ): Body {
   return {
     id,
@@ -66,6 +79,10 @@ function newBody(
     profile_queries: [...profileQueries],
     face_lineage: { ...faceLineage },
     edge_lineage: { ...edgeLineage },
+    face_names: { ...(names.faceNames ?? {}) },
+    edge_names: { ...(names.edgeNames ?? {}) },
+    face_ancestry: { ...(names.faceAncestry ?? {}) },
+    edge_ancestry: { ...(names.edgeAncestry ?? {}) },
     ...(imported ? { imported: true } : {}),
   }
 }
@@ -94,7 +111,15 @@ export function applyBodyOperation(
     profileQueries = [],
     faceLineage = null,
     edgeLineage = null,
+    faceNames = null,
+    edgeNames = null,
+    faceAncestry = null,
+    edgeAncestry = null,
   } = input
+
+  // The tool body's construction-name maps, carried onto a body the tool becomes
+  // (the "new"/no-target paths). Boolean paths (add/cut) rebuild them in Stage 2.
+  const toolNames: NameMaps = { faceNames, edgeNames, faceAncestry, edgeAncestry }
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
 
@@ -211,6 +236,8 @@ export function applyBodyOperation(
         profileQueries,
         tlFace,
         edgeLineage ?? {},
+        false,
+        toolNames,
       )
       bodyIds.push(bid)
     })
@@ -298,6 +325,8 @@ export function applyBodyOperation(
       profileQueries,
       tlFace,
       edgeLineage ?? {},
+      false,
+      toolNames,
     )
     bodyIds.push(bid)
   })
