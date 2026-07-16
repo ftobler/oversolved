@@ -15,22 +15,13 @@
 // Provision OCC.js:
 //   cd frontend && npm run occ:install
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { loadOcc } from './loadOcc'
-import { DisposeScope } from './disposeScope'
-import { HandleTable } from './handleTable'
-import { solidToMesh, solidToEdges, solidToVertices } from './tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './brepDiffHash'
 import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
-import { build, type BuildDeps } from '../builder'
-import { initGlobalRepo } from '../query'
-import { createFeatureSolver, unportedKinds } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
-import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../features/sketch'
+import { unportedKinds } from '../solverRegistry'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
-import type { OccModule } from './occTypes'
-import type { Body } from '../types3d'
+import { solveWithTimeout } from '../solveTimeout'
 import baseline from '@/wasm-kernel/regression-baseline.json'
 
 // ── Pre-load OCC.js and the Rust solver ─────────────────────────────────
@@ -249,70 +240,38 @@ function diffBodies(
   return issues
 }
 
-// ── Tessellation deps ────────────────────────────────────────────────────
+// ── Post-process body data (worker returns raw mesh, not hashes) ────────
 
-function tessellateBodies(
-  ocMod: OccModule,
-  table: HandleTable,
-  bodyStore: Record<string, Body>,
-): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {}
-  for (const [bodyId, body] of Object.entries(bodyStore)) {
-    if (body.shape == null) continue
-    try {
-      const mesh = solidToMesh(ocMod, table, body.shape, {
-        createdBy: body.created_by || '',
-        bodyId: body.id,
-        faceAncestry: body.face_ancestry ?? null,
-        faceNames: body.face_names ?? null,
-        profileQueries: body.profile_queries ?? [],
-      })
-      const edges = solidToEdges(ocMod, table, body.shape).edges
-      const vertices = solidToVertices(ocMod, table, body.shape).vertices
-      // Mirror run_kernel.py: face_hashes from face_data (centroid+normal),
-      // edge_hashes from the edge dicts, both string-sorted.
-      const faceHashes = (mesh.face_data ?? [])
-        .map((fd) => faceGeometryHash(fd.centroid, fd.normal))
-        .sort()
-      const edgeHashes = edges
-        .map((ed) => edgeGeometryHash(ed as unknown as Record<string, unknown>))
-        .sort()
-      out[bodyId] = {
-        id: body.id,
-        created_by: body.created_by || '',
-        modified_by: body.modified_by ?? [],
-        mesh,
-        edges,
-        vertices,
-        face_count: (mesh.face_data ?? []).length,
-        edge_count: edges.length,
-        face_hashes: faceHashes,
-        edge_hashes: edgeHashes,
-      }
-    } catch {
-      // non-fatal
-    }
+function enrichBodyHashes(
+  bid: string,
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const mesh = body.mesh as Record<string, unknown> | undefined
+  const faceData = (mesh?.face_data ?? []) as Array<{ centroid: number[]; normal: number[] }>
+  const edges = (body.edges ?? []) as Record<string, unknown>[]
+  const faceHashes = faceData
+    .map((fd) => faceGeometryHash(fd.centroid, fd.normal))
+    .sort()
+  const edgeHashes = edges
+    .map((ed) => edgeGeometryHash(ed))
+    .sort()
+  return {
+    id: bid,
+    created_by: (body.created_by as string | undefined) ?? '',
+    modified_by: (body.modified_by as string[] | undefined) ?? [],
+    ...body,
+    face_count: faceData.length,
+    edge_count: edges.length,
+    face_hashes: faceHashes,
+    edge_hashes: edgeHashes,
   }
-  return out
 }
 
 // ── Test suite ───────────────────────────────────────────────────────────
 
 describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs frozen baseline)', () => {
-  let occMod: OccModule
-
-  beforeAll(async () => {
-    if (!oc) throw new Error('unreachable: skipIf guards this')
-    occMod = oc
-    if (solveBytes) {
-      resetSketchSolver()
-      setSketchSolver(solveBytes)
-      setSketchTopology(topologyBytes)
-    }
-  })
-
   for (const entry of entries) {
-    it(entry.label, () => {
+    it(entry.label, async () => {
       const spec = entry.spec
       if (!spec || !entry.ok) {
         if (!entry.ok) {
@@ -332,45 +291,37 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
         return
       }
 
-      const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const tsResponse = await solveWithTimeout(spec, { prevState: null })
+      if (!tsResponse) {
+        // OCC.js unavailable inside the worker.
+        console.warn(`[parity] ${entry.label}: skipped (OCC.js unavailable)`)
+        return
+      }
+      const tsResult = tsResponse.result as Record<string, unknown>
+      const rawBodies = tsResponse.bodies as Record<string, Record<string, unknown>>
+      const tsBodies: Record<string, Record<string, unknown>> = {}
+      for (const [bid, body] of Object.entries(rawBodies)) {
+        tsBodies[bid] = enrichBodyHashes(bid, body)
+      }
 
-      try {
-        const deps: BuildDeps = {
-          trySolveFeature: createFeatureSolver(occMod, scope, table),
-          postRegister,
-          initGlobalRepo,
-          tessellateBodies: (bodyStore) => tessellateBodies(occMod, table, bodyStore),
-          brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(occMod, scope, body),
-          brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(occMod, scope, body),
-          brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(occMod, scope, body),
+      const allIssues: string[] = [
+        ...diffResult(tsResult, entry.result, entry.label),
+        ...diffBodies(tsBodies, entry.bodies, entry.label),
+      ]
+
+      if (allIssues.length > 0) {
+        // Hard-fail by default: this is the enforced parity gate. A per-entry
+        // `soft` flag (real-doc anchors, 4b.5) or PARITY_SOFT=1 downgrades to a
+        // warn-only inventory -- a best-effort signal that never blocks the gate.
+        const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
+        const soft = import.meta.env.PARITY_SOFT === '1' || entry.soft === true
+        if (soft) {
+          const tag = entry.soft ? 'REAL-SOFT' : 'SOFT'
+          console.warn(`[parity] ${entry.label}: ${tag} ${msg}`)
+          expect(allIssues.length, `SOFT: ${msg}`).toBeGreaterThan(-1)
+        } else {
+          expect(allIssues.length, msg).toBe(0)
         }
-
-        const tsResponse = build(spec, { prevState: null }, deps)
-        const tsResult = tsResponse.result as Record<string, unknown>
-        const tsBodies = tsResponse.bodies as Record<string, Record<string, unknown>>
-
-        const allIssues: string[] = [
-          ...diffResult(tsResult, entry.result, entry.label),
-          ...diffBodies(tsBodies, entry.bodies, entry.label),
-        ]
-
-        if (allIssues.length > 0) {
-          // Hard-fail by default: this is the enforced parity gate. A per-entry
-          // `soft` flag (real-doc anchors, 4b.5) or PARITY_SOFT=1 downgrades to a
-          // warn-only inventory -- a best-effort signal that never blocks the gate.
-          const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
-          const soft = import.meta.env.PARITY_SOFT === '1' || entry.soft === true
-          if (soft) {
-            const tag = entry.soft ? 'REAL-SOFT' : 'SOFT'
-            console.warn(`[parity] ${entry.label}: ${tag} ${msg}`)
-            expect(allIssues.length, `SOFT: ${msg}`).toBeGreaterThan(-1)
-          } else {
-            expect(allIssues.length, msg).toBe(0)
-          }
-        }
-      } finally {
-        scope.dispose()
       }
     })
   }
