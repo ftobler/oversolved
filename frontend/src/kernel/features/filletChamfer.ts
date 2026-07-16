@@ -12,7 +12,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
-import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId } from '../query'
+import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { edgeGeometryHash, faceGeometryHash, geometryClassifiers, isGeomKeyedLineage } from '../geomHash'
 import {
   bestDescriptorMatch,
@@ -32,6 +32,7 @@ import {
   applyChamferWithLineage,
   applyChamferWithDiff,
   type EdgeModifierResult,
+  type OldNames,
 } from '../occ/edgeModifier'
 
 type Dict = Record<string, unknown>
@@ -133,10 +134,13 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
     if (body.created_by) {
       let edgeCreatedBy = body.created_by
       if (newEdgeHashes.has(geomHash)) edgeCreatedBy = body.modified_by[body.modified_by.length - 1]
-      // Mirror solidToEdges' minting (descriptor-first, digest fail-safe) so
-      // the exact-string tier keeps matching freshly picked queries.
+      // Mirror solidToEdges' minting (uuid-first, descriptor + digest fail-safe)
+      // so the exact-string tier keeps matching freshly picked queries.
+      const uuid = body.edge_names?.[geomHash] ?? null
       const geomToken = desc ? emitEdgeDescriptor(desc) : ref(geomHash)
-      const ids = [geomToken, ref(edgeCreatedBy), ref(body.id)]
+      const ids: string[] = []
+      if (uuid) ids.push(constructionUuidToken(uuid))
+      ids.push(geomToken, ref(edgeCreatedBy), ref(body.id))
       if (isGeomKeyedLineage(body.edge_lineage, 'gedge_')) {
         ids.push(...edgeLineageTokens(ed as unknown as Record<string, unknown>, body.edge_lineage))
       } else if (body.profile_queries.length > 0) {
@@ -156,7 +160,7 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
       // stored @<creator> token still lands in the superset match.
       if (edgeCreatedBy !== body.created_by) stableIds.push(ref(body.created_by))
       const payload: AncestryEdgePayload = { type: edgeType, classifiers, shape: te }
-      ancestryRepo.registerAncestor(stableIds, payload, geomHash)
+      ancestryRepo.registerAncestor(stableIds, payload, geomHash, uuid)
     }
     queryToEdge.set(`?${body.id}:edge:${idx}`, te)
   })
@@ -324,6 +328,7 @@ type ApplyFn = (
   withLineage: boolean,
   faceLineage: Record<string, string[]>,
   edgeLineage: Record<string, string[]>,
+  oldNames: OldNames | null,
 ) => EdgeModifierResult
 
 /**
@@ -470,7 +475,17 @@ function applyEdgeFeature(
     }
 
     const wantLineage = Object.keys(body.face_lineage).length > 0 || Object.keys(body.edge_lineage).length > 0
-    const res = applyFn(oc, scope, oldShape, topoEdges, wantLineage, body.face_lineage, body.edge_lineage)
+    const wantNames = Object.keys(body.face_names ?? {}).length > 0 || Object.keys(body.edge_names ?? {}).length > 0
+    const oldNames: OldNames | null = wantNames
+      ? {
+          createdBy: featureId,
+          faceNames: body.face_names ?? {},
+          edgeNames: body.edge_names ?? {},
+          faceAncestry: body.face_ancestry ?? {},
+          edgeAncestry: body.edge_ancestry ?? {},
+        }
+      : null
+    const res = applyFn(oc, scope, oldShape, topoEdges, wantLineage, body.face_lineage, body.edge_lineage, oldNames)
 
     const oldHandle = body.shape
     scope.track(res.shape)
@@ -478,6 +493,12 @@ function applyEdgeFeature(
     table.release(oldHandle)
     if (res.faceLineage !== null) body.face_lineage = res.faceLineage
     if (res.edgeLineage !== null) body.edge_lineage = res.edgeLineage
+    if (res.names !== null) {
+      body.face_names = res.names.faceNames
+      body.edge_names = res.names.edgeNames
+      body.face_ancestry = res.names.faceAncestry
+      body.edge_ancestry = res.names.edgeAncestry
+    }
     body.brep_diff = res.diff
     body.modified_by.push(featureId)
     applied.push(body.id)
@@ -511,9 +532,9 @@ export function solveFillet(
   const radiusRaw = merged.radius
   const radius = Number(radiusRaw !== undefined && radiusRaw !== null ? radiusRaw : 1.0)
   if (radius <= 0) throw new Error('fillet: radius must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, withLineage, fl, el) =>
+  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, withLineage, fl, el, nm) =>
     withLineage
-      ? applyFilletWithLineage(o, s, shape, radius, edges, fl, el)
+      ? applyFilletWithLineage(o, s, shape, radius, edges, fl, el, nm)
       : applyFilletWithDiff(o, s, shape, radius, edges),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
   // face-bisector normal is not the exact radius/bisector-travel relation
@@ -540,9 +561,9 @@ export function solveChamfer(
   const angleRaw = merged.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
   if (distance <= 0) throw new Error('chamfer: distance must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, withLineage, fl, el) =>
+  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, withLineage, fl, el, nm) =>
     withLineage
-      ? applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, fl, el)
+      ? applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, fl, el, nm)
       : applyChamferWithDiff(o, s, shape, distance, edges, chamferMode, angle),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.

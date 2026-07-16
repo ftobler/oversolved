@@ -18,7 +18,7 @@ import type { Body } from '../types3d'
 import type { OccHandle, HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets, brepDiffIsEmpty } from './shared'
 import { booleanWithDiff, volumeOf, exploreSolids, countSolids } from '../occ/booleans'
-import { transferBooleanLineage } from './booleanLineage'
+import { transferBooleanLineage, transferBooleanNames } from './booleanLineage'
 
 export type BodyOperation = 'add' | 'cut' | 'new'
 
@@ -166,7 +166,7 @@ export function applyBodyOperation(
         continue
       }
 
-      const { shape: newShape, diff } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
+      const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
       const lineage = transferBooleanLineage(oc, scope, {
         bodyShape: newShape,
@@ -176,10 +176,22 @@ export function applyBodyOperation(
         faceLineage: existingBody.face_lineage,
         toolFaceLineage: tlFace,
       })
+      const names = transferBooleanNames(oc, scope, {
+        bodyShape: newShape,
+        faceOrigin,
+        targetFaceNames: existingBody.face_names ?? {},
+        targetFaceAncestry: existingBody.face_ancestry ?? {},
+        toolFaceNames: faceNames,
+        toolFaceAncestry: faceAncestry,
+      })
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
       existingBody.face_lineage = lineage.face_lineage
       existingBody.edge_lineage = lineage.edge_lineage
+      existingBody.face_names = names.face_names
+      existingBody.edge_names = names.edge_names
+      existingBody.face_ancestry = names.face_ancestry
+      existingBody.edge_ancestry = names.edge_ancestry
 
       cutAnything = true
       cutBodyIds.push(bid)
@@ -257,11 +269,13 @@ export function applyBodyOperation(
       const oldShape = table.get<OccShape>(existingBody.shape)
       let newShape: OccShape
       let diff
+      let faceOrigin
       try {
         // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
         const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', { unifyFaces: !existingBody.imported })
         newShape = res.shape
         diff = res.diff
+        faceOrigin = res.faceOrigin
       } catch (exc) {
         throw new Error(`${opName}: add operation failed: ${String(exc)}`)
       }
@@ -286,6 +300,14 @@ export function applyBodyOperation(
         faceLineage: existingBody.face_lineage,
         toolFaceLineage: tlFace,
       })
+      const names = transferBooleanNames(oc, scope, {
+        bodyShape: newShape,
+        faceOrigin,
+        targetFaceNames: existingBody.face_names ?? {},
+        targetFaceAncestry: existingBody.face_ancestry ?? {},
+        toolFaceNames: faceNames,
+        toolFaceAncestry: faceAncestry,
+      })
       const oldHandle = existingBody.shape
       existingBody.shape = table.register(scope.detach(newShape), existingBody.created_by)
       table.release(oldHandle)
@@ -293,6 +315,10 @@ export function applyBodyOperation(
       existingBody.brep_diff = diff
       existingBody.face_lineage = lineage.face_lineage
       existingBody.edge_lineage = lineage.edge_lineage
+      existingBody.face_names = names.face_names
+      existingBody.edge_names = names.edge_names
+      existingBody.face_ancestry = names.face_ancestry
+      existingBody.edge_ancestry = names.edge_ancestry
       fused = true
       fusedBodyId = bid
       break
