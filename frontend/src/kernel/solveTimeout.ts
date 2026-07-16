@@ -8,30 +8,30 @@
  * forever, the event loop is blocked and even vitest's testTimeout cannot fire
  * -- the whole CI job wedges.
  *
- * This module runs the solve inside a Node.js worker_thread and terminates the
- * thread after a configurable ceiling (default 30 s). A terminated worker's
- * V8 isolate + WASM instance die cleanly and the parent gets a timeout error
- * instead of an unrecoverable hang.
+ * This module runs the solve in a forked child process and kills it with
+ * SIGKILL after a configurable ceiling (default 30 s). Unlike
+ * worker_threads.terminate() (which uses v8::Isolate::TerminateExecution and
+ * cannot interrupt synchronous WASM), SIGKILL forcibly stops the OS process
+ * and its native code. A terminated child drops its checkpoint cache; the next
+ * request spawns a fresh process.
  *
- * The worker is created lazily and reused across requests; the per-build
- * checkpoint cache in solveLocally lives per-thread, so a terminated worker
- * drops its cache and the next request spawns a fresh thread that rebuilds
- * from scratch. This mirrors the drop-and-respawn pattern of the browser
- * Worker client.
+ * The child is started with --experimental-strip-types (Node 22.6+) and a
+ * custom --loader that maps @/ to ./src/, so it can import the full source
+ * tree without vitest or a build step.
  */
 
-import { Worker } from 'node:worker_threads'
+import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type { BuildResponse } from './builder'
 
-/** Minimal Worker surface used here; lets tests inject a fake. */
-export interface SolveWorkerLike {
-  postMessage(msg: unknown): void
-  onmessage: ((e: { data: unknown }) => void) | null
-  onerror: ((e: unknown) => void) | null
-  onexit: ((code: number) => void) | null
-  terminate(): void
+/** Minimal child-process surface used here; lets tests inject a fake. */
+export interface SolveChildLike {
+  send(msg: Record<string, unknown>): void
+  on(event: 'message', cb: (msg: unknown) => void): void
+  on(event: 'error', cb: (e: unknown) => void): void
+  on(event: 'exit', cb: (code: number) => void): void
+  kill(signal?: NodeJS.Signals): void
 }
 
 const DEFAULT_TIMEOUT_MS = 30000
@@ -49,86 +49,81 @@ interface WorkerMsg {
   error?: string
 }
 
-function defaultFactory(): SolveWorkerLike | null {
-  try {
-    if (typeof Worker === 'undefined') return null
-    const workerPath = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      'solveTimeout.worker.mjs',
-    )
-    const raw = new Worker(workerPath)
-    const wrapper: SolveWorkerLike = {
-      postMessage(msg: unknown) { raw.postMessage(msg) },
-      onmessage: null,
-      onerror: null,
-      onexit: null,
-      terminate() { void raw.terminate() },
-    }
-    raw.on('message', (msg: unknown) => {
-      wrapper.onmessage?.({ data: msg })
-    })
-    raw.on('error', (e: unknown) => {
-      wrapper.onerror?.(e)
-    })
-    raw.on('exit', (code: number) => {
-      wrapper.onexit?.(code)
-      if (code !== 0) dropWorker(new Error(`solve worker exited with code ${code}`))
-    })
-    return wrapper
-  } catch {
-    return null
-  }
+function runnerPath(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'solveTimeout.runner.mjs',
+  )
 }
 
-let workerFactory: () => SolveWorkerLike | null = defaultFactory
-let worker: SolveWorkerLike | null = null
+function loaderPath(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../resolve-alias.loader.mjs',
+  )
+}
+
+function defaultFactory(): SolveChildLike {
+  const child: ChildProcess = fork(runnerPath(), [], {
+    execArgv: ['--experimental-strip-types', `--loader=${loaderPath()}`],
+  })
+  return {
+    send(msg) { child.send(msg) },
+    on(event, cb) { child.on(event, cb) },
+    kill(signal) { child.kill(signal) },
+  } as SolveChildLike
+}
+
+let childFactory: () => SolveChildLike = defaultFactory
+let child: SolveChildLike | null = null
 let nextId = 0
 const pending = new Map<number, Pending>()
 
-function onMessage(e: { data: unknown }): void {
-  const msg = e.data as WorkerMsg
-  const p = pending.get(msg.id)
+function onMessage(msg: unknown): void {
+  const m = msg as WorkerMsg
+  const p = pending.get(m.id)
   if (!p) return
   clearTimeout(p.timer)
-  pending.delete(msg.id)
-  if (msg.ok) {
-    p.resolve(msg.result ?? null)
+  pending.delete(m.id)
+  if (m.ok) {
+    p.resolve(m.result ?? null)
   } else {
-    p.reject(new Error(msg.error ?? 'solve failed'))
+    p.reject(new Error(m.error ?? 'solve failed'))
   }
 }
 
-function onError(): void {
-  dropWorker(new Error('solve worker crashed'))
-}
-
-function dropWorker(err: Error): void {
+function dropChild(err: Error): void {
   for (const p of pending.values()) {
     clearTimeout(p.timer)
     p.reject(err)
   }
   pending.clear()
-  worker?.terminate()
-  worker = null
+  if (child) {
+    child.kill('SIGKILL')
+    child = null
+  }
 }
 
-function ensureWorker(): SolveWorkerLike {
-  if (worker) return worker
-  const w = workerFactory()
-  if (!w) throw new Error('worker_threads unavailable')
-  w.onmessage = onMessage
-  w.onerror = onError
-  worker = w
-  return worker
+function ensureChild(): SolveChildLike {
+  if (child) return child
+  const c = childFactory()
+  c.on('message', onMessage)
+  c.on('error', () => dropChild(new Error('solve child process crashed')))
+  c.on('exit', (code: number) => {
+    if (code !== 0) dropChild(new Error(`solve child exited with code ${code}`))
+  })
+  child = c
+  return child
 }
 
 /**
- * Solve a document through solveLocally, guarded by a thread-level timeout.
+ * Solve a document through solveLocally in a forked child process, guarded by
+ * an OS-level timeout.
  *
- * The worker loads OCC.js + the Rust sketch solver on its first request; each
+ * The child loads OCC.js + the Rust sketch solver on its first request; each
  * subsequent request reuses them. Returns the BuildResponse on success, or
  * null when OCC.js is unavailable. Rejects with a timeout error when the
- * worker does not respond within `timeoutMs`.
+ * child does not respond within `timeoutMs`.
  */
 export function solveWithTimeout(
   spec: Record<string, unknown>,
@@ -136,37 +131,39 @@ export function solveWithTimeout(
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<BuildResponse | null> {
   return new Promise<BuildResponse | null>((resolve, reject) => {
-    let w: SolveWorkerLike
-    try {
-      w = ensureWorker()
-    } catch (e) {
-      reject(e)
-      return
-    }
+    const c = ensureChild()
     const id = nextId++
     const timer = setTimeout(() => {
-      dropWorker(new Error(`solve timed out after ${timeoutMs}ms`))
+      dropChild(new Error(`solve timed out after ${timeoutMs}ms`))
     }, timeoutMs)
     pending.set(id, { resolve, reject, timer })
-    w.postMessage({ id, spec, options })
+    c.send({ id, spec, options })
   })
 }
 
 /**
- * Terminate the pooled worker. Call between test suites to get a cold start.
+ * Terminate the pooled child. Call between test suites to get a cold start.
  */
 export function disposeWorker(): void {
-  dropWorker(new Error('disposed'))
+  dropChild(new Error('disposed'))
 }
 
-/** @internal test-only: inject a fake Worker factory and reset client state. */
-export function setSolveWorkerForTest(
-  factory: (() => SolveWorkerLike | null) | null,
+/** @internal test-only: inject a fake child factory and reset client state. */
+export function setSolveChildForTest(
+  factory: (() => SolveChildLike) | null,
 ): void {
-  worker?.terminate()
-  worker = null
+  if (child) {
+    child.kill('SIGKILL')
+    child = null
+  }
   for (const p of pending.values()) clearTimeout(p.timer)
   pending.clear()
   nextId = 0
-  workerFactory = factory ?? defaultFactory
+  if (factory) childFactory = factory
+}
+
+/** @internal test-only: reset child factory to default (restore real fork). */
+export function resetSolveChildForTest(): void {
+  setSolveChildForTest(null)
+  childFactory = defaultFactory
 }
