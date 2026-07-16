@@ -469,6 +469,7 @@ export class Repository {
     const hashIds = ids.filter(isGeomHashId)
     const classifierIds = ids.filter(isClassifierId)
     const descriptorIds = ids.filter(isGeomDescriptorId)
+    const uuidIds = ids.filter(isConstructionUuidId)
     const nonHashIds = ids.filter(
       i =>
         !isGeomHashId(i) &&
@@ -476,6 +477,29 @@ export class Repository {
         !isGeomDescriptorId(i) &&
         !isConstructionUuidId(i),
     )
+
+    // Primary tier: construction UUID exact match (query-naming-by-construction).
+    // 99.99%+ of resolutions land here; it short-circuits the ancestral scan. A
+    // UUID that no longer names any element (an upstream edit changed the slot)
+    // falls through to the ancestral net below. >1 hit is impossible by
+    // construction, so it fails loud rather than guessing.
+    for (const tok of uuidIds) {
+      const uuid = parseConstructionUuidId(tok)
+      if (uuid === null) continue
+      let hits = orderFilter((this.byUuid.get(uuid) ?? []).filter(eid => this.elements.has(eid)))
+      if (typeRestriction !== null) {
+        hits = hits.filter(eid => {
+          const t = objType(this.elements.get(eid))
+          return t === typeRestriction || isSubtype(t, typeRestriction)
+        })
+      }
+      if (hits.length === 1) return this.elements.get(hits[0]) ?? null
+      if (hits.length > 1) {
+        throw new AmbiguousQueryError(
+          `Construction UUID ${uuid} matched ${hits.length} elements (collision by construction)`,
+        )
+      }
+    }
 
     let candidateIds: string[] = []
     let querySet = new Set<string>()
