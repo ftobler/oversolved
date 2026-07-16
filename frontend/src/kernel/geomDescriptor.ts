@@ -1,10 +1,15 @@
-// Geometric descriptor tokens: vertex identity only (@gdv|) pending vertex
-// construction UUID emission (remaining Stage 7 work). Face descriptors (@gdf|)
-// and edge descriptors (@gde|) were removed in Stage 6 (query-naming-by-construction),
-// replaced by @u| construction UUIDs. The derivation + matching infrastructure
-// stays for vertex resolution until vertex UUIDs land.
+// Geometric descriptor tokens (@gdf|/@gde|/@gdv|). No producer emits these into a
+// persisted query anymore: faces/edges dropped them in Stage 6 and vertices in
+// Stage 7d (query-naming-by-construction), all replaced by @u| construction UUIDs
+// plus ancestral tokens. Two consumers keep this module alive:
+//   - the resolver's legacy descriptor tier, resolving @gd*| tokens in queries
+//     saved before the switch (backward compat only; see revolveBugCorpus);
+//   - `bestDescriptorMatch`, a transient solve-time face/edge picker in
+//     filletChamfer that builds a descriptor from live geometry (never persisted).
 //
 // Wire format:
+//   @gdf|x,y,z|nx,ny,nz                  face: centroid + normal
+//   @gde|kind|x,y,z|ax,ay,az|scalar      edge: point + axis + length/radius
 //   @gdv|x,y,z                          vertex: the point
 
 import { pyRound4Str } from "./geomHash"

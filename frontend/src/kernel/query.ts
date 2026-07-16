@@ -324,7 +324,9 @@ export type ResolveTier =
   | "uuid"           // primary: construction UUID exact match
   | "ancestral"      // ancestor-set subset match (optionally classifier/descriptor narrowed)
   | "ancestral-partial"  // relaxed superset fallback when the subset match was empty
-  | "descriptor"     // geometry-descriptor fallback (vertices; @gdv|)
+  | "descriptor"     // legacy-only: @gd*| geometry-descriptor fallback for queries
+                     // saved before faces/edges/vertices earned UUIDs; current
+                     // producers emit no descriptor tokens
   | "miss"           // nothing resolved
 
 export class Repository {
@@ -545,8 +547,10 @@ export class Repository {
     }
 
     if (candidateIds.length > 1 && descriptorIds.length) {
-      // Descriptor tier: vertex identity (@gdv|), pending vertex construction
-      // UUID emission. Face/edge descriptors were removed in Stage 6.
+      // Legacy descriptor tier: resolves @gd*| tokens in queries saved before the
+      // producers stopped emitting them (faces/edges dropped in Stage 6, vertices
+      // in Stage 7d). Current code mints no descriptor tokens, so this only fires
+      // for old persisted queries (e.g. the revolveBugCorpus replay).
       for (const dTok of descriptorIds) {
         if (candidateIds.length <= 1) break
         const qd = parseGeomDescriptorId(dTok)

@@ -34,8 +34,6 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
       sketch_id: '',
       brep_diff: null,
       profile_queries: [],
-      face_lineage: {},
-      edge_lineage: {},
     }
   }
 
@@ -186,34 +184,4 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     table.assertNoLeaks()
   })
 
-  it('handles body with face_lineage and edge_lineage', () => {
-    const table = new HandleTable({ finalizerGuard: false })
-    const scope = new DisposeScope()
-    const handle = boxShape(scope, table, 10, 10, 10, 'f1')
-
-    const bodyStore: Record<string, Body> = {
-      body_box: {
-        id: 'body_box',
-        created_by: 'f1',
-        modified_by: [],
-        shape: handle,
-        sketch_id: '',
-        brep_diff: null,
-        profile_queries: [],
-        face_lineage: { '@body_box/face0': ['sk1'] },
-        edge_lineage: { '@body_box/edge0': ['sk1'] },
-      },
-    }
-    const result = extractBrepMetadata(occ, table, bodyStore)
-
-    expect(result).toHaveProperty('body_box')
-    // The lineage fields do not affect the metadata shape; they just flow into
-    // the classification step. Verify the entry still produces valid metadata.
-    const entry = result.body_box as Record<string, unknown>
-    expect((entry.mesh as Record<string, unknown>).face_data as unknown[]).toHaveLength(6)
-
-    table.release(handle)
-    scope.dispose()
-    table.assertNoLeaks()
-  })
 })

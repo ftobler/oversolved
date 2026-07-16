@@ -164,6 +164,25 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     for (const u of uuids) expect(u.startsWith('v_'), 'vertex UUIDs use the v_ prefix').toBe(true)
   })
 
+  it('no geometry token anywhere: box face/edge/vertex queries carry zero @gd*/@g*_ floats', () => {
+    // The whole point of query-naming-by-construction: a persisted query holds
+    // only construction UUIDs + ancestral tokens, never a geometry-identity token.
+    // Stage 7d dropped the last one (the @gdv| vertex descriptor), so a freshly
+    // built box exposes NO geometry-identity substring on any pickable primitive.
+    const GEOM_TOKEN = /@gd[fev]\||@gface_|@gedge_|@gvertex_|@gnormal_/
+    const s1 = { features: [rectSketch('sk1', 10, 10), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' }] }
+    const r1 = h.run(s1)
+    const all = [
+      ...faceQueries(r1, 'body_ex1'),
+      ...edgeQueries(r1, 'body_ex1'),
+      ...vertexQueries(r1, 'body_ex1'),
+    ]
+    expect(all.length, 'the box exposes face + edge + vertex queries').toBeGreaterThan(0)
+    for (const q of all) {
+      expect(GEOM_TOKEN.test(q), `query must carry no geometry-identity token: ${q}`).toBe(false)
+    }
+  })
+
   it('extrude length 10->11: a vertex resolves by UUID', () => {
     // A vertex is named by the set of faces meeting at it, all length-independent,
     // so the corner keeps its exact minted UUID across a pure length edit and the

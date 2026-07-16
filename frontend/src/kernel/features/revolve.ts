@@ -156,8 +156,6 @@ export function solveRevolve(
   let firstSketchId = ''
   const profileErrors: string[] = []
   const profileQueries: string[] = []
-  const faceLineage: Lineage = {}
-  const edgeLineage: Lineage = {}
   const faceNames: Record<string, string> = {}
   const edgeNames: Record<string, string> = {}
   const faceAncestry: Lineage = {}
@@ -237,14 +235,10 @@ export function solveRevolve(
       const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId)
       const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId)
       toolShape = fuse(oc, scope, pos.solid, neg.solid)
-      Object.assign(faceLineage, pos.faceLineage, neg.faceLineage)
-      Object.assign(edgeLineage, pos.edgeLineage, neg.edgeLineage)
     } else {
       const eff = direction === 'reverse' ? -angle : angle
       const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId)
       toolShape = lineage.solid
-      Object.assign(faceLineage, lineage.faceLineage)
-      Object.assign(edgeLineage, lineage.edgeLineage)
       Object.assign(faceNames, lineage.faceNames)
       Object.assign(edgeNames, lineage.edgeNames)
       Object.assign(faceAncestry, lineage.faceAncestry)
@@ -275,8 +269,6 @@ export function solveRevolve(
     sketchId: firstSketchId,
     opName: 'revolve',
     profileQueries,
-    faceLineage,
-    edgeLineage,
     faceNames,
     edgeNames,
     faceAncestry,

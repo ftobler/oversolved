@@ -1,5 +1,5 @@
 /**
- * This is the BrepDiff producer the 2e lineage transfer consumes: it classifies each output
+ * This is the BrepDiff producer the boolean name transfer consumes: it classifies each output
  * sub-shape as inherited (target lineage survives) or new (introduced by the tool), so ancestry
  * registration tags new faces with the cutting feature rather than the body's creator.
  *
@@ -7,8 +7,8 @@
  * returns a TopTools_ListOfShape with no iterator binding; drain via
  * Size()/First_1()/RemoveFirst() (the same sharp edge as the spike). -
  * TopTools_IndexedDataMapOfShapeListOfShape / TopExp.MapShapesAndAncestors's map type are
- * absent, so edge->face adjacency (the edge_lineage rebuild) is built face-by-face in the
- * lineage shard, not via the indexed map.
+ * absent, so any edge->face adjacency (e.g. deriveEdgeNames) is built face-by-face, not via the
+ * indexed map.
  *
  * Like primitives.ts, every function takes a DisposeScope and tracks its transients there. The
  * returned result shape is NOT tracked (the caller owns its lifetime); the BrepDiff's sub-shape

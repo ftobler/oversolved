@@ -235,8 +235,6 @@ describe('build with mock solvers', () => {
             sketch_id: '',
             brep_diff: null,
             profile_queries: [],
-            face_lineage: {},
-            edge_lineage: {},
           }
           created = true
         }
@@ -275,8 +273,6 @@ describe('build with mock solvers', () => {
           sketch_id: '',
           brep_diff: null,
           profile_queries: [],
-          face_lineage: {},
-          edge_lineage: {},
         }
         return { status: 'ok' }
       },
@@ -303,7 +299,7 @@ describe('build with mock solvers', () => {
     let resolvedDuringF2: unknown = undefined
     const makeBody = (): Body => ({
       id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1 as unknown as Body['shape'], sketch_id: '',
-      brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
+      brep_diff: null, profile_queries: [],
     })
     const deps = makeDeps({
       tessellateBodies: (store) => Object.fromEntries(
@@ -437,8 +433,6 @@ describe('validateIncremental', () => {
           sketch_id: 'sk1',
           brep_diff: null,
           profile_queries: [],
-          face_lineage: {},
-          edge_lineage: {},
         }
         return { status: 'ok' }
       },

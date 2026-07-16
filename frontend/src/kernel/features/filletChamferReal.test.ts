@@ -29,17 +29,6 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 
 const oc = await loadOcc()
 
-function boxFaceLineage(occ: OccModule, scope: DisposeScope, box: OccShape): Record<string, string[]> {
-  const E = occ.TopAbs_ShapeEnum
-  const out: Record<string, string[]> = {}
-  const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  let i = 0
-  for (; exp.More(); exp.Next()) {
-    const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
-    out[faceGeometryHash(faceCentroid(occ, scope, f), faceNormal(occ, scope, f))] = [`@face_${i++}`]
-  }
-  return out
-}
 
 describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
   let occ: OccModule
@@ -50,7 +39,6 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   function makeBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
     const box = makeBox(occ, scope, 10, 10, 10)
-    const faceLineage = boxFaceLineage(occ, scope, box)
 
     // Compute face_names and edge_names so that solidToEdges and buildEdgeIndex
     // both emit @u| construction UUID tokens, enabling identity-based edge
@@ -78,8 +66,6 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],
-        face_lineage: faceLineage,
-        edge_lineage: {},
         face_names: faceNames,
         edge_names: edgeNames,
         face_ancestry: faceAncestry,
@@ -88,7 +74,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     }
   }
 
-  it('fillet rounds a box edge, updates the body in place, threads lineage', () => {
+  it('fillet rounds a box edge, updates the body in place, threads construction names', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
     try {
@@ -107,8 +93,8 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect(body.modified_by).toEqual(['fil1'])
       expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeLessThan(1000)
       expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeGreaterThan(985)
-      // Some original face tokens survive onto the trimmed output faces.
-      expect(Object.keys(body.face_lineage ?? {}).length).toBeGreaterThan(0)
+      // Original face construction names survive onto the trimmed output faces.
+      expect(Object.keys(body.face_names ?? {}).length).toBeGreaterThan(0)
       expect(body.brep_diff).not.toBeNull()
     } finally {
       scope.dispose()

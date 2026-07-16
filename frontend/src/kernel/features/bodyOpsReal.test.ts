@@ -23,19 +23,14 @@ import fixture from '../occ/__fixtures__/bodyOps.json'
 
 const oc = await loadOcc()
 
-type Lineage = Record<string, string[]>
 type BodyState = {
   volume: number | null
   created_by: string
   modified_by: string[]
-  face_lineage: Lineage
-  edge_lineage: Lineage
 }
 type Scenario = {
   result: Record<string, unknown>
   store: Record<string, BodyState>
-  target_face_lineage?: Lineage
-  tool_face_lineage: Lineage
 }
 type Fixture = {
   target: [number, number, number]
@@ -45,12 +40,6 @@ type Fixture = {
   add_fuse: Scenario
 }
 const fx = fixture as unknown as Fixture
-
-function sortLineage(d: Lineage): Lineage {
-  const out: Lineage = {}
-  for (const [k, v] of Object.entries(d)) out[k] = [...v].sort()
-  return out
-}
 
 describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
   let occ: OccModule
@@ -80,8 +69,6 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           sketch_id: 'skT',
           brep_diff: null,
           profile_queries: [],
-          face_lineage: { ...(scenario.target_face_lineage ?? {}) },
-          edge_lineage: {},
         }
       }
       const tool = scope.track(makeBox(occ, scope, ux, uy, uz))
@@ -96,7 +83,6 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         sketchId: 'skF',
         opName: 'extrude',
         profileQueries: ['?p'],
-        faceLineage: scenario.tool_face_lineage,
       })
 
       // Result dict parity (drop undefined keys for a clean compare).
@@ -114,19 +100,17 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         if (exp.volume !== null && body.shape !== null) {
           expect(volumeOf(occ, scope, table.get<OccShape>(body.shape))).toBeCloseTo(exp.volume, 3)
         }
-        expect(sortLineage(body.face_lineage ?? {})).toEqual(sortLineage(exp.face_lineage))
-        expect(sortLineage(body.edge_lineage ?? {})).toEqual(sortLineage(exp.edge_lineage))
       }
     } finally {
       scope.dispose()
     }
   }
 
-  it('new: tool becomes a body with its lineage', () => {
+  it('new: tool becomes a body', () => {
     run(fx.new, 'new', { withTarget: false, mergeTarget: null })
   })
 
-  it('cut: target loses the overlap, lineage transferred', () => {
+  it('cut: target loses the overlap', () => {
     run(fx.cut, 'cut', { withTarget: true, mergeTarget: null })
   })
 
@@ -147,7 +131,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
           id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(scope.detach(target), 'featT'),
-          sketch_id: 'skT', brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
+          sketch_id: 'skT', brep_diff: null, profile_queries: [],
         }
         // Tool box is far away (no intersection with target at origin).
         const tool = makeBoxAt(occ, scope, [20, 20, 20], 5, 5, 5)
@@ -158,7 +142,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
             operation: 'cut',
             mergeTarget: 'body_t',
             bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
-            profileQueries: [], faceLineage: {},
+            profileQueries: [],
           }),
         ).toThrow(/does not intersect/)
       } finally {
@@ -179,7 +163,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
           id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(scope.detach(target), 'featT'),
-          sketch_id: 'skT', brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
+          sketch_id: 'skT', brep_diff: null, profile_queries: [],
         }
         // Tool box is far away (no overlap with target).
         const tool = makeBoxAt(occ, scope, [20, 20, 20], 5, 5, 5)
@@ -189,7 +173,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           operation: 'add',
           mergeTarget: null,
           bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
-          profileQueries: [], faceLineage: {},
+          profileQueries: [],
         })
         // Both bodies should exist independently.
         expect(result.status).toBe('ok')
@@ -217,7 +201,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
           id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(scope.detach(target), 'featT'),
-          sketch_id: 'skT', brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
+          sketch_id: 'skT', brep_diff: null, profile_queries: [],
         }
         // Tool cuts through the center: spans from y=4 to y=6, x from -1 to 11, z from 0 to 10.
         const tool = makeBoxAt(occ, scope, [-1, 4, 0], 12, 2, 10)
@@ -227,7 +211,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           operation: 'cut',
           mergeTarget: 'body_t',
           bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
-          profileQueries: [], faceLineage: {},
+          profileQueries: [],
         })
         expect(result.status).toBe('ok')
         // Result should carry body_ids listing all bodies in the store after the cut.

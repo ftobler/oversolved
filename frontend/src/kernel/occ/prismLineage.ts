@@ -325,10 +325,8 @@ function entityForEdges(
   return result
 }
 
-/** The geom-hash-keyed lineage plus the construction-name maps (see LineageResult). */
+/** The construction-name maps for a built solid (see LineageResult). */
 export interface LineageMaps {
-  faceLineage: Record<string, string[]>
-  edgeLineage: Record<string, string[]>
   faceNames: Record<string, string>  // faceGh -> face uuid
   edgeNames: Record<string, string>  // edgeGh -> edge uuid
   faceAncestry: Record<string, string[]>  // face uuid -> ancestral tokens
@@ -336,10 +334,10 @@ export interface LineageMaps {
 }
 
 function emptyLineageMaps(): LineageMaps {
-  return { faceLineage: {}, edgeLineage: {}, faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
+  return { faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
 }
 
-/** A built solid plus its geom-hash lineage and construction-name maps. */
+/** A built solid plus its construction-name maps. */
 export type LineageResult = LineageMaps & { solid: OccShape }
 
 /** Faces of the builder's FirstShape()/LastShape(), the sweep caps, by IsSame. */
@@ -386,15 +384,15 @@ function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): numbe
 }
 
 /**
- * (face_lineage, edge_lineage) for an extruded solid, keyed by geometry hash
- * (mirrors `_build_prism_lineage_map`), plus the construction-name maps
- * (query-naming-by-construction.md). Tokens are the raw profile entity ids (the
- * caller prepends `@sketch_id/`). Every solid face and edge gets a lineage
- * entry, possibly empty (caps and their rims). When `createdBy` is non-empty,
- * each side/cap face is minted a construction UUID (side = the generating
- * profile entity, cap = FirstShape/LastShape role) and each edge derives its
- * UUID from its two adjacent face UUIDs; multiplicity (a face pair sharing >1
- * edge) is ordered by `orderSplitChildren` and refuses on a near-tie.
+ * The construction-name maps for an extruded solid
+ * (query-naming-by-construction.md). Internally builds a geom-hash-keyed
+ * face/edge lineage (mirrors `_build_prism_lineage_map`) from the raw profile
+ * entity ids, used only to seed each UUID's ancestral tokens (the caller
+ * prepends `@sketch_id/`). When `createdBy` is non-empty, each side/cap face is
+ * minted a construction UUID (side = the generating profile entity, cap =
+ * FirstShape/LastShape role) and each edge derives its UUID from its two
+ * adjacent face UUIDs; multiplicity (a face pair sharing >1 edge) is ordered by
+ * `orderSplitChildren` and refuses on a near-tie.
  */
 function buildPrismLineageMap(
   oc: OccModule,
@@ -548,7 +546,7 @@ function buildPrismLineageMap(
     }
   }
 
-  return { faceLineage, edgeLineage, faceNames, edgeNames, faceAncestry, edgeAncestry }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
 /** Prefix bare (non-@) tokens in every value list of a token map, in place. */
@@ -558,10 +556,8 @@ function prefixTokens(lineage: Record<string, string[]>, prefix: string): void {
   }
 }
 
-/** Prefix the four token-bearing maps of a LineageMaps in place. */
+/** Prefix the two ancestry maps of a LineageMaps in place. */
 function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
-  prefixTokens(maps.faceLineage, prefix)
-  prefixTokens(maps.edgeLineage, prefix)
   prefixTokens(maps.faceAncestry, prefix)
   prefixTokens(maps.edgeAncestry, prefix)
 }
@@ -856,8 +852,6 @@ function perGroupPrismWithLineage(
     const part = builder.Shape()
     const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
     prefixLineageMaps(lineage, tokenPrefix)
-    Object.assign(merged.faceLineage, lineage.faceLineage)
-    Object.assign(merged.edgeLineage, lineage.edgeLineage)
     Object.assign(merged.faceNames, lineage.faceNames)
     Object.assign(merged.edgeNames, lineage.edgeNames)
     Object.assign(merged.faceAncestry, lineage.faceAncestry)
@@ -883,7 +877,7 @@ function perGroupPrismWithLineage(
 }
 
 /**
- * Extrude profile loops to a solid and return (solid, faceLineage, edgeLineage)
+ * Extrude profile loops to a solid and return (solid + construction-name maps)
  * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
  * and fused; nested loops become holes. The returned solid is raw and lives in
  * `scope` -- the caller registers/disposes it (typically via applyBodyOperation).
@@ -963,8 +957,8 @@ export function revolveFace(
 }
 
 /**
- * Revolve profile loops around an axis and return (solid, faceLineage,
- * edgeLineage) (mirrors `revolve_profile_with_lineage`). Unlike extrude, revolve
+ * Revolve profile loops around an axis and return (solid + construction-name
+ * maps) (mirrors `revolve_profile_with_lineage`). Unlike extrude, revolve
  * treats `loops` as one face (loops[0] outer, the rest holes) -- no disjoint-group
  * fan-out -- and uses BRepPrimAPI_MakeRevol.Generated() for lineage. Tokens are
  * `@sketch_id/entity`.
@@ -995,8 +989,8 @@ export function revolveProfileWithLineage(
 // ─── sweep (the sweep leaf's brep producer) ───
 
 /**
- * Sweep profile loops along a spine wire and return (solid, faceLineage,
- * edgeLineage) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
+ * Sweep profile loops along a spine wire and return (solid + construction-name
+ * maps) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
  * boundary is swept (holes are not carried through the pipe shell, matching
  * Python); lineage still comes from MakePipeShell.Generated() over the face's
  * profile edges. The spine edges are pre-built world-space OCC edges. RightCorner

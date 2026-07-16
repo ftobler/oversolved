@@ -1,14 +1,15 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for revolveProfileWithLineage (phase 2f, the revolve
-// leaf's brep producer). Feeds the same profile loops + axis + angle as
-// the now-removed gen_revolve_fixture.py through the TS port and asserts the
-// produced solid volume + the face/edge lineage match Python.
+// Gated real-OCC parity gate for revolveProfileWithLineage (the revolve leaf's
+// brep producer). Feeds the same profile loops + axis + angle as the now-removed
+// gen_revolve_fixture.py through the TS port and asserts the produced solid
+// volume + the profile-entity token attribution match Python.
 //
-// Same assertion split as the extrude gate: edge_lineage EXACTLY (keys + sorted
-// values; edge geom hashes are purely geometric and agree cross-language),
-// face_lineage as the sorted token-multiset (cylindrical-wall geom-hash keys
-// depend on the OCC-computed normal and diverge across the two builds).
+// Same conversion as the extrude gate (see prismLineageReal.test.ts): Stage 7
+// removed the geom-hash face_lineage/edge_lineage output, so we build with a
+// createdBy and compare the token attribution that survives on the construction-
+// name ancestry maps. faceAncestry matches the golden face_lineage exactly;
+// edgeAncestry is a SUBSET (curved-face seam edges get no edge UUID).
 //
 // Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_revolve_fixture.py) was deleted with the Python kernel in
@@ -42,14 +43,10 @@ type Case = {
 }
 const fx = fixture as unknown as { cases: Case[] }
 
-function sortLineage(d: Lineage): Lineage {
-  const out: Lineage = {}
-  for (const [k, v] of Object.entries(d)) out[k] = [...v].sort()
-  return out
-}
-
+/** Sorted multiset of the NON-EMPTY sorted token-lists (key-independent view). */
 function tokenMultiset(d: Lineage): string[] {
   return Object.values(d)
+    .filter((v) => v.length > 0)
     .map((v) => JSON.stringify([...v].sort()))
     .sort()
 }
@@ -62,10 +59,10 @@ describe.skipIf(!oc)('revolveProfileWithLineage (real OCC)', () => {
   })
 
   for (const c of fx.cases) {
-    it(`${c.name}: solid volume + face/edge lineage match Python`, () => {
+    it(`${c.name}: solid volume + face/edge token attribution match Python`, () => {
       const scope = new DisposeScope()
       try {
-        const { solid, faceLineage, edgeLineage } = revolveProfileWithLineage(
+        const { solid, faceAncestry, edgeAncestry } = revolveProfileWithLineage(
           occ,
           scope,
           c.loops,
@@ -74,10 +71,14 @@ describe.skipIf(!oc)('revolveProfileWithLineage (real OCC)', () => {
           c.axis_direction as Vec3,
           c.angle,
           c.sketch_id,
+          'feat',
         )
         expect(volumeOf(occ, scope, solid)).toBeCloseTo(c.volume, 3)
-        expect(tokenMultiset(faceLineage)).toEqual(tokenMultiset(c.face_lineage))
-        expect(sortLineage(edgeLineage)).toEqual(c.edge_lineage)
+        // Distinct token-lists: the name layer keys faces by UUID (see extrude gate).
+        expect(new Set(tokenMultiset(faceAncestry))).toEqual(new Set(tokenMultiset(c.face_lineage)))
+        // Subset only: curved-face seam edges get no edge UUID. See extrude gate.
+        const goldenEdges = new Set(tokenMultiset(c.edge_lineage))
+        for (const t of tokenMultiset(edgeAncestry)) expect(goldenEdges.has(t)).toBe(true)
       } finally {
         scope.dispose()
       }

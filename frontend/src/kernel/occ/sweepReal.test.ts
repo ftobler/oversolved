@@ -3,12 +3,14 @@
 // Gated real-OCC parity gate for sweepProfileWithLineage (phase 2f, the sweep
 // leaf's brep producer). Rebuilds the same spine edges (line/arc) as
 // the now-removed gen_sweep_fixture.py via the TS adapters, sweeps the same
-// square profile, and asserts the produced solid volume + face/edge lineage.
+// square profile, and asserts the produced solid volume + profile-entity token
+// attribution.
 //
-// edge_lineage is asserted EXACTLY for every case. face_lineage is asserted
-// EXACTLY for the line spines (all-flat faces, geom hashes agree) and by sorted
-// token-multiset for the arc spine (curved lateral faces -> geom-hash key
-// divergence, as in extrude/revolve).
+// Same conversion as the extrude gate (see prismLineageReal.test.ts): Stage 7
+// removed the geom-hash face_lineage/edge_lineage output, so we build with a
+// createdBy and compare the token attribution on the surviving construction-name
+// ancestry maps. faceAncestry matches the golden face_lineage multiset; edgeAncestry
+// is a SUBSET (seam edges of curved lateral faces get no edge UUID).
 //
 // Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_sweep_fixture.py) was deleted with the Python kernel in
@@ -69,14 +71,10 @@ type Case = {
 }
 const fx = fixture as unknown as { cases: Case[] }
 
-function sortLineage(d: Lineage): Lineage {
-  const out: Lineage = {}
-  for (const [k, v] of Object.entries(d)) out[k] = [...v].sort()
-  return out
-}
-
+/** Sorted multiset of the NON-EMPTY sorted token-lists (key-independent view). */
 function tokenMultiset(d: Lineage): string[] {
   return Object.values(d)
+    .filter((v) => v.length > 0)
     .map((v) => JSON.stringify([...v].sort()))
     .sort()
 }
@@ -89,7 +87,7 @@ describe.skipIf(!oc)('sweepProfileWithLineage (real OCC)', () => {
   })
 
   for (const c of fx.cases) {
-    it(`${c.name}: solid volume + face/edge lineage match Python`, () => {
+    it(`${c.name}: solid volume + face/edge token attribution match Python`, () => {
       const scope = new DisposeScope()
       try {
         const spine: OccShape[] = c.segments.map((seg) =>
@@ -97,26 +95,22 @@ describe.skipIf(!oc)('sweepProfileWithLineage (real OCC)', () => {
             ? fixtureArcEdge(occ, scope, seg.center as number[], seg.start, seg.end, seg.radius as number)
             : makeLineEdge(occ, scope, seg.start as Vec3, seg.end as Vec3),
         )
-        const { solid, faceLineage, edgeLineage } = sweepProfileWithLineage(
+        const { solid, faceAncestry, edgeAncestry } = sweepProfileWithLineage(
           occ,
           scope,
           c.loops,
           c.plane,
           spine,
           c.sketch_id,
+          'feat',
         )
         expect(volumeOf(occ, scope, solid)).toBeCloseTo(c.volume, 3)
-        if (c.flat) {
-          // Line spines yield all-flat faces + line/circle edges: analytic geom
-          // hashes agree cross-language, so both maps are exact parity checks.
-          expect(sortLineage(edgeLineage)).toEqual(c.edge_lineage)
-          expect(sortLineage(faceLineage)).toEqual(c.face_lineage)
-        } else {
-          // Curved spine: lateral faces AND the swept corner edges carry
-          // OCC-build-dependent geom hashes, so compare token-multisets only.
-          expect(tokenMultiset(edgeLineage)).toEqual(tokenMultiset(c.edge_lineage))
-          expect(tokenMultiset(faceLineage)).toEqual(tokenMultiset(c.face_lineage))
-        }
+        // Distinct token-lists: the name layer keys faces by UUID, so one profile
+        // entity swept into two lateral faces (an L-spine) dedupes to one entry.
+        expect(new Set(tokenMultiset(faceAncestry))).toEqual(new Set(tokenMultiset(c.face_lineage)))
+        // Subset only: seam edges of curved lateral faces get no edge UUID.
+        const goldenEdges = new Set(tokenMultiset(c.edge_lineage))
+        for (const t of tokenMultiset(edgeAncestry)) expect(goldenEdges.has(t)).toBe(true)
       } finally {
         scope.dispose()
       }

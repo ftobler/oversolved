@@ -295,8 +295,6 @@ export function bareBody(id: string, createdBy: string, sketchId = ''): Body {
     sketch_id: sketchId,
     brep_diff: null,
     profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
   }
 }
 

@@ -106,7 +106,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       }
       expect(picked).not.toBeNull()
 
-      const res = applyFilletWithLineage(occ, scope, box.solid, 1.0, [picked as OccShape], box.faceLineage, box.edgeLineage, {
+      const res = applyFilletWithLineage(occ, scope, box.solid, 1.0, [picked as OccShape], {
         createdBy: 'f1',
         faceNames: box.faceNames,
         edgeNames: box.edgeNames,

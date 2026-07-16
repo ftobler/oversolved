@@ -56,8 +56,6 @@ function makeBody(id: string, createdBy: string): Body {
     sketch_id: '',
     brep_diff: null,
     profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
   }
 }
 

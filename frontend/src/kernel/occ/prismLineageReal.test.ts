@@ -1,18 +1,17 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for prismLineage.ts (phase 2f, the extrude leaf's
-// brep producer): extrudeProfileWithLineage. Feeds the same profile loops as
-// the now-removed gen_extrude_fixture.py through the TS port and asserts the
-// produced solid volume + the face/edge lineage match Python.
+// Gated real-OCC parity gate for prismLineage.ts (the extrude leaf's brep
+// producer): extrudeProfileWithLineage. Feeds the same profile loops as the
+// now-removed gen_extrude_fixture.py through the TS port and asserts the
+// produced solid volume + the profile-entity token attribution match Python.
 //
-// edge_lineage is asserted EXACTLY (keys + sorted values): edge geometry hashes
-// are derived from purely geometric quantities (center/radius/axis/endpoints) and
-// agree across languages, so the keyed map is a hard parity check. face_lineage
-// is asserted as the sorted multiset of token-lists: a cylindrical face's geom
-// hash key depends on its OCC-computed normal, which diverges across the two OCC
-// builds for curved surfaces (the curved-face normal divergence accepted in 2b).
-// The edge map -- whose stable keys carry the face tokens via adjacency -- pins
-// down WHICH face each token landed on, so the two assertions together are tight.
+// Stage 7 removed the geom-hash face_lineage/edge_lineage output; the same
+// profile-entity tokens now survive on the construction-name ancestry maps
+// (uuid -> tokens). We build with a createdBy so those maps populate, then
+// compare token attribution key-independently (the sorted multiset of non-empty
+// token-lists). faceAncestry matches the golden face_lineage exactly; edgeAncestry
+// is a SUBSET (a cylinder seam edge, whose adjacent faces share one UUID, gets no
+// edge UUID, so its token is dropped).
 //
 // Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_extrude_fixture.py) was deleted with the Python kernel in
@@ -45,15 +44,17 @@ type Case = {
 }
 const fx = fixture as unknown as { cases: Case[] }
 
-function sortLineage(d: Lineage): Lineage {
-  const out: Lineage = {}
-  for (const [k, v] of Object.entries(d)) out[k] = [...v].sort()
-  return out
-}
-
-/** Sorted multiset of sorted token-lists (key-independent face-lineage view). */
+/**
+ * Sorted multiset of the NON-EMPTY sorted token-lists (key-independent view).
+ * The geom-hash face_lineage/edge_lineage producer was removed in Stage 7; the
+ * same profile-entity tokens now survive on the construction-name ancestry maps
+ * (uuid -> tokens), so we compare token attribution key-independently. Empty
+ * lists are dropped: caps carry no token, and ancestry only holds entries for
+ * entities that were minted a UUID (a cylinder seam edge gets none).
+ */
 function tokenMultiset(d: Lineage): string[] {
   return Object.values(d)
+    .filter((v) => v.length > 0)
     .map((v) => JSON.stringify([...v].sort()))
     .sort()
 }
@@ -66,10 +67,10 @@ describe.skipIf(!oc)('extrudeProfileWithLineage (real OCC)', () => {
   })
 
   for (const c of fx.cases) {
-    it(`${c.name}: solid volume + face/edge lineage match Python`, () => {
+    it(`${c.name}: solid volume + face/edge token attribution match Python`, () => {
       const scope = new DisposeScope()
       try {
-        const { solid, faceLineage, edgeLineage } = extrudeProfileWithLineage(
+        const { solid, faceAncestry, edgeAncestry } = extrudeProfileWithLineage(
           occ,
           scope,
           c.loops,
@@ -77,10 +78,17 @@ describe.skipIf(!oc)('extrudeProfileWithLineage (real OCC)', () => {
           c.direction as Vec3,
           c.distance,
           c.sketch_id,
+          'feat',
         )
         expect(volumeOf(occ, scope, solid)).toBeCloseTo(c.volume, 3)
-        expect(tokenMultiset(faceLineage)).toEqual(tokenMultiset(c.face_lineage))
-        expect(sortLineage(edgeLineage)).toEqual(c.edge_lineage)
+        // Distinct token-lists: the name layer keys faces by UUID, so a profile
+        // entity generating more than one face dedupes to a single entry.
+        expect(new Set(tokenMultiset(faceAncestry))).toEqual(new Set(tokenMultiset(c.face_lineage)))
+        // Edge token attribution is a SUBSET of the old edge_lineage: edgeAncestry
+        // drops the cylinder seam edge (same-face pair -> no UUID). deriveEdgeNames
+        // tests pin the edge naming directly.
+        const goldenEdges = new Set(tokenMultiset(c.edge_lineage))
+        for (const t of tokenMultiset(edgeAncestry)) expect(goldenEdges.has(t)).toBe(true)
       } finally {
         scope.dispose()
       }

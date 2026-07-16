@@ -28,7 +28,6 @@ import {
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
 import { geometryClassifiers, edgeGeometryHash, faceGeometryHash, vertexGeometryHash } from '../geomHash'
-import { emitVertexDescriptor } from '../geomDescriptor'
 import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { buildFaceQuery } from '../faceQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
@@ -592,18 +591,19 @@ export function solidToVertices(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
-      // op-independent). Kept alongside the @gdv| descriptor for now (Stage 7c
-      // ADDS @u|; Stage 7d removes the descriptor).
+      // op-independent). Stage 7d dropped the @gdv| geometry descriptor: a vertex
+      // query now carries only its @u| UUID (when it meets >=3 named faces) plus
+      // the ancestral tokens. A vertex that earns no UUID (a curved-body seam
+      // vertex touching <3 named faces) falls back to the ancestral net or fails
+      // loud -- the accepted fail-safe outcome of dropping geometry identity.
       const uuidByGh = opts.faceNames ? vertexUuidsFromFaces(oc, scope, solid, opts.faceNames) : {}
       for (let idx = 0; idx < vertices.length; idx++) {
         const v = vertices[idx]
         const uuid = uuidByGh[vertexGeometryHash(v)] ?? null
         vertex_uuids[idx] = uuid
-        // Descriptor token instead of the old gvertex_ digest (query-descriptor-identity).
-        const geomToken = emitVertexDescriptor(v)
         const ids: string[] = []
         if (uuid) ids.push(constructionUuidToken(uuid))
-        ids.push(geomToken, ref(createdBy))
+        ids.push(ref(createdBy))
         if (bodyId) {
           ids.push(ref(bodyId))
           if (opts.profileQueries && opts.profileQueries.length) ids.push(...opts.profileQueries)

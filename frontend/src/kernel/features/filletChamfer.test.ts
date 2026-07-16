@@ -28,8 +28,6 @@ function oneBody(): Record<string, Body> {
       sketch_id: 'sk',
       brep_diff: null,
       profile_queries: [],
-      face_lineage: {},
-      edge_lineage: {},
     },
   }
 }
@@ -81,8 +79,6 @@ describe('resolveFilletEdges guard', () => {
       sketch_id: 'sk',
       brep_diff: null,
       profile_queries: [],
-      face_lineage: {},
-      edge_lineage: {},
     }
     expect(resolveFilletEdges(oc, scopeNull, table, body, [])).toEqual([])
   })

@@ -254,8 +254,6 @@ type ApplyFn = (
   scope: DisposeScope,
   shape: OccShape,
   edges: OccShape[],
-  faceLineage: Record<string, string[]>,
-  edgeLineage: Record<string, string[]>,
   oldNames: OldNames | null,
 ) => EdgeModifierResult
 
@@ -412,7 +410,7 @@ function applyEdgeFeature(
           edgeAncestry: body.edge_ancestry ?? {},
         }
       : null
-    const res = applyFn(oc, scope, oldShape, topoEdges, body.face_lineage ?? {}, body.edge_lineage ?? {}, oldNames)
+    const res = applyFn(oc, scope, oldShape, topoEdges, oldNames)
 
     const oldHandle = body.shape
     scope.track(res.shape)
@@ -457,8 +455,8 @@ export function solveFillet(
   const radiusRaw = merged.radius
   const radius = Number(radiusRaw !== undefined && radiusRaw !== null ? radiusRaw : 1.0)
   if (radius <= 0) throw new Error('fillet: radius must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, fl, el, nm) =>
-    applyFilletWithLineage(o, s, shape, radius, edges, fl, el, nm),
+  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, nm) =>
+    applyFilletWithLineage(o, s, shape, radius, edges, nm),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
   // face-bisector normal is not the exact radius/bisector-travel relation
   // (r = d_bisector * sin(theta/2) for the included edge angle), but it is
@@ -484,8 +482,8 @@ export function solveChamfer(
   const angleRaw = merged.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
   if (distance <= 0) throw new Error('chamfer: distance must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, fl, el, nm) =>
-    applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, fl, el, nm),
+  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
+    applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.
   (anchor, direction) => linearHandle('distance', anchor, direction, distance),
