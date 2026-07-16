@@ -317,11 +317,22 @@ function genId(): string {
   return "el_" + (_idCounter++).toString(36)
 }
 
+/** Which resolution tier answered the last ancestry query. Diagnostic only:
+ *  corpus tests assert the tier so a query silently falling back from UUID to
+ *  a weaker tier is caught, not masked. Not persisted, not part of any result. */
+export type ResolveTier =
+  | "uuid"           // primary: construction UUID exact match
+  | "ancestral"      // ancestor-set subset match (optionally classifier/descriptor narrowed)
+  | "ancestral-partial"  // relaxed superset fallback when the subset match was empty
+  | "descriptor"     // geometry-descriptor fallback (vertices; @gdv|)
+  | "miss"           // nothing resolved
+
 export class Repository {
   elements = new Map<string, unknown>()
   ancestral = new Map<string, AncestralEntry>()
   byUuid = new Map<string, string[]>()
   featureIndex = new Map<string, number>()
+  _lastTier: ResolveTier = "miss"
 
   setFeatureOrder(featureOrder: string[]): void {
     this.featureIndex = new Map(featureOrder.map((fid, i) => [fid, i]))
@@ -452,6 +463,7 @@ export class Repository {
     bodyStore: Record<string, unknown> | null = null,
     currentFeatureId: string | null = null,
   ): unknown {
+    this._lastTier = "miss"
     const orderFilter = this.orderFilter(currentFeatureId)
 
     const classifierIds = ids.filter(isClassifierId)
@@ -476,7 +488,7 @@ export class Repository {
           return t === typeRestriction || isSubtype(t, typeRestriction)
         })
       }
-      if (hits.length === 1) return this.elements.get(hits[0]) ?? null
+      if (hits.length === 1) { this._lastTier = "uuid"; return this.elements.get(hits[0]) ?? null }
       if (hits.length > 1) {
         throw new AmbiguousQueryError(
           `Construction UUID ${uuid} matched ${hits.length} elements (collision by construction)`,
@@ -485,6 +497,7 @@ export class Repository {
     }
 
     let candidateIds: string[] = []
+    let descriptorFallback = false
     let querySet = new Set<string>()
     if (nonHashIds.length) {
       querySet = new Set(nonHashIds)
@@ -511,7 +524,7 @@ export class Repository {
             coercedResults.push(coerced)
           }
         }
-        if (coercedResults.length === 1) return coercedResults[0]
+        if (coercedResults.length === 1) { this._lastTier = "ancestral"; return coercedResults[0] }
         if (coercedResults.length > 1) {
           throw new AmbiguousQueryError(
             `Query coerced to ${coercedResults.length} distinct '${typeRestriction}' elements`,
@@ -556,7 +569,10 @@ export class Repository {
           eid => objType(this.elements.get(eid)) === typeRestriction,
         )
       }
-      if (partialCandidates.length === 1) return this.elements.get(partialCandidates[0]) ?? null
+      if (partialCandidates.length === 1) {
+        this._lastTier = "ancestral-partial"
+        return this.elements.get(partialCandidates[0]) ?? null
+      }
     }
 
     if (!candidateIds.length && descriptorIds.length) {
@@ -572,6 +588,7 @@ export class Repository {
           if (dist !== null && dist <= DEFAULT_DESCRIPTOR_MATCH.tightTol) fallbackIds.push(eid)
         }
         candidateIds = orderFilter(fallbackIds)
+        if (candidateIds.length) descriptorFallback = true
       }
     }
 
@@ -581,6 +598,7 @@ export class Repository {
         `Query matched ${candidateIds.length} elements: ${JSON.stringify(candidateIds)}`,
       )
     }
+    this._lastTier = descriptorFallback ? "descriptor" : "ancestral"
     return this.elements.get(candidateIds[0]) ?? null
   }
 

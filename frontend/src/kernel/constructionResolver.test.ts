@@ -53,3 +53,31 @@ describe('resolver UUID-first tier', () => {
     )
   })
 })
+
+describe('resolver tier channel (_lastTier)', () => {
+  it('reports the uuid tier on a construction-UUID hit', () => {
+    const repo = new Repository()
+    const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    const q = makeAncestryQuery([constructionUuidToken('u_X'), '@f1', '@body_b'], 'face')
+    expect(repo.query(q)).toBe(face)
+    // A silent downgrade to the ancestral net would report a weaker tier here.
+    expect(repo._lastTier).toBe('uuid')
+  })
+
+  it('reports the ancestral tier when the UUID misses and the ancestral net recovers it', () => {
+    const repo = new Repository()
+    const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    const q = makeAncestryQuery([constructionUuidToken('u_missing'), '@f1', '@body_b'], 'face')
+    expect(repo.query(q)).toBe(face)
+    expect(repo._lastTier).toBe('ancestral')
+  })
+
+  it('reports miss when nothing resolves', () => {
+    const repo = new Repository()
+    const q = makeAncestryQuery([constructionUuidToken('u_nope'), '@nothing'], 'face')
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe('miss')
+  })
+})
