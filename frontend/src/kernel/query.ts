@@ -264,6 +264,25 @@ export function isGeomHashId(idStr: string): boolean {
   )
 }
 
+// ─── construction-by-name UUID token (query-naming-by-construction) ───
+
+const UUID_TOKEN_PREFIX = "@u|"
+
+/** Wire-format construction UUID token (`@u|<uuid>`), the primary identity. */
+export function isConstructionUuidId(idStr: string): boolean {
+  return idStr.startsWith(UUID_TOKEN_PREFIX)
+}
+
+/** Mint the wire token `@u|<uuid>` for a construction UUID. */
+export function constructionUuidToken(uuid: string): string {
+  return UUID_TOKEN_PREFIX + uuid
+}
+
+/** The UUID carried by a `@u|<uuid>` token, or null if not one. */
+export function parseConstructionUuidId(idStr: string): string | null {
+  return idStr.startsWith(UUID_TOKEN_PREFIX) ? idStr.slice(UUID_TOKEN_PREFIX.length) : null
+}
+
 // ─── Solve-loop ordering guard (contextvar equivalent) ───
 
 let _currentFeatureId: string | null = null
@@ -303,6 +322,8 @@ export class Repository {
   // canonical frozenset key -> entry (preserves insertion order, like dict)
   ancestral = new Map<string, AncestralEntry>()
   byGeomHash = new Map<string, string[]>()
+  // construction UUID -> registered element ids (the primary identity index)
+  byUuid = new Map<string, string[]>()
   featureIndex = new Map<string, number>()
 
   setFeatureOrder(featureOrder: string[]): void {
@@ -313,13 +334,21 @@ export class Repository {
     for (const [h, eids] of [...this.byGeomHash]) {
       if (!eids.some(eid => this.elements.has(eid))) this.byGeomHash.delete(h)
     }
+    for (const [u, eids] of [...this.byUuid]) {
+      if (!eids.some(eid => this.elements.has(eid))) this.byUuid.delete(u)
+    }
   }
 
   register(elementId: string, obj: unknown): void {
     this.elements.set(elementId, obj)
   }
 
-  registerAncestor(ancestors: string[], obj: unknown, geomHash: string | null = null): string {
+  registerAncestor(
+    ancestors: string[],
+    obj: unknown,
+    geomHash: string | null = null,
+    uuid: string | null = null,
+  ): string {
     const id = genId()
     const key = canonical(ancestors)
     let entry = this.ancestral.get(key)
@@ -333,6 +362,11 @@ export class Repository {
       const list = this.byGeomHash.get(geomHash) ?? []
       list.push(id)
       this.byGeomHash.set(geomHash, list)
+    }
+    if (uuid !== null) {
+      const list = this.byUuid.get(uuid) ?? []
+      list.push(id)
+      this.byUuid.set(uuid, list)
     }
     return id
   }
@@ -436,7 +470,11 @@ export class Repository {
     const classifierIds = ids.filter(isClassifierId)
     const descriptorIds = ids.filter(isGeomDescriptorId)
     const nonHashIds = ids.filter(
-      i => !isGeomHashId(i) && !isClassifierId(i) && !isGeomDescriptorId(i),
+      i =>
+        !isGeomHashId(i) &&
+        !isClassifierId(i) &&
+        !isGeomDescriptorId(i) &&
+        !isConstructionUuidId(i),
     )
 
     let candidateIds: string[] = []
@@ -588,7 +626,13 @@ export class Repository {
     const orderFilter = this.orderFilter(currentFeatureId)
     const [ids, typeRestriction] = parseAncestry(queryStr)
     const querySet = new Set(
-      ids.filter(i => !isGeomHashId(i) && !isClassifierId(i) && !isGeomDescriptorId(i)),
+      ids.filter(
+        i =>
+          !isGeomHashId(i) &&
+          !isClassifierId(i) &&
+          !isGeomDescriptorId(i) &&
+          !isConstructionUuidId(i),
+      ),
     )
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
@@ -604,7 +648,13 @@ export class Repository {
   queryAllTyped(q: AncestryQuery, currentFeatureId: string | null = null): unknown[] {
     const orderFilter = this.orderFilter(currentFeatureId)
     const querySet = new Set(
-      q.ancestorIds.filter(i => !isGeomHashId(i) && !isClassifierId(i) && !isGeomDescriptorId(i)),
+      q.ancestorIds.filter(
+        i =>
+          !isGeomHashId(i) &&
+          !isClassifierId(i) &&
+          !isGeomDescriptorId(i) &&
+          !isConstructionUuidId(i),
+      ),
     )
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
@@ -644,6 +694,7 @@ export function evictAncestryAndRegister(
   payload: Record<string, unknown>,
   indexTag: string | null = null,
   geomHash: string | null = null,
+  uuid: string | null = null,
 ): string {
   const key = canonical(ancestorIds)
 
@@ -662,12 +713,15 @@ export function evictAncestryAndRegister(
     repo.ancestral.delete(key)
   }
 
-  // prune stale geom-hash entries (matches Python _prune_geom_hash)
+  // prune stale geom-hash / uuid entries (matches Python _prune_geom_hash)
   for (const [h, eids] of [...repo.byGeomHash]) {
     if (!eids.some(eid => repo.elements.has(eid))) repo.byGeomHash.delete(h)
   }
+  for (const [u, eids] of [...repo.byUuid]) {
+    if (!eids.some(eid => repo.elements.has(eid))) repo.byUuid.delete(u)
+  }
 
-  return repo.registerAncestor(ancestorIds, payload, geomHash)
+  return repo.registerAncestor(ancestorIds, payload, geomHash, uuid)
 }
 
 // ─── Plane/point helpers (port of solver_plane) ───
