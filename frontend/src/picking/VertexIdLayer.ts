@@ -3,6 +3,7 @@ import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
 import { VERTEX_LAYER_NAME } from './layerNames'
+import { primitivePickKey } from './pickKey'
 
 /**
  * Concrete ID layer for B-rep vertices.
@@ -27,6 +28,13 @@ export interface VertexBodyRegistration {
   bodyKey: string
   vertices: ReadonlyArray<[number, number, number]>
   vertexQueries: ReadonlyArray<string>
+  /**
+   * When true, allocate the ID by a per-primitive key (`bodyKey#vertexIdx`)
+   * rather than by the query string. B-rep vertices set this because their
+   * queries can legitimately collide (no minted UUID / shared octant); other
+   * reusers with unique keys leave it off. Mirrors FaceIdLayer / EdgeIdLayer.
+   */
+  perPrimitivePickKeys?: boolean
 }
 
 const VERT_SHADER = `
@@ -84,7 +92,11 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points> {
     for (let i = 0; i < count; i++) {
       const query = vertexQueries[i]
       if (query === undefined) continue
-      const id = this.registry.allocate(this.name, query)
+      // Per-primitive pick key so two vertices sharing a query still get distinct
+      // ids; the query rides along as the record's entityKey (mirrors edges/faces).
+      const id = reg.perPrimitivePickKeys
+        ? this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, i))
+        : this.registry.allocate(this.name, query)
       allocatedIds.push(id)
       const [r, g, b] = idToRGBNormalized(id)
       const v = vertices[i]

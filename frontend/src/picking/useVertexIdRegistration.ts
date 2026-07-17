@@ -20,7 +20,7 @@ export function useVertexIdRegistration(params: {
     (p) => {
       if (!vertices || vertices.length === 0 || !vertexQueries || vertexQueries.length === 0) return false
       try {
-        p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries })
+        p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
         console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
