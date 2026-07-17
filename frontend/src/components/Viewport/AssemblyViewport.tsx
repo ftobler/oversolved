@@ -422,6 +422,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     if (adapter.isActive()) return
     const store = useAssemblyStore.getState()
     store.setSelectedPartHandle(null)
+    store.setSelectedMateId(null)
     // An empty-space click clears the B-rep selection too, the same "click off to
     // deselect" the part editor gives. Not while aiming: the mate picker owns the
     // click there and a miss simply aims at nothing.
