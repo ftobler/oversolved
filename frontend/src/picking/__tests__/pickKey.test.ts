@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bodyKeyFor, primitivePickKey } from '../pickKey'
+import { bodyKeyFor, primitivePickKey, pickedPrimitiveIndex } from '../pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
 
 describe('primitivePickKey', () => {
@@ -24,5 +24,30 @@ describe('primitivePickKey', () => {
     const a = primitivePickKey(bodyKeyFor('f', 'b0'), 0, FACE_LAYER_NAME)
     const b = primitivePickKey(bodyKeyFor('f', 'b1'), 0, FACE_LAYER_NAME)
     expect(a).not.toBe(b)
+  })
+})
+
+describe('pickedPrimitiveIndex (id -> element back-mapping)', () => {
+  const body = bodyKeyFor('extrude1', 'body0')
+
+  it('resolves the index of a pick key minted for the same layer', () => {
+    const key = primitivePickKey(body, 3, EDGE_LAYER_NAME)
+    expect(pickedPrimitiveIndex(body, 5, EDGE_LAYER_NAME, key)).toBe(3)
+  })
+
+  it('returns -1 for a null pick key', () => {
+    expect(pickedPrimitiveIndex(body, 5, EDGE_LAYER_NAME, null)).toBe(-1)
+  })
+
+  it('does not resolve a pick key from another layer at the same index', () => {
+    // A hovered vertex must never light up the same-index edge / face.
+    const vertexKey = primitivePickKey(body, 2, VERTEX_LAYER_NAME)
+    expect(pickedPrimitiveIndex(body, 5, EDGE_LAYER_NAME, vertexKey)).toBe(-1)
+    expect(pickedPrimitiveIndex(body, 5, FACE_LAYER_NAME, vertexKey)).toBe(-1)
+  })
+
+  it('does not resolve a pick key from another body', () => {
+    const otherKey = primitivePickKey(bodyKeyFor('extrude1', 'body1'), 1, EDGE_LAYER_NAME)
+    expect(pickedPrimitiveIndex(body, 5, EDGE_LAYER_NAME, otherKey)).toBe(-1)
   })
 })
