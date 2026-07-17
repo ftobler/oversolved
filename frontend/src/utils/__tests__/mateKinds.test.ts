@@ -56,12 +56,12 @@ describe('mateParams', () => {
   // axis would pin its only free DOF, a driven joint, not a mate).
   it('offers exactly the params the matching residual reads, per mate_residuals.rs', () => {
     const RUST_READS: Record<MateKind, readonly string[]> = {
-      fixed: ['offset', 'angle'],
+      fixed: ['offset', 'flip', 'angle'],
       spherical: [],
       parallel: ['flip'],
-      sliding: [],
-      rotating: [],
-      sliding_rotating: [],
+      sliding: ['flip', 'angle'],
+      rotating: ['flip'],
+      sliding_rotating: ['flip'],
       tangential: ['offset', 'radius'],
       copy_rotation: ['ratio'],
       parallel_plane_distance: ['offset', 'flip'],
@@ -72,16 +72,16 @@ describe('mateParams', () => {
   })
 
   it('sliding offers no offset (Stage D: an offset would pin the joint\'s only free DOF)', () => {
-    expect(mateParams('sliding')).toEqual([])
+    expect(mateParams('sliding')).not.toContain('offset')
   })
 
-  it('gives fixed its offset and angle', () => {
-    expect(mateParams('fixed')).toEqual(['offset', 'angle'])
+  it('gives fixed its offset, flip and angle', () => {
+    expect(mateParams('fixed')).toEqual(['offset', 'flip', 'angle'])
   })
 
-  it('offers angle only where the solver reads it (fixed alone)', () => {
+  it('offers angle only where the solver reads a roll target (fixed and sliding)', () => {
     const withAngle = MATE_KINDS.filter(k => mateParams(k).includes('angle'))
-    expect(withAngle).toEqual(['fixed'])
+    expect(withAngle).toEqual(['fixed', 'sliding'])
   })
 
   it('gives copy_rotation only its ratio', () => {
@@ -92,15 +92,16 @@ describe('mateParams', () => {
     expect(mateParams('tangential')).toContain('radius')
   })
 
+  // Every axis mate reads flip since the signed axis-difference rework: which
+  // side a joint welds/hinges is authored (captured at the pick), no longer
+  // derived from whichever side the seed happened to be nearer.
   it('offers flip only where the solver reads it', () => {
     const withFlip = MATE_KINDS.filter(k => mateParams(k).includes('flip'))
-    expect(withFlip).toEqual(['parallel', 'parallel_plane_distance'])
+    expect(withFlip).toEqual(['fixed', 'sliding', 'rotating', 'sliding_rotating', 'parallel', 'parallel_plane_distance'])
   })
 
-  it('gives the free-DOF joints no parameters at all', () => {
+  it('gives spherical, the only orientation-free joint, no parameters at all', () => {
     expect(mateParams('spherical')).toEqual([])
-    expect(mateParams('sliding_rotating')).toEqual([])
-    expect(mateParams('sliding')).toEqual([])
   })
 })
 

@@ -85,7 +85,8 @@ describe('deriveAnchorFrame', () => {
 describe('buildAnchorTable', () => {
   it('folds the assembly built-ins in under the reserved handle', () => {
     const anchor = lookupAnchor(TABLE, { part: ASSEMBLY_HANDLE, anchor: ASSEMBLY_TOP_ID })
-    expect(anchor).toEqual({ kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0] })
+    // x_axis = canonicalPerp of the Top plane's +Y normal (y crossed with x).
+    expect(anchor).toEqual({ kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0], x_axis: [0, 0, -1] })
   })
 
   it('keeps the parts it was given', () => {

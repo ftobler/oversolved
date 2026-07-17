@@ -6,8 +6,9 @@
 // The parameter table is the single source of truth for "which inputs does this
 // mate show". It is bounded by the wire, not by the schema: `encodeMateInput`
 // (kernel/solveAssembly.ts) writes exactly `flip`, `offset`, `ratio`, `radius`
-// and `angle` per mate. `angle` is `fixed`-only: it rotates body B's seed-
-// relative roll about the shared axis, a control no other mate kind reads.
+// and `angle` per mate. `angle` belongs to `fixed` and `sliding`: the absolute
+// roll between the two anchors' canonical frames (mate_residuals.rs
+// abs_roll_residual), a control no other mate kind reads.
 
 import type { MateKind, MateRef } from '@/types/cad'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
@@ -43,17 +44,19 @@ export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
 // Which kind reads which parameter, per mate_residuals.rs's residual formulas:
 // offset serves Fixed / ParallelPlaneDistance / Tangential; ratio is
 // CopyRotation's alone; radius is Tangential's mate-side fallback; angle is
-// Fixed's seed-relative roll, alone (see mate_residuals.rs's Fixed residual).
+// Fixed's and Sliding's absolute roll target. Every axis mate reads `flip`
+// (which side its signed axis-difference residual welds); the editor captures
+// flip -- and angle, where read -- from the on-screen pose when both refs are
+// picked (utils/mateCapture.ts), so a mate holds what it was authored at as
+// document data, never as solver seed memory.
 // `sliding` does NOT read offset: an offset along a prismatic joint's axis
 // would pin its only translational DOF, which is a driven joint (a motor),
-// not a mate -- mates constrain, they do not command. `sliding`'s own roll is
-// pinned unconditionally (seed-relative, no wire field), the same answer
-// `angle` reaches for `fixed` roll: a mate holds what it was seeded with.
+// not a mate -- mates constrain, they do not command.
 const MATE_PARAMS: Record<MateKind, readonly MateParam[]> = {
-  fixed: ['offset', 'angle'],
-  sliding: [],
-  rotating: [],
-  sliding_rotating: [],
+  fixed: ['offset', 'flip', 'angle'],
+  sliding: ['flip', 'angle'],
+  rotating: ['flip'],
+  sliding_rotating: ['flip'],
   spherical: [],
   parallel: ['flip'],
   parallel_plane_distance: ['offset', 'flip'],

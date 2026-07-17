@@ -13,6 +13,7 @@ import type { AssemblyDoc } from '@/types/cad'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import type { AssemblySolveResult } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
+import type { AnchorTable } from '@/utils/anchorGizmos'
 import { appendMate, findMate } from '@/utils/assemblyMutations'
 
 const PART = 'h1'
@@ -176,6 +177,59 @@ describe('closing a mate field', () => {
     getState().setSelectedMateId('m2')
     expect(getState().activeMateField).toBeNull()
     expect(getState().selectedMateId).toBe('m2')
+  })
+})
+
+// Completing a mate's reference pair captures the on-screen orientation into
+// its authored flip/angle (utils/mateCapture.ts): the pose the user picked at
+// is what the solver holds, as document data. Without the capture the solver
+// would have to derive orientation from its seed -- the drift/ratchet/flip bug
+// family this replaces.
+describe('orientation capture on pick', () => {
+  const CAPTURE_ANCHORS: AnchorTable = {
+    [PART]: {
+      a_v: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], x_axis: [0, 1, 0] },
+      a_e: { kind: 'line', point: [0, 0, 0], axis: [0, 0, -1], x_axis: [0, 1, 0] },
+    },
+    h2: {
+      b_f: { kind: 'plane', point: [0, 0, 5], axis: [0, 0, -1], x_axis: [0, -1, 0] },
+    },
+  }
+
+  it('completing the pair freezes the seen pose into flip and angle', () => {
+    getState().setSolveResult({ ...SOLVE_RESULT, anchors: CAPTURE_ANCHORS })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    // Half a pair captures nothing yet.
+    expect('flip' in currentMate('m1')).toBe(false)
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])
+    // a_v (+Z, +Y frame) against b_f (-Z, -Y frame): a face-to-face pose.
+    expect(currentMate('m1').flip).toBe(true)
+    expect(currentMate('m1').angle).toBe(180)
+  })
+
+  it('cycling to a different anchor re-captures against the new geometry', () => {
+    getState().setSolveResult({ ...SOLVE_RESULT, anchors: CAPTURE_ANCHORS })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle(CORNER_HITS)  // aims a_v: opposed to b_f
+    expect(currentMate('m1').flip).toBe(true)
+    getState().pickFromHitsOrCycle(CORNER_HITS)  // cycles to a_e: same side as b_f
+    expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_e' })
+    expect('flip' in currentMate('m1')).toBe(false)
+  })
+
+  it('writes the refs but no orientation when the anchor table cannot resolve them', () => {
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])
+    const mate = currentMate('m1')
+    expect(mate.ref_b).toEqual({ part: 'h2', anchor: 'b_f' })
+    expect('flip' in mate).toBe(false)
+    expect('angle' in mate).toBe(false)
   })
 })
 

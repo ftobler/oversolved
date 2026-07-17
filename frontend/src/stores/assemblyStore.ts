@@ -4,7 +4,8 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { MateResult } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { bakeSolvedTransforms, findMate, setMateRef } from '@/utils/assemblyMutations'
+import { bakeSolvedTransforms, findMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
+import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import { transformsEqual, type Vec3 } from '@/utils/transform3d'
 
@@ -304,7 +305,18 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const otherField: MateRefField = activeMateField.field === 'ref_a' ? 'ref_b' : 'ref_a'
     const otherRef = mate?.[otherField]
     if (otherRef && otherRef.part === ref.part) return
-    callbacks.mutateDoc(d => setMateRef(d, activeMateField.featureId, activeMateField.field, ref))
+    // The pick that completes (or re-aims) the pair freezes the on-screen
+    // orientation into the mate's authored flip/angle, measured against the
+    // solved anchor table this scene is drawn from. Authored here, held by the
+    // solver forever: this is the WYSIWYG half of the no-seed-state contract
+    // (see utils/mateCapture.ts).
+    const refA = activeMateField.field === 'ref_a' ? ref : mate?.ref_a
+    const refB = activeMateField.field === 'ref_b' ? ref : mate?.ref_b
+    const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors) : null
+    callbacks.mutateDoc(d => {
+      const withRef = setMateRef(d, activeMateField.featureId, activeMateField.field, ref)
+      return patch ? updateMate(withRef, activeMateField.featureId, patch) : withRef
+    })
     set({ mateFieldDirty: true })
   },
 

@@ -268,9 +268,11 @@ describeReal('solveAssembly with the real mate solver', () => {
 
   it('locks the roll angle when a part is placed with a rotation', async () => {
     // Part A grounded at identity. Part B placed with a 45 deg roll about Z
-    // and offset in position. Both anchors are Z-up planes already aligned
-    // (Z-rotation preserves the Z axis). The fixed mate with angle=0 must pull
-    // B to A's position while preserving the seed-relative roll (B stays at 45°).
+    // and offset in position, and the mate authored with angle=45 -- what the
+    // editor's capture writes when the refs are picked at this pose. The fixed
+    // mate must pull B to A's position while holding the AUTHORED roll: the
+    // 45 degrees survives because the document says so, not because the seed
+    // happened to hold it (roll is absolute since the seed-state rework).
     const h = Math.sin(Math.PI / 8)
     const c = Math.cos(Math.PI / 8)
     const parts = [
@@ -278,7 +280,7 @@ describeReal('solveAssembly with the real mate solver', () => {
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 5, ty: 10, tz: 15, qx: 0, qy: 0, qz: h, qw: c } },
     ]
     const mates = [{
-      id: 'm1', kind: 'fixed' as const,
+      id: 'm1', kind: 'fixed' as const, angle: 45,
       ref_a: { part: 'pa', anchor: 'face' },
       ref_b: { part: 'pb', anchor: 'face' },
     }]
@@ -291,9 +293,7 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(Math.abs(b.ty)).toBeLessThan(0.01)
     expect(Math.abs(b.tz)).toBeLessThan(0.01)
 
-    // Orientation: seed-relative roll is locked at 0 (angle=0), so the
-    // absolute quaternion stays at the seed value.
-    // B's roll about Z should remain ~45°
+    // Orientation: B's roll about Z holds at the authored ~45°
     const rollDeg = (2 * Math.atan2(b.qz, b.qw)) * 180 / Math.PI
     expect(Math.abs(rollDeg - 45)).toBeLessThan(1)
   })
@@ -348,7 +348,7 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(Math.abs(b2.qw - b1.qw)).toBeLessThan(0.001)
   })
 
-  it('applies the authored angle offset to the seed-relative roll', async () => {
+  it('applies the authored angle as the absolute roll', async () => {
     // Part A grounded at identity. Part B at identity, no pre-existing roll.
     // A 30° authored angle must produce a 30° roll about Z in B's solved pose.
     const parts = [
@@ -406,12 +406,12 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(Math.abs(roll60 - 60)).toBeLessThan(1.5)
   })
 
-  // The baking bug itself: when the seed IS contaminated with the previous
-  // solve's roll the angle accumulates — 30° (baked) + 60° (solved) = 90°.
-  // This test asserts the broken behaviour so a future solver-side fix
-  // (separate roll reference vs LM starting point) can flip this from 90
-  // to 60 without being invisible.
-  it('accumulates angle when the seed already holds the prior solve roll', async () => {
+  // The baking bug, now fixed solver-side: the roll reference is the anchors'
+  // canonical frames (authored data), not the LM starting point, so a seed
+  // contaminated with the previous solve's roll -- exactly what the drag
+  // pointer-up bake writes -- no longer accumulates (30° baked + 60° authored
+  // used to land at 90°). This test asserted the broken 90° until the rework.
+  it('does not accumulate angle when the seed already holds the prior solve roll', async () => {
     const parts1 = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
@@ -435,10 +435,7 @@ describeReal('solveAssembly with the real mate solver', () => {
     }], relay, solveMate!)
     const b60 = r60.transforms['pb']
     const rollDeg = (2 * Math.atan2(b60.qz, b60.qw)) * 180 / Math.PI
-    // Under the baking bug the roll lands at ~90° (30 baked + 60 applied).
-    expect(Math.abs(rollDeg - 90)).toBeLessThan(5)
-    // When a solver-side fix splits the roll reference from the LM start
-    // point, flip this to:
-    //   expect(Math.abs(rollDeg - 60)).toBeLessThan(5)
+    // Under the baking bug the roll landed at ~90° (30 baked + 60 applied).
+    expect(Math.abs(rollDeg - 60)).toBeLessThan(5)
   })
 })
