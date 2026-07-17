@@ -90,7 +90,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const selectedPickKeys = useSketchEditorStore(s => s.selectedPickKeys)
+  const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
 
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
@@ -144,8 +144,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   // primitive produce identical highlight flags (the symmetry this refactor
   // enforces). Hover is just a transient selection of size <= 1.
   const selectActive = useMemo<ActiveHighlight>(
-    () => selectActiveFrom(selectedPickKeys, normalSelection),
-    [selectedPickKeys, normalSelection],
+    () => selectActiveFrom(selectedPicks, normalSelection),
+    [selectedPicks, normalSelection],
   )
   const hoverActive = useMemo<ActiveHighlight>(
     () => hoverActiveFrom(hoveredPickKey, hoveredSelectionId),

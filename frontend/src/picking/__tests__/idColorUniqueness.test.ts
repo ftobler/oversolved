@@ -90,7 +90,7 @@ describe('id-color uniqueness across all pickable primitives', () => {
 
     // Back-mapping: every id-color resolves to a record, and the pick keys those
     // records carry are globally unique too. The store's hoveredPickKey /
-    // selectedPickKeys hold the bare pick-key string with no layer beside it, so a
+    // selectedPicks hold the bare pick-key string with no layer beside it, so a
     // face, edge and vertex at the same body index must not share a pick key -- a
     // layer-blind `bodyKey#index` would collapse the 9 down to 3 here.
     const pickKeys = allIds.map(id => reg.lookup(id)?.pickKey)

@@ -12,7 +12,7 @@
  * so the key computed here (registry side) matches the one Body3D recomputes to
  * isolate the single hovered primitive.
  *
- * `layer` is load-bearing: the store's `hoveredPickKey` / `selectedPickKeys` hold
+ * `layer` is load-bearing: the store's `hoveredPickKey` / `selectedPicks` hold
  * the bare pick-key string with no layer alongside it, so without the layer in the
  * key a face, edge and vertex at the same body index (all `bodyKey#i`) would
  * collide there and cross-highlight. Qualifying by layer keeps the id -> element

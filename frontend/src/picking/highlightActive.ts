@@ -4,21 +4,28 @@ import type { ActiveHighlight } from './selectionHighlight'
 // one module, without also reaching into selectionHighlight.
 export type { ActiveHighlight } from './selectionHighlight'
 
-// Shared empty set so an empty hover (nothing under the cursor) is a stable
-// reference and does not thrash the highlight memos each render. Both pickKeys
-// and queries back onto it, hence the neutral name.
+// Shared empty set so an empty framing (nothing under the cursor, no live pick
+// claims) is a stable reference and does not thrash the highlight memos each
+// render. Both pickKeys and queries back onto it, hence the neutral name.
 const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>()
 
 /**
- * Click framing: the durable selection sets exactly as the store holds them.
- * This is the ONE builder Body3D uses for the selection highlight, so the memo
- * that wraps it and the symmetry test both exercise identical wiring.
+ * Click framing: the durable selection state exactly as the store holds it.
+ * `selectedPicks` maps query -> pickKey (the store keys the live claims by
+ * query so a toggle-off drops them); the highlight decision only needs the
+ * claimed pickKeys, so the values are flattened into the set shape
+ * computeHighlight consumes. This is the ONE builder Body3D uses for the
+ * selection highlight, so the memo that wraps it and the symmetry test both
+ * exercise identical wiring.
  */
 export function selectActiveFrom(
-  selectedPickKeys: ReadonlySet<string>,
+  selectedPicks: ReadonlyMap<string, string>,
   normalSelection: ReadonlySet<string>,
 ): ActiveHighlight {
-  return { pickKeys: selectedPickKeys, queries: normalSelection }
+  return {
+    pickKeys: selectedPicks.size > 0 ? new Set(selectedPicks.values()) : EMPTY_STRING_SET,
+    queries: normalSelection,
+  }
 }
 
 /**
