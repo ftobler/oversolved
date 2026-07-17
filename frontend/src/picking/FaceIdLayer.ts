@@ -114,7 +114,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
         // keep the legacy query-keyed allocation (their keys are already unique).
         let id: number
         if (reg.perPrimitivePickKeys) {
-          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, faceIdx))
+          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, faceIdx, this.name))
         } else {
           this.warnDuplicateQuery(query, faceIdCache.size > 0, reg.bodyKey, 'FaceIdLayer', 'face')
           id = this.registry.allocate(this.name, query)

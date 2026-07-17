@@ -87,5 +87,14 @@ describe('id-color uniqueness across all pickable primitives', () => {
     // 9 rendered primitives -> 9 distinct id-colors, none reused.
     expect(allIds.length).toBe(9)
     expect(new Set(allIds).size).toBe(9)
+
+    // Back-mapping: every id-color resolves to a record, and the pick keys those
+    // records carry are globally unique too. The store's hoveredPickKey /
+    // selectedPickKeys hold the bare pick-key string with no layer beside it, so a
+    // face, edge and vertex at the same body index must not share a pick key -- a
+    // layer-blind `bodyKey#index` would collapse the 9 down to 3 here.
+    const pickKeys = allIds.map(id => reg.lookup(id)?.pickKey)
+    expect(pickKeys.every(k => k !== undefined)).toBe(true)
+    expect(new Set(pickKeys).size).toBe(9)
   })
 })

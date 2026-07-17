@@ -95,7 +95,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points> {
       // Per-primitive pick key so two vertices sharing a query still get distinct
       // ids; the query rides along as the record's entityKey (mirrors edges/faces).
       const id = reg.perPrimitivePickKeys
-        ? this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, i))
+        ? this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, i, this.name))
         : this.registry.allocate(this.name, query)
       allocatedIds.push(id)
       const [r, g, b] = idToRGBNormalized(id)

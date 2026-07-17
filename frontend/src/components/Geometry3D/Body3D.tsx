@@ -26,6 +26,7 @@ import {
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor, primitivePickKey } from '@/picking/pickKey'
+import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
 import { computePrimitiveSelection } from '@/picking/selectionHighlight'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
@@ -143,7 +144,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const numEdges = Math.max(edgeQueries?.length ?? 0, edges.length)
     const resolved = Array.from({ length: numEdges }, (_, i) =>
       edgeQueries?.[i] ?? topoFallbackQuery(featureId, 'edge', i))
-    return computePrimitiveSelection(bodyKey, resolved, normalSelection, selectedPickKeys)
+    return computePrimitiveSelection(bodyKey, resolved, normalSelection, selectedPickKeys, EDGE_LAYER_NAME)
   }, [featureId, bodyId, edgeQueries, edges, normalSelection, selectedPickKeys])
 
   const getIsEdgeSelected = useCallback(
@@ -159,7 +160,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const { face_queries } = mesh
     if (!face_queries || face_queries.length === 0) return null
     const bodyKey = bodyKeyFor(featureId, bodyId)
-    return computePrimitiveSelection(bodyKey, face_queries, normalSelection, selectedPickKeys)
+    return computePrimitiveSelection(bodyKey, face_queries, normalSelection, selectedPickKeys, FACE_LAYER_NAME)
   }, [featureId, bodyId, mesh, normalSelection, selectedPickKeys])
 
   // The single hovered face resolved by its pick key, so a hover isolates the one
@@ -169,10 +170,27 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     if (!face_queries || hoveredPickKey === null) return -1
     const bodyKey = bodyKeyFor(featureId, bodyId)
     for (let i = 0; i < face_queries.length; i++) {
-      if (primitivePickKey(bodyKey, i) === hoveredPickKey) return i
+      if (primitivePickKey(bodyKey, i, FACE_LAYER_NAME) === hoveredPickKey) return i
     }
     return -1
   }, [featureId, bodyId, mesh, hoveredPickKey])
+
+  // Vertex highlight, decoupled from raw query membership exactly like faces/edges.
+  const vertexSelectionFlags = useMemo(() => {
+    if (!vertices || vertices.length === 0) return null
+    const bodyKey = bodyKeyFor(featureId, bodyId)
+    const resolved = vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i))
+    return computePrimitiveSelection(bodyKey, resolved, normalSelection, selectedPickKeys, VERTEX_LAYER_NAME)
+  }, [featureId, bodyId, vertices, vertexQueries, normalSelection, selectedPickKeys])
+
+  const hoveredVertexIndex = useMemo(() => {
+    if (!vertices || vertices.length === 0 || hoveredPickKey === null) return -1
+    const bodyKey = bodyKeyFor(featureId, bodyId)
+    for (let i = 0; i < vertices.length; i++) {
+      if (primitivePickKey(bodyKey, i, VERTEX_LAYER_NAME) === hoveredPickKey) return i
+    }
+    return -1
+  }, [featureId, bodyId, vertices, hoveredPickKey])
 
   const geometry = useMemo(() => {
     const indexed = new THREE.BufferGeometry()
@@ -344,7 +362,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           color = selectedColor
         // Hover isolates the single hovered primitive by its pick key, not its
         // query: two edges sharing a query must not co-highlight on hover.
-        } else if (hoveredPickKey !== null && primitivePickKey(bodyKey, edgeIdx) === hoveredPickKey) {
+        } else if (hoveredPickKey !== null && primitivePickKey(bodyKey, edgeIdx, EDGE_LAYER_NAME) === hoveredPickKey) {
           color = hoverColor
         } else {
           color = defaultColor
@@ -417,15 +435,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
     const dmesh = vertexDotRef.current
     if (dmesh && vertices?.length) {
-      // Only show visual dots when vertex is hovered or selected
-      const hasHover = hoveredSelectionId !== null && vertices.some((_, i) => {
-        const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
-        return query === hoveredSelectionId
-      })
-      const hasSelection = vertices.some((_, i) => {
-        const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
-        return normalSelection.has(query)
-      })
+      // Only show visual dots when a vertex is hovered or selected. Both are
+      // resolved by pick key (via vertexSelectionFlags / hoveredVertexIndex) so a
+      // shared-query sibling does not co-show, mirroring the face path.
+      const hasHover = hoveredVertexIndex >= 0
+      const hasSelection = vertexSelectionFlags ? vertexSelectionFlags.some(Boolean) : false
 
       if (!hasHover && !hasSelection) {
         dmesh.visible = false
@@ -442,11 +456,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           _vtxMatrix.compose(_vtxPos, _vtxQuat, _dotScale)
           dmesh.setMatrixAt(i, _vtxMatrix)
 
-          const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
           let color: THREE.Color
-          if (normalSelection.has(query)) {
+          if (vertexSelectionFlags && vertexSelectionFlags[i]) {
             color = selectedColorObj
-          } else if (query === hoveredSelectionId) {
+          } else if (i === hoveredVertexIndex) {
             color = hoverColorObj
           } else {
             // Hide non-hovered, non-selected vertices by scaling to 0

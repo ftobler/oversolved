@@ -38,20 +38,23 @@ export function computePrimitiveSelection(
   queries: ReadonlyArray<string>,
   normalSelection: ReadonlySet<string>,
   selectedPickKeys: ReadonlySet<string>,
+  layer: string,
 ): boolean[] {
   // Queries in THIS body already claimed by a precise pickKey pick. Only worth
-  // computing when a live pick exists; the persisted path leaves it empty.
+  // computing when a live pick exists; the persisted path leaves it empty. The
+  // pick key is layer-qualified so a pick in another layer (a vertex, say) at the
+  // same body index cannot claim this layer's primitive.
   const claimed = new Set<string>()
   if (selectedPickKeys.size > 0) {
     for (let i = 0; i < queries.length; i++) {
-      if (selectedPickKeys.has(primitivePickKey(bodyKey, i))) claimed.add(queries[i])
+      if (selectedPickKeys.has(primitivePickKey(bodyKey, i, layer))) claimed.add(queries[i])
     }
   }
   const out = new Array<boolean>(queries.length)
   for (let i = 0; i < queries.length; i++) {
     const q = queries[i]
     if (!normalSelection.has(q)) { out[i] = false; continue }
-    out[i] = selectedPickKeys.has(primitivePickKey(bodyKey, i)) || !claimed.has(q)
+    out[i] = selectedPickKeys.has(primitivePickKey(bodyKey, i, layer)) || !claimed.has(q)
   }
   return out
 }

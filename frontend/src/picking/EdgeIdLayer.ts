@@ -163,7 +163,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
         // keep the legacy query-keyed allocation (their keys are already unique).
         let id: number
         if (reg.perPrimitivePickKeys) {
-          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, edgeIdx))
+          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, edgeIdx, this.name))
         } else {
           this.warnDuplicateQuery(query, edgeColorCache.size > 0, reg.bodyKey, 'EdgeIdLayer', 'edge')
           id = this.registry.allocate(this.name, query)
