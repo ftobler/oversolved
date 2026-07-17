@@ -22,8 +22,16 @@ export interface Anchor {
  * solver for the main thread: `geom_hash` and `created_by` are rev-to-rev
  * migration inputs, and a renderer that could see them would be tempted to
  * match on them.
+ *
+ * `x_axis` is the anchor's canonical in-plane reference direction carried into
+ * the solved pose (R * canonicalPerp(local axis), utils/mateOrientation.ts) --
+ * the frame the editor measures roll against when capturing a fixed/sliding
+ * mate's `angle`. Optional: static producers may omit it, and the capture then
+ * simply writes no angle rather than measuring against a wrong frame.
  */
-export type AnchorPose = Pick<Anchor, 'kind' | 'point' | 'axis'>
+export type AnchorPose = Pick<Anchor, 'kind' | 'point' | 'axis'> & {
+  x_axis?: [number, number, number]
+}
 
 export interface EdgeCurve {
   id: string

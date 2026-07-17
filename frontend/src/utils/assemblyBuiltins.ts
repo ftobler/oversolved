@@ -6,6 +6,7 @@
 
 import type { AssemblyFeature } from '@/types/cad'
 import type { AnchorPose } from '@/kernel/partBundle'
+import { canonicalPerp } from '@/utils/mateOrientation'
 
 // The assembly's OWN coordinate frame: an Origin + 3 cardinal planes, separate
 // from each part's built-ins. Assembly-scoped ids keep an empty AssemblyDoc from
@@ -34,11 +35,15 @@ export const ASSEMBLY_BUILTIN_IDS = new Set(ASSEMBLY_BUILTIN_DEFAULTS.map(f => f
  * anchors' gizmos. If the two ever disagreed, a user would pick one plane and
  * mate to another.
  */
+// x_axis (the roll-capture frame, see AnchorPose) is derived rather than
+// hand-written: the frame is pinned at identity, so world == local and
+// canonicalPerp of the axis IS the posed frame. One rule, shared with the
+// per-part anchors solveAssembly poses.
 export const ASSEMBLY_BUILTIN_ANCHORS: Record<string, AnchorPose> = {
-  [ASSEMBLY_ORIGIN_ID]: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1] },
-  [ASSEMBLY_TOP_ID]:    { kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0] },
-  [ASSEMBLY_FRONT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-  [ASSEMBLY_RIGHT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
+  [ASSEMBLY_ORIGIN_ID]: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], x_axis: canonicalPerp([0, 0, 1]) },
+  [ASSEMBLY_TOP_ID]:    { kind: 'plane', point: [0, 0, 0], axis: [0, 1, 0], x_axis: canonicalPerp([0, 1, 0]) },
+  [ASSEMBLY_FRONT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], x_axis: canonicalPerp([0, 0, 1]) },
+  [ASSEMBLY_RIGHT_ID]:  { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0], x_axis: canonicalPerp([1, 0, 0]) },
 }
 
 // Reserved part handle addressing the assembly's own frame in a MateRef. A real

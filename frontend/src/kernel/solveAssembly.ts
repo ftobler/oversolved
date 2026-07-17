@@ -12,6 +12,7 @@ import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorI
 import type { Transform3D, MateKind } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
+import { canonicalPerp } from '../utils/mateOrientation'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 export type { AnchorPose }
@@ -189,7 +190,8 @@ export interface MateWireRecord {
   offset: number
   ratio: number
   radius: number
-  /** Radians. Fixed's seed-relative roll target; see mate_residuals.rs. */
+  /** Radians. Fixed/Sliding's absolute roll target between the anchors'
+   *  canonical frames; see mate_residuals.rs abs_roll_residual. */
   angle: number
 }
 
@@ -560,7 +562,15 @@ export async function solveAssembly(
     const bundleAnchors = partBundles.get(part.handle)?.anchors ?? {}
     const posed: Record<string, AnchorPose> = {}
     for (const [id, a] of Object.entries(bundleAnchors)) {
-      posed[id] = { kind: a.kind, point: transformPoint(a.point, t), axis: rotateVec(a.axis, t) }
+      posed[id] = {
+        kind: a.kind,
+        point: transformPoint(a.point, t),
+        axis: rotateVec(a.axis, t),
+        // The canonical roll frame, derived from the LOCAL axis then rotated:
+        // the editor's mate-authoring capture measures the on-screen roll
+        // against this, with the same frame rule the solver measures by.
+        x_axis: rotateVec(canonicalPerp(a.axis), t),
+      }
     }
     posedAnchors[part.handle] = posed
 

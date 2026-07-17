@@ -1,0 +1,68 @@
+// Locks the TS half of the cross-language frame contract: canonicalPerp must
+// pick the same direction as the Rust canonical_perp (mate_residuals.rs), or a
+// captured `angle` measures against a different frame than the solver enforces
+// and every fixed mate solves away from the pose it was authored at. The
+// fixture table below is duplicated verbatim in Rust's
+// canonical_perp_is_unit_and_perpendicular -- change them together.
+
+import { describe, expect, it } from 'vitest'
+import { canonicalPerp, rollAboutAxisDeg } from '@/utils/mateOrientation'
+import { rotateVector, quatFromAxisAngle } from '@/utils/transform3d'
+import type { Vec3 } from '@/utils/transform3d'
+
+describe('canonicalPerp', () => {
+  it('matches the Rust canonical_perp fixtures', () => {
+    const cases: [Vec3, Vec3][] = [
+      [[0, 0, 1], [0, 1, 0]],    // z crossed with x
+      [[1, 0, 0], [0, 0, 1]],    // x crossed with y
+      [[0, 1, 0], [0, 0, -1]],   // y crossed with x
+      [[0.6, 0, 0.8], [-0.8, 0, 0.6]],  // tilted, crossed with y
+    ]
+    for (const [axis, want] of cases) {
+      const p = canonicalPerp(axis)
+      for (let c = 0; c < 3; c++) expect(p[c]).toBeCloseTo(want[c], 12)
+    }
+  })
+
+  it('is perpendicular and unit for arbitrary axes', () => {
+    const axes: Vec3[] = [[0.3, -0.5, 0.8], [-1, 2, 0.5], [0, 0.001, 1]]
+    for (const axis of axes) {
+      const p = canonicalPerp(axis)
+      const dot = p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]
+      expect(dot).toBeCloseTo(0, 9)
+      expect(Math.hypot(...p)).toBeCloseTo(1, 12)
+    }
+  })
+
+  it('degrades a zero axis to a defined frame instead of NaN', () => {
+    const p = canonicalPerp([0, 0, 0])
+    expect(p.every(Number.isFinite)).toBe(true)
+    expect(Math.hypot(...p)).toBeCloseTo(1, 12)
+  })
+})
+
+describe('rollAboutAxisDeg', () => {
+  const z: Vec3 = [0, 0, 1]
+  const x: Vec3 = [1, 0, 0]
+
+  it('reads zero for identical frames', () => {
+    expect(rollAboutAxisDeg(x, x, z)).toBeCloseTo(0, 9)
+  })
+
+  it('reads the rotation angle for a frame rolled about the axis', () => {
+    const q = quatFromAxisAngle(z, (30 * Math.PI) / 180)
+    const xb = rotateVector(q, x)
+    expect(rollAboutAxisDeg(x, xb, z)).toBeCloseTo(30, 6)
+    const qn = quatFromAxisAngle(z, (-135 * Math.PI) / 180)
+    expect(rollAboutAxisDeg(x, rotateVector(qn, x), z)).toBeCloseTo(-135, 6)
+  })
+
+  it('reads 180 for an opposed reference (the face-to-face weld capture)', () => {
+    // A part flipped 180° about X to mate face-to-face: its canonical y frame
+    // vector lands opposed. atan2 keeps the closed end at +180, matching the
+    // solver's wrap_to_pi range and the editor's ±180 entry limit.
+    const q = quatFromAxisAngle(x, Math.PI)
+    const y: Vec3 = [0, 1, 0]
+    expect(rollAboutAxisDeg(y, rotateVector(q, y), z)).toBeCloseTo(180, 6)
+  })
+})

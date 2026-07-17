@@ -658,6 +658,11 @@ describe('solveAssembly', () => {
     expect(posed.axis[1]).toBeCloseTo(1)
     expect(posed.axis[2]).toBeCloseTo(0)   // a direction takes no translation
     expect(posed.kind).toBe('plane')
+    // The roll-capture frame: canonicalPerp of the LOCAL axis (x -> +z), then
+    // rotated with the part. 90° about +Z leaves +z where it was.
+    expect(posed.x_axis![0]).toBeCloseTo(0)
+    expect(posed.x_axis![1]).toBeCloseTo(0)
+    expect(posed.x_axis![2]).toBeCloseTo(1)
   })
 
   it('does not ship the match descriptors: they are migration inputs, not render data', async () => {
@@ -668,7 +673,7 @@ describe('solveAssembly', () => {
     const parts = [{ handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() }]
     const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
 
-    expect(Object.keys(result.anchors['p1'].a1).sort()).toEqual(['axis', 'kind', 'point'])
+    expect(Object.keys(result.anchors['p1'].a1).sort()).toEqual(['axis', 'kind', 'point', 'x_axis'])
   })
 
   it('gives two instances of one part independently posed anchors', async () => {
