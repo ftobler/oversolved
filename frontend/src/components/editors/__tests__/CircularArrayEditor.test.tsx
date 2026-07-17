@@ -29,9 +29,15 @@ function renderEditor(feature: PartFeature, onMutation: () => void) {
   render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={CIRCULAR_ARRAY_SCHEMA} />)
 }
 
-/** The body chip is the first pick chip in the schema's field order. */
+/** Pick chips in field order: [0] Body, [1] Axis. */
+function chips(): NodeListOf<HTMLElement> {
+  return document.querySelectorAll<HTMLElement>('.feature-pick-chip')
+}
 function bodyChip(): HTMLElement {
-  return document.querySelectorAll<HTMLElement>('.feature-pick-chip')[0]
+  return chips()[0]
+}
+function axisChip(): HTMLElement {
+  return chips()[1]
 }
 
 /** Simulate the viewport click path: every pick lands in normalSelection. */
@@ -93,6 +99,36 @@ describe('CircularArrayEditor body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_circular_array_field', featureId: 'ca1', field: 'source_body', value: '',
+    })
+  })
+})
+
+describe('CircularArrayEditor axis pick (via FeatureEditor)', () => {
+  it('renders an empty axis chip flagged as a required pick', () => {
+    renderEditor(makeFeature(), vi.fn())
+    const chip = axisChip()
+    expect(chip.classList.contains('empty')).toBe(true)
+    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
+  })
+
+  it('picking an edge stores its inner query as the axis', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    fireEvent.click(axisChip())
+    pick('edge:ex1:?4;@ex1:edge')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_circular_array_field', featureId: 'ca1', field: 'axis', value: '?4;@ex1:edge',
+    })
+  })
+
+  it('toggling Invert axis dispatches an invert_axis field mutation', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    const rows = [...document.querySelectorAll<HTMLElement>('.feature-field-row')]
+    const invertRow = rows.find((r) => r.querySelector('.feature-field-label')?.textContent === 'Invert axis')!
+    fireEvent.click(invertRow.querySelector('input[type="checkbox"]')!)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_circular_array_field', featureId: 'ca1', field: 'invert_axis', value: true,
     })
   })
 })

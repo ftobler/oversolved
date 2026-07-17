@@ -385,8 +385,6 @@ export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: s
       count: 4,
       operation: 'add',
       include_source: true,
-      axis_origin: [0, 0, 0],
-      axis_direction: [0, 0, 1],
     },
   }
   pushFeature(doc, feature)

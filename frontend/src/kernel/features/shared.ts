@@ -440,5 +440,20 @@ export function resolveDirectionQueryStrict(
   return line ? line.dir : null
 }
 
+/**
+ * Resolve an axis query to (origin, unit direction), or `null` when the query is
+ * empty or does not resolve to a usable edge/face. The strict counterpart to
+ * `resolveAxisQuery`; the circular-array leaf treats `null` as a solve error so
+ * an unpicked axis never rotates about an arbitrary line.
+ */
+export function resolveAxisQueryStrict(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null = null,
+): [number[], number[]] | null {
+  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  return line ? [[...line.start], line.dir] : null
+}
+
 // Re-export so the Frame3D type is visible to consumers of PlaneLike.
 export type { Frame3D }

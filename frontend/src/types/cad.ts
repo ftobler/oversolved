@@ -74,6 +74,7 @@ export interface CircularArrayFeatureDef {
   axis?: string
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
+  invert_axis?: boolean
 }
 
 export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'

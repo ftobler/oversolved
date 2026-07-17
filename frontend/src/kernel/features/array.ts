@@ -8,7 +8,7 @@ import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { bareBody, resolveBody, resolveDirectionQueryStrict, resolveAxisQuery } from './shared'
+import { bareBody, resolveBody, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
@@ -87,13 +87,18 @@ export function buildCircularTransforms(
   const includeSource = (feature.include_source as boolean) ?? true
   const stepRaw = feature.step_angle
   const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
-  const [axisOrigin, axisDirection] = resolveAxisQuery(
-    (feature.axis as string) ?? '',
-    globalRepo,
-    (feature.axis_origin as number[]) ?? [0, 0, 0],
-    (feature.axis_direction as number[]) ?? [0, 0, 1],
-    bodyStore,
-  )
+  // The rotation axis must be a picked straight edge or planar face; an empty or
+  // dangling pick is a solve error rather than a silent rotation about world Z.
+  const axisQuery = (feature.axis as string) ?? ''
+  if (!axisQuery) throw new Error('circular_array: axis is required; pick a straight edge or planar face')
+  const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
+  if (!axis) {
+    throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a straight edge or planar face`)
+  }
+  const [axisOrigin, resolvedDirection] = axis
+  // Invert flips the axis direction, which reverses the sweep sense.
+  const invert = (feature.invert_axis as boolean) ?? false
+  const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
   const trsfs: OccTrsf[] = []
   const num = includeSource ? count - 1 : count
   for (let i = 1; i <= num; i++) {

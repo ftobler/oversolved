@@ -235,7 +235,11 @@ export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
       getMutation: (checked, d) => ({ field: 'step_angle', value: checked ? null : (360 / (d.count ?? 4)) }) },
     { type: 'number', key: 'step_angle', label: 'Step angle',
       showWhen: (d) => d.step_angle != null },
-    { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery },
+    // An axis pick is required: an edge is the rotation axis, a planar face its
+    // normal. `invert_axis` flips the axis, reversing the sweep sense.
+    { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
+      emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false },
   ],
 }
 

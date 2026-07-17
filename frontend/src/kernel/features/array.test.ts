@@ -172,28 +172,49 @@ describe('buildArrayTransforms (rectangular)', () => {
 
 describe('buildCircularTransforms', () => {
   const rotations = (trsfs: unknown[]) => (trsfs as RecTrsf[]).map((t) => t.rotation!)
+  // A picked axis is required; resolve @az to a +Z edge through the origin.
+  const zRepo = dirRepo({ az: [0, 0, 1] })
 
   it('defaults the step angle to 360 / count and includes the source', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: true }, repo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: true, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => (r.angle * 180) / Math.PI)
     // count 4, source included -> 3 copies at 90, 180, 270 degrees
     expect(angles.map((a) => Math.round(a))).toEqual([90, 180, 270])
   })
 
   it('emits count copies when the source is excluded', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: false }, repo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: false, axis: 'az' }, zRepo, {})
     expect(t).toHaveLength(4)
   })
 
   it('honours an explicit step_angle over the 360/count default', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 3, step_angle: 30, include_source: false }, repo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 3, step_angle: 30, include_source: false, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => Math.round((r.angle * 180) / Math.PI))
     expect(angles).toEqual([30, 60, 90])
   })
 
-  it('rotates about the default Z axis through the origin', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false }, repo, {})
+  it('rotates about the picked axis through its origin', () => {
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'az' }, zRepo, {})
     expect(rotations(t)[0].origin).toEqual([0, 0, 0])
     expect(rotations(t)[0].direction).toEqual([0, 0, 1])
+  })
+
+  it('resolves the axis from a picked planar face normal', () => {
+    const faceRepo = dirRepo({}, { af: [0, 0, 2] })
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'af' }, faceRepo, {})
+    expect(rotations(t)[0].direction).toEqual([0, 0, 1])
+  })
+
+  it('inverts the axis direction when invert_axis is set', () => {
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'az', invert_axis: true }, zRepo, {})
+    expect(rotations(t)[0].direction).toEqual([0, 0, -1])
+  })
+
+  it('throws when the axis picker is empty', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: 2 }, repo, {})).toThrow(/axis is required/)
+  })
+
+  it('throws when the axis query does not resolve', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'dangling' }, repo, {})).toThrow(/did not resolve/)
   })
 })
