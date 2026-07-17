@@ -31,8 +31,12 @@ interface EdgeFeatureResult {
   body_ids: string[]
 }
 
-interface EdgeIndex {
+export interface EdgeIndex {
   queryToEdge: Map<string, OccShape>
+  // Query strings claimed by more than one distinct edge (a non-unique query,
+  // e.g. an edge lacking a construction @u| uuid). The exact-match tier refuses
+  // these rather than last-wins onto an arbitrary edge -- see resolveEdgesWithIndex.
+  ambiguousQueries: Set<string>
   ancestryRepo: Repository
 }
 
@@ -81,11 +85,34 @@ function brepDiffNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: BrepDif
   return out
 }
 
+/**
+ * Register an edge under its exact-match query, guarding query uniqueness.
+ * When a second DISTINCT edge claims a query already in the map, the query is
+ * non-unique (typically an edge lacking a construction @u| uuid): record it in
+ * `ambiguous` so the exact-match tier later refuses it, rather than silently
+ * overwriting -- last-wins would actuate the fillet on an arbitrary
+ * last-in-OCC-order edge (fail-wrong). Mirrors the AmbiguousQueryError fail-safe
+ * of resolveByStableAncestry, now applied to the exact-match tier too.
+ */
+export function registerExactEdge(
+  queryToEdge: Map<string, OccShape>,
+  ambiguous: Set<string>,
+  query: string,
+  edge: OccShape,
+): void {
+  const prior = queryToEdge.get(query)
+  if (prior !== undefined && !(prior as OccSubShape).IsSame(edge as OccSubShape)) {
+    ambiguous.add(query)
+  }
+  queryToEdge.set(query, edge)
+}
+
 /** Build the per-body edge index for fillet/chamfer edge resolution. */
 function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, body: Body): EdgeIndex {
   const queryToEdge = new Map<string, OccShape>()
+  const ambiguousQueries = new Set<string>()
   const ancestryRepo = new Repository()
-  if (body.shape === null) return { queryToEdge, ancestryRepo }
+  if (body.shape === null) return { queryToEdge, ambiguousQueries, ancestryRepo }
   const shape = table.get<OccShape>(body.shape)
 
   const uniq: OccShape[] = []
@@ -116,7 +143,7 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
       if (ancestryTokens && ancestryTokens.length) ids.push(...ancestryTokens)
       else if (body.profile_queries.length > 0) ids.push(...body.profile_queries)
       if (classifiers.length) ids.push(...classifiers.map(ref))
-      queryToEdge.set(makeAncestryQuery(ids, edgeType), te)
+      registerExactEdge(queryToEdge, ambiguousQueries, makeAncestryQuery(ids, edgeType), te)
 
       const stableIds = ids.filter((t) => !isClassifierId(t))
       if (edgeCreatedBy !== body.created_by) stableIds.push(ref(body.created_by))
@@ -126,7 +153,7 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
     queryToEdge.set(`?${body.id}:edge:${idx}`, te)
   })
 
-  return { queryToEdge, ancestryRepo }
+  return { queryToEdge, ambiguousQueries, ancestryRepo }
 }
 
 /**
@@ -175,7 +202,7 @@ function resolveFaceToEdges(
 }
 
 /** Resolve edge queries against a prebuilt index. */
-function resolveEdgesWithIndex(
+export function resolveEdgesWithIndex(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
@@ -198,7 +225,10 @@ function resolveEdgesWithIndex(
   }
 
   for (const q of edgeQueries) {
-    let edge = index.queryToEdge.get(q)
+    // An ambiguous exact hit (a query claimed by 2+ distinct edges) is refused,
+    // not guessed: treat it as a miss so it falls through to the ancestry tier,
+    // which fails safe on the same lineage rather than filleting the wrong edge.
+    let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
     if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
       edge = resolveByStableAncestry(index.ancestryRepo, q)
     }

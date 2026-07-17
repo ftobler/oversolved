@@ -216,4 +216,65 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
     ] }, 'body_ex1')
   })
+
+  it('circular array add: no duplicate face or edge queries', () => {
+    // Offset box so rotated copies do not self-intersect the axis.
+    expectUniqueQueries({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
+        count: 6, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+        include_source: true, operation: 'add',
+      },
+    ] }, 'body_ex1')
+  })
+
+  it('mirror merge: no duplicate face or edge queries', () => {
+    expectUniqueQueries({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'mir1', kind: 'mirror', body: '@body_ex1', plane: '@builtin_plane_front',
+        keep_original: true, merge: true,
+      },
+    ] }, 'body_ex1')
+  })
+
+  it('transform new: no duplicate face or edge queries', () => {
+    const r = h.run({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 5, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'tr1', kind: 'transform', body: '@body_ex1', operation: 'new',
+        translation: [20, 0, 0],
+      },
+    ] })
+    const faces = faceQueriesOf(h, r, 'body_tr1')
+    const edges = edgeQueriesOf(h, r, 'body_tr1')
+    expect(faces.length).toBeGreaterThan(0)
+    expect(edges.length).toBeGreaterThan(0)
+    expect(duplicates(faces)).toEqual([])
+    expect(duplicates(edges)).toEqual([])
+  })
+
+  it('circular array new: no duplicate face or edge queries in any instance body', () => {
+    const r = h.run({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
+        count: 4, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+        include_source: true, operation: 'new',
+      },
+    ] })
+    for (const bodyId of ['body_ca1', 'body_ca1_1']) {
+      const faces = faceQueriesOf(h, r, bodyId)
+      const edges = edgeQueriesOf(h, r, bodyId)
+      expect(faces.length).toBeGreaterThan(0)
+      expect(edges.length).toBeGreaterThan(0)
+      expect(duplicates(faces)).toEqual([])
+      expect(duplicates(edges)).toEqual([])
+    }
+  })
 })

@@ -287,6 +287,8 @@ export interface OccLocation extends OccDisposable {
 /** A sub-shape (edge/vertex) we dedup by topological identity. */
 export interface OccSubShape extends OccDisposable {
   IsSame(other: OccDisposable): boolean
+  /** True when the two shapes share the same TShape (ignores orientation). */
+  IsPartner(other: OccDisposable): boolean
 }
 
 export interface OccAxisDir {
@@ -637,6 +639,8 @@ export interface OccTrsf extends OccDisposable {
 export interface OccTransformBuilder extends OccDisposable {
   Build(): void
   Shape(): OccShape
+  Modified(s: OccShape): OccListOfShape
+  IsDeleted(s: OccShape): boolean
 }
 
 export interface OccCopyBuilder extends OccDisposable {

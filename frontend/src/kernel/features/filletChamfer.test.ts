@@ -4,12 +4,20 @@
 // that run before any OCC call.
 
 import { describe, it, expect } from 'vitest'
-import { Repository } from '../query'
-import { solveFillet, solveChamfer, resolveFilletEdges, pickFaceByDescriptor } from './filletChamfer'
+import { Repository, makeAncestryQuery } from '../query'
+import {
+  solveFillet,
+  solveChamfer,
+  resolveFilletEdges,
+  pickFaceByDescriptor,
+  registerExactEdge,
+  resolveEdgesWithIndex,
+  type EdgeIndex,
+} from './filletChamfer'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccHandle } from '../occ/handleTable'
-import type { OccModule } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
 import type { GeomDescriptor } from '../geomDescriptor'
 
@@ -122,5 +130,63 @@ describe('pickFaceByDescriptor refusal', () => {
       ['other', face([0, 0, 14], [0, 0, 1])],
     ]
     expect(pickFaceByDescriptor(qd, candidates)).toBe('cap')
+  })
+})
+
+/**
+ * Exact-match tier fail-safe: when two distinct edges share one query string
+ * (a non-unique query, e.g. edges lacking a construction @u| uuid), the tier
+ * must refuse rather than last-wins onto an arbitrary edge. Filleting the wrong
+ * edge is silent and fail-wrong, so an ambiguous exact hit stays unresolved,
+ * mirroring resolveByStableAncestry's AmbiguousQueryError refusal. A query that
+ * uniquely names one edge still resolves exactly (no regression).
+ */
+describe('exact-match edge tier ambiguity refusal', () => {
+  const scopeNull = null as unknown as DisposeScope
+  // Distinct fake OCC edges: IsSame is identity, all the resolver needs here.
+  const fakeEdge = (): OccShape => {
+    const self = { IsSame: (o: OccSubShape) => o === (self as unknown as OccSubShape) }
+    return self as unknown as OccShape
+  }
+
+  const emptyIndex = (): EdgeIndex => ({
+    queryToEdge: new Map<string, OccShape>(),
+    ambiguousQueries: new Set<string>(),
+    ancestryRepo: new Repository(),  // empty: the ancestry fallback resolves nothing
+  })
+
+  it('two distinct edges under one query -> refused (no edge returned)', () => {
+    const index = emptyIndex()
+    const q = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const edgeA = fakeEdge()
+    const edgeB = fakeEdge()
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edgeA)
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edgeB)
+
+    expect(index.ambiguousQueries.has(q)).toBe(true)  // collision recorded, not last-wins
+    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    expect(resolved).toEqual([])  // refuses rather than picking edgeA or edgeB
+  })
+
+  it('the same edge registered twice under one query is not ambiguous', () => {
+    const index = emptyIndex()
+    const q = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const edge = fakeEdge()
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)  // IsSame -> no collision
+
+    expect(index.ambiguousQueries.has(q)).toBe(false)
+    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    expect(resolved).toEqual([edge])
+  })
+
+  it('a uniquely-named query still resolves to its single edge (no regression)', () => {
+    const index = emptyIndex()
+    const q = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const edge = fakeEdge()
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)
+
+    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    expect(resolved).toEqual([edge])
   })
 })

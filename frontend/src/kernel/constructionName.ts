@@ -55,6 +55,16 @@ export function splitFacePath(parentUuid: string, index: number): string {
   return `${parentUuid}|split|${index}`
 }
 
+/**
+ * An instance of a source face produced by an array/transform copy operation.
+ * The source face's UUID is the parent; the copy feature id and instance index
+ * make the construction path unique across identical transformed copies, so
+ * edges on different array instances do not share a query.
+ */
+export function arrayInstancePath(parentUuid: string, featureId: string, index: number): string {
+  return `${parentUuid}|array|${featureId}|${index}`
+}
+
 // ─── minting ───
 
 /** Mint a face UUID from a symbolic construction path string. */

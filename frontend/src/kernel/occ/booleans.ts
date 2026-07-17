@@ -202,8 +202,19 @@ export function booleanWithHistory(
     for (const s of explore(oc, scope, shape, E.TopAbs_FACE)) {
       if (history.IsRemoved(s)) continue
       const mods = drainList(scope, history.Modified(s)) as OccSubShape[]
-      if (mods.length > 0) for (const m of mods) facePairs.push({ output: m, source: s, fromTool })
-      else facePairs.push({ output: s, source: s, fromTool })
+      if (mods.length > 0) {
+        for (const m of mods) facePairs.push({ output: m, source: s, fromTool })
+        continue
+      }
+      // Unchanged face: the input handle does NOT live in the result, so find
+      // the result face that is IsSame to it. Without this, faces untouched by
+      // the boolean get no origin entry and lose their construction UUID.
+      for (const outFace of explore(oc, scope, result, E.TopAbs_FACE)) {
+        if (outFace.IsSame(s)) {
+          facePairs.push({ output: outFace, source: s, fromTool })
+          break
+        }
+      }
     }
   }
   collectPairs(targetShape, false)

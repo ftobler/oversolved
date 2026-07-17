@@ -9,8 +9,10 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { bareBody, resolveBody, resolveDirectionQuery, resolveAxisQuery } from './shared'
-import { makeTranslationTrsf, makeRotationTrsf, transformCopy } from '../occ/transforms'
+import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
+import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
+import { transferBooleanNames } from './booleanLineage'
 
 type Dict = Record<string, unknown>
 
@@ -94,37 +96,91 @@ function applyArray(
   opLabel: string,
 ): { status: string; body_id: string; operation: string } {
   const sourceShape = table.get<OccShape>(body.shape!)
-  const instances: OccShape[] = []
-  if (includeSource) instances.push(sourceShape)
-  for (const trsf of transforms) instances.push(transformCopy(oc, scope, sourceShape, trsf))
-  if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
+  const sourceNames: NameMaps = {
+    faceNames: body.face_names ?? {},
+    faceAncestry: body.face_ancestry ?? {},
+    edgeNames: body.edge_names ?? {},
+    edgeAncestry: body.edge_ancestry ?? {},
+  }
 
   const resultBodyId = 'body_' + featureId
 
   if (operation === 'new') {
-    const identity = scope.track(new oc.gp_Trsf_1())
-    instances.forEach((shape, i) => {
+    // Every spawned body is an independent copy; remap construction UUIDs so
+    // identical instances do not collide.
+    const instances: { shape: OccShape; names: NameMaps }[] = []
+    if (includeSource) {
+      const identity = scope.track(new oc.gp_Trsf_1())
+      const { shape, builder } = transformCopyWithMapping(oc, scope, sourceShape, identity)
+      instances.push({
+        shape,
+        names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, 0, builder),
+      })
+    }
+    for (let i = 0; i < transforms.length; i++) {
+      const idx = includeSource ? i + 1 : i
+      const { shape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+      instances.push({
+        shape,
+        names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder),
+      })
+    }
+    if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
+    instances.forEach((inst, i) => {
       const bid = i === 0 ? resultBodyId : `${resultBodyId}_${i}`
-      // Never co-own the live source handle: copy the source instance.
-      const owned = includeSource && i === 0 ? transformCopy(oc, scope, sourceShape, identity) : shape
       const nb = bareBody(bid, featureId)
-      nb.shape = table.register(scope.detach(owned), featureId)
+      nb.shape = table.register(scope.detach(inst.shape), featureId)
+      nb.face_names = inst.names.faceNames
+      nb.face_ancestry = inst.names.faceAncestry
+      nb.edge_names = inst.names.edgeNames
+      nb.edge_ancestry = inst.names.edgeAncestry
       bodyStore[bid] = nb
     })
     return { status: 'ok', body_id: resultBodyId, operation: 'new' }
   }
 
-  // operation "add": fuse incrementally; only the last union's diff is kept.
+  // operation === "add": fuse incrementally and rebuild construction names
+  // after each union. The source instance keeps its original UUIDs; copied
+  // instances get instance-specific UUIDs so the fused body has no collisions.
+  const instances: OccShape[] = []
+  const instanceNames: NameMaps[] = []
+  if (includeSource) {
+    instances.push(sourceShape)
+    instanceNames.push(sourceNames)
+  }
+  for (let i = 0; i < transforms.length; i++) {
+    const idx = includeSource ? i + 1 : i
+    const { shape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+    instances.push(shape)
+    instanceNames.push(rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder))
+  }
+  if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
+
   if (instances.length === 1) {
     body.modified_by.push(featureId)
     body.brep_diff = null
     return { status: 'ok', body_id: body.id, operation: 'add' }
   }
   let fused = instances[0]
+  let fusedNames = instanceNames[0]
   let lastDiff: BrepDiff | null = null
   for (let i = 1; i < instances.length; i++) {
     const r = booleanWithDiff(oc, scope, fused, instances[i], 'fuse')
     fused = scope.track(r.shape)
+    const names = transferBooleanNames(oc, scope, {
+      bodyShape: fused,
+      faceOrigin: r.faceOrigin,
+      targetFaceNames: fusedNames.faceNames,
+      targetFaceAncestry: fusedNames.faceAncestry,
+      toolFaceNames: instanceNames[i].faceNames,
+      toolFaceAncestry: instanceNames[i].faceAncestry,
+    })
+    fusedNames = {
+      faceNames: names.face_names,
+      faceAncestry: names.face_ancestry,
+      edgeNames: names.edge_names,
+      edgeAncestry: names.edge_ancestry,
+    }
     lastDiff = r.diff
   }
   const oldHandle = body.shape!
@@ -132,6 +188,10 @@ function applyArray(
   table.release(oldHandle)
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff
+  body.face_names = fusedNames.faceNames
+  body.face_ancestry = fusedNames.faceAncestry
+  body.edge_names = fusedNames.edgeNames
+  body.edge_ancestry = fusedNames.edgeAncestry
   return { status: 'ok', body_id: body.id, operation: 'add' }
 }
 
