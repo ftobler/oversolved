@@ -104,14 +104,16 @@ function run(spec: Record<string, unknown>): BuildResponse {
             const mesh = solidToMesh(oc!, table, body.shape, {
               createdBy: body.created_by || '',
               bodyId: body.id,
-              faceLineage: body.face_lineage ?? null,
+              faceAncestry: body.face_ancestry ?? null,
+              faceNames: body.face_names ?? null,
               profileQueries: body.profile_queries ?? [],
             })
             const edgeResult = solidToEdges(oc!, table, body.shape, {
               createdBy: body.created_by || '',
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
-              edgeLineage: body.edge_lineage ?? null,
+              edgeAncestry: body.edge_ancestry ?? null,
+              edgeNames: body.edge_names ?? null,
             })
             const vertexResult = solidToVertices(oc!, table, body.shape, {
               createdBy: body.created_by || '',
