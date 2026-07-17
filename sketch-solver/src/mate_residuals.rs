@@ -70,7 +70,7 @@ pub struct MateProblem {
 /// sliding a part rather than spinning it, while a mate that genuinely needs a
 /// rotation still converges to it -- the damping never enters the convergence
 /// condition. See `rotation_damp_scale` and `lm::solve_lm_damped`.
-const ROT_DAMP_SCALE: f64 = 100.0;
+const ROT_DAMP_SCALE: f64 = 500.0;
 
 /// Residual count contributed by one mate of `kind`. A standalone function (not
 /// inlined into `MateProblem::new`) so `mate_residual_count_matches_actual_residuals_pushed`
@@ -2264,13 +2264,13 @@ mod tests {
             )],
         };
         let out = solve_mate(&input);
-        // Clearly nearer the slide than the turn: a pure 90 deg turn would read
-        // qw = 0.707, qz = -0.707, tx = 0. Instead most of the motion is in tx and
-        // the body barely rotates. The bias is deliberately gentle, so a little
-        // rotation remains; the point is the solve favors the slide.
-        assert!(out.params_solved[13] > 0.9, "qw near 1 (little rotation), got {}", out.params_solved[13]);
-        assert!(out.params_solved[12].abs() < 0.35, "qz well short of the -0.707 turn, got {}", out.params_solved[12]);
-        assert!(out.params_solved[7] > 1.5, "tx carried most of the motion, got {}", out.params_solved[7]);
+        // A pure 90 deg turn would read qw = 0.707, qz = -0.707, tx = 0.
+        // With stronger rotation damping the solve stays close to the
+        // pure-translation solution, carrying the required coincidence nearly
+        // entirely through tx/ty.
+        assert!(out.params_solved[13] > 0.95, "qw near 1 (little rotation), got {}", out.params_solved[13]);
+        assert!(out.params_solved[12].abs() < 0.2, "qz well short of the -0.707 turn, got {}", out.params_solved[12]);
+        assert!(out.params_solved[7] > 2.5, "tx carried most of the motion, got {}", out.params_solved[7]);
         assert!(out.diagnostics.residual_norm < 1e-3, "coincidence met, got {}", out.diagnostics.residual_norm);
     }
 

@@ -127,7 +127,7 @@ pub fn solve_lm_damped(
     // free rotation-vs-translation choice settle on the slide: unlike the
     // Marquardt term it does not vanish as lambda shrinks. Still O(mu), so a
     // rotation a mate actually constrains is unmoved.
-    let mu = 1e-8 * max_diag;
+    let mu = 2e-9 * max_diag;
     let x0v = DVector::from_column_slice(x0);
     let scale_v = DVector::from_column_slice(damp_scale);
     // Augmented objective 0.5||r||² + 0.5·μ·||x - x0||² -- the gradient/damping and
