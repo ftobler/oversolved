@@ -200,9 +200,12 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
   })
 
   it('inserting a feature mid-stack triggers rebuild of later features', () => {
-    /** [sk1, ex1] → [sk1, sk2, ex1, ex2]: sk1 reused, all later rebuilt.
-     *  Stage 6 note: face query resolves by @u| on full rebuild; the partial
-     *  rebuild path (with prevState) needs investigation. */
+    /** [sk1, ex1] → [sk1, ex1, sk2, ex2] via PARTIAL rebuild (prevState): sk1+ex1
+     *  are the clean prefix restored from the ex1 checkpoint, sk2/ex2 are the
+     *  dirty tail. sk2's plane is a `@u|` face query captured from ex1's prior
+     *  mesh, so it must resolve against the checkpoint-restored repo (Stage 7e:
+     *  the byUuid map round-trips through the checkpoint snapshot, so the UUID
+     *  tier resolves it exactly as on a full rebuild). */
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const r1 = h.run({ features: [sk1, ex1] })
@@ -211,15 +214,48 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(faceQueries.length).toBeGreaterThan(0)
 
     const planeQuery = faceQueries.find((q) => q.includes('@u|')) ?? faceQueries[0]
+    expect(planeQuery).toContain('@u|')  // partial-rebuild resolution rides the UUID tier
 
     const sk2 = { ...rectSketch('sk2', 4, 4, { plane: planeQuery }), constraints: [] }
     const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2 })
-    const r2 = h.run({ features: [sk1, ex1, sk2, ex2] })
+    const r2 = h.run({ features: [sk1, ex1, sk2, ex2] }, { prevState: r1._build_state })
 
     expect(h.res(r2, 'sk1').status).not.toBe('exception')
     expect(h.res(r2, 'ex1').status).toBe('ok')
     expect(h.res(r2, 'sk2').status).not.toBe('exception')
     expect(h.res(r2, 'ex2').status).toBe('ok')
+  })
+
+  it('partial rebuild resolves a @u| face query to the SAME face as a full rebuild', () => {
+    /** Stage 7e guard: a face query inserted from a prior build's mesh must
+     *  resolve identically whether the referenced body is freshly built (full
+     *  rebuild) or restored from a checkpoint (partial rebuild). Also exercises
+     *  the production boundary: prevState survives a structured-clone (JSON)
+     *  round-trip before the partial rebuild, so the persisted `byUuid` map is
+     *  what answers the query. */
+    const sk1 = rectSketch('sk1', 10, 10)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
+    const r0 = h.run({ features: [sk1, ex1] })
+    const faceQueries = (h.body(r0, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const planeQuery = faceQueries.find((q) => q.includes('@u|'))
+    expect(planeQuery).toBeDefined()
+
+    const sk2 = { ...rectSketch('sk2', 4, 4, { plane: planeQuery! }), constraints: [] }
+
+    // Full rebuild: reference body built fresh in the same build.
+    const rFull = h.run({ features: [sk1, ex1, sk2] })
+    const fullOrigin = (h.res(rFull, 'sk2').plane_transform as { origin?: number[] } | undefined)?.origin
+    expect(fullOrigin).toBeDefined()
+
+    // Partial rebuild: reference body restored from a JSON-serialized checkpoint.
+    const restored = JSON.parse(JSON.stringify(r0._build_state)) as typeof r0._build_state
+    const rPart = h.run({ features: [sk1, ex1, sk2] }, { prevState: restored })
+    expect(h.res(rPart, 'sk2').status).not.toBe('exception')
+    const partOrigin = (h.res(rPart, 'sk2').plane_transform as { origin?: number[] } | undefined)?.origin
+
+    // Same face, not merely "some face": the checkpoint-restored repo must not
+    // silently resolve to the wrong element (fail-safe > fail-wrong).
+    expect(partOrigin).toEqual(fullOrigin)
   })
 
   it('reusing state does not duplicate brep face ancestry', () => {

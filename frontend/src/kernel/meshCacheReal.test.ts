@@ -58,18 +58,25 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('incremental build after last-feature edit produces valid output', () => {
-    /** Editing only the last feature triggers an incremental rebuild. All features
-     *  must still produce ok status and valid meshes. Stage 6 note: uses full
-     *  rebuild due to partial-rebuild face-query resolution gap. */
+    /** Editing only the last feature triggers an incremental (partial) rebuild:
+     *  sk1..ex2 are the clean prefix restored from checkpoints, only ex3 is
+     *  re-solved. All features must still produce ok status and valid meshes.
+     *  Stage 7e: restored to the real partial-rebuild form (was dodged to a full
+     *  rebuild during Stage 6). */
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
       rectSketch('sk2', 5, 5, { plane: '@builtin_plane_right' }),
       extrudeSpec('sk2', 'ex2', { distance: 3 }),
-      extrudeSpec('sk1', 'ex3', { distance: 4 }),
+      { id: 'ex3', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal', operation: 'new' },
     ]}
 
-    const r2 = h.run(spec)
+    const r1 = h.run(spec)
+    expect(h.res(r1, 'ex3').status).toBe('ok')
+
+    spec.features[4] = extrudeSpec('sk1', 'ex3', { distance: 4 })
+    const r2 = h.run(spec, { prevState: r1._build_state })
+
     expect(h.res(r2, 'ex1').status).toBe('ok')
     expect(h.res(r2, 'ex3').status).toBe('ok')
     expect(r2.bodies).toHaveProperty('body_ex1')

@@ -47,9 +47,13 @@ describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () =
       id: 'vDZ56mKQ6XEfDjgym9aqUg3c', kind: 'extrude',
       extrude: { direction: 'normal', distance: 10, sketch: [faceQuery] },
     }
-    // Stage 6 note: full rebuild used due to partial-rebuild face-query resolution gap
-    // on imported bodies (imports have no construction UUIDs).
-    const r2 = h.run({ features: [stepFeat, extrudeFeat] })
+    // Stage 7e: PARTIAL rebuild (prevState). The imported body is the clean
+    // prefix restored from its checkpoint; the extrude's profile face query must
+    // resolve against that checkpoint-restored repo. Imports carry no `@u|`
+    // construction UUID, so this rides the ancestral tier: the face's ancestral
+    // entry (`@<import>@body@cls_zp:flatface`) is persisted in the checkpoint's
+    // repo snapshot, so it resolves without any geometry token.
+    const r2 = h.run({ features: [stepFeat, extrudeFeat] }, { prevState: r1._build_state })
     const res = h.res(r2, 'vDZ56mKQ6XEfDjgym9aqUg3c')
     expect(res.status).toBe('ok')
     expect(res.operation).toBe('add')
