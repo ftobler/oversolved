@@ -20,12 +20,6 @@ function resolveTransformQuery(selectionId: string): string {
   return selectionId
 }
 
-function parseVector3(text: string): [number, number, number] | null {
-  const parts = text.split(',').map(s => parseFloat(s.trim()))
-  if (parts.length === 3 && parts.every(p => !isNaN(p))) return parts as [number, number, number]
-  return null
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SchemaData = Record<string, any>
 
@@ -193,19 +187,26 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
 export const ARRAY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_array',
   subKey: 'array',
-  defaults: { mode: 'linear', operation: 'add', include_source: true, direction_x: [1, 0, 0], count_x: 2, pitch_x: 20 },
+  // direction_x/y stay as the raw-vector fallback the solver uses when no edge is
+  // picked; they are no longer edited directly, so an unpicked X array runs along
+  // world +X and a rectangular Y along +Y.
+  defaults: { source_body: '', mode: 'linear', operation: 'add', include_source: true, direction_x: [1, 0, 0], count_x: 2, pitch_x: 20 },
   fields: [
     { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
       options: [{ value: 'linear', label: 'Linear' }, { value: 'rectangular', label: 'Rectangular' }] },
+    // Empty means "the first body in the store", which is what the solver falls back to.
+    { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
+      emptyText: '(first body)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
     { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
-    { type: 'text', key: 'direction_x', label: 'Direction X', default: '1, 0, 0',
-      parse: parseVector3, validate: (v) => Array.isArray(v) && v.length === 3 },
+    // Pick an edge/axis to set the array direction; empty falls back to direction_x.
+    { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
+      emptyText: '(pick edge, +X)' },
     { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: (v) => v > 0, min: 1 },
     { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20, validate: (v) => v >= 0, min: 0 },
-    { type: 'text', key: 'direction_y', label: 'Direction Y', default: '0, 1, 0',
-      showWhen: (d) => d.mode === 'rectangular', parse: parseVector3, validate: (v) => Array.isArray(v) && v.length === 3 },
+    { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
+      showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge, +Y)' },
     { type: 'number', key: 'count_y', label: 'Count Y', default: 2,
       showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: (v) => v > 0, min: 1 },
     { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,
