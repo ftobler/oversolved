@@ -28,6 +28,10 @@ export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_r
 
 export interface SelectionInvariantState {
   normalSelection: Set<string>
+  // Live pick refinement: query -> pickKey. Every claimed query must still be
+  // in normalSelection; an orphan claim would resurrect as a ghost highlight
+  // when its query is re-selected.
+  selectedPicks: Map<string, string>
   chipOwnedSelection: Set<string>
   selectionDomain: SelectionDomain
 }
@@ -67,12 +71,20 @@ export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain
 }
 
 export function validateSelectionState(state: SelectionInvariantState): void {
-  const { normalSelection, chipOwnedSelection, selectionDomain } = state
+  const { normalSelection, selectedPicks, chipOwnedSelection, selectionDomain } = state
 
   for (const v of chipOwnedSelection) {
     if (!normalSelection.has(v)) {
       failLoud(
         `[invariant] chipOwnedSelection has orphan '${v}' not in normalSelection`,
+      )
+    }
+  }
+
+  for (const q of selectedPicks.keys()) {
+    if (!normalSelection.has(q)) {
+      failLoud(
+        `[invariant] selectedPicks has orphan claim for query '${q}' not in normalSelection`,
       )
     }
   }
@@ -94,7 +106,7 @@ export function validateSelectionState(state: SelectionInvariantState): void {
 }
 
 export function repairSelectionState(state: SelectionInvariantState): Partial<SelectionInvariantState> | null {
-  const { normalSelection, chipOwnedSelection, selectionDomain } = state
+  const { normalSelection, selectedPicks, chipOwnedSelection, selectionDomain } = state
   const patches: Partial<SelectionInvariantState> = {}
 
   const repairedChip = new Set(chipOwnedSelection)
@@ -105,6 +117,16 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
   }
   if (repairedChip.size !== chipOwnedSelection.size) {
     patches.chipOwnedSelection = repairedChip
+  }
+
+  const repairedPicks = new Map(selectedPicks)
+  for (const q of selectedPicks.keys()) {
+    if (!normalSelection.has(q)) {
+      repairedPicks.delete(q)
+    }
+  }
+  if (repairedPicks.size !== selectedPicks.size) {
+    patches.selectedPicks = repairedPicks
   }
 
   const expectedDomain = deriveSelectionDomain(normalSelection)
