@@ -383,7 +383,7 @@ export function extractBodyAnchors(
   if (fqs && fds) {
     for (let i = 0; i < fqs.length; i++) {
       entityAnchors.faces.push([])
-      const desc = findDescriptorInQuery(fqs[i], 'gdf|')
+      const desc = findDescriptorInQuery(fqs[i], 'u|') ?? findDescriptorInQuery(fqs[i], 'gdf|')
       if (!desc) continue
       const kind = faceTypeToAnchorKind(fds[i]?.surface_type)
       if (!kind) continue
@@ -406,7 +406,7 @@ export function extractBodyAnchors(
       const ed = bodyResult.edges[i]
       const kind = edgeAnchorKind(ed)
       if (!kind) continue
-      const desc = findDescriptorInQuery(bodyResult.edge_queries[i], 'gde|')
+      const desc = findDescriptorInQuery(bodyResult.edge_queries[i], 'u|') ?? findDescriptorInQuery(bodyResult.edge_queries[i], 'gde|')
       if (!desc) continue
       emit(entityAnchors.edges, {
         kind,
@@ -422,7 +422,7 @@ export function extractBodyAnchors(
   if (bodyResult.vertices && bodyResult.vertex_queries) {
     for (let i = 0; i < bodyResult.vertices.length; i++) {
       entityAnchors.vertices.push([])
-      const desc = findDescriptorInQuery(bodyResult.vertex_queries[i], 'gdv|')
+      const desc = findDescriptorInQuery(bodyResult.vertex_queries[i], 'u|') ?? findDescriptorInQuery(bodyResult.vertex_queries[i], 'gdv|')
       if (!desc) continue
       emit(entityAnchors.vertices, {
         kind: 'point',

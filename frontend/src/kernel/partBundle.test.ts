@@ -439,6 +439,49 @@ describe('extractBodyAnchors', () => {
     expect(keys).toHaveLength(4)  // 2 faces + 1 edge + 1 vertex
     expect(new Set(keys).size).toBe(keys.length)
   })
+
+  it('prefers @u| construction UUID over @gdf| geometry descriptor for geom_hash', () => {
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [
+          // @u| token present alongside @gdf| — prefers @u|
+          makeQuery(['@u|aaa1112223334445', '@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface'),
+        ],
+        face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
+      },
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+      ],
+      edge_queries: [makeQuery(['@u|bbb1112223334445', `@${EX_FEATURE}`], 'straightedge')],
+      vertices: [[0, 0, 0]],
+      vertex_queries: [makeQuery(['@u|ccc1112223334445', `@${EX_FEATURE}`], 'vertex')],
+    }
+    const { anchors } = extractBodyAnchors(body, mintFactory())
+    expect(Object.keys(anchors)).toHaveLength(3)
+    const faceAnchors = Object.values(anchors).filter((a) => a.kind === 'plane')
+    expect(faceAnchors[0].geom_hash).toBe('@u|aaa1112223334445')
+    const edgeAnchors = Object.values(anchors).filter((a) => a.kind === 'line')
+    expect(edgeAnchors[0].geom_hash).toBe('@u|bbb1112223334445')
+    const vertexAnchors = Object.values(anchors).filter((a) => a.kind === 'point')
+    expect(vertexAnchors[0].geom_hash).toBe('@u|ccc1112223334445')
+  })
+
+  it('falls back to @gdf| when @u| is absent (backward compat with pre-Stage-7 bundles)', () => {
+    const body: BodyResult = {
+      id: 'b1', created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [makeQuery(['@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface')],
+        face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
+      },
+    }
+    const { anchors } = extractBodyAnchors(body, mintFactory())
+    expect(Object.keys(anchors)).toHaveLength(1)
+    const a = Object.values(anchors)[0]
+    expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+  })
 })
 
 // ── Stage 7: the entity -> anchor join a pick resolves through ──────────────

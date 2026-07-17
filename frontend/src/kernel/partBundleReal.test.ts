@@ -90,6 +90,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
               createdBy: body.created_by || '',
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
+              faceNames: body.face_names ?? null,
             })
             out[body.id] = {
               id: body.id,
@@ -237,23 +238,23 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
     // Every face anchor has a @gdf descriptor, normal, and centroid
     for (const a of planeAnchors) {
-      expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+      expect(a.geom_hash.startsWith('@u|')).toBe(true)
       expect(a.point.length).toBe(3)
       expect(a.axis.length).toBe(3)
       const normalLen = Math.sqrt(a.axis[0] ** 2 + a.axis[1] ** 2 + a.axis[2] ** 2)
       expect(normalLen).toBeCloseTo(1, 5)
     }
 
-    // Every edge anchor has a @gde descriptor
+    // Every edge anchor has a @u| construction UUID token
     for (const a of lineAnchors) {
-      expect(a.geom_hash.startsWith('@gde|')).toBe(true)
+      expect(a.geom_hash.startsWith('@u|')).toBe(true)
       expect(a.point.length).toBe(3)
       expect(a.axis.length).toBe(3)
     }
 
-    // Every vertex anchor has a @gdv descriptor
+    // Every vertex anchor has a @u| construction UUID token
     for (const a of vertexAnchors) {
-      expect(a.geom_hash.startsWith('@gdv|')).toBe(true)
+      expect(a.geom_hash.startsWith('@u|')).toBe(true)
       expect(a.point.length).toBe(3)
     }
   })
@@ -311,7 +312,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     // The hole's cylindrical wall is one cylinder anchor
     expect(cylinderAnchors.length).toBeGreaterThanOrEqual(1)
     for (const a of cylinderAnchors) {
-      expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+      expect(a.geom_hash.startsWith('@u|')).toBe(true)
       // The bore runs along Z: the anchor axis must be the bore's rotation
       // axis, not the radial surface normal `faceNormal` reads (which pointed
       // sideways, e.g. [-1,0,0], before Stage A).

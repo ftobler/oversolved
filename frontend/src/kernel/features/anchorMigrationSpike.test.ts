@@ -31,7 +31,6 @@ import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { isGeomDescriptorId } from '../geomDescriptor'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -48,7 +47,7 @@ function extractFaceTuples(result: BuildResponse): { descriptor: string; kind: s
     const fqs = (raw.mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     for (const fq of fqs) {
       const [ids, typeRestriction] = parseAncestry(fq)
-      const desc = findDescriptorToken(ids, '@gdf|')
+      const desc = findDescriptorToken(ids, '@u|') ?? findDescriptorToken(ids, '@gdf|')
       if (desc && raw.created_by) {
         tuples.push({ descriptor: desc, kind: typeRestriction || 'face', created_by: raw.created_by as string })
       }
@@ -63,7 +62,7 @@ function extractEdgeTuples(result: BuildResponse): { descriptor: string; kind: s
     const eqs = (raw.edge_queries as string[] | undefined) ?? []
     for (const eq of eqs) {
       const [ids, typeRestriction] = parseAncestry(eq)
-      const desc = findDescriptorToken(ids, '@gde|')
+      const desc = findDescriptorToken(ids, '@u|') ?? findDescriptorToken(ids, '@gde|')
       if (desc && raw.created_by) {
         tuples.push({ descriptor: desc, kind: typeRestriction || 'edge', created_by: raw.created_by as string })
       }
@@ -78,7 +77,7 @@ function extractVertexTuples(result: BuildResponse): { descriptor: string; kind:
     const vqs = (raw.vertex_queries as string[] | undefined) ?? []
     for (const vq of vqs) {
       const [ids] = parseAncestry(vq)
-      const desc = findDescriptorToken(ids, '@gdv|')
+      const desc = findDescriptorToken(ids, '@u|') ?? findDescriptorToken(ids, '@gdv|')
       if (desc && raw.created_by) {
         tuples.push({ descriptor: desc, kind: 'vertex', created_by: raw.created_by as string })
       }
@@ -119,6 +118,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
               createdBy: body.created_by || '',
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
+              faceNames: body.face_names ?? null,
             })
             out[body.id] = {
               id: body.id,
@@ -191,32 +191,32 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
 
   // ── Descriptor emission ─────────────────────────────────────────────────
 
-  it('face_queries emit @gdf descriptor tokens, not old gface_ digests', () => {
+  it('face_queries emit @u| construction UUID tokens, not old geometry descriptors', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const faceTuples = extractFaceTuples(result)
     expect(faceTuples.length).toBeGreaterThan(0)
     for (const ft of faceTuples) {
-      expect(ft.descriptor.startsWith('@gdf|')).toBe(true)
+      expect(ft.descriptor.startsWith('@u|')).toBe(true)
+      expect(ft.descriptor).not.toMatch(/^@gdf\|/)
       expect(ft.descriptor).not.toMatch(/^@gface_/)
-      expect(ft.descriptor).not.toMatch(/^@gnormal_/)
     }
   })
 
-  it('edge_queries emit @gde descriptor tokens', () => {
+  it('edge_queries emit @u| construction UUID tokens', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const edgeTuples = extractEdgeTuples(result)
     expect(edgeTuples.length).toBeGreaterThan(0)
     for (const et of edgeTuples) {
-      expect(et.descriptor.startsWith('@gde|')).toBe(true)
+      expect(et.descriptor.startsWith('@u|')).toBe(true)
     }
   })
 
-  it('vertex_queries emit @gdv descriptor tokens', () => {
+  it('vertex_queries emit @u| construction UUID tokens', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const vertexTuples = extractVertexTuples(result)
     expect(vertexTuples.length).toBeGreaterThan(0)
     for (const vt of vertexTuples) {
-      expect(vt.descriptor.startsWith('@gdv|')).toBe(true)
+      expect(vt.descriptor.startsWith('@u|')).toBe(true)
     }
   })
 
@@ -253,134 +253,106 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
 
   // ── Tier 1 miss: moving a face changes its descriptor ────────────────────
 
-  it('Tier 1 miss: changing extrude height changes face centroids — unmoved faces keep descriptors, moved faces change', () => {
+  // Stage 7: construction UUIDs (@u|) are stable across dimension edits because
+  // they are derived from symbolic construction paths (feature ids, sketch entity
+  // ids), not from geometry. A height change keeps every face's @u| unchanged.
+
+  it('Tier 1: construction UUIDs survive dimension edits — same set after height change', () => {
     const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
-    const descs5 = new Set(extractFaceTuples(r5).map((t) => t.descriptor))
-    const descs8 = new Set(extractFaceTuples(r8).map((t) => t.descriptor))
+    const faces5 = extractFaceTuples(r5)
+    const faces8 = extractFaceTuples(r8)
+    expect(faces5.length).toBe(6)  // rect extrude: 4 sides + start cap + end cap
+    expect(faces8.length).toBe(6)
 
-    // Some faces stay (the ones that did not move), some change (the ones
-    // whose centroids moved). The intersection captures unchanged faces;
-    // the symmetric difference captures moved faces.
-    const kept = new Set([...descs5].filter((d) => descs8.has(d)))
-    const changed = new Set([...descs5].filter((d) => !descs8.has(d)))
+    const descs5 = new Set(faces5.map((t) => t.descriptor))
+    const descs8 = new Set(faces8.map((t) => t.descriptor))
 
-    // At least one face survived unchanged (e.g. the base face at z=0).
-    expect(kept.size).toBeGreaterThan(0)
-    // At least one face changed (e.g. the top face whose centroid moved from
-    // z=5 to z=8, and side faces whose centroids shifted).
-    expect(changed.size).toBeGreaterThan(0)
-
-    // Descriptors that changed are NOT in the new set's descriptors.
-    for (const d of changed) {
-      expect(descs8.has(d)).toBe(false)
-    }
+    // Construction UUIDs are symbolic: every face from extrude 5 should have the
+    // same UUID as its counterpart in extrude 8, because the construction path
+    // (created_by + cap/side role) did not change.
+    expect(descs5.size).toBe(6)
+    expect(descs8.size).toBe(6)
+    for (const d of descs5) expect(descs8.has(d)).toBe(true)
   })
 
   // ── Tier 2: moved face is uniquely re-findable by (created_by, kind) ─────
 
-  it('Tier 2: a moved face is uniquely re-findable by (created_by, surface_type) among the new faces', () => {
+  // With construction UUIDs, Tier 1 (exact @u| match) already handles moved
+  // faces unambiguously. Tier 2 (created_by + kind) is the fallback for entities
+  // that did not earn a @u| token — typically post-boolean faces/edges that
+  // cannot inherit a stable construction path. Verify the Tier 2 grouping is
+  // sound: after a geometry edit the (created_by, kind) scope is populated and
+  // internally consistent.
+
+  it('Tier 2: created_by + kind scope is intact after an edit for fallback matching', () => {
     const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
     const faces5 = extractFaceTuples(r5)
     const faces8 = extractFaceTuples(r8)
 
-    // Find a face whose descriptor changed (Tier 1 miss).
-    const descs8 = new Set(faces8.map((f) => f.descriptor))
-    const moved = faces5.filter((f) => !descs8.has(f.descriptor))
-    expect(moved.length).toBeGreaterThan(0)
-
-    // For each moved face, try to re-find it in the new build using
-    // (created_by, surface_type) scope. Within that scope, count how many
-    // candidates share the same feature+kind.
-    for (const old of moved) {
+    // Group the 8-mm faces by (created_by, kind). A box has 6 flatfaces from one
+    // feature. The scope is still populated and self-consistent post-edit.
+    for (const old of faces5) {
       const candidates = faces8.filter(
         (f) => f.created_by === old.created_by && f.kind === old.kind,
       )
-      // A box extrude has 6 flatfaces from one feature. After a height change,
-      // all 6 are still flatfaces. The (created_by, kind) scope narrows to
-      // exactly those 6 flatfaces from 'ex1'.
-      //
-      // Within that scope we cannot assert uniqueness — all 6 candidates
-      // share the same (created_by, kind). Uniqueness comes from the
-      // "nearest by position/normal" tiebreak in the full migration
-      // algorithm, which this spike validates is feasible because:
-      //   - The scope is small (6 faces for a box, not 600)
-      //   - The moved face's centroid is the nearest candidate to its old
-      //     position
       expect(candidates.length).toBeGreaterThanOrEqual(1)
-
-      // The old face's kind is consistent — an edit doesn't change the
-      // surface type of a face.
       expect(candidates.every((c) => c.kind === old.kind)).toBe(true)
     }
 
-    // Regression: ensure we can find at least one scenario where (created_by,
-    // kind) is the scope for the migration. For a single-feature box, all
-    // faces share the same feature id — confirm that fact.
+    // All faces from one extrude share the same feature id.
     const allCreatedBy = faces5.map((f) => f.created_by)
-    expect(new Set(allCreatedBy).size).toBe(1)  // all faces from one extrude
+    expect(new Set(allCreatedBy).size).toBe(1)
   })
 
   // ── Edge and vertex descriptors survive dimension edits ──────────────────
 
-  it('edges and vertices that do not move keep their descriptors; moved ones change', () => {
+  it('construction UUIDs for edges and vertices are stable across dimension edits', () => {
     const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
     const ev5 = extractEdgeTuples(r5).sort((a, b) => a.descriptor.localeCompare(b.descriptor))
     const ev8 = extractEdgeTuples(r8).sort((a, b) => a.descriptor.localeCompare(b.descriptor))
 
+    expect(ev5.length).toBeGreaterThan(0)
+    expect(ev8.length).toBeGreaterThan(0)
+    // Construction UUIDs are derived from face UUID pairs, which are symbolic.
+    // Every edge descriptor from build 5 should appear in build 8.
     const descs8 = new Set(ev8.map((e) => e.descriptor))
+    for (const e of ev5) expect(descs8.has(e.descriptor)).toBe(true)
 
-    const kept = ev5.filter((e) => descs8.has(e.descriptor))
-    const changed = ev5.filter((e) => !descs8.has(e.descriptor))
-
-    // Some edges survived (e.g., the base rectangle edges at z=0).
-    expect(kept.length).toBeGreaterThan(0)
-    // Some edges changed (e.g., the vertical edges got longer).
-    expect(changed.length).toBeGreaterThan(0)
-
-    // Vertex layer: all 8 vertices may change position because the box top
-    // shifted. Check that descriptors are emitted but some change.
+    // Vertex layer: same stability guarantee.
     const vv5 = extractVertexTuples(r5)
-    const descsV8 = new Set(extractVertexTuples(r8).map((v) => v.descriptor))
-    const vKept = vv5.filter((v) => descsV8.has(v.descriptor))
-    const vChanged = vv5.filter((v) => !descsV8.has(v.descriptor))
-
-    // The base vertices at z=0 should survive (unchanged).
-    expect(vKept.length).toBeGreaterThan(0)
-    // The top vertices at z=5 should change (moved to z=8).
-    expect(vChanged.length).toBeGreaterThan(0)
+    const vv8 = extractVertexTuples(r8)
+    expect(vv5.length).toBeGreaterThan(0)
+    expect(vv8.length).toBeGreaterThan(0)
+    const descsV8 = new Set(vv8.map((v) => v.descriptor))
+    for (const v of vv5) expect(descsV8.has(v.descriptor)).toBe(true)
   })
 
   // ── Build-side vs ID-buffer: they emit the same descriptors ─────────────
 
-  it('build-side tuples match repo population (ID buffer sees the same descriptors)', () => {
+  it('build-side tuples match repo population (ID buffer sees the same @u| tokens)', () => {
     const r = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
 
     const faceTuples = extractFaceTuples(r)
     const buildDescriptors = new Set(faceTuples.map((t) => t.descriptor))
 
-    // The @gdf tokens are prefix of the full face_queries string; no other
-    // code path produces @gdf tokens, so the set uniquely identifies the
-    // geometry. Verify that every descriptor in the build output is a valid
-    // geom-descriptor id.
     for (const ft of faceTuples) {
-      expect(isGeomDescriptorId(ft.descriptor)).toBe(true)
+      expect(ft.descriptor.startsWith('@u|')).toBe(true)
     }
 
-    // Spot-check: the face_queries string contains the descriptor as its
-    // first token (the build puts the descriptor id first).
+    // Spot-check: the face_queries string contains the @u| descriptor as its
+    // first token (construction UUIDs are prepended first).
     const fqs = Object.values(r.bodies as Record<string, Record<string, unknown>>).flatMap(
       (b) => (b.mesh as { face_queries?: string[] } | undefined)?.face_queries ?? [])
     for (const fq of fqs) {
       const [ids] = parseAncestry(fq)
-      const firstDesc = ids.find((id) => id.startsWith('@gdf|'))
+      const firstDesc = ids.find((id) => id.startsWith('@u|'))
       expect(firstDesc).toBeTruthy()
-      // The descriptor is present in the buildDescriptors set.
       if (firstDesc) expect(buildDescriptors.has(firstDesc)).toBe(true)
     }
 

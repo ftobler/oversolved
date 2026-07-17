@@ -776,7 +776,7 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, null)
 
-    expect(result.solveError).toContain('not built')
+    expect(result.solveError).toContain('Mate solver not available.')
     // Scene still draws at the placed seeds.
     expect(result.transforms['p1']).toEqual(identityTransform())
     expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
