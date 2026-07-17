@@ -16,7 +16,7 @@ import {
  */
 
 export const brepFaceAdapter = {
-  onHover(entityKey: string): void {
+  onHover(entityKey: string, pickKey?: string): void {
     const s = useSketchEditorStore.getState()
     const found = findBodyForFaceQuery(entityKey)
     if (!found) {
@@ -24,6 +24,9 @@ export const brepFaceAdapter = {
       return
     }
     s.setHoveredSelectionId(entityKey)
+    // pickKey isolates the single hovered face when its query collides with a
+    // sibling's; the caller (applyHoverHit) cleared it to null beforehand.
+    s.setHoveredPickKey(pickKey ?? null)
     found.body.updateFaceGeometryForQuery(entityKey)
   },
 }

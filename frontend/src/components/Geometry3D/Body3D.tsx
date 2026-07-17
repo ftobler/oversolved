@@ -151,6 +151,29 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     [edgeSelectionFlags],
   )
 
+  // Face highlight is decoupled from raw query membership the same way edges are:
+  // sibling faces sharing an ancestral query (no minted UUID) must not co-highlight.
+  // Indexed by B-rep face index; null when the mesh carries no face queries (the
+  // fallback path below keeps the legacy per-triangle query-membership highlight).
+  const faceSelectionFlags = useMemo(() => {
+    const { face_queries } = mesh
+    if (!face_queries || face_queries.length === 0) return null
+    const bodyKey = bodyKeyFor(featureId, bodyId)
+    return computePrimitiveSelection(bodyKey, face_queries, normalSelection, selectedPickKeys)
+  }, [featureId, bodyId, mesh, normalSelection, selectedPickKeys])
+
+  // The single hovered face resolved by its pick key, so a hover isolates the one
+  // face under the cursor even when its query collides with a sibling's. -1 = none.
+  const hoveredFaceIndex = useMemo(() => {
+    const { face_queries } = mesh
+    if (!face_queries || hoveredPickKey === null) return -1
+    const bodyKey = bodyKeyFor(featureId, bodyId)
+    for (let i = 0; i < face_queries.length; i++) {
+      if (primitivePickKey(bodyKey, i) === hoveredPickKey) return i
+    }
+    return -1
+  }, [featureId, bodyId, mesh, hoveredPickKey])
+
   const geometry = useMemo(() => {
     const indexed = new THREE.BufferGeometry()
     const { positions, indices } = buildBodyGeometry(mesh)
@@ -231,18 +254,20 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     return () => { edgeBoundaryGeos?.forEach(geo => geo.dispose()) }
   }, [edgeBoundaryGeos])
 
-  // Build boundary edge geometries for every B-rep face, keyed by face query.
-  // Used to render the outline of a hovered or selected face.
+  // Build boundary edge geometries for every B-rep face, keyed by face index.
+  // Used to render the outline of a hovered or selected face. Keyed by index (not
+  // query) so two faces sharing a query keep distinct outlines instead of one
+  // overwriting the other.
   const faceBoundaryGeos = useMemo(() => {
     const { face_queries } = mesh
     if (!face_queries) return null
-    const geos = new Map<string, THREE.BufferGeometry>()
+    const geos = new Map<number, THREE.BufferGeometry>()
     for (let i = 0; i < face_queries.length; i++) {
       const pts = buildFaceBoundarySegments(mesh, i)
       if (pts.length === 0) continue
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
-      geos.set(face_queries[i], geo)
+      geos.set(i, geo)
     }
     return geos
   }, [mesh])
@@ -272,15 +297,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(blendWhite(bodyColor))
+    const { triangle_to_face } = mesh
 
     for (let i = 0; i < numTris; i++) {
       let color = defaultColor
       if (interactive) {
-        const query = resolveFaceQuery(i)
-        if (normalSelection.has(query)) {
-          color = selectedColor
-        } else if (query === hoveredSelectionId) {
-          color = hoverColor
+        // With B-rep face metadata, isolate by face index / pick key so shared-query
+        // siblings do not co-highlight. Without it, keep the legacy query membership.
+        const brepFaceIndex = faceSelectionFlags && triangle_to_face ? (triangle_to_face[i] ?? -1) : -1
+        if (brepFaceIndex >= 0) {
+          if (faceSelectionFlags![brepFaceIndex]) color = selectedColor
+          else if (brepFaceIndex === hoveredFaceIndex) color = hoverColor
+        } else {
+          const query = resolveFaceQuery(i)
+          if (normalSelection.has(query)) color = selectedColor
+          else if (query === hoveredSelectionId) color = hoverColor
         }
       }
 
@@ -292,7 +323,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       }
     }
     return colors
-  }, [mesh.faces, normalSelection, hoveredSelectionId, bodyColor, resolveFaceQuery, interactive])
+  }, [mesh, faceSelectionFlags, hoveredFaceIndex, normalSelection, hoveredSelectionId, bodyColor, resolveFaceQuery, interactive])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -504,16 +535,17 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && hoveredSelectionId && faceBoundaryGeos.has(hoveredSelectionId) && (
-        <lineSegments geometry={faceBoundaryGeos.get(hoveredSelectionId)}>
+      {interactive && faceBoundaryGeos && hoveredFaceIndex >= 0 && faceBoundaryGeos.has(hoveredFaceIndex) && (
+        <lineSegments geometry={faceBoundaryGeos.get(hoveredFaceIndex)}>
           <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
         </lineSegments>
       )}
-      {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
-        const geo = faceBoundaryGeos.get(query)
+      {interactive && faceBoundaryGeos && faceSelectionFlags && faceSelectionFlags.map((selected, faceIdx) => {
+        if (!selected) return null
+        const geo = faceBoundaryGeos.get(faceIdx)
         if (!geo) return null
         return (
-          <lineSegments key={query} geometry={geo}>
+          <lineSegments key={faceIdx} geometry={geo}>
             <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
           </lineSegments>
         )
