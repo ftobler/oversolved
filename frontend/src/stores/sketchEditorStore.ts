@@ -456,11 +456,15 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         updates.normalSelection = new Set<string>()
         updates.selectedPicks = new Map<string, string>()
       }
-      // Clear stale pick-field state when entering any tool
+      // Clear stale pick-field state when entering any tool. Start from the
+      // selection the clearsSelectionOnEnter branch may already have emptied:
+      // rebuilding from state.normalSelection here would silently undo that
+      // clear when both branches fire (dimension tool entered mid-pick).
       if (tool !== null && state.activePickField !== null) {
         updates.activePickField = null
         updates.chipOwnedSelection = new Set<string>()
-        const nextNormal = new Set(state.normalSelection)
+        const baseNormal = (updates.normalSelection as Set<string> | undefined) ?? state.normalSelection
+        const nextNormal = new Set(baseNormal)
         for (const v of state.chipOwnedSelection) nextNormal.delete(v)
         updates.normalSelection = nextNormal
         updates.selectedPicks = new Map<string, string>()

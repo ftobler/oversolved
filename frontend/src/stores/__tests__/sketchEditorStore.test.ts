@@ -1019,6 +1019,23 @@ describe('sketchEditorStore', () => {
         expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
       })
 
+      it('clears normalSelection on dimension enter even while a pick field is active', () => {
+        // Regression: the pick-field cleanup branch rebuilt normalSelection from
+        // the pre-update state, silently undoing the clearsSelectionOnEnter
+        // wipe when both branches fired in one setActiveTool call.
+        useSketchEditorStore.setState({
+          normalSelection: new Set(['entity:S1:L1', '@edge_0']),
+          chipOwnedSelection: new Set(['@edge_0']),
+          selectionDomain: 'mixed',
+          activePickField: { featureId: 'F1', field: 'profile' },
+        })
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        const s = useSketchEditorStore.getState()
+        expect(s.activePickField).toBeNull()
+        expect(s.normalSelection.size).toBe(0)
+        expect(s.chipOwnedSelection.size).toBe(0)
+      })
+
       it('clears dimensionPicks when leaving the dimension tool', () => {
         // Activate dimension tool, accumulate a pick, then switch away.
         useSketchEditorStore.getState().setActiveTool('dimension')
