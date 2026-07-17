@@ -201,17 +201,16 @@ function resolveSourceBody(
   opLabel: string,
 ): Body {
   const ref = (feature.source_body as string) ?? ''
+  // A missing pick is a solve error: without an explicit source body the array
+  // has no defined subject. Silently defaulting to the first body in the store
+  // hid mis-picks and produced arrays of an arbitrary body (matches the
+  // transform/mirror leaves, which also require an explicit body pick).
+  if (!ref) throw new Error(`${opLabel}: source body is required; pick a body to array`)
   let body: Body
-  if (ref) {
-    try {
-      body = resolveBody(ref, bodyStore)
-    } catch {
-      throw new Error(`${opLabel}: source body '${ref}' not found; available body IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
-    }
-  } else {
-    const ids = Object.keys(bodyStore)
-    if (ids.length === 0) throw new Error(`${opLabel}: no source body with shape found`)
-    body = bodyStore[ids[0]]
+  try {
+    body = resolveBody(ref, bodyStore)
+  } catch {
+    throw new Error(`${opLabel}: source body '${ref}' not found; available body IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
   }
   if (body.shape === null) throw new Error(`${opLabel}: source body has no shape`)
   return body
