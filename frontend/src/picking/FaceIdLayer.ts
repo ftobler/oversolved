@@ -36,8 +36,8 @@ export interface FaceBodyRegistration {
   /** Ancestral query per B-rep face (indexed by face index). */
   faceQueries: ReadonlyArray<string>
   /**
-   * When true, allocate the ID by a per-primitive key (`bodyKey#faceIdx`) rather
-   * than by the query string. B-rep faces set this because their queries can
+   * When true, allocate the ID by a per-primitive key (`bodyKey#layer#faceIdx`)
+   * rather than by the query string. B-rep faces set this because their queries can
    * legitimately collide (no minted UUID / shared octant); other reusers of this
    * layer (sketch surfaces) have unique keys and leave it off.
    */
@@ -107,7 +107,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
 
       let rgb = faceIdCache.get(faceIdx)
       if (!rgb) {
-        // B-rep faces: allocate by a per-primitive pickKey (bodyKey#faceIdx), not
+        // B-rep faces: allocate by a per-primitive pickKey (bodyKey#layer#faceIdx), not
         // the query, so two faces that share an ancestral query (no minted UUID /
         // shared octant) still resolve to distinct IDs. The query rides along as
         // the record's entityKey for downstream selection/resolution. Other layers

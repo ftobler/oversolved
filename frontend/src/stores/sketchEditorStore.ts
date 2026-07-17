@@ -160,19 +160,19 @@ interface SketchEditorState {
    // SELECTION SUBSYSTEM
   // Hovered selection — always reflects what entity/face/plane is directly under cursor.
   hoveredSelectionId: string | null
-  // Per-primitive pick key of the hovered b-rep primitive (bodyKey#index). Set
-  // alongside hoveredSelectionId for edges so hover highlight can isolate the
+  // Per-primitive pick key of the hovered b-rep primitive (bodyKey#layer#index).
+  // Set alongside hoveredSelectionId for edges so hover highlight can isolate the
   // single primitive under the cursor even when its query string is not unique.
   hoveredPickKey: string | null
   // Normal selection — traditional selection, persists until explicitly changed.
   // Query-keyed: the durable/ancestral identity every consumer reads.
   normalSelection: Set<string>
-  // Live per-primitive refinement of the b-rep selection (bodyKey#index). A
+  // Live per-primitive refinement of the b-rep selection (bodyKey#layer#index). A
   // click records the exact primitive's pickKey here alongside its query in
   // normalSelection, so the viewport highlight isolates the one clicked edge
   // even when several edges share a query. Transient: unlike normalSelection it
   // is not persisted and is empty after a re-solve, where the query-keyed
-  // fallback takes over (see computePrimitiveSelection). Cleared whenever the
+  // fallback takes over (see computeHighlight). Cleared whenever the
   // normal selection is cleared/reset.
   selectedPickKeys: Set<string>
   // Derived domain of the current normal selection.

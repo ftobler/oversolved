@@ -29,7 +29,7 @@ export interface VertexBodyRegistration {
   vertices: ReadonlyArray<[number, number, number]>
   vertexQueries: ReadonlyArray<string>
   /**
-   * When true, allocate the ID by a per-primitive key (`bodyKey#vertexIdx`)
+   * When true, allocate the ID by a per-primitive key (`bodyKey#layer#vertexIdx`)
    * rather than by the query string. B-rep vertices set this because their
    * queries can legitimately collide (no minted UUID / shared octant); other
    * reusers with unique keys leave it off. Mirrors FaceIdLayer / EdgeIdLayer.

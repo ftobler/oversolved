@@ -45,23 +45,3 @@ export function pickedPrimitiveIndex(
   }
   return -1
 }
-
-/**
- * Resolve the single hovered primitive index for a layer: prefer the precise pick
- * key, then fall back to the hovered query. The fallback keeps hover highlighting
- * reliable when no pick key was carried for the hovered primitive (mirroring how
- * selection degrades to query membership); when a pick key is present, isolation
- * by pick key wins so a shared-query sibling does not co-highlight.
- */
-export function hoveredPrimitiveIndex(
-  bodyKey: string,
-  queries: ReadonlyArray<string>,
-  layer: string,
-  hoveredPickKey: string | null,
-  hoveredQuery: string | null,
-): number {
-  const byPick = pickedPrimitiveIndex(bodyKey, queries.length, layer, hoveredPickKey)
-  if (byPick >= 0) return byPick
-  if (hoveredQuery === null) return -1
-  return queries.indexOf(hoveredQuery)
-}

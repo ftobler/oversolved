@@ -44,8 +44,8 @@ export interface EdgeBodyRegistration {
   /** Ancestral query per edge (length = numEdges). */
   edgeQueries: ReadonlyArray<string>
   /**
-   * When true, allocate the ID by a per-primitive key (`bodyKey#edgeIdx`) rather
-   * than by the query string. B-rep edges set this because their queries can
+   * When true, allocate the ID by a per-primitive key (`bodyKey#layer#edgeIdx`)
+   * rather than by the query string. B-rep edges set this because their queries can
    * legitimately collide (no minted UUID / shared octant); other reusers of this
    * layer (feature handles, sketch composites) have unique keys and leave it off.
    */
@@ -156,7 +156,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
 
       let rgb = edgeColorCache.get(edgeIdx)
       if (!rgb) {
-        // B-rep edges: allocate by a per-primitive pickKey (bodyKey#edgeIdx), not
+        // B-rep edges: allocate by a per-primitive pickKey (bodyKey#layer#edgeIdx), not
         // the query, so two edges that share an ancestral query (or lack a minted
         // UUID) still resolve to distinct IDs. The query rides along as the
         // record's entityKey for downstream selection/resolution. Other layers
