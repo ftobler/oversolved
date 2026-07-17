@@ -3,6 +3,7 @@ import { BugReporter, type BugReportAttachments } from '@/components/dialogs/Bug
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { backendBundle } from '@/adapters/backend'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import type { Mutation } from '@/types/cad'
@@ -21,6 +22,9 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as UndoEntry[]
   const redoStack = usePartEditorStore(s => s.redoStack) as UndoEntry[]
   const doc = usePartEditorStore(s => s.doc)
+
+  const validateOnRebuild = useDevSettingsStore(s => s.validateOnRebuild)
+  const setValidateOnRebuild = useDevSettingsStore(s => s.setValidateOnRebuild)
 
   const [debugTab, setDebugTab] = useState<'selection' | 'bug-report' | 'undo-redo'>('selection')
   const [bugReportForm, setBugReportForm] = useState({ title: '', description: '' })
@@ -87,6 +91,17 @@ export default function PartDebugPanel({ debugOpen }: PartDebugPanelProps) {
             <div className="debug-section-title">Normal ({selection.size})</div>
             {selection.size === 0 ? <div className="debug-empty">none</div>
               : [...selection].map(id => <div key={id} className="debug-value">{id}</div>)}
+          </div>
+          <div className="debug-section">
+            <div className="debug-section-title">Rebuild</div>
+            <label className="debug-value" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={validateOnRebuild}
+                onChange={e => setValidateOnRebuild(e.target.checked)}
+              />
+              validate (fresh rebuild diff, doubles solve)
+            </label>
           </div>
         </div>
       )}

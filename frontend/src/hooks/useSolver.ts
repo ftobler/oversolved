@@ -325,6 +325,7 @@ export function useSolver(
         pickBoundary: pickBoundary ?? null,
         rollbackPosition: adjustedRollback,
         validate: opts?.validate,
+        bypassCache: opts?.bypassCache,
       })
       if (!local) {
         const msg = 'Local solver unavailable (OCC.js failed to load)'

@@ -243,9 +243,9 @@ export async function solveLocally(
     pickBoundary?: number | null
     rollbackPosition?: number | null
     validate?: boolean
+    bypassCache?: boolean
   } = {},
 ): Promise<BuildResponse | null> {
-  console.log('[solveLocally] attempting local solve for doc')
   // Load OCC.js and the Rust sketch solver in parallel; both must be ready
   // before build() runs. initSketchSolver MUST be awaited: build() solves
   // sketches synchronously, so a fire-and-forget load races the first solve and
@@ -270,7 +270,11 @@ export async function solveLocally(
   const table = (persistentTable ??= new HandleTable({ finalizerGuard: false }))
   // Caller override (tests) wins; otherwise feed the prior solve's state so the
   // builder restores the clean prefix and rebuilds only the dirty tail.
-  const prevState = options.prevState !== undefined ? options.prevState : lastBuildState
+  // When bypassCache is set the previous cache is ignored — the solve builds
+  // every feature from scratch (used by the explicit re-solve button).
+  const prevState = options.bypassCache
+    ? null
+    : (options.prevState !== undefined ? options.prevState : lastBuildState)
 
   try {
     const deps = buildDeps(oc, scope, table)

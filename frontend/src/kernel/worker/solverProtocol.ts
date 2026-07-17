@@ -17,6 +17,7 @@ export interface SolveRequestOptions {
   pickBoundary?: number | null
   rollbackPosition?: number | null
   validate?: boolean
+  bypassCache?: boolean
 }
 
 export interface SolveRequest {
