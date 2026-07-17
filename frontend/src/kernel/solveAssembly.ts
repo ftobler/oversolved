@@ -534,6 +534,13 @@ export async function solveAssembly(
         mateResults[mate.id] = { ...mateResults[mate.id], error: errMsg }
       }
     }
+  } else if (!solveMateFn && mateRecords.length > 0) {
+    // No solver, but mates exist: warn so the user knows why mates do nothing.
+    // The scene still draws at the placed seeds.
+    solveError = 'Mate solver not available.'
+    for (const part of parts) {
+      transforms[part.handle] = { ...part.transform }
+    }
   } else {
     // No solver or no mates: echo the placed transforms
     for (const part of parts) {

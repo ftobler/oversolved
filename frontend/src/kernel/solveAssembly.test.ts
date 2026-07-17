@@ -756,6 +756,30 @@ describe('solveAssembly', () => {
     const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, null)
 
     expect(result.transforms['p1']).toEqual(translationTransform(1, 2, 3))
+    expect(result.solveError).toBeUndefined()
+  })
+
+  it('sets solveError when solver is null but mates exist', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, null)
+
+    expect(result.solveError).toContain('not built')
+    // Scene still draws at the placed seeds.
+    expect(result.transforms['p1']).toEqual(identityTransform())
+    expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
   })
 
   it('handles empty parts array', async () => {
