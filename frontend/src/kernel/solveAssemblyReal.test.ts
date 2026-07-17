@@ -373,4 +373,72 @@ describeReal('solveAssembly with the real mate solver', () => {
     const rollDeg = (2 * Math.atan2(b.qz, b.qw)) * 180 / Math.PI
     expect(Math.abs(rollDeg - 30)).toBeLessThan(1.5)
   })
+
+  // Regression: the JS layer must NOT bake the solved transforms into the
+  // doc before a mate parameter edit.  If it did, the seed would
+  // incorporate the previous solve's roll and the next solve would add the
+  // new angle on top (30° + 60° = 90° instead of 60°).  This test
+  // re-solves from the SAME seed with a fresh angle — the clean-seed
+  // scenario that the JS no-bake discipline guarantees.
+  it('a second solve from the same seed applies the angle absolutely, not incrementally', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
+    ]
+
+    const r30 = await solveAssembly(parts, revs, [{
+      id: 'm1', kind: 'fixed' as const, angle: 30,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }], relay, solveMate!)
+    const b30 = r30.transforms['pb']
+    const roll30 = (2 * Math.atan2(b30.qz, b30.qw)) * 180 / Math.PI
+    expect(Math.abs(roll30 - 30)).toBeLessThan(1.5)
+
+    // Second solve: same seed (identity), new angle 60.
+    const r60 = await solveAssembly(parts, revs, [{
+      id: 'm1', kind: 'fixed' as const, angle: 60,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }], relay, solveMate!)
+    const b60 = r60.transforms['pb']
+    const roll60 = (2 * Math.atan2(b60.qz, b60.qw)) * 180 / Math.PI
+    expect(Math.abs(roll60 - 60)).toBeLessThan(1.5)
+  })
+
+  // The baking bug itself: when the seed IS contaminated with the previous
+  // solve's roll the angle accumulates — 30° (baked) + 60° (solved) = 90°.
+  // This test asserts the broken behaviour so a future solver-side fix
+  // (separate roll reference vs LM starting point) can flip this from 90
+  // to 60 without being invisible.
+  it('accumulates angle when the seed already holds the prior solve roll', async () => {
+    const parts1 = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
+    ]
+    const r30 = await solveAssembly(parts1, revs, [{
+      id: 'm1', kind: 'fixed' as const, angle: 30,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }], relay, solveMate!)
+    const b30 = r30.transforms['pb']
+
+    // Seed is the 30° pose — exactly what the (now-removed) bake was doing.
+    const parts2 = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: b30 },
+    ]
+    const r60 = await solveAssembly(parts2, revs, [{
+      id: 'm1', kind: 'fixed' as const, angle: 60,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }], relay, solveMate!)
+    const b60 = r60.transforms['pb']
+    const rollDeg = (2 * Math.atan2(b60.qz, b60.qw)) * 180 / Math.PI
+    // Under the baking bug the roll lands at ~90° (30 baked + 60 applied).
+    expect(Math.abs(rollDeg - 90)).toBeLessThan(5)
+    // When a solver-side fix splits the roll reference from the LM start
+    // point, flip this to:
+    //   expect(Math.abs(rollDeg - 60)).toBeLessThan(5)
+  })
 })
