@@ -36,7 +36,7 @@
 //!   f32  offset              // linear offset along axis (Fixed / ParallelPlaneDistance / Sliding / Tangential)
 //!   f32  ratio               // for CopyRotation (gear-like ratio)
 //!   f32  radius              // for Tangential (mate-side radius fallback)
-//!   f32  angle               // radians, for Fixed's seed-relative roll (TS encodes degrees -> radians)
+//!   f32  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
 //! ```
 //!
 //! There is no version field on this record and nothing persists it: the buffer

@@ -5,17 +5,30 @@
 //! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
 //!
 //! Residuals per mate kind:
-//! - Fixed:              point coincidence + offset (3) + signed axis difference (3) + seed-relative roll (1)
+//! - Fixed:              point coincidence + offset (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
-//! - Sliding:            axis cross (3) + perp displacement cross (3) + seed-relative roll pin (1)
+//! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1)
 //!   -- prismatic: slide is the only free DOF
-//! - Rotating:           point coincidence (3) + axis cross (3)
-//! - SlidingRotating:    axis cross (3) + perp displacement cross (3)
+//! - Rotating:           point coincidence (3) + signed axis difference w/ flip (3)
+//! - SlidingRotating:    signed axis difference w/ flip (3) + perp displacement cross (3)
 //!   -- cylindrical: slide + roll are free DOF
 //! - Tangential:         signed-distance formula (1), surface-pair dependent
 //! - CopyRotation:       roll_b - ratio * roll_a around seed-frame axes (1)
 //! - ParallelPlaneDistance: dot(diff, normal) - offset (1) + axis-dot parallelism w/ flip (1)
+//!
+//! Orientation is authored data, never seed state: every orientation target
+//! above comes off the wire (`flip`, `angle`), so a solve is a pure function of
+//! the document and re-solving from its own output is a no-op. The one
+//! exception is CopyRotation, whose whole point is linking FUTURE rotation, so
+//! it alone keeps a seed-relative twist. The editor captures `flip`/`angle`
+//! from the on-screen pose when the mate's references are picked, which is how
+//! "hold what I placed" still works without the solver remembering anything:
+//! deriving these from the seed instead made every solve inherit the last
+//! solve's rounding error (baked into the doc on drag pointer-up) -- welded
+//! parts drifted apart rotationally, an authored angle re-applied itself on
+//! every reseed (a ratchet), and the weld side flipped when a drag swung the
+//! axes past perpendicular.
 //!
 //! Global soft residuals:
 //! - Quaternion unit-norm per body (1 residual each)
@@ -42,26 +55,24 @@ pub struct MateProblem {
     grounded: Vec<bool>,
     /// Total residual count m.
     m: usize,
-    /// Seed-frame world axes for CopyRotation, Fixed, and Sliding (fixed at
-    /// problem build time). `fill_copy_rotation` linearises about THESE, never
-    /// the current quaternion's axis -- the current axis drifts as the body
-    /// rotates away from its seed, and `jacobian_vs_fd_copy_rotation` only
-    /// evaluates at the seed, which made a seed-vs-current mismatch invisible.
+    /// Seed-frame world axes for CopyRotation (fixed at problem build time).
+    /// `fill_copy_rotation` linearises about THESE, never the current
+    /// quaternion's axis -- the current axis drifts as the body rotates away
+    /// from its seed, and `jacobian_vs_fd_copy_rotation` only evaluates at the
+    /// seed, which made a seed-vs-current mismatch invisible.
     seed_axes: Vec<Option<([f64; 3], [f64; 3])>>,
-    /// `(twist_a(x0), twist_b(x0))`, measured about `seed_axes`. `Fixed`'s and
-    /// `Sliding`'s roll pins hold `twist_b - twist_a` relative to this pair's
-    /// difference (so a mate authored with `angle = 0`, or Sliding which has no
-    /// `angle` at all, reproduces whatever roll the two bodies already had
-    /// instead of snapping them); `CopyRotation` holds each body's twist
-    /// relative to ITS OWN half of the pair (`twist_b - twist_b0 = ratio *
-    /// (twist_a - twist_a0)`), so authoring a gear mate on two already-rotated
-    /// bodies links their FUTURE rotation instead of snapping them together.
+    /// `(twist_a(x0), twist_b(x0))`, measured about `seed_axes`. CopyRotation
+    /// holds each body's twist relative to ITS OWN half of the pair
+    /// (`twist_b - twist_b0 = ratio * (twist_a - twist_a0)`), so authoring a
+    /// gear mate on two already-rotated bodies links their FUTURE rotation
+    /// instead of snapping them together.
     seed_twist: Vec<(f64, f64)>,
-    /// Per-mate sign for `Fixed`'s signed axis-difference residual: +1 if the
-    /// two anchor axes point the same way at the seed pose, -1 if opposed. Frozen
-    /// at build time so the weld holds whichever alignment it was placed with and
-    /// never flips normal-to-antinormal between solves. 1.0 for non-Fixed mates.
-    fixed_axis_sign: Vec<f64>,
+    /// Canonical in-plane reference direction per side, for `Fixed`'s and
+    /// `Sliding`'s absolute roll residual: `canonical_perp` of each anchor's
+    /// LOCAL axis, so the frame is rigid to the part and independent of any
+    /// pose. The editor's authoring capture derives its `angle` from the same
+    /// frames (utils/mateOrientation.ts must mirror `canonical_perp` exactly).
+    roll_frames: Vec<Option<([f64; 3], [f64; 3])>>,
 }
 
 /// How much stiffer the LM step damps a body's rotation params than its
@@ -102,18 +113,14 @@ impl MateProblem {
         let mate_residual_total: usize = input.mates.iter().map(|m| mate_residual_count(m.kind)).sum();
         let m = mate_residual_total + n_bodies + 7 * grounded.iter().filter(|&&g| g).count();
 
-        // Precompute seed-frame world axes for CopyRotation, Fixed, and Sliding
-        // mates, plus each body's twist at the seed pose about those same fixed
-        // axes.
+        // Precompute seed-frame world axes for CopyRotation mates plus each
+        // body's twist at the seed pose about those axes, and the pose-free
+        // canonical roll frames for Fixed and Sliding.
         let mut seed_axes: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
         let mut seed_twist: Vec<(f64, f64)> = vec![(0.0, 0.0); input.mates.len()];
-        let mut fixed_axis_sign: Vec<f64> = vec![1.0; input.mates.len()];
+        let mut roll_frames: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
         for (i, m) in input.mates.iter().enumerate() {
-            let wants_seed_roll = matches!(
-                m.kind,
-                MateKind::CopyRotation | MateKind::Fixed | MateKind::Sliding
-            );
-            if wants_seed_roll {
+            if m.kind == MateKind::CopyRotation {
                 let off_a = m.a.body_index as usize * 7;
                 let off_b = m.b.body_index as usize * 7;
                 let a_w = world_direction(&x0, off_a, &m.a.geometry.axis);
@@ -127,12 +134,12 @@ impl MateProblem {
                 let twist_a0 = twist_angle(qa.0, qa.1, qa.2, qa.3, &seed_a);
                 let twist_b0 = twist_angle(qb.0, qb.1, qb.2, qb.3, &seed_b);
                 seed_twist[i] = (twist_a0, twist_b0);
-
-                // Freeze which way `Fixed` aligns the axes from the seed dot sign,
-                // so the weld holds its placed orientation. Perpendicular seeds
-                // (dot ~ 0) have no preferred side; default to +1.
-                let dot = seed_a[0] * seed_b[0] + seed_a[1] * seed_b[1] + seed_a[2] * seed_b[2];
-                fixed_axis_sign[i] = if dot < 0.0 { -1.0 } else { 1.0 };
+            }
+            if matches!(m.kind, MateKind::Fixed | MateKind::Sliding) {
+                roll_frames[i] = Some((
+                    canonical_perp(&m.a.geometry.axis),
+                    canonical_perp(&m.b.geometry.axis),
+                ));
             }
         }
 
@@ -145,33 +152,36 @@ impl MateProblem {
             m,
             seed_axes,
             seed_twist,
-            fixed_axis_sign,
+            roll_frames,
         }
     }
 
-    /// Seed-relative roll: `(roll_b - sign * roll_a) - sign * extra_angle`, where
-    /// each `roll_*` is how far that body has rolled about its OWN anchor axis
-    /// since the seed pose. Shared by `Fixed`'s authored-angle roll pin
-    /// (`extra_angle = mate.angle`) and `Sliding`'s plain roll pin
-    /// (`extra_angle = 0.0`; `Sliding` has no `angle` param on the wire, see
-    /// mateKinds.ts). `sign` is the seed axis-alignment sign (see
-    /// `fixed_axis_sign`): anti-parallel anchors roll in opposite senses about
-    /// the shared world axis, so `roll_b` tracks `-roll_a`.
+    /// Absolute roll: the signed angle from A's canonical reference direction to
+    /// B's, measured about A's current world axis, minus the authored `angle`.
+    /// Shared by `Fixed` and `Sliding`. The reference directions are
+    /// `canonical_perp` of each anchor's LOCAL axis carried into world space, so
+    /// the residual is a pure function of the two poses and the authored target:
+    /// zero seed dependence, hence re-solving from a baked (already-solved) doc
+    /// changes nothing, and any rotational error a previous solve left behind is
+    /// pulled back out instead of adopted as the new truth.
     ///
-    /// Roll is measured on the delta rotation from the seed,
-    /// `q_delta = conj(q0) * q`, about the body-LOCAL axis -- not on the absolute
-    /// quaternion. The absolute twist `twist_angle(q, R(q)*axis)` is singular when
-    /// the body sits at a 180 deg rotation (`qw = 0`), which is exactly where a
-    /// face-to-face weld lands (part flipped to mate the two faces), and there it
-    /// left roll unconstrained (dof 1). `q_delta` stays near identity regardless
-    /// of the body's absolute pose, so it is well-conditioned across the swing
-    /// that aligns the anchors; it is zero at the seed, holding the placed roll.
-    fn seed_roll_residual(&self, x: &[f64], mi: usize, off_a: usize, off_b: usize, extra_angle: f64) -> f64 {
+    /// `atan2(dot(cross(xa, xb), w), dot(xa, xb))` reads the angle of `xb`
+    /// projected into the plane perpendicular to `w`; `xa` lies in that plane
+    /// exactly (rigid rotation keeps it perpendicular to A's axis), and `xb`
+    /// falls into it as the axis residuals align the axes, so near a solution
+    /// this is the plain dihedral roll. The wrap keeps the residual in
+    /// (-pi, pi]: a target of +179 deg and a pose at -179 deg are 2 deg apart,
+    /// not 358.
+    fn abs_roll_residual(&self, x: &[f64], mi: usize, off_a: usize, off_b: usize, target: f64) -> f64 {
         let mate = &self.mates[mi];
-        let sign = self.fixed_axis_sign[mi];
-        let roll_a = delta_twist(&self.x0, x, off_a, &mate.a.geometry.axis);
-        let roll_b = delta_twist(&self.x0, x, off_b, &mate.b.geometry.axis);
-        (roll_b - sign * roll_a) - sign * extra_angle
+        let (xa_l, xb_l) = self.roll_frames[mi].unwrap_or(([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]));
+        let w = normalise_axis(&world_direction(x, off_a, &mate.a.geometry.axis));
+        let xa_w = world_direction(x, off_a, &xa_l);
+        let xb_w = world_direction(x, off_b, &xb_l);
+        let cr = cross3(&xa_w, &xb_w);
+        let sin_r = cr[0] * w[0] + cr[1] * w[1] + cr[2] * w[2];
+        let cos_r = xa_w[0] * xb_w[0] + xa_w[1] * xb_w[1] + xa_w[2] * xb_w[2];
+        wrap_to_pi(sin_r.atan2(cos_r) - target)
     }
 
     /// Per-param multiplier on the LM Marquardt damping term: rotation params of
@@ -323,18 +333,20 @@ impl MateProblem {
                     // Axis alignment with a DEFINITE sign: a_w - sign * b_w.
                     // cross(a_w, b_w) vanishes for both parallel and anti-parallel
                     // b_w, so the weld could settle either way and flip a part
-                    // normal-to-antinormal between solves. The signed difference
-                    // is zero only when b_w points the way it did at the seed, so
-                    // the solve holds the placed orientation instead of choosing.
+                    // normal-to-antinormal between solves. The sign is the
+                    // authored `flip` (captured by the editor when the refs are
+                    // picked), never re-derived from the seed dot: a seed-derived
+                    // sign flipped the weld the moment a drag swung the axes past
+                    // perpendicular.
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    let s = self.fixed_axis_sign[mi];
+                    let s = axis_sign(mate.flip);
                     r.push(a_w[0] - s * b_w[0]);
                     r.push(a_w[1] - s * b_w[1]);
                     r.push(a_w[2] - s * b_w[2]);
-                    // Seed-relative roll: the axis difference above is rank 2 (both
+                    // Absolute roll: the axis difference above is rank 2 (both
                     // are unit vectors), so rolling body B about the shared axis
                     // leaves it at zero. This 7th residual is the missing rank.
-                    r.push(self.seed_roll_residual(x, mi, off_a, off_b, mate.angle));
+                    r.push(self.abs_roll_residual(x, mi, off_a, off_b, mate.angle));
                 }
                 MateKind::Spherical => {
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
@@ -351,14 +363,17 @@ impl MateProblem {
                     r.push(dot - sign);
                 }
                 MateKind::Sliding => {
-                    // Prismatic: axis cross + perp displacement cross (cylindrical,
-                    // same as SlidingRotating below) plus a roll pin, so slide along
-                    // the shared axis is the only free DOF.
+                    // Prismatic: signed axis difference + perp displacement cross
+                    // plus a roll pin, so slide along the shared axis is the only
+                    // free DOF. The sign is the authored flip, same as Fixed's:
+                    // the cross-product form this replaced was zero for parallel
+                    // AND anti-parallel axes, so the joint could flip sides.
                     let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    r.push(a_w[1] * b_w[2] - a_w[2] * b_w[1]);
-                    r.push(a_w[2] * b_w[0] - a_w[0] * b_w[2]);
-                    r.push(a_w[0] * b_w[1] - a_w[1] * b_w[0]);
+                    let s = axis_sign(mate.flip);
+                    r.push(a_w[0] - s * b_w[0]);
+                    r.push(a_w[1] - s * b_w[1]);
+                    r.push(a_w[2] - s * b_w[2]);
                     // Perp displacement cross: cross(p_a - p_b, a_w).
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
@@ -368,9 +383,8 @@ impl MateProblem {
                     r.push(d1 * a_w[2] - d2 * a_w[1]);
                     r.push(d2 * a_w[0] - d0 * a_w[2]);
                     r.push(d0 * a_w[1] - d1 * a_w[0]);
-                    // Seed-relative roll pin. No `angle` param on the wire for
-                    // Sliding (mateKinds.ts), so extra_angle is always 0.
-                    r.push(self.seed_roll_residual(x, mi, off_a, off_b, 0.0));
+                    // Absolute roll pin to the authored angle, same as Fixed's.
+                    r.push(self.abs_roll_residual(x, mi, off_a, off_b, mate.angle));
                 }
                 MateKind::Rotating => {
                     // Point coincidence.
@@ -379,21 +393,24 @@ impl MateProblem {
                     r.push(pa[0] - pb[0]);
                     r.push(pa[1] - pb[1]);
                     r.push(pa[2] - pb[2]);
-                    // Axis cross.
+                    // Signed axis difference w/ flip (see Fixed's arm).
                     let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    r.push(a_w[1] * b_w[2] - a_w[2] * b_w[1]);
-                    r.push(a_w[2] * b_w[0] - a_w[0] * b_w[2]);
-                    r.push(a_w[0] * b_w[1] - a_w[1] * b_w[0]);
+                    let s = axis_sign(mate.flip);
+                    r.push(a_w[0] - s * b_w[0]);
+                    r.push(a_w[1] - s * b_w[1]);
+                    r.push(a_w[2] - s * b_w[2]);
                 }
                 MateKind::SlidingRotating => {
-                    // Cylindrical: axis cross + perp displacement cross, so slide
-                    // along the shared axis and roll about it are the free DOF.
+                    // Cylindrical: signed axis difference + perp displacement
+                    // cross, so slide along the shared axis and roll about it are
+                    // the free DOF.
                     let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    r.push(a_w[1] * b_w[2] - a_w[2] * b_w[1]);
-                    r.push(a_w[2] * b_w[0] - a_w[0] * b_w[2]);
-                    r.push(a_w[0] * b_w[1] - a_w[1] * b_w[0]);
+                    let s = axis_sign(mate.flip);
+                    r.push(a_w[0] - s * b_w[0]);
+                    r.push(a_w[1] - s * b_w[1]);
+                    r.push(a_w[2] - s * b_w[2]);
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
                     let d0 = pa[0] - pb[0];
@@ -555,13 +572,13 @@ impl MateProblem {
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
-                        self.fixed_axis_sign[mi],
+                        axis_sign(mate.flip),
                     );
                     row += 3;
-                    // Seed-relative roll about each body's current world axis.
+                    // Absolute roll about A's current world axis.
                     // Finite-differenced so the Jacobian tracks the moving axis
-                    // the residual measures against (see fill_seed_roll_fd).
-                    self.fill_seed_roll_fd(&mut j, row, mi, off_a, off_b, x);
+                    // the residual measures against (see fill_roll_fd).
+                    self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x);
                     row += 1;
                 }
                 MateKind::Spherical => {
@@ -581,11 +598,12 @@ impl MateProblem {
                     row += 1;
                 }
                 MateKind::Sliding => {
-                    // Axis cross.
-                    self.fill_axis_cross(
+                    // Signed axis difference w/ flip.
+                    self.fill_axis_difference(
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                        axis_sign(mate.flip),
                     );
                     row += 3;
                     // Perp displacement cross.
@@ -596,9 +614,9 @@ impl MateProblem {
                         &mate.a.geometry.axis,
                     );
                     row += 3;
-                    // Seed-relative roll pin -- finite-differenced, same as
-                    // Fixed's (see fill_seed_roll_fd).
-                    self.fill_seed_roll_fd(&mut j, row, mi, off_a, off_b, x);
+                    // Absolute roll pin -- finite-differenced, same as Fixed's
+                    // (see fill_roll_fd).
+                    self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x);
                     row += 1;
                 }
                 MateKind::Rotating => {
@@ -608,18 +626,20 @@ impl MateProblem {
                         &mate.b.geometry.point,
                     );
                     row += 3;
-                    self.fill_axis_cross(
+                    self.fill_axis_difference(
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                        axis_sign(mate.flip),
                     );
                     row += 3;
                 }
                 MateKind::SlidingRotating => {
-                    self.fill_axis_cross(
+                    self.fill_axis_difference(
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                        axis_sign(mate.flip),
                     );
                     row += 3;
                     self.fill_perp_cross(
@@ -743,42 +763,6 @@ impl MateProblem {
             // ∂r/∂q_b_i = -drot_dq(q_b)(p_b)[i][comp]
             for qi in 0..4 {
                 j[(r, off_b + 3 + qi)] += -dpb[qi][comp];
-            }
-        }
-    }
-
-    /// Axis cross product: `cross(a_w, b_w)` (3 residual components).
-    #[allow(clippy::too_many_arguments)]
-    fn fill_axis_cross(
-        &self, j: &mut DMatrix<f64>, row0: usize,
-        off_a: usize, off_b: usize, x: &[f64],
-        axis_a: &[f64; 3], axis_b: &[f64; 3],
-    ) {
-        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
-        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
-        let a_w = rotate_vec(qa.0, qa.1, qa.2, qa.3, axis_a);
-        let b_w = rotate_vec(qb.0, qb.1, qb.2, qb.3, axis_b);
-        let da = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
-        let db = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, axis_b);
-
-        let da_cross_b: [[f64; 3]; 4] = [
-            cross3(&da[0], &b_w),
-            cross3(&da[1], &b_w),
-            cross3(&da[2], &b_w),
-            cross3(&da[3], &b_w),
-        ];
-        let a_cross_db: [[f64; 3]; 4] = [
-            cross3(&a_w, &db[0]),
-            cross3(&a_w, &db[1]),
-            cross3(&a_w, &db[2]),
-            cross3(&a_w, &db[3]),
-        ];
-
-        for comp in 0..3 {
-            let r = row0 + comp;
-            for qi in 0..4 {
-                j[(r, off_a + 3 + qi)] += da_cross_b[qi][comp];
-                j[(r, off_b + 3 + qi)] += a_cross_db[qi][comp];
             }
         }
     }
@@ -920,26 +904,25 @@ impl MateProblem {
         }
     }
 
-    /// Seed-relative roll residual for mate `mi` at x, selecting the authored
-    /// angle the same way the residual vector does (Fixed carries `mate.angle`,
-    /// Sliding has none). Used by `fill_seed_roll_fd` for finite differencing.
+    /// Absolute roll residual for mate `mi` at x (Fixed and Sliding both carry
+    /// their target in `mate.angle`). Used by `fill_roll_fd` for finite
+    /// differencing.
     fn roll_residual_at_mate(&self, mi: usize, x: &[f64]) -> f64 {
         let mate = &self.mates[mi];
         let off_a = mate.a.body_index as usize * 7;
         let off_b = mate.b.body_index as usize * 7;
-        let extra_angle = if mate.kind == MateKind::Fixed { mate.angle } else { 0.0 };
-        self.seed_roll_residual(x, mi, off_a, off_b, extra_angle)
+        self.abs_roll_residual(x, mi, off_a, off_b, mate.angle)
     }
 
-    /// Finite-difference Jacobian for the seed-relative roll residual (Fixed and
-    /// Sliding). The residual measures twist about each body's CURRENT world
-    /// axis (see `seed_roll_residual`), so the axis itself moves with the
+    /// Finite-difference Jacobian for the absolute roll residual (Fixed and
+    /// Sliding). The residual measures the dihedral about A's CURRENT world
+    /// axis (see `abs_roll_residual`), so the axis itself moves with the
     /// quaternion; central differencing captures that coupling exactly, whereas
     /// the old analytic `fill_copy_rotation` filler linearised about a fixed
     /// seed axis and disagreed with the residual off the seed. Same trusted
     /// pattern as `fill_tangential`; the roll row is a single residual, so this
     /// is cheap.
-    fn fill_seed_roll_fd(
+    fn fill_roll_fd(
         &self, j: &mut DMatrix<f64>, row: usize, mi: usize,
         off_a: usize, off_b: usize, x: &[f64],
     ) {
@@ -953,7 +936,13 @@ impl MateProblem {
                 xp[col] = orig - eps;
                 let fm = self.roll_residual_at_mate(mi, &xp);
                 xp[col] = orig;
-                j[(row, col)] = (fp - fm) / (2.0 * eps);
+                // Wrap the DIFFERENCE, not just the samples: when the pose sits
+                // on the residual's +/-pi branch cut (a weld a full half-turn
+                // from its authored roll), fp and fm land on opposite branches
+                // and their raw difference reads ~2*pi -- a ~1e6 phantom slope
+                // that swamps the normal equations and stalls LM on the spot.
+                // The wrapped difference is the true local slope across the cut.
+                j[(row, col)] = wrap_to_pi(fp - fm) / (2.0 * eps);
             }
         }
     }
@@ -983,9 +972,6 @@ impl MateProblem {
     /// only catches this if evaluated away from the seed (where the two axes
     /// still coincide by construction) -- see the perturbation in
     /// `jacobian_vs_fd_copy_rotation`.
-    /// Also reused by `Fixed`'s and `Sliding`'s seed-relative roll pins with
-    /// ratio = 1: their residuals only differ by an additive constant (the
-    /// seed twist / authored angle), which drops out of d/dq.
     #[allow(clippy::too_many_arguments)]
     fn fill_copy_rotation(
         &self, j: &mut DMatrix<f64>, row: usize, mi: usize,
@@ -1066,34 +1052,38 @@ fn twist_angle(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> f64 {
     2.0 * proj.atan2(qw)
 }
 
-/// Quaternion conjugate (inverse for a unit quaternion). Layout (qx, qy, qz, qw).
-fn quat_conj(q: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
-    (-q.0, -q.1, -q.2, q.3)
+/// The axis-alignment sign an authored `flip` selects: parallel (+1) or
+/// anti-parallel (-1). Authored data, never derived from the seed pose.
+fn axis_sign(flip: bool) -> f64 {
+    if flip { -1.0 } else { 1.0 }
 }
 
-/// Hamilton product a ⊗ b. Layout (qx, qy, qz, qw).
-fn quat_mul(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
-    let (ax, ay, az, aw) = a;
-    let (bx, by, bz, bw) = b;
-    (
-        aw * bx + ax * bw + ay * bz - az * by,
-        aw * by - ax * bz + ay * bw + az * bx,
-        aw * bz + ax * by - ay * bx + az * bw,
-        aw * bw - ax * bx - ay * by - az * bz,
-    )
+/// Deterministic unit vector perpendicular to `a` (the anchor's LOCAL axis):
+/// cross `a` with the world basis vector it is least aligned with. Pose-free,
+/// so together with the axis it gives every anchor a full rigid frame to
+/// measure roll against. The editor's authoring capture must agree on the same
+/// direction -- utils/mateOrientation.ts `canonicalPerp` mirrors this branch
+/// for branch, and `mateOrientation.test.ts` locks the shared fixtures.
+fn canonical_perp(a: &[f64; 3]) -> [f64; 3] {
+    let u = normalise_axis(a);
+    let (ax, ay, az) = (u[0].abs(), u[1].abs(), u[2].abs());
+    let e: [f64; 3] = if ax <= ay && ax <= az {
+        [1.0, 0.0, 0.0]
+    } else if ay <= az {
+        [0.0, 1.0, 0.0]
+    } else {
+        [0.0, 0.0, 1.0]
+    };
+    normalise_axis(&cross3(&u, &e))
 }
 
-/// Roll of a body about its own anchor `axis` (body-local) since the seed pose.
-/// Measured as the twist of the seed-relative delta rotation
-/// `q_delta = conj(q0) * q` about the local axis. `q_delta` stays near identity
-/// no matter the body's absolute orientation, so this is free of the 180 deg
-/// singularity that `twist_angle(q, R(q)*axis)` has (see `seed_roll_residual`).
-fn delta_twist(x0: &[f64], x: &[f64], off: usize, axis: &[f64; 3]) -> f64 {
-    let q0 = (x0[off + 3], x0[off + 4], x0[off + 5], x0[off + 6]);
-    let q = (x[off + 3], x[off + 4], x[off + 5], x[off + 6]);
-    let d = quat_mul(quat_conj(q0), q);
-    let ax = normalise_axis(axis);
-    twist_angle(d.0, d.1, d.2, d.3, &ax)
+/// Wrap an angle difference into (-pi, pi].
+fn wrap_to_pi(v: f64) -> f64 {
+    use std::f64::consts::PI;
+    let d = (v + PI).rem_euclid(2.0 * PI) - PI;
+    // rem_euclid maps an exact +pi input to -pi; keep the closed end at +pi so
+    // an authored 180 deg target is representable without a sign surprise.
+    if d == -PI { PI } else { d }
 }
 
 /// Gradient of twist_angle w.r.t. quaternion components.
@@ -1348,11 +1338,13 @@ mod tests {
     }
 
     #[test]
-    fn fixed_mate_holds_seeded_roll() {
-        // Body 1 seeded with a 30 degree roll about the shared Z axis. With
-        // angle == 0 (hardcoded pre-wire), the seed-relative residual must hold
-        // that roll exactly rather than snapping it to zero -- existing assemblies
-        // must keep solving to the pose they already had.
+    fn fixed_mate_corrects_seeded_roll_error_to_authored_angle() {
+        // Body 1 seeded with a 30 degree roll about the shared Z axis but the
+        // mate authors angle == 0. The old seed-relative residual HELD the 30
+        // degrees ("whatever roll the seed had"), which is exactly how solver
+        // rounding baked into the doc on drag pointer-up became permanent:
+        // welded parts drifted apart rotationally and nothing ever pulled them
+        // back. The absolute residual treats the 30 degrees as the error it is.
         let (qz, qw) = quat_roll_z(30.0);
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
@@ -1372,7 +1364,45 @@ mod tests {
         let qz = out.params_solved[12] as f64;
         let qw = out.params_solved[13] as f64;
         let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
-        assert!((roll_deg - 30.0).abs() < 1.0, "roll should hold at 30 deg, got {}", roll_deg);
+        assert!(roll_deg.abs() < 1.0, "roll should snap to the authored 0 deg, got {}", roll_deg);
+    }
+
+    /// Re-solving from a solve's own output must change nothing. This is THE
+    /// regression test for the drift/ratchet family of bugs: the editor bakes
+    /// solved poses into the doc seeds on every drag pointer-up, so any
+    /// seed-relative term in a mate residual turns the solve into an integrator
+    /// -- an authored 30 deg angle re-applied itself per reseed (a ratchet),
+    /// and rounding errors random-walked the weld. An absolute formulation is
+    /// idempotent under reseeding.
+    #[test]
+    fn fixed_mate_solve_is_idempotent_under_reseed() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                3.0, 4.0, 5.0, 0.0, 0.707, 0.0, 0.707,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_angle(MateKind::Fixed,
+                mate_ref(0, 2.0, 3.0, 4.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0, 30.0_f64.to_radians())],
+        };
+        let first = solve_mate(&input);
+
+        let reseeded = MateInput {
+            params_initial: first.params_solved.clone(),
+            ..input
+        };
+        let second = solve_mate(&reseeded);
+
+        for i in 0..14 {
+            assert!(
+                (second.params_solved[i] - first.params_solved[i]).abs() < 1e-3,
+                "param {} moved on reseed: {} -> {} (the ratchet)",
+                i, first.params_solved[i], second.params_solved[i],
+            );
+        }
     }
 
     #[test]
@@ -1425,14 +1455,15 @@ mod tests {
         let qz = out.params_solved[12] as f64;
         let qw = out.params_solved[13] as f64;
         let roll_deg = (2.0 * qz.atan2(qw)).to_degrees();
-        assert!((roll_deg - 30.0).abs() < 1.0, "roll should hold at 30 deg, got {}", roll_deg);
+        assert!(roll_deg.abs() < 1.0, "roll should land on the authored 0 deg, got {}", roll_deg);
     }
 
     #[test]
     fn rotating_keeps_one_free_dof() {
-        // Rotating shares its residual prefix with Fixed (point coincidence + axis
-        // cross); it must not pick up the roll residual by a copy-paste into the
-        // wrong arm. A revolute joint's whole purpose is the free roll.
+        // Rotating shares its residual prefix with Fixed (point coincidence +
+        // signed axis difference); it must not pick up the roll residual by a
+        // copy-paste into the wrong arm. A revolute joint's whole purpose is the
+        // free roll.
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
             params_initial: vec![
@@ -2106,11 +2137,12 @@ mod tests {
     }
 
     #[test]
-    fn sliding_reports_dof_one_and_holds_a_seeded_roll() {
-        // Body 1 seeded with a 30 degree roll about the shared Z axis relative
-        // to body 0 (which has none). Stage D: sliding gains the seed-relative
-        // roll pin (7th residual), so the seeded roll must survive the solve
-        // unchanged -- not snap to zero -- and only the slide (tz) stays free.
+    fn sliding_reports_dof_one_and_holds_authored_roll() {
+        // Body 1 seeded with a 30 degree roll about the shared Z axis and the
+        // mate authored with the same 30 degrees (what the editor's capture
+        // writes when the refs are picked at this pose). The roll pin holds it
+        // -- as authored data, not as seed memory -- and only the slide (tz)
+        // stays free.
         let half: f64 = 30.0_f64.to_radians() / 2.0;
         let seed_qz = half.sin();
         let seed_qw = half.cos();
@@ -2121,15 +2153,15 @@ mod tests {
                 0.0, 0.0, 3.0, 0.0, 0.0, seed_qz as f32, seed_qw as f32,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![mate(MateKind::Sliding,
+            mates: vec![mate_with_angle(MateKind::Sliding,
                 mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
                 mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
-                false, 0.0, 1.0, 0.0)],
+                false, 0.0, 1.0, 0.0, 30.0_f64.to_radians())],
         };
         let out = solve_mate(&input);
         assert_eq!(out.diagnostics.dof, 1);
-        assert!((out.params_solved[12] as f64 - seed_qz).abs() < 1e-3, "qz should hold the seeded roll, got {}", out.params_solved[12]);
-        assert!((out.params_solved[13] as f64 - seed_qw).abs() < 1e-3, "qw should hold the seeded roll, got {}", out.params_solved[13]);
+        assert!((out.params_solved[12] as f64 - seed_qz).abs() < 1e-3, "qz should hold the authored roll, got {}", out.params_solved[12]);
+        assert!((out.params_solved[13] as f64 - seed_qw).abs() < 1e-3, "qw should hold the authored roll, got {}", out.params_solved[13]);
     }
 
     #[test]
@@ -2371,12 +2403,14 @@ mod tests {
     }
 
     #[test]
-    fn fixed_mate_holds_anti_parallel_seed_without_flipping() {
+    fn fixed_mate_flip_true_holds_anti_parallel_weld() {
         // Body 1's anchor axis points opposite body 0's at the seed (its local +Z
-        // maps to world -Z via a 180 deg roll about X). A weld placed face-to-face
-        // like this must HOLD the anti-parallel alignment, not snap the part 180 deg
-        // to parallel. The old cross-product axis residual was blind to the sign and
-        // let it flip; the signed difference freezes the placed side.
+        // maps to world -Z via a 180 deg roll about X) -- a face-to-face weld. The
+        // side is AUTHORED: flip=true (with the 180 deg roll the editor's capture
+        // records for this pose) holds the anti-parallel alignment. The old
+        // cross-product axis residual was blind to the sign and could settle
+        // either way; the old seed-derived sign flipped when a drag swung the
+        // axes past perpendicular.
         let h = 90.0_f64.to_radians().sin(); // sin(90) = 1 -> 180 deg rotation quat
         let input = MateInput {
             bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
@@ -2385,10 +2419,10 @@ mod tests {
                 0.0, 0.0, 0.0, h as f32, 0.0, 0.0, 0.0, // body 1: 180 deg about X -> axis -Z
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![mate(MateKind::Fixed,
+            mates: vec![mate_with_angle(MateKind::Fixed,
                 mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
                 mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
-                false, 0.0, 1.0, 0.0)],
+                true, 0.0, 1.0, 0.0, std::f64::consts::PI)],
         };
         let out = solve_mate(&input);
         assert_eq!(out.diagnostics.dof, 0);
@@ -2402,4 +2436,88 @@ mod tests {
         let axis_w = rotate_vec(q.0, q.1, q.2, q.3, &[0.0, 0.0, 1.0]);
         assert!(axis_w[2] < -0.9, "axis should stay anti-parallel (-Z), got {:?}", axis_w);
     }
+
+    #[test]
+    fn fixed_mate_authored_side_beats_seed_side() {
+        // Nearly anti-parallel seed (175 deg about X -- not exactly 180, which
+        // is a stationary point of the axis residual where every descent
+        // direction is flat), but the mate authors flip=false (parallel). The
+        // old seed-derived sign read dot < 0 and would have "helpfully" welded
+        // the anti-parallel side; the authored side must win, swinging body 1
+        // back through perpendicular to parallel. This is what makes the weld
+        // side a stable, user-visible property instead of a solver mood.
+        let h = 87.5_f64.to_radians();
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, h.sin() as f32, 0.0, 0.0, h.cos() as f32,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        assert!(out.diagnostics.residual_norm < 1e-3);
+        let q = (
+            out.params_solved[10] as f64, out.params_solved[11] as f64,
+            out.params_solved[12] as f64, out.params_solved[13] as f64,
+        );
+        let axis_w = rotate_vec(q.0, q.1, q.2, q.3, &[0.0, 0.0, 1.0]);
+        assert!(axis_w[2] > 0.9, "axis should swing to the authored parallel side (+Z), got {:?}", axis_w);
+    }
+
+    #[test]
+    fn rotating_flip_true_holds_anti_parallel_axis() {
+        // A hinge authored on anti-parallel axes (flip=true) must hold that side
+        // while leaving roll free. With the old cross-product residual both
+        // sides were solutions, so which one the joint landed on was seed luck.
+        let h = 90.0_f64.to_radians().sin();
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, h as f32, 0.0, 0.0, 0.0, // 180 deg about X -> axis -Z
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Rotating,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                true, 0.0, 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        assert!(out.diagnostics.residual_norm < 1e-3);
+        assert_eq!(out.diagnostics.dof, 1, "hinge roll stays free");
+        let q = (
+            out.params_solved[10] as f64, out.params_solved[11] as f64,
+            out.params_solved[12] as f64, out.params_solved[13] as f64,
+        );
+        let axis_w = rotate_vec(q.0, q.1, q.2, q.3, &[0.0, 0.0, 1.0]);
+        assert!(axis_w[2] < -0.9, "axis should hold anti-parallel (-Z), got {:?}", axis_w);
+    }
+
+    #[test]
+    fn canonical_perp_is_unit_and_perpendicular() {
+        // The frame the roll residual measures against. Fixture values are
+        // shared with utils/mateOrientation.test.ts (the TS twin): if either
+        // side changes its branch rule, both tests must be updated together or
+        // the editor's captured angle stops matching the solver's measurement.
+        let cases: [([f64; 3], [f64; 3]); 4] = [
+            ([0.0, 0.0, 1.0], [0.0, 1.0, 0.0]),   // z crossed with x
+            ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),   // x crossed with y
+            ([0.0, 1.0, 0.0], [0.0, 0.0, -1.0]),  // y crossed with x
+            ([0.6, 0.0, 0.8], [-0.8, 0.0, 0.6]),  // tilted, crossed with y
+        ];
+        for (axis, want) in cases {
+            let p = canonical_perp(&axis);
+            let dot = p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2];
+            assert!(dot.abs() < 1e-12, "perp not perpendicular for {:?}", axis);
+            for c in 0..3 {
+                assert!((p[c] - want[c]).abs() < 1e-12, "canonical_perp({:?}) = {:?}, want {:?}", axis, p, want);
+            }
+        }
+    }
 }
+
