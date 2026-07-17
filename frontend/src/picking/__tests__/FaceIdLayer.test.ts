@@ -41,6 +41,31 @@ describe('FaceIdLayer', () => {
     expect(reg.lookupKey(FACE_LAYER_NAME, 'face@feat1#1')).toBeDefined()
   })
 
+  it('perPrimitivePickKeys gives colliding queries distinct ids, both carrying the query', () => {
+    // Regression lock for query-naming Stage 6 (da168e62790): once geom identity
+    // was removed from face queries, sibling faces with no minted UUID share one
+    // ancestral query. Without per-primitive pick keys they collapse onto a single
+    // ID and clicking one face selects the whole group. With the keys the IDs are
+    // distinct and each record still reports the (shared) query.
+    layer.registerBody({
+      bodyKey: 'feat1/body1',
+      positions: new Float32Array([
+        0, 0, 0,  1, 0, 0,  0, 1, 0,   // tri 0 (face 0)
+        1, 1, 0,  2, 1, 0,  1, 2, 0,   // tri 1 (face 1)
+      ]),
+      triangleToFace: new Uint32Array([0, 1]),
+      faceQueries: ['face@dup', 'face@dup'],
+      perPrimitivePickKeys: true,
+    })
+    const mesh = layer.scene.children[0] as import('three').Mesh
+    const colorAttr = mesh.geometry.getAttribute('color')
+    const id0 = rgbToId(colorAttr.getX(0) * 255, colorAttr.getY(0) * 255, colorAttr.getZ(0) * 255)
+    const id1 = rgbToId(colorAttr.getX(3) * 255, colorAttr.getY(3) * 255, colorAttr.getZ(3) * 255)
+    expect(id0).not.toBe(id1)
+    expect(reg.lookup(id0)!.entityKey).toBe('face@dup')
+    expect(reg.lookup(id1)!.entityKey).toBe('face@dup')
+  })
+
   it('encodes per-triangle face color as the packed id RGB', () => {
     layer.registerBody(makeRegistration())
     const mesh = layer.scene.children[0] as import('three').Mesh

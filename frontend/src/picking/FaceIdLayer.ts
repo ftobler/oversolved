@@ -3,6 +3,7 @@ import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
 import { FACE_LAYER_NAME } from './layerNames'
+import { primitivePickKey } from './pickKey'
 
 /**
  * Concrete ID layer for B-rep faces.
@@ -34,6 +35,13 @@ export interface FaceBodyRegistration {
   triangleToFace: Uint32Array | number[]
   /** Ancestral query per B-rep face (indexed by face index). */
   faceQueries: ReadonlyArray<string>
+  /**
+   * When true, allocate the ID by a per-primitive key (`bodyKey#faceIdx`) rather
+   * than by the query string. B-rep faces set this because their queries can
+   * legitimately collide (no minted UUID / shared octant); other reusers of this
+   * layer (sketch surfaces) have unique keys and leave it off.
+   */
+  perPrimitivePickKeys?: boolean
 }
 
 const VERT_SHADER = `
@@ -99,8 +107,18 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
 
       let rgb = faceIdCache.get(faceIdx)
       if (!rgb) {
-        this.warnDuplicateQuery(query, faceIdCache.size > 0, reg.bodyKey, 'FaceIdLayer', 'face')
-        const id = this.registry.allocate(this.name, query)
+        // B-rep faces: allocate by a per-primitive pickKey (bodyKey#faceIdx), not
+        // the query, so two faces that share an ancestral query (no minted UUID /
+        // shared octant) still resolve to distinct IDs. The query rides along as
+        // the record's entityKey for downstream selection/resolution. Other layers
+        // keep the legacy query-keyed allocation (their keys are already unique).
+        let id: number
+        if (reg.perPrimitivePickKeys) {
+          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, faceIdx))
+        } else {
+          this.warnDuplicateQuery(query, faceIdCache.size > 0, reg.bodyKey, 'FaceIdLayer', 'face')
+          id = this.registry.allocate(this.name, query)
+        }
         allocatedIds.push(id)
         rgb = idToRGBNormalized(id)
         faceIdCache.set(faceIdx, rgb)
