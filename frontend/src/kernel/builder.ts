@@ -439,6 +439,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       ancestorIds.push(...body.profile_queries)
     }
     const { x_axis, y_axis } = normalToFrame(normal)
+    const axis = faceInfo.axis ?? undefined
     const payload = {
       type: faceInfo.surface_type ?? 'face',
       body_id: body.id,
@@ -451,6 +452,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       y_axis,
       classifiers: faceInfo.classifiers ?? [],
       ...(uuid !== null ? { uuid } : {}),
+      ...(axis ? { axis } : {}),
     }
     const key = [...new Set(ancestorIds)].sort().join('\0')
     const entry = globalRepo.ancestral.get(key)

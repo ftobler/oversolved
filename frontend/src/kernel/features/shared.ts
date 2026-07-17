@@ -353,7 +353,18 @@ function normalize3(d: number[]): number[] | null {
   return null
 }
 
-/** Resolve a query to a 3D line {start, direction}, shared by resolveDirectionQuery and resolveAxisQuery. */
+/**
+ * Resolve a query to a 3D line {start, direction}, shared by the direction/axis
+ * resolvers. Handles these pickable geometries: straight edge ({start, end}),
+ * circular/arc/ellipse edge ({center, axis}), sketch line/circle/arc
+ * ({external_params, kind}) lifted through the sketch plane, cylindrical face
+ * (type + axis), and planar face (normal).
+ *
+ * Edge payloads from edgeAncestryPayload carry all geometry keys (start, end,
+ * center, axis, ...) regardless of the actual edge kind, with undefined for
+ * inapplicable fields. Truthy checks guard against mismatches (a circular edge
+ * has undefined start/end; a straight edge has undefined center/axis).
+ */
 function resolveQueryToLine(
   query: string,
   globalRepo: Repository,
@@ -361,22 +372,64 @@ function resolveQueryToLine(
 ): { start: number[]; dir: number[] } | null {
   if (!query) return null
   const data = globalRepo.query(query, null, bodyStore) as Dict | null
-  if (data && 'start' in data && 'end' in data) {
+  if (!data) return null
+
+  // Straight 3D edge: truthy start/end (circular edges carry undefined start/end).
+  if (data.start && data.end) {
     const start = data.start as number[]
     const end = data.end as number[]
     const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
     if (dir) return { start, dir }
-  } else if (data && 'external_params' in data && data.kind === 'line') {
+  }
+
+  // Circular / arc / ellipse edge: truthy center/axis (straight edges carry
+  // undefined center/axis).
+  if (data.center && data.axis) {
+    const dir = normalize3(data.axis as number[])
+    if (dir) {
+      const center = data.center as number[]
+      return { start: [...center], dir }
+    }
+  }
+
+  // Sketch line / circle / arc: lifted through the sketch plane.
+  if (data && 'external_params' in data) {
     const sketchId = (data.sketch_id as string) ?? ''
     const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
     if (plane) {
       const params = data.external_params as number[]
-      const start = sketchToWorld2d(params.slice(0, 2), plane)
-      const end = sketchToWorld2d(params.slice(2, 4), plane)
-      const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-      if (dir) return { start, dir }
+      if (data.kind === 'line') {
+        const start = sketchToWorld2d(params.slice(0, 2), plane)
+        const end = sketchToWorld2d(params.slice(2, 4), plane)
+        const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
+        if (dir) return { start, dir }
+      } else if (data.kind === 'circle' || data.kind === 'arc') {
+        // Circle/arc centre in 2D [cx, cy] → 3D; axis = sketch plane normal.
+        const start = sketchToWorld2d(params.slice(0, 2), plane)
+        const dir = normalize3(plane.normal)
+        if (dir) return { start, dir }
+      }
     }
   }
+
+  // Cylindrical face: cylinder axis anchored at the centroid.
+  if (data.axis && data.type === 'cylinderface') {
+    const dir = normalize3(data.axis as number[])
+    if (dir) {
+      const origin = (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]
+      return { start: [...origin], dir }
+    }
+  }
+
+  // Planar face: the array runs along the face normal.
+  if (data && 'normal' in data) {
+    const dir = normalize3(data.normal as number[])
+    if (dir) {
+      const origin = (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]
+      return { start: [...origin], dir }
+    }
+  }
+
   return null
 }
 
@@ -410,6 +463,36 @@ export function resolveAxisQuery(
 ): [number[], number[]] {
   const line = resolveQueryToLine(query, globalRepo, bodyStore)
   return line ? [[...line.start], line.dir] : [fallbackOrigin, fallbackDirection]
+}
+
+/**
+ * Resolve a direction query to a unit vector, or `null` when the query is empty
+ * or does not resolve to a usable edge/face. Unlike `resolveDirectionQuery`
+ * there is no silent world-axis fallback: the array leaf treats `null` as a
+ * solve error so an unpicked direction never arrays along an arbitrary axis.
+ */
+export function resolveDirectionQueryStrict(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null = null,
+): number[] | null {
+  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  return line ? line.dir : null
+}
+
+/**
+ * Resolve an axis query to (origin, unit direction), or `null` when the query is
+ * empty or does not resolve to a usable edge/face. The strict counterpart to
+ * `resolveAxisQuery`; the circular-array leaf treats `null` as a solve error so
+ * an unpicked axis never rotates about an arbitrary line.
+ */
+export function resolveAxisQueryStrict(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null = null,
+): [number[], number[]] | null {
+  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  return line ? [[...line.start], line.dir] : null
 }
 
 // Re-export so the Frame3D type is visible to consumers of PlaneLike.

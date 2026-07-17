@@ -5,6 +5,7 @@ import type { SketchEditorInvariantState, SelectionInvariantState } from '@/stor
 function defaultSelectionState(): SelectionInvariantState {
   return {
     normalSelection: new Set(),
+    selectedPicks: new Map<string, string>(),
     chipOwnedSelection: new Set<string>(),
     selectionDomain: 'sketch_2d' as const,
   }
@@ -30,6 +31,7 @@ describe('validateSelectionState', () => {
   it('throws when chipOwnedSelection has orphan not in normalSelection', () => {
     const state = {
       ...defaultSelectionState(),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set(['@edge_0']),
     }
     expect(() => validateSelectionState(state)).toThrow('[invariant] chipOwnedSelection has orphan')
@@ -38,8 +40,27 @@ describe('validateSelectionState', () => {
   it('passes when chipOwnedSelection entries are all in normalSelection', () => {
     const state = {
       normalSelection: new Set(['entity:S1:L1', '@edge_0']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set(['@edge_0']),
       selectionDomain: 'mixed' as const,
+    }
+    expect(() => validateSelectionState(state)).not.toThrow()
+  })
+
+  it('throws when selectedPicks claims a query not in normalSelection', () => {
+    const state = {
+      ...defaultSelectionState(),
+      selectedPicks: new Map([['Q', 'ex1/b0#edge#0']]),
+    }
+    expect(() => validateSelectionState(state)).toThrow('[invariant] selectedPicks has orphan claim')
+  })
+
+  it('passes when every selectedPicks claim is in normalSelection', () => {
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([['?2;@body_1@extrude1/edge/3', 'ex1/b0#edge#0']]),
+      selectionDomain: 'body_3d' as const,
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
@@ -47,6 +68,7 @@ describe('validateSelectionState', () => {
   it('throws when selectionDomain does not match normalSelection', () => {
     const state = {
       normalSelection: new Set(['?2;@body_1@extrude1/face/3']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'sketch_2d' as const,
     }
@@ -56,6 +78,7 @@ describe('validateSelectionState', () => {
   it('throws when normalSelection contains unrecognized entry', () => {
     const state = {
       normalSelection: new Set(['bad-value']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'mixed' as const,
     }
@@ -65,6 +88,7 @@ describe('validateSelectionState', () => {
   it('passes with valid entity: prefix entries', () => {
     const state = {
       normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L1:start', 'face:S1:?3;...', 'constraint:S1:c1']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'sketch_2d' as const,
     }
@@ -74,6 +98,7 @@ describe('validateSelectionState', () => {
   it('passes with valid @ prefix entries', () => {
     const state = {
       normalSelection: new Set(['@body_1', '@builtin_plane_front']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'plane_3d' as const,
     }
@@ -83,6 +108,7 @@ describe('validateSelectionState', () => {
   it('passes with valid ? ancestry query entries', () => {
     const state = {
       normalSelection: new Set(['?2;@body_1@extrude1/face/3']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'body_3d' as const,
     }
@@ -98,6 +124,7 @@ describe('repairSelectionState', () => {
   it('removes orphans from chipOwnedSelection', () => {
     const state = {
       normalSelection: new Set(['entity:S1:L1']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set(['@edge_0', '@edge_1']),
       selectionDomain: 'sketch_2d' as const,
     }
@@ -107,9 +134,26 @@ describe('repairSelectionState', () => {
     expect([...(patches!.chipOwnedSelection as Set<string>)]).toEqual([])
   })
 
+  it('drops orphan claims from selectedPicks, keeping the valid ones', () => {
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([
+        ['?2;@body_1@extrude1/edge/3', 'ex1/b0#edge#0'],  // valid claim
+        ['Q-gone', 'ex1/b0#edge#1'],  // query left the selection
+      ]),
+      selectionDomain: 'body_3d' as const,
+    }
+    const patches = repairSelectionState(state)
+    expect(patches).not.toBeNull()
+    expect([...(patches!.selectedPicks as Map<string, string>).entries()])
+      .toEqual([['?2;@body_1@extrude1/edge/3', 'ex1/b0#edge#0']])
+  })
+
   it('fixes stale selectionDomain', () => {
     const state = {
       normalSelection: new Set(['?2;@body_1@extrude1/face/3']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'sketch_2d' as const,
     }
@@ -123,6 +167,7 @@ describe('repairSelectionState', () => {
     // Since import.meta.env.MODE is 'test' in vitest, we expect filtering.
     const state = {
       normalSelection: new Set(['invalid!']),
+      selectedPicks: new Map<string, string>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'sketch_2d' as const,
     }
@@ -169,7 +214,8 @@ describe('validateSketchEditorState', () => {
     it('throws on chipOwnedSelection orphan before checking tool invariants', () => {
       const state = {
         ...defaultState(),
-        chipOwnedSelection: new Set(['orphan']),
+        selectedPicks: new Map<string, string>(),
+      chipOwnedSelection: new Set(['orphan']),
       }
       expect(() => validateSketchEditorState(state)).toThrow('[invariant] chipOwnedSelection has orphan')
     })
@@ -233,7 +279,8 @@ describe('validateSketchEditorState', () => {
       const state = {
         ...defaultState(),
         normalSelection: new Set(['bad-value']),
-        chipOwnedSelection: new Set<string>(),
+        selectedPicks: new Map<string, string>(),
+      chipOwnedSelection: new Set<string>(),
         selectionDomain: 'mixed' as const,
         dimensionPicks: [{ target: 'entity:S1:L1' }],
         activeTool: 'select',

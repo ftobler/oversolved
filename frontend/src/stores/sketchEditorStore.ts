@@ -167,14 +167,17 @@ interface SketchEditorState {
   // Normal selection — traditional selection, persists until explicitly changed.
   // Query-keyed: the durable/ancestral identity every consumer reads.
   normalSelection: Set<string>
-  // Live per-primitive refinement of the b-rep selection (bodyKey#layer#index). A
-  // click records the exact primitive's pickKey here alongside its query in
-  // normalSelection, so the viewport highlight isolates the one clicked edge
-  // even when several edges share a query. Transient: unlike normalSelection it
-  // is not persisted and is empty after a re-solve, where the query-keyed
-  // fallback takes over (see computeHighlight). Cleared whenever the
-  // normal selection is cleared/reset.
-  selectedPickKeys: Set<string>
+  // Live per-primitive refinement of the b-rep selection: query -> pickKey
+  // (bodyKey#layer#index). A click records the exact primitive's pickKey here
+  // alongside its query in normalSelection, so the viewport highlight isolates
+  // the one clicked edge even when several edges share a query. Keyed by query
+  // so toggling a query off always drops its pick claim -- a bare pickKey set
+  // could keep a stale sibling's key alive across an off/on cycle of the same
+  // query and co-highlight a primitive the user never re-clicked. Transient:
+  // unlike normalSelection it is not persisted and is empty after a re-solve,
+  // where the query-keyed fallback takes over (see computeHighlight). Cleared
+  // whenever the normal selection is cleared/reset.
+  selectedPicks: Map<string, string>
   // Derived domain of the current normal selection.
   selectionDomain: SelectionDomain
   isPointerDown: boolean
@@ -311,7 +314,7 @@ function deactivateTool(get: () => SketchEditorState, toolId: ActiveTool): void 
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
-  selectedPickKeys: new Set(),
+  selectedPicks: new Map(),
   selectionDomain: 'sketch_2d',
   hoveredSelectionId: null,
   hoveredPickKey: null,
@@ -382,20 +385,24 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
-  clearNormalSelection: () => set({ normalSelection: new Set(), selectedPickKeys: new Set(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
+  clearNormalSelection: () => set({ normalSelection: new Set(), selectedPicks: new Map(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
 
   toggleNormalSelection: (id, pickKey) =>
     set(s => {
       const next = new Set(s.normalSelection)
-      const nextPicks = new Set(s.selectedPickKeys)
+      const nextPicks = new Map(s.selectedPicks)
       if (next.has(id)) {
         next.delete(id)
-        if (pickKey !== undefined) nextPicks.delete(pickKey)
+        // Drop the claim by query, not by the passed pickKey: the toggle-off
+        // may come from a shared-query SIBLING whose pickKey differs from the
+        // one that made the claim, and the stale claim would otherwise
+        // resurrect on the next re-select of this query.
+        nextPicks.delete(id)
       } else {
         next.add(id)
-        if (pickKey !== undefined) nextPicks.add(pickKey)
+        if (pickKey !== undefined) nextPicks.set(id, pickKey)
       }
-      return { normalSelection: next, selectedPickKeys: nextPicks, selectionDomain: deriveSelectionDomain(next) }
+      return { normalSelection: next, selectedPicks: nextPicks, selectionDomain: deriveSelectionDomain(next) }
     }),
 
   addToNormalSelection: (id) =>
@@ -447,16 +454,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       // per-tool rule lives with the tool's policy, not buried here.
       if (getToolPickConfig(tool).clearsSelectionOnEnter) {
         updates.normalSelection = new Set<string>()
-        updates.selectedPickKeys = new Set<string>()
+        updates.selectedPicks = new Map<string, string>()
       }
-      // Clear stale pick-field state when entering any tool
+      // Clear stale pick-field state when entering any tool. Start from the
+      // selection the clearsSelectionOnEnter branch may already have emptied:
+      // rebuilding from state.normalSelection here would silently undo that
+      // clear when both branches fire (dimension tool entered mid-pick).
       if (tool !== null && state.activePickField !== null) {
         updates.activePickField = null
         updates.chipOwnedSelection = new Set<string>()
-        const nextNormal = new Set(state.normalSelection)
+        const baseNormal = (updates.normalSelection as Set<string> | undefined) ?? state.normalSelection
+        const nextNormal = new Set(baseNormal)
         for (const v of state.chipOwnedSelection) nextNormal.delete(v)
         updates.normalSelection = nextNormal
-        updates.selectedPickKeys = new Set<string>()
+        updates.selectedPicks = new Map<string, string>()
         if (state.modeStack[state.modeStack.length - 1] === 'pick') {
           updates.modeStack = state.modeStack.slice(0, -1)
         }
@@ -589,7 +600,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     })
     if (targets.length === 0) return
     onMutation({ type: 'delete', targets })
-    set({ normalSelection: new Set(), selectedPickKeys: new Set(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set(), hoveredConstraintEntityIds: new Set() })
+    set({ normalSelection: new Set(), selectedPicks: new Map(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set(), hoveredConstraintEntityIds: new Set() })
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
@@ -803,7 +814,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       drawPoints: [],
       drawHover: null,
       drawSnapVertexId: null,
-      ...(opts?.seed ? {} : { normalSelection: new Set<string>(), selectedPickKeys: new Set<string>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
+      ...(opts?.seed ? {} : { normalSelection: new Set<string>(), selectedPicks: new Map<string, string>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
     })
     get().pushMode('pick')
 

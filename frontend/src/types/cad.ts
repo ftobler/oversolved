@@ -57,10 +57,12 @@ export interface ArrayFeatureDef {
   pitch_x?: NumberOrExpr
   direction_x?: [number, number, number]
   direction_x_query?: string
+  invert_x?: boolean
   count_y?: NumberOrExpr
   pitch_y?: NumberOrExpr
   direction_y?: [number, number, number]
   direction_y_query?: string
+  invert_y?: boolean
 }
 
 export interface CircularArrayFeatureDef {
@@ -72,6 +74,7 @@ export interface CircularArrayFeatureDef {
   axis?: string
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
+  invert_axis?: boolean
 }
 
 export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'

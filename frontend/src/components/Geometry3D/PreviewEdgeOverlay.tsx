@@ -13,18 +13,34 @@ interface PreviewEdgeOverlayProps {
 interface PreviewBodyEdgesProps {
   bodyKey: string
   edges: EdgeData[]
-  edgeQueries: string[] | undefined
-  existingQueries: Set<string> | null
+  existingGeom: Set<string> | null
 }
 
-function PreviewBodyEdges({ edges, edgeQueries, existingQueries }: PreviewBodyEdgesProps) {
+// A position-bearing key for one edge, derived from its sampled polyline. Two
+// edges match iff they are geometrically coincident. This is what the overlay
+// must compare on: construction queries are (by design) position-independent
+// identity, so an edge that is rigidly moved keeps the same query but a
+// different geometry key. Comparing queries would suppress a moved edge as if
+// it were unchanged, hiding the whole preview of a transform/mirror that only
+// repositions a body (regression from removing geom tokens from queries).
+function edgeGeomKey(edge: EdgeData): string {
+  const pts = buildEdgeSegments([edge])
+  if (pts.length === 0) return ''
+  // Quantize to absorb float32 tessellation noise; a moved edge lands in a
+  // different cell while a truly-unchanged edge hashes identically.
+  let key = ''
+  for (let i = 0; i < pts.length; i++) key += Math.round(pts[i] * 1000) + ','
+  return key
+}
+
+function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
   const filteredEdges = useMemo(() => {
-    if (!existingQueries) return edges
-    return edges.filter((_, i) => {
-      const q = edgeQueries?.[i]
-      return !q || !existingQueries.has(q)
+    if (!existingGeom) return edges
+    return edges.filter((edge) => {
+      const key = edgeGeomKey(edge)
+      return !key || !existingGeom.has(key)
     })
-  }, [edges, edgeQueries, existingQueries])
+  }, [edges, existingGeom])
 
   const geo = useMemo(() => {
     const pts = buildEdgeSegments(filteredEdges)
@@ -48,11 +64,17 @@ function PreviewBodyEdges({ edges, edgeQueries, existingQueries }: PreviewBodyEd
 }
 
 export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOverlayProps) {
-  const existingQueries = useMemo(() => {
+  // Geometry of every edge already drawn as a solid ghost (the before-edit pick
+  // bodies). A preview edge coincident with one of these is redundant and gets
+  // suppressed so the overlay highlights only what the edit actually changed.
+  const existingGeom = useMemo(() => {
     if (!pickItems) return null
     const set = new Set<string>()
     for (const item of pickItems) {
-      for (const q of (item.edgeQueries ?? [])) set.add(q)
+      for (const edge of item.edges) {
+        const key = edgeGeomKey(edge)
+        if (key) set.add(key)
+      }
     }
     return set
   }, [pickItems])
@@ -66,8 +88,7 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
             key={item.key}
             bodyKey={item.key}
             edges={item.edges}
-            edgeQueries={item.edgeQueries}
-            existingQueries={existingQueries}
+            existingGeom={existingGeom}
           />
         )
       })}

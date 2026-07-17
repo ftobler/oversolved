@@ -224,7 +224,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
       {
         id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
-        count: 6, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+        count: 6, axis: '@builtin_plane_front',
         include_source: true, operation: 'add',
       },
     ] }, 'body_ex1')
@@ -264,7 +264,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
       {
         id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
-        count: 4, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+        count: 4, axis: '@builtin_plane_front',
         include_source: true, operation: 'new',
       },
     ] })

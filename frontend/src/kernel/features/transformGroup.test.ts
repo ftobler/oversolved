@@ -39,10 +39,18 @@ describe('array / circular_array guard paths', () => {
     ).toThrow(/source body has no shape/)
   })
 
-  it('circular_array: no bodies', () => {
+  it('circular_array: missing source body pick raises even when a body is available', () => {
+    /** No source_body pick must be a solve error, not a silent auto-pick of
+     *  the first body in the store. */
     expect(() =>
-      solveCircularArray(oc, scope, table, { id: 'c', circular_array: {} }, repo, {}),
-    ).toThrow(/no source body with shape found/)
+      solveCircularArray(oc, scope, table, { id: 'c', circular_array: {} }, repo, { body_s: nullBody('body_s') }),
+    ).toThrow(/source body is required/)
+  })
+
+  it('array: missing source body pick raises even when a body is available', () => {
+    expect(() =>
+      solveArray(oc, scope, table, { id: 'a', array: {} }, repo, { body_s: nullBody('body_s') }),
+    ).toThrow(/source body is required/)
   })
 
   it('array: count_x=0 with include_source=false raises', () => {

@@ -405,6 +405,29 @@ export function faceSurfaceType(oc: OccModule, scope: DisposeScope, face: OccSha
   return 'face'
 }
 
+/**
+ * Cylinder axis direction from the V-derivative at the UV mid-point. For a
+ * `gp_Cylinder` the V parameter runs along the axis, so dv is the axis
+ * direction (unnormalised). Returns null for non-cylinder faces or when the
+ * dv vector is degenerate.
+ */
+export function faceCylinderAxis(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 | null {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  if (adaptor.GetType().value !== oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) return null
+  const u = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
+  const v = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
+  const p = scope.track(new oc.gp_Pnt_1())
+  const du = scope.track(new oc.gp_Vec_1())
+  const dv = scope.track(new oc.gp_Vec_1())
+  adaptor.D1(u, v, p, du, dv)
+  const x = dv.X()
+  const y = dv.Y()
+  const z = dv.Z()
+  const len = Math.sqrt(x * x + y * y + z * z)
+  if (len < 1e-12) return null
+  return [x / len, y / len, z / len]
+}
+
 function isReversed(oc: OccModule, face: OccShape): boolean {
   return (face as OccOrientedShape).Orientation_1().value === oc.TopAbs_Orientation.TopAbs_REVERSED.value
 }

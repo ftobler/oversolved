@@ -8,13 +8,33 @@ import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { bareBody, resolveBody, resolveDirectionQuery, resolveAxisQuery } from './shared'
+import { bareBody, resolveBody, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 
 type Dict = Record<string, unknown>
+
+/**
+ * Resolve a required array direction from its picker query, applying the
+ * per-axis invert toggle. The direction must come from a picked straight edge
+ * or planar face: an empty or dangling query is a solve error rather than a
+ * silent world-axis fallback, so the user cannot accidentally array a body
+ * along an arbitrary direction.
+ */
+function resolveArrayDirection(feature: Dict, axis: 'x' | 'y', globalRepo: Repository): number[] {
+  const label = axis.toUpperCase()
+  const query = (feature[`direction_${axis}_query`] as string) ?? ''
+  if (!query) throw new Error(`array: direction ${label} is required; pick a straight edge or planar face`)
+  const dir = resolveDirectionQueryStrict(query, globalRepo)
+  if (!dir) {
+    throw new Error(`array: direction ${label} query '${query}' did not resolve to a straight edge or planar face`)
+  }
+  const invert = (feature[`invert_${axis}`] as boolean) ?? false
+  // `c === 0 ? 0 : -c` keeps the negated zero components as +0, not -0.
+  return invert ? dir.map((c) => (c === 0 ? 0 : -c)) : dir
+}
 
 /** Build linear/rectangular array instance transforms (mirrors `_build_array_transforms`). */
 export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature: Dict, globalRepo: Repository): OccTrsf[] {
@@ -25,7 +45,7 @@ export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature
   if (mode === 'linear') {
     const countX = Math.trunc(Number(feature.count_x ?? 2))
     const pitchX = Number(feature.pitch_x ?? 10.0)
-    const dirX = resolveDirectionQuery((feature.direction_x_query as string) ?? '', globalRepo, (feature.direction_x as number[]) ?? [1, 0, 0])
+    const dirX = resolveArrayDirection(feature, 'x', globalRepo)
     const num = includeSource ? countX - 1 : countX
     for (let i = 1; i <= num; i++) {
       trsfs.push(makeTranslationTrsf(oc, scope, dirX[0] * pitchX * i, dirX[1] * pitchX * i, dirX[2] * pitchX * i))
@@ -35,8 +55,8 @@ export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature
     const countY = Math.trunc(Number(feature.count_y ?? 2))
     const pitchX = Number(feature.pitch_x ?? 10.0)
     const pitchY = Number(feature.pitch_y ?? 10.0)
-    const dirX = resolveDirectionQuery((feature.direction_x_query as string) ?? '', globalRepo, (feature.direction_x as number[]) ?? [1, 0, 0])
-    const dirY = resolveDirectionQuery((feature.direction_y_query as string) ?? '', globalRepo, (feature.direction_y as number[]) ?? [0, 1, 0])
+    const dirX = resolveArrayDirection(feature, 'x', globalRepo)
+    const dirY = resolveArrayDirection(feature, 'y', globalRepo)
     const numX = includeSource ? countX - 1 : countX
     for (let j = 0; j < countY; j++) {
       for (let i = 1; i <= numX; i++) {
@@ -67,13 +87,19 @@ export function buildCircularTransforms(
   const includeSource = (feature.include_source as boolean) ?? true
   const stepRaw = feature.step_angle
   const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
-  const [axisOrigin, axisDirection] = resolveAxisQuery(
-    (feature.axis as string) ?? '',
-    globalRepo,
-    (feature.axis_origin as number[]) ?? [0, 0, 0],
-    (feature.axis_direction as number[]) ?? [0, 0, 1],
-    bodyStore,
-  )
+  // The rotation axis can be a straight edge, circular edge, sketch line,
+  // sketch circle, cylindrical face, or planar face; an empty or dangling pick
+  // is a solve error rather than a silent rotation about world Z.
+  const axisQuery = (feature.axis as string) ?? ''
+  if (!axisQuery) throw new Error('circular_array: axis is required; pick an edge, sketch entity, or face')
+  const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
+  if (!axis) {
+    throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a usable axis`)
+  }
+  const [axisOrigin, resolvedDirection] = axis
+  // Invert flips the axis direction, which reverses the sweep sense.
+  const invert = (feature.invert_axis as boolean) ?? false
+  const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
   const trsfs: OccTrsf[] = []
   const num = includeSource ? count - 1 : count
   for (let i = 1; i <= num; i++) {
@@ -201,17 +227,16 @@ function resolveSourceBody(
   opLabel: string,
 ): Body {
   const ref = (feature.source_body as string) ?? ''
+  // A missing pick is a solve error: without an explicit source body the array
+  // has no defined subject. Silently defaulting to the first body in the store
+  // hid mis-picks and produced arrays of an arbitrary body (matches the
+  // transform/mirror leaves, which also require an explicit body pick).
+  if (!ref) throw new Error(`${opLabel}: source body is required; pick a body to array`)
   let body: Body
-  if (ref) {
-    try {
-      body = resolveBody(ref, bodyStore)
-    } catch {
-      throw new Error(`${opLabel}: source body '${ref}' not found; available body IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
-    }
-  } else {
-    const ids = Object.keys(bodyStore)
-    if (ids.length === 0) throw new Error(`${opLabel}: no source body with shape found`)
-    body = bodyStore[ids[0]]
+  try {
+    body = resolveBody(ref, bodyStore)
+  } catch {
+    throw new Error(`${opLabel}: source body '${ref}' not found; available body IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
   }
   if (body.shape === null) throw new Error(`${opLabel}: source body has no shape`)
   return body

@@ -11,7 +11,7 @@ import { primitivePickKey } from './pickKey'
  * - `queries`: the durable ancestral queries. A click persists them; a hover
  *   carries the single query of the hovered primitive.
  *
- * Click uses `{ selectedPickKeys, normalSelection }`; hover uses a size <= 1 pair
+ * Click uses `{ selectedPicks, normalSelection }`; hover uses a size <= 1 pair
  * `{ {hoveredPickKey}, {hoveredSelectionId} }`. Because both go through the same
  * function below, hover and click are guaranteed symmetric: identical active
  * inputs always yield identical highlight flags.

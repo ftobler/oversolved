@@ -15,9 +15,11 @@ beforeAll(() => {
 function reset() {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
+    selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
     selectionDomain: 'sketch_2d',
     hoveredSelectionId: null,
+    hoveredPickKey: null,
     isPointerDown: false,
     drag: null,
     activeTool: null,
@@ -64,7 +66,7 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('edge@q', 'ex1/b0#3')
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('edge@q')).toBe(true)
-      expect(s.selectedPickKeys.has('ex1/b0#3')).toBe(true)
+      expect(s.selectedPicks.get('edge@q')).toBe('ex1/b0#3')
     })
 
     it('drops the pickKey when the query is toggled back off', () => {
@@ -73,18 +75,32 @@ describe('sketchEditorStore', () => {
       toggleNormalSelection('edge@q', 'ex1/b0#3')
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('edge@q')).toBe(false)
-      expect(s.selectedPickKeys.has('ex1/b0#3')).toBe(false)
+      expect(s.selectedPicks.has('edge@q')).toBe(false)
+    })
+
+    it('drops a stale sibling claim when the query toggles off via a different pickKey', () => {
+      // Regression: edges A and B share query Q. Clicking A claims Q with A's
+      // pickKey; clicking B toggles Q OFF (same query). The claim must go with
+      // it -- a claim keyed by pickKey survived here, so re-selecting Q via B
+      // co-highlighted A, a primitive the user never re-clicked.
+      const { toggleNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('Q', 'ex1/b0#edge#0')  // click edge A
+      toggleNormalSelection('Q', 'ex1/b0#edge#1')  // click sibling B -> Q off
+      expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
+      toggleNormalSelection('Q', 'ex1/b0#edge#1')  // re-select via B
+      const s = useSketchEditorStore.getState()
+      expect([...s.selectedPicks.entries()]).toEqual([['Q', 'ex1/b0#edge#1']])
     })
 
     it('leaves the pickKey channel untouched for selections with no pickKey', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
-      expect(useSketchEditorStore.getState().selectedPickKeys.size).toBe(0)
+      expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
     })
 
     it('clearNormalSelection empties the live pickKey channel', () => {
       useSketchEditorStore.getState().toggleNormalSelection('edge@q', 'ex1/b0#3')
       useSketchEditorStore.getState().clearNormalSelection()
-      expect(useSketchEditorStore.getState().selectedPickKeys.size).toBe(0)
+      expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
     })
   })
 
@@ -1001,6 +1017,23 @@ describe('sketchEditorStore', () => {
         useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L2:start']) })
         useSketchEditorStore.getState().setActiveTool('dimension')
         expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      })
+
+      it('clears normalSelection on dimension enter even while a pick field is active', () => {
+        // Regression: the pick-field cleanup branch rebuilt normalSelection from
+        // the pre-update state, silently undoing the clearsSelectionOnEnter
+        // wipe when both branches fired in one setActiveTool call.
+        useSketchEditorStore.setState({
+          normalSelection: new Set(['entity:S1:L1', '@edge_0']),
+          chipOwnedSelection: new Set(['@edge_0']),
+          selectionDomain: 'mixed',
+          activePickField: { featureId: 'F1', field: 'profile' },
+        })
+        useSketchEditorStore.getState().setActiveTool('dimension')
+        const s = useSketchEditorStore.getState()
+        expect(s.activePickField).toBeNull()
+        expect(s.normalSelection.size).toBe(0)
+        expect(s.chipOwnedSelection.size).toBe(0)
       })
 
       it('clears dimensionPicks when leaving the dimension tool', () => {

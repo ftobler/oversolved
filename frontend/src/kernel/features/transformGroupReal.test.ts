@@ -69,6 +69,12 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         if (c.register_plane) {
           repo.register('builtin_plane_front', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
         }
+        // Direction/axis references the array leaves now require a pick for:
+        // @dir_x / @dir_y feed the linear/rectangular direction queries and
+        // @axis_z the circular axis query (all resolve to the former raw vectors).
+        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
+        repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
+        repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         const box = makeBoxAt(occ, scope, c.source_spec[0] as Vec3, c.source_spec[1][0], c.source_spec[1][1], c.source_spec[1][2])
         const bodyStore: Record<string, Body> = {
           body_s: {
@@ -127,6 +133,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
+        repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
@@ -136,8 +144,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           array: {
             source_body: 'body_s',
             mode: 'rectangular',
-            count_x: 2, pitch_x: 15, direction_x: [1, 0, 0],
-            count_y: 2, pitch_y: 15, direction_y: [0, 1, 0],
+            count_x: 2, pitch_x: 15, direction_x_query: '@dir_x',
+            count_y: 2, pitch_y: 15, direction_y_query: '@dir_y',
             include_source: true,
             operation: 'add',
           },
@@ -160,6 +168,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         // Box offset from origin so copies don't overlap
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
@@ -167,8 +176,9 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
           circular_array: {
+            source_body: 'body_s',
             count: 4, step_angle: null as unknown as number,
-            axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+            axis: '@axis_z',
             include_source: true,
             operation: 'new',
           },
@@ -193,14 +203,16 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
           circular_array: {
+            source_body: 'body_s',
             count: 5, step_angle: null as unknown as number,
-            axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+            axis: '@axis_z',
             include_source: false,
             operation: 'add',
           },
@@ -221,14 +233,16 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
           circular_array: {
+            source_body: 'body_s',
             count: 4, step_angle: 45.0,
-            axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+            axis: '@axis_z',
             include_source: true,
             operation: 'add',
           },
@@ -251,14 +265,16 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
           circular_array: {
+            source_body: 'body_s',
             count: 5, step_angle: null as unknown as number,
-            axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+            axis: '@axis_z',
             include_source: true,
             operation: 'add',
           },
@@ -277,6 +293,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
@@ -285,7 +302,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           id: 'arr1',
           array: {
             source_body: 'body_s', mode: 'linear', count_x: 1, pitch_x: 20,
-            direction_x: [1, 0, 0], include_source: true, operation: 'add',
+            direction_x_query: '@dir_x', include_source: true, operation: 'add',
           },
         }, repo, bodyStore)
         expect(result.status).toBe('ok')
@@ -304,6 +321,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
+        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
         const bodyStore: Record<string, Body> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
@@ -312,7 +330,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           id: 'arr1',
           array: {
             source_body: 'body_s', mode: 'linear', count_x: 1, pitch_x: 20,
-            direction_x: [1, 0, 0], include_source: false, operation: 'add',
+            direction_x_query: '@dir_x', include_source: false, operation: 'add',
           },
         }, repo, bodyStore)
         expect(result.status).toBe('ok')

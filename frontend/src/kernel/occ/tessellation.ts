@@ -16,6 +16,7 @@ import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import {
   edgeToGeom,
   faceCentroid,
+  faceCylinderAxis,
   faceNormal,
   faceSurfaceFrame,
   faceSurfaceType,
@@ -47,6 +48,8 @@ export interface FaceDatum {
   // field existed -- the anchor extractor falls back to no-anchor, never to
   // `normal`, when this is missing on a curved face.
   surface_frame?: SurfaceFrame
+  // Cylinder axis direction; set for cylinderface only (circular-array axis picks).
+  axis?: Vec3
 }
 
 export interface TessMesh {
@@ -73,6 +76,8 @@ export interface RawFaceGeom {
   normal: Vec3
   surfaceType: SurfaceType
   surfaceFrame: SurfaceFrame | null
+  /** Cylinder axis direction; set for cylinderface only (circular-array axis picks). */
+  axis?: Vec3
 }
 
 /** Mirror of `_sort_shape_faces`: tessellate + classify every face (unsorted). */
@@ -89,13 +94,18 @@ export function readShapeFaces(
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     const { vertices, triangles } = tessellateFace(oc, scope, face, deflection, angularDeflection)
+    const surfaceType = faceSurfaceType(oc, scope, face)
+    // faceCylinderAxis returns null on a degenerate surface; fold to undefined
+    // so the optional field stays absent instead of carrying a null.
+    const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
     raw.push({
       vertices,
       triangles,
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
-      surfaceType: faceSurfaceType(oc, scope, face),
+      surfaceType,
       surfaceFrame: faceSurfaceFrame(oc, scope, face),
+      axis,
     })
   }
   return raw
@@ -162,6 +172,7 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
         area,
         surface_type: rf.surfaceType,
         surface_frame: rf.surfaceFrame ?? undefined,
+        axis: rf.axis,
       })
     }
   })
@@ -303,11 +314,14 @@ export function readShapeFaceMetadata(
   const faces: (FaceSortItem & { surfaceFrame: SurfaceFrame | null })[] = []
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
+    const surfaceType = faceSurfaceType(oc, scope, face)
+    const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
     faces.push({
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
-      surfaceType: faceSurfaceType(oc, scope, face),
+      surfaceType,
       surfaceFrame: faceSurfaceFrame(oc, scope, face),
+      axis,
     })
   }
   faces.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
@@ -325,6 +339,7 @@ export function readShapeFaceMetadata(
       surface_type: face.surfaceType,
       classifiers,
       surface_frame: face.surfaceFrame ?? undefined,
+      axis: face.axis,
     })
     // Placeholder on a null query, same reasoning as solidToMesh above: keeps
     // face_queries[i] aligned with face_data[i] for extractBodyAnchors's zip.

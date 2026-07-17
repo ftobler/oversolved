@@ -21,11 +21,7 @@
         "mode": "linear",
         "count_x": 3,
         "pitch_x": 3.0,
-        "direction_x": [
-          1,
-          0,
-          0
-        ],
+        "direction_x_query": "@dir_x",
         "include_source": true,
         "operation": "add"
       },
@@ -66,11 +62,7 @@
         "mode": "linear",
         "count_x": 3,
         "pitch_x": 10.0,
-        "direction_x": [
-          1,
-          0,
-          0
-        ],
+        "direction_x_query": "@dir_x",
         "include_source": true,
         "operation": "new"
       },
@@ -123,16 +115,7 @@
         "source_body": "body_s",
         "count": 4,
         "step_angle": 90.0,
-        "axis_origin": [
-          0,
-          0,
-          0
-        ],
-        "axis_direction": [
-          0,
-          0,
-          1
-        ],
+        "axis": "@axis_z",
         "include_source": true,
         "operation": "add"
       },

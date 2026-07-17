@@ -16,6 +16,7 @@ import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
+import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { debugToolsUnrestricted } from '@/config/capabilities'
@@ -201,9 +202,12 @@ export default function Part() {
     if (!uuid || !docRef.current) return
     setIsRebuilding(true)
     try {
-      // Opt into validation: the kernel will do a parallel fresh full rebuild
-      // and surface a diff in `validation` so the popover can render the badge.
-      await reSolve(docRef.current, { validate: true })
+      // Re-solve always flushes the incremental cache (bypassCache) so every
+      // feature rebuilds from scratch — no stale handles from prior solves.
+      // Validation (a second, full, cache-less rebuild to diff incremental-vs-full
+      // for the badge) doubles the solve, so it is opt-in via the dev-settings flag.
+      const validate = useDevSettingsStore.getState().validateOnRebuild
+      await reSolve(docRef.current, { bypassCache: true, validate })
     } catch (e) {
       console.error('Rebuild failed:', e)
     } finally {
