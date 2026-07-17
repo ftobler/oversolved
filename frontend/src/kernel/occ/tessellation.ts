@@ -66,6 +66,8 @@ export interface RawFaceGeom {
   centroid: Vec3
   normal: Vec3
   surfaceType: SurfaceType
+  /** Cylinder axis direction; set for cylinderface only (circular-array axis picks). */
+  axis?: Vec3
 }
 
 /** Mirror of `_sort_shape_faces`: tessellate + classify every face (unsorted). */
@@ -83,7 +85,9 @@ export function readShapeFaces(
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     const { vertices, triangles } = tessellateFace(oc, scope, face, deflection, angularDeflection)
     const surfaceType = faceSurfaceType(oc, scope, face)
-    const axis = surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined
+    // faceCylinderAxis returns null on a degenerate surface; fold to undefined
+    // so the optional field stays absent instead of carrying a null.
+    const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
     raw.push({
       vertices,
       triangles,
@@ -286,7 +290,7 @@ export function readShapeFaceMetadata(
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     const surfaceType = faceSurfaceType(oc, scope, face)
-    const axis = surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined
+    const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
     faces.push({
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
