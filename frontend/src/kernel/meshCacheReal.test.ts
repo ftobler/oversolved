@@ -58,10 +58,11 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('incremental build after last-feature edit produces valid output', () => {
-    /**
-     * Editing only the last feature triggers an incremental rebuild. All features must still
-     * produce ok status and valid meshes.
-     */
+    /** Editing only the last feature triggers an incremental (partial) rebuild:
+     *  sk1..ex2 are the clean prefix restored from checkpoints, only ex3 is
+     *  re-solved. All features must still produce ok status and valid meshes.
+     *  Stage 7e: restored to the real partial-rebuild form (was dodged to a full
+     *  rebuild during Stage 6). */
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),

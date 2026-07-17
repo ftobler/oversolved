@@ -36,7 +36,7 @@ export function useEdgeIdRegistration(params: {
         for (let i = 0; i < count; i++) segmentToEdge[cursor++] = edgeIdx
       }
       try {
-        p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries })
+        p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
         console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })

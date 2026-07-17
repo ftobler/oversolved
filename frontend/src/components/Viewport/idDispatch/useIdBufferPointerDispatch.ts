@@ -114,8 +114,10 @@ function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): Reado
   return out
 }
 
-// Map layer name → hover adapter.
-const hoverAdapters: Record<string, ((entityKey: string) => void) | undefined> = {
+// Map layer name → hover adapter. The optional second arg is the hovered
+// primitive's per-primitive pick key (b-rep layers), used to isolate a single
+// primitive when its query string is not unique.
+const hoverAdapters: Record<string, ((entityKey: string, pickKey?: string) => void) | undefined> = {
   [FACE_LAYER_NAME]: brepFaceAdapter.onHover,
   [EDGE_LAYER_NAME]: brepEdgeAdapter.onHover,
   [VERTEX_LAYER_NAME]: brepVertexAdapter.onHover,
@@ -134,6 +136,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
   useEffect(() => {
     let lastHoverEntity: string | null = null
     let lastHoverLayer: string | null = null
+    let lastHoverPickKey: string | null = null
     let attached: HTMLCanvasElement | null = null
     let raf = 0
 
@@ -148,8 +151,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       return resolvePickAtEvent(e, canvas, gl, computeAllowed())
     }
 
-    const applyHoverHit = (layer: string | null, entityKey: string | null) => {
-      if (layer === lastHoverLayer && entityKey === lastHoverEntity) return
+    const applyHoverHit = (layer: string | null, entityKey: string | null, pickKey?: string) => {
+      const pick = pickKey ?? null
+      // Include pickKey in the dedup: two b-rep primitives can share an entityKey
+      // (colliding query) while being different primitives, so a move between
+      // them changes only pickKey and must still re-apply the highlight.
+      if (layer === lastHoverLayer && entityKey === lastHoverEntity && pick === lastHoverPickKey) return
       // Tear down old state (clearAllHover covers all store hover fields;
       // dim-label is handled separately via its own callback).
       if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
@@ -161,10 +168,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (layer === DIMENSION_LABEL_LAYER_NAME && entityKey !== null) {
         dimensionLabelAdapter.onOver(entityKey)
       } else if (layer !== null && entityKey !== null) {
-        hoverAdapters[layer]?.(entityKey)
+        hoverAdapters[layer]?.(entityKey, pick ?? undefined)
       }
       lastHoverLayer = layer
       lastHoverEntity = entityKey
+      lastHoverPickKey = pick
     }
 
     const onPointerMove = (e: MouseEvent) => {
@@ -179,7 +187,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       void pipeline
         .resolveAsync(gl, cursorFromEvent(e, attached), { allowedLayers: allowed })
         .then(hit => {
-          applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null)
+          applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
         })
         .catch(() => {})
     }
@@ -230,8 +238,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           sourceKind: findEdgeKindForQuery(hit.entityKey) ?? null,
         })
       } else {
-        // face / edge / vertex (B-rep) / plane / origin
-        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))
+        // face / edge / vertex (B-rep) / plane / origin. Carry the hit's
+        // per-primitive pickKey so the highlight isolates the exact primitive
+        // clicked even when its query collides with a sibling's. pickKey equals
+        // the query for layers with no per-primitive identity (planes, origin),
+        // so this is a no-op there.
+        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit), hit.pickKey)
       }
       setLastClickIdHit(true)
     }

@@ -72,8 +72,6 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           sketch_id: 'sk',
           brep_diff: null,
           profile_queries: [],
-          face_lineage: {},
-          edge_lineage: {},
         },
       }
       const repo = new Repository()

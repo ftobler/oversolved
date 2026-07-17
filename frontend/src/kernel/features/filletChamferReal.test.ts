@@ -20,7 +20,8 @@ import { HandleTable } from '../occ/handleTable'
 import { makeBox, faceCentroid, faceNormal } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
 import { faceGeometryHash } from '../geomHash'
-import { Repository } from '../query'
+import { deriveEdgeNames } from '../occ/constructionLineage'
+import { ref, Repository } from '../query'
 import { solveFillet, solveChamfer, resolveFilletEdges } from './filletChamfer'
 import { solidToEdges } from '../occ/tessellation'
 import type { Body } from '../types3d'
@@ -28,17 +29,6 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 
 const oc = await loadOcc()
 
-function boxFaceLineage(occ: OccModule, scope: DisposeScope, box: OccShape): Record<string, string[]> {
-  const E = occ.TopAbs_ShapeEnum
-  const out: Record<string, string[]> = {}
-  const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  let i = 0
-  for (; exp.More(); exp.Next()) {
-    const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
-    out[faceGeometryHash(faceCentroid(occ, scope, f), faceNormal(occ, scope, f))] = [`@face_${i++}`]
-  }
-  return out
-}
 
 describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
   let occ: OccModule
@@ -49,7 +39,24 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   function makeBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
     const box = makeBox(occ, scope, 10, 10, 10)
-    const faceLineage = boxFaceLineage(occ, scope, box)
+
+    // Compute face_names and edge_names so that solidToEdges and buildEdgeIndex
+    // both emit @u| construction UUID tokens, enabling identity-based edge
+    // resolution in Stage 6.
+    const E = occ.TopAbs_ShapeEnum
+    const faceNames: Record<string, string> = {}
+    const faceAncestry: Record<string, string[]> = {}
+    const fexp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    let fi = 0
+    for (; fexp.More(); fexp.Next()) {
+      const f = scope.track(occ.TopoDS.Face_1(fexp.Current()))
+      const gh = faceGeometryHash(faceCentroid(occ, scope, f), faceNormal(occ, scope, f))
+      const uuid = `f${fi++}`
+      faceNames[gh] = uuid
+      faceAncestry[uuid] = [ref('ex1'), ref('body_b')]
+    }
+    const { edgeNames, edgeAncestry } = deriveEdgeNames(occ, scope, box, faceNames, faceAncestry)
+
     return {
       body_b: {
         id: 'body_b',
@@ -59,13 +66,15 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],
-        face_lineage: faceLineage,
-        edge_lineage: {},
+        face_names: faceNames,
+        edge_names: edgeNames,
+        face_ancestry: faceAncestry,
+        edge_ancestry: edgeAncestry,
       },
     }
   }
 
-  it('fillet rounds a box edge, updates the body in place, threads lineage', () => {
+  it('fillet rounds a box edge, updates the body in place, threads construction names', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
     try {
@@ -84,8 +93,8 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect(body.modified_by).toEqual(['fil1'])
       expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeLessThan(1000)
       expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeGreaterThan(985)
-      // Some original face tokens survive onto the trimmed output faces.
-      expect(Object.keys(body.face_lineage).length).toBeGreaterThan(0)
+      // Original face construction names survive onto the trimmed output faces.
+      expect(Object.keys(body.face_names ?? {}).length).toBeGreaterThan(0)
       expect(body.brep_diff).not.toBeNull()
     } finally {
       scope.dispose()
@@ -162,8 +171,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
    * The edge selection contract: an `edge_query` produced by `solidToEdges`
    * (what a pick body ships and the viewport stores when the user clicks an
    * edge) must resolve back to exactly that edge through the fillet resolver.
-   * This is what makes edge picking work on locally-solved bodies; the queries
-   * carry classifiers so resolution goes through the geom-hash fallback tier.
+   * Stage 6: resolution goes through the @u| construction UUID tier.
    */
   it('solidToEdges queries resolve back through resolveFilletEdges (pick round-trip)', () => {
     const scope = new DisposeScope()
@@ -175,7 +183,8 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         createdBy: body.created_by,
         bodyId: body.id,
         profileQueries: body.profile_queries,
-        edgeLineage: body.edge_lineage,
+        edgeAncestry: body.edge_ancestry,
+        edgeNames: body.edge_names,
       })
       expect(edges.length).toBe(12)
       expect(edge_queries.length).toBe(12)

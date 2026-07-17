@@ -43,28 +43,28 @@ function makeBody(id: string, createdBy: string): Body {
     sketch_id: '',
     brep_diff: null,
     profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
   }
 }
 
-// ─── Test 9: checkpoint bodies_snapshot is populated — regression guard ───
+// ─── Test 9: lazy checkpoint meshing contract — regression guard ───
 
 /**
- * After any build (full or incremental), every non-suppressed checkpoint must carry a
- * bodies_snapshot whose keys match body_store_snapshot keys.
+ * Under lazy checkpoint meshing only the FINAL feature's checkpoint carries a
+ * render mesh (bodies_snapshot keys matching its body_store_snapshot); every
+ * earlier checkpoint stays lazy with an empty bodies_snapshot, tessellated on
+ * demand by the pick path. This guards the O(N)->O(1) tessellation reduction.
  */
-describe('checkpoint bodies_snapshot populated', () => {
-  it('every non-suppressed checkpoint has matching bodies_snapshot keys', () => {
-    const deps = makeDeps({
-      trySolveFeature: (feature, _repo, bodyStore): FeatureResult => {
-        if (feature.kind === 'extrude') {
-          const bid = 'body_' + String(feature.id)
-          bodyStore[bid] = makeBody(bid, String(feature.id))
-        }
-        return { status: 'ok' }
-      },
-    })
+describe('lazy checkpoint meshing contract', () => {
+  const trySolveFeature = (feature: Record<string, unknown>, _repo: Repository, bodyStore: Record<string, Body>): FeatureResult => {
+    if (String(feature.kind) === 'extrude') {
+      const bid = 'body_' + String(feature.id)
+      bodyStore[bid] = makeBody(bid, String(feature.id))
+    }
+    return { status: 'ok' }
+  }
+
+  it('only the final checkpoint carries a bodies_snapshot; earlier ones are empty', () => {
+    const deps = makeDeps({ trySolveFeature })
     const spec: Record<string, unknown> = {
       features: [
         { id: 'sk1', kind: 'sketch' },
@@ -73,26 +73,24 @@ describe('checkpoint bodies_snapshot populated', () => {
       ],
     }
     const r = build(spec, {}, deps)
+    const order = r._build_state.feature_order
+    const lastFid = order[order.length - 1]
 
     for (const [fid, cp] of Object.entries(r._build_state.checkpoints)) {
-      const bs = cp.bodies_snapshot
+      const bs = cp.bodies_snapshot as Record<string, unknown>
       expect(typeof bs, `checkpoint ${fid}: bodies_snapshot is ${typeof bs}`).toBe('object')
-      for (const bid of Object.keys(cp.body_store_snapshot)) {
-        expect(bid in bs, `checkpoint ${fid}: body ${bid} missing from bodies_snapshot`).toBe(true)
+      if (fid === lastFid) {
+        for (const bid of Object.keys(cp.body_store_snapshot)) {
+          expect(bid in bs, `final checkpoint ${fid}: body ${bid} missing`).toBe(true)
+        }
+      } else {
+        expect(Object.keys(bs).length, `intermediate checkpoint ${fid} should be lazy`).toBe(0)
       }
     }
   })
 
-  it('preserves bodies_snapshot keys through incremental rebuild (clean prefix)', () => {
-    const deps = makeDeps({
-      trySolveFeature: (feature, _repo, bodyStore): FeatureResult => {
-        if (String(feature.kind) === 'extrude') {
-          const bid = 'body_' + String(feature.id)
-          bodyStore[bid] = makeBody(bid, String(feature.id))
-        }
-        return { status: 'ok' }
-      },
-    })
+  it('keeps the contract through an incremental rebuild (clean prefix stays lazy)', () => {
+    const deps = makeDeps({ trySolveFeature })
     const spec: Record<string, unknown> = {
       features: [
         { id: 'sk1', kind: 'sketch' },
@@ -113,21 +111,19 @@ describe('checkpoint bodies_snapshot populated', () => {
     }
     const r2 = build(spec2, { prevState: r1._build_state }, deps)
 
-    // Clean prefix checkpoints are carried over from prev_state.
+    // Clean prefix checkpoints (carried from prev_state) are intermediate, so lazy.
     for (const fid of ['sk1', 'ex1']) {
       const cp = r2._build_state.checkpoints[fid]
       expect(cp).toBeDefined()
-      for (const bid of Object.keys(cp.body_store_snapshot)) {
-        expect(bid in (cp.bodies_snapshot as object),
-          `clean prefix checkpoint ${fid}: body ${bid} missing`)
-      }
+      expect(Object.keys(cp.bodies_snapshot as object).length,
+        `clean prefix checkpoint ${fid} should be lazy`).toBe(0)
     }
 
-    // The dirty checkpoint (ex2) must also have matching keys.
+    // The dirty final checkpoint (ex2) carries the render mesh.
     const cpEx2 = r2._build_state.checkpoints['ex2']
     for (const bid of Object.keys(cpEx2.body_store_snapshot)) {
       expect(bid in (cpEx2.bodies_snapshot as object),
-        `dirty checkpoint ex2: body ${bid} missing`)
+        `final checkpoint ex2: body ${bid} missing`).toBe(true)
     }
   })
 })

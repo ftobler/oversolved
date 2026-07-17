@@ -18,7 +18,7 @@
     ],
     "surface_type": "flatface",
     "profile_queries": null,
-    "face_tokens": null,
+    "ancestor_tokens": null,
     "classifiers": null
    },
    "expected": null
@@ -41,10 +41,10 @@
     ],
     "surface_type": "flatface",
     "profile_queries": null,
-    "face_tokens": null,
+    "ancestor_tokens": null,
     "classifiers": null
    },
-   "expected": "?1c,7,7;@gdf|1.0,2.0,3.0|0.0,0.0,1.0@feat_a@body_x:flatface"
+   "expected": "?7,7;@feat_a@body_x:flatface"
   },
   {
    "name": "body_with_face_tokens",
@@ -63,14 +63,14 @@
      -1.0
     ],
     "surface_type": "flatface",
-    "face_tokens": [
+    "ancestor_tokens": [
      "@feat_a/e0",
      "@feat_a/e1"
     ],
     "profile_queries": null,
     "classifiers": null
    },
-   "expected": "?1e,7,7,a,a;@gdf|1.5,-2.5,0.0|0.0,0.0,-1.0@feat_a@body_x@feat_a/e0@feat_a/e1:flatface"
+   "expected": "?7,7,a,a;@feat_a@body_x@feat_a/e0@feat_a/e1:flatface"
   },
   {
    "name": "body_with_profile_queries",
@@ -92,10 +92,10 @@
     "profile_queries": [
      "?7;@feat_a"
     ],
-    "face_tokens": null,
+    "ancestor_tokens": null,
     "classifiers": null
    },
-   "expected": "?1c,7,7,a;@gdf|0.0,0.0,5.0|0.0,0.0,1.0@feat_a@body_x?7;@feat_a:flatface"
+   "expected": "?7,7,a;@feat_a@body_x?7;@feat_a:flatface"
   },
   {
    "name": "body_face_tokens_win_over_profile",
@@ -114,7 +114,7 @@
      0.5773502691896258
     ],
     "surface_type": "cylinderface",
-    "face_tokens": [
+    "ancestor_tokens": [
      "@feat_a/e9"
     ],
     "profile_queries": [
@@ -122,7 +122,7 @@
     ],
     "classifiers": null
    },
-   "expected": "?25,7,7,a;@gdf|2.0,2.0,2.0|0.5774,0.5774,0.5774@feat_a@body_x@feat_a/e9:cylinderface"
+   "expected": "?7,7,a;@feat_a@body_x@feat_a/e9:cylinderface"
   },
   {
    "name": "body_with_classifiers",
@@ -141,7 +141,7 @@
      0.0
     ],
     "surface_type": "flatface",
-    "face_tokens": [
+    "ancestor_tokens": [
      "@feat_a/e0"
     ],
     "classifiers": [
@@ -150,7 +150,7 @@
     ],
     "profile_queries": null
    },
-   "expected": "?1d,7,7,a,7,7;@gdf|10.0,0.0,0.0|1.0,0.0,0.0@feat_a@body_x@feat_a/e0@cls_xp@cls_zn:flatface"
+   "expected": "?7,7,a,7,7;@feat_a@body_x@feat_a/e0@cls_xp@cls_zn:flatface"
   },
   {
    "name": "sketch_face_no_body",
@@ -170,7 +170,7 @@
     ],
     "surface_type": "flatface",
     "profile_queries": null,
-    "face_tokens": null,
+    "ancestor_tokens": null,
     "classifiers": null
    },
    "expected": "?d,7;@feat_a/face7@feat_a:flatface"

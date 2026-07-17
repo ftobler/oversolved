@@ -9,8 +9,6 @@ import {
   descriptorDistance,
   descriptorOfElement,
   edgeDescriptorOf,
-  emitEdgeDescriptor,
-  emitFaceDescriptor,
   emitVertexDescriptor,
   isGeomDescriptorId,
   narrowByDescriptor,
@@ -22,26 +20,13 @@ import {
 const face = (point: number[], axis: number[]): GeomDescriptor => ({ kind: "face", point, axis })
 
 describe("wire format", () => {
-  it("face token round-trips", () => {
-    const tok = emitFaceDescriptor([1.5, -2, 0.00004], [0, 0, 1])
-    expect(tok.startsWith("@gdf|")).toBe(true)
-    const d = parseGeomDescriptorId(tok)
-    expect(d).toEqual({ kind: "face", point: [1.5, -2, 0], axis: [0, 0, 1] })
-  })
-
-  it("edge token round-trips", () => {
-    const src: EdgeDescriptor = { kind: "edge", edgeKind: "circle", point: [1, 2, 3], axis: [0, 0, 1], scalar: 5 }
-    const d = parseGeomDescriptorId(emitEdgeDescriptor(src))
-    expect(d).toEqual(src)
-  })
-
   it("vertex token round-trips", () => {
     const d = parseGeomDescriptorId(emitVertexDescriptor([4, 5, 6]))
     expect(d).toEqual({ kind: "vertex", point: [4, 5, 6] })
   })
 
   it("isGeomDescriptorId recognizes all three prefixes and rejects others", () => {
-    expect(isGeomDescriptorId(emitFaceDescriptor([0, 0, 0], [0, 0, 1]))).toBe(true)
+    expect(isGeomDescriptorId("@gdf|0.0,0.0,0.0|0.0,0.0,1.0")).toBe(true)
     expect(isGeomDescriptorId("@gde|line|0,0,0|1,0,0|2.0")).toBe(true)
     expect(isGeomDescriptorId("@gdv|0,0,0")).toBe(true)
     expect(isGeomDescriptorId("@gface_abc123")).toBe(false)
@@ -58,12 +43,8 @@ describe("wire format", () => {
   })
 
   it("tokens contain no spaces (safe for the canonical space-join)", () => {
-    const toks = [
-      emitFaceDescriptor([1.25, -3.5, 10], [0.7071, 0.7071, 0]),
-      emitEdgeDescriptor({ kind: "edge", edgeKind: "arc", point: [1, 2, 3], axis: [0, 0, 1], scalar: 2.5 }),
-      emitVertexDescriptor([-0.0001, 9999.9999, 0]),
-    ]
-    for (const t of toks) expect(t.includes(" ")).toBe(false)
+    const tok = emitVertexDescriptor([-0.0001, 9999.9999, 0])
+    expect(tok.includes(" ")).toBe(false)
   })
 })
 

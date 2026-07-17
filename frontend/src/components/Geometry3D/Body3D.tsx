@@ -25,6 +25,10 @@ import {
   faceCount,
 } from '@/components/Geometry3D/bodyGeometry'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
+import { bodyKeyFor } from '@/picking/pickKey'
+import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
+import { computeHighlight, type ActiveHighlight } from '@/picking/selectionHighlight'
+import { selectActiveFrom, hoverActiveFrom } from '@/picking/highlightActive'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -84,7 +88,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
+  const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const selectedPickKeys = useSketchEditorStore(s => s.selectedPickKeys)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
 
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
@@ -130,10 +136,80 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
   const isBodySelected = normalSelection.has('@' + bodyId)
 
-  const getIsEdgeSelected = useCallback((edgeIndex: number): boolean => {
-    const query = edgeQueries?.[edgeIndex] ?? topoFallbackQuery(featureId, 'edge', edgeIndex)
-    return normalSelection.has(query)
-  }, [normalSelection, featureId, edgeQueries])
+  const bodyKey = useMemo(() => bodyKeyFor(featureId, bodyId), [featureId, bodyId])
+
+  // The two active-highlight requests. Click and hover differ ONLY in which sets
+  // they carry -- never in shape or decision logic. Both are fed to the SAME
+  // computeHighlight below, so a hover and a click that resolve to the same
+  // primitive produce identical highlight flags (the symmetry this refactor
+  // enforces). Hover is just a transient selection of size <= 1.
+  const selectActive = useMemo<ActiveHighlight>(
+    () => selectActiveFrom(selectedPickKeys, normalSelection),
+    [selectedPickKeys, normalSelection],
+  )
+  const hoverActive = useMemo<ActiveHighlight>(
+    () => hoverActiveFrom(hoveredPickKey, hoveredSelectionId),
+    [hoveredPickKey, hoveredSelectionId],
+  )
+
+  // Resolved query per edge (real query, else a topo fallback). The single
+  // primitive list every edge highlight decision indexes into.
+  const edgeQueriesResolved = useMemo(() => {
+    const numEdges = Math.max(edgeQueries?.length ?? 0, edges.length)
+    return Array.from({ length: numEdges }, (_, i) =>
+      edgeQueries?.[i] ?? topoFallbackQuery(featureId, 'edge', i))
+  }, [featureId, edgeQueries, edges])
+
+  // Edge highlight is decoupled from the raw query set: the exact pointed edge
+  // (its pickKey) wins, and a sibling sharing its query does not co-highlight.
+  // Persisted picks (no live pickKey after a re-solve) fall back to query
+  // membership. See computeHighlight. Hover runs the identical function.
+  const edgeSelectionFlags = useMemo(
+    () => computeHighlight(bodyKey, EDGE_LAYER_NAME, edgeQueriesResolved, selectActive),
+    [bodyKey, edgeQueriesResolved, selectActive],
+  )
+  const edgeHoverFlags = useMemo(
+    () => computeHighlight(bodyKey, EDGE_LAYER_NAME, edgeQueriesResolved, hoverActive),
+    [bodyKey, edgeQueriesResolved, hoverActive],
+  )
+
+  const getIsEdgeSelected = useCallback(
+    (edgeIndex: number): boolean => edgeSelectionFlags[edgeIndex] ?? false,
+    [edgeSelectionFlags],
+  )
+
+  // Face highlight, decoupled from raw query membership exactly like edges:
+  // sibling faces sharing an ancestral query (no minted UUID) must not co-highlight.
+  // Indexed by B-rep face index; null when the mesh carries no face queries (the
+  // fallback path below keeps the legacy per-triangle query-membership highlight).
+  const faceSelectionFlags = useMemo(() => {
+    const { face_queries } = mesh
+    if (!face_queries || face_queries.length === 0) return null
+    return computeHighlight(bodyKey, FACE_LAYER_NAME, face_queries, selectActive)
+  }, [bodyKey, mesh, selectActive])
+
+  const faceHoverFlags = useMemo(() => {
+    const { face_queries } = mesh
+    if (!face_queries || face_queries.length === 0) return null
+    return computeHighlight(bodyKey, FACE_LAYER_NAME, face_queries, hoverActive)
+  }, [bodyKey, mesh, hoverActive])
+
+  // Resolved query per vertex, mirroring edges.
+  const vertexQueriesResolved = useMemo(() => {
+    if (!vertices || vertices.length === 0) return null
+    return vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i))
+  }, [featureId, vertices, vertexQueries])
+
+  // Vertex highlight, decoupled from raw query membership exactly like faces/edges.
+  const vertexSelectionFlags = useMemo(() => {
+    if (!vertexQueriesResolved) return null
+    return computeHighlight(bodyKey, VERTEX_LAYER_NAME, vertexQueriesResolved, selectActive)
+  }, [bodyKey, vertexQueriesResolved, selectActive])
+
+  const vertexHoverFlags = useMemo(() => {
+    if (!vertexQueriesResolved) return null
+    return computeHighlight(bodyKey, VERTEX_LAYER_NAME, vertexQueriesResolved, hoverActive)
+  }, [bodyKey, vertexQueriesResolved, hoverActive])
 
   const geometry = useMemo(() => {
     const indexed = new THREE.BufferGeometry()
@@ -195,38 +271,41 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
-  // Build segment geometries for every B-rep edge, keyed by edge query.
-  // Used to render the overlay of a hovered or selected edge.
+  // Build segment geometries for every B-rep edge, keyed by edge index. Used to
+  // render the overlay of a hovered or selected edge. Keyed by index (not query)
+  // so two edges sharing a query keep distinct overlays instead of one clobbering
+  // the other in the map (mirrors faceBoundaryGeos).
   const edgeBoundaryGeos = useMemo(() => {
     if (edges.length === 0) return null
-    const geos = new Map<string, THREE.BufferGeometry>()
+    const geos = new Map<number, THREE.BufferGeometry>()
     edges.forEach((edge, i) => {
       const pts = buildEdgeSegments([edge])
       if (pts.length === 0) return
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
-      const query = edgeQueries?.[i] ?? topoFallbackQuery(featureId, 'edge', i)
-      geos.set(query, geo)
+      geos.set(i, geo)
     })
     return geos
-  }, [edges, edgeQueries, featureId])
+  }, [edges])
 
   useEffect(() => {
     return () => { edgeBoundaryGeos?.forEach(geo => geo.dispose()) }
   }, [edgeBoundaryGeos])
 
-  // Build boundary edge geometries for every B-rep face, keyed by face query.
-  // Used to render the outline of a hovered or selected face.
+  // Build boundary edge geometries for every B-rep face, keyed by face index.
+  // Used to render the outline of a hovered or selected face. Keyed by index (not
+  // query) so two faces sharing a query keep distinct outlines instead of one
+  // overwriting the other.
   const faceBoundaryGeos = useMemo(() => {
     const { face_queries } = mesh
     if (!face_queries) return null
-    const geos = new Map<string, THREE.BufferGeometry>()
+    const geos = new Map<number, THREE.BufferGeometry>()
     for (let i = 0; i < face_queries.length; i++) {
       const pts = buildFaceBoundarySegments(mesh, i)
       if (pts.length === 0) continue
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
-      geos.set(face_queries[i], geo)
+      geos.set(i, geo)
     }
     return geos
   }, [mesh])
@@ -256,15 +335,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
     const defaultColor = new THREE.Color(bodyColor)
     const selectedColor = new THREE.Color(COLOR_SELECTED)
     const hoverColor = new THREE.Color(blendWhite(bodyColor))
+    const { triangle_to_face } = mesh
 
     for (let i = 0; i < numTris; i++) {
       let color = defaultColor
       if (interactive) {
-        const query = resolveFaceQuery(i)
-        if (normalSelection.has(query)) {
-          color = selectedColor
-        } else if (query === hoveredSelectionId) {
-          color = hoverColor
+        // With B-rep face metadata, isolate by face index / pick key so shared-query
+        // siblings do not co-highlight. Without it, keep the legacy query membership.
+        const brepFaceIndex = faceSelectionFlags && triangle_to_face ? (triangle_to_face[i] ?? -1) : -1
+        if (brepFaceIndex >= 0) {
+          if (faceSelectionFlags![brepFaceIndex]) color = selectedColor
+          else if (faceHoverFlags?.[brepFaceIndex]) color = hoverColor
+        } else {
+          const query = resolveFaceQuery(i)
+          if (normalSelection.has(query)) color = selectedColor
+          else if (query === hoveredSelectionId) color = hoverColor
         }
       }
 
@@ -276,7 +361,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       }
     }
     return colors
-  }, [mesh.faces, normalSelection, hoveredSelectionId, bodyColor, resolveFaceQuery, interactive])
+  }, [mesh, faceSelectionFlags, faceHoverFlags, normalSelection, hoveredSelectionId, bodyColor, resolveFaceQuery, interactive])
 
   // Build edge colors array for selected/hovered edges
   const edgeColors = useMemo(() => {
@@ -290,12 +375,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
     for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
       const edgeIdx = segmentToEdgeMap[segIdx]
-      const edgeQuery = edgeQueries?.[edgeIdx] ?? topoFallbackQuery(featureId, 'edge', edgeIdx)
       let color: THREE.Color
       if (interactive) {
         if (getIsEdgeSelected(edgeIdx)) {
           color = selectedColor
-        } else if (edgeQuery === hoveredSelectionId) {
+        // Hover isolates the single hovered edge (edgeHoverFlags resolves by pick
+        // key, then query): two edges sharing a query must not co-highlight.
+        } else if (edgeHoverFlags[edgeIdx]) {
           color = hoverColor
         } else {
           color = defaultColor
@@ -314,7 +400,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
       colors[baseIdx + 5] = color.b
     }
     return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, hoveredSelectionId, edgeColor, interactive, edgeQueries, featureId])
+  }, [segmentToEdgeMap, getIsEdgeSelected, edgeHoverFlags, edgeColor, interactive])
 
   // Always update the color attribute -- faceColors is always non-null so vertexColors
   // stays permanently enabled, avoiding shader recompilation on selection change.
@@ -368,15 +454,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
 
     const dmesh = vertexDotRef.current
     if (dmesh && vertices?.length) {
-      // Only show visual dots when vertex is hovered or selected
-      const hasHover = hoveredSelectionId !== null && vertices.some((_, i) => {
-        const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
-        return query === hoveredSelectionId
-      })
-      const hasSelection = vertices.some((_, i) => {
-        const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
-        return normalSelection.has(query)
-      })
+      // Only show visual dots when a vertex is hovered or selected. Both are
+      // resolved by pick key (via vertexSelectionFlags / vertexHoverFlags) so a
+      // shared-query sibling does not co-show, mirroring the face path.
+      const hasHover = vertexHoverFlags ? vertexHoverFlags.some(Boolean) : false
+      const hasSelection = vertexSelectionFlags ? vertexSelectionFlags.some(Boolean) : false
 
       if (!hasHover && !hasSelection) {
         dmesh.visible = false
@@ -393,11 +475,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           _vtxMatrix.compose(_vtxPos, _vtxQuat, _dotScale)
           dmesh.setMatrixAt(i, _vtxMatrix)
 
-          const query = vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i)
           let color: THREE.Color
-          if (normalSelection.has(query)) {
+          if (vertexSelectionFlags && vertexSelectionFlags[i]) {
             color = selectedColorObj
-          } else if (query === hoveredSelectionId) {
+          } else if (vertexHoverFlags && vertexHoverFlags[i]) {
             color = hoverColorObj
           } else {
             // Hide non-hovered, non-selected vertices by scaling to 0
@@ -472,30 +553,47 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
           </instancedMesh>
         </>
       )}
-      {interactive && edgeBoundaryGeos && hoveredSelectionId && edgeBoundaryGeos.has(hoveredSelectionId) && (
-        <lineSegments geometry={edgeBoundaryGeos.get(hoveredSelectionId)}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
-        </lineSegments>
-      )}
-      {interactive && edgeBoundaryGeos && [...normalSelection].map(query => {
-        const geo = edgeBoundaryGeos.get(query)
+      {interactive && edgeBoundaryGeos && edgeHoverFlags.map((hovered, edgeIdx) => {
+        // Selection outranks hover: skip the hover overlay where the selection
+        // overlay already draws, so precedence is explicit and not a JSX draw-order
+        // accident (mirrors the edgeColors if/else-if).
+        if (!hovered || edgeSelectionFlags[edgeIdx]) return null
+        const geo = edgeBoundaryGeos.get(edgeIdx)
         if (!geo) return null
         return (
-          <lineSegments key={query} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
+          <lineSegments key={`edge-hover-${edgeIdx}`} geometry={geo}>
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+          </lineSegments>
+        )
+      })}
+      {interactive && edgeBoundaryGeos && edgeSelectionFlags.map((selected, edgeIdx) => {
+        if (!selected) return null
+        const geo = edgeBoundaryGeos.get(edgeIdx)
+        if (!geo) return null
+        return (
+          <lineSegments key={edgeIdx} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
             <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && hoveredSelectionId && faceBoundaryGeos.has(hoveredSelectionId) && (
-        <lineSegments geometry={faceBoundaryGeos.get(hoveredSelectionId)}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
-        </lineSegments>
-      )}
-      {interactive && faceBoundaryGeos && [...normalSelection].map(query => {
-        const geo = faceBoundaryGeos.get(query)
+      {interactive && faceBoundaryGeos && faceHoverFlags && faceHoverFlags.map((hovered, faceIdx) => {
+        // Selection outranks hover: skip the hover overlay where the selection
+        // overlay already draws (mirrors the faceColors if/else-if precedence).
+        if (!hovered || faceSelectionFlags?.[faceIdx]) return null
+        const geo = faceBoundaryGeos.get(faceIdx)
         if (!geo) return null
         return (
-          <lineSegments key={query} geometry={geo}>
+          <lineSegments key={`face-hover-${faceIdx}`} geometry={geo}>
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+          </lineSegments>
+        )
+      })}
+      {interactive && faceBoundaryGeos && faceSelectionFlags && faceSelectionFlags.map((selected, faceIdx) => {
+        if (!selected) return null
+        const geo = faceBoundaryGeos.get(faceIdx)
+        if (!geo) return null
+        return (
+          <lineSegments key={faceIdx} geometry={geo}>
             <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
           </lineSegments>
         )

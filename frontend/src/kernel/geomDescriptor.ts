@@ -1,22 +1,16 @@
-// Geometric descriptor tokens: the tolerant successor to geom-hash digest tokens
-// in persisted ancestry queries (feature: query-descriptor-identity).
+// Geometric descriptor tokens (@gdf|/@gde|/@gdv|). No producer emits these into a
+// persisted query anymore: faces/edges dropped them in Stage 6 and vertices in
+// Stage 7d (query-naming-by-construction), all replaced by @u| construction UUIDs
+// plus ancestral tokens. Two consumers keep this module alive:
+//   - the resolver's legacy descriptor tier, resolving @gd*| tokens in queries
+//     saved before the switch (backward compat only; see revolveBugCorpus);
+//   - `bestDescriptorMatch`, a transient solve-time face/edge picker in
+//     filletChamfer that builds a descriptor from live geometry (never persisted).
 //
-// A digest (`@gface_<sha16>`) can only answer "exactly equal", so any centroid
-// drift -- a dimension edit, a kernel version bump, a 4dp rounding flip -- kills
-// the token. A descriptor token carries the rounded geometry itself, so the
-// resolver can ask "which candidate is *closest*, and is the match unambiguous?"
-// Geom hashes remain the internal lineage-map keys (`face_lineage`/`edge_lineage`)
-// and the legacy resolution registry; only persisted query tokens use descriptors.
-//
-// Wire formats (numbers via pyRound4Str, the 4dp shortest-repr formatter):
-//   @gdf|cx,cy,cz|nx,ny,nz              face: centroid + outward normal
-//   @gde|<kind>|px,py,pz|ax,ay,az|s     edge: representative point + axis + scalar
+// Wire format:
+//   @gdf|x,y,z|nx,ny,nz                  face: centroid + normal
+//   @gde|kind|x,y,z|ax,ay,az|scalar      edge: point + axis + length/radius
 //   @gdv|x,y,z                          vertex: the point
-//
-// Derivation stability matters like hash stability did, but with tolerance
-// slack: small numeric drift is absorbed by matching; a *representation* change
-// (e.g. arc midpoint -> arc center) would strand persisted tokens, so the
-// per-kind derivation below is part of the persisted contract.
 
 import { pyRound4Str } from "./geomHash"
 
@@ -53,14 +47,6 @@ export function isGeomDescriptorId(idStr: string): boolean {
 
 function nums(v: number[]): string {
   return v.map(pyRound4Str).join(",")
-}
-
-export function emitFaceDescriptor(centroid: number[], normal: number[]): string {
-  return FACE_PREFIX + nums(centroid) + "|" + nums(normal)
-}
-
-export function emitEdgeDescriptor(d: EdgeDescriptor): string {
-  return EDGE_PREFIX + d.edgeKind + "|" + nums(d.point) + "|" + nums(d.axis) + "|" + pyRound4Str(d.scalar)
 }
 
 export function emitVertexDescriptor(pt: number[]): string {

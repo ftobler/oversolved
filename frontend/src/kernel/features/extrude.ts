@@ -78,8 +78,10 @@ export function solveExtrude(
   let firstSketchId = ''
   const profileErrors: string[] = []
   const profileQueries: string[] = []
-  const faceLineage: Lineage = {}
-  const edgeLineage: Lineage = {}
+  const faceNames: Record<string, string> = {}
+  const edgeNames: Record<string, string> = {}
+  const faceAncestry: Lineage = {}
+  const edgeAncestry: Lineage = {}
 
   for (const sketchRef of profileRefs) {
     let resolved
@@ -215,10 +217,13 @@ export function solveExtrude(
       sweepDir,
       length,
       firstSketchId,
+      featureId,
     )
     toolShape = cutPlane !== null ? trimAtPlane(oc, scope, lineage.solid, cutPlane, sweepDir) : lineage.solid
-    Object.assign(faceLineage, lineage.faceLineage)
-    Object.assign(edgeLineage, lineage.edgeLineage)
+    Object.assign(faceNames, lineage.faceNames)
+    Object.assign(edgeNames, lineage.edgeNames)
+    Object.assign(faceAncestry, lineage.faceAncestry)
+    Object.assign(edgeAncestry, lineage.edgeAncestry)
   }
 
   // Editing handle: blind extrudes expose a draggable distance arrow anchored
@@ -256,8 +261,10 @@ export function solveExtrude(
     sketchId: firstSketchId,
     opName: 'extrude',
     profileQueries,
-    faceLineage,
-    edgeLineage,
+    faceNames,
+    edgeNames,
+    faceAncestry,
+    edgeAncestry,
   })
   Object.assign(result, opResult)
 

@@ -37,8 +37,19 @@ export interface Body {
   sketch_id: string
   brep_diff: BrepDiff | null
   profile_queries: string[]
-  face_lineage: Record<string, string[]>
-  edge_lineage: Record<string, string[]>
+  /**
+   * Construction-by-name identity (query-naming-by-construction). `face_names`/
+   * `edge_names` map the in-build copy-stable geom-hash key to a construction
+   * UUID; `face_ancestry`/`edge_ancestry` map each UUID to its ancestral fallback
+   * tokens. The geom-hash key is a transient in-build join only; it never enters
+   * a persisted query. Stage 6 removed `face_lineage`/`edge_lineage` (geom-hash
+   * identity), replaced by the ancestry maps above; Stage 7d dropped the last
+   * producers of those fields entirely.
+   */
+  face_names?: Record<string, string>
+  edge_names?: Record<string, string>
+  face_ancestry?: Record<string, string[]>
+  edge_ancestry?: Record<string, string[]>
   /**
    * True when the body's geometry originates from a STEP import (as opposed to
    * native modelling). Imported B-rep carries freeform faces and STEP tolerances

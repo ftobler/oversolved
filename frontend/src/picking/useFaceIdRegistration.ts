@@ -34,7 +34,7 @@ export function useFaceIdRegistration(params: {
         ? triangle_to_face
         : Uint32Array.from(triangle_to_face)
       try {
-        p.faceLayer.registerBody({ bodyKey, positions: nonIndexed, triangleToFace: tri2face, faceQueries: face_queries })
+        p.faceLayer.registerBody({ bodyKey, positions: nonIndexed, triangleToFace: tri2face, faceQueries: face_queries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
         console.warn('Face ID registration failed; continuing without face picking for this body', { bodyKey, err })

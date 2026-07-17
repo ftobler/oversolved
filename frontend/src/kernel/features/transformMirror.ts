@@ -10,8 +10,10 @@ import type { Body } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared'
 import { bareBody, resolveBody } from './shared'
-import { applyTransformShape, makeMirrorTrsf, transformCopy } from '../occ/transforms'
+import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
+import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
+import { transferBooleanNames } from './booleanLineage'
 
 type Dict = Record<string, unknown>
 
@@ -112,26 +114,49 @@ export function solveTransform(
   }
 
   const sourceShape = table.get<OccShape>(sourceBody.shape)
-  const newShape = applyTransformShape(oc, scope, sourceShape, {
-    translation,
-    rotationAxisOrigin,
-    rotationAxisDirection,
-    rotationAngleDeg: rotationAngle,
-    scale,
-    scaleCenter,
-  })
+  const sourceNames: NameMaps = {
+    faceNames: sourceBody.face_names ?? {},
+    faceAncestry: sourceBody.face_ancestry ?? {},
+    edgeNames: sourceBody.edge_names ?? {},
+    edgeAncestry: sourceBody.edge_ancestry ?? {},
+  }
+
+  // Compose the same transform pipeline applyTransformShape uses so we can
+  // capture the builder's subshape mapping for name re-keying/remapping.
+  const combined = scope.track(new oc.gp_Trsf_1())
+  if (scale !== 1.0) {
+    combined.Multiply(makeScaleTrsf(oc, scope, scaleCenter ?? [0, 0, 0], scale))
+  }
+  if (rotationAngle) {
+    const dir = rotationAxisDirection ?? [0, 0, 1]
+    combined.Multiply(makeRotationTrsf(oc, scope, rotationAxisOrigin ?? [0, 0, 0], dir, (rotationAngle * Math.PI) / 180))
+  }
+  if (translation) {
+    combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
+  }
+  const { shape: newShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, combined)
 
   const operation = (cfg.operation as string) ?? 'new'
   if (operation === 'replace') {
+    const names = rekeyNamesForTransformedBody(oc, scope, newShape, sourceShape, sourceNames, builder)
     const oldHandle = sourceBody.shape
     sourceBody.shape = table.register(scope.detach(scope.track(newShape)), sourceBody.created_by)
     table.release(oldHandle)
     sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
+    sourceBody.face_names = names.faceNames
+    sourceBody.face_ancestry = names.faceAncestry
+    sourceBody.edge_names = names.edgeNames
+    sourceBody.edge_ancestry = names.edgeAncestry
     return { status: 'ok', body_id: sourceBody.id, operation: 'replace' }
   }
   const newBodyId = 'body_' + featureId
   const nb = bareBody(newBodyId, featureId, sourceBody.sketch_id)
   nb.shape = table.register(scope.detach(scope.track(newShape)), featureId)
+  const names = rebuildNamesForTransformedCopy(oc, scope, newShape, sourceShape, sourceNames, featureId, 0, builder)
+  nb.face_names = names.faceNames
+  nb.face_ancestry = names.faceAncestry
+  nb.edge_names = names.edgeNames
+  nb.edge_ancestry = names.edgeAncestry
   bodyStore[newBodyId] = nb
   return { status: 'ok', body_id: newBodyId, operation: 'new' }
 }
@@ -176,30 +201,57 @@ export function solveMirror(
   const merge = (cfg.merge as boolean) ?? true
 
   const sourceShape = table.get<OccShape>(sourceBody.shape)
+  const sourceNames: NameMaps = {
+    faceNames: sourceBody.face_names ?? {},
+    faceAncestry: sourceBody.face_ancestry ?? {},
+    edgeNames: sourceBody.edge_names ?? {},
+    edgeAncestry: sourceBody.edge_ancestry ?? {},
+  }
   const trsf = makeMirrorTrsf(oc, scope, [origin[0], origin[1], origin[2]], [normal[0], normal[1], normal[2]])
-  const mirrored = scope.track(transformCopy(oc, scope, sourceShape, trsf))
+  const { shape: mirrored, builder } = transformCopyWithMapping(oc, scope, sourceShape, trsf)
+  const mirroredNames = rebuildNamesForTransformedCopy(oc, scope, mirrored, sourceShape, sourceNames, featureId, 0, builder)
 
   if (!keepOriginal) {
     const oldHandle = sourceBody.shape
-    sourceBody.shape = table.register(scope.detach(mirrored), sourceBody.created_by)
+    sourceBody.shape = table.register(scope.detach(scope.track(mirrored)), sourceBody.created_by)
     table.release(oldHandle)
     sourceBody.modified_by.push(featureId)
+    sourceBody.face_names = mirroredNames.faceNames
+    sourceBody.face_ancestry = mirroredNames.faceAncestry
+    sourceBody.edge_names = mirroredNames.edgeNames
+    sourceBody.edge_ancestry = mirroredNames.edgeAncestry
     return { status: 'ok', body_id: sourceBody.id, operation: 'replace' }
   }
 
   if (merge) {
     const res = booleanWithDiff(oc, scope, sourceShape, mirrored, 'fuse')
+    const names = transferBooleanNames(oc, scope, {
+      bodyShape: res.shape,
+      faceOrigin: res.faceOrigin,
+      targetFaceNames: sourceNames.faceNames,
+      targetFaceAncestry: sourceNames.faceAncestry,
+      toolFaceNames: mirroredNames.faceNames,
+      toolFaceAncestry: mirroredNames.faceAncestry,
+    })
     const oldHandle = sourceBody.shape
     sourceBody.shape = table.register(scope.detach(scope.track(res.shape)), sourceBody.created_by)
     table.release(oldHandle)
     sourceBody.modified_by.push(featureId)
     sourceBody.brep_diff = res.diff
+    sourceBody.face_names = names.face_names
+    sourceBody.face_ancestry = names.face_ancestry
+    sourceBody.edge_names = names.edge_names
+    sourceBody.edge_ancestry = names.edge_ancestry
     return { status: 'ok', body_id: sourceBody.id, operation: 'merge' }
   }
 
   const newBodyId = 'body_' + featureId
   const nb = bareBody(newBodyId, featureId, sourceBody.sketch_id)
-  nb.shape = table.register(scope.detach(mirrored), featureId)
+  nb.shape = table.register(scope.detach(scope.track(mirrored)), featureId)
+  nb.face_names = mirroredNames.faceNames
+  nb.face_ancestry = mirroredNames.faceAncestry
+  nb.edge_names = mirroredNames.edgeNames
+  nb.edge_ancestry = mirroredNames.edgeAncestry
   bodyStore[newBodyId] = nb
   return { status: 'ok', body_id: newBodyId, body_ids: [sourceBody.id, newBodyId], operation: 'new' }
 }

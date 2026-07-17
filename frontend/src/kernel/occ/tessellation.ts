@@ -29,10 +29,10 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
-import { geometryClassifiers, isGeomKeyedLineage, edgeGeometryHash } from '../geomHash'
-import { edgeDescriptorOf, emitEdgeDescriptor, emitVertexDescriptor } from '../geomDescriptor'
-import { buildFaceQuery, faceTokens, edgeLineageTokens } from '../faceQuery'
-import { ref, makeAncestryQuery } from '../query'
+import { geometryClassifiers, edgeGeometryHash, faceGeometryHash, vertexGeometryHash } from '../geomHash'
+import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
+import { buildFaceQuery } from '../faceQuery'
+import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
@@ -195,7 +195,8 @@ interface SolidMeshOptions extends TessellateOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
-  faceLineage?: Record<string, string[]> | null
+  faceAncestry?: Record<string, string[]> | null
+  faceNames?: Record<string, string> | null
 }
 
 /**
@@ -255,9 +256,9 @@ function classifyFace(
   opts: SolidMeshOptions,
 ): { classifiers: string[]; query: string | null } {
   const classifiers = geometryClassifiers(centroid, center, half)
-  // A geom-keyed face lineage suppresses the body-wide profile blob so a single
-  // per-face token is not shadowed by a cap (mirrors the edge path / Python).
-  const fallbackPq = isGeomKeyedLineage(opts.faceLineage, 'gface_') ? null : opts.profileQueries
+  const uuid = opts.faceNames ? (opts.faceNames[faceGeometryHash(centroid, normal)] ?? null) : null
+  const ancestorTokens = (uuid && opts.faceAncestry) ? (opts.faceAncestry[uuid] ?? null) : null
+  const fallbackPq = ancestorTokens ? null : opts.profileQueries
   const query = buildFaceQuery(
     opts.createdBy,
     opts.bodyId,
@@ -266,8 +267,9 @@ function classifyFace(
     normal,
     surfaceType,
     fallbackPq,
-    faceTokens(centroid, normal, opts.faceLineage ?? null),
+    ancestorTokens,
     classifiers,
+    uuid,
   )
   return { classifiers, query }
 }
@@ -354,7 +356,8 @@ interface SolidEdgesOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
-  edgeLineage?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
+  edgeNames?: Record<string, string> | null
 }
 
 interface SolidEdgesResult {
@@ -366,11 +369,76 @@ interface SolidVerticesOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
+  // The body's face-name map (faceGeometryHash -> face uuid). A vertex UUID is
+  // derived from the UUIDs of the faces meeting at it, so the emitter needs the
+  // face names to walk the adjacency; threaded like `SolidEdgesOptions.edgeNames`.
+  faceNames?: Record<string, string> | null
 }
 
 interface SolidVerticesResult {
   vertices: Vec3[]
   vertex_queries: string[]
+  // Per-vertex construction UUID (null where the vertex could not earn one),
+  // parallel to `vertices`. The registrar attaches it to the vertex payload and
+  // to `byUuid` so the resolver's UUID tier can resolve a persisted vertex query.
+  vertex_uuids: (string | null)[]
+}
+
+/**
+ * Vertex construction UUIDs derived from face adjacency, keyed by vertex geom
+ * hash so a lookup on a vertex point lines up. A vertex is where >=3 faces meet,
+ * so its UUID is the (unordered) set of its adjacent NAMED face UUIDs
+ * (`deriveVertexUuid`); a vertex touching fewer than 3 named faces stays unnamed
+ * (curved bodies: a cylinder seam vertex touches <2 faces) and falls back to the
+ * descriptor/ancestral path. Multiplicity (>1 vertex sharing one face set) is
+ * ordered by `orderSplitChildren` and refuses on a near-tie -- never fail-wrong.
+ * Mirrors the edge derivation, op-independent.
+ */
+function vertexUuidsFromFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  faceNames: Record<string, string>,
+): Record<string, string> {
+  const E = oc.TopAbs_ShapeEnum
+  const adjacency: Record<string, Set<string>> = {}  // vertex gh -> set of adjacent face uuid
+  const vertexPoints: Record<string, number[]> = {}  // vertex gh -> its point (split ordering key)
+  const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  for (; faceExp.More(); faceExp.Next()) {
+    const face = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
+    const uuid = faceNames[faceGeometryHash(faceCentroid(oc, scope, face), faceNormal(oc, scope, face))]
+    if (!uuid) continue
+    const vExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
+    for (; vExp.More(); vExp.Next()) {
+      const vertex = scope.track(oc.TopoDS.Vertex_1(vExp.Current()))
+      const p = oc.BRep_Tool.Pnt(vertex)
+      const pt = [p.X(), p.Y(), p.Z()]
+      const vgh = vertexGeometryHash(pt)
+      ;(adjacency[vgh] ??= new Set()).add(uuid)
+      vertexPoints[vgh] ??= pt
+    }
+  }
+
+  const out: Record<string, string> = {}
+  const bySet: Record<string, string[]> = {}  // "uuidA|uuidB|uuidC..." -> [vertex gh...]
+  for (const [vgh, uuidSet] of Object.entries(adjacency)) {
+    if (uuidSet.size < 3) continue  // a vertex needs >=3 named faces to be identified
+    const setKey = [...uuidSet].sort().join('|')
+    ;(bySet[setKey] ??= []).push(vgh)
+  }
+  for (const [setKey, vghs] of Object.entries(bySet)) {
+    const faceUuids = setKey.split('|')
+    let ordered: string[] | null = vghs
+    if (vghs.length > 1) {
+      const children: SplitChild<string>[] = vghs.map((vgh) => ({ item: vgh, key: vertexPoints[vgh] }))
+      ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
+    }
+    if (ordered === null) continue
+    ordered.forEach((vgh, i) => {
+      out[vgh] = deriveVertexUuid(faceUuids, vghs.length > 1 ? i : 0)
+    })
+  }
+  return out
 }
 
 /** AABB center + half-extents from a point cloud; degrades to zero-extent. */
@@ -429,29 +497,25 @@ export function solidToEdges(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)
-      // With a geom-keyed edge lineage map the body-wide profile blob is
-      // suppressed so per-edge tokens are not shadowed (mirrors Python).
-      const fallbackPq = isGeomKeyedLineage(opts.edgeLineage, 'gedge_') ? null : (opts.profileQueries ?? null)
       for (const ed of edges) {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
-        // Descriptor token instead of the old gedge_ digest: tolerant identity
-        // in persisted queries (query-descriptor-identity). The digest stays a
-        // fail-safe fallback for the rare edge whose dict carries no geometry.
-        const desc = edgeDescriptorOf(ed as unknown as Record<string, unknown>)
-        const geomToken = desc
-          ? emitEdgeDescriptor(desc)
-          : ref(edgeGeometryHash(ed as unknown as Record<string, unknown>))
+        const uuid = opts.edgeNames
+          ? (opts.edgeNames[edgeGeometryHash(ed as unknown as Record<string, unknown>)] ?? null)
+          : null
+        const ancestorTokens = (uuid && opts.edgeAncestry) ? (opts.edgeAncestry[uuid] ?? null) : null
+        const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
         if (bodyId) {
-          const ids = [geomToken, ref(createdBy), ref(bodyId)]
-          const eTokens = edgeLineageTokens(ed as unknown as Record<string, unknown>, opts.edgeLineage ?? null)
-          if (eTokens.length) ids.push(...eTokens)
+          const ids: string[] = []
+          if (uuid) ids.push(constructionUuidToken(uuid))
+          ids.push(ref(createdBy), ref(bodyId))
+          if (ancestorTokens && ancestorTokens.length) ids.push(...ancestorTokens)
           else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         } else {
-          const ids = [geomToken, ref(createdBy)]
+          const ids = [ref(createdBy)]
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         }
@@ -550,21 +614,31 @@ export function solidToVertices(
   try {
     const vertices = readSolidVertices(oc, scope, solid)
     const vertex_queries: string[] = []
+    const vertex_uuids: (string | null)[] = vertices.map(() => null)
     const { createdBy, bodyId } = opts
     if (createdBy) {
-      for (const v of vertices) {
-        // Descriptor token instead of the old gvertex_ digest (query-descriptor-identity).
-        const geomToken = emitVertexDescriptor(v)
+      // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
+      // op-independent). Stage 7d dropped the @gdv| geometry descriptor: a vertex
+      // query now carries only its @u| UUID (when it meets >=3 named faces) plus
+      // the ancestral tokens. A vertex that earns no UUID (a curved-body seam
+      // vertex touching <3 named faces) falls back to the ancestral net or fails
+      // loud -- the accepted fail-safe outcome of dropping geometry identity.
+      const uuidByGh = opts.faceNames ? vertexUuidsFromFaces(oc, scope, solid, opts.faceNames) : {}
+      for (let idx = 0; idx < vertices.length; idx++) {
+        const v = vertices[idx]
+        const uuid = uuidByGh[vertexGeometryHash(v)] ?? null
+        vertex_uuids[idx] = uuid
+        const ids: string[] = []
+        if (uuid) ids.push(constructionUuidToken(uuid))
+        ids.push(ref(createdBy))
         if (bodyId) {
-          const ids = [geomToken, ref(createdBy), ref(bodyId)]
+          ids.push(ref(bodyId))
           if (opts.profileQueries && opts.profileQueries.length) ids.push(...opts.profileQueries)
-          vertex_queries.push(makeAncestryQuery(ids, 'vertex'))
-        } else {
-          vertex_queries.push(makeAncestryQuery([geomToken, ref(createdBy)], 'vertex'))
         }
+        vertex_queries.push(makeAncestryQuery(ids, 'vertex'))
       }
     }
-    return { vertices, vertex_queries }
+    return { vertices, vertex_queries, vertex_uuids }
   } finally {
     scope.dispose()
   }

@@ -3,11 +3,9 @@ import fixture from "./occ/__fixtures__/geomHashes.json"
 import {
   pyRound4Str,
   faceGeometryHash,
-  faceNormalHash,
   edgeGeometryHash,
   vertexGeometryHash,
   geometryClassifiers,
-  isGeomKeyedLineage,
 } from "./geomHash"
 import { sha256Hex } from "./sha256"
 
@@ -57,7 +55,6 @@ describe("face hashes match Python", () => {
   for (const c of fixture.faces) {
     it(`face ${c.face_geometry_hash}`, () => {
       expect(faceGeometryHash(c.centroid, c.normal)).toBe(c.face_geometry_hash)
-      expect(faceNormalHash(c.normal)).toBe(c.face_normal_hash)
     })
   }
 })
@@ -143,10 +140,4 @@ describe("negative-zero normalization parity (Python _r4str(-0.0) == '0.0')", ()
   })
 })
 
-describe("isGeomKeyedLineage matches Python", () => {
-  for (const c of fixture.geom_keyed_lineage) {
-    it(`${JSON.stringify(c.lineage)} / ${c.prefix} -> ${c.expected}`, () => {
-      expect(isGeomKeyedLineage(c.lineage, c.prefix)).toBe(c.expected)
-    })
-  }
-})
+

@@ -1,37 +1,25 @@
-// The fillet/chamfer leaf pair. It routes each edge query to the body that owns it (the
-// @body_<id> token is only a hint -- geometry wins), resolves the queries to OCC edges via a
-// per-body edge index, applies the modifier with lineage, and updates the body store in place.
-//
-// The OCC modifier producer lives in occ/edgeModifier.ts. Edge resolution extends the Python
-// three-tier scheme with a stable-ancestry tier: exact ancestry-query match -> geometry-token
-// match (descriptor tolerance match for @gde| tokens, exact digest for legacy @gedge_; a stale
-// @body token is ignored either way) -> stable ancestry + classifier match (survives a stale
-// geometry token after an upstream dimension edit) -> face query (all edges of a face).
+// The fillet/chamfer leaf pair. Edge resolution uses three tiers: exact
+// ancestry-query match -> UUID match (@u| in the query + ancestryRepo.byUuid) ->
+// stable ancestry + classifier match -> face query (all edges of a face,
+// resolved by face UUID). Stage 6 removed geometry-based tiers (descriptor and
+// geom-hash).
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
-import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId } from '../query'
-import { edgeGeometryHash, faceGeometryHash, geometryClassifiers, isGeomKeyedLineage } from '../geomHash'
-import {
-  bestDescriptorMatch,
-  edgeDescriptorOf,
-  emitEdgeDescriptor,
-  parseGeomDescriptorId,
-  type GeomDescriptor,
-} from '../geomDescriptor'
-import { edgeLineageTokens } from '../faceQuery'
+import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
+import { edgeGeometryHash, faceGeometryHash, geometryClassifiers } from '../geomHash'
+import { bestDescriptorMatch, type GeomDescriptor } from '../geomDescriptor'
 import { resolveBody } from './shared'
 import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceCentroid, faceNormal, edgeToGeom, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
-  applyFilletWithDiff,
   applyChamferWithLineage,
-  applyChamferWithDiff,
   type EdgeModifierResult,
+  type OldNames,
 } from '../occ/edgeModifier'
 
 type Dict = Record<string, unknown>
@@ -43,16 +31,12 @@ interface EdgeFeatureResult {
   body_ids: string[]
 }
 
-interface EdgeIndex {
+export interface EdgeIndex {
   queryToEdge: Map<string, OccShape>
-  hashToEdge: Map<string, OccShape>
-  // Current edges paired with their geometric descriptors, for tolerance
-  // matching of @gde| tokens (query-descriptor-identity).
-  descriptorEdges: Array<[OccShape, GeomDescriptor | null]>
-  // Local per-body repository holding each edge under its geometry-independent
-  // ancestry tokens, so a stored query whose geometry token went stale (an
-  // upstream dimension edit moved the edge) still resolves via lineage +
-  // classifiers.
+  // Query strings claimed by more than one distinct edge (a non-unique query,
+  // e.g. an edge lacking a construction @u| uuid). The exact-match tier refuses
+  // these rather than last-wins onto an arbitrary edge -- see resolveEdgesWithIndex.
+  ambiguousQueries: Set<string>
   ancestryRepo: Repository
 }
 
@@ -101,13 +85,34 @@ function brepDiffNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: BrepDif
   return out
 }
 
-/** Build the per-body edge index (mirrors `_build_edge_index`). */
+/**
+ * Register an edge under its exact-match query, guarding query uniqueness.
+ * When a second DISTINCT edge claims a query already in the map, the query is
+ * non-unique (typically an edge lacking a construction @u| uuid): record it in
+ * `ambiguous` so the exact-match tier later refuses it, rather than silently
+ * overwriting -- last-wins would actuate the fillet on an arbitrary
+ * last-in-OCC-order edge (fail-wrong). Mirrors the AmbiguousQueryError fail-safe
+ * of resolveByStableAncestry, now applied to the exact-match tier too.
+ */
+export function registerExactEdge(
+  queryToEdge: Map<string, OccShape>,
+  ambiguous: Set<string>,
+  query: string,
+  edge: OccShape,
+): void {
+  const prior = queryToEdge.get(query)
+  if (prior !== undefined && !(prior as OccSubShape).IsSame(edge as OccSubShape)) {
+    ambiguous.add(query)
+  }
+  queryToEdge.set(query, edge)
+}
+
+/** Build the per-body edge index for fillet/chamfer edge resolution. */
 function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, body: Body): EdgeIndex {
   const queryToEdge = new Map<string, OccShape>()
-  const hashToEdge = new Map<string, OccShape>()
-  const descriptorEdges: Array<[OccShape, GeomDescriptor | null]> = []
+  const ambiguousQueries = new Set<string>()
   const ancestryRepo = new Repository()
-  if (body.shape === null) return { queryToEdge, hashToEdge, descriptorEdges, ancestryRepo }
+  if (body.shape === null) return { queryToEdge, ambiguousQueries, ancestryRepo }
   const shape = table.get<OccShape>(body.shape)
 
   const uniq: OccShape[] = []
@@ -119,49 +124,36 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   const hasModifier =
     body.brep_diff !== null && body.modified_by.length > 0 && body.modified_by[body.modified_by.length - 1] !== body.created_by
   const newEdgeHashes = hasModifier ? brepDiffNewEdgeHashes(oc, scope, body.brep_diff) : new Set<string>()
-  // Same AABB frame tessellation uses when it minted the picked query, so the
-  // classifiers recomputed here line up token-for-token with the stored ones.
   const { center, half } = bodyFrame(oc, scope, shape)
 
   uniq.forEach((te, idx) => {
     const { ed } = edgeToGeom(oc, scope, te)
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
     const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
-    if (!hashToEdge.has(geomHash)) hashToEdge.set(geomHash, te)
-    const desc = edgeDescriptorOf(ed as unknown as Record<string, unknown>)
-    descriptorEdges.push([te, desc])
     if (body.created_by) {
       let edgeCreatedBy = body.created_by
       if (newEdgeHashes.has(geomHash)) edgeCreatedBy = body.modified_by[body.modified_by.length - 1]
-      // Mirror solidToEdges' minting (descriptor-first, digest fail-safe) so
-      // the exact-string tier keeps matching freshly picked queries.
-      const geomToken = desc ? emitEdgeDescriptor(desc) : ref(geomHash)
-      const ids = [geomToken, ref(edgeCreatedBy), ref(body.id)]
-      if (isGeomKeyedLineage(body.edge_lineage, 'gedge_')) {
-        ids.push(...edgeLineageTokens(ed as unknown as Record<string, unknown>, body.edge_lineage))
-      } else if (body.profile_queries.length > 0) {
-        ids.push(...body.profile_queries)
-      }
-      queryToEdge.set(makeAncestryQuery(ids, edgeType), te)
-
-      // Stable-ancestry registration: the same tokens minus the volatile geom
-      // hash. The hash goes in as the repo's tie-break key and the spatial
-      // classifiers ride the payload, mirroring how the main Repository tiers
-      // them (ancestry first, classifier narrowing, hash last).
+      const uuid = body.edge_names?.[geomHash] ?? null
       const pt = edgeRepresentativePoint(ed)
       const classifiers = pt ? geometryClassifiers(pt, center, half) : []
-      const stableIds = ids.slice(1).filter((t) => !isClassifierId(t))
-      // Pick-time queries are always minted with the body's creator, but
-      // modifier-created edges index under the modifier id; carry both so the
-      // stored @<creator> token still lands in the superset match.
+      const ids: string[] = []
+      if (uuid) ids.push(constructionUuidToken(uuid))
+      ids.push(ref(edgeCreatedBy), ref(body.id))
+      const ancestryTokens = (uuid && body.edge_ancestry) ? (body.edge_ancestry[uuid] ?? null) : null
+      if (ancestryTokens && ancestryTokens.length) ids.push(...ancestryTokens)
+      else if (body.profile_queries.length > 0) ids.push(...body.profile_queries)
+      if (classifiers.length) ids.push(...classifiers.map(ref))
+      registerExactEdge(queryToEdge, ambiguousQueries, makeAncestryQuery(ids, edgeType), te)
+
+      const stableIds = ids.filter((t) => !isClassifierId(t))
       if (edgeCreatedBy !== body.created_by) stableIds.push(ref(body.created_by))
       const payload: AncestryEdgePayload = { type: edgeType, classifiers, shape: te }
-      ancestryRepo.registerAncestor(stableIds, payload, geomHash)
+      ancestryRepo.registerAncestor(stableIds, payload, uuid)
     }
     queryToEdge.set(`?${body.id}:edge:${idx}`, te)
   })
 
-  return { queryToEdge, hashToEdge, descriptorEdges, ancestryRepo }
+  return { queryToEdge, ambiguousQueries, ancestryRepo }
 }
 
 /**
@@ -194,35 +186,23 @@ function resolveFaceToEdges(
   }
   if (body.shape === null) return []
   const shape = table.get<OccShape>(body.shape)
-  // Descriptor tier (@gdf|): tolerance match against the current faces; a
-  // near-tie stays unresolved (fail-safe -- see bestDescriptorMatch).
-  const descTok = ids.find((i) => i.startsWith('@gdf|'))
-  const qd = descTok !== undefined ? parseGeomDescriptorId(descTok) : null
-  if (qd !== null) {
-    const faces = exploreFaces(oc, scope, shape)
-    const candidates = faces.map(
-      (f) =>
-        [f, { kind: 'face', point: faceCentroid(oc, scope, f), axis: faceNormal(oc, scope, f) }] as [
-          OccShape,
-          GeomDescriptor,
-        ],
-    )
-    const winner = pickFaceByDescriptor(qd, candidates)
-    if (winner !== undefined) return exploreEdges(oc, scope, winner)
-    return []
-  }
-  // Legacy digest tier (@gface_, pre-descriptor docs): exact hash equality.
-  const targetHash = ids.find((i) => i.startsWith('@gface_'))
-  if (targetHash === undefined) return []
-  for (const face of exploreFaces(oc, scope, shape)) {
-    const gh = faceGeometryHash(faceCentroid(oc, scope, face), faceNormal(oc, scope, face))
-    if (ref(gh) === targetHash) return exploreEdges(oc, scope, face)
+
+  const uuidTok = ids.find((i) => i.startsWith('@u|'))
+  const faceUuid = uuidTok !== undefined ? uuidTok.slice(3) : null
+  if (faceUuid !== null && body.face_names) {
+    for (const face of exploreFaces(oc, scope, shape)) {
+      const gh = faceGeometryHash(
+        faceCentroid(oc, scope, face),
+        faceNormal(oc, scope, face),
+      )
+      if (body.face_names[gh] === faceUuid) return exploreEdges(oc, scope, face)
+    }
   }
   return []
 }
 
-/** Resolve edge queries against a prebuilt index (mirrors `_resolve_edges_with_index`). */
-function resolveEdgesWithIndex(
+/** Resolve edge queries against a prebuilt index. */
+export function resolveEdgesWithIndex(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
@@ -235,38 +215,21 @@ function resolveEdgesWithIndex(
     if (!result.some((r) => (r as OccSubShape).IsSame(e as OccSubShape))) result.push(e)
   }
 
-  const isFaceQuery = (q: string): boolean => q.includes('gface_') || q.includes('@gdf|')
+  const isFaceQuery = (q: string): boolean => {
+    try {
+      const [, typeRestriction] = parseAncestry(q)
+      return typeRestriction === 'face' || typeRestriction === 'flatface' || typeRestriction === 'cylinderface'
+    } catch {
+      return false
+    }
+  }
 
   for (const q of edgeQueries) {
-    let edge = index.queryToEdge.get(q)
-    if (edge === undefined && q.startsWith('?')) {
-      try {
-        const [ids] = parseAncestry(q)
-        for (const id of ids) {
-          if (id.startsWith('@gedge_')) {
-            // Legacy digest tier (pre-descriptor docs): exact hash equality.
-            edge = index.hashToEdge.get(id.slice(1))
-            if (edge !== undefined) break
-          }
-          if (id.startsWith('@gde|')) {
-            // Descriptor tier: tolerance match against the current edges; a
-            // near-tie stays unresolved and falls to the ancestry tier.
-            const qd = parseGeomDescriptorId(id)
-            if (qd !== null) {
-              edge = bestDescriptorMatch(
-                qd,
-                index.descriptorEdges.map(([e, d]) => [e, d] as [OccShape, GeomDescriptor | null]),
-              )
-              if (edge !== undefined) break
-            }
-          }
-        }
-      } catch {
-        // ignore geometry-token resolution failure
-      }
-    }
+    // An ambiguous exact hit (a query claimed by 2+ distinct edges) is refused,
+    // not guessed: treat it as a miss so it falls through to the ancestry tier,
+    // which fails safe on the same lineage rather than filleting the wrong edge.
+    let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
     if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
-      // Face queries never name a single edge; leave them to the face tier.
       edge = resolveByStableAncestry(index.ancestryRepo, q)
     }
     if (edge === undefined && isFaceQuery(q)) {
@@ -321,9 +284,7 @@ type ApplyFn = (
   scope: DisposeScope,
   shape: OccShape,
   edges: OccShape[],
-  withLineage: boolean,
-  faceLineage: Record<string, string[]>,
-  edgeLineage: Record<string, string[]>,
+  oldNames: OldNames | null,
 ) => EdgeModifierResult
 
 /**
@@ -469,15 +430,28 @@ function applyEdgeFeature(
       if (geom !== null) handle = makeHandle(geom.anchor, geom.direction)
     }
 
-    const wantLineage = Object.keys(body.face_lineage).length > 0 || Object.keys(body.edge_lineage).length > 0
-    const res = applyFn(oc, scope, oldShape, topoEdges, wantLineage, body.face_lineage, body.edge_lineage)
+    const wantNames = Object.keys(body.face_names ?? {}).length > 0 || Object.keys(body.edge_names ?? {}).length > 0
+    const oldNames: OldNames | null = wantNames
+      ? {
+          createdBy: featureId,
+          faceNames: body.face_names ?? {},
+          edgeNames: body.edge_names ?? {},
+          faceAncestry: body.face_ancestry ?? {},
+          edgeAncestry: body.edge_ancestry ?? {},
+        }
+      : null
+    const res = applyFn(oc, scope, oldShape, topoEdges, oldNames)
 
     const oldHandle = body.shape
     scope.track(res.shape)
     body.shape = table.register(scope.detach(res.shape), body.created_by)
     table.release(oldHandle)
-    if (res.faceLineage !== null) body.face_lineage = res.faceLineage
-    if (res.edgeLineage !== null) body.edge_lineage = res.edgeLineage
+    if (res.names !== null) {
+      body.face_names = res.names.faceNames
+      body.edge_names = res.names.edgeNames
+      body.face_ancestry = res.names.faceAncestry
+      body.edge_ancestry = res.names.edgeAncestry
+    }
     body.brep_diff = res.diff
     body.modified_by.push(featureId)
     applied.push(body.id)
@@ -511,10 +485,8 @@ export function solveFillet(
   const radiusRaw = merged.radius
   const radius = Number(radiusRaw !== undefined && radiusRaw !== null ? radiusRaw : 1.0)
   if (radius <= 0) throw new Error('fillet: radius must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, withLineage, fl, el) =>
-    withLineage
-      ? applyFilletWithLineage(o, s, shape, radius, edges, fl, el)
-      : applyFilletWithDiff(o, s, shape, radius, edges),
+  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, nm) =>
+    applyFilletWithLineage(o, s, shape, radius, edges, nm),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
   // face-bisector normal is not the exact radius/bisector-travel relation
   // (r = d_bisector * sin(theta/2) for the included edge angle), but it is
@@ -540,10 +512,8 @@ export function solveChamfer(
   const angleRaw = merged.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
   if (distance <= 0) throw new Error('chamfer: distance must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, withLineage, fl, el) =>
-    withLineage
-      ? applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, fl, el)
-      : applyChamferWithDiff(o, s, shape, distance, edges, chamferMode, angle),
+  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
+    applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.
   (anchor, direction) => linearHandle('distance', anchor, direction, distance),

@@ -249,8 +249,7 @@
         "obj": {
           "type": "flatface",
           "tag": "A"
-        },
-        "geom_hash": "gface_aaaa"
+        }
       },
       {
         "op": "register_ancestor",
@@ -261,23 +260,22 @@
         "obj": {
           "type": "flatface",
           "tag": "B"
-        },
-        "geom_hash": "gface_bbbb"
+        }
       }
     ],
     "queries": [
       {
-        "query": "?7,b;@feat_a@gface_bbbb:flatface",
-        "result": {
-          "type": "flatface",
-          "tag": "B"
-        }
-      },
-      {
-        "query": "?b;@gface_aaaa:flatface",
+        "query": "?7,9;@feat_asurface:0:flatface",
         "result": {
           "type": "flatface",
           "tag": "A"
+        }
+      },
+      {
+        "query": "?7,9;@feat_asurface:1:flatface",
+        "result": {
+          "type": "flatface",
+          "tag": "B"
         }
       }
     ]

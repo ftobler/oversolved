@@ -5,13 +5,11 @@
 import { sha256Hex } from './sha256'
 import { extractErrorMessage } from './errors'
 import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'
-import { faceGeometryHash, faceNormalHash, edgeGeometryHash, vertexGeometryHash, isGeomKeyedLineage } from './geomHash'
-import { faceTokens, edgeLineageTokens } from './faceQuery'
+import { faceGeometryHash, edgeGeometryHash, vertexGeometryHash } from './geomHash'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { normalToFrame } from './types3d'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import type { TessMesh } from './occ/tessellation'
-import type { OccHandle } from './occ/handleTable'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -176,8 +174,10 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
     sketch_id: body.sketch_id,
     brep_diff: body.brep_diff,
     profile_queries: [...body.profile_queries],
-    face_lineage: { ...body.face_lineage },
-    edge_lineage: { ...body.edge_lineage },
+    ...(body.face_names ? { face_names: { ...body.face_names } } : {}),
+    ...(body.edge_names ? { edge_names: { ...body.edge_names } } : {}),
+    ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),
+    ...(body.edge_ancestry ? { edge_ancestry: { ...body.edge_ancestry } } : {}),
     ...(body.imported ? { imported: true } : {}),
   }
 }
@@ -188,8 +188,8 @@ function _snapshotRepo(repo: Repository): Record<string, unknown> {
     ancestral: Object.fromEntries(
       [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
     ),
-    byGeomHash: Object.fromEntries(
-      [...repo.byGeomHash.entries()].map(([k, v]) => [k, [...v]])
+    byUuid: Object.fromEntries(
+      [...repo.byUuid.entries()].map(([k, v]) => [k, [...v]])
     ),
   }
 }
@@ -235,8 +235,8 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
         ([k, v]) => [k, { set: new Set(v.set), eids: [...v.eids] }]
       )
     )
-    repo.byGeomHash = new Map(
-      Object.entries(repoSnapshot.byGeomHash as Record<string, string[]>).map(([k, v]) => [k, [...v]])
+    repo.byUuid = new Map(
+      Object.entries((repoSnapshot.byUuid as Record<string, string[]>) ?? {}).map(([k, v]) => [k, [...v]])
     )
   }
   _dedupeRepo(repo)
@@ -431,8 +431,10 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       emitWire(absolute(faceCreatedBy)),
       emitWire(absolute(body.id)),
     ]
-    if (isGeomKeyedLineage(body.face_lineage, 'gface_')) {
-      ancestorIds.push(...faceTokens(centroid, normal, body.face_lineage))
+    const uuid = body.face_names?.[geomHash] ?? null
+    const ancestryTokens = (uuid && body.face_ancestry) ? (body.face_ancestry[uuid] ?? null) : null
+    if (ancestryTokens && ancestryTokens.length) {
+      ancestorIds.push(...ancestryTokens)
     } else if (body.profile_queries.length) {
       ancestorIds.push(...body.profile_queries)
     }
@@ -448,6 +450,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       x_axis,
       y_axis,
       classifiers: faceInfo.classifiers ?? [],
+      ...(uuid !== null ? { uuid } : {}),
     }
     const key = [...new Set(ancestorIds)].sort().join('\0')
     const entry = globalRepo.ancestral.get(key)
@@ -456,9 +459,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       continue
     }
     const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))
-    const eid = evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
-    const nhash = faceNormalHash(normal)
-    globalRepo.byGeomHash.set(nhash, [...(globalRepo.byGeomHash.get(nhash) ?? []), eid])
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
@@ -515,14 +516,16 @@ function _registerBrepEdgeAncestry(
       emitWire(absolute(edgeCreatedBy)),
       emitWire(absolute(body.id)),
     ]
-    if (isGeomKeyedLineage(body.edge_lineage, 'gedge_')) {
-      ancestorIds.push(...edgeLineageTokens(edge, body.edge_lineage))
+    const uuid = body.edge_names?.[geomHash] ?? null
+    const ancestryTokens = (uuid && body.edge_ancestry) ? (body.edge_ancestry[uuid] ?? null) : null
+    if (ancestryTokens && ancestryTokens.length) {
+      ancestorIds.push(...ancestryTokens)
     } else if (body.profile_queries.length) {
       ancestorIds.push(...body.profile_queries)
     }
-    const payload = edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx)
+    const payload = { ...edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx), ...(uuid !== null ? { uuid } : {}) }
     const indexTag = emitWire(absolute(body.id, `edge${idx}`))
-    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
@@ -531,6 +534,7 @@ function _registerBrepVertexAncestry(
   body: Body,
   vertices: Array<number[]>,
   vertexQueries: string[],
+  vertexUuids: Array<string | null>,
   deps?: BuildDeps,
 ): void {
   if (!body.created_by || !vertexQueries.length) return
@@ -548,15 +552,17 @@ function _registerBrepVertexAncestry(
       emitWire(absolute(body.id)),
     ]
     if (body.profile_queries.length) ancestorIds.push(...body.profile_queries)
+    const uuid = vertexUuids[idx] ?? null
     const payload = {
       type: 'vertex',
       body_id: body.id,
       created_by: vertexCreatedBy,
       vertex_index: idx,
       origin: pt,
+      ...(uuid !== null ? { uuid } : {}),
     }
     const indexTag = emitWire(absolute(body.id, `vertex${idx}`))
-    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, geomHash)
+    evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
@@ -603,7 +609,8 @@ function _registerBodyFaces(
     if (edges.length) _registerBrepEdgeAncestry(globalRepo, body, edges, edgeQueries, deps)
     const verts = (out.vertices as number[][]) ?? []
     const vertQueries = (out.vertex_queries as string[]) ?? verts.map(() => '')
-    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, vertQueries, deps)
+    const vertUuids = (out.vertex_uuids as Array<string | null>) ?? []
+    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, vertQueries, vertUuids, deps)
   } catch {
     // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
     // in Python (it logs a warning and continues).
@@ -629,8 +636,9 @@ function _snapshotWithBrepGeometry(
     }
     const vertices = (bodyOut['vertices'] as Array<number[]>) ?? []
     const vertexQueries = (bodyOut['vertex_queries'] as string[]) ?? []
+    const vertexUuids = (bodyOut['vertex_uuids'] as Array<string | null>) ?? []
     if (vertices.length && vertexQueries.length) {
-      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries, deps)
+      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries, vertexUuids, deps)
     }
     if (body.created_by) {
       _registerSolidAncestry(repo, body)
@@ -643,10 +651,38 @@ function _snapshotWithBrepGeometry(
     ancestral: Object.fromEntries(
       [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
     ),
-    byGeomHash: Object.fromEntries(
-      [...repo.byGeomHash.entries()].map(([k, v]) => [k, [...v]])
+    byUuid: Object.fromEntries(
+      [...repo.byUuid.entries()].map(([k, v]) => [k, [...v]])
     ),
   }
+}
+
+// On a fully-clean rebuild (nothing dirty) the final bodies are byte-identical
+// to the previous build's, so their render mesh is too. Reuse the final
+// checkpoint's stored bodies_snapshot as `bodies` instead of re-tessellating the
+// whole document. Returns null (fall through to a fresh tessellation) unless the
+// rebuild is fully clean AND every live body maps to a non-empty prev snapshot.
+function reuseFinalMeshOnCleanRebuild(
+  prevState: BuildState | null | undefined,
+  features: Array<Record<string, unknown>>,
+  firstDirty: number,
+  bodyStore: Record<string, Body>,
+  lastFid: string | null,
+): Record<string, Record<string, unknown>> | null {
+  if (!prevState || lastFid == null) return null
+  if (firstDirty !== features.length) return null
+  const prevCp = prevState.checkpoints[lastFid]
+  if (!prevCp) return null
+  const snap = prevCp.bodies_snapshot as Record<string, Record<string, unknown>>
+  if (!snap || !Object.keys(snap).length) return null
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const [bid, body] of Object.entries(bodyStore)) {
+    if (body.shape == null) continue
+    const mesh = snap[bid]
+    if (!mesh || !Object.keys(mesh).length) return null  // incomplete snapshot; re-tessellate
+    out[bid] = mesh
+  }
+  return out
 }
 
 // ── Build orchestration ──────────────────────────────────────────────────────
@@ -730,37 +766,6 @@ export function build(
     if (vv) variableContext[vv.name] = vv.value
   }
 
-  // Checkpoint body meshes, keyed by the body's shape OccHandle and captured in
-  // the loop below while the shape is still alive. A downstream feature can
-  // release/replace a body's shape handle (e.g. fillet calls `table.release` on
-  // the pre-fillet solid at filletChamfer.ts), which would leave an earlier
-  // checkpoint's snapshot pointing at a freed handle. Freezing the mesh as plain
-  // data at checkpoint time means the post-loop assembly never tessellates a
-  // dead handle. Mirrors Python builder.py `_shape_tess_cache`.
-  const shapeTessCache = new Map<OccHandle, Record<string, unknown>>()
-  // Tessellate by the LIVE handle (which persists across checkpoints for an
-  // unchanged body, so each unique shape meshes at most once), then alias the
-  // frozen mesh onto the checkpoint's independent copy handle. Keying off the
-  // copy directly would re-mesh every checkpoint's copy even when the geometry
-  // never changed -- a full-rebuild tessellation blowup.
-  const captureSnapshotMeshes = (
-    live: Record<string, Body>,
-    snapshot: Record<string, Body>,
-  ): void => {
-    for (const [bid, body] of Object.entries(live)) {
-      if (body.shape == null) continue
-      if (!shapeTessCache.has(body.shape)) {
-        const entry = deps.tessellateBodies({ [bid]: body }, null)[bid]
-        if (entry) shapeTessCache.set(body.shape, entry)
-      }
-      const copyHandle = snapshot[bid]?.shape
-      const mesh = shapeTessCache.get(body.shape)
-      if (copyHandle != null && copyHandle !== body.shape && mesh) {
-        shapeTessCache.set(copyHandle, mesh)
-      }
-    }
-  }
-
   // Snapshot mapper: retain the live shape under the checkpoint's owner so it
   // survives a downstream consume/free and into the next build, without copying
   // it (copying a shape a later feature then operates on corrupts that result).
@@ -775,7 +780,6 @@ export function build(
 
     if (feature.suppressed) {
       const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
-      captureSnapshotMeshes(bodyStore, cpSnapshot)
       newCheckpoints[fid] = {
         spec: { ...feature },
         result: { status: 'suppressed' },
@@ -820,7 +824,6 @@ export function build(
     }
 
     const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
-    captureSnapshotMeshes(bodyStore, cpSnapshot)
     newCheckpoints[fid] = {
       spec: JSON.parse(JSON.stringify(feature)),
       result: JSON.parse(JSON.stringify(result[fid])),
@@ -833,9 +836,9 @@ export function build(
   const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
   globalRepo.gc(activeFids)
 
-  const bodiesOut = deps.tessellateBodies(bodyStore, globalRepo)
-
-  // Rebuild checkpoints for dirty features.
+  // Clean prefix: checkpoints carried over verbatim from prevState (indices
+  // < firstDirty). On a fully-clean rebuild (firstDirty === features.length)
+  // every checkpoint is a clean-prefix carry-over, including the last one.
   const cleanPrefixFids = new Set<string>()
   if (options.prevState && firstDirty > 0) {
     for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
@@ -843,35 +846,43 @@ export function build(
     }
   }
 
-  // Seed the final (live) body meshes too, so the last checkpoint's pick_bodies
-  // reuse the same tessellation as `bodies` rather than re-meshing.
-  for (const [bid, body] of Object.entries(bodyStore)) {
-    if (body.shape != null && bodiesOut[bid] && !shapeTessCache.has(body.shape)) {
-      shapeTessCache.set(body.shape, bodiesOut[bid])
-    }
-  }
-  // Assemble each dirty checkpoint's bodies_snapshot from the meshes captured in
-  // the loop while shapes were alive. Never tessellate here: a downstream
-  // feature may already have freed the handle this snapshot references.
-  const tessellateCheckpointBody = (body: Body): Record<string, unknown> => {
-    if (body.shape == null) return {}
-    return shapeTessCache.get(body.shape) ?? {}
-  }
+  // The final feature's checkpoint owns the one render mesh we always keep (for
+  // display + an end-of-stack pick). Every earlier checkpoint stays lazy: its
+  // bodies_snapshot is empty and the pick path tessellates it on demand.
+  const lastFid = features.length ? String(features[features.length - 1].id ?? '') : null
 
+  // On a fully-clean rebuild the final bodies are unchanged, so reuse the prior
+  // build's final render mesh instead of re-tessellating the whole document.
+  const bodiesOut =
+    reuseFinalMeshOnCleanRebuild(options.prevState, features, firstDirty, bodyStore, lastFid)
+    ?? deps.tessellateBodies(bodyStore, globalRepo)
+
+  // Rebuild checkpoints for dirty features. Re-register B-rep ancestry into each
+  // checkpoint's persisted repo snapshot from cheap mesh-free metadata (no
+  // triangulation); store the render mesh only on the final checkpoint. Pure
+  // non-OCC tests wire no extractor, so fall back to tessellateBodies there.
+  const extractMeta = deps.extractBrepMetadata ?? deps.tessellateBodies
   for (const fid of Object.keys(newCheckpoints)) {
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]
-    const cpBodies = Object.fromEntries(
-      Object.entries(checkpoint.body_store_snapshot).map(([bid, body]) => {
-        return [bid, tessellateCheckpointBody(body)]
-      })
-    )
+    const isLast = fid === lastFid
+    // The final checkpoint reuses the render tessellation (bodiesOut) for BOTH
+    // its display snapshot and its B-rep ancestry -- that mesh already carries
+    // face_data/edges/queries, so re-extracting metadata for it would be wasted
+    // work. Earlier checkpoints identify off cheap mesh-free metadata (no
+    // triangulation) and stay lazy (empty snapshot).
+    const cpMeta = isLast ? bodiesOut : extractMeta(checkpoint.body_store_snapshot, null)
+    const bodiesSnapshot = isLast
+      ? Object.fromEntries(
+          Object.keys(checkpoint.body_store_snapshot).map((bid) => [bid, bodiesOut[bid] ?? {}]),
+        )
+      : {}
     newCheckpoints[fid] = {
       spec: checkpoint.spec,
       result: checkpoint.result,
-      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpBodies, deps),
+      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpMeta, deps),
       body_store_snapshot: checkpoint.body_store_snapshot,
-      bodies_snapshot: cpBodies,
+      bodies_snapshot: bodiesSnapshot,
     }
   }
 

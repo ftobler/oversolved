@@ -130,10 +130,17 @@ function tessellateBodies(
       const mesh = solidToMesh(occ, table, body.shape, {
         createdBy: body.created_by || '',
         bodyId: body.id,
-        faceLineage: body.face_lineage ?? null,
+        faceNames: body.face_names ?? null,
+        faceAncestry: body.face_ancestry ?? null,
         profileQueries: body.profile_queries ?? [],
       })
-      const edges = solidToEdges(occ, table, body.shape)
+      const edges = solidToEdges(occ, table, body.shape, {
+        createdBy: body.created_by || '',
+        bodyId: body.id,
+        edgeNames: body.edge_names ?? null,
+        edgeAncestry: body.edge_ancestry ?? null,
+        profileQueries: body.profile_queries ?? [],
+      })
       const vertices = solidToVertices(occ, table, body.shape)
       out[bodyId] = { mesh, edges, vertices }
     } catch {
@@ -525,12 +532,10 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   /**
    * A reshaped face (centroid drifts, normal preserved) still resolves.
    *
-   * The face query carries a geometric descriptor token (@gdf|centroid|normal,
-   * query-descriptor-identity). When the body is edited so the picked end-cap moves -- its
-   * centroid drifts but its normal is unchanged -- the tight match misses and the descriptor
-   * tier's signed normal gate + nearest-with-margin must land on the moved face. Among the two
-   * opposite-facing end-caps of this two-circle body the normal is unique, so it must resolve
-   * to the moved face (and never to the opposite cap).
+   * The face query carries a construction UUID (@u|) for stable identity.
+   * When the body is edited so the picked end-cap moves -- its centroid drifts
+   * but its normal is unchanged -- the UUID must still resolve and land the
+   * sketch plane on the moved face (never the opposite cap).
    */
   it('sketch plane follows face when centroid drifts via descriptor matching', () => {
     const scope = new DisposeScope()
@@ -566,8 +571,8 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
         }
       }
       if (!picked) return
-      // Verify the face query carries the geometric descriptor token.
-      expect(picked).toContain('@gdf|')
+      // Verify the face query carries a construction UUID token (@u|).
+      expect(picked).toContain('@u|')
 
       const sk2: Dict = { id: 'sk2', kind: 'sketch', plane: picked, entities: [], constraints: [] }
 

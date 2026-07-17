@@ -21,9 +21,9 @@ import {
   bodyIdOf,
   getPoint3d,
   resolvePlaneEarly,
+  constructionUuidToken,
 } from "./query"
 import type { AncestryQuery } from "./query"
-import { emitFaceDescriptor, emitEdgeDescriptor } from "./geomDescriptor"
 import {
   Outcome,
   DEFAULT_HEURISTIC_CONFIG,
@@ -54,7 +54,7 @@ function applyOp(repo: Repository, op: Op): void {
       repo.register(op.id as string, op.obj)
       break
     case "register_ancestor":
-      repo.registerAncestor(op.ancestors as string[], op.obj, (op.geom_hash as string) ?? null)
+      repo.registerAncestor(op.ancestors as string[], op.obj)
       break
     case "evict_register":
       evictAncestryAndRegister(
@@ -62,7 +62,6 @@ function applyOp(repo: Repository, op: Op): void {
         op.ancestors as string[],
         op.obj as Record<string, unknown>,
         (op.index_tag as string) ?? null,
-        (op.geom_hash as string) ?? null,
       )
       break
     case "gc":
@@ -353,17 +352,17 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect(result).toBeNull()
   })
 
-  /** No subset relation either way — tier 2 finds nothing, falls to tier 3 (hash). */
-  it("falls to hash when ancestors are disjoint — no subset relation either way", () => {
-    // Query with completely different ancestors — @X, @Y have no subset relation
-    // with @A, @B, @C. Tier 1+2 miss. Hash fallback resolves via @gface_hash1.
+  /** No subset relation either way — tier 2 finds nothing, falls to UUID. */
+  it("falls to UUID when ancestors are disjoint -- no subset relation either way", () => {
+    // Query with completely different ancestors -- @X, @Y have no subset relation
+    // with @A, @B, @C. Tier 1+2 miss. UUID fallback resolves via @u|u_x.
     const repo = new Repository()
     repo.registerAncestor(
       ["@A", "@B", "@C"],
       { type: "face", body_id: "body1", created_by: "ex1" },
-      "gface_hash1",
+      "u_x",
     )
-    const result = repo.query(makeAncestryQuery(["@gface_hash1", "@X", "@Y"]))
+    const result = repo.query(makeAncestryQuery([constructionUuidToken("u_x"), "@X", "@Y"]))
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).created_by).toBe("ex1")
   })
@@ -385,13 +384,13 @@ describe("partial ancestral resolver (tier 2)", () => {
     repo.registerAncestor(
       ["@A", "@B"],
       { type: "face", body_id: "body1", created_by: "ex1" },
-      "gface_h1",
+      "u_h1",
     )
-    const result = repo.query(makeAncestryQuery(["@gface_h1", "@A", "@B", "@extra"], "face"))
+    const result = repo.query(makeAncestryQuery([constructionUuidToken("u_h1"), "@A", "@B", "@extra"], "face"))
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).created_by).toBe("ex1")
 
-    const resultWrong = repo.query(makeAncestryQuery(["@gface_h1", "@A", "@B", "@extra"], "edge"))
+    const resultWrong = repo.query(makeAncestryQuery([constructionUuidToken("u_h1"), "@A", "@B", "@extra"], "edge"))
     expect(resultWrong).toBeNull()
   })
 
@@ -420,8 +419,8 @@ function makeFacePayload(bodyId: string, createdBy: string, idx: number): Payloa
   }
 }
 
-/** Tests for two-tier ancestry resolution: ancestral primary, geom_hash fallback. */
-describe("geom-hash fallback (two-tier ancestry resolution)", () => {
+/** Tests for two-tier ancestry resolution: ancestral primary, UUID fallback. */
+describe("UUID fallback (two-tier ancestry resolution)", () => {
   it("isGeomHashId detects prefixes", () => {
     expect(isGeomHashId("@gface_abc123")).toBe(true)
     expect(isGeomHashId("@gedge_abc123")).toBe(true)
@@ -431,8 +430,8 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(isGeomHashId("@body_ex1/face0")).toBe(false)
   })
 
-  /** Hash in by_geom_hash does not affect pure-ancestry queries. */
-  it("hash in byGeomHash does not affect pure-ancestry queries", () => {
+  /** Hash in byUuid does not affect pure-ancestry queries. */
+  it("uuid in byUuid does not affect pure-ancestry queries", () => {
     const repo = new Repository()
     const payload = makeFacePayload("body1", "ex1", 0)
     repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payload, "gface_abc")
@@ -443,7 +442,7 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     expect(r["created_by"]).toBe("ex1")
   })
 
-  /** After registering with geom_hash, no frozenset in ancestral contains a geom_hash string. */
+  /** After registering with uuid, no frozenset in ancestral contains a geom_hash string. */
   it("no geom_hash tag in any ancestral key Set", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -464,8 +463,8 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     }
   })
 
-  /** register_ancestor with geom_hash populates by_geom_hash. */
-  it("registerAncestor with geomHash populates byGeomHash", () => {
+  /** registerAncestor with uuid populates byUuid. */
+  it("registerAncestor with uuid populates byUuid", () => {
     const repo = new Repository()
     repo.registerAncestor(
       ["@body1/face0", "@ex1", "@body1"],
@@ -473,59 +472,59 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
       "gface_abc",
     )
 
-    expect(repo.byGeomHash.has("gface_abc")).toBe(true)
-    expect(repo.byGeomHash.get("gface_abc")!.length).toBe(1)
+    expect(repo.byUuid.has("gface_abc")).toBe(true)
+    expect(repo.byUuid.get("gface_abc")!.length).toBe(1)
   })
 
-  /** When ancestral query finds nothing, by_geom_hash is consulted as last resort. */
-  it("hash fallback when ancestral query finds nothing", () => {
+  /** When ancestral query finds nothing, byUuid is consulted as last resort. */
+  it("UUID fallback when ancestral query finds nothing", () => {
     const repo = new Repository()
     const payload = makeFacePayload("body1", "ex1", 0)
-    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payload, "gface_hash1")
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payload, "u_hash1")
 
-    const result = repo.query(makeAncestryQuery(["@gface_hash1"]))
+    const result = repo.query(makeAncestryQuery([constructionUuidToken("u_hash1")]))
     expect(result).not.toBeNull()
     const r = result as Payload
     expect(r["created_by"]).toBe("ex1")
   })
 
-  /** Hash fallback respects type_restriction. */
-  it("hash fallback respects type restriction", () => {
+  /** UUID fallback respects type_restriction. */
+  it("UUID fallback respects type restriction", () => {
     const repo = new Repository()
     const facePayload = makeFacePayload("body1", "ex1", 0)
-    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], facePayload, "gface_hash1")
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], facePayload, "u_hash1")
 
-    const result = repo.query(makeAncestryQuery(["@gface_hash1"], "flatface"))
+    const result = repo.query(makeAncestryQuery([constructionUuidToken("u_hash1")], "flatface"))
     expect(result).not.toBeNull()
     const r = result as Payload
     expect(r["type"]).toBe("flatface")
 
-    const wrongType = repo.query(makeAncestryQuery(["@gface_hash1"], "edge"))
+    const wrongType = repo.query(makeAncestryQuery([constructionUuidToken("u_hash1")], "edge"))
     expect(wrongType).toBeNull()
   })
 
-  /** Two faces share structural ancestry but differ by hash; hash narrows the result. */
-  it("hash disambiguates when shared structural ancestry is ambiguous", () => {
+  /** Two faces share structural ancestry but differ by UUID; UUID narrows the result. */
+  it("UUID disambiguates when shared structural ancestry is ambiguous", () => {
     const repo = new Repository()
     const payloadA = makeFacePayload("body1", "ex1", 0)
     const payloadB = makeFacePayload("body1", "ex1", 1)
 
-    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payloadA, "gface_aaa")
-    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], payloadB, "gface_bbb")
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payloadA, "u_aaa")
+    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], payloadB, "u_bbb")
 
     expect(() => repo.query(makeAncestryQuery(["@ex1"]))).toThrow(AmbiguousQueryError)
 
-    const resultA = repo.query(makeAncestryQuery(["@gface_aaa", "@ex1", "@body1"]))
+    const resultA = repo.query(makeAncestryQuery([constructionUuidToken("u_aaa"), "@ex1", "@body1"]))
     expect(resultA).not.toBeNull()
     expect((resultA as Payload)["face_index"]).toBe(0)
 
-    const resultB = repo.query(makeAncestryQuery(["@gface_bbb", "@ex1", "@body1"]))
+    const resultB = repo.query(makeAncestryQuery([constructionUuidToken("u_bbb"), "@ex1", "@body1"]))
     expect(resultB).not.toBeNull()
     expect((resultB as Payload)["face_index"]).toBe(1)
   })
 
-  /** Edge hashes populate byGeomHash, not ancestral keys. */
-  it("edge geom hash populates byGeomHash not ancestral", () => {
+  /** Edge uuids populate byUuid, not ancestral keys. */
+  it("edge uuid populates byUuid not ancestral", () => {
     const repo = new Repository()
     repo.registerAncestor(
       ["@body1/edge0", "@ex1", "@body1"],
@@ -533,8 +532,8 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
       "gedge_xyz",
     )
 
-    expect(repo.byGeomHash.has("gedge_xyz")).toBe(true)
-    expect(repo.byGeomHash.get("gedge_xyz")!.length).toBe(1)
+    expect(repo.byUuid.has("gedge_xyz")).toBe(true)
+    expect(repo.byUuid.get("gedge_xyz")!.length).toBe(1)
 
     for (const entry of repo.ancestral.values()) {
       for (const tag of entry.set) {
@@ -543,8 +542,8 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
     }
   })
 
-  /** Vertex hashes populate byGeomHash, not ancestral keys. */
-  it("vertex geom hash populates byGeomHash not ancestral", () => {
+  /** Vertex uuids populate byUuid, not ancestral keys. */
+  it("vertex uuid populates byUuid not ancestral", () => {
     const repo = new Repository()
     repo.registerAncestor(
       ["@body1/vertex0", "@ex1", "@body1"],
@@ -552,8 +551,8 @@ describe("geom-hash fallback (two-tier ancestry resolution)", () => {
       "gvertex_def",
     )
 
-    expect(repo.byGeomHash.has("gvertex_def")).toBe(true)
-    expect(repo.byGeomHash.get("gvertex_def")!.length).toBe(1)
+    expect(repo.byUuid.has("gvertex_def")).toBe(true)
+    expect(repo.byUuid.get("gvertex_def")!.length).toBe(1)
 
     for (const entry of repo.ancestral.values()) {
       for (const tag of entry.set) {
@@ -602,7 +601,7 @@ describe("face registration structural tags", () => {
   })
 
   /** No geom_hash tag appears in the ancestral key Set of any face registration.
-   *  This is a structural invariant: hashes live in byGeomHash only. */
+   *  This is a structural invariant: uuids live in byUuid only. */
   it("no geom_hash tag in face registration ancestral key", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -617,7 +616,7 @@ describe("face registration structural tags", () => {
       }
     }
 
-    expect(repo.byGeomHash.has("gface_abc")).toBe(true)
+    expect(repo.byUuid.has("gface_abc")).toBe(true)
   })
 })
 
@@ -645,21 +644,20 @@ describe("geometric classifier predicates", () => {
  * stay consistent between query emission and element registration.
  */
 describe("classifier tier resolution", () => {
-  it("contradictory classifiers do not zero a hash-resolvable query", () => {
+  it("UUID resolves even with contradictory classifiers", () => {
     const repo = new Repository()
     const payloadP = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] }
     const payloadN = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] }
-    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payloadP, "gface_aaa")
-    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], payloadN, "gface_bbb")
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payloadP, "u_aaa")
+    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], payloadN, "u_bbb")
 
-    // @cls_zp resolves the +Z cap via ancestry + classifier + hash.
-    const r1 = repo.query(makeAncestryQuery(["@gface_aaa", "@cls_zp", "@ex1", "@body1"]))
+    // @cls_zp resolves the +Z cap via UUID + classifier.
+    const r1 = repo.query(makeAncestryQuery([constructionUuidToken("u_aaa"), "@cls_zp", "@ex1", "@body1"]))
     expect(r1).not.toBeNull()
     expect((r1 as Payload).classifiers).toEqual(["cls_zp"])
 
-    // Add the OPPOSITE-sign classifier: no face matches both clauses, so
-    // the classifier tier narrows to nothing.  The hash still resolves.
-    const contradictory = makeAncestryQuery(["@gface_aaa", "@cls_zp", "@cls_zn", "@ex1", "@body1"])
+    // Contradictory classifiers don't prevent the UUID tier from resolving.
+    const contradictory = makeAncestryQuery([constructionUuidToken("u_aaa"), "@cls_zp", "@cls_zn", "@ex1", "@body1"])
     const r2 = repo.query(contradictory)
     expect(r2).not.toBeNull()
     expect((r2 as Payload).classifiers).toEqual(["cls_zp"])
@@ -834,9 +832,9 @@ describe("type coercion tier scope", () => {
   const bodyObj = { id: "body_ex1" }
   const bodyStoreWithSolid = { body_ex1: bodyObj }
 
-  function repoWithFlatface(ancestors: string[], geomHash?: string): Repository {
+  function repoWithFlatface(ancestors: string[], uuid?: string): Repository {
     const repo = new Repository()
-    repo.registerAncestor(ancestors, flatfaceObj, geomHash ?? null)
+    repo.registerAncestor(ancestors, flatfaceObj, uuid ?? null)
     return repo
   }
 
@@ -866,19 +864,19 @@ describe("type coercion tier scope", () => {
     expect((result as Record<string, unknown>).type).toBe("flatface")
   })
 
-  /** A face reached only via the no-ancestry hash fallback does NOT coerce. */
-  it("coercion skipped in hash fallback tier (no ancestry = strict type filter)", () => {
-    const repo = repoWithFlatface(["@A"], "gface_h")
-    // @X shares no subset relation with @A (tiers 1+2 miss); only the precise
-    // hash matches. With type_restriction=solid the strict filter drops it.
-    const q = makeAncestryQuery(["@gface_h", "@X"], "solid")
+  /** A face reached only via the UUID tier does NOT coerce. */
+  it("coercion skipped in UUID tier (no ancestry = strict type filter)", () => {
+    const repo = repoWithFlatface(["@A"], "u_h")
+    // @X shares no subset relation with @A (tiers 1+2 miss); only the UUID
+    // matches. With type_restriction=solid the strict filter drops it.
+    const q = makeAncestryQuery([constructionUuidToken("u_h"), "@X"], "solid")
     expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
   })
 
-  /** Contrast: the hash fallback resolves the face when no type is demanded. */
-  it("hash fallback resolves without type restriction", () => {
-    const repo = repoWithFlatface(["@A"], "gface_h")
-    const q = makeAncestryQuery(["@gface_h", "@X"])
+  /** Contrast: the UUID fallback resolves the face when no type is demanded. */
+  it("UUID fallback resolves without type restriction", () => {
+    const repo = repoWithFlatface(["@A"], "u_h")
+    const q = makeAncestryQuery([constructionUuidToken("u_h"), "@X"])
     const result = repo.query(q, null, bodyStoreWithSolid)
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).type).toBe("flatface")
@@ -943,10 +941,10 @@ describe("ordering guard", () => {
     repo: Repository,
     ancestors: string[],
     owner: string,
-    geomHash?: string,
+    uuid?: string,
     type = "face",
   ): string {
-    return repo.registerAncestor(ancestors, { type, created_by: owner }, geomHash ?? null)
+    return repo.registerAncestor(ancestors, { type, created_by: owner }, uuid ?? null)
   }
 
   it("filters forward references after reorder", () => {
@@ -1017,14 +1015,14 @@ describe("ordering guard", () => {
     expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
   })
 
-  it("hash fallback rejects forward match", () => {
-    // Identical geom hash, distinct ancestry; query carries only the hash so
-    // resolution lands in the tier-3 hash fallback.
+  it("UUID fallback rejects forward match", () => {
+    // Identical UUID, distinct ancestry; query carries only the UUID so
+    // resolution lands in the UUID tier.
     const repo = new Repository()
     repo.setFeatureOrder(["f0", "f1"])
-    reg(repo, ["@f0"], "f0", "gface_X")
-    reg(repo, ["@f1"], "f1", "gface_X")
-    const q = ancestry(["@gface_X"])
+    reg(repo, ["@f0"], "f0", "u_X")
+    reg(repo, ["@f1"], "f1", "u_X")
+    const q = ancestry([constructionUuidToken("u_X")])
 
     const resolved = repo.query(q, null, null, "f0") as Record<string, unknown>
     expect(resolved).not.toBeNull()
@@ -1133,9 +1131,9 @@ function makeSnapshot(repo: Repository): Record<string, unknown> {
   for (const [k, entry] of repo.ancestral) {
     ancestral[k] = { set: [...entry.set], eids: [...entry.eids] }
   }
-  const byGeomHash: Record<string, string[]> = {}
-  for (const [k, v] of repo.byGeomHash) byGeomHash[k] = [...v]
-  return { elements, ancestral, byGeomHash }
+  const byUuid: Record<string, string[]> = {}
+  for (const [k, v] of repo.byUuid) byUuid[k] = [...v]
+  return { elements, ancestral, byUuid }
 }
 
 /** Tests for repo snapshot shallow copy memory and correctness. */
@@ -1198,7 +1196,7 @@ describe("repoFromSnapshot", () => {
 
   /** Empty snapshot produces empty repo. */
   it("handles empty snapshot", () => {
-    const repo = repoFromSnapshot({ elements: {}, ancestral: {}, byGeomHash: {} })
+    const repo = repoFromSnapshot({ elements: {}, ancestral: {}, byUuid: {} })
     expect(repo.elements.size).toBe(0)
     expect(repo.ancestral.size).toBe(0)
   })
@@ -1800,7 +1798,7 @@ describe("descriptor tier resolution", () => {
     // Two caps of one extrude: the picked +z cap moved from z=10 to z=14.
     repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(0, { normal: [0, 0, -1] }))
     repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], cap(14))
-    const q = makeAncestryQuery([emitFaceDescriptor([0, 0, 10], [0, 0, 1]), "@ex1", "@body1"], "flatface")
+    const q = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@ex1", "@body1"], "flatface")
     const result = repo.query(q)
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).centroid).toEqual([0, 0, 14])
@@ -1809,7 +1807,7 @@ describe("descriptor tier resolution", () => {
   it("signed normal gate never matches the anti-parallel cap", () => {
     const repo = new Repository()
     repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(0, { normal: [0, 0, -1] }))
-    const q = makeAncestryQuery([emitFaceDescriptor([0, 0, 10], [0, 0, 1]), "@ex1", "@body1"], "flatface")
+    const q = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@ex1", "@body1"], "flatface")
     // Only candidate fails the gate -> graceful passthrough leaves 1 candidate,
     // which resolves (same as today's single-candidate behaviour), so instead
     // register a second aligned face and assert the gate picks it.
@@ -1822,7 +1820,7 @@ describe("descriptor tier resolution", () => {
     const repo = new Repository()
     repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(11))
     repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], cap(11.5))
-    const q = makeAncestryQuery([emitFaceDescriptor([0, 0, 10], [0, 0, 1]), "@ex1", "@body1"], "flatface")
+    const q = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@ex1", "@body1"], "flatface")
     expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
   })
 
@@ -1830,7 +1828,7 @@ describe("descriptor tier resolution", () => {
     const repo = new Repository()
     repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(10.0002))
     repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], cap(10.4))
-    const q = makeAncestryQuery([emitFaceDescriptor([0, 0, 10], [0, 0, 1]), "@ex1", "@body1"], "flatface")
+    const q = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@ex1", "@body1"], "flatface")
     const result = repo.query(q)
     expect((result as Record<string, unknown>).centroid).toEqual([0, 0, 10.0002])
   })
@@ -1840,17 +1838,17 @@ describe("descriptor tier resolution", () => {
     // Registered WITHOUT any descriptor in the key set; a query carrying a
     // descriptor must still full-subset match on its non-descriptor tokens.
     repo.registerAncestor(["@ex1", "@body1"], cap(5))
-    const q = makeAncestryQuery([emitFaceDescriptor([0, 0, 5], [0, 0, 1]), "@ex1", "@body1"])
+    const q = makeAncestryQuery(["@gdf|0,0,5|0,0,1", "@ex1", "@body1"])
     expect(repo.query(q)).not.toBeNull()
   })
 
-  it("mixed legacy digest + descriptor tokens: digest tier still works after the descriptor tier", () => {
+  it("mixed garbage descriptor + UUID: UUID tier still resolves", () => {
     const repo = new Repository()
-    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(0), "gface_old0")
-    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], cap(10), "gface_old1")
-    // Descriptor is unparseable garbage (never narrows); the legacy digest
-    // must still tie-break exactly as pre-descriptor docs did.
-    const q = makeAncestryQuery(["@gdf|garbage", "@gface_old1", "@ex1", "@body1"], "flatface")
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(0), "u_old0")
+    repo.registerAncestor(["@body1/face1", "@ex1", "@body1"], cap(10), "u_old1")
+    // Descriptor is unparseable garbage (never narrows); the UUID
+    // still disambiguates by construction identity.
+    const q = makeAncestryQuery(["@gdf|garbage", constructionUuidToken("u_old1"), "@ex1", "@body1"], "flatface")
     const result = repo.query(q)
     expect((result as Record<string, unknown>).centroid).toEqual([0, 0, 10])
   })
@@ -1859,10 +1857,10 @@ describe("descriptor tier resolution", () => {
     const repo = new Repository()
     repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], cap(10))
     // Exact position: resolves globally (analogue of the precise-hash rule).
-    const qTight = makeAncestryQuery([emitFaceDescriptor([0, 0, 10], [0, 0, 1]), "@X", "@Y"], "flatface")
+    const qTight = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@X", "@Y"], "flatface")
     expect(repo.query(qTight)).not.toBeNull()
     // Moved position: must NOT loose-match across lineages -> null.
-    const qLoose = makeAncestryQuery([emitFaceDescriptor([0, 0, 13], [0, 0, 1]), "@X", "@Y"], "flatface")
+    const qLoose = makeAncestryQuery(["@gdf|0,0,13|0,0,1", "@X", "@Y"], "flatface")
     expect(repo.query(qLoose)).toBeNull()
   })
 
@@ -1880,7 +1878,7 @@ describe("descriptor tier resolution", () => {
     repo.registerAncestor(["@body1/edge1", "@ex1", "@body1"], edge(20))
     const q = makeAncestryQuery(
       [
-        emitEdgeDescriptor({ kind: "edge", edgeKind: "line", point: [5, 21, 0], axis: [1, 0, 0], scalar: 10 }),
+        "@gde|line|5,21,0|1,0,0|10",
         "@ex1",
         "@body1",
       ],
@@ -1893,7 +1891,7 @@ describe("descriptor tier resolution", () => {
   it("queryAll ignores descriptor tokens in the subset match", () => {
     const repo = new Repository()
     repo.registerAncestor(["@ex1", "@body1"], cap(5))
-    const q = makeAncestryQuery([emitFaceDescriptor([9, 9, 9], [0, 0, 1]), "@ex1"])
+    const q = makeAncestryQuery(["@gdf|9,9,9|0,0,1", "@ex1"])
     expect(repo.queryAll(q).length).toBe(1)
   })
 })

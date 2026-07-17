@@ -42,8 +42,6 @@ export function solveImportStep(
     sketch_id: '',
     brep_diff: null,
     profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
     imported: true,
   }
   return { status: 'ok', body_id: bodyId }

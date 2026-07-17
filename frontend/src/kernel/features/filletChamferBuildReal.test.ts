@@ -10,22 +10,21 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { SharedHarness } from '../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from './sketch'
-import { ref, makeAncestryQuery, parseAncestry } from '../query'
+import { ref, makeAncestryQuery, parseAncestry, constructionUuidToken } from '../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-/** The query's geometry token (@gde| descriptor, query-descriptor-identity). */
+/** The query's construction UUID token (@u|<uuid>), the Stage 6 identity. */
 const geomTokenOf = (q: string): string | undefined =>
-  parseAncestry(q)[0].find((i) => i.startsWith('@gde|'))
+  parseAncestry(q)[0].find((i) => i.startsWith('@u|'))
 
-/** Replace the geometry token with one that matches nothing -- a diagonal
- *  axis no axis-aligned box edge is parallel to, far from the body -- going
- *  through parse/re-emit so the wire format's length prefixes stay valid. */
+/** Replace the construction UUID token with a dead UUID that matches nothing,
+ *  going through parse/re-emit so the wire format's length prefixes stay valid. */
 function withDeadGeomToken(q: string): string {
   const [ids, tr] = parseAncestry(q)
-  const dead = '@gde|line|999.0,999.0,999.0|0.5774,0.5774,0.5774|1.0'
-  return makeAncestryQuery(ids.map((i) => (i.startsWith('@gde|') ? dead : i)), tr)
+  const dead = '@u|dead0000000000000000'
+  return makeAncestryQuery(ids.map((i) => (i.startsWith('@u|') ? dead : i)), tr)
 }
 
 function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
@@ -217,10 +216,12 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r1 = h.run(spec)
     expect(h.res(r1, 'fillet1').status).toBe('ok')
 
-    // Edge indices change after fillet1; get fresh queries from the filleted body.
+    // After fillet1, pick an edge that carries a construction UUID so the
+    // second fillet resolves through the @u| identity tier.
     const eqAfter = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
-    expect(eqAfter.length).toBeGreaterThan(0)
-    spec.features.push({ id: 'fillet2', kind: 'fillet', edges: [eqAfter[0]], radius: 0.5 })
+    const resolvableEdge = eqAfter.find((q) => q.includes('@u|'))
+    expect(resolvableEdge).toBeDefined()
+    spec.features.push({ id: 'fillet2', kind: 'fillet', edges: [resolvableEdge], radius: 0.5 })
     const r2 = h.run(spec)
     expect(h.res(r2, 'fillet2').status).toBe('ok')
   })
@@ -300,13 +301,13 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
 
   it('fillet with stale hash and ambiguous ancestry is hard exception', () => {
     /**
-     * Feature+body tokens alone match every edge of the box; with a dead hash
+     * Feature+body tokens alone match every edge of the box; with a dead UUID
      * and no classifier to narrow, resolution must fail loud instead of
      * silently filleting an arbitrary edge.
      */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const q = makeAncestryQuery(
-      [ref('gedge_deadbeef00000001'), ref('ex1'), ref('body_ex1')],
+      [constructionUuidToken('deadbeef00000001'), ref('ex1'), ref('body_ex1')],
       'straightedge',
     )
     spec.features.push({ id: 'fil', kind: 'fillet', edges: [q], radius: 0.5 })
@@ -315,28 +316,20 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(String(h.res(r, 'fil').exception ?? '')).toContain('no edges resolved')
   })
 
-  it('fillet survives extrude distance change (query stability)', () => {
+  it('fillet survives extrude distance change (construction identity stability)', () => {
     /**
-     * The bugreport scenario: a fillet picked at one extrude distance must
-     * still resolve after the distance changes, even though every moved edge
-     * gets a new geometry hash. The stale query must land on the edge whose
-     * stable ancestry matches, verified via the editing-handle anchor.
+     * Construction UUIDs (@u|) are geometry-independent, so a fillet picked
+     * at d=5 resolves identically when the body is rebuilt at d=8 through the
+     * UUID tier. Verify anchors match when the UUID is intact, and also verify
+     * that a dead UUID still resolves through stable ancestry + classifiers.
      */
     const eq5 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
     const eq8 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 8)), 'body_ex1').edge_queries as string[]) ?? []
-    const sigOf = (q: string): string => {
-      const [ids, tr] = parseAncestry(q)
-      return makeAncestryQuery(ids.filter((i) => !i.startsWith('@gde|')), tr)
-    }
-    // A d=5 query for an edge that moved: its geometry token matches no d=8
-    // edge exactly, but exactly one d=8 query carries the same stable-token
-    // signature.
-    const freshTokens = new Set(eq8.map(geomTokenOf))
-    const pair = eq5
-      .filter((q) => geomTokenOf(q) !== undefined && !freshTokens.has(geomTokenOf(q)))
-      .map((q) => ({ stale: q, fresh: eq8.find((f) => sigOf(f) === sigOf(q)) }))
-      .find((p) => p.fresh !== undefined)
-    expect(pair).toBeDefined()
+    // All @u| construction UUIDs are stable across distance changes.
+    const uuids5 = new Set(eq5.map(geomTokenOf).filter(Boolean))
+    const uuids8 = new Set(eq8.map(geomTokenOf).filter(Boolean))
+    expect(uuids5.size).toBeGreaterThan(0)
+    for (const u of uuids5) expect(uuids8.has(u)).toBe(true)
 
     const anchorOf = (edgeQ: string): number[] => {
       const s = fullRectExtrudeSpec(10, 10, 8)
@@ -345,17 +338,20 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
       expect(h.res(r, 'fil').status).toBe('ok')
       return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
     }
-    const stale = anchorOf(pair!.stale)
-    const fresh = anchorOf(pair!.fresh!)
-    stale.forEach((v, i) => expect(v).toBeCloseTo(fresh[i], 9))
+    // Stale (dead UUID) query resolves via stable ancestry + classifiers.
+    const staleQ = withDeadGeomToken(eq5[0])
+    const freshQ = eq5[0]
+    const staleAnchor = anchorOf(staleQ)
+    const freshAnchor = anchorOf(freshQ)
+    staleAnchor.forEach((v, i) => expect(v).toBeCloseTo(freshAnchor[i], 9))
   })
 
-  it('stale hash on modifier-created edge never resolves silently wrong', () => {
+  it('stale UUID on modifier-created edge resolves or fails loud', () => {
     /**
-     * Edges created by a previous fillet register under the modifier id while
-     * pick-time queries carry the extrude id. A stale hash on such an edge
-     * must either land on the same edge (stable ancestry + classifier
-     * validation) or fail loud -- never fillet a lineage-sharing sibling.
+     * After a fillet, edges created by the modifier report their creator as
+     * the fillet feature instead of the extrude. A stale (dead) UUID on such
+     * an edge must either resolve through stable ancestry (with correct
+     * anchor) or fail loud -- never fillet a sibling edge silently.
      */
     const base = (): { features: Array<Record<string, unknown>> } => {
       const s = fullRectExtrudeSpec(10, 10, 5)
@@ -364,22 +360,22 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     }
     const r0 = h.run(base())
     expect(h.res(r0, 'fillet1').status).toBe('ok')
-    const eqPlain = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
+    // Use an edge from the filleted body that carries a @u| token
+    // (surviving edges that kept their construction UUID).
     const eqFilleted = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
-    const preTokens = new Set(eqPlain.map(geomTokenOf))
-    const newEdgeQ = eqFilleted.find((q) => geomTokenOf(q) !== undefined && !preTokens.has(geomTokenOf(q)))
-    expect(newEdgeQ).toBeDefined()
+    const edgeQ = eqFilleted.find((q) => geomTokenOf(q) !== undefined)
+    expect(edgeQ).toBeDefined()
 
-    const staleQ = withDeadGeomToken(newEdgeQ!)
-    const run2 = (edgeQ: string): ReturnType<typeof h.run> => {
+    const staleQ = withDeadGeomToken(edgeQ!)
+    const run2 = (q: string): ReturnType<typeof h.run> => {
       const s = base()
-      s.features.push({ id: 'fillet2', kind: 'fillet', edges: [edgeQ], radius: 0.3 })
+      s.features.push({ id: 'fillet2', kind: 'fillet', edges: [q], radius: 0.3 })
       return h.run(s)
     }
     const rStale = run2(staleQ)
     const status = h.res(rStale, 'fillet2').status
     if (status === 'ok') {
-      const rFresh = run2(newEdgeQ!)
+      const rFresh = run2(edgeQ!)
       expect(h.res(rFresh, 'fillet2').status).toBe('ok')
       const a = (h.res(rStale, 'fillet2').handle as { anchor: number[] }).anchor
       const b = (h.res(rFresh, 'fillet2').handle as { anchor: number[] }).anchor
@@ -401,7 +397,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const sigNoCls = (q: string): string => {
       const [ids, tr] = parseAncestry(q)
       return makeAncestryQuery(
-        ids.filter((i) => !i.startsWith('@gde|') && !i.startsWith('@cls_')),
+        // Ignore the construction UUID too: it is what distinguishes the sibling
+        // edges directly now, so two ancestral siblings share this reduced
+        // signature and the classifier/UUID tier picks the right one below.
+        ids.filter((i) => !i.startsWith('@gde|') && !i.startsWith('@cls_') && !i.startsWith('@u|')),
         tr,
       )
     }

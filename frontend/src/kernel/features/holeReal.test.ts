@@ -66,8 +66,6 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             sketch_id: 'sk_t',
             brep_diff: null,
             profile_queries: [],
-            face_lineage: {},
-            edge_lineage: {},
           },
         }
         const featuresById = { sk: { entities: c.points.map((p) => ({ id: p, kind: 'point' })) } }
@@ -114,7 +112,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(scope.detach(box), 'ex_t'),
             sketch_id: 'sk_t', brep_diff: null,
-            profile_queries: [], face_lineage: {}, edge_lineage: {},
+            profile_queries: [],
           },
         }
         const result = solveHole(occ, scope, table, {
@@ -146,7 +144,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(scope.detach(box), 'ex_first'),
             sketch_id: 'sk_first', brep_diff: null,
-            profile_queries: [], face_lineage: {}, edge_lineage: {},
+            profile_queries: [],
           },
         }
         // No `target` field — should default to body_first.
@@ -179,7 +177,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(scope.detach(box), 'ex_t'),
             sketch_id: 'sk_t', brep_diff: null,
-            profile_queries: [], face_lineage: {}, edge_lineage: {},
+            profile_queries: [],
           },
         }
         // First hole: shallow.

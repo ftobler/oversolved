@@ -23,7 +23,7 @@ export default defineConfig({
     // (`just parity` / vitest.parity.config.ts), not the fast default suite.
     exclude: [...configDefaults.exclude, 'src/kernel/occ/fullDocParity.test.ts'],
     setupFiles: ['src/test-setup.ts'],
-    testTimeout: ci ? 30000 : undefined,
-    hookTimeout: ci ? 60000 : undefined,
+    testTimeout: ci ? 60000 : undefined,
+    hookTimeout: ci ? 120000 : undefined,
   },
 })

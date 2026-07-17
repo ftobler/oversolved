@@ -79,8 +79,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             sketch_id: 'sk_s',
             brep_diff: null,
             profile_queries: [],
-            face_lineage: {},
-            edge_lineage: {},
           },
         }
         const feature = { id: c.feature_id, kind: c.kind, [c.kind]: c.sub }
@@ -117,8 +115,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       sketch_id: 'sk_' + id,
       brep_diff: null,
       profile_queries: [],
-      face_lineage: {},
-      edge_lineage: {},
     }
   }
 

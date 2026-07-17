@@ -37,8 +37,6 @@ describe('applyBodyOperation OCC-free branches', () => {
         sketch_id: '',
         brep_diff: null,
         profile_queries: [],
-        face_lineage: {},
-        edge_lineage: {},
       },
     }
     expect(() =>

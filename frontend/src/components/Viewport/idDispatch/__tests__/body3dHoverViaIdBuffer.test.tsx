@@ -19,6 +19,7 @@ beforeEach(() => {
     normalSelection: new Set(),
     activePickField: null,
     hoveredSelectionId: null,
+    hoveredPickKey: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,
   })
@@ -51,6 +52,24 @@ describe('body3dHoverViaIdBuffer', () => {
     const s = useSketchEditorStore.getState()
     expect(s.hoveredSelectionId).toBe('@feat1/face/0')
     expect(faceQueryCalled).toBe('@feat1/face/0')
+  })
+
+  it('face hover propagates the pick key so Body3D can isolate one of two shared-query faces', () => {
+    registerBodyCallbacks('feat1b/b1', {
+      featureId: 'feat1b',
+      bodyId: 'b1',
+      mesh: stubMesh(['@feat1b/face/dup', '@feat1b/face/dup']),
+      edgeQueries: undefined,
+      vertexQueries: undefined,
+      updateFaceGeometryForQuery: () => {},
+      clearFaceGeometry: () => {},
+    })
+
+    brepFaceAdapter.onHover('@feat1b/face/dup', 'feat1b/b1#1')
+
+    const s = useSketchEditorStore.getState()
+    expect(s.hoveredSelectionId).toBe('@feat1b/face/dup')
+    expect(s.hoveredPickKey).toBe('feat1b/b1#1')
   })
 
   it('edge hover sets hoveredSelectionId', () => {

@@ -56,8 +56,6 @@ function bodyFromSpec(
     sketch_id: id === 'body_t' ? 'sk_t' : 'sk_u',
     brep_diff: null,
     profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
   }
 }
 

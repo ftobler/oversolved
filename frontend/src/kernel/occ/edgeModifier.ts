@@ -1,29 +1,47 @@
-// `_apply_edge_modifier`, `_extract_edge_modifier_lineage`, `ocp_edge_modifier_diff`, and the
-// public `apply_fillet_with_lineage` / `apply_chamfer_with_lineage`. This is the OCC adapter
-// the fillet/chamfer leaf (features/filletChamfer.ts) calls to round/bevel a set of edges on a
-// solid, transfer the pre-op lineage through the operation, and produce the BrepDiff.
+// `_apply_edge_modifier`, `ocp_edge_modifier_diff`, and the public
+// `apply_fillet_with_lineage` / `apply_chamfer_with_lineage`. This is the OCC adapter the
+// fillet/chamfer leaf (features/filletChamfer.ts) calls to round/bevel a set of edges on a
+// solid, transfer the pre-op construction names through the operation, and produce the BrepDiff.
 //
-// Lineage is keyed by copy-stable geometry hash (gface_/gedge_), per lineage-stable-keying.md.
-// The modifier history (IsDeleted/Modified/Generated) drives both the lineage transfer and the
-// diff classification; the fillet faces generated from modified edges land in new_faces (no
-// input-face preimage), so the builder's @created_by rewrite attributes them to the modifying
-// feature.
+// The modifier history (IsDeleted/Modified/Generated) drives both the name transfer (see
+// extractNames) and the diff classification; the fillet faces generated from modified edges land
+// in new_faces (no input-face preimage), so the builder's @created_by rewrite attributes them to
+// the modifying feature.
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
-import { faceCentroid, faceNormal, faceArea, round6, edgeToGeom } from './primitives'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
+import { faceCentroid, edgeToGeom } from './primitives'
+import { edgeGeometryHash } from '../geomHash'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
+import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
+import { deriveEdgeNames, faceSplitKey } from './constructionLineage'
 
 type Lineage = Record<string, string[]>
+type Names = Record<string, string>
+
+/** The pre-op construction-name maps the modifier carries forward. */
+export interface OldNames {
+  createdBy: string
+  faceNames: Names
+  edgeNames: Names
+  faceAncestry: Lineage
+  edgeAncestry: Lineage
+}
+
+/** The rebuilt construction-name maps after a fillet/chamfer. */
+export interface NewNames {
+  faceNames: Names
+  edgeNames: Names
+  faceAncestry: Lineage
+  edgeAncestry: Lineage
+}
 
 export interface EdgeModifierResult {
   shape: OccShape
   success: boolean
   reason: string | null
-  faceLineage: Lineage | null
-  edgeLineage: Lineage | null
+  names: NewNames | null
   diff: BrepDiff
 }
 
@@ -54,59 +72,41 @@ function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
 }
 
 /**
- * (face_lineage, edge_lineage) for the modified shape (mirrors
- * `_extract_edge_modifier_lineage`). Old face tokens follow Modified()/geometry
- * match; modified-edge tokens flow to the Generated() fillet faces; edge lineage
- * is rebuilt from face adjacency.
+ * Rebuilt construction-name maps after a fillet/chamfer (query-naming-by-
+ * construction). Inherited faces carry their source UUID across the op by
+ * `maker.Modified()` subshape identity (a split orders its children); the fillet
+ * faces generated from a modified edge are minted `role=fillet` UUIDs slotted by
+ * the filleted edge's UUID. Edge names are derived from the output face
+ * adjacency. Geometry never enters an identity, only the split ordering.
  */
-function extractLineage(
+function extractNames(
   oc: OccModule,
   scope: DisposeScope,
   maker: OccEdgeModifierMaker,
   oldShape: OccShape,
   newShape: OccShape,
   modifiedEdges: OccShape[],
-  oldFaceLineage: Lineage,
-  oldEdgeLineage: Lineage,
-): { faceLineage: Lineage; edgeLineage: Lineage } {
-  const newFaceLineage: Lineage = {}
+  old: OldNames,
+): NewNames {
+  const faceNames: Names = {}
+  const faceAncestry: Lineage = {}
 
-  // New-shape faces with geometry for matching unchanged faces.
-  const newFacesGeom = exploreFaces(oc, scope, newShape).map((f) => ({
-    f,
-    c: faceCentroid(oc, scope, f),
-    a: faceArea(oc, scope, f),
-    n: faceNormal(oc, scope, f),
-  }))
-
-  const geomKey = (c: number[], a: number, n: number[]): string =>
-    [round6(c[0]), round6(c[1]), round6(c[2]), round6(a), round6(n[0]), round6(n[1]), round6(n[2])].join(',')
-
-  const findOutputFace = (c: number[], a: number, n: number[]): OccShape | null => {
-    const key = geomKey(c, a, n)
-    for (const g of newFacesGeom) if (geomKey(g.c, g.a, g.n) === key) return g.f
-    let best: OccShape | null = null
-    let bestScore = Infinity
-    for (const g of newFacesGeom) {
-      const dc = Math.hypot(c[0] - g.c[0], c[1] - g.c[1], c[2] - g.c[2])
-      const ar = Math.abs(a - g.a) / Math.max(a, g.a, 1e-12)
-      const dn = 1.0 - Math.abs(n[0] * g.n[0] + n[1] * g.n[1] + n[2] * g.n[2])
-      const score = dc + 0.01 * ar + 0.001 * dn
-      if (score < bestScore) {
-        bestScore = score
-        best = g.f
-      }
-    }
-    return best !== null && bestScore < 1.0 ? best : null
+  // Modified()/Generated() hand back faces carrying a FORWARD orientation, but
+  // every downstream consumer (deriveEdgeNames, tessellation, registration)
+  // explores faces from the built SOLID, where the shell orients each face
+  // outward. faceGh is normal-signed, so the two disagree for any face the op
+  // reshaped, leaving its edges unnamed. Canonicalize every minted key to the
+  // built-solid face reached by IsSame (orientation-independent identity).
+  const builtFaces = exploreFaces(oc, scope, newShape)
+  const builtGh = (f: OccShape): string => {
+    const same = builtFaces.find((bf) => (bf as OccSubShape).IsSame(f as OccSubShape))
+    return faceGh(oc, scope, asFace(oc, same ?? f))
   }
 
-  // Step 1: old faces -> output via Modified()/geometry.
+  // Step 1: old named faces -> output faces via Modified() (subshape identity).
   for (const oldF of exploreFaces(oc, scope, oldShape)) {
-    const c = faceCentroid(oc, scope, oldF)
-    const n = faceNormal(oc, scope, oldF)
-    const a = faceArea(oc, scope, oldF)
-    const tokens = oldFaceLineage[faceGeometryHash(c, n)]
-    if (!tokens || tokens.length === 0) continue
+    const uuid = old.faceNames[faceGh(oc, scope, asFace(oc, oldF))]
+    if (!uuid) continue
     let deleted = false
     try {
       deleted = maker.IsDeleted(oldF)
@@ -114,52 +114,61 @@ function extractLineage(
       deleted = false
     }
     if (deleted) continue
-    const modFaces = drainList(scope, maker.Modified(oldF))
-    if (modFaces.length > 0) {
-      for (const outF of modFaces) newFaceLineage[faceGh(oc, scope, asFace(oc, outF))] = [...tokens]
+    const ancestry = old.faceAncestry[uuid] ?? []
+    const mods = drainList(scope, maker.Modified(oldF))
+    if (mods.length === 0) {
+      // Unchanged face: its geom-hash key persists, so the UUID carries by key.
+      faceNames[faceGh(oc, scope, asFace(oc, oldF))] = uuid
+      faceAncestry[uuid] = [...ancestry]
+    } else if (mods.length === 1) {
+      faceNames[builtGh(mods[0])] = uuid
+      faceAncestry[uuid] = [...ancestry]
     } else {
-      const outF = findOutputFace(c, a, n)
-      if (outF !== null) newFaceLineage[faceGh(oc, scope, outF)] = [...tokens]
+      const ordered = orderSplitChildren(
+        mods.map<SplitChild<OccShape>>((m) => ({ item: m, key: faceSplitKey(oc, scope, oldF, asFace(oc, m)) })),
+      )
+      if (ordered === null) continue  // ambiguous -> ancestral fallback
+      ordered.forEach((m, i) => {
+        const childUuid = mintFaceUuid(splitFacePath(uuid, i))
+        faceNames[builtGh(m)] = childUuid
+        faceAncestry[childUuid] = [...ancestry]
+      })
     }
   }
 
-  // Step 2: modified edges -> generated faces.
+  // Step 2: modified edges -> generated fillet faces, minted role=fillet.
   for (const edge of modifiedEdges) {
     const egh = edgeGh(oc, scope, edge)
-    const edgeTokens = egh !== null ? oldEdgeLineage[egh] : undefined
-    if (!edgeTokens || edgeTokens.length === 0) continue
+    const edgeUuid = egh !== null ? old.edgeNames[egh] : undefined
+    if (!edgeUuid) continue
+    const edgeAncestry = old.edgeAncestry[edgeUuid] ?? []
     let generated: OccShape[]
     try {
       generated = drainList(scope, maker.Generated(edge))
     } catch {
       continue
     }
-    for (const g of generated) {
-      for (const gf of exploreFaces(oc, scope, g)) {
-        const k = faceGh(oc, scope, asFace(oc, gf))
-        if (!(k in newFaceLineage)) newFaceLineage[k] = edgeTokens
-      }
+    const genFaces: OccShape[] = []
+    for (const g of generated) for (const gf of exploreFaces(oc, scope, g)) genFaces.push(gf)
+    const base = mintFaceUuid(filletFacePath(old.createdBy, edgeUuid))
+    const assign = (face: OccShape, uuid: string): void => {
+      const gh = builtGh(face)
+      if (gh in faceNames) return
+      faceNames[gh] = uuid
+      faceAncestry[uuid] = [...edgeAncestry]
+    }
+    if (genFaces.length === 1) {
+      assign(genFaces[0], base)
+    } else if (genFaces.length > 1) {
+      const ordered = orderSplitChildren(
+        genFaces.map<SplitChild<OccShape>>((f) => ({ item: f, key: faceCentroid(oc, scope, asFace(oc, f)) })),
+      )
+      if (ordered !== null) ordered.forEach((f, i) => assign(f, mintFaceUuid(splitFacePath(base, i))))
     }
   }
 
-  // Step 3: edge lineage from face adjacency (manual e2f, no indexed map).
-  const adjacency: Record<string, Set<string>> = {}
-  for (const f of exploreFaces(oc, scope, newShape)) {
-    const fgh = faceGh(oc, scope, asFace(oc, f))
-    for (const e of exploreEdges(oc, scope, f)) {
-      const egh = edgeGh(oc, scope, e)
-      if (egh === null) continue
-      ;(adjacency[egh] ??= new Set()).add(fgh)
-    }
-  }
-  const newEdgeLineage: Lineage = {}
-  for (const [egh, fghs] of Object.entries(adjacency)) {
-    const eids: string[] = []
-    for (const fgh of fghs) for (const eid of newFaceLineage[fgh] ?? []) if (!eids.includes(eid)) eids.push(eid)
-    if (eids.length > 0) newEdgeLineage[egh] = eids
-  }
-
-  return { faceLineage: newFaceLineage, edgeLineage: newEdgeLineage }
+  const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, newShape, faceNames, faceAncestry)
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
 /**
@@ -285,15 +294,13 @@ function applyEdgeModifier(
   edges: OccShape[],
   spec: ModifierSpec,
   trackLineage: boolean,
-  oldFaceLineage: Lineage,
-  oldEdgeLineage: Lineage,
+  oldNames: OldNames | null = null,
 ): EdgeModifierResult {
   const fail = (reason: string): EdgeModifierResult => ({
     shape,
     success: false,
     reason,
-    faceLineage: null,
-    edgeLineage: null,
+    names: null,
     diff: emptyBrepDiff(),
   })
 
@@ -328,12 +335,9 @@ function applyEdgeModifier(
     return fail('build_failed')
   }
 
-  let faceLineage: Lineage | null = null
-  let edgeLineage: Lineage | null = null
-  if (trackLineage) {
-    const l = extractLineage(oc, scope, maker, shape, built, appliedEdges, oldFaceLineage, oldEdgeLineage)
-    faceLineage = l.faceLineage
-    edgeLineage = l.edgeLineage
+  let names: NewNames | null = null
+  if (trackLineage && oldNames !== null) {
+    names = extractNames(oc, scope, maker, shape, built, appliedEdges, oldNames)
   }
 
   let diff: BrepDiff
@@ -343,7 +347,7 @@ function applyEdgeModifier(
     diff = emptyBrepDiff()
   }
 
-  return { shape: built, success: true, reason: null, faceLineage, edgeLineage, diff }
+  return { shape: built, success: true, reason: null, names, diff }
 }
 
 function filletSpec(oc: OccModule, radius: number): ModifierSpec {
@@ -369,10 +373,9 @@ export function applyFilletWithLineage(
   shape: OccShape,
   radius: number,
   edges: OccShape[],
-  faceLineage: Lineage,
-  edgeLineage: Lineage,
+  oldNames: OldNames | null = null,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, filletSpec(oc, radius), true, faceLineage, edgeLineage)
+  return applyEdgeModifier(oc, scope, shape, edges, filletSpec(oc, radius), true, oldNames)
 }
 
 /** Apply a fillet to `edges`, diff only (mirrors `apply_fillet_with_diff`). */
@@ -383,7 +386,7 @@ export function applyFilletWithDiff(
   radius: number,
   edges: OccShape[],
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, filletSpec(oc, radius), false, {}, {})
+  return applyEdgeModifier(oc, scope, shape, edges, filletSpec(oc, radius), false)
 }
 
 /** Apply a chamfer to `edges` and track lineage (mirrors `apply_chamfer_with_lineage`). */
@@ -395,19 +398,9 @@ export function applyChamferWithLineage(
   edges: OccShape[],
   kind: string,
   angle: number,
-  faceLineage: Lineage,
-  edgeLineage: Lineage,
+  oldNames: OldNames | null = null,
 ): EdgeModifierResult {
-  return applyEdgeModifier(
-    oc,
-    scope,
-    shape,
-    edges,
-    chamferSpec(oc, distance, kind, angle),
-    true,
-    faceLineage,
-    edgeLineage,
-  )
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angle), true, oldNames)
 }
 
 /** Apply a chamfer to `edges`, diff only (mirrors `apply_chamfer_with_diff`). */
@@ -420,5 +413,5 @@ export function applyChamferWithDiff(
   kind: string,
   angle: number,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angle), false, {}, {})
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angle), false)
 }

@@ -34,18 +34,7 @@ export function pyRound4Str(v: number): string {
   return s
 }
 
-/**
- * True if a lineage map is keyed by stable geometry hashes (this feature),
- * not the legacy OCC subshape hashes. *prefix* is "gface_" / "gedge_".
- */
-export function isGeomKeyedLineage(
-  lineage: Record<string, unknown> | null | undefined,
-  prefix: string,
-): boolean {
-  if (!lineage) return false
-  const first = Object.keys(lineage)[0]
-  return first !== undefined && first.startsWith(prefix)
-}
+
 
 function arcAngleDeg(edge: Record<string, unknown>, start: boolean): number {
   const degKey = start ? "angle_start_deg" : "angle_end_deg"
@@ -61,11 +50,7 @@ export function faceGeometryHash(centroid: number[], normal: number[]): string {
   return "gface_" + sha256Hex(parts.join("|")).slice(0, 16)
 }
 
-/** "gnormal_<hash>" from the face normal alone (orientation-only fallback). */
-export function faceNormalHash(normal: number[]): string {
-  const parts = normal.map(pyRound4Str)
-  return "gnormal_" + sha256Hex(parts.join("|")).slice(0, 16)
-}
+
 
 function curveDataItems(curveData: Record<string, unknown>): string[] {
   const items: string[] = []

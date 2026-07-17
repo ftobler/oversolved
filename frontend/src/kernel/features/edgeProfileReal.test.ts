@@ -7,9 +7,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, makePrism, faceCentroid, faceNormal, type Vec3 } from '../occ/primitives'
+import { makeBox, makePrism, faceNormal, type Vec3 } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
-import { faceGeometryHash } from '../geomHash'
 import { Repository } from '../query'
 import { solidToEdges } from '../occ/tessellation'
 import { solveExtrude } from './extrude'
@@ -26,21 +25,8 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     occ = oc
   })
 
-  function boxFaceLineage(scope: DisposeScope, box: OccShape): Record<string, string[]> {
-    const E = occ.TopAbs_ShapeEnum
-    const out: Record<string, string[]> = {}
-    const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
-    let i = 0
-    for (; exp.More(); exp.Next()) {
-      const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
-      out[faceGeometryHash(faceCentroid(occ, scope, f), faceNormal(occ, scope, f))] = [`@face_${i++}`]
-    }
-    return out
-  }
-
   function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
     const box = makeBox(occ, scope, 10, 10, 10)
-    const faceLineage = boxFaceLineage(scope, box)
     return {
       body_b: {
         id: 'body_b',
@@ -50,8 +36,6 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],
-        face_lineage: faceLineage,
-        edge_lineage: {},
       },
     }
   }
@@ -66,7 +50,8 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
       createdBy: body.created_by,
       bodyId: body.id,
       profileQueries: body.profile_queries,
-      edgeLineage: body.edge_lineage,
+      edgeAncestry: body.edge_ancestry ?? null,
+      edgeNames: body.edge_names ?? null,
     })
     const out: string[] = []
     for (let i = 0; i < edges.length; i++) {

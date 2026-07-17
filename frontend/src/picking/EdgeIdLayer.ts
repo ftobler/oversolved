@@ -3,6 +3,7 @@ import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
 import { EDGE_LAYER_NAME } from './layerNames'
+import { primitivePickKey } from './pickKey'
 
 /**
  * Concrete ID layer for B-rep edges.
@@ -42,6 +43,13 @@ export interface EdgeBodyRegistration {
   segmentToEdge: Uint32Array | number[]
   /** Ancestral query per edge (length = numEdges). */
   edgeQueries: ReadonlyArray<string>
+  /**
+   * When true, allocate the ID by a per-primitive key (`bodyKey#layer#edgeIdx`)
+   * rather than by the query string. B-rep edges set this because their queries can
+   * legitimately collide (no minted UUID / shared octant); other reusers of this
+   * layer (feature handles, sketch composites) have unique keys and leave it off.
+   */
+  perPrimitivePickKeys?: boolean
 }
 
 const VERT_SHADER = `
@@ -148,8 +156,18 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
 
       let rgb = edgeColorCache.get(edgeIdx)
       if (!rgb) {
-        this.warnDuplicateQuery(query, edgeColorCache.size > 0, reg.bodyKey, 'EdgeIdLayer', 'edge')
-        const id = this.registry.allocate(this.name, query)
+        // B-rep edges: allocate by a per-primitive pickKey (bodyKey#layer#edgeIdx), not
+        // the query, so two edges that share an ancestral query (or lack a minted
+        // UUID) still resolve to distinct IDs. The query rides along as the
+        // record's entityKey for downstream selection/resolution. Other layers
+        // keep the legacy query-keyed allocation (their keys are already unique).
+        let id: number
+        if (reg.perPrimitivePickKeys) {
+          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, edgeIdx, this.name))
+        } else {
+          this.warnDuplicateQuery(query, edgeColorCache.size > 0, reg.bodyKey, 'EdgeIdLayer', 'edge')
+          id = this.registry.allocate(this.name, query)
+        }
         allocatedIds.push(id)
         rgb = idToRGBNormalized(id)
         edgeColorCache.set(edgeIdx, rgb)

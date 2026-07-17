@@ -89,7 +89,7 @@ export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> imp
    * in the current body; `noun` is the singular primitive name (e.g. "face").
    */
   protected warnDuplicateQuery(query: string, seenInBody: boolean, bodyKey: string, label: string, noun: string): void {
-    if (import.meta.env.MODE === 'production') return
+    if (import.meta.env?.MODE === 'production') return
     const dedupKey = `${this.name}\x00${query}`
     if (this.registry.lookupKey(this.name, query) !== undefined && seenInBody && !_warnedDuplicates.has(dedupKey)) {
       _warnedDuplicates.add(dedupKey)

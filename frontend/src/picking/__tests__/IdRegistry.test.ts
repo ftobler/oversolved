@@ -20,6 +20,19 @@ describe('IdRegistry', () => {
     expect(a).toBe(a2)
   })
 
+  it('gives distinct ids to primitives that share a query but differ in pickKey', () => {
+    // Regression lock: two edges with a colliding query string (no minted UUID,
+    // same octant) must not collapse onto one ID. The per-primitive pickKey
+    // keeps them distinct while both records still carry the shared query.
+    const a = reg.allocate('edge', 'edge@dup', 'feat/body#0')
+    const b = reg.allocate('edge', 'edge@dup', 'feat/body#1')
+    expect(a).not.toBe(b)
+    expect(reg.lookup(a)!.entityKey).toBe('edge@dup')
+    expect(reg.lookup(b)!.entityKey).toBe('edge@dup')
+    expect(reg.lookup(a)!.pickKey).toBe('feat/body#0')
+    expect(reg.lookup(b)!.pickKey).toBe('feat/body#1')
+  })
+
   it('treats (layer, key) as the composite identity', () => {
     const a = reg.allocate('face', 'shared')
     const b = reg.allocate('edge', 'shared')
@@ -29,7 +42,7 @@ describe('IdRegistry', () => {
   it('lookup returns the original record', () => {
     const id = reg.allocate('face', 'face@e1#1')
     const rec = reg.lookup(id)
-    expect(rec).toEqual({ id, layer: 'face', entityKey: 'face@e1#1' })
+    expect(rec).toEqual({ id, layer: 'face', entityKey: 'face@e1#1', pickKey: 'face@e1#1' })
   })
 
   it('lookupKey round-trips', () => {

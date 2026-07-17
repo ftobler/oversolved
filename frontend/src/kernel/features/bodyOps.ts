@@ -18,7 +18,7 @@ import type { Body } from '../types3d'
 import type { OccHandle, HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets, brepDiffIsEmpty } from './shared'
 import { booleanWithDiff, volumeOf, exploreSolids, countSolids } from '../occ/booleans'
-import { transferBooleanLineage } from './booleanLineage'
+import { transferBooleanNames } from './booleanLineage'
 
 export type BodyOperation = 'add' | 'cut' | 'new'
 
@@ -32,10 +32,11 @@ export interface ApplyBodyOperationInput {
   sketchId: string
   opName?: string
   profileQueries?: string[]
-  /** The tool body's per-face lineage (face_gh -> tokens). */
-  faceLineage?: Record<string, string[]> | null
-  /** The tool body's per-edge lineage. */
-  edgeLineage?: Record<string, string[]> | null
+  /** The tool body's construction-name maps (query-naming-by-construction). */
+  faceNames?: Record<string, string> | null
+  edgeNames?: Record<string, string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
 }
 
 export interface ApplyBodyOperationResult {
@@ -46,15 +47,21 @@ export interface ApplyBodyOperationResult {
   solver_warning?: string
 }
 
+interface NameMaps {
+  faceNames?: Record<string, string> | null
+  edgeNames?: Record<string, string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
+}
+
 function newBody(
   id: string,
   createdBy: string,
   shape: OccHandle,
   sketchId: string,
   profileQueries: string[],
-  faceLineage: Record<string, string[]>,
-  edgeLineage: Record<string, string[]>,
   imported = false,
+  names: NameMaps = {},
 ): Body {
   return {
     id,
@@ -64,8 +71,10 @@ function newBody(
     sketch_id: sketchId,
     brep_diff: null,
     profile_queries: [...profileQueries],
-    face_lineage: { ...faceLineage },
-    edge_lineage: { ...edgeLineage },
+    face_names: { ...(names.faceNames ?? {}) },
+    edge_names: { ...(names.edgeNames ?? {}) },
+    face_ancestry: { ...(names.faceAncestry ?? {}) },
+    edge_ancestry: { ...(names.edgeAncestry ?? {}) },
     ...(imported ? { imported: true } : {}),
   }
 }
@@ -92,9 +101,15 @@ export function applyBodyOperation(
     sketchId,
     opName = '',
     profileQueries = [],
-    faceLineage = null,
-    edgeLineage = null,
+    faceNames = null,
+    edgeNames = null,
+    faceAncestry = null,
+    edgeAncestry = null,
   } = input
+
+  // The tool body's construction-name maps, carried onto a body the tool becomes
+  // (the "new"/no-target paths). Boolean paths (add/cut) rebuild them in Stage 2.
+  const toolNames: NameMaps = { faceNames, edgeNames, faceAncestry, edgeAncestry }
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
 
@@ -115,8 +130,6 @@ export function applyBodyOperation(
       }
     }
   }
-
-  const tlFace = faceLineage ?? {}
 
   if (operation === 'cut') {
     let cutAnything = false
@@ -141,20 +154,22 @@ export function applyBodyOperation(
         continue
       }
 
-      const { shape: newShape, diff } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
+      const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
-      const lineage = transferBooleanLineage(oc, scope, {
+      const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
-        diff,
-        oldTargetShape: oldShape,
-        toolShape,
-        faceLineage: existingBody.face_lineage,
-        toolFaceLineage: tlFace,
+        faceOrigin,
+        targetFaceNames: existingBody.face_names ?? {},
+        targetFaceAncestry: existingBody.face_ancestry ?? {},
+        toolFaceNames: faceNames,
+        toolFaceAncestry: faceAncestry,
       })
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
-      existingBody.face_lineage = lineage.face_lineage
-      existingBody.edge_lineage = lineage.edge_lineage
+      existingBody.face_names = names.face_names
+      existingBody.edge_names = names.edge_names
+      existingBody.face_ancestry = names.face_ancestry
+      existingBody.edge_ancestry = names.edge_ancestry
 
       cutAnything = true
       cutBodyIds.push(bid)
@@ -174,8 +189,6 @@ export function applyBodyOperation(
             table.register(scope.detach(solids[i]), existingBody.created_by),
             existingBody.sketch_id,
             [],
-            {},
-            {},
             existingBody.imported,
           )
           cutBodyIds.push(newBid)
@@ -209,8 +222,8 @@ export function applyBodyOperation(
         table.register(scope.detach(solid), featureId),
         sketchId,
         profileQueries,
-        tlFace,
-        edgeLineage ?? {},
+        false,
+        toolNames,
       )
       bodyIds.push(bid)
     })
@@ -230,11 +243,13 @@ export function applyBodyOperation(
       const oldShape = table.get<OccShape>(existingBody.shape)
       let newShape: OccShape
       let diff
+      let faceOrigin
       try {
         // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
         const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', { unifyFaces: !existingBody.imported })
         newShape = res.shape
         diff = res.diff
+        faceOrigin = res.faceOrigin
       } catch (exc) {
         throw new Error(`${opName}: add operation failed: ${String(exc)}`)
       }
@@ -251,21 +266,23 @@ export function applyBodyOperation(
         const toolN = countSolids(oc, scope, toolShape)
         if (countSolids(oc, scope, newShape) >= oldN + toolN) continue
       }
-      const lineage = transferBooleanLineage(oc, scope, {
+      const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
-        diff,
-        oldTargetShape: oldShape,
-        toolShape,
-        faceLineage: existingBody.face_lineage,
-        toolFaceLineage: tlFace,
+        faceOrigin,
+        targetFaceNames: existingBody.face_names ?? {},
+        targetFaceAncestry: existingBody.face_ancestry ?? {},
+        toolFaceNames: faceNames,
+        toolFaceAncestry: faceAncestry,
       })
       const oldHandle = existingBody.shape
       existingBody.shape = table.register(scope.detach(newShape), existingBody.created_by)
       table.release(oldHandle)
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
-      existingBody.face_lineage = lineage.face_lineage
-      existingBody.edge_lineage = lineage.edge_lineage
+      existingBody.face_names = names.face_names
+      existingBody.edge_names = names.edge_names
+      existingBody.face_ancestry = names.face_ancestry
+      existingBody.edge_ancestry = names.edge_ancestry
       fused = true
       fusedBodyId = bid
       break
@@ -296,8 +313,8 @@ export function applyBodyOperation(
       table.register(scope.detach(solid), featureId),
       sketchId,
       profileQueries,
-      tlFace,
-      edgeLineage ?? {},
+      false,
+      toolNames,
     )
     bodyIds.push(bid)
   })

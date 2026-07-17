@@ -1,5 +1,5 @@
 /**
- * This is the BrepDiff producer the 2e lineage transfer consumes: it classifies each output
+ * This is the BrepDiff producer the boolean name transfer consumes: it classifies each output
  * sub-shape as inherited (target lineage survives) or new (introduced by the tool), so ancestry
  * registration tags new faces with the cutting feature rather than the body's creator.
  *
@@ -7,8 +7,8 @@
  * returns a TopTools_ListOfShape with no iterator binding; drain via
  * Size()/First_1()/RemoveFirst() (the same sharp edge as the spike). -
  * TopTools_IndexedDataMapOfShapeListOfShape / TopExp.MapShapesAndAncestors's map type are
- * absent, so edge->face adjacency (the edge_lineage rebuild) is built face-by-face in the
- * lineage shard, not via the indexed map.
+ * absent, so any edge->face adjacency (e.g. deriveEdgeNames) is built face-by-face, not via the
+ * indexed map.
  *
  * Like primitives.ts, every function takes a DisposeScope and tracks its transients there. The
  * returned result shape is NOT tracked (the caller owns its lifetime); the BrepDiff's sub-shape
@@ -22,6 +22,19 @@ import { canonicalizeCylinderFaces, type CanonicalFaceSwap } from './canonicalSu
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 export type BooleanOp = 'cut' | 'fuse' | 'common'
+
+/**
+ * An output face paired with the input face it derived from (query-naming-by-
+ * construction). This carries construction-UUID identity across a boolean by
+ * OCC subshape history (Modified/IsSame), NOT by geometry: the name transfer
+ * looks up the source face's UUID and carries it onto the output. A source that
+ * maps to >1 output is a genuine split; the transfer orders those children.
+ */
+export interface FaceOrigin {
+  output: OccSubShape
+  source: OccSubShape
+  fromTool: boolean
+}
 
 /** All sub-shapes of `shape` of the given enum kind, as IsSame-comparable handles. */
 function explore(
@@ -93,7 +106,7 @@ export function booleanWithHistory(
   targetShape: OccShape,
   toolShape: OccShape,
   op: BooleanOp,
-): { shape: OccShape; diff: BrepDiff } {
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   const E = oc.TopAbs_ShapeEnum
   const algo = scope.track(makeBooleanOp(oc, op))
 
@@ -109,7 +122,7 @@ export function booleanWithHistory(
 
   const result = algo.Shape()
   const diff = emptyBrepDiff()
-  if (!algo.HasHistory()) return { shape: result, diff }
+  if (!algo.HasHistory()) return { shape: result, diff, faceOrigin: [] }
   const history = scope.track(algo.History()).get()
 
   // Classify target sub-shapes: build the pool of output preimages reachable
@@ -181,7 +194,39 @@ export function booleanWithHistory(
   diff.new_edges = oE.newList
   diff.inherited_edges = oE.inheritedList
 
-  return { shape: result, diff }
+  // Per-output-face origin: which input face (target or tool) each output face
+  // derived from, by Modified()/IsSame subshape identity. A source that maps to
+  // several images is a genuine split; the name transfer orders those children.
+  const facePairs: FaceOrigin[] = []
+  const collectPairs = (shape: OccShape, fromTool: boolean): void => {
+    for (const s of explore(oc, scope, shape, E.TopAbs_FACE)) {
+      if (history.IsRemoved(s)) continue
+      const mods = drainList(scope, history.Modified(s)) as OccSubShape[]
+      if (mods.length > 0) {
+        for (const m of mods) facePairs.push({ output: m, source: s, fromTool })
+        continue
+      }
+      // Unchanged face: the input handle does NOT live in the result, so find
+      // the result face that is IsSame to it. Without this, faces untouched by
+      // the boolean get no origin entry and lose their construction UUID.
+      for (const outFace of explore(oc, scope, result, E.TopAbs_FACE)) {
+        if (outFace.IsSame(s)) {
+          facePairs.push({ output: outFace, source: s, fromTool })
+          break
+        }
+      }
+    }
+  }
+  collectPairs(targetShape, false)
+  collectPairs(toolShape, true)
+  const faceOrigin: FaceOrigin[] = []
+  for (const of of explore(oc, scope, result, E.TopAbs_FACE)) {
+    const matches = facePairs.filter((p) => of.IsSame(p.output))
+    const chosen = matches.find((p) => !p.fromTool) ?? matches[0]
+    if (chosen) faceOrigin.push({ output: of, source: chosen.source, fromTool: chosen.fromTool })
+  }
+
+  return { shape: result, diff, faceOrigin }
 }
 
 /**
@@ -280,6 +325,52 @@ function mapDiffThroughCanonical(diff: BrepDiff, swaps: CanonicalFaceSwap[]): Br
   }
 }
 
+/** Rewrite faceOrigin.output through the canonical-cylinder rebuild swaps. */
+function mapOriginThroughCanonical(origin: FaceOrigin[], swaps: CanonicalFaceSwap[]): FaceOrigin[] {
+  return origin.map((o) => ({
+    ...o,
+    output: swaps.find((sw) => sw.from.IsSame(o.output))?.to ?? o.output,
+  }))
+}
+
+/**
+ * Map faceOrigin.output from raw-boolean space onto the cleaned shape (mirrors
+ * composeDiffThroughClean). A raw output face removed by the unify step drops
+ * out; a merged face keeps the first source seen. The source handle references
+ * an input shape, untouched by clean, so it is carried as-is.
+ */
+function composeOriginThroughClean(
+  oc: OccModule,
+  scope: DisposeScope,
+  origin: FaceOrigin[],
+  cleanHistory: OccHistory,
+  cleanedShape: OccShape,
+): FaceOrigin[] {
+  const E = oc.TopAbs_ShapeEnum
+  const cleanedFaces = explore(oc, scope, cleanedShape, E.TopAbs_FACE)
+  const out: FaceOrigin[] = []
+  const seen = new Set<OccSubShape>()
+  const push = (output: OccSubShape, o: FaceOrigin): void => {
+    if (seen.has(output)) return
+    seen.add(output)
+    out.push({ output, source: o.source, fromTool: o.fromTool })
+  }
+  for (const o of origin) {
+    if (cleanHistory.IsRemoved(o.output)) continue
+    const mods = drainList(scope, cleanHistory.Modified(o.output)) as OccSubShape[]
+    if (mods.length === 0) {
+      const passthrough = cleanedFaces.filter((p) => p.IsSame(o.output))
+      for (const p of passthrough.length ? passthrough : [o.output]) push(p, o)
+    } else {
+      for (const m of mods) {
+        const matched = cleanedFaces.filter((p) => p.IsSame(m))
+        for (const p of matched.length ? matched : [m]) push(p, o)
+      }
+    }
+  }
+  return out
+}
+
 /**
  * Boolean (cut|fuse|common) then clean, composing history through the clean step
  * (mirrors cadquery_ops `_boolean_with_diff`). Returns (cleaned shape, BrepDiff
@@ -298,7 +389,7 @@ export function booleanWithDiff(
   tool: OccShape,
   op: BooleanOp,
   opts: { unifyFaces?: boolean } = {},
-): { shape: OccShape; diff: BrepDiff } {
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   // The face merge (UnifySameDomain's face fold) can spin forever, not throw, on
   // imported-STEP topology (the reproducer: extruding a holed face of an
   // imported body back onto itself, double_with_hole.step). The two cases are
@@ -306,10 +397,11 @@ export function booleanWithDiff(
   // decides by provenance and passes `unifyFaces: false` for imported targets;
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
-  const { shape: raw, diff: rawDiff } = booleanWithHistory(oc, scope, target, tool, op)
+  const { shape: raw, diff: rawDiff, faceOrigin: rawOrigin } = booleanWithHistory(oc, scope, target, tool, op)
   const canonical = canonicalizeCylinderFaces(oc, scope, raw)
   const preClean = canonical.shape
   const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.swaps) : rawDiff
+  const preOrigin = canonical.changed ? mapOriginThroughCanonical(rawOrigin, canonical.swaps) : rawOrigin
   let cleaned: OccShape
   let history: OccHistory
   try {
@@ -323,8 +415,9 @@ export function booleanWithDiff(
     // shared coincident face plus the hole's inner wall defeat the merge. The raw
     // fuse output is a sound solid, so fall back to it un-merged (an extra seam
     // edge where the parts meet) rather than failing the whole feature.
-    return { shape: preClean, diff: preDiff }
+    return { shape: preClean, diff: preDiff, faceOrigin: preOrigin }
   }
   const diff = composeDiffThroughClean(oc, scope, preDiff, history, cleaned)
-  return { shape: cleaned, diff }
+  const faceOrigin = composeOriginThroughClean(oc, scope, preOrigin, history, cleaned)
+  return { shape: cleaned, diff, faceOrigin }
 }

@@ -23,8 +23,6 @@ function nullBody(id: string): Body {
     sketch_id: 'sk',
     brep_diff: null,
     profile_queries: [],
-    face_lineage: {},
-    edge_lineage: {},
   }
 }
 

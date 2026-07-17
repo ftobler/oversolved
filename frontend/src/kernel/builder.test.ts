@@ -11,7 +11,6 @@ import {
 } from './builder'
 import { resolve3dGeometry, projectTo2d } from './features/projectionLowering'
 import { Repository, makeAncestryQuery, ref, canonical } from './query'
-import { edgeGeometryHash } from './geomHash'
 import { repoFromSnapshot } from './builder'
 import type { BuildState, FeatureCheckpoint, Body } from './types3d'
 
@@ -29,7 +28,7 @@ function checkpoint(spec: Record<string, unknown>): FeatureCheckpoint {
   return {
     spec,
     result: {},
-    repo_snapshot: { elements: {}, ancestral: {}, byGeomHash: {} },
+    repo_snapshot: { elements: {}, ancestral: {}, byUuid: {} },
     body_store_snapshot: {},
     bodies_snapshot: {},
   }
@@ -218,9 +217,12 @@ describe('build with mock solvers', () => {
     expect(r.pick_bodies).toBeDefined()
   })
 
-  it('pick_bodies carry real tessellated meshes from the checkpoint', () => {
-// A body that exists at the pick checkpoint must come back with real mesh/edge geometry
-// (collision for picking), not an empty placeholder.
+  it('pick_bodies carry real tessellated meshes for a mid-stack boundary (lazy)', () => {
+// A body that exists at a mid-stack pick checkpoint must come back with real
+// mesh/edge geometry (collision for picking). Under lazy checkpoint meshing the
+// intermediate checkpoint carries an EMPTY bodies_snapshot, so the mesh is
+// produced on demand by the pick path's tessellate fallback, not read from a
+// pre-stored snapshot.
     let created = false
     const deps = makeDeps({
       trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
@@ -233,8 +235,6 @@ describe('build with mock solvers', () => {
             sketch_id: '',
             brep_diff: null,
             profile_queries: [],
-            face_lineage: {},
-            edge_lineage: {},
           }
           created = true
         }
@@ -251,9 +251,10 @@ describe('build with mock solvers', () => {
     )
     const pick = r.pick_bodies as Record<string, { mesh?: unknown }> | undefined
     expect(pick?.body_a?.mesh).toBeDefined()
-    // The checkpoint snapshot itself carries the real mesh, not `{}`.
+    // f1 is not the final feature, so its checkpoint snapshot is lazy (empty):
+    // the pick mesh above came from the on-demand tessellate fallback.
     const cp = r._build_state.checkpoints.f1
-    expect((cp.bodies_snapshot as Record<string, { mesh?: unknown }>).body_a.mesh).toBeDefined()
+    expect(Object.keys(cp.bodies_snapshot as object).length).toBe(0)
   })
 
   it('calls deps.tessellateBodies with the body store', () => {
@@ -272,8 +273,6 @@ describe('build with mock solvers', () => {
           sketch_id: '',
           brep_diff: null,
           profile_queries: [],
-          face_lineage: {},
-          edge_lineage: {},
         }
         return { status: 'ok' }
       },
@@ -296,10 +295,11 @@ describe('build with mock solvers', () => {
     // the OCC path produced degenerate overlapping copies that hung the kernel
     // (translate.yaml real-doc anchor). The edge must be queryable WHEN f2 solves.
     const edge = { kind: 'line', start: [0, 0, 0], end: [0, 10, 0] }
+    const edgePayload = { type: 'straightedge', kind: 'line', start: [0, 0, 0], end: [0, 10, 0], body_id: 'body_f1', created_by: 'f1', edge_index: 0 }
     let resolvedDuringF2: unknown = undefined
     const makeBody = (): Body => ({
       id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1 as unknown as Body['shape'], sketch_id: '',
-      brep_diff: null, profile_queries: [], face_lineage: {}, edge_lineage: {},
+      brep_diff: null, profile_queries: [],
     })
     const deps = makeDeps({
       tessellateBodies: (store) => Object.fromEntries(
@@ -308,8 +308,9 @@ describe('build with mock solvers', () => {
       trySolveFeature: (feature, repo, bodyStore): FeatureResult => {
         if (feature.id === 'f1') {
           bodyStore['body_f1'] = makeBody()
+          repo.registerAncestor(['@body_f1/edge0', '@f1', '@body_f1'], edgePayload)
         } else if (feature.id === 'f2') {
-          const q = makeAncestryQuery(['@' + edgeGeometryHash(edge)], 'straightedge')
+          const q = makeAncestryQuery(['@body_f1/edge0', '@f1'], 'straightedge')
           resolvedDuringF2 = repo.query(q)
         }
         return { status: 'ok' }
@@ -432,8 +433,6 @@ describe('validateIncremental', () => {
           sketch_id: 'sk1',
           brep_diff: null,
           profile_queries: [],
-          face_lineage: {},
-          edge_lineage: {},
         }
         return { status: 'ok' }
       },
@@ -766,7 +765,7 @@ describe('repo serialization', () => {
     const snapshot = {
       elements: { id1: { ...payload }, id2: { ...payload } },
       ancestral: { [key]: { set: ['@ex1face0', '@ex1'], eids: ['id1', 'id2'] } },
-      byGeomHash: {},
+      byUuid: {},
     }
     const repo = repoFromSnapshot(snapshot)
     const entry = repo.ancestral.get(key)

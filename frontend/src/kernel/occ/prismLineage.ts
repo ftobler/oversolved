@@ -31,6 +31,15 @@ import {
 import { faceGh, edgeGh } from './lineageHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
+import {
+  mintFaceUuid,
+  sideFacePath,
+  capFacePath,
+  deriveEdgeUuid,
+  deriveSeamEdgeUuid,
+  orderSplitChildren,
+  type SplitChild,
+} from '../constructionName'
 
 const POINT_TOL = 1e-6
 
@@ -316,20 +325,90 @@ function entityForEdges(
   return result
 }
 
+/** The construction-name maps for a built solid (see LineageResult). */
+export interface LineageMaps {
+  faceNames: Record<string, string>  // faceGh -> face uuid
+  edgeNames: Record<string, string>  // edgeGh -> edge uuid
+  faceAncestry: Record<string, string[]>  // face uuid -> ancestral tokens
+  edgeAncestry: Record<string, string[]>  // edge uuid -> ancestral tokens
+}
+
+function emptyLineageMaps(): LineageMaps {
+  return { faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
+}
+
+/** A built solid plus its construction-name maps. */
+export type LineageResult = LineageMaps & { solid: OccShape }
+
+/** Faces of the builder's FirstShape()/LastShape(), the sweep caps, by IsSame. */
+function capGeneratedFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  builder: { FirstShape?(): OccShape; LastShape?(): OccShape },
+): { face: OccSubShape; which: 'start' | 'end' }[] {
+  const E = oc.TopAbs_ShapeEnum
+  const out: { face: OccSubShape; which: 'start' | 'end' }[] = []
+  const collect = (getter: (() => OccShape) | undefined, which: 'start' | 'end'): void => {
+    if (!getter) return
+    let shape: OccShape
+    try {
+      shape = getter.call(builder)
+    } catch {
+      return
+    }
+    const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    for (; exp.More(); exp.Next()) {
+      out.push({ face: scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape, which })
+    }
+  }
+  collect(builder.FirstShape, 'start')
+  collect(builder.LastShape, 'end')
+  return out
+}
+
+/** A relative ordering key for an edge (its midpoint), for split multiplicity. */
+function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
+  try {
+    const { ed } = edgeToGeom(oc, scope, edge)
+    const s = (ed as { start?: number[] }).start
+    const e = (ed as { end?: number[] }).end
+    const c = (ed as { center?: number[] }).center
+    if (Array.isArray(s) && Array.isArray(e)) {
+      return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, (s[2] + e[2]) / 2]
+    }
+    if (Array.isArray(c)) return [...c]
+  } catch {
+    // fall through
+  }
+  return [0, 0, 0]
+}
+
 /**
- * (face_lineage, edge_lineage) for an extruded solid, keyed by geometry hash
- * (mirrors `_build_prism_lineage_map`). Tokens are the raw profile entity ids
- * (the caller prepends `@sketch_id/`). Every solid face and edge gets an entry,
- * possibly with an empty token list (caps and their rims), matching Python.
+ * The construction-name maps for an extruded solid
+ * (query-naming-by-construction.md). Internally builds a geom-hash-keyed
+ * face/edge lineage (mirrors `_build_prism_lineage_map`) from the raw profile
+ * entity ids, used only to seed each UUID's ancestral tokens (the caller
+ * prepends `@sketch_id/`). When `createdBy` is non-empty, each side/cap face is
+ * minted a construction UUID (side = the generating profile entity, cap =
+ * FirstShape/LastShape role) and each edge derives its UUID from its two
+ * adjacent face UUIDs; multiplicity (a face pair sharing >1 edge) is ordered by
+ * `orderSplitChildren` and refuses on a near-tie.
  */
 function buildPrismLineageMap(
   oc: OccModule,
   scope: DisposeScope,
   occFace: OccShape,
-  prismBuilder: { Shape(): OccShape; Generated(s: OccShape): OccListOfShape },
+  prismBuilder: {
+    Shape(): OccShape
+    Generated(s: OccShape): OccListOfShape
+    FirstShape?(): OccShape
+    LastShape?(): OccShape
+  },
   loops: LoopEdge[][],
   plane: PlaneLike,
-): { faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  createdBy = '',
+  sketchId = '',
+): LineageMaps {
   const E = oc.TopAbs_ShapeEnum
   const solid = prismBuilder.Shape()
 
@@ -361,20 +440,42 @@ function buildPrismLineageMap(
     }
   }
 
-  // solid face -> tokens, keyed by geometry hash.
+  const capFaces = createdBy ? capGeneratedFaces(oc, scope, prismBuilder) : []
+
+  // solid face -> tokens + construction uuid, keyed by geometry hash. Also track
+  // each face's uuid and, per edge, its geom hash + the adjacent face ghs.
   const faceLineage: Record<string, string[]> = {}
+  const faceNames: Record<string, string> = {}
+  const faceAncestry: Record<string, string[]> = {}
   const adjacency: Record<string, Set<string>> = {}  // edge gh -> set of adjacent face gh
+  const edgeShapes: Record<string, OccShape> = {}  // edge gh -> a representative edge
   const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; faceExp.More(); faceExp.Next()) {
     const sf = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
     const gh = faceGh(oc, scope, sf)
     const match = genFaces.find((gf) => (sf as OccSubShape).IsSame(gf.face))
     faceLineage[gh] = match !== undefined ? [match.eid] : []
+    if (createdBy) {
+      let uuid: string | null = null
+      if (match !== undefined) {
+        const slot = sketchId ? `${sketchId}/${match.eid}` : match.eid
+        uuid = mintFaceUuid(sideFacePath(createdBy, slot))
+      } else {
+        const cap = capFaces.find((c) => (sf as OccSubShape).IsSame(c.face))
+        if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which))
+      }
+      if (uuid !== null) {
+        faceNames[gh] = uuid
+        faceAncestry[uuid] = [...faceLineage[gh]]
+      }
+    }
     const eExp = scope.track(new oc.TopExp_Explorer_2(sf, E.TopAbs_EDGE, E.TopAbs_SHAPE))
     for (; eExp.More(); eExp.Next()) {
-      const egh = edgeGh(oc, scope, scope.track(oc.TopoDS.Edge_1(eExp.Current())))
+      const edge = scope.track(oc.TopoDS.Edge_1(eExp.Current()))
+      const egh = edgeGh(oc, scope, edge)
       if (egh === null) continue
       ;(adjacency[egh] ??= new Set()).add(gh)
+      edgeShapes[egh] ??= edge
     }
   }
 
@@ -390,13 +491,75 @@ function buildPrismLineageMap(
     edgeLineage[egh] = tokens
   }
 
-  return { faceLineage, edgeLineage }
+  // solid edge -> construction uuid, derived from its two adjacent face uuids.
+  // Group edges by their face-pair so a pair sharing >1 edge (multiplicity) is
+  // ordered deterministically and each edge gets a stable multiplicity index.
+  const edgeNames: Record<string, string> = {}
+  const edgeAncestry: Record<string, string[]> = {}
+  if (createdBy) {
+    const byPair: Record<string, string[]> = {}  // "uuidA|uuidB" -> [edge gh...]
+    const bySingle: Record<string, string[]> = {}  // "uuidA" -> [seam edge gh...]
+    for (const [egh, faceGhs] of Object.entries(adjacency)) {
+      const uuids = [...faceGhs].map((fgh) => faceNames[fgh]).filter((u): u is string => Boolean(u))
+      const distinct = [...new Set(uuids)]
+      // Two named faces -> normal edge; one named face -> seam edge (e.g. a
+      // circle-extrude cylinder's lateral seam). Both get a UUID so no pickable
+      // edge falls back to the ambiguous createdBy+classifiers query.
+      if (distinct.length === 2) {
+        (byPair[[...distinct].sort().join('|')] ??= []).push(egh)
+      } else if (distinct.length === 1) {
+        (bySingle[distinct[0]] ??= []).push(egh)
+      }
+    }
+    for (const [pairKey, eghs] of Object.entries(byPair)) {
+      const [a, b] = pairKey.split('|')
+      let ordered: string[] | null = eghs
+      if (eghs.length > 1) {
+        const children: SplitChild<string>[] = eghs.map((egh) => ({
+          item: egh,
+          key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+        }))
+        ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
+      }
+      if (ordered === null) continue
+      ordered.forEach((egh, i) => {
+        const uuid = deriveEdgeUuid(a, b, eghs.length > 1 ? i : 0)
+        edgeNames[egh] = uuid
+        edgeAncestry[uuid] = [...(edgeLineage[egh] ?? [])]
+      })
+    }
+    for (const [faceUuid, eghs] of Object.entries(bySingle)) {
+      let ordered: string[] | null = eghs
+      if (eghs.length > 1) {
+        const children: SplitChild<string>[] = eghs.map((egh) => ({
+          item: egh,
+          key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+        }))
+        ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
+      }
+      if (ordered === null) continue
+      ordered.forEach((egh, i) => {
+        const uuid = deriveSeamEdgeUuid(faceUuid, eghs.length > 1 ? i : 0)
+        edgeNames[egh] = uuid
+        edgeAncestry[uuid] = [...(edgeLineage[egh] ?? [])]
+      })
+    }
+  }
+
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
+/** Prefix bare (non-@) tokens in every value list of a token map, in place. */
 function prefixTokens(lineage: Record<string, string[]>, prefix: string): void {
   for (const key of Object.keys(lineage)) {
     lineage[key] = lineage[key].map((t) => (t.startsWith('@') ? t : prefix + t))
   }
+}
+
+/** Prefix the two ancestry maps of a LineageMaps in place. */
+function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
+  prefixTokens(maps.faceAncestry, prefix)
+  prefixTokens(maps.edgeAncestry, prefix)
 }
 
 // ─── pre-prism profile union (multi-group extrude) ───
@@ -625,7 +788,9 @@ function prismFaceWithLineage(
   directionVec: Vec3,
   distance: number,
   tokenPrefix: string,
-): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  createdBy: string,
+  sketchId: string,
+): LineageResult {
   const builder = scope.track(
     new oc.BRepPrimAPI_MakePrism_1(
       profileFace,
@@ -641,10 +806,9 @@ function prismFaceWithLineage(
     ),
   ) as OccPrismBuilder
   const solid = builder.Shape()
-  const lineage = buildPrismLineageMap(oc, scope, profileFace, builder, lineageLoops, plane)
-  prefixTokens(lineage.faceLineage, tokenPrefix)
-  prefixTokens(lineage.edgeLineage, tokenPrefix)
-  return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
+  const lineage = buildPrismLineageMap(oc, scope, profileFace, builder, lineageLoops, plane, createdBy, sketchId)
+  prefixLineageMaps(lineage, tokenPrefix)
+  return { solid, ...lineage }
 }
 
 /**
@@ -663,10 +827,11 @@ function perGroupPrismWithLineage(
   directionVec: Vec3,
   distance: number,
   tokenPrefix: string,
-): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  createdBy: string,
+  sketchId: string,
+): LineageResult {
   let solid: OccShape | null = null
-  const faceLineage: Record<string, string[]> = {}
-  const edgeLineage: Record<string, string[]> = {}
+  const merged = emptyLineageMaps()
 
   for (const [outer, holes] of groups) {
     const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
@@ -685,11 +850,12 @@ function perGroupPrismWithLineage(
       ),
     ) as OccPrismBuilder
     const part = builder.Shape()
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane)
-    prefixTokens(lineage.faceLineage, tokenPrefix)
-    prefixTokens(lineage.edgeLineage, tokenPrefix)
-    Object.assign(faceLineage, lineage.faceLineage)
-    Object.assign(edgeLineage, lineage.edgeLineage)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    Object.assign(merged.faceNames, lineage.faceNames)
+    Object.assign(merged.edgeNames, lineage.edgeNames)
+    Object.assign(merged.faceAncestry, lineage.faceAncestry)
+    Object.assign(merged.edgeAncestry, lineage.edgeAncestry)
 
     solid = solid === null ? part : booleanWithHistory(oc, scope, solid, part, 'fuse').shape
   }
@@ -707,11 +873,11 @@ function perGroupPrismWithLineage(
       // kept raw solid -- segmentation faces survive but the volume is intact.
     }
   }
-  return { solid, faceLineage, edgeLineage }
+  return { solid, ...merged }
 }
 
 /**
- * Extrude profile loops to a solid and return (solid, faceLineage, edgeLineage)
+ * Extrude profile loops to a solid and return (solid + construction-name maps)
  * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
  * and fused; nested loops become holes. The returned solid is raw and lives in
  * `scope` -- the caller registers/disposes it (typically via applyBodyOperation).
@@ -738,7 +904,8 @@ export function extrudeProfileWithLineage(
   directionVec: Vec3,
   distance: number,
   sketchId = '',
-): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  createdBy = '',
+): LineageResult {
   const groups = classifyLoops(loops)
   if (groups.length === 0) throw new Error('no loops to extrude')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
@@ -746,16 +913,16 @@ export function extrudeProfileWithLineage(
   if (groups.length === 1) {
     const [outer, holes] = groups[0]
     const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
-    return prismFaceWithLineage(oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix)
+    return prismFaceWithLineage(oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix, createdBy, sketchId)
   }
 
   const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance)
   if (merged !== null) {
     const lineageLoops = groups.flatMap(([outer, holes]) => [outer, ...holes])
-    return prismFaceWithLineage(oc, scope, merged, lineageLoops, plane, directionVec, distance, tokenPrefix)
+    return prismFaceWithLineage(oc, scope, merged, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId)
   }
 
-  return perGroupPrismWithLineage(oc, scope, groups, plane, directionVec, distance, tokenPrefix)
+  return perGroupPrismWithLineage(oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId)
 }
 
 // ─── revolve (the revolve leaf's brep producer) ───
@@ -790,8 +957,8 @@ export function revolveFace(
 }
 
 /**
- * Revolve profile loops around an axis and return (solid, faceLineage,
- * edgeLineage) (mirrors `revolve_profile_with_lineage`). Unlike extrude, revolve
+ * Revolve profile loops around an axis and return (solid + construction-name
+ * maps) (mirrors `revolve_profile_with_lineage`). Unlike extrude, revolve
  * treats `loops` as one face (loops[0] outer, the rest holes) -- no disjoint-group
  * fan-out -- and uses BRepPrimAPI_MakeRevol.Generated() for lineage. Tokens are
  * `@sketch_id/entity`.
@@ -805,25 +972,25 @@ export function revolveProfileWithLineage(
   axisDirection: Vec3,
   angleDeg: number,
   sketchId = '',
-): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  createdBy = '',
+): LineageResult {
   const face = sketchLoopsToFace(oc, scope, loops, plane)
   const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
   const builder = scope.track(
     new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, (angleDeg * Math.PI) / 180, true),
   )
   const solid = builder.Shape()
-  const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane)
+  const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane, createdBy, sketchId)
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
-  prefixTokens(lineage.faceLineage, tokenPrefix)
-  prefixTokens(lineage.edgeLineage, tokenPrefix)
-  return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
+  prefixLineageMaps(lineage, tokenPrefix)
+  return { solid, ...lineage }
 }
 
 // ─── sweep (the sweep leaf's brep producer) ───
 
 /**
- * Sweep profile loops along a spine wire and return (solid, faceLineage,
- * edgeLineage) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
+ * Sweep profile loops along a spine wire and return (solid + construction-name
+ * maps) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
  * boundary is swept (holes are not carried through the pipe shell, matching
  * Python); lineage still comes from MakePipeShell.Generated() over the face's
  * profile edges. The spine edges are pre-built world-space OCC edges. RightCorner
@@ -836,7 +1003,8 @@ export function sweepProfileWithLineage(
   plane: PlaneLike,
   spineEdges: OccShape[],
   sketchId = '',
-): { solid: OccShape; faceLineage: Record<string, string[]>; edgeLineage: Record<string, string[]> } {
+  createdBy = '',
+): LineageResult {
   if (loops.length === 0) throw new Error('sweep: no profile loops')
   if (spineEdges.length === 0) throw new Error('sweep: empty path')
 
@@ -874,9 +1042,8 @@ export function sweepProfileWithLineage(
   }
   if (!solid!) throw new Error('sweep: could not build a solid from the swept shell')
 
-  const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder!, loops, plane)
+  const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder!, loops, plane, createdBy, sketchId)
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
-  prefixTokens(lineage.faceLineage, tokenPrefix)
-  prefixTokens(lineage.edgeLineage, tokenPrefix)
-  return { solid, faceLineage: lineage.faceLineage, edgeLineage: lineage.edgeLineage }
+  prefixLineageMaps(lineage, tokenPrefix)
+  return { solid, ...lineage }
 }
