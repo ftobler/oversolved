@@ -16,6 +16,7 @@ import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import {
   edgeToGeom,
   faceCentroid,
+  faceCylinderAxis,
   faceNormal,
   faceSurfaceType,
   readEdgeSamplePoints,
@@ -39,6 +40,7 @@ export interface FaceDatum {
   area: number
   surface_type: SurfaceType
   classifiers?: string[]
+  axis?: Vec3
 }
 
 export interface TessMesh {
@@ -80,12 +82,15 @@ export function readShapeFaces(
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     const { vertices, triangles } = tessellateFace(oc, scope, face, deflection, angularDeflection)
+    const surfaceType = faceSurfaceType(oc, scope, face)
+    const axis = surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined
     raw.push({
       vertices,
       triangles,
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
-      surfaceType: faceSurfaceType(oc, scope, face),
+      surfaceType,
+      axis,
     })
   }
   return raw
@@ -146,7 +151,7 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
       rf.triangles,
     )
     if (triangleCount > 0) {
-      faceData.push({ centroid: rf.centroid, normal: rf.normal, area, surface_type: rf.surfaceType })
+      faceData.push({ centroid: rf.centroid, normal: rf.normal, area, surface_type: rf.surfaceType, axis: rf.axis })
     }
   })
 
@@ -280,10 +285,13 @@ export function readShapeFaceMetadata(
   const faces: FaceSortItem[] = []
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
+    const surfaceType = faceSurfaceType(oc, scope, face)
+    const axis = surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined
     faces.push({
       centroid: faceCentroid(oc, scope, face),
       normal: faceNormal(oc, scope, face),
-      surfaceType: faceSurfaceType(oc, scope, face),
+      surfaceType,
+      axis,
     })
   }
   faces.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
@@ -300,6 +308,7 @@ export function readShapeFaceMetadata(
       area: 0,
       surface_type: face.surfaceType,
       classifiers,
+      axis: face.axis,
     })
     if (query) face_queries.push(query)
   })

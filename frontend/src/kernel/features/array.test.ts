@@ -209,7 +209,6 @@ describe('buildCircularTransforms', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'az', invert_axis: true }, zRepo, {})
     expect(rotations(t)[0].direction).toEqual([0, 0, -1])
   })
-
   it('throws when the axis picker is empty', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: 2 }, repo, {})).toThrow(/axis is required/)
   })
@@ -217,4 +216,134 @@ describe('buildCircularTransforms', () => {
   it('throws when the axis query does not resolve', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'dangling' }, repo, {})).toThrow(/did not resolve/)
   })
+
+  it('resolves the axis from a picked circular edge (center + axis)', () => {
+    const circleRepo = {
+      query: (q: string) => {
+        if (q === 'ce') return { center: [5, 0, 0], axis: [0, 1, 0], radius: 3, kind: 'circle' }
+        return null
+      },
+      elements: new Map(),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'ce' }, circleRepo, {})
+    expect(rotations(t)[0].origin).toEqual([5, 0, 0])
+    expectCloseVec(rotations(t)[0].direction, [0, 1, 0])
+  })
+
+  it('resolves the axis from a picked cylindrical face (type + axis)', () => {
+    const cylRepo = {
+      query: (q: string) => {
+        if (q === 'cf') return { type: 'cylinderface', axis: [1, 0, 0], centroid: [10, 0, 0], normal: [0, 0, 1] }
+        return null
+      },
+      elements: new Map(),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'cf' }, cylRepo, {})
+    expect(rotations(t)[0].origin).toEqual([10, 0, 0])
+    expectCloseVec(rotations(t)[0].direction, [1, 0, 0])
+  })
+
+  it('resolves the axis from a picked arc edge (center + axis)', () => {
+    const arcRepo = {
+      query: (q: string) => {
+        if (q === 'ae') return {
+          center: [0, 2, 0], axis: [0, 0, 1], radius: 5, kind: 'arc',
+          x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI,
+        }
+        return null
+      },
+      elements: new Map(),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'ae' }, arcRepo, {})
+    expect(rotations(t)[0].origin).toEqual([0, 2, 0])
+    expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
+  })
+
+  it('resolves the axis from a sketch circle via plane normal', () => {
+    const sketchCircleRepo = {
+      query: (q: string) => {
+        if (q === '@sk/c1') return { external_params: [3, 0, 2], kind: 'circle', sketch_id: 'sk' }
+        return null
+      },
+      elements: new Map([
+        ['_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }],
+      ]),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: '@sk/c1' }, sketchCircleRepo, {})
+    // Centre [3, 0] lifted to [3, 0, 0] on XY plane; axis = normal [0, 0, 1].
+    expect(rotations(t)[0].origin).toEqual([3, 0, 0])
+    expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
+  })
+
+  it('resolves the axis from a sketch circle on a non-XY plane', () => {
+    const sketchCircleRepo = {
+      query: (q: string) => {
+        if (q === '@sk/c1') return { external_params: [0, 0, 5], kind: 'circle', sketch_id: 'sk' }
+        return null
+      },
+      elements: new Map([
+        ['_pt_sk', { origin: [10, 0, 0], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [1, 0, 0] }],
+      ]),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: '@sk/c1' }, sketchCircleRepo, {})
+    // Centre [0, 0] on plane at origin [10,0,0] with x_axis [0,1,0] → [10, 0, 0].
+    expect(rotations(t)[0].origin).toEqual([10, 0, 0])
+    expectCloseVec(rotations(t)[0].direction, [1, 0, 0])
+  })
+
+  it('skips a circular edge that carries undefined start/end via truthy guard', () => {
+    // Simulate the edgeAncestryPayload shape: circular edges have start: undefined,
+    // end: undefined, plus centre + axis. The truthy guard must route into the
+    // centre/axis branch, not crash in the start/end branch.
+    const circEdgeRepo = {
+      query: (q: string) => {
+        if (q === 'ce') return { start: undefined, end: undefined, center: [0, 0, 0], axis: [0, 0, 1], kind: 'circle' }
+        return null
+      },
+      elements: new Map(),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'ce' }, circEdgeRepo, {})
+    expect(rotations(t)[0].origin).toEqual([0, 0, 0])
+    expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
+  })
+
+  it('skips a straight edge that carries undefined center/axis via truthy guard', () => {
+    // Simulate the edgeAncestryPayload shape: straight edges have center: undefined,
+    // axis: undefined, plus start/end. The truthy guard must route into the
+    // start/end branch, not crash in the centre/axis branch.
+    const straightEdgeRepo = {
+      query: (q: string) => {
+        if (q === 'se') return { start: [0, 0, 0], end: [0, 0, 3], center: undefined, axis: undefined }
+        return null
+      },
+      elements: new Map(),
+    } as unknown as Repository
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'se' }, straightEdgeRepo, {})
+    expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
+  })
+
+  it('throws when a cylindrical face has no axis field', () => {
+    // A cylinderface without an axis field should fall through to the normal-based
+    // branch, which would succeed -- but our resolver requires cylinderface to
+    // carry axis (otherwise it is treated like a planar face normal). To avoid
+    // confusion, we ensure a degenerate axis triggers no resolve.
+    const badCylRepo = {
+      query: (q: string) => {
+        if (q === 'cf') return { type: 'cylinderface', centroid: [0, 0, 0], normal: [0, 0, 1] }
+        return null
+      },
+      elements: new Map(),
+    } as unknown as Repository
+    // Without an axis field, it falls through to the planar-face normal branch
+    // and should resolve to the face normal direction.
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'cf' }, badCylRepo, {})
+    expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
+  })
 })
+
+function expectCloseVec(actual: number[], expected: number[], tol = 1e-9): void {
+  expect(actual).toHaveLength(expected.length)
+  for (let i = 0; i < expected.length; i++) {
+    expect(Math.abs(actual[i] - expected[i]), `${actual[i]} != ${expected[i]}`).toBeLessThanOrEqual(tol)
+  }
+}

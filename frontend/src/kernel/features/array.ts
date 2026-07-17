@@ -87,13 +87,14 @@ export function buildCircularTransforms(
   const includeSource = (feature.include_source as boolean) ?? true
   const stepRaw = feature.step_angle
   const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
-  // The rotation axis must be a picked straight edge or planar face; an empty or
-  // dangling pick is a solve error rather than a silent rotation about world Z.
+  // The rotation axis can be a straight edge, circular edge, sketch line,
+  // sketch circle, cylindrical face, or planar face; an empty or dangling pick
+  // is a solve error rather than a silent rotation about world Z.
   const axisQuery = (feature.axis as string) ?? ''
-  if (!axisQuery) throw new Error('circular_array: axis is required; pick a straight edge or planar face')
+  if (!axisQuery) throw new Error('circular_array: axis is required; pick an edge, sketch entity, or face')
   const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
   if (!axis) {
-    throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a straight edge or planar face`)
+    throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a usable axis`)
   }
   const [axisOrigin, resolvedDirection] = axis
   // Invert flips the axis direction, which reverses the sweep sense.

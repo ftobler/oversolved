@@ -38,6 +38,7 @@ export interface FaceSortItem {
   centroid: Vec3
   normal: Vec3
   surfaceType: SurfaceType
+  axis?: Vec3
 }
 
 /**
