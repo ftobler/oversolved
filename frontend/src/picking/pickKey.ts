@@ -25,3 +25,43 @@ export function bodyKeyFor(featureId: string, bodyId: string): string {
 export function primitivePickKey(bodyKey: string, primitiveIndex: number, layer: string): string {
   return `${bodyKey}#${layer}#${primitiveIndex}`
 }
+
+/**
+ * Resolve which primitive index in `layer` a stored pick key points at, or -1 if
+ * none. This is the id -> element back-mapping the viewport uses to isolate the
+ * single hovered primitive. Because the key is layer-qualified, a pick key minted
+ * by another layer (or a null) never matches, so a hovered vertex cannot resolve
+ * to a same-index edge or face.
+ */
+export function pickedPrimitiveIndex(
+  bodyKey: string,
+  count: number,
+  layer: string,
+  pickKey: string | null,
+): number {
+  if (pickKey === null) return -1
+  for (let i = 0; i < count; i++) {
+    if (primitivePickKey(bodyKey, i, layer) === pickKey) return i
+  }
+  return -1
+}
+
+/**
+ * Resolve the single hovered primitive index for a layer: prefer the precise pick
+ * key, then fall back to the hovered query. The fallback keeps hover highlighting
+ * reliable when no pick key was carried for the hovered primitive (mirroring how
+ * selection degrades to query membership); when a pick key is present, isolation
+ * by pick key wins so a shared-query sibling does not co-highlight.
+ */
+export function hoveredPrimitiveIndex(
+  bodyKey: string,
+  queries: ReadonlyArray<string>,
+  layer: string,
+  hoveredPickKey: string | null,
+  hoveredQuery: string | null,
+): number {
+  const byPick = pickedPrimitiveIndex(bodyKey, queries.length, layer, hoveredPickKey)
+  if (byPick >= 0) return byPick
+  if (hoveredQuery === null) return -1
+  return queries.indexOf(hoveredQuery)
+}
