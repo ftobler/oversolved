@@ -78,32 +78,33 @@ describe('PreviewEdgeOverlay', () => {
     expect(container.innerHTML).not.toBe('')
   })
 
-  it('excludes edges whose query exists in pickItems', () => {
-    const previewItem = makeItem('b1', [lineEdge, lineEdge], ['q:edge/1', 'q:edge/2'])
-    const pickItem = makeItem('b1', [], ['q:edge/1'])
-
-    // With pickItems: edge q:edge/1 should be excluded, q:edge/2 kept
-    // buildEdgeSegments mock returns 6 * edges.length floats, so 0 floats => null geo
-    // We can verify by checking that only one PreviewBodyEdges renders with 1 edge
-    // (indirectly via the mock returning Float32Array(0) for empty input)
-    const { container: withPick } = render(
-      <PreviewEdgeOverlay items={[previewItem]} pickItems={[pickItem]} />
-    )
-    const { container: withoutPick } = render(
-      <PreviewEdgeOverlay items={[previewItem]} />
-    )
-    // Both should render (both have at least one drawable edge), just checking no crash.
-    expect(withPick).toBeTruthy()
-    expect(withoutPick).toBeTruthy()
-  })
-
-  it('always renders edges without a query string even when pickItems is provided', () => {
-    // Edge has no query (edgeQueries undefined) — must always be drawn.
-    const previewItem = makeItem('b1', [lineEdge])  // no edgeQueries
-    const pickItem = makeItem('b1', [])
+  it('suppresses a preview edge geometrically coincident with a ghost (pick) edge', () => {
+    // Preview edge sits exactly on top of the pick body's edge, so it is
+    // redundant with the solid ghost and must not be drawn again.
+    const previewItem = makeItem('b1', [lineEdge])
+    const pickItem = makeItem('b1', [lineEdge])
     const { container } = render(
       <PreviewEdgeOverlay items={[previewItem]} pickItems={[pickItem]} />
     )
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('renders a MOVED edge even when the pick body has an edge of the same identity', () => {
+    // Regression: a rigid transform/mirror keeps an edge's construction identity
+    // but relocates it. Suppression keyed on identity would hide the whole
+    // preview; keyed on geometry, the moved edge survives and is drawn.
+    const movedEdge: EdgeData = { kind: 'line', start: [100, 0, 0], end: [101, 0, 0] }
+    const previewItem = makeItem('b1', [movedEdge], ['q:edge/1'])
+    const pickItem = makeItem('b1', [lineEdge], ['q:edge/1'])  // same query, old position
+    const { container } = render(
+      <PreviewEdgeOverlay items={[previewItem]} pickItems={[pickItem]} />
+    )
+    expect(container.innerHTML).not.toBe('')
+  })
+
+  it('draws every preview edge when no pickItems are provided', () => {
+    const previewItem = makeItem('b1', [lineEdge])
+    const { container } = render(<PreviewEdgeOverlay items={[previewItem]} />)
     expect(container.innerHTML).not.toBe('')
   })
 
