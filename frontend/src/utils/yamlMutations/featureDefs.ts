@@ -343,7 +343,6 @@ export function applyAddArray(doc: PartDoc, featureId: string, label?: string): 
       mode: 'linear',
       count_x: 2,
       pitch_x: 20,
-      direction_x: [1, 0, 0],
       operation: 'add',
       include_source: true,
     },

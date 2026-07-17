@@ -187,10 +187,10 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
 export const ARRAY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_array',
   subKey: 'array',
-  // direction_x/y stay as the raw-vector fallback the solver uses when no edge is
-  // picked; they are no longer edited directly, so an unpicked X array runs along
-  // world +X and a rectangular Y along +Y.
-  defaults: { source_body: '', mode: 'linear', operation: 'add', include_source: true, direction_x: [1, 0, 0], count_x: 2, pitch_x: 20 },
+  // The array direction now comes solely from the picked geometry
+  // (direction_x_query / direction_y_query); there is no raw-vector fallback, so
+  // an unpicked direction is a solve error rather than a silent world-axis array.
+  defaults: { source_body: '', mode: 'linear', operation: 'add', include_source: true, count_x: 2, pitch_x: 20 },
   fields: [
     { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
       options: [{ value: 'linear', label: 'Linear' }, { value: 'rectangular', label: 'Rectangular' }] },
@@ -200,13 +200,17 @@ export const ARRAY_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
     { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
-    // Pick an edge/axis to set the array direction; empty falls back to direction_x.
+    // A direction pick is required: an edge sets its own direction, a planar face
+    // its normal. `invert_x` flips whichever was picked.
     { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
-      emptyText: '(pick edge, +X)' },
+      emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false },
     { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: (v) => v > 0, min: 1 },
     { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20, validate: (v) => v >= 0, min: 0 },
     { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
-      showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge, +Y)' },
+      showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_y', label: 'Invert Y', default: false,
+      showWhen: (d) => d.mode === 'rectangular' },
     { type: 'number', key: 'count_y', label: 'Count Y', default: 2,
       showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: (v) => v > 0, min: 1 },
     { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,

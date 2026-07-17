@@ -8,13 +8,33 @@ import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { bareBody, resolveBody, resolveDirectionQuery, resolveAxisQuery } from './shared'
+import { bareBody, resolveBody, resolveDirectionQueryStrict, resolveAxisQuery } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 
 type Dict = Record<string, unknown>
+
+/**
+ * Resolve a required array direction from its picker query, applying the
+ * per-axis invert toggle. The direction must come from a picked straight edge
+ * or planar face: an empty or dangling query is a solve error rather than a
+ * silent world-axis fallback, so the user cannot accidentally array a body
+ * along an arbitrary direction.
+ */
+function resolveArrayDirection(feature: Dict, axis: 'x' | 'y', globalRepo: Repository): number[] {
+  const label = axis.toUpperCase()
+  const query = (feature[`direction_${axis}_query`] as string) ?? ''
+  if (!query) throw new Error(`array: direction ${label} is required; pick a straight edge or planar face`)
+  const dir = resolveDirectionQueryStrict(query, globalRepo)
+  if (!dir) {
+    throw new Error(`array: direction ${label} query '${query}' did not resolve to a straight edge or planar face`)
+  }
+  const invert = (feature[`invert_${axis}`] as boolean) ?? false
+  // `c === 0 ? 0 : -c` keeps the negated zero components as +0, not -0.
+  return invert ? dir.map((c) => (c === 0 ? 0 : -c)) : dir
+}
 
 /** Build linear/rectangular array instance transforms (mirrors `_build_array_transforms`). */
 export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature: Dict, globalRepo: Repository): OccTrsf[] {
@@ -25,7 +45,7 @@ export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature
   if (mode === 'linear') {
     const countX = Math.trunc(Number(feature.count_x ?? 2))
     const pitchX = Number(feature.pitch_x ?? 10.0)
-    const dirX = resolveDirectionQuery((feature.direction_x_query as string) ?? '', globalRepo, (feature.direction_x as number[]) ?? [1, 0, 0])
+    const dirX = resolveArrayDirection(feature, 'x', globalRepo)
     const num = includeSource ? countX - 1 : countX
     for (let i = 1; i <= num; i++) {
       trsfs.push(makeTranslationTrsf(oc, scope, dirX[0] * pitchX * i, dirX[1] * pitchX * i, dirX[2] * pitchX * i))
@@ -35,8 +55,8 @@ export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature
     const countY = Math.trunc(Number(feature.count_y ?? 2))
     const pitchX = Number(feature.pitch_x ?? 10.0)
     const pitchY = Number(feature.pitch_y ?? 10.0)
-    const dirX = resolveDirectionQuery((feature.direction_x_query as string) ?? '', globalRepo, (feature.direction_x as number[]) ?? [1, 0, 0])
-    const dirY = resolveDirectionQuery((feature.direction_y_query as string) ?? '', globalRepo, (feature.direction_y as number[]) ?? [0, 1, 0])
+    const dirX = resolveArrayDirection(feature, 'x', globalRepo)
+    const dirY = resolveArrayDirection(feature, 'y', globalRepo)
     const numX = includeSource ? countX - 1 : countX
     for (let j = 0; j < countY; j++) {
       for (let i = 1; i <= numX; i++) {

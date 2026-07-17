@@ -81,29 +81,60 @@ const scope = { track: <T>(x: T): T => x } as unknown as DisposeScope
 // without ever touching the repo, so a stub repo is enough.
 const repo = { query: () => null, elements: new Map() } as unknown as Repository
 
+// A repo whose query() resolves each named direction query to a straight edge
+// (or, for `faceNormals`, a planar face) along the given vector. Lets the linear
+// / rectangular builders run now that a resolvable direction pick is required.
+function dirRepo(edges: Record<string, number[]>, faceNormals: Record<string, number[]> = {}): Repository {
+  return {
+    query: (q: string) => {
+      if (q in edges) return { start: [0, 0, 0], end: edges[q] }
+      if (q in faceNormals) return { normal: faceNormals[q], centroid: [0, 0, 0] }
+      return null
+    },
+    elements: new Map(),
+  } as unknown as Repository
+}
+
+// +X on direction_x_query, +Y on direction_y_query: the common two-axis case.
+const xyRepo = dirRepo({ qx: [1, 0, 0], qy: [0, 1, 0] })
+
 function translations(trsfs: unknown[]): number[][] {
   return (trsfs as RecTrsf[]).map((t) => t.translation!)
 }
 
 describe('buildArrayTransforms (linear)', () => {
   it('emits count_x - 1 instances when the source is included', () => {
-    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, include_source: true }, repo)
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, include_source: true, direction_x_query: 'qx' }, xyRepo)
     expect(translations(t)).toEqual([[10, 0, 0], [20, 0, 0]])
   })
 
   it('emits count_x instances when the source is excluded', () => {
-    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, include_source: false }, repo)
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, include_source: false, direction_x_query: 'qx' }, xyRepo)
     expect(translations(t)).toEqual([[10, 0, 0], [20, 0, 0], [30, 0, 0]])
   })
 
-  it('defaults to count_x 2, pitch 10, +X, include_source true (one copy)', () => {
-    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear' }, repo)
-    expect(translations(t)).toEqual([[10, 0, 0]])
+  it('resolves the direction from a picked edge query', () => {
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'qz' }, dirRepo({ qz: [0, 0, 2] }))
+    // The edge vector is normalized, so pitch 5 lands the copy at (0,0,5).
+    expect(translations(t)).toEqual([[0, 0, 5]])
   })
 
-  it('honours an explicit direction_x', () => {
-    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x: [0, 0, 1] }, repo)
+  it('resolves the direction from a picked planar face normal', () => {
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'qf' }, dirRepo({}, { qf: [0, 0, 3] }))
     expect(translations(t)).toEqual([[0, 0, 5]])
+  })
+
+  it('inverts the resolved direction when invert_x is set', () => {
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'qx', invert_x: true }, xyRepo)
+    expect(translations(t)).toEqual([[-5, 0, 0]])
+  })
+
+  it('throws when the direction picker is empty', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5 }, repo)).toThrow(/direction X is required/)
+  })
+
+  it('throws when the direction query does not resolve', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'dangling' }, repo)).toThrow(/did not resolve/)
   })
 })
 
@@ -112,8 +143,8 @@ describe('buildArrayTransforms (rectangular)', () => {
     const t = buildArrayTransforms(
       makeFake(),
       scope,
-      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: true },
-      repo,
+      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: true, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
     )
     // numX = 1 (source included), countY = 2 -> j=0 then j=1
     expect(translations(t)).toEqual([[10, 0, 0], [10, 20, 0]])
@@ -123,10 +154,19 @@ describe('buildArrayTransforms (rectangular)', () => {
     const t = buildArrayTransforms(
       makeFake(),
       scope,
-      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: false },
-      repo,
+      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: false, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
     )
     expect(t).toHaveLength(4)
+  })
+
+  it('throws when the Y direction picker is empty', () => {
+    expect(() => buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx' },
+      xyRepo,
+    )).toThrow(/direction Y is required/)
   })
 })
 

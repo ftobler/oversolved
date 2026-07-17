@@ -353,7 +353,12 @@ function normalize3(d: number[]): number[] | null {
   return null
 }
 
-/** Resolve a query to a 3D line {start, direction}, shared by resolveDirectionQuery and resolveAxisQuery. */
+/**
+ * Resolve a query to a 3D line {start, direction}, shared by the direction/axis
+ * resolvers. Handles three pickable geometries: a straight edge ({start, end}),
+ * a 2D sketch line ({external_params, kind: "line"}) lifted through its plane,
+ * and a planar face (its `normal`, anchored at the face origin/centroid).
+ */
 function resolveQueryToLine(
   query: string,
   globalRepo: Repository,
@@ -375,6 +380,14 @@ function resolveQueryToLine(
       const end = sketchToWorld2d(params.slice(2, 4), plane)
       const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
       if (dir) return { start, dir }
+    }
+  } else if (data && 'normal' in data) {
+    // Planar face: the array runs along the face normal. The face has no natural
+    // "start", so anchor the axis at its origin (falling back to the centroid).
+    const dir = normalize3(data.normal as number[])
+    if (dir) {
+      const origin = (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]
+      return { start: [...origin], dir }
     }
   }
   return null
@@ -410,6 +423,21 @@ export function resolveAxisQuery(
 ): [number[], number[]] {
   const line = resolveQueryToLine(query, globalRepo, bodyStore)
   return line ? [[...line.start], line.dir] : [fallbackOrigin, fallbackDirection]
+}
+
+/**
+ * Resolve a direction query to a unit vector, or `null` when the query is empty
+ * or does not resolve to a usable edge/face. Unlike `resolveDirectionQuery`
+ * there is no silent world-axis fallback: the array leaf treats `null` as a
+ * solve error so an unpicked direction never arrays along an arbitrary axis.
+ */
+export function resolveDirectionQueryStrict(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null = null,
+): number[] | null {
+  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  return line ? line.dir : null
 }
 
 // Re-export so the Frame3D type is visible to consumers of PlaneLike.

@@ -101,11 +101,11 @@ describe('ArrayEditor source body pick (via FeatureEditor)', () => {
 })
 
 describe('ArrayEditor direction pick (via FeatureEditor)', () => {
-  it('renders an empty direction-X chip hinting at the +X fallback', () => {
+  it('renders an empty direction-X chip flagged as a required pick', () => {
     renderEditor(makeFeature(), vi.fn())
     const chip = dirXChip()
     expect(chip.classList.contains('empty')).toBe(true)
-    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge, +X)')
+    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
   })
 
   it('picking an edge stores its inner query as direction_x_query', () => {
@@ -116,6 +116,24 @@ describe('ArrayEditor direction pick (via FeatureEditor)', () => {
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_array_field', featureId: 'arr1', field: 'direction_x_query', value: '?4;@ex1:edge',
     })
+  })
+
+  it('toggling Invert X dispatches an invert_x field mutation', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    const rows = [...document.querySelectorAll<HTMLElement>('.feature-field-row')]
+    const invertRow = rows.find((r) => r.querySelector('.feature-field-label')?.textContent === 'Invert X')!
+    fireEvent.click(invertRow.querySelector('input[type="checkbox"]')!)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_array_field', featureId: 'arr1', field: 'invert_x', value: true,
+    })
+  })
+
+  it('hides the Invert Y toggle in linear mode', () => {
+    renderEditor(makeFeature(), vi.fn())
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).toContain('Invert X')
+    expect(labels).not.toContain('Invert Y')
   })
 
   it('hides the Direction Y chip in linear mode', () => {
@@ -129,7 +147,7 @@ describe('ArrayEditor direction pick (via FeatureEditor)', () => {
     renderEditor(makeFeature({ mode: 'rectangular', count_y: 2, pitch_y: 20, direction_y: [0, 1, 0] }), onMutation)
     // Field order: [0] Body, [1] Direction X, [2] Direction Y.
     const dirY = chips()[2]
-    expect(dirY.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge, +Y)')
+    expect(dirY.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
     fireEvent.click(dirY)
     pick('edge:ex1:?7;@ex1:edge')
     expect(onMutation).toHaveBeenCalledWith({

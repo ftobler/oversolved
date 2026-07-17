@@ -21,11 +21,7 @@
         "mode": "linear",
         "count_x": 3,
         "pitch_x": 3.0,
-        "direction_x": [
-          1,
-          0,
-          0
-        ],
+        "direction_x_query": "@dir_x",
         "include_source": true,
         "operation": "add"
       },
@@ -66,11 +62,7 @@
         "mode": "linear",
         "count_x": 3,
         "pitch_x": 10.0,
-        "direction_x": [
-          1,
-          0,
-          0
-        ],
+        "direction_x_query": "@dir_x",
         "include_source": true,
         "operation": "new"
       },
