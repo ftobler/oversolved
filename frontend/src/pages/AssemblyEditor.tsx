@@ -343,7 +343,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [mutate, requestSolve])
 
   const handleUpdateMate = useCallback((featureId: string, patch: MateParamPatch) => {
-    mutate(d => updateMate(d, featureId, patch))
+    // Bake the current solved poses into the doc's seeds before the re-solve,
+    // same as handleDeleteMate and every other handler that mutates the doc
+    // before a solve. A mate param edit must start from the current on-screen
+    // poses, not the stale placement seeds — otherwise the seed-relative roll
+    // pin in the Fixed mate computes its delta from the wrong seed and the
+    // angle looks arbitrary.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => updateMate(bakeSolvedTransforms(d, transforms), featureId, patch))
     // Deferred while a chip is armed: a solve here would drop the candidate set
     // the armed field is still cycling.
     useAssemblyStore.getState().requestSolveOrDefer()

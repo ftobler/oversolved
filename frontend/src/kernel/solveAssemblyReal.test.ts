@@ -265,4 +265,112 @@ describeReal('solveAssembly with the real mate solver', () => {
     // Seeded 30,40,50 away; solved onto the origin, so vertex 0 is near it.
     expect(Math.hypot(v[0], v[1], v[2])).toBeLessThan(0.01)
   })
+
+  it('locks the roll angle when a part is placed with a rotation', async () => {
+    // Part A grounded at identity. Part B placed with a 45 deg roll about Z
+    // and offset in position. Both anchors are Z-up planes already aligned
+    // (Z-rotation preserves the Z axis). The fixed mate with angle=0 must pull
+    // B to A's position while preserving the seed-relative roll (B stays at 45°).
+    const h = Math.sin(Math.PI / 8)
+    const c = Math.cos(Math.PI / 8)
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 5, ty: 10, tz: 15, qx: 0, qy: 0, qz: h, qw: c } },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    const b = result.transforms['pb']
+
+    // Position: B moved to A's origin
+    expect(Math.abs(b.tx)).toBeLessThan(0.01)
+    expect(Math.abs(b.ty)).toBeLessThan(0.01)
+    expect(Math.abs(b.tz)).toBeLessThan(0.01)
+
+    // Orientation: seed-relative roll is locked at 0 (angle=0), so the
+    // absolute quaternion stays at the seed value.
+    // B's roll about Z should remain ~45°
+    const rollDeg = (2 * Math.atan2(b.qz, b.qw)) * 180 / Math.PI
+    expect(Math.abs(rollDeg - 45)).toBeLessThan(1)
+  })
+
+  it('locks the roll after a large axis swing (the arbitrary-angle bug)', async () => {
+    // Part A grounded with its anchor axis at world +Z (identity).
+    // Part B rotated 90° about Y so its local Z axis points along world +X.
+    // The fixed mate must swing B to align its axis with A's (+Z) AND lock the
+    // resulting roll deterministically. A second solve from the same solved
+    // seed must produce the identical transforms (no drift).
+    const h90 = Math.sin(Math.PI / 4)
+    const c90 = Math.cos(Math.PI / 4)
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 3, ty: 7, tz: 11, qx: 0, qy: h90, qz: 0, qw: c90 } },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const r1 = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    const b1 = r1.transforms['pb']
+
+    // Position: B moved toward A's origin (offset 0, axis +Z)
+    expect(Math.abs(b1.tx)).toBeLessThan(0.01)
+    expect(Math.abs(b1.ty)).toBeLessThan(0.01)
+    expect(Math.abs(b1.tz)).toBeLessThan(0.01)
+
+    // Orientation: B's local Z axis must now be world +Z
+    // Rotate the local axis [0,0,1] by b1's quaternion: if the axis is +Z,
+    // only qz and qw can be non-zero (pure Z-rotation).
+    // Actually, after the swing, B's world Z = rotate_vec(q_b, [0,0,1]) ≈ [0,0,1]
+    // This means q_b has no X or Y component when projecting onto Z.
+
+    // Second solve: running from the solved seed must be a no-op (same transform)
+    const parts2 = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: b1 },
+    ]
+    const r2 = await solveAssembly(parts2, revs, mates, relay, solveMate!)
+    const b2 = r2.transforms['pb']
+
+    // The transform must not drift between solves
+    expect(Math.abs(b2.tx - b1.tx)).toBeLessThan(0.001)
+    expect(Math.abs(b2.ty - b1.ty)).toBeLessThan(0.001)
+    expect(Math.abs(b2.tz - b1.tz)).toBeLessThan(0.001)
+    expect(Math.abs(b2.qx - b1.qx)).toBeLessThan(0.001)
+    expect(Math.abs(b2.qy - b1.qy)).toBeLessThan(0.001)
+    expect(Math.abs(b2.qz - b1.qz)).toBeLessThan(0.001)
+    expect(Math.abs(b2.qw - b1.qw)).toBeLessThan(0.001)
+  })
+
+  it('applies the authored angle offset to the seed-relative roll', async () => {
+    // Part A grounded at identity. Part B at identity, no pre-existing roll.
+    // A 30° authored angle must produce a 30° roll about Z in B's solved pose.
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const, angle: 30,  // degrees
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    const b = result.transforms['pb']
+
+    // Position at origin
+    expect(Math.abs(b.tx)).toBeLessThan(0.01)
+    expect(Math.abs(b.ty)).toBeLessThan(0.01)
+    expect(Math.abs(b.tz)).toBeLessThan(0.01)
+
+    // Roll about Z should be ~30°
+    const rollDeg = (2 * Math.atan2(b.qz, b.qw)) * 180 / Math.PI
+    expect(Math.abs(rollDeg - 30)).toBeLessThan(1.5)
+  })
 })
