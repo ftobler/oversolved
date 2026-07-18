@@ -147,6 +147,7 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
     <Dialog
       isOpen={isOpen}
       title="Insert part"
+      icon="library_add"
       onClose={onClose}
       onConfirm={confirm}
       confirmLabel="Insert"

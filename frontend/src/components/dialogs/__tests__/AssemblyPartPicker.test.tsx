@@ -63,6 +63,11 @@ describe('AssemblyPartPicker', () => {
     expect(h.localList).toHaveBeenCalledWith({ sort: 'name', filter: 'owned', search: '' })
   })
 
+  it('titles itself with an icon, like every other dialog on the shell', () => {
+    renderPicker()
+    expect(document.querySelector('.dialog-component-icon')).toHaveTextContent('library_add')
+  })
+
   it('shows no tile action buttons (browse and pick only)', async () => {
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
