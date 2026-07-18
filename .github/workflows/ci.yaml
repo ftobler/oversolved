@@ -171,7 +171,7 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Test (workspace: solver-core + sketch-solver + mate-solver)
+      - name: "Test (workspace: solver-core + sketch-solver + mate-solver)"
         run: cargo test --workspace
 
       - name: Lint (clippy)
