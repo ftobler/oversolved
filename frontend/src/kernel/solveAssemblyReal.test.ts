@@ -122,6 +122,59 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(result.transforms['pb'].tz).toBeCloseTo(5, 2)
   })
 
+  // Grounded means grounded: ORIENTATION as much as position. Nothing used to
+  // assert this -- the test above checks `tx` only -- and the pin behind it is a
+  // soft residual that can be outvoted, over a body whose rotation is the least
+  // damped DOF in the system. `solveAssembly` now echoes a grounded part's seed
+  // verbatim, so these are exact equalities, not tolerances: any drift at all,
+  // in any configuration, is a bug, because `bakeSolvedTransforms` would write
+  // it into the document and compound it on the next solve.
+  it('leaves a grounded part bit-exact in ORIENTATION, not just position', async () => {
+    // 30 degrees about X, so a drift in any rotational DOF shows.
+    const seed: Transform3D = { tx: 2, ty: -3, tz: 4, qx: 0.2588190451025207, qy: 0, qz: 0, qw: 0.9659258262890683 }
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: seed, fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 10, -5) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+      angle: 45,
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.transforms['pa']).toEqual(seed)
+    // The free part still solves onto it: the pin is not achieved by refusing
+    // to solve.
+    expect(result.mateResults['m1'].error).toBeUndefined()
+    expect(dist({ ...result.transforms['pb'], tx: result.transforms['pb'].tx - seed.tx, ty: result.transforms['pb'].ty - seed.ty, tz: result.transforms['pb'].tz - seed.tz })).toBeLessThan(0.01)
+  })
+
+  // The adversarial case for a soft pin: the mate CANNOT be satisfied by moving
+  // anything free, because nothing is free. A least-squares optimum would split
+  // the error across both grounded bodies and rotate them.
+  it('holds both parts when two grounded parts are mated to each other', async () => {
+    const seedA: Transform3D = at(0, 0, 0)
+    const seedB: Transform3D = at(4, 0, 0)
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: seedA, fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: seedB, fixed: true },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+      angle: 90,
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.transforms['pa']).toEqual(seedA)
+    expect(result.transforms['pb']).toEqual(seedB)
+  })
+
   // Nothing grounded is the default an assembly starts in: the user inserts two
   // parts and mates them without marking either fixed.
   it('with no grounded part the two still meet', async () => {

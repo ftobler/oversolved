@@ -508,6 +508,19 @@ export async function solveAssembly(
       // edge curves) inherits a unit quaternion and never has to again.
       for (let i = 0; i < parts.length; i++) {
         const handle = parts[i].handle
+        // A grounded part is echoed from its SEED, bit-exact, never from the
+        // solver's output. The ground pin is a soft least-squares residual
+        // (mate_residuals.rs), not a hard clamp: it can be outvoted, and the
+        // grounded body is in fact the cheapest thing in the system to rotate
+        // (rotation_damp_scale leaves grounded bodies at 1.0 while every free
+        // body's rotation is damped ROT_DAMP_SCALE = 500x). Even when it holds,
+        // it holds only to LM tolerance -- and bakeSolvedTransforms would write
+        // that error back into the seed, so the drift ratchets solve after
+        // solve. Grounded means grounded: position AND orientation.
+        if (parts[i].fixed) {
+          transforms[handle] = { ...parts[i].transform }
+          continue
+        }
         transforms[handle] = makeTransform(
           [
             decoded.paramsSolved[i * BPB + 0],

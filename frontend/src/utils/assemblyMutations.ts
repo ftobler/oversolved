@@ -156,6 +156,12 @@ export function bakeSolvedTransforms(
     ...doc,
     features: features(doc).map(f => {
       if (f.kind !== 'part_instance' || !f.instance) return f
+      // A grounded instance's seed IS the authored truth: baking a solved pose
+      // over it can only ever write solver error back into the document, and
+      // every bake compounds the last one. solveAssembly already echoes a
+      // grounded part's seed verbatim, so this is belt-and-braces -- but it is
+      // the write that would make any leak permanent.
+      if (f.instance.fixed) return f
       const solved = transforms[f.instance.handle]
       if (!solved) return f
       return { ...f, instance: { ...f.instance, transform: { ...solved } } }

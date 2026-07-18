@@ -190,10 +190,9 @@ describe('setInstanceVisible / setInstanceFixed', () => {
 })
 
 describe('bakeSolvedTransforms', () => {
-  it('writes each instance solved pose into its seed, leaving flags alone', () => {
+  it('writes each free instance solved pose into its seed, leaving flags alone', () => {
     let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     doc = appendPartInstance(doc, 'doc-B', 1)
-    doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
     const [a, b] = instances(doc)
     const poseA = { tx: 5, ty: -2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 }
     const poseB = { tx: 9, ty: 8, tz: 7, qx: 0, qy: 0, qz: 0, qw: 1 }
@@ -203,12 +202,31 @@ describe('bakeSolvedTransforms', () => {
     expect(map[a.handle].transform).toEqual(poseA)
     expect(map[b.handle].transform).toEqual(poseB)
     // Grounded flag untouched: baking is not a ground toggle.
-    expect(map[a.handle].fixed).toBe(true)
+    expect(map[a.handle].fixed).toBeUndefined()
     expect(map[b.handle].fixed).toBeUndefined()
     // The written transform is a copy, not an alias of the solved map.
     expect(map[a.handle].transform).not.toBe(poseA)
     // Input doc is untouched.
     expect(instances(doc)[0].transform).toEqual(IDENTITY_TRANSFORM)
+  })
+
+  // A grounded instance's seed is the authored truth. Baking a solved pose over
+  // it can only write solver error into the document, and each bake compounds
+  // the last -- the ratchet that makes a grounded part visibly drift over a
+  // session. solveAssembly echoes a grounded part's seed verbatim, so in the
+  // real pipeline the two poses agree; this is the guard for everything else.
+  it('does NOT overwrite a grounded instance seed, even with a divergent solved pose', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
+    const [a, b] = instances(doc)
+    const drifted = { tx: 0.0001, ty: 0, tz: 0, qx: 0.01, qy: 0, qz: 0, qw: 0.99995 }
+    const poseB = { tx: 9, ty: 8, tz: 7, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    const next = bakeSolvedTransforms(doc, { [a.handle]: drifted, [b.handle]: poseB })
+    const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
+    expect(map[a.handle].transform).toEqual(a.transform)  // grounded: untouched
+    expect(map[b.handle].transform).toEqual(poseB)        // free: baked
   })
 
   it('keeps the seed for a part missing from the solved map', () => {
