@@ -1,0 +1,14 @@
+/* Only the one field lives here. Overlay, header, footer buttons and the base
+   input styling come from the shared dialog shell. */
+
+.rename-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rename-dialog-label {
+  font-size: 12px;
+  color: #888;
+  margin: 0;
+}

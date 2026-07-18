@@ -39,6 +39,14 @@ function normalToPlaneItem(featureId: string, callbacks: BuildContextMenuCallbac
   }
 }
 
+// A rename gesture only names its subject here. Collecting the new label is the
+// owner's job, so this module stays free of both DOM and dialog state.
+export interface RenameTarget {
+  kind: 'feature' | 'body'
+  id: string
+  currentName: string
+}
+
 export interface BuildContextMenuInput {
   pos: [number, number]
   targetId: string | undefined
@@ -60,8 +68,7 @@ export interface BuildContextMenuCallbacks {
   onEnterEditSketch: (featureId: string) => void
   onExitSketch: () => void
   onDeleteFeature: (featureId: string) => void
-  onFeatureRename: (featureId: string, label: string) => void
-  onBodyRename: (bodyId: string, label: string) => void
+  onRequestRename: (target: RenameTarget) => void
   onAlignToFace: (normal: [number, number, number], center: [number, number, number]) => void
   onNormalToPlane: (featureId: string) => void
   onAlignCameraToSketchPlane: () => void
@@ -140,12 +147,11 @@ export function buildContextMenu(
         {
           label: 'Rename',
           icon: iconRenameIcon,
-          onClick: () => {
-            const newLabel = window.prompt('Enter new name:', partLabels[bodyId] || bodyId)
-            if (newLabel && newLabel.trim()) {
-              callbacks.onBodyRename(bodyId, newLabel)
-            }
-          },
+          onClick: () => callbacks.onRequestRename({
+            kind: 'body',
+            id: bodyId,
+            currentName: partLabels[bodyId] || bodyId,
+          }),
         },
         {
           label: 'Color',
@@ -253,12 +259,11 @@ export function buildContextMenu(
       items.push({
         label: 'Rename',
         icon: iconRenameIcon,
-        onClick: () => {
-          const newLabel = window.prompt('Enter new name:', target?.label || target?.id)
-          if (newLabel && newLabel.trim()) {
-            callbacks.onFeatureRename(featureId, newLabel.trim())
-          }
-        },
+        onClick: () => callbacks.onRequestRename({
+          kind: 'feature',
+          id: featureId,
+          currentName: target?.label || featureId,
+        }),
       })
       items.push({
         label: 'Delete',
