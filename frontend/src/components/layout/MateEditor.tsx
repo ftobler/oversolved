@@ -40,8 +40,11 @@ interface MateEditorProps {
 const REF_FIELDS: readonly MateRefField[] = ['ref_a', 'ref_b']
 const REF_TITLES: Record<MateRefField, string> = { ref_a: 'Reference A', ref_b: 'Reference B' }
 
+// Wears the part editor's pick-chip classes so the two look identical; the
+// mate-ref-chip class carries only the button reset and the `stale` state, which
+// the part chip has no equivalent for.
 function chipClass(ref: MateRef, stale: boolean, picking: boolean): string {
-  const parts = ['mate-ref-chip']
+  const parts = ['feature-pick-chip', 'mate-ref-chip']
   if (isMateRefEmpty(ref)) parts.push('empty')
   // Red means "the geometry this named is gone". An unpicked slot is merely
   // empty, so it must not borrow the same alarm.
@@ -172,6 +175,7 @@ export function MateEditor({
 
       {REF_FIELDS.map(field => {
         const picking = activeField?.featureId === featureId && activeField.field === field
+        const empty = isMateRefEmpty(mate[field])
         return (
           // Stacked like the part editor's pick fields: a reference string is far
           // wider than the 80px label column leaves room for.
@@ -183,7 +187,20 @@ export function MateEditor({
               aria-pressed={picking}
               onClick={() => onArmField(picking ? null : { featureId, field })}
             >
-              {mateRefLabel(mate[field], labelFor)}
+              {/* Same two shapes the part editor's PickChip renders: italic
+                  placeholder text when empty, a pink pill once picked. Spans,
+                  not divs, because the chip itself is a button here. */}
+              {empty ? (
+                <span className="feature-pick-chip-empty-text">
+                  {mateRefLabel(mate[field], labelFor)}
+                </span>
+              ) : (
+                <span className="feature-pick-chip-item">
+                  <span className="feature-pick-chip-item-text">
+                    {mateRefLabel(mate[field], labelFor)}
+                  </span>
+                </span>
+              )}
             </button>
           </div>
         )

@@ -79,42 +79,26 @@
   border-top: 1px solid #553355;
 }
 
-/* Full width: a reference string never fits beside the label column, so these
-   rows stack (feature-field-row--stacked) and the chip takes the whole width. */
+/* The reference chip carries .feature-pick-chip, so the box, the hover, the
+   armed-orange and the pink pill inside all come from Part.css. A mate ref
+   cannot reuse PickChip itself -- that component drives sketchEditorStore's
+   selection and resolves labels through queryLabel, neither of which the
+   assembly has -- so only what the part chip cannot express is set here: the
+   button reset, and `stale`. */
 .mate-ref-chip {
-  width: 100%;
+  font: inherit;
   text-align: left;
-  background: transparent;
-  border: 1px solid #3a2a3a;
-  border-radius: 6px;
-  color: #bbb;
-  cursor: pointer;
-  padding: 4px 8px;
-  font-size: 12px;
-  box-sizing: border-box;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 100%;
 }
 
-.mate-ref-chip:hover {
-  border-color: #b83b88;
-}
-
-.mate-ref-chip.empty {
-  color: #555;
-  font-style: italic;
-}
-
+/* "The geometry this named is gone." No part-editor counterpart: a part pick is
+   re-resolved or dropped, a mate ref is never silently retargeted. */
 .mate-ref-chip.stale {
   border-color: #c0392b;
-  color: #e07b6b;
 }
 
-/* Orange while armed, matching the part editor's picking pick-chip. */
-.mate-ref-chip.picking {
-  border-color: #ff9800;
-  background: rgba(255, 152, 0, 0.1);
+.mate-ref-chip.stale .feature-pick-chip-item {
+  background: #c0392b;
 }
 
 .mate-editor-hint {
