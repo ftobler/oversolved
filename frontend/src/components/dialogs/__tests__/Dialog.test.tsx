@@ -65,6 +65,24 @@ describe('Dialog', () => {
     expect(screen.getByText('Close')).toBeInTheDocument()
   })
 
+  it('seals every exit while busy', () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <Dialog isOpen title="Test Dialog" onClose={onClose} onConfirm={vi.fn()} busy>
+        <p>Dialog content</p>
+      </Dialog>
+    )
+
+    fireEvent.click(container.querySelector('.dialog-component-overlay')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(onClose).not.toHaveBeenCalled()
+
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /close/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+  })
+
   it('does not show confirm buttons when onConfirm is not provided', () => {
     render(
       <Dialog isOpen title="Test Dialog" onClose={vi.fn()}>

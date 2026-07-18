@@ -261,9 +261,25 @@
   margin: 12px;
 }
 
-.dialog-component-close-btn:hover {
+.dialog-component-close-btn:hover:not(:disabled) {
   background: #333;
   color: #ccc;
+}
+
+.dialog-component-close-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* A busy dialog is frozen, not broken: fade the inputs the user can no longer
+   reach, but leave the confirm button at full strength so its spinner reads as
+   progress rather than as a dead control. */
+.dialog-component[aria-busy='true'] .dialog-component-body {
+  opacity: 0.6;
+}
+
+.dialog-component[aria-busy='true'] .btn-primary:disabled {
+  opacity: 1;
 }
 
 .dialog-component-close-btn .material-icons {
