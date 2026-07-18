@@ -32,10 +32,14 @@ const ARROW_PICK_RADIUS = 0.085
 const ARROW_PICK_START = 0.14
 export const RING_PICK_TUBE = 0.06
 
+// The plane quads live in the corner between two arrows, inside the rings.
+export const PLANE_INNER = 0.24
+export const PLANE_OUTER = 0.55
+
 const TUBE_SIDES = 6
 const RING_SEGMENTS = 28
 
-export type GizmoHandleKind = 'translate' | 'rotate'
+export type GizmoHandleKind = 'translate' | 'rotate' | 'plane'
 
 export interface GizmoAxisDef {
   /** Suffix in the handle's entity key. */
@@ -59,7 +63,12 @@ export function gizmoHandleKey(kind: GizmoHandleKind, axisName: string): string 
 
 export interface GizmoHandleRef {
   kind: GizmoHandleKind
-  /** Part-local; the caller rotates it into world space by the part's pose. */
+  /**
+   * Part-local; the caller rotates it into world space by the part's pose. For
+   * a plane handle this is the plane's NORMAL, so `gizmo:plane:z` is the XY
+   * quad -- the same convention a rotate handle uses, which is what lets one
+   * dispatch serve all three kinds.
+   */
   axis: Vec3
 }
 
@@ -69,7 +78,7 @@ export function parseGizmoHandleKey(key: string | null | undefined): GizmoHandle
   const parts = key.split(':')
   if (parts.length !== 3 || parts[0] !== 'gizmo') return null
   const [, kind, name] = parts
-  if (kind !== 'translate' && kind !== 'rotate') return null
+  if (kind !== 'translate' && kind !== 'rotate' && kind !== 'plane') return null
   const def = GIZMO_AXES.find(a => a.name === name)
   if (!def) return null
   return { kind, axis: def.axis }
@@ -150,6 +159,23 @@ function addTorus(b: SoupBuilder, def: GizmoAxisDef, major: number, minor: numbe
 }
 
 /**
+ * The four corners of a plane handle's quad, in gizmo-local units, wound so
+ * consecutive corners share an edge. TriadGizmo draws exactly these, so what
+ * the user sees and what the ID buffer can resolve are one quad, not two that
+ * have to be kept in step by hand.
+ */
+export function planeHandleCorners(def: GizmoAxisDef): [Vec3, Vec3, Vec3, Vec3] {
+  const { u, v, axis } = def
+  const at = (cu: number, cv: number) => combine(u, v, axis, cu, cv, 0)
+  return [
+    at(PLANE_INNER, PLANE_INNER),
+    at(PLANE_OUTER, PLANE_INNER),
+    at(PLANE_OUTER, PLANE_OUTER),
+    at(PLANE_INNER, PLANE_OUTER),
+  ]
+}
+
+/**
  * Every triad handle as one registration payload, posed exactly like the drawn
  * gizmo: local units scaled by `scale` (which the caller derives from the
  * camera so the gizmo keeps its pixel size), rotated into the part's frame,
@@ -169,6 +195,11 @@ export function buildGizmoPickGeometry(
   for (const def of GIZMO_AXES) {
     b.beginHandle(gizmoHandleKey('rotate', def.name))
     addTorus(b, def, RING_RADIUS, RING_PICK_TUBE)
+  }
+  for (const def of GIZMO_AXES) {
+    b.beginHandle(gizmoHandleKey('plane', def.name))
+    const [p0, p1, p2, p3] = planeHandleCorners(def)
+    b.quad(p0, p1, p2, p3)
   }
 
   const positions = new Float32Array(b.points.length * 3)

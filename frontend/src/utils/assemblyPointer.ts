@@ -4,9 +4,11 @@
 // per pointer event; nothing three.js reaches this module.
 //
 // Three gestures, one session each:
-//   body   — free drag in the plane facing the camera through the grab point
-//   axis   — a triad arrow: slide along one world axis
-//   ring   — a triad ring: swing about one world axis, pivoting on the gizmo
+//   plane  - slide within a plane: the one facing the camera for a body grab,
+//            or a part-axis plane for a triad plane handle. Both are the same
+//            drag once the plane is known, so they share the state and the move.
+//   axis   - a triad arrow: slide along one world axis
+//   ring   - a triad ring: swing about one world axis, pivoting on the gizmo
 //
 // A grounded (`fixed`) part still selects on click but never opens a session:
 // beginPartManipulation refuses it, and we leave no gesture behind, so the
@@ -35,10 +37,10 @@ export interface AssemblyPointerStore {
   setSelectedPartHandle: (handle: string | null) => void
 }
 
-export type GizmoMode = 'translate' | 'rotate'
+export type GizmoMode = 'translate' | 'rotate' | 'plane'
 
 type Gesture =
-  | { kind: 'body'; grab: Vec3; viewNormal: Vec3 }
+  | { kind: 'plane'; grab: Vec3; normal: Vec3 }
   | { kind: 'axis'; axis: Vec3; origin: Vec3; startParam: number }
   // `swing` is the running total since pointer-down, the one piece of gesture
   // state carried frame to frame: the measured angle alone tops out at a half
@@ -48,6 +50,7 @@ type Gesture =
 export interface AssemblyPointerAdapter {
   /** Selects the part; opens a drag session unless it is grounded. */
   onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3) => boolean
+  /** `axis` is the world slide/swing axis, or for `plane` the plane's normal. */
   onGizmoPointerDown: (handle: string, mode: GizmoMode, axis: Vec3, origin: Vec3, ray: Ray) => boolean
   onPointerMove: (ray: Ray) => void
   /** Commits the session (assemblyStore re-solves once) if one is open. */
@@ -62,7 +65,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
   const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3): boolean => {
     store.setSelectedPartHandle(handle)
     if (!store.beginPartManipulation(handle)) return false
-    gesture = { kind: 'body', grab, viewNormal }
+    gesture = { kind: 'plane', grab, normal: viewNormal }
     return true
   }
 
@@ -91,11 +94,22 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       return true
     }
 
+    // Both remaining modes read the pointer against the plane through the gizmo
+    // normal to `axis`; a ray grazing that plane gives neither a swing arm nor a
+    // grab point, so abandon rather than open a session that measures nothing.
     const hit = intersectRayPlane(ray, origin, axis)
     if (!hit) {
       store.cancelPartManipulation()
       return false
     }
+
+    if (mode === 'plane') {
+      // The grab is on the plane already, so the drag needs no other anchor:
+      // every later hit lands on the same plane and the difference is the move.
+      gesture = { kind: 'plane', grab: hit, normal: axis }
+      return true
+    }
+
     gesture = { kind: 'ring', axis, origin, startArm: sub(hit, origin), swing: 0 }
     return true
   }
@@ -103,8 +117,8 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
   const onPointerMove = (ray: Ray): void => {
     if (!gesture) return
 
-    if (gesture.kind === 'body') {
-      const hit = intersectRayPlane(ray, gesture.grab, gesture.viewNormal)
+    if (gesture.kind === 'plane') {
+      const hit = intersectRayPlane(ray, gesture.grab, gesture.normal)
       if (!hit) return
       store.dragPartTranslate(sub(hit, gesture.grab))
       return

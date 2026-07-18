@@ -206,3 +206,76 @@ describe('assembly pointer adapter (triad gizmo)', () => {
     expect(findInstance(host.doc, 'p1')!.transform.tx).toBeCloseTo(5, 6)
   })
 })
+
+describe('assembly pointer adapter (triad plane handles)', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    setAssemblyCallbacks(null)
+  })
+
+  it('a drag on the XY quad moves in that plane and never out of it', () => {
+    const { host, requestSolve, adapter } = mountHost(docWith(instance('p1')))
+
+    // Grab the XY plane handle (normal +Z) sighting from an oblique direction,
+    // so a hit off the z = 0 plane would show up as a non-zero tz.
+    expect(adapter.onGizmoPointerDown('p1', 'plane', [0, 0, 1], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
+    adapter.onPointerMove(ray([4, -2, 6], [1, 0, -1]))
+    adapter.onPointerUp()
+
+    const t = findInstance(host.doc, 'p1')!.transform
+    expect(t.tx).toBeCloseTo(9, 6)   // the ray reaches z = 0 at x = 4 + 6
+    expect(t.ty).toBeCloseTo(-3, 6)
+    expect(t.tz).toBeCloseTo(0, 6)   // the whole point: no motion out of plane
+    expect(requestSolve).toHaveBeenCalledTimes(2)  // live tick + commit
+  })
+
+  it('the plane is the part-axis one, not the view plane', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+
+    // YZ handle: normal +X, so X must not move however the pointer travels.
+    // The rays come in at 45 degrees; sighting down -Z would graze the quad.
+    adapter.onGizmoPointerDown('p1', 'plane', [1, 0, 0], [0, 0, 0], ray([5, 0, 5], [-1, 0, -1]))
+    adapter.onPointerMove(ray([5, 5, 5], [-1, 0, -1]))
+    adapter.onPointerUp()
+
+    const t = findInstance(host.doc, 'p1')!.transform
+    expect(t.tx).toBeCloseTo(0, 6)
+    expect(t.ty).toBeCloseTo(5, 6)
+  })
+
+  it('a ray grazing the quad opens no session', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    // Sighting along the XY plane: the ray never meets it in one point.
+    expect(adapter.onGizmoPointerDown('p1', 'plane', [0, 0, 1], [0, 0, 0], ray([-9, 0, 0], [1, 0, 0]))).toBe(false)
+    expect(adapter.isActive()).toBe(false)
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+  })
+
+  it('a grounded part gets no plane session either', () => {
+    const { requestSolve, adapter } = mountHost(docWith(instance('p1', { fixed: true })))
+    expect(adapter.onGizmoPointerDown('p1', 'plane', [0, 0, 1], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(false)
+    expect(adapter.isActive()).toBe(false)
+    adapter.onPointerUp()
+    expect(requestSolve).not.toHaveBeenCalled()
+  })
+
+  it('the body grab and a plane handle run the very same gesture', () => {
+    // Both are a plane-constrained drag; the body's plane is just the one
+    // facing the camera. A regression that splits them would show here.
+    const bodyRun = mountHost(docWith(instance('p1')))
+    bodyRun.adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    bodyRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
+    bodyRun.adapter.onPointerUp()
+
+    const handleRun = mountHost(docWith(instance('p1')))
+    // VIEW_NORMAL is -Z, so the equivalent handle is the XY quad grabbed at
+    // the gizmo origin, which is where the body grab point sat too.
+    handleRun.adapter.onGizmoPointerDown('p1', 'plane', VIEW_NORMAL, [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))
+    handleRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
+    handleRun.adapter.onPointerUp()
+
+    expect(findInstance(handleRun.host.doc, 'p1')!.transform)
+      .toEqual(findInstance(bodyRun.host.doc, 'p1')!.transform)
+  })
+})

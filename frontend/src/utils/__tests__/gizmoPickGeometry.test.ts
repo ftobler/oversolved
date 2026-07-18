@@ -6,6 +6,9 @@ import {
   gizmoHandleKey,
   HEAD_LENGTH,
   parseGizmoHandleKey,
+  PLANE_INNER,
+  PLANE_OUTER,
+  planeHandleCorners,
   RING_PICK_TUBE,
   RING_RADIUS,
 } from '@/utils/gizmoPickGeometry'
@@ -35,7 +38,7 @@ function handleBounds(geom: ReturnType<typeof buildGizmoPickGeometry>, query: st
 describe('parseGizmoHandleKey', () => {
   it('round-trips every handle key the builder emits', () => {
     const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
-    expect(geom.faceQueries).toHaveLength(6)
+    expect(geom.faceQueries).toHaveLength(9)  // 3 arrows, 3 rings, 3 planes
     for (const query of geom.faceQueries) {
       const ref = parseGizmoHandleKey(query)
       expect(ref).not.toBeNull()
@@ -88,6 +91,31 @@ describe('buildGizmoPickGeometry', () => {
     const thickness = Math.max(max[2], -min[2])
     expect(thickness).toBeGreaterThan(RING_PICK_TUBE / 2)
     expect(thickness).toBeLessThanOrEqual(RING_PICK_TUBE)
+  })
+
+  it('lays each plane quad flat in its own plane, clear of arrows and rings', () => {
+    const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
+    const { min, max } = handleBounds(geom, gizmoHandleKey('plane', 'z'))
+    // `gizmo:plane:z` is the XY quad: keyed by its normal, like a ring.
+    expect(min[2]).toBeCloseTo(0, 6)
+    expect(max[2]).toBeCloseTo(0, 6)
+    expect(min[0]).toBeCloseTo(PLANE_INNER, 6)
+    expect(max[0]).toBeCloseTo(PLANE_OUTER, 6)
+    // Outside the arrow tube's radius, inside the ring.
+    expect(PLANE_INNER).toBeGreaterThan(0.1)
+    expect(PLANE_OUTER).toBeLessThan(RING_RADIUS)
+  })
+
+  it('draws and registers the same quad', () => {
+    // TriadGizmo builds its mesh from planeHandleCorners; if the pick soup were
+    // built from anything else the visible quad and the grab region could drift.
+    const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
+    const corners = planeHandleCorners(GIZMO_AXES[2])
+    const { min, max } = handleBounds(geom, gizmoHandleKey('plane', 'z'))
+    for (let c = 0; c < 3; c++) {
+      expect(min[c]).toBeCloseTo(Math.min(...corners.map(p => p[c])), 6)
+      expect(max[c]).toBeCloseTo(Math.max(...corners.map(p => p[c])), 6)
+    }
   })
 
   it('scales and translates with the gizmo pose', () => {

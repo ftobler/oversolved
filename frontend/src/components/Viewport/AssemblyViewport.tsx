@@ -66,6 +66,10 @@ const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
 // picker and the selection toggle must not be able to resolve one.
 const GIZMO_PICK_LAYERS: ReadonlySet<string> = new Set([GIZMO_HANDLE_LAYER_NAME])
 
+// Hover asks both questions in one readback: the ID buffer is read at most once
+// per frame, so a second resolve for the gizmo would double the GPU stall.
+const HOVER_PICK_LAYERS: ReadonlySet<string> = new Set([...ASSEMBLY_PICK_LAYERS, GIZMO_HANDLE_LAYER_NAME])
+
 // Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
 // [] per render would rebuild every body's line geometry on every frame.
 const EMPTY_CURVES: EdgeCurve[] = []
@@ -121,6 +125,9 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   // move the part and the camera. Mirrored into state because OrbitControls is a
   // rendered prop, not a ref read.
   const [manipulating, setManipulating] = useState(false)
+  // Which triad handle the cursor is over, so it can light up. Viewport-local:
+  // it is a drag affordance's highlight, not part of the document selection.
+  const [hoveredGizmo, setHoveredGizmo] = useState<string | null>(null)
 
   const adapter = useMemo(() => createAssemblyPointerAdapter({
     beginPartManipulation: (h) => useAssemblyStore.getState().beginPartManipulation(h),
@@ -271,6 +278,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current)
     hoverFrame.current = 0
     hoverEvent.current = null
+    setHoveredGizmo(null)
     const store = useAssemblyStore.getState()
     store.clearHover()  // the aiming-mode anchor hover
     store.setHoveredEntity(null)  // the selection-mode B-rep hover
@@ -291,7 +299,12 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
       const pending = hoverEvent.current
       if (!pending) return
       const store = useAssemblyStore.getState()
-      const hits = resolveHitsAt(pending)
+      const all = resolveHitsAt(pending, HOVER_PICK_LAYERS)
+      // A triad handle outranks every entity, so it can only be first. Split it
+      // off before the entity paths see the list: a handle is never an entity.
+      const gizmoHit = all[0]?.layer === GIZMO_HANDLE_LAYER_NAME ? all[0].entityKey : null
+      setHoveredGizmo(gizmoHit)
+      const hits = gizmoHit ? all.filter(h => h.layer !== GIZMO_HANDLE_LAYER_NAME) : all
       // Aiming reveals the hovered entity's anchor triads; the plain selector
       // just highlights the single top entity a click would toggle. Read the
       // mode from the store, not a captured prop, so a mid-hover mode switch is
@@ -533,7 +546,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
         {triad && (
           <>
-            <TriadGizmo origin={triad.origin} orientation={triad.orientation} />
+            <TriadGizmo origin={triad.origin} orientation={triad.orientation} hovered={hoveredGizmo} />
             <GizmoPickLayer origin={triad.origin} orientation={triad.orientation} enabled={!manipulating} />
           </>
         )}
