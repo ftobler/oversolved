@@ -147,6 +147,52 @@ class TestCloneAPI:
         resp3 = authed_client.post(f"/api/documents/{uuid}/clone")
         assert json.loads(resp3.data)["name"] == "UniqueName (Clone 2)"
 
+    def test_clone_uses_requested_name(self, authed_client):
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "Bracket"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        response = authed_client.post(
+            f"/api/documents/{uuid}/clone",
+            data=json.dumps({"name": "  Bracket v2  "}),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        assert json.loads(response.data)["name"] == "Bracket v2"
+
+    def test_clone_requested_name_is_not_uniquified(self, authed_client):
+        """The user picked the name; taking it verbatim beats a surprise suffix."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "Plate"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        body = json.dumps({"name": "Plate (Clone)"})
+        resp1 = authed_client.post(f"/api/documents/{uuid}/clone", data=body, content_type="application/json")
+        resp2 = authed_client.post(f"/api/documents/{uuid}/clone", data=body, content_type="application/json")
+        assert json.loads(resp1.data)["name"] == "Plate (Clone)"
+        assert json.loads(resp2.data)["name"] == "Plate (Clone)"
+
+    def test_clone_blank_name_falls_back_to_suggestion(self, authed_client):
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "Shaft"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        response = authed_client.post(
+            f"/api/documents/{uuid}/clone",
+            data=json.dumps({"name": "   "}),
+            content_type="application/json",
+        )
+        assert json.loads(response.data)["name"] == "Shaft (Clone)"
+
     def test_clone_forbidden_for_other_user(self, app, authed_client):
         """Non-owner cannot clone a document they don't have access to."""
         # Create document as admin

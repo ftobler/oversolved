@@ -112,6 +112,14 @@ describe('HttpDocumentStore', () => {
     expect(url).toBe('/api/documents/uuid-1/clone')
     expect(init?.method).toBe('POST')
     expect(res).toEqual({ uuid: 'clone-1' })
+    expect(init?.body).toBeUndefined()  // no name -> the server picks the suggestion
+  })
+
+  it('clone forwards a caller-chosen name in the body', async () => {
+    const fetchFn = mockFetch({ uuid: 'clone-2' })
+    await store.clone('uuid-1', 'Bracket v2')
+    const { init } = lastCall(fetchFn)
+    expect(JSON.parse(init?.body as string)).toEqual({ name: 'Bracket v2' })
   })
 
   it('thumbnailUrl points at the server thumbnail route (no fetch)', () => {

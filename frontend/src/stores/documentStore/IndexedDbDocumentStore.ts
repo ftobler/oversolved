@@ -1,6 +1,7 @@
 import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
 import type { TrashAdapter, TrashDoc } from '@/adapters/trash'
 import { idbGet, idbGetAll, idbPut, idbDelete } from './idb'
+import { suggestedCloneName } from './cloneName'
 
 // In a fully local, single-user build there is no account system. Documents are
 // all owned by this browser; the owner label is cosmetic (the documents grid
@@ -156,16 +157,21 @@ export class IndexedDbDocumentStore implements DocumentStore {
   }
 
   async duplicate(id: string): Promise<{ uuid: string }> {
-    const src = await idbGet<StoredDoc>(id)
-    if (!src) throw new Error(`Document not found: ${id}`)
-    const { uuid } = await this.create(`${src.name} (copy)`, { is_public: src.is_public })
-    await this.save(uuid, { content: src.content, preview_image: src.preview_image })
-    return { uuid }
+    return this.copyInto(id, name => `${name} (copy)`)
   }
 
-  // No other owners on a local device, so cloning is just a local copy.
-  async clone(id: string): Promise<{ uuid: string }> {
-    return this.duplicate(id)
+  // No other owners on a local device, so cloning is just a local copy, except
+  // that the caller may have had the user name it.
+  async clone(id: string, name?: string): Promise<{ uuid: string }> {
+    return this.copyInto(id, srcName => name?.trim() || suggestedCloneName(srcName))
+  }
+
+  private async copyInto(id: string, nameFor: (srcName: string) => string): Promise<{ uuid: string }> {
+    const src = await idbGet<StoredDoc>(id)
+    if (!src) throw new Error(`Document not found: ${id}`)
+    const { uuid } = await this.create(nameFor(src.name), { is_public: src.is_public })
+    await this.save(uuid, { content: src.content, preview_image: src.preview_image })
+    return { uuid }
   }
 
   // No server-rendered thumbnail: the grid uses the inline preview_image carried

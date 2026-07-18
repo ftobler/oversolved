@@ -37,6 +37,7 @@ import measurementIcon from '@/assets/icons/measurement.svg'
 import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
 import RenameDialog from '@/components/dialogs/RenameDialog'
+import { suggestedCloneName } from '@/stores/documentStore'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
@@ -87,6 +88,8 @@ export default function Part() {
   }, [])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
+  // Non-null while the clone prompt is open; holds the name it was seeded with.
+  const [cloneName, setCloneName] = useState<string | null>(null)
   const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number]; session: number } | null>(null)
   const colorPopoverSession = useRef(0)
   const { user } = useAuth()
@@ -523,10 +526,16 @@ export default function Part() {
     if (success) setError(null)
   }
 
-  const handleClone = async () => {
+  const handleClone = () => {
     if (!uuid) return
+    setCloneName(suggestedCloneName(docName))
+  }
+
+  const handleCloneConfirm = async (name: string) => {
+    if (!uuid) return
+    setCloneName(null)
     try {
-      const data = await cloneDoc(uuid)
+      const data = await cloneDoc(uuid, name)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
       setError(parseHttpError(e, 'Failed to clone document'))
@@ -865,6 +874,16 @@ export default function Part() {
         currentName={renameTarget?.currentName ?? ''}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}
+      />
+      <RenameDialog
+        isOpen={cloneName !== null}
+        title="Clone Document"
+        label="New name"
+        icon="content_copy"
+        confirmLabel="Clone"
+        currentName={cloneName ?? ''}
+        onRename={handleCloneConfirm}
+        onCancel={() => setCloneName(null)}
       />
       <PartColorPopover
         popover={partColorPopover}

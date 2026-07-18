@@ -73,7 +73,9 @@ export interface DocumentStore {
   // from `duplicate`: it needs only view permission, so it works on a shared or
   // public document the caller does not own (reassigning ownership to them). The
   // local store has no other owners, so it is a plain copy like `duplicate`.
-  clone(id: string): Promise<{ uuid: string }>
+  // `name` is what the user confirmed in the clone prompt; omitted, the store
+  // falls back to its own suggested name.
+  clone(id: string, name?: string): Promise<{ uuid: string }>
   // A network URL the grid can point an <img> at for a thumbnail, or null when
   // the store has no server-rendered thumbnail (the local store inlines a
   // base64 preview_image on the summary instead). Keeps the view from hardcoding

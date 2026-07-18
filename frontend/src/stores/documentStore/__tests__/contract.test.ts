@@ -4,6 +4,7 @@ import type { DocumentStore } from '../types'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
 import { HttpDocumentStore } from '../HttpDocumentStore'
 import { resetDbConnection } from '../idb'
+import { suggestedCloneName } from '../cloneName'
 
 // One behavioral contract, run against every DocumentStore implementation. The
 // rule: given the same sequence of calls, each store must present the same
@@ -101,7 +102,7 @@ function mountFakeServer(): () => void {
       if (!src) return respond(404)
       const uuid = crypto.randomUUID()
       docs.set(uuid, {
-        ...src, uuid, name: `${src.name} (Clone)`,
+        ...src, uuid, name: body?.name?.trim() || `${src.name} (Clone)`,
         created_at: stamp(), updated_at: stamp(),
       })
       return respond(200, { uuid })
@@ -242,6 +243,15 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(cloneId).not.toBe(uuid)
     expect((await store.load(cloneId)).content).toBe('shape')
     expect(await store.list()).toHaveLength(2)
+  })
+
+  it('clone defaults to the suggested name and honors an explicit one', async () => {
+    const { uuid } = await store.create('Original')
+    await store.save(uuid, { content: 'shape' })
+    const auto = await store.clone(uuid)
+    expect((await store.load(auto.uuid)).name).toBe(suggestedCloneName('Original'))
+    const named = await store.clone(uuid, 'Bracket v2')
+    expect((await store.load(named.uuid)).name).toBe('Bracket v2')
   })
 
   it('create defaults is_public to false and honors an explicit true', async () => {
