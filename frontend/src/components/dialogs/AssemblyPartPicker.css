@@ -42,8 +42,15 @@
   overflow: hidden;
 }
 
+/* The shell's `.dialog-component input` is a class-plus-type selector and so
+   outranks `.search-input`, flattening its padding and letting the typed text
+   run under the search icon. Restore the gutters at higher specificity. */
 .doc-browser-search {
   width: 100%;
+}
+
+.dialog-component .doc-browser-search .search-input {
+  padding: 8px 32px 8px 36px;
 }
 
 .doc-browser-status {
