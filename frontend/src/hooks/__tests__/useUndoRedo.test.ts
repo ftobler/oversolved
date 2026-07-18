@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { StrictMode } from 'react'
-import { renderHook, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
+import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import type { PartDoc, Mutation } from '@/types/cad'
 
@@ -9,7 +9,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_extrude', featureId: 'f1' } as Mutation, docRef.current!)
@@ -32,7 +32,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: docB }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA)
@@ -58,7 +58,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: docA }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA)
@@ -84,7 +84,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: docB }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA)
@@ -107,7 +107,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: docB }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA)
@@ -131,7 +131,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     for (let i = 0; i < 55; i++) {
       act(() => {
@@ -139,14 +139,18 @@ describe('useUndoRedo', () => {
       })
     }
 
-    expect(result.current.undoStack.length).toBeLessThanOrEqual(50)
+    // Exact depth plus which end was discarded: a <= 50 bound also holds for an
+    // empty stack, so it would pass even if nothing was ever pushed.
+    expect(result.current.undoStack).toHaveLength(50)
+    expect(result.current.undoStack[0].doc.features?.[0].id).toBe('f5')
+    expect(result.current.undoStack[49].doc.features?.[0].id).toBe('f54')
   })
 
   it('suppressUndoRef prevents pushUndo from adding undo entries', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_sketch' } as Mutation, docRef.current!)
@@ -166,7 +170,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.handleUndo()
@@ -181,7 +185,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.handleRedo()
@@ -192,19 +196,17 @@ describe('useUndoRedo', () => {
     expect(setDoc).not.toHaveBeenCalled()
   })
 
-  // These run the hook under StrictMode, where React invokes state updaters
-  // twice. Any stack transition that side-effects inside an updater replays and
-  // duplicates entries, which is invisible to the plain renderHook tests above.
+  // The whole file renders strict, but these target the double-invoke directly:
+  // a transition that side-effects inside a setState updater replays and
+  // duplicates entries, which a bare renderHook can never observe.
   describe('under StrictMode double-invocation', () => {
-    const strict = { wrapper: StrictMode }
-
     it('undo pushes exactly one redo entry and redo returns exactly one', () => {
       const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
       const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
       const docRef = { current: docB }
       const setDoc = vi.fn()
       const reSolve = vi.fn()
-      const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve), strict)
+      const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
       act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
       expect(result.current.undoStack).toHaveLength(1)
@@ -224,7 +226,7 @@ describe('useUndoRedo', () => {
       const docRef = { current: docB }
       const setDoc = vi.fn((d: React.SetStateAction<PartDoc | null>) => { docRef.current = d as PartDoc })
       const reSolve = vi.fn()
-      const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve), strict)
+      const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
       act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
 
@@ -237,7 +239,7 @@ describe('useUndoRedo', () => {
 
     it('pushUndo adds one entry per call', () => {
       const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
-      const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()), strict)
+      const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
 
       act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docRef.current!) })
       act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docRef.current!) })
@@ -248,7 +250,7 @@ describe('useUndoRedo', () => {
     it('snapshot restore returns the stacks to their pre-session contents', () => {
       const docA = { version: 1, kind: 'part' } as PartDoc
       const docRef = { current: docA }
-      const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()), strict)
+      const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
 
       act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
       act(() => { result.current.saveUndoStackSnapshot() })
@@ -263,7 +265,7 @@ describe('useUndoRedo', () => {
     it('snapshot taken right after a mutation includes that mutation', () => {
       const docA = { version: 1, kind: 'part' } as PartDoc
       const docRef = { current: docA }
-      const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()), strict)
+      const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
 
       // Same tick: the snapshot must read the ref, not the not-yet-rendered state.
       act(() => {
@@ -284,7 +286,7 @@ describe('useUndoRedo', () => {
     const docRef = { current: docC }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
 
     act(() => {
       result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA)

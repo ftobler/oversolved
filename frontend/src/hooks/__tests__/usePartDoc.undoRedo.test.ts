@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
+import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import type { PartDoc, Mutation } from '@/types/cad'
 
@@ -15,7 +16,7 @@ describe('useUndoRedo integration', () => {
     const docRef = { current: docC as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() =>
+    const { result } = renderHookStrict(() =>
       useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve),
     )
 
@@ -43,7 +44,7 @@ describe('useUndoRedo integration', () => {
     const docRef = { current: docs[3] as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() =>
+    const { result } = renderHookStrict(() =>
       useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve),
     )
 
@@ -79,7 +80,7 @@ describe('useUndoRedo integration', () => {
     const docRef = { current: makeDoc() as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
-    const { result } = renderHook(() =>
+    const { result } = renderHookStrict(() =>
       useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve),
     )
 
@@ -93,6 +94,10 @@ describe('useUndoRedo integration', () => {
       })
     }
 
-    expect(result.current.undoStack.length).toBeLessThanOrEqual(50)
+    // Assert the exact depth and which end was discarded: a <= 50 bound also
+    // holds for an empty stack, so it would pass even if nothing was pushed.
+    expect(result.current.undoStack).toHaveLength(50)
+    expect(result.current.undoStack[0].doc.features?.[0].id).toBe('f5')
+    expect(result.current.undoStack[49].doc.features?.[0].id).toBe('f54')
   })
 })
