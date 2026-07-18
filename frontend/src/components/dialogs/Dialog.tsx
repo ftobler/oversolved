@@ -11,6 +11,7 @@ interface DialogProps {
   confirmDisabled?: boolean
   icon?: string  // material icon ligature, rendered in the title colour (see MessageDialog for the tinted variants)
   busy?: boolean
+  className?: string  // extra class on the content box, for callers that need their own sizing
 }
 
 export default function Dialog({
@@ -24,6 +25,7 @@ export default function Dialog({
   confirmDisabled = false,
   icon,
   busy = false,
+  className,
 }: DialogProps) {
   if (!isOpen) return null
 
@@ -36,7 +38,11 @@ export default function Dialog({
 
   return (
     <div className="dialog-component-overlay" onClick={handleClose}>
-      <div className="dialog-component" onClick={e => e.stopPropagation()} aria-busy={busy}>
+      <div
+        className={`dialog-component${className ? ` ${className}` : ''}`}
+        onClick={e => e.stopPropagation()}
+        aria-busy={busy}
+      >
         <div className="dialog-component-header">
           {icon && <span className="material-icons-outlined dialog-component-icon">{icon}</span>}
           <h2 className="dialog-component-title">{title}</h2>

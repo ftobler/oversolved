@@ -1,55 +1,14 @@
-.share-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 20vh;
-  z-index: 9999;
-}
+/* Only the sharing controls live here. Overlay, header, close button and the
+   base input styling come from the shared dialog shell.
 
-.share-dialog-content {
-  background: #1e1e1e;
-  border: none;
-  border-radius: 16px;
-  width: 90%;
+   Several rules below are qualified with `.dialog-component` purely to outrank
+   the shell's `.dialog-component input`, which is a class-plus-type selector. */
+
+/* Wider than the default shell, and a fixed height so the box does not jump as
+   the share list loads in. */
+.dialog-component.share-dialog {
   max-width: 500px;
   height: 400px;
-  max-height: 80vh;
-  margin: 0;
-  font-size: 14px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-}
-
-.share-dialog-header {
-  padding-left: 20px;
-  border-bottom: 1px solid #333;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.share-dialog-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #f3f4f6;
-}
-
-.share-dialog-body {
-  flex: 1;
-  padding: 16px 20px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .share-dialog-row {
@@ -61,8 +20,30 @@
   padding: 4px;
 }
 
-.share-dialog-input {
+.share-dialog-row-link {
+  justify-content: space-between;
+}
+
+.share-dialog-link-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #f3f4f6;
+  white-space: nowrap;
+}
+
+.dialog-component .share-dialog-link-toggle input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin-left: 12px;
+  cursor: pointer;
+}
+
+.dialog-component .share-dialog-input {
   flex: 1;
+  width: auto;
+  min-width: 0;
   padding: 8px 10px;
   background: #2a2a2a;
   border: none;
@@ -72,47 +53,41 @@
   box-sizing: border-box;
 }
 
-.share-dialog-input:focus {
+.share-dialog-row-link .share-dialog-input {
+  margin-left: 12px;
+}
+
+.dialog-component .share-dialog-input:focus {
   outline: none;
-  border-color: #4fc3f7;
   box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
 }
 
+.share-dialog-copy-btn,
+.share-dialog-remove-btn {
+  min-width: 32px;
+  height: 32px;
+}
+
+.share-dialog-copy-btn {
+  border-radius: 50%;
+}
+
+/* `hidden` reserves the slot; the row would otherwise reflow on every toggle. */
+.share-dialog-copy-btn[hidden] {
+  display: inline-flex;
+  visibility: hidden;
+}
+
 .share-dialog-select {
-  padding: 8px;
-  background: #111;
+  font-size: 12px;
+  padding: 4px 8px;
   border: 1px solid #333;
-  border-radius: 4px;
+  border-radius: 9999px;
+  background: #2a2a2a;
   color: #ccc;
-  font-size: 14px;
   min-width: 80px;
 }
 
-.share-dialog-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.share-dialog-table th:first-child,
-.share-dialog-table td:first-child {
-  width: 50%;
-}
-.share-dialog-table th,
-.share-dialog-table td {
-  padding: 6px 8px;
-  text-align: left;
-}
-.share-dialog-table th {
-  border-bottom: 1px solid #333;
-}
-.share-dialog-table td {
-  border-bottom: 1px solid #333;
-}
-.share-dialog-table th:last-child,
-.share-dialog-table td:last-child {
-  width: 1%;
-  text-align: right;
-}
 .share-dialog-list-container {
   display: flex;
   flex-direction: column;
@@ -121,70 +96,38 @@
   overflow-y: auto;
 }
 
-.share-dialog-list-title {
-  font-size: 12px;
-  color: #888;
-  font-weight: 600;
-  margin: 0;
+.share-dialog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
 }
 
-.share-dialog-error {
-  color: #ef5350;
-  font-size: 12px;
-  margin: 0;
-}
-
+.share-dialog-table th,
 .share-dialog-table td {
-  padding: 8px 0 8px 0;
+  padding: 8px;
   text-align: left;
   border-bottom: 1px solid #333;
   color: #ccc;
 }
 
-.share-dialog-table-permission {
-  color: #888;
-  width: 80px;
+.share-dialog-table th:first-child,
+.share-dialog-table td:first-child {
+  width: 50%;
+}
+
+.share-dialog-table th:last-child,
+.share-dialog-table td:last-child {
+  width: 1%;
+  text-align: right;
 }
 
 .share-dialog-table-action {
   width: 40px;
-  text-align: right;
   padding-right: 0;
-}
-
-.share-dialog-close-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  color: #666;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin: 12px;
-}
-
-.share-dialog-close-btn:hover {
-  background: #333;
-  color: #ccc;
-}
-
-.share-dialog-close-btn .material-icons {
-  font-size: 20px;
 }
 
 .share-dialog-error {
   color: #ef5350;
   font-size: 12px;
   margin: 0;
-}
-
-@media (max-width: 768px) {
-  .share-dialog-content {
-    width: 95%;
-  }
 }
