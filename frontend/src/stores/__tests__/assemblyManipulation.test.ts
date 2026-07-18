@@ -2,19 +2,30 @@
 // viewport only ever feeds it pointer deltas.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { AssemblyDoc, PartInstance } from '@/types/cad'
+import type { AssemblyDoc, BodyResult, PartInstance } from '@/types/cad'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
-import { IDENTITY_TRANSFORM, rotateVector } from '@/utils/transform3d'
+import { getAssemblyPartGroups } from '@/utils/assemblyRender'
+import { composeTransforms, IDENTITY_TRANSFORM, makeTransform, rotateVector } from '@/utils/transform3d'
 
 const HALF_PI = Math.PI / 2
 
 function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstance {
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
+}
+
+/** A one-triangle body, enough for the render path to emit a group for `handle`. */
+function solvedBody(handle: string): BodyResult {
+  return {
+    id: `${handle}:body_0`,
+    created_by: handle,
+    modified_by: [],
+    mesh: { vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), faces: new Uint32Array([0, 1, 2]) },
+  }
 }
 
 function docWith(...instances: PartInstance[]): AssemblyDoc {
@@ -81,6 +92,40 @@ describe('assemblyStore part manipulation', () => {
     // placement seed.
     expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3 })
     expect(findInstance(host.doc, 'p2')!.transform).toMatchObject({ tx: 20 })
+  })
+
+  // The seed is the DOC pose, but a mate can have pulled the part away from it,
+  // and the viewport draws the grabbed part at (drag delta) over its SOLVED pose.
+  // Committing `session.current` (delta over the seed) would drop the part back
+  // by exactly (solved - seed) the instant the pointer is released.
+  it('commits the grabbed part where the viewport drew it, not delta over the stale seed', () => {
+    const { host } = mountHost(docWith(instance('p1'), instance('p2')))
+    // A mate pulled p1 10mm off its placement seed on the last full solve.
+    const solvedP1 = { ...IDENTITY_TRANSFORM, tx: 10 }
+    useAssemblyStore.getState().setSnapshot({
+      ...useAssemblyStore.getState(),
+      transforms: { p1: solvedP1, p2: { ...IDENTITY_TRANSFORM, tx: 20 } },
+    })
+    const s = useAssemblyStore.getState()
+
+    s.beginPartManipulation('p1')
+    s.dragPartTranslate([3, 0, 0])
+
+    // What the screen actually shows: the group offset the render path emits,
+    // applied over vertices already baked at the solved pose.
+    const manipulation = useAssemblyStore.getState().manipulation!
+    const group = getAssemblyPartGroups(
+      { 'p1:body_0': solvedBody('p1') },
+      [instance('p1')],
+      manipulation,
+      null,
+    )[0]
+    const drawn = composeTransforms(makeTransform(group.position, group.quaternion), solvedP1)
+
+    useAssemblyStore.getState().endPartManipulation()
+
+    expect(drawn.tx).toBeCloseTo(13, 9)  // guards the derivation itself
+    expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: drawn.tx, ty: drawn.ty, tz: drawn.tz })
   })
 
   it('gizmo rotation composes onto the instance quaternion and re-solves live then on commit', () => {

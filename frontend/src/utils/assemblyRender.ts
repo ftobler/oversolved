@@ -11,12 +11,11 @@
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
-import type { ManipulationSession } from '@/utils/partManipulation'
+import { manipulationDelta, type ManipulationSession } from '@/utils/partManipulation'
 import {
   composeTransforms,
   IDENTITY_TRANSFORM,
   makeTransform,
-  relativeTransform,
   transformQuat,
   transformTranslation,
   type Quat,
@@ -126,7 +125,7 @@ export function getAssemblyPartGroups(
 
     const manipulating = manipulation?.handle === inst.handle
     const offset: Transform3D = manipulating
-      ? relativeTransform(manipulation!.current, manipulation!.seed)
+      ? manipulationDelta(manipulation!)
       : IDENTITY_TRANSFORM
 
     groups.push({

@@ -398,7 +398,12 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const { manipulation, doc } = get()
     set({ manipulation: null })
     if (!manipulation || !doc || !callbacks) return
-    const { changed } = commitManipulation(doc, manipulation)
+    // The grabbed part's own solved pose is what the drag offset was drawn over,
+    // so the commit must compose against it, not against the doc seed the mates
+    // may long since have pulled the part away from.
+    const solved = get().transforms
+    const solvedGrab = solved[manipulation.handle]
+    const { changed } = commitManipulation(doc, manipulation, solvedGrab)
     // A click that never moved the part must not dirty the doc or re-solve.
     if (!changed) return
     // Bake every follower's live-solved pose into its seed before committing the
@@ -408,8 +413,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // relax the whole assembly off the pose the drag just previewed. Baking
     // first (commitManipulation then overwrites the grabbed part) keeps the
     // seeds in step with the screen, the same discipline the ground toggle uses.
-    const solved = get().transforms
-    callbacks.mutateDoc(d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation).doc)
+    callbacks.mutateDoc(d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },
 

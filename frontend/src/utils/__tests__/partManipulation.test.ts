@@ -6,6 +6,7 @@ import {
   dragTranslate,
   gizmoRotate,
   isManipulable,
+  livePartPose,
 } from '@/utils/partManipulation'
 import { findInstance } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM, quatFromAxisAngle, makeTransform, rotateVector } from '@/utils/transform3d'
@@ -125,6 +126,45 @@ describe('gizmo rotate', () => {
       [1, 0, 0],
     )
     expect(x[1]).toBeCloseTo(1, 9)  // +Y, i.e. a single 90-degree turn
+  })
+})
+
+describe('livePartPose', () => {
+  it('carries the drag delta onto the solved pose, not onto the doc seed', () => {
+    const doc = docWith(instance('p1'))
+    // A mate solved p1 to tx 10 while its doc seed stayed at the origin.
+    const solved = { ...IDENTITY_TRANSFORM, tx: 10 }
+    const session = dragTranslate(beginManipulation(doc, 'p1')!, [3, 0, 0])
+
+    expect(livePartPose(session, solved).tx).toBeCloseTo(13, 9)
+    expect(session.current.tx).toBeCloseTo(3, 9)  // the seed-relative preview, deliberately not the pose
+  })
+
+  it('translates a mate-rotated part without disturbing its solved orientation', () => {
+    const doc = docWith(instance('p1'))
+    const solved = makeTransform([0, 0, 0], quatFromAxisAngle([0, 0, 1], HALF_PI))
+    const session = dragTranslate(beginManipulation(doc, 'p1')!, [0, 5, 0])
+    const pose = livePartPose(session, solved)
+
+    expect(pose.ty).toBeCloseTo(5, 9)
+    const x = rotateVector([pose.qx, pose.qy, pose.qz, pose.qw], [1, 0, 0])
+    expect(x[1]).toBeCloseTo(1, 9)  // still the solved 90-degree turn, no extra spin
+  })
+
+  it('falls back to the seed for a part no solve has posed yet', () => {
+    const doc = docWith(instance('p1', { transform: { ...IDENTITY_TRANSFORM, tx: 2 } }))
+    const session = dragTranslate(beginManipulation(doc, 'p1')!, [1, 0, 0])
+    expect(livePartPose(session, undefined)).toMatchObject({ tx: 3 })
+  })
+
+  it('commits the live pose, so releasing a mate-pulled part does not teleport it back', () => {
+    const doc = docWith(instance('p1'))
+    const solved = { ...IDENTITY_TRANSFORM, tx: 10 }
+    const session = dragTranslate(beginManipulation(doc, 'p1')!, [3, 0, 0])
+    const { doc: next, changed } = commitManipulation(doc, session, solved)
+
+    expect(changed).toBe(true)
+    expect(findInstance(next, 'p1')!.transform).toMatchObject({ tx: 13 })
   })
 })
 

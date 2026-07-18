@@ -13,6 +13,8 @@
 import type { AssemblyDoc, PartInstance, Transform3D } from '@/types/cad'
 import { findInstance, setInstanceTransform } from '@/utils/assemblyMutations'
 import {
+  composeTransforms,
+  relativeTransform,
   rotateTransformAboutPoint,
   translateTransform,
   transformTranslation,
@@ -60,16 +62,51 @@ export function gizmoRotate(
   return { ...session, current: rotateTransformAboutPoint(session.seed, axis, angle, p) }
 }
 
+/**
+ * How far the pointer has carried the part since pointer-down: `current ∘ seed⁻¹`.
+ * The viewport applies it as a group offset over vertices already baked at the
+ * solved pose, which is why it is a delta rather than an absolute transform.
+ */
+export function manipulationDelta(session: ManipulationSession): Transform3D {
+  return relativeTransform(session.current, session.seed)
+}
+
+/**
+ * Where the grabbed part actually sits on screen: the drag delta carried onto
+ * the pose the last solve left it at.
+ *
+ * The seed is the DOC transform, and a mate can have pulled the part off it, so
+ * `session.current` (delta over the seed) is NOT the drawn pose. Committing
+ * `current` used to teleport the part by exactly (solved - seed) on release.
+ * The render offset, the live solve pin and the commit all read this, so they
+ * cannot drift apart again. `solved` falls back to the seed for a part no solve
+ * has posed yet.
+ */
+export function livePartPose(
+  session: ManipulationSession,
+  solved: Transform3D | undefined,
+): Transform3D {
+  return composeTransforms(manipulationDelta(session), solved ?? session.seed)
+}
+
 export interface CommitResult {
   doc: AssemblyDoc
   /** False when the pointer never left the seed pose: no dirty flag, no re-solve. */
   changed: boolean
 }
 
-export function commitManipulation(doc: AssemblyDoc, session: ManipulationSession): CommitResult {
+/** `solved` is the grabbed part's pose from the last solve; see [[livePartPose]]. */
+export function commitManipulation(
+  doc: AssemblyDoc,
+  session: ManipulationSession,
+  solved?: Transform3D,
+): CommitResult {
   if (transformsEqual(session.seed, session.current)) return { doc, changed: false }
   // A part grounded mid-drag must not land the pose it was dragged to; report
   // no change rather than a phantom re-solve.
   if (!isManipulable(findInstance(doc, session.handle))) return { doc, changed: false }
-  return { doc: setInstanceTransform(doc, session.handle, session.current), changed: true }
+  return {
+    doc: setInstanceTransform(doc, session.handle, livePartPose(session, solved)),
+    changed: true,
+  }
 }
