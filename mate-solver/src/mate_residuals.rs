@@ -36,7 +36,7 @@
 
 use nalgebra::DMatrix;
 
-use crate::lm;
+use solver_core::lm;
 use crate::mate::{
     AnchorKind, Mate, MateDiagnostics, MateInput, MateKind, MateOutput, MateStatus, RigidBody,
 };

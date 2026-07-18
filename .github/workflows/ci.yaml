@@ -134,15 +134,19 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
-      # The wasm-kernel/*.test.ts solver-boundary tests self-skip when the Rust
-      # solver build (pkg-node) is absent. Build it here so `vitest run` actually
-      # exercises them instead of silently skipping (matches the local `just wasm`
-      # + `just frontend` flow). The build is identical across the Node matrix.
+      # The wasm-kernel/*.test.ts and *Real.test.ts solver-boundary tests self-skip
+      # when the Rust builds (pkg-node) are absent. Build BOTH crates here so
+      # `vitest run` actually exercises them instead of silently skipping (matches
+      # the local `just wasm` + `just frontend` flow): sketch-solver backs the
+      # sketch/topology tests, mate-solver backs solveAssemblyReal. The build is
+      # identical across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - name: Build WASM solver (nodejs for vitest)
-        run: wasm-pack build --target nodejs --out-dir pkg-node --release
+      - name: Build WASM solvers (nodejs for vitest)
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg-node --release
+          cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
       - name: npm test (vitest)
@@ -167,19 +171,20 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Test
-        run: cargo test
-        working-directory: sketch-solver
+      - name: Test (workspace: solver-core + sketch-solver + mate-solver)
+        run: cargo test --workspace
 
       - name: Lint (clippy)
-        run: cargo clippy -- -D warnings
-        working-directory: sketch-solver
+        run: cargo clippy --workspace -- -D warnings
 
-      - name: Build WASM (web + nodejs)
+      - name: Build WASM (web + nodejs, both solver crates)
         run: |
+          cd sketch-solver
           wasm-pack build --target web --out-dir pkg --release
           wasm-pack build --target nodejs --out-dir pkg-node --release
-        working-directory: sketch-solver
+          cd ../mate-solver
+          wasm-pack build --target web --out-dir pkg --release
+          wasm-pack build --target nodejs --out-dir pkg-node --release
 
   # Full-document parity gate. Runs the TS kernel (OCC.js + Rust sketch solver)
   # against the frozen regression baseline (a golden snapshot of the now-deleted
@@ -196,8 +201,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - name: Build WASM solver (nodejs for vitest)
-        run: wasm-pack build --target nodejs --out-dir pkg-node --release
+      - name: Build WASM solvers (nodejs for vitest)
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg-node --release
+          cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
       - uses: actions/setup-node@v4

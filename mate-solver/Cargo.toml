@@ -1,0 +1,20 @@
+[package]
+name = "mate-solver"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Assembly mate solver: flat MateInput/MateOutput codec and 3D rigid-body mate residuals over the shared Levenberg-Marquardt driver."
+
+[lib]
+# cdylib for the wasm-pack/wasm-bindgen build; rlib so native `cargo test` and
+# any headless runner can link it.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+solver-core.workspace = true
+nalgebra.workspace = true
+
+# wasm-bindgen is only needed for the wasm32 boundary (src/wasm.rs). Keeping it
+# target-scoped means native `cargo test` never pulls in the JS-glue crate.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen.workspace = true

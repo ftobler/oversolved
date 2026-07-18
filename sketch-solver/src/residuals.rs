@@ -12,7 +12,7 @@
 //! them identically to a `fixed` constraint for solve, rank, and status.
 
 use crate::constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
-use crate::sparse::SparseRow;
+use solver_core::sparse::SparseRow;
 use crate::{Entity, Input, Kind, DEG2RAD};
 use nalgebra::DMatrix;
 use std::collections::HashMap;
@@ -2083,7 +2083,7 @@ mod tests {
         let analytic = p.jacobian(&x, n);
         let residual_fn = |xx: &[f64]| p.residuals(xx);
         let m = residual_fn(&x).len();
-        let fd = crate::lm::fd_jacobian(&residual_fn, &x, m);
+        let fd = solver_core::lm::fd_jacobian(&residual_fn, &x, m);
         for r in 0..m {
             for col in 0..n {
                 let diff = (analytic[(r, col)] - fd[(r, col)]).abs();
@@ -2175,7 +2175,7 @@ mod tests {
             assert_eq!(r.len(), 1);
             assert!((r[0] - (2.0 - 3.0)).abs() < 1e-12, "equal radius: {}", r[0]);
             let analytic = p.jacobian(&x, n);
-            let fd = crate::lm::fd_jacobian(&|xx: &[f64]| p.residuals(xx), &x, 1);
+            let fd = solver_core::lm::fd_jacobian(&|xx: &[f64]| p.residuals(xx), &x, 1);
             for col in 0..n {
                 assert!(
                     (analytic[(0, col)] - fd[(0, col)]).abs() < 1e-5,
@@ -2258,7 +2258,7 @@ mod tests {
         let analytic = p.jacobian(&x, n);
         let residual_fn = |xx: &[f64]| p.residuals(xx);
         let m = residual_fn(&x).len();
-        let fd = crate::lm::fd_jacobian(&residual_fn, &x, m);
+        let fd = solver_core::lm::fd_jacobian(&residual_fn, &x, m);
         assert_eq!(analytic.nrows(), m);
         assert_eq!(fd.nrows(), m);
         for r in 0..m {

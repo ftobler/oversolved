@@ -7,8 +7,6 @@
 //! delegates here.
 
 use crate::codec::{decode_input, encode_output, CodecError};
-use crate::mate::{decode_mate_input, encode_mate_output};
-use crate::mate_residuals::solve_mate;
 use crate::solve::solve_sketch;
 use crate::topology::codec::{
     decode_input as decode_topology_input, encode_output as encode_topology_output, TopologyCodecError,
@@ -25,15 +23,6 @@ pub fn solve_bytes(input: &[u8]) -> Result<Vec<u8>, CodecError> {
     let inp = decode_input(input)?;
     let out = solve_sketch(&inp);
     Ok(encode_output(&out))
-}
-
-/// Decode a flat `MateInput` buffer, solve the assembly, and encode the flat
-/// `MateOutput` buffer. The mate solver uses the same LM driver as the sketch
-/// solver but operates on 3D rigid-body transforms (7 params per body).
-pub fn solve_mate_bytes(input: &[u8]) -> Result<Vec<u8>, CodecError> {
-    let inp = decode_mate_input(input)?;
-    let out = solve_mate(&inp);
-    Ok(encode_mate_output(&out))
 }
 
 /// Decode an ordered `richGeom` payload, run the sketch area builder (topology),
@@ -53,75 +42,7 @@ mod tests {
     use super::*;
     use crate::codec::{decode_output, encode_input};
     use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
-    use crate::mate::{
-        encode_mate_input, decode_mate_output, AnchorKind, Mate, MateGeometry, MateInput,
-        MateKind, MateRef, RigidBody,
-    };
     use crate::{Entity, Input, Kind, Options, Status};
-
-    #[test]
-    fn solve_mate_bytes_round_trips_spherical() {
-        let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
-            params_initial: vec![
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-            ],
-            fixed_mask: vec![0b0000_0001],
-            mates: vec![Mate {
-                kind: MateKind::Spherical,
-                a: MateRef {
-                    body_index: 0,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                    anchor_kind: AnchorKind::Point,
-                },
-                b: MateRef {
-                    body_index: 1,
-                    geometry: MateGeometry {
-                        point: [0.0, 0.0, 0.0],
-                        axis: [0.0, 0.0, 1.0],
-                    },
-                    anchor_kind: AnchorKind::Point,
-                },
-                flip: false,
-                offset: 0.0,
-                ratio: 1.0,
-                radius: 0.0,
-                angle: 0.0,
-            }],
-        };
-        let bytes = encode_mate_input(&input);
-        let out_bytes = solve_mate_bytes(&bytes).expect("solve mate");
-        let out = decode_mate_output(&out_bytes).expect("decode output");
-        assert!(out.params_solved[7].abs() < 1e-2);
-        assert!(out.diagnostics.residual_norm < 1e-2);
-    }
-
-    #[test]
-    fn solve_mate_bytes_rejects_bad_input() {
-        assert!(solve_mate_bytes(&[0, 1, 2, 3]).is_err());
-    }
-
-    #[test]
-    fn solve_mate_bytes_rejects_sketch_magic() {
-        // A valid sketch input buffer should NOT be accepted by the mate solver.
-        let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Line,
-                param_offset: 0,
-            }],
-            params_initial: vec![0.0; 4],
-            pinned_mask: vec![],
-            equality_pins: vec![],
-            constraints: vec![],
-            options: Options::default(),
-        };
-        let sketch_bytes = encode_input(&input);
-        assert!(solve_mate_bytes(&sketch_bytes).is_err());
-    }
 
     #[test]
     fn solve_bytes_round_trips_a_fixed_horizontal_length_line() {

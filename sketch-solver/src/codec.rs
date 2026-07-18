@@ -57,6 +57,8 @@
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
+use solver_core::bytes::{Eof, Reader, Writer};
+
 use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
 use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
 
@@ -74,75 +76,11 @@ pub enum CodecError {
     BadRefType(u8),
 }
 
-/// Cursor over a byte slice with little-endian primitive reads.
-#[derive(Clone)]
-pub(crate) struct Reader<'a> {
-    buf: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> Reader<'a> {
-    pub(crate) fn new(buf: &'a [u8]) -> Self {
-        Reader { buf, pos: 0 }
-    }
-
-    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], CodecError> {
-        let end = self.pos.checked_add(n).ok_or(CodecError::UnexpectedEof)?;
-        if end > self.buf.len() {
-            return Err(CodecError::UnexpectedEof);
-        }
-        let s = &self.buf[self.pos..end];
-        self.pos = end;
-        Ok(s)
-    }
-
-    pub(crate) fn u8(&mut self) -> Result<u8, CodecError> {
-        Ok(self.take(1)?[0])
-    }
-
-    pub(crate) fn u32(&mut self) -> Result<u32, CodecError> {
-        let b = self.take(4)?;
-        Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-    }
-
-    pub(crate) fn f32(&mut self) -> Result<f32, CodecError> {
-        let b = self.take(4)?;
-        Ok(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-    }
-
-    pub(crate) fn f64(&mut self) -> Result<f64, CodecError> {
-        let b = self.take(8)?;
-        Ok(f64::from_le_bytes([
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-        ]))
-    }
-}
-
-/// Growable little-endian byte writer.
-#[derive(Default)]
-pub(crate) struct Writer {
-    buf: Vec<u8>,
-}
-
-impl Writer {
-    pub(crate) fn u8(&mut self, v: u8) {
-        self.buf.push(v);
-    }
-
-    pub(crate) fn u32(&mut self, v: u32) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-
-    pub(crate) fn f32(&mut self, v: f32) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-
-    pub(crate) fn f64(&mut self, v: f64) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-
-    pub(crate) fn into_bytes(self) -> Vec<u8> {
-        self.buf
+/// Lets `r.u32()?` inside a `Result<_, CodecError>` function convert the
+/// cursor's only failure mode without an explicit map_err at every call site.
+impl From<Eof> for CodecError {
+    fn from(_: Eof) -> Self {
+        CodecError::UnexpectedEof
     }
 }
 
@@ -300,7 +238,7 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     for c in &input.constraints {
         encode_constraint(&mut w, c);
     }
-    w.buf
+    w.into_bytes()
 }
 
 #[cfg(test)]
@@ -374,7 +312,7 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     w.u32(out.diagnostics.dof);
     w.u32(out.diagnostics.iters);
     w.f64(out.diagnostics.ms);
-    w.buf
+    w.into_bytes()
 }
 
 pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {

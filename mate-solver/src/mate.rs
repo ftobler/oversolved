@@ -1,6 +1,6 @@
 //! Mate constraint solver types and flat typed-array codec for the WASM boundary.
 //!
-//! The mate solver reuses `solve_lm` (`lm.rs`) with 3D rigid-body residuals:
+//! The mate solver reuses `solve_lm` (`solver_core::lm`) with 3D rigid-body residuals:
 //! each rigid body carries 7 params (tx, ty, tz, qx, qy, qz, qw — translation +
 //! quaternion rotation). Mates constrain the bodies' relative transforms by
 //! comparing anchor geometry (point + axis) in world space.

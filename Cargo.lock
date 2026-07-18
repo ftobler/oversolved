@@ -42,6 +42,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "mate-solver"
+version = "0.0.0"
+dependencies = [
+ "nalgebra",
+ "solver-core",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "matrixmultiply"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -234,7 +243,15 @@ dependencies = [
  "nalgebra",
  "serde",
  "serde_json",
+ "solver-core",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "solver-core"
+version = "0.0.0"
+dependencies = [
+ "nalgebra",
 ]
 
 [[package]]

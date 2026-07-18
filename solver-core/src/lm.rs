@@ -24,16 +24,17 @@ pub struct LmResult {
 
 /// Relative step for the central finite-difference Jacobian. `cbrt(eps)` is the
 /// usual optimum for a 3-point stencil (truncation vs round-off balance).
-#[cfg(test)]
 fn fd_step(xj: f64) -> f64 {
     f64::EPSILON.cbrt() * xj.abs().max(1.0)
 }
 
 /// Central 3-point finite-difference Jacobian of `f` at `x`. `m` is the residual
 /// count (taken from a prior `f(x)` so we can size the matrix). Kept for the
-/// analytic-vs-FD cross-check tests; the solver now uses an analytic Jacobian.
-#[cfg(test)]
-pub(crate) fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMatrix<f64> {
+/// analytic-vs-FD cross-check tests; the solver itself uses an analytic
+/// Jacobian. Unconditionally compiled (not `#[cfg(test)]`) because both solver
+/// crates' test suites call it across the crate boundary, where `cfg(test)`
+/// does not reach.
+pub fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMatrix<f64> {
     let n = x.len();
     let mut j = DMatrix::<f64>::zeros(m, n);
     if m == 0 {

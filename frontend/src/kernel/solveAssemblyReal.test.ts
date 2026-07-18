@@ -15,12 +15,12 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
-import { loadPkgNodeExport } from '../wasm-kernel/loadPkgNode'
+import { loadPkgNodeExport, PKG_MATE } from '../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 
-const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes')
+const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
 const describeReal = solveMate ? describe : describe.skip
 
 function identity(): Transform3D {

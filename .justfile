@@ -113,15 +113,23 @@ run_back:
 install-wasm:
     cargo install wasm-pack
 
-# Build the Rust solver to WASM (web target for frontend + nodejs target for tests)
+# Build both Rust solvers to WASM (web target for frontend + nodejs target for
+# tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
+# worker each load only their own. See the workspace root Cargo.toml.
 wasm:
     cd sketch-solver && wasm-pack build --target web --out-dir pkg --release
     cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
+    cd mate-solver && wasm-pack build --target web --out-dir pkg --release
+    cd mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
     cd frontend && node scripts/copyWasm.mjs
 
-# Lint the Rust solver crate (clippy, deny warnings)
+# Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
+rust-test:
+    cargo test --workspace
+
+# Lint the Rust solver workspace (clippy, deny warnings)
 rust-lint:
-    cd sketch-solver && cargo clippy -- -D warnings
+    cargo clippy --workspace -- -D warnings
 
 # Remove build artifacts (keeps .venv and node_modules)
 clean:
@@ -129,6 +137,7 @@ clean:
     find . -name '*.pyc' -delete
     rm -rf *.egg-info dist build
     rm -rf sketch-solver/pkg sketch-solver/pkg-node
+    rm -rf mate-solver/pkg mate-solver/pkg-node
     rm -rf frontend/dist frontend/public/wasm
 
 # Remove everything above plus venv and node_modules

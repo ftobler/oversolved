@@ -1,75 +1,88 @@
 /**
- * Browser entry point for the Rust sketch solver (wasm-pack `--target web`
- * build). The live app (eventually a builder Worker) calls `loadSolverWasm`
- * once, then drives `compareSketch` / the solver via the returned `solveBytes`.
+ * Browser entry points for the Rust solver WASM packages (wasm-pack
+ * `--target web` builds).
  *
- * Loading is lazy and failure-tolerant: the `--target web` package is a
- * gitignored build artifact served at a configurable URL (default `/wasm/`,
- * populated by a build/copy step from `sketch-solver/pkg`). If it is not
- * present, this resolves to `null` and the caller simply does not run the
- * shadow comparison -- it never breaks the real (Python) solve path.
+ * There are TWO packages, not one: `sketch_solver` (sketch solve + topology)
+ * and `mate_solver` (assembly mates). They are separate crates compiled to
+ * separate binaries so each Worker downloads and compiles only what it calls --
+ * the OCC/sketch builder Worker never pays for the mate solver, and the anchor
+ * solver Worker never pays for the sketch solver or the topology builder. Their
+ * wire formats are independent too (separate magics, separate codecs), so
+ * either can version without dragging the other along.
+ *
+ * Loading is lazy, per-package, and failure-tolerant: the `--target web`
+ * packages are gitignored build artifacts served from a configurable base
+ * (default `/wasm/`, populated by `scripts/copyWasm.mjs`). If one is absent this
+ * resolves to `null` and the caller degrades rather than throwing.
  *
  * The dynamic `import` is `@vite-ignore`d so the production build does not try
  * to resolve or bundle the artifact (which may be absent at build time); the
  * URL is fetched at runtime instead.
- *
- * NOTE: wiring this into the live solve path additionally needs the phase-2c
- * query/projection resolution (to lower arbitrary live PartDocs, not just the
- * resolved corpus) and a build step that copies the web pkg under the served
- * `/wasm/` path. See `shadowCompare.ts`.
  */
 
 import type { SolveBytes } from './codec'
 import type { TopologyBytes } from './loadTopology'
 
-interface WebModule {
+interface SketchModule {
   default: (input?: unknown) => Promise<unknown>
   solve_sketch_bytes: SolveBytes
   detect_topology_bytes: TopologyBytes
+}
+
+interface MateModule {
+  default: (input?: unknown) => Promise<unknown>
   solve_mate_bytes: SolveBytes
 }
 
-/** Base URL the `--target web` pkg is served from. Override per deployment. */
+/** Base URL the `--target web` pkgs are served from. Override per deployment. */
 const DEFAULT_BASE = '/wasm/'
 
-let moduleCache: Promise<WebModule | null> | null = null
+/** One entry per package, so a Worker that only mates never inits the sketch
+ *  wasm. Keyed by `${base}${stem}`: a test can reload from a different base
+ *  without hitting a stale entry. */
+const moduleCache = new Map<string, Promise<unknown>>()
 
-/** Load + init the web wasm module once; both entry points share it. */
-function loadWebModule(base: string): Promise<WebModule | null> {
-  if (moduleCache) return moduleCache
-  moduleCache = (async () => {
+/** Load + init one wasm-pack `--target web` package, once per key. */
+function loadPackage<M>(stem: string, base: string): Promise<M | null> {
+  const key = `${base}${stem}`
+  const hit = moduleCache.get(key)
+  if (hit) return hit as Promise<M | null>
+  const pending = (async () => {
     try {
-      const mod = (await import(/* @vite-ignore */ `${base}sketch_solver.js`)) as WebModule
+      const mod = (await import(/* @vite-ignore */ `${base}${stem}.js`)) as M & {
+        default: (input?: unknown) => Promise<unknown>
+      }
       // The web build needs its init() called once (fetches the .wasm).
-      await mod.default(`${base}sketch_solver_bg.wasm`)
+      await mod.default(`${base}${stem}_bg.wasm`)
       return mod
     } catch (e) {
-      console.error('[solverWasm] loadWebModule failed:', e)
+      console.error(`[solverWasm] loading ${stem} failed:`, e)
       return null
     }
   })()
-  return moduleCache
+  moduleCache.set(key, pending)
+  return pending
 }
 
-function loadWasmExport<T extends keyof WebModule>(key: T, base: string = DEFAULT_BASE): Promise<WebModule[T] | null> {
-  return loadWebModule(base).then((m) => m?.[key] ?? null)
-}
-
+/** Browser loader for the Rust sketch solver (`solve_sketch_bytes`). */
 export function loadSolverWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> {
-  return loadWasmExport('solve_sketch_bytes', base)
+  return loadPackage<SketchModule>('sketch_solver', base).then((m) => m?.solve_sketch_bytes ?? null)
 }
 
-/** Browser loader for the Rust area builder (`detect_topology_bytes`). */
+/** Browser loader for the Rust area builder (`detect_topology_bytes`). Shares
+ *  the sketch package: topology and solve cross the boundary independently but
+ *  ship in one binary, both being sketch-side concerns. */
 export function loadTopologyWasm(base = DEFAULT_BASE): Promise<TopologyBytes | null> {
-  return loadWasmExport('detect_topology_bytes', base)
+  return loadPackage<SketchModule>('sketch_solver', base).then((m) => m?.detect_topology_bytes ?? null)
 }
 
-/** Browser loader for the Rust mate solver (`solve_mate_bytes`). */
+/** Browser loader for the Rust mate solver (`solve_mate_bytes`), a separate
+ *  package from the sketch one -- see the module header. */
 export function loadMateWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> {
-  return loadWasmExport('solve_mate_bytes', base)
+  return loadPackage<MateModule>('mate_solver', base).then((m) => m?.solve_mate_bytes ?? null)
 }
 
-/** Reset the memoized loader (tests / hot-reload). */
+/** Reset every memoized package loader (tests / hot-reload). */
 export function resetSolverWasm(): void {
-  moduleCache = null
+  moduleCache.clear()
 }

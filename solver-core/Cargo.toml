@@ -1,0 +1,14 @@
+[package]
+name = "solver-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Numerics and wire primitives shared by the sketch and mate solvers: hand-rolled Levenberg-Marquardt, sparse Jacobian rows, little-endian byte cursor."
+
+[lib]
+# rlib only. This crate never crosses the wasm-bindgen boundary itself; it is
+# linked into `sketch-solver` and `mate-solver`, which own the cdylibs.
+crate-type = ["rlib"]
+
+[dependencies]
+nalgebra.workspace = true

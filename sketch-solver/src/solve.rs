@@ -5,7 +5,7 @@
 //! solved params back into the doc stay in the TS builder (the "what stays
 //! scalar TS" boundary).
 
-use crate::lm::{solve_lm, solve_lm_sparse};
+use solver_core::lm::{solve_lm, solve_lm_sparse};
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
 use nalgebra::{DMatrix, SymmetricEigen};

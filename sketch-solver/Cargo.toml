@@ -1,37 +1,29 @@
 [package]
 name = "sketch-solver"
-version = "0.0.0"
-edition = "2021"
-publish = false
-description = "Sketch constraint solver (WASM kernel migration, phase 1): flat I/O codec, residual builders, hand-rolled Levenberg-Marquardt."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Sketch constraint solver: flat I/O codec, residual builders, sketch area topology, over the shared Levenberg-Marquardt driver."
 
 [lib]
-# cdylib for the eventual wasm-pack/wasm-bindgen build; rlib so native `cargo test`
-# and a future headless CLI/Node CI runner can link it. See feature/wasm-kernel-migration.md.
+# cdylib for the wasm-pack/wasm-bindgen build; rlib so native `cargo test` and
+# a headless CLI/Node runner can link it.
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# nalgebra supplies the dense matrix + SVD primitives the LM driver and the
-# rank/null-space analysis need. `default-features = false` + `std` keeps the
-# pulled-in surface small and wasm32-friendly (no rand-backed paths we don't
-# use). The Levenberg-Marquardt driver itself is hand-rolled (see lm.rs) for
-# exact damping/rank control; we deliberately do not pull in `argmin`.
-# Finite-difference Jacobian first (scipy parity), analytic later. wasm-bindgen
-# is added by the wasm-pack wiring step (next sub-phase), not here.
-nalgebra = { version = "0.33", default-features = false, features = ["std"] }
+# The LM driver, sparse Jacobian rows, and byte cursors are shared with the mate
+# solver; see the workspace root Cargo.toml for why they live in their own crate.
+solver-core.workspace = true
+nalgebra.workspace = true
 
 # serde + serde_json back ONLY the topology boundary (`detect_topology_bytes`):
 # its payload is nested/variable (edges-per-surface, holes), so it crosses as
 # self-describing JSON rather than the hand-rolled flat solve codec, which is
 # left untouched. Compiles cleanly to wasm32.
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde.workspace = true
+serde_json.workspace = true
 
 # wasm-bindgen is only needed for the wasm32 boundary (src/wasm.rs). Keeping it
 # target-scoped means native `cargo test` never pulls in the JS-glue crate.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-
-[profile.release]
-opt-level = 3
-lto = true
+wasm-bindgen.workspace = true

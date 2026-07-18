@@ -1,9 +1,12 @@
-//! Sketch constraint solver crate (WASM kernel migration, phase 1).
+//! Sketch constraint solver crate.
 //!
 //! It comprises the flat typed-array I/O codec, the constraint residual
-//! builders, a hand-rolled Levenberg-Marquardt driver with analytic and
-//! finite-difference Jacobians, and the rank / status / per-entity-status /
-//! vertex-freedom analysis.
+//! builders, the sketch area topology builder, and the rank / status /
+//! per-entity-status / vertex-freedom analysis. The Levenberg-Marquardt driver
+//! and the byte cursors it runs on are shared with the mate solver and live in
+//! `solver-core`; the assembly mate solver itself is a separate crate
+//! (`mate-solver`) compiled to its own wasm binary, so nothing here knows what
+//! a mate is.
 //!
 //! Design invariants the implementation keeps (from `feature/wasm-kernel-migration.md`):
 //!   - No JS callbacks during a solve; no OCC.js access. The crate does not
@@ -21,12 +24,8 @@
 pub mod api;
 pub mod codec;
 pub mod constraints;
-pub mod lm;
-pub mod mate;
-pub mod mate_residuals;
 pub mod residuals;
 pub mod solve;
-pub mod sparse;
 #[cfg(test)]
 pub mod test_util;
 pub mod topology;
@@ -199,15 +198,6 @@ pub struct Output {
 pub fn solve_sketch(input: &Input) -> Output {
     solve::solve_sketch(input)
 }
-
-// ─── Mate solver ───
-
-pub use mate::{
-    AnchorKind, Mate, MateDiagnostics, MateGeometry, MateInput, MateKind, MateOutput, MateRef,
-    MateStatus, RigidBody,
-};
-
-pub use mate_residuals::solve_mate;
 
 #[cfg(test)]
 mod tests {

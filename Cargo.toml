@@ -1,0 +1,36 @@
+# Rust workspace for the CAD solver kernels.
+#
+# Three crates, two WASM binaries. `solver-core` holds what both solvers
+# genuinely share (the Levenberg-Marquardt driver, the sparse row type, the
+# little-endian byte cursor); `sketch-solver` and `mate-solver` each compile to
+# their own wasm-pack package so the two Workers that load them (the OCC/sketch
+# builder Worker and the anchor solver Worker) stop paying for each other's
+# code, and so their wire formats can be versioned independently.
+
+[workspace]
+resolver = "2"
+members = ["solver-core", "sketch-solver", "mate-solver"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+# nalgebra supplies the dense matrix + SVD primitives the LM driver and the
+# rank / null-space analysis need. `default-features = false` + `std` keeps the
+# pulled-in surface small and wasm32-friendly (no rand-backed paths we don't
+# use). The Levenberg-Marquardt driver itself is hand-rolled (see
+# solver-core/src/lm.rs) for exact damping/rank control; we deliberately do not
+# pull in `argmin`.
+nalgebra = { version = "0.33", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = "0.2"
+solver-core = { path = "solver-core" }
+
+# Release profile is workspace-wide: both wasm binaries want the same
+# size/speed treatment.
+[profile.release]
+opt-level = 3
+lto = true
