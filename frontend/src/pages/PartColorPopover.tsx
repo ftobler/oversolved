@@ -124,6 +124,7 @@ function PartColorPopoverInner({
       }}
     >
       <div className="part-color-popover-header">
+        <span className="material-icons-outlined part-color-popover-icon">palette</span>
         <h3 className="part-color-popover-title">Part Color</h3>
         <button
           className="part-color-popover-close-btn"
@@ -208,12 +209,11 @@ function PartColorPopoverInner({
           ))}
         </div>
       </div>
+      {/* Confirm first, like the dialog shell's footer: the popover is chrome of
+          the same family and should not invert the pair. */}
       <div className="part-color-popover-actions">
-        <button className="part-color-popover-btn" onClick={onCancel}>
-          Cancel
-        </button>
         <button
-          className="part-color-popover-btn part-color-popover-btn-primary"
+          className="btn btn-primary"
           disabled={!normalizeHexColor(colorDraft)}
           onClick={() => {
             const normalized = normalizeHexColor(colorDraft)
@@ -222,6 +222,9 @@ function PartColorPopoverInner({
           }}
         >
           Apply
+        </button>
+        <button className="btn btn-secondary" onClick={onCancel}>
+          Cancel
         </button>
       </div>
     </div>

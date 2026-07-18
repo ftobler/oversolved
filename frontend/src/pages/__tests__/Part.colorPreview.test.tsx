@@ -227,4 +227,25 @@ describe('Part Color Preview', () => {
 
     expect(mockCommitPreview).toHaveBeenCalled()
   })
+
+  // The popover once carried its own button copy, which drifted out of step with
+  // the app-wide `.btn` system the dialogs use.
+  it('uses the shared button classes for its actions', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+
+    expect(screen.getByText('Apply').className).toBe('btn btn-primary')
+    expect(screen.getByText('Cancel').className).toBe('btn btn-secondary')
+  })
+
+  it('renders a header icon', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+
+    expect(screen.getByText('palette')).toBeInTheDocument()
+  })
 })
