@@ -14,10 +14,13 @@ import type { GizmoMode } from '@/utils/assemblyPointer'
 import { rotateVector, type Quat, type Vec3 } from '@/utils/transform3d'
 
 const GIZMO_PIXELS = 90
-const ARROW_LENGTH = 1
-const SHAFT_RADIUS = 0.02
-const HEAD_LENGTH = 0.18
-const HEAD_RADIUS = 0.06
+// The arrow is sized off its own length so shaft and head keep their proportion
+// when the length is retuned; growing ARROW_LENGTH alone would only stretch the
+// shaft and push a fixed-size head outward.
+const ARROW_LENGTH = 1.1
+const SHAFT_RADIUS = ARROW_LENGTH * 0.02
+const HEAD_LENGTH = ARROW_LENGTH * 0.18
+const HEAD_RADIUS = ARROW_LENGTH * 0.06
 const RING_RADIUS = 0.75
 const RING_TUBE = 0.02
 // The visible tube is thin; a fatter invisible torus carries the raycast so the
