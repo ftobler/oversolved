@@ -94,7 +94,6 @@ vi.mock('../../components/Viewport', () => ({
 vi.mock('../../components/Toolbar/SketchToolbar', () => ({ default: () => null }))
 vi.mock('../../components/layout/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
 vi.mock('../../components/layout/FooterMeasurementDisplay', () => ({ default: () => null }))
-vi.mock('../../components/dialogs/BugReporter', () => ({ BugReporter: () => null }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
