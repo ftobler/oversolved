@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import './MessageDialog.css'
 
 export type MessageVariant = 'info' | 'success' | 'error'
@@ -6,12 +7,14 @@ export type MessageVariant = 'info' | 'success' | 'error'
 interface MessageDialogProps {
   isOpen: boolean
   title: string
-  message: string
+  message: ReactNode  // plain strings render with pre-wrap; JSX for rich content
   variant?: MessageVariant
   onClose: () => void
   onConfirm?: () => void
   confirmLabel?: string
   cancelLabel?: string
+  showCancel?: boolean  // confirm-only mode: keep onConfirm semantics but drop the cancel button
+  className?: string  // extra class on the content box so callers can restyle
 }
 
 const ICON: Record<MessageVariant, string> = {
@@ -20,7 +23,7 @@ const ICON: Record<MessageVariant, string> = {
   error: 'error',
 }
 
-export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel' }: MessageDialogProps) {
+export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', showCancel = true, className }: MessageDialogProps) {
   const okRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -50,7 +53,7 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
 
   return (
     <div className="message-dialog-overlay" onClick={onClose}>
-      <div className={`message-dialog-content message-dialog-${variant}`} onClick={e => e.stopPropagation()}>
+      <div className={`message-dialog-content message-dialog-${variant}${className ? ` ${className}` : ''}`} onClick={e => e.stopPropagation()}>
         <div className="message-dialog-header">
           <span className={`material-icons message-dialog-icon message-dialog-icon-${variant}`}>
             {ICON[variant]}
@@ -66,7 +69,8 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
         </div>
 
         <div className="message-dialog-body">
-          <p className="message-dialog-message">{message}</p>
+          {/* div, not p: rich messages may contain their own paragraphs */}
+          <div className="message-dialog-message">{message}</div>
         </div>
 
         <div className="message-dialog-footer">
@@ -75,9 +79,11 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
               <button ref={okRef} className="btn btn-primary message-dialog-confirm-btn" onClick={onConfirm}>
                 {confirmLabel}
               </button>
-              <button className="btn btn-secondary message-dialog-cancel-btn" onClick={onClose}>
-                {cancelLabel}
-              </button>
+              {showCancel && (
+                <button className="btn btn-secondary message-dialog-cancel-btn" onClick={onClose}>
+                  {cancelLabel}
+                </button>
+              )}
             </>
           ) : (
             <button ref={okRef} className="btn btn-primary message-dialog-ok-btn" onClick={onClose}>

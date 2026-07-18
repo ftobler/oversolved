@@ -67,10 +67,19 @@
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
+  text-align: left;  /* index.css centers globally; body copy reads better ragged-right */
+}
+
+.message-dialog-message p {
+  margin: 0 0 12px;
+}
+
+.message-dialog-message p:last-child {
+  margin-bottom: 0;
 }
 
 .message-dialog-footer {
-  padding: 12px 20px 16px;
+  padding: 20px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
