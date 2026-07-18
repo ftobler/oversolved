@@ -38,15 +38,22 @@ function mountHost(initial: AssemblyDoc) {
   })
   useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
   const store = useAssemblyStore.getState()
+  // The swing angles are recorded on the way through: a drag past a half turn
+  // is only observable frame by frame, since +190 and -170 end in the very same
+  // orientation and the committed transform cannot tell them apart.
+  const swings: number[] = []
   const adapter = createAssemblyPointerAdapter({
     beginPartManipulation: store.beginPartManipulation,
     dragPartTranslate: store.dragPartTranslate,
-    rotatePartGizmo: store.rotatePartGizmo,
+    rotatePartGizmo: (axis, angle, pivot) => {
+      swings.push(angle)
+      store.rotatePartGizmo(axis, angle, pivot)
+    },
     endPartManipulation: store.endPartManipulation,
     cancelPartManipulation: store.cancelPartManipulation,
     setSelectedPartHandle: store.setSelectedPartHandle,
   })
-  return { host, requestSolve, adapter }
+  return { host, requestSolve, adapter, swings }
 }
 
 describe('assembly pointer adapter (body drag)', () => {
@@ -151,6 +158,28 @@ describe('assembly pointer adapter (triad gizmo)', () => {
     const x = rotateVector([t.qx, t.qy, t.qz, t.qw], [1, 0, 0])
     expect(x[0]).toBeCloseTo(0, 6)
     expect(x[1]).toBeCloseTo(1, 6)
+  })
+
+  it('a ring drag past a half turn keeps swinging the same way', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    // A pointer on the Z ring at `deg` around the gizmo, sighted down -Z.
+    const armAt = (deg: number) => {
+      const a = deg * Math.PI / 180
+      return ray([Math.cos(a) * 5, Math.sin(a) * 5, 10], [0, 0, -1])
+    }
+
+    adapter.onGizmoPointerDown('p1', 'rotate', [0, 0, 1], [0, 0, 0], armAt(0))
+    for (const deg of [90, 170, 250, 330, 400]) adapter.onPointerMove(armAt(deg))
+    adapter.onPointerUp()
+
+    const degrees = swings.map((rad) => rad * 180 / Math.PI)
+    expect(degrees).toHaveLength(5)
+    // Without unwrapping, atan2 would report 250 as -110 and the part would
+    // snap back through most of a turn mid-drag.
+    for (const [i, want] of [90, 170, 250, 330, 400].entries()) {
+      expect(degrees[i]).toBeCloseTo(want, 6)
+    }
   })
 
   it('a grounded part gets no gizmo session either', () => {

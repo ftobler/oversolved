@@ -86,3 +86,21 @@ export function signedAngleAbout(axis: Vec3, from: Vec3, to: Vec3): number {
   if (!f || !t) return 0
   return Math.atan2(dot(n, cross(f, t)), dot(f, t))
 }
+
+const TWO_PI = Math.PI * 2
+
+/**
+ * `angle` continued from `previous` rather than wrapped into (-pi, pi].
+ *
+ * signedAngleAbout is an atan2 and so cannot tell a 190 degree swing from a
+ * -170 degree one; a caller measuring a total against a fixed start therefore
+ * reverses once the drag passes a half turn. Resolving each reading to the one
+ * nearest the previous frame's total recovers the turn the user actually made,
+ * which holds as long as the pointer is sampled more often than every half
+ * turn, which is true of any real drag.
+ */
+export function unwrapAngle(angle: number, previous: number): number {
+  let step = (angle - previous + Math.PI) % TWO_PI
+  if (step < 0) step += TWO_PI  // JS % keeps the dividend's sign
+  return previous + step - Math.PI
+}

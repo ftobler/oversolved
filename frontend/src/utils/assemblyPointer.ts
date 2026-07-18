@@ -20,6 +20,7 @@ import {
   scale,
   signedAngleAbout,
   sub,
+  unwrapAngle,
   type Ray,
 } from '@/utils/gizmoMath'
 import type { Vec3 } from '@/utils/transform3d'
@@ -39,7 +40,10 @@ export type GizmoMode = 'translate' | 'rotate'
 type Gesture =
   | { kind: 'body'; grab: Vec3; viewNormal: Vec3 }
   | { kind: 'axis'; axis: Vec3; origin: Vec3; startParam: number }
-  | { kind: 'ring'; axis: Vec3; origin: Vec3; startArm: Vec3 }
+  // `swing` is the running total since pointer-down, the one piece of gesture
+  // state carried frame to frame: the measured angle alone tops out at a half
+  // turn, so it is unwrapped against this to let a drag keep going round.
+  | { kind: 'ring'; axis: Vec3; origin: Vec3; startArm: Vec3; swing: number }
 
 export interface AssemblyPointerAdapter {
   /** Selects the part; opens a drag session unless it is grounded. */
@@ -92,7 +96,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       store.cancelPartManipulation()
       return false
     }
-    gesture = { kind: 'ring', axis, origin, startArm: sub(hit, origin) }
+    gesture = { kind: 'ring', axis, origin, startArm: sub(hit, origin), swing: 0 }
     return true
   }
 
@@ -115,8 +119,9 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
 
     const hit = intersectRayPlane(ray, gesture.origin, gesture.axis)
     if (!hit) return
-    const angle = signedAngleAbout(gesture.axis, gesture.startArm, sub(hit, gesture.origin))
-    store.rotatePartGizmo(gesture.axis, angle, gesture.origin)
+    const measured = signedAngleAbout(gesture.axis, gesture.startArm, sub(hit, gesture.origin))
+    gesture.swing = unwrapAngle(measured, gesture.swing)
+    store.rotatePartGizmo(gesture.axis, gesture.swing, gesture.origin)
   }
 
   const onPointerUp = (): void => {

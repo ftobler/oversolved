@@ -6,6 +6,7 @@ import {
   intersectRayPlane,
   normalize,
   signedAngleAbout,
+  unwrapAngle,
   type Ray,
 } from '@/utils/gizmoMath'
 
@@ -63,6 +64,29 @@ describe('signedAngleAbout', () => {
 
   it('is zero when an arm collapses onto the axis', () => {
     expect(signedAngleAbout([0, 0, 1], [0, 0, 3], [0, 1, 0])).toBe(0)
+  })
+})
+
+describe('unwrapAngle', () => {
+  const deg = (d: number) => d * Math.PI / 180
+
+  it('leaves an angle alone when it already continues the previous one', () => {
+    expect(unwrapAngle(deg(80), deg(70))).toBeCloseTo(deg(80), 9)
+    expect(unwrapAngle(deg(-80), deg(-70))).toBeCloseTo(deg(-80), 9)
+  })
+
+  it('continues past a half turn instead of flipping sign', () => {
+    // What atan2 reports as -170 after a 100 degree frame is really 190.
+    expect(unwrapAngle(deg(-170), deg(100))).toBeCloseTo(deg(190), 9)
+  })
+
+  it('accumulates over full turns', () => {
+    expect(unwrapAngle(deg(40), deg(330))).toBeCloseTo(deg(400), 9)
+    expect(unwrapAngle(deg(-40), deg(-330))).toBeCloseTo(deg(-400), 9)
+  })
+
+  it('picks the nearer continuation, so a backward step stays backward', () => {
+    expect(unwrapAngle(deg(170), deg(190))).toBeCloseTo(deg(170), 9)
   })
 })
 
