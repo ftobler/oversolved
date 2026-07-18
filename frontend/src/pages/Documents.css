@@ -293,7 +293,6 @@
   align-items: center;
   justify-content: flex-end;
   padding: 20px;
-  border-top: 1px solid #333;
 }
 
 /* Footer actions read as a pair: a floor so a short label ("OK") does not

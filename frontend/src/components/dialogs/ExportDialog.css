@@ -59,7 +59,6 @@
   align-items: center;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid #333;
 }
 
 .export-dialog-filename .export-dialog-filename-input {
