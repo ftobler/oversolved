@@ -59,6 +59,49 @@ export function quatToAxisAngle(q: Quat): { axis: Vec3; angle: number } {
   return { axis: [x / s, y / s, z / s], angle: 2 * Math.acos(Math.min(1, Math.max(-1, w))) }
 }
 
+/**
+ * Euler XYZ (radians) -> quaternion, EXTRINSIC: rotate about world X first,
+ * then world Y, then world Z, so `q = qz * qy * qx`. Extrinsic is what makes a
+ * single-axis edit read the way a user expects ("rotated 90 about Z" turns the
+ * part about the world Z it can see), which is the dominant case for placing a
+ * grounded frame; intrinsic would measure the later axes in the part's own
+ * already-turned frame.
+ */
+export function quatFromEulerXyz(euler: Vec3): Quat {
+  const [rx, ry, rz] = euler
+  const qx = quatFromAxisAngle([1, 0, 0], rx)
+  const qy = quatFromAxisAngle([0, 1, 0], ry)
+  const qz = quatFromAxisAngle([0, 0, 1], rz)
+  return quatNormalize(quatMultiply(qz, quatMultiply(qy, qx)))
+}
+
+/**
+ * Inverse of [[quatFromEulerXyz]]. Extracted off the rotation matrix of the
+ * normalized quaternion (`R = Rz*Ry*Rx`), with `atan2` rather than `asin` on
+ * the pitch so a quaternion a hair past unit cannot produce NaN.
+ *
+ * At gimbal lock (pitch at +/-90 deg) the X and Z rotations act on the same
+ * axis and only their sum/difference is recoverable; roll is reported as zero
+ * and the whole turn is attributed to Z. The round trip still reproduces the
+ * same orientation, which is the property callers depend on -- but the numbers
+ * shown for such a pose are not the ones that were typed.
+ */
+export function quatToEulerXyz(q: Quat): Vec3 {
+  const [x, y, z, w] = quatNormalize(q)
+  const r00 = 1 - 2 * (y * y + z * z)
+  const r10 = 2 * (x * y + z * w)
+  const r20 = 2 * (x * z - y * w)
+  const r21 = 2 * (y * z + x * w)
+  const r22 = 1 - 2 * (x * x + y * y)
+  const cosPitch = Math.hypot(r21, r22)
+  if (cosPitch < 1e-9) {
+    const r01 = 2 * (x * y - z * w)
+    const r11 = 1 - 2 * (x * x + z * z)
+    return [0, Math.atan2(-r20, cosPitch), Math.atan2(-r01, r11)]
+  }
+  return [Math.atan2(r21, r22), Math.atan2(-r20, cosPitch), Math.atan2(r10, r00)]
+}
+
 export function rotateVector(q: Quat, v: Vec3): Vec3 {
   const [x, y, z, w] = q
   // v' = v + 2 * cross(q_vec, cross(q_vec, v) + w * v)

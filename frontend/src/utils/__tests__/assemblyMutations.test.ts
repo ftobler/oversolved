@@ -15,6 +15,10 @@ import {
   setInstanceVisible,
   setInstanceFixed,
   setInstanceFixedFromSolved,
+  setInstancePosition,
+  setInstanceRotation,
+  setInstanceTransform,
+  instanceRotation,
   setMateRef,
   updateMate,
   IDENTITY_TRANSFORM,
@@ -432,5 +436,71 @@ describe('emptyAssemblyDoc', () => {
     const a = emptyAssemblyDoc()
     const b = emptyAssemblyDoc()
     expect(a.features).not.toBe(b.features)
+  })
+})
+
+describe('setInstancePosition / setInstanceRotation (numeric reseat)', () => {
+  // The handle has to come from the same doc the mutation runs on.
+  function groundedDoc(): { doc: AssemblyDoc; handle: string } {
+    const base = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(base)[0].handle
+    return { doc: setInstanceFixed(base, handle, true), handle }
+  }
+
+  it('orients a GROUNDED instance: the gizmo refuses it, so this is the only way', () => {
+    const { doc, handle } = groundedDoc()
+    // setInstanceTransform is vetoed for a grounded part...
+    const vetoed = setInstanceTransform(doc, handle, { ...IDENTITY_TRANSFORM, qz: 1, qw: 0 })
+    expect(instances(vetoed)[0].transform).toEqual(IDENTITY_TRANSFORM)
+    // ...but the explicit numeric reseat is not.
+    const turned = setInstanceRotation(doc, handle, { rx: 0, ry: 0, rz: 90 })
+    expect(instances(turned)[0].fixed).toBe(true)
+    expect(instanceRotation(instances(turned)[0]).rz).toBeCloseTo(90, 9)
+  })
+
+  it('round-trips degrees through the stored quaternion', () => {
+    const { doc, handle } = groundedDoc()
+    const next = setInstanceRotation(doc, handle, { rx: 30, ry: -45, rz: 120 })
+    const back = instanceRotation(instances(next)[0])
+    expect(back.rx).toBeCloseTo(30, 6)
+    expect(back.ry).toBeCloseTo(-45, 6)
+    expect(back.rz).toBeCloseTo(120, 6)
+  })
+
+  it('stores a unit quaternion', () => {
+    const { doc, handle } = groundedDoc()
+    const t = instances(setInstanceRotation(doc, handle, { rx: 10, ry: 20, rz: 30 }))[0].transform
+    expect(Math.hypot(t.qx, t.qy, t.qz, t.qw)).toBeCloseTo(1, 12)
+  })
+
+  it('rotation leaves the translation alone, and position leaves the orientation alone', () => {
+    const { doc, handle } = groundedDoc()
+    const placed = setInstancePosition(doc, handle, { tx: 1, ty: 2, tz: 3 })
+    const turned = setInstanceRotation(placed, handle, { rx: 0, ry: 0, rz: 90 })
+    const t = instances(turned)[0].transform
+    expect([t.tx, t.ty, t.tz]).toEqual([1, 2, 3])
+
+    const moved = setInstancePosition(turned, handle, { tx: 9, ty: 9, tz: 9 })
+    const m = instances(moved)[0].transform
+    expect([m.qx, m.qy, m.qz, m.qw]).toEqual([t.qx, t.qy, t.qz, t.qw])
+  })
+
+  it('touches only the addressed instance and no-ops on an unknown handle', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    const [a, b] = instances(doc)
+    const next = setInstanceRotation(doc, a.handle, { rx: 0, ry: 0, rz: 90 })
+    const map = Object.fromEntries(instances(next).map(i => [i.handle, i.transform]))
+    expect(map[b.handle]).toEqual(b.transform)
+    expect(map[a.handle]).not.toEqual(a.transform)
+    expect(instances(setInstanceRotation(doc, 'nope', { rx: 0, ry: 0, rz: 90 }))).toEqual(instances(doc))
+  })
+
+  it('reads identity as all-zero degrees', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const r = instanceRotation(instances(doc)[0])
+    expect(r.rx).toBeCloseTo(0, 12)
+    expect(r.ry).toBeCloseTo(0, 12)
+    expect(r.rz).toBeCloseTo(0, 12)
   })
 })

@@ -8,7 +8,7 @@ import type {
 } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import { EMPTY_MATE_REF } from '@/utils/mateKinds'
-import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import { IDENTITY_TRANSFORM, quatFromEulerXyz, quatToEulerXyz } from '@/utils/transform3d'
 
 export { IDENTITY_TRANSFORM }
 
@@ -197,7 +197,7 @@ export function setInstanceTransform(
 // Write the instance's translation from a numeric edit in the inline editor.
 // Unlike setInstanceTransform this ignores `fixed`: a manual position edit is an
 // explicit reseat, not a solver manipulation, so the grounded pin must not veto
-// it. Orientation is left untouched (still gizmo-driven).
+// it. Orientation is left to setInstanceRotation.
 export function setInstancePosition(
   doc: AssemblyDoc,
   handle: string,
@@ -207,6 +207,37 @@ export function setInstancePosition(
     ...inst,
     transform: { ...inst.transform, tx: pos.tx, ty: pos.ty, tz: pos.tz },
   }))
+}
+
+/** Authoring unit for instance orientation: degrees, like the mate editor's angle. */
+export interface EulerDeg {
+  rx: number
+  ry: number
+  rz: number
+}
+
+// The orientation half of the numeric reseat, and the ONLY way to orient a
+// grounded part: the triad gizmo is refused for a `fixed` instance
+// (isManipulable, partManipulation.ts), so without this a part grounded at the
+// wrong angle could never be re-aimed -- and everything mates onto that frame.
+// Ignores the `fixed` veto for the same reason setInstancePosition does.
+export function setInstanceRotation(doc: AssemblyDoc, handle: string, euler: EulerDeg): AssemblyDoc {
+  const [qx, qy, qz, qw] = quatFromEulerXyz([
+    (euler.rx * Math.PI) / 180,
+    (euler.ry * Math.PI) / 180,
+    (euler.rz * Math.PI) / 180,
+  ])
+  return updateInstance(doc, handle, inst => ({
+    ...inst,
+    transform: { ...inst.transform, qx, qy, qz, qw },
+  }))
+}
+
+/** The instance's orientation as the editor's degree triple. */
+export function instanceRotation(inst: PartInstance): EulerDeg {
+  const t = inst.transform
+  const [rx, ry, rz] = quatToEulerXyz([t.qx, t.qy, t.qz, t.qw])
+  return { rx: (rx * 180) / Math.PI, ry: (ry * 180) / Math.PI, rz: (rz * 180) / Math.PI }
 }
 
 // Restore a whole instance to a prior snapshot. The inline editor's Cancel path

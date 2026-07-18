@@ -182,7 +182,7 @@
   text-align: right;
 }
 
-/* Part instance editor: grounded toggle + numeric position. */
+/* Part instance editor: grounded toggle + numeric position + rotation. */
 .instance-param {
   display: flex;
   align-items: center;

@@ -28,9 +28,11 @@ import {
   setBuiltinVisible,
   setInstanceVisible,
   setInstancePosition,
+  setInstanceRotation,
   setInstanceFixedFromSolved,
   setMateLabel,
   updateMate,
+  type EulerDeg,
   type MateParamPatch,
 } from '@/utils/assemblyMutations'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
@@ -316,6 +318,16 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()
   }, [mutate, requestSolve])
 
+  // Same bake-then-reseat discipline as the position edit. This is the only
+  // orientation control a GROUNDED part has (the triad gizmo refuses one), so
+  // it must not be vetoed by the ground flag -- setInstanceRotation is the
+  // mutation that ignores it.
+  const handleSetRotation = useCallback((handle: string, euler: EulerDeg) => {
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => setInstanceRotation(bakeSolvedTransforms(d, transforms), handle, euler))
+    requestSolve()
+  }, [mutate, requestSolve])
+
   // A plain row click selects the mate: it highlights (and, going forward, will
   // light up its two parts and mated geometry in the viewport). It does not open
   // the editor. Selecting away from a mate mid-edit closes that editor, keeping
@@ -428,8 +440,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       instance={inst}
       onSetGrounded={g => handleSetGrounded(inst.handle, g)}
       onSetPosition={pos => handleSetPosition(inst.handle, pos)}
+      onSetRotation={euler => handleSetRotation(inst.handle, euler)}
     />
-  ), [handleSetGrounded, handleSetPosition])
+  ), [handleSetGrounded, handleSetPosition, handleSetRotation])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }, defaultName: string) => (
     <MateEditor

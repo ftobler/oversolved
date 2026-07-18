@@ -6,9 +6,11 @@ import {
   invertTransform,
   makeTransform,
   quatFromAxisAngle,
+  quatFromEulerXyz,
   quatMultiply,
   quatNormalize,
   quatToAxisAngle,
+  quatToEulerXyz,
   relativeTransform,
   rotateTransformAboutPoint,
   rotateVector,
@@ -202,5 +204,60 @@ describe('compose / invert', () => {
 
   it('is identity when current equals base (a part at rest gets no offset)', () => {
     expect(transformsEqual(relativeTransform(placed, placed), IDENTITY_TRANSFORM, 1e-6)).toBe(true)
+  })
+})
+
+describe('euler XYZ', () => {
+  const HALF = Math.PI / 2
+  const expectQuatClose = (a: Quat, b: Quat, eps = 1e-9) => {
+    // q and -q are the same rotation; compare on whichever sign agrees.
+    const flip = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3] < 0
+    const signed: Quat = flip ? [-b[0], -b[1], -b[2], -b[3]] : b
+    for (let i = 0; i < 4; i++) expect(Math.abs(a[i] - signed[i])).toBeLessThan(eps)
+  }
+  const spin = (q: Quat, v: Vec3) => rotateVector(q, v)
+
+  it('a single-axis euler equals the axis-angle rotation about that world axis', () => {
+    expectQuatClose(quatFromEulerXyz([0.7, 0, 0]), quatFromAxisAngle([1, 0, 0], 0.7))
+    expectQuatClose(quatFromEulerXyz([0, 0.7, 0]), quatFromAxisAngle([0, 1, 0], 0.7))
+    expectQuatClose(quatFromEulerXyz([0, 0, 0.7]), quatFromAxisAngle([0, 0, 1], 0.7))
+  })
+
+  it('applies X first, then Y, then Z, about the WORLD axes (extrinsic)', () => {
+    // +X turned 90 deg about world Z lands on +Y; then 90 about world X would
+    // move it to +Z only if Z ran first. Order X->Y->Z: the X spin does nothing
+    // to a vector already on X, and the Z spin then carries it to +Y.
+    const q = quatFromEulerXyz([HALF, 0, HALF])
+    const v = spin(q, [1, 0, 0])
+    expect(Math.abs(v[0] - 0)).toBeLessThan(1e-9)
+    expect(Math.abs(v[1] - 1)).toBeLessThan(1e-9)
+    expect(Math.abs(v[2] - 0)).toBeLessThan(1e-9)
+  })
+
+  it('round-trips a generic orientation through the quaternion', () => {
+    const euler: Vec3 = [0.3, -0.9, 2.1]
+    const back = quatToEulerXyz(quatFromEulerXyz(euler))
+    for (let i = 0; i < 3; i++) expect(Math.abs(back[i] - euler[i])).toBeLessThan(1e-9)
+  })
+
+  it('reports identity for the identity quaternion', () => {
+    // Closeness, not equality: atan2 legitimately returns -0 for a zero angle,
+    // which is the same number to every consumer but not `Object.is`-equal.
+    expectVecClose(quatToEulerXyz([0, 0, 0, 1]), [0, 0, 0])
+  })
+
+  it('survives a non-unit quaternion instead of returning NaN', () => {
+    // A solved quaternion is unit only to LM tolerance; a w a hair past 1 must
+    // not make the pitch NaN.
+    const euler = quatToEulerXyz([0, 0, 0, 1.0000001])
+    for (const v of euler) expect(Number.isNaN(v)).toBe(false)
+  })
+
+  it('at gimbal lock reproduces the orientation even though the angles differ', () => {
+    // Pitch at +90 deg: X and Z act on one axis, so the reported pair is not the
+    // typed pair -- but the rotation it encodes must still be the same one.
+    const q = quatFromEulerXyz([0.4, HALF, 0.9])
+    const back = quatFromEulerXyz(quatToEulerXyz(q))
+    expectQuatClose(q, back, 1e-7)
   })
 })
