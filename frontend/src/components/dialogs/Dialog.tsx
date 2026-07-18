@@ -9,6 +9,7 @@ interface DialogProps {
   confirmLabel?: string
   cancelLabel?: string
   confirmDisabled?: boolean
+  icon?: string  // material icon ligature, rendered in the title colour (see MessageDialog for the tinted variants)
 }
 
 export default function Dialog({
@@ -20,6 +21,7 @@ export default function Dialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   confirmDisabled = false,
+  icon,
 }: DialogProps) {
   if (!isOpen) return null
 
@@ -27,6 +29,7 @@ export default function Dialog({
     <div className="dialog-component-overlay" onClick={onClose}>
       <div className="dialog-component" onClick={e => e.stopPropagation()}>
         <div className="dialog-component-header">
+          {icon && <span className="material-icons-outlined dialog-component-icon">{icon}</span>}
           <h2 className="dialog-component-title">{title}</h2>
           <button
             className="dialog-component-close-btn"

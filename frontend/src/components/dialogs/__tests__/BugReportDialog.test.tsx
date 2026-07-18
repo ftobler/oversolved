@@ -28,6 +28,15 @@ describe('BugReportDialog', () => {
     expect(container.querySelector('.debug-drawer')).not.toBeInTheDocument()
   })
 
+  // The header icon must stay a plain glyph: MessageDialog tints its icon per
+  // variant to signal info/success/error, and a bug report is none of those.
+  it('shows an untinted bug icon in the header', () => {
+    const { container } = render(<BugReportDialog isOpen onClose={vi.fn()} />)
+    const icon = container.querySelector('.dialog-component-icon')
+    expect(icon).toHaveTextContent('bug_report')
+    expect(icon?.className).not.toMatch(/message-dialog-icon-/)
+  })
+
   it('refuses to submit without a title', async () => {
     const send = vi.spyOn(backendBundle.telemetry, 'send').mockResolvedValue()
     render(<BugReportDialog isOpen onClose={vi.fn()} />)

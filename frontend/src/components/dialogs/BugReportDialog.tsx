@@ -86,6 +86,7 @@ export default function BugReportDialog({ isOpen, onClose }: BugReportDialogProp
       <Dialog
         isOpen={isOpen}
         title="Report a Bug"
+        icon="bug_report"
         onClose={handleClose}
         onConfirm={handleSubmit}
         confirmLabel={submitting ? 'Submitting...' : 'Submit Report'}
