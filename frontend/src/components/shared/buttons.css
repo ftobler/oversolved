@@ -1,0 +1,50 @@
+/* The app-wide labelled-button system. Lived in Documents.css until the dialogs
+   grew their own competing copies of it; a page stylesheet is the wrong owner
+   for chrome every page uses.
+
+   The split is deliberate: `.btn` owns shape and metrics, the variants own
+   colour and nothing else. Layout (how wide a button is, how it flexes) belongs
+   to the container, because only the container knows the row it sits in. Baking
+   `flex: 1` into the variants is what forced MessageDialog, the settings pages
+   and ShareDialog to each undo it. */
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: #4fc3f7;
+  color: #111;
+}
+
+.btn-primary:hover {
+  background: #81d4fa;
+}
+
+.btn-secondary {
+  background: #333;
+  color: #ccc;
+}
+
+.btn-secondary:hover {
+  background: #444;
+  color: #fff;
+}
+
+.btn .material-icons {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

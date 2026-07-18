@@ -12,6 +12,7 @@ import Backup from '@/pages/Backup'
 import AdminUsers from '@/pages/AdminUsers'
 import AdminPeriodicTasks from '@/pages/AdminPeriodicTasks'
 import Settings from '@/pages/Settings'
+import '@/components/shared/buttons.css'
 import '@/App.css'
 
 function App() {

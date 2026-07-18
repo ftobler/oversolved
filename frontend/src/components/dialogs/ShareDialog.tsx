@@ -166,7 +166,6 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                   className="btn btn-primary"
                   onClick={handleShare}
                   disabled={loading || !shareUsername.trim()}
-                  style={{ flex: 0.5, borderRadius: '9999px' }}
                 >
                   Share
                 </button>
