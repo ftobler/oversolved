@@ -39,14 +39,34 @@ import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
 import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance, AssemblyFeature } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
-import mateIcon from '@/assets/icons/constraint-coincident.svg'
 import exportIcon from '@/assets/icons/icon-download.svg'
-import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
+import mateFixedIcon from '@/assets/icons/mate-fixed.svg'
+import mateSlidingIcon from '@/assets/icons/mate-sliding.svg'
+import mateRotatingIcon from '@/assets/icons/mate-rotating.svg'
+import mateSlidingRotatingIcon from '@/assets/icons/mate-sliding-rotating.svg'
+import mateSphericalIcon from '@/assets/icons/mate-spherical.svg'
+import mateParallelIcon from '@/assets/icons/mate-parallel.svg'
+import mateParallelPlaneDistanceIcon from '@/assets/icons/mate-parallel-plane-distance.svg'
+import mateTangentialIcon from '@/assets/icons/mate-tangential.svg'
+import mateCopyRotationIcon from '@/assets/icons/mate-copy-rotation.svg'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
+
+// One toolbar button per mate kind, so the glyphs live next to the labels.
+const MATE_KIND_ICONS: Record<MateKind, string> = {
+  fixed: mateFixedIcon,
+  sliding: mateSlidingIcon,
+  rotating: mateRotatingIcon,
+  sliding_rotating: mateSlidingRotatingIcon,
+  spherical: mateSphericalIcon,
+  parallel: mateParallelIcon,
+  parallel_plane_distance: mateParallelPlaneDistanceIcon,
+  tangential: mateTangentialIcon,
+  copy_rotation: mateCopyRotationIcon,
+}
 
 function extractInstances(features: AssemblyFeature[] | undefined): PartInstance[] {
   return (features ?? [])
@@ -70,7 +90,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const navigate = useNavigate()
   const readOnly = permission === 'view'
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [mateMenuOpen, setMateMenuOpen] = useState(false)
   const [editingInstanceHandle, setEditingInstanceHandle] = useState<string | null>(null)
   // Which mate has its inline parameter editor open. Distinct from the store's
   // selectedMateId: a plain row click selects (highlights), the pencil edits.
@@ -469,35 +488,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onDeleteMate={handleDeleteMate}
             renderMateEditor={(m, defaultName) => renderMateEditor(m, defaultName)}
           />
-          {mateMenuOpen && (
-            <div className="mate-kind-picker">
-              <div className="mate-editor-header">
-                <span>Insert mate</span>
-                <button
-                  type="button"
-                  className="feature-context-btn"
-                  onClick={() => setMateMenuOpen(false)}
-                  title="Close"
-                  aria-label="Close mate menu"
-                >
-                  <img src={cancelIcon} alt="Close" />
-                </button>
-              </div>
-              <ul className="assembly-tree-list mate-kind-menu">
-                {MATE_KINDS.map(kind => (
-                  <li key={kind}>
-                    <button
-                      type="button"
-                      className="mate-kind-option"
-                      onClick={() => { setMateMenuOpen(false); handleInsertMate(kind) }}
-                    >
-                      {MATE_KIND_LABELS[kind]}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </aside>
         <div className="doc-editor">
           <div className="editor-toolbar">
@@ -510,16 +500,19 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             >
               <img src={featurePartIcon} alt="Insert part" />
             </button>
-            <button
-              className={`editor-btn ${mateMenuOpen ? 'active' : ''}`}
-              title="Insert mate"
-              aria-label="Insert mate"
-              aria-expanded={mateMenuOpen}
-              onClick={() => setMateMenuOpen(o => !o)}
-              disabled={readOnly}
-            >
-              <img src={mateIcon} alt="Insert mate" />
-            </button>
+            <div className="toolbar-separator" />
+            {MATE_KINDS.map(kind => (
+              <button
+                key={kind}
+                className="editor-btn"
+                title={`Insert ${MATE_KIND_LABELS[kind]} mate`}
+                aria-label={`Insert ${MATE_KIND_LABELS[kind]} mate`}
+                onClick={() => handleInsertMate(kind)}
+                disabled={readOnly}
+              >
+                <img src={MATE_KIND_ICONS[kind]} alt={MATE_KIND_LABELS[kind]} />
+              </button>
+            ))}
             <div className="toolbar-separator" />
             <button
               className="editor-btn"

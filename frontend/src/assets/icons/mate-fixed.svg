@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.319987 0.340007 L 0.680013 0.340007 L 0.680013 0.659993 L 0.319987 0.659993 Z M 0.319987 0.340007 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.139974 0.659993 L 0.860026 0.659993 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+<path fill="none" stroke-width="0.0416667" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.139974 0.689941 L 0.319987 0.869954 M 0.319987 0.689941 L 0.5 0.869954 M 0.5 0.689941 L 0.680013 0.869954 M 0.680013 0.689941 L 0.860026 0.869954 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+</svg>

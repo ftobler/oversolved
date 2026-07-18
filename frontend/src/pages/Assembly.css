@@ -55,48 +55,10 @@
   color: #ff6b6b;
 }
 
-/* The insert-mate menu lives in the sidebar (not a toolbar popover, which the
-   editor toolbar's overflow clipped). */
-.mate-kind-picker {
-  border-top: 1px solid #333;
-  padding: 0.5rem 0 0.75rem;
-  flex-shrink: 0;
-}
-
-.mate-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 1rem;
-  color: #e0e0e0;
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
 .assembly-tree-list {
   list-style: none;
   margin: 0;
   padding: 0;
-}
-
-.mate-kind-menu {
-  padding-top: 4px;
-}
-
-.mate-kind-option {
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  color: #e0e0e0;
-  cursor: pointer;
-  padding: 4px 1rem;
-  font-size: 0.85rem;
-}
-
-.mate-kind-option:hover {
-  background: #2a2a2a;
-  color: #6ab0ff;
 }
 
 /* ── Inline editors (mate + instance) ──

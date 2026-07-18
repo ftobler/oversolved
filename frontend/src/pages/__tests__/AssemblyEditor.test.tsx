@@ -5,6 +5,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
+import { MATE_KINDS } from '@/utils/mateKinds'
 
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', () => ({
@@ -569,15 +570,21 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
   })
 
-  it('inserts a mate from the toolbar kind menu', async () => {
+  it('inserts a mate from its toolbar button', async () => {
     renderEditor()
     await tick()
     await tick()
-    fireEvent.click(screen.getByLabelText('Insert mate'))
-    fireEvent.click(screen.getByText('Rotating'))
+    fireEvent.click(screen.getByLabelText('Insert Rotating mate'))
     await tick()
     expect(useAssemblyStore.getState().mates).toHaveLength(1)
     expect(mateDef().kind).toBe('rotating')
+  })
+
+  it('shows one toolbar button per mate kind', async () => {
+    renderEditor()
+    await tick()
+    const buttons = screen.getAllByLabelText(/^Insert .* mate$/)
+    expect(buttons).toHaveLength(MATE_KINDS.length)
   })
 })
 
