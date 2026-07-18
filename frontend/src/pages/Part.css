@@ -844,8 +844,8 @@
   width: 32px;
   height: 10px;
   background: var(--tiling-sine-fine) repeat-x;
-  transform: rotate(90deg);
-  margin: 0 0px;
+  transform: rotate(90deg) translateY(3px);
+  margin: 0px -10px;
   flex-shrink: 0;
 }
 
