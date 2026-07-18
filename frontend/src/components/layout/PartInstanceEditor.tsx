@@ -109,39 +109,47 @@ export function PartInstanceEditor({
   return (
     // Clicks inside the editor must not bubble to the row's select handler.
     <div className="instance-editor" onClick={e => e.stopPropagation()}>
-      <label className="instance-param">
+      <label className="feature-field-row">
+        <span className="feature-field-label">Grounded</span>
         <input
           type="checkbox"
           checked={!!instance.fixed}
           onChange={e => onSetGrounded(e.target.checked)}
         />
-        <span>Grounded</span>
       </label>
-      <div className="instance-position">
-        {AXES.map(axis => (
-          <label key={axis} className="instance-axis">
-            <span>{AXIS_LABELS[axis]}</span>
-            <input
-              type="number"
-              aria-label={`Position ${AXIS_LABELS[axis]}`}
-              value={text[axis]}
-              onChange={e => commitAxis(axis, e.target.value)}
-            />
-          </label>
-        ))}
+      <div className="feature-field-row">
+        <span className="feature-field-label">Position</span>
+        <div className="instance-triple">
+          {AXES.map(axis => (
+            <label key={axis} className="instance-axis">
+              <span>{AXIS_LABELS[axis]}</span>
+              <input
+                type="number"
+                className="feature-field-input"
+                aria-label={`Position ${AXIS_LABELS[axis]}`}
+                value={text[axis]}
+                onChange={e => commitAxis(axis, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
       </div>
-      <div className="instance-position">
-        {ROT_AXES.map(axis => (
-          <label key={axis} className="instance-axis">
-            <span>{ROT_LABELS[axis]}&deg;</span>
-            <input
-              type="number"
-              aria-label={`Rotation ${ROT_LABELS[axis]}`}
-              value={rotText[axis]}
-              onChange={e => commitRot(axis, e.target.value)}
-            />
-          </label>
-        ))}
+      <div className="feature-field-row">
+        <span className="feature-field-label">Rotation&deg;</span>
+        <div className="instance-triple">
+          {ROT_AXES.map(axis => (
+            <label key={axis} className="instance-axis">
+              <span>{ROT_LABELS[axis]}</span>
+              <input
+                type="number"
+                className="feature-field-input"
+                aria-label={`Rotation ${ROT_LABELS[axis]}`}
+                value={rotText[axis]}
+                onChange={e => commitRot(axis, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
       </div>
     </div>
   )

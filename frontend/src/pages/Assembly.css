@@ -62,95 +62,72 @@
 }
 
 /* ── Inline editors (mate + instance) ──
-   Rendered inside the pink .feature-item.editing row, below its title. Indented
-   to sit under the feature name, past the icon. */
+   Rendered inside the pink .feature-item.editing row, below its title. Both
+   bodies are built from Part.css's field grammar (.feature-field-row,
+   .feature-field-label, .feature-field-input), so an assembly panel reads as the
+   same dialog as a part feature editor; only the pieces the part editor has no
+   equivalent for (reference chips, the +/-90 buttons, the axis triples) are
+   styled here, and those borrow its palette. */
 .mate-editor,
 .instance-editor {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 4px 2px 28px;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid #553355;
 }
 
-.mate-editor input[type='text'],
-.mate-editor input[type='number'],
-.instance-editor input[type='number'] {
-  background: #1c1c1c;
-  border: 1px solid #3a2233;
-  border-radius: 3px;
-  color: #e0e0e0;
-  padding: 2px 6px;
-}
-
-.mate-name-row,
-.mate-ref-row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.mate-name-row input {
-  width: 100%;
-}
-
-.mate-ref-title {
-  color: #b06a94;
-  font-size: 0.72rem;
-}
-
+/* Full width: a reference string never fits beside the label column, so these
+   rows stack (feature-field-row--stacked) and the chip takes the whole width. */
 .mate-ref-chip {
+  width: 100%;
   text-align: left;
-  background: #1c1c1c;
-  border: 1px solid #3a2233;
-  border-radius: 4px;
-  color: #e0e0e0;
+  background: transparent;
+  border: 1px solid #3a2a3a;
+  border-radius: 6px;
+  color: #bbb;
   cursor: pointer;
   padding: 4px 8px;
-  font-size: 0.8rem;
+  font-size: 12px;
+  box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.mate-ref-chip:hover {
+  border-color: #b83b88;
+}
+
 .mate-ref-chip.empty {
-  color: #777;
+  color: #555;
   font-style: italic;
 }
 
 .mate-ref-chip.stale {
-  border-color: #ff6b6b;
-  color: #ff6b6b;
+  border-color: #c0392b;
+  color: #e07b6b;
 }
 
+/* Orange while armed, matching the part editor's picking pick-chip. */
 .mate-ref-chip.picking {
-  border-color: #6ab0ff;
-  background: #1c2b3a;
+  border-color: #ff9800;
+  background: rgba(255, 152, 0, 0.1);
 }
 
 .mate-editor-hint {
   margin: 0;
-  color: #b06a94;
-  font-size: 0.72rem;
+  padding-left: 6px;
+  color: #6a5a6a;
+  font-size: 12px;
 }
 
 .mate-param-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.mate-param {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #d8c0d0;
-  font-size: 0.8rem;
-}
-
-.mate-param input[type='number'] {
-  width: 6rem;
+  gap: 6px;
 }
 
 .mate-param-angle {
@@ -166,46 +143,48 @@
 }
 
 .mate-angle-buttons button {
-  background: #2a1a26;
-  border: 1px solid #4a2a40;
+  background: #1a0f1a;
+  border: 1px solid #3a2a3a;
   border-radius: 3px;
-  color: #e0e0e0;
+  color: #bbb;
   cursor: pointer;
   padding: 2px 8px;
-  font-size: 0.75rem;
+  font-size: 12px;
+}
+
+.mate-angle-buttons button:hover {
+  border-color: #b83b88;
+  color: #e060b0;
 }
 
 .mate-angle-error {
   margin: 0;
-  color: #e08a8a;
-  font-size: 0.7rem;
+  color: #e07b6b;
+  font-size: 12px;
   text-align: right;
 }
 
-/* Part instance editor: grounded toggle + numeric position + rotation. */
-.instance-param {
+/* Part instance editor: the position and rotation triples share one label cell,
+   so each box keeps a small axis caption of its own. Grey, not pink: the pink is
+   reserved for focus and for the editing header above. */
+.instance-triple {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #d8c0d0;
-  font-size: 0.8rem;
-}
-
-.instance-position {
-  display: flex;
-  gap: 6px;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
 }
 
 .instance-axis {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
   flex: 1;
-  color: #b06a94;
-  font-size: 0.72rem;
+  min-width: 0;
+  color: #777;
+  font-size: 11px;
 }
 
 .instance-axis input {
-  width: 100%;
+  min-width: 0;
 }
 

@@ -92,13 +92,13 @@ export function MateEditor({
   const renderParam = (param: MateParam) => {
     if (param === 'flip') {
       return (
-        <label key={param} className="mate-param">
+        <label key={param} className="feature-field-row">
+          <span className="feature-field-label">{MATE_PARAM_LABELS.flip}</span>
           <input
             type="checkbox"
             checked={!!mate.flip}
             onChange={e => onUpdate({ flip: e.target.checked || undefined })}
           />
-          <span>{MATE_PARAM_LABELS.flip}</span>
         </label>
       )
     }
@@ -106,10 +106,11 @@ export function MateEditor({
       const current = typeof mate.angle === 'number' ? mate.angle : 0
       return (
         <div key={param} className="mate-param-angle">
-          <label className="mate-param">
-            <span>{MATE_PARAM_LABELS.angle}</span>
+          <label className="feature-field-row">
+            <span className="feature-field-label">{MATE_PARAM_LABELS.angle}</span>
             <input
               type="number"
+              className="feature-field-input"
               aria-label={MATE_PARAM_LABELS.angle}
               value={angleText}
               placeholder="0"
@@ -135,10 +136,11 @@ export function MateEditor({
       )
     }
     return (
-      <label key={param} className="mate-param">
-        <span>{MATE_PARAM_LABELS[param]}</span>
+      <label key={param} className="feature-field-row">
+        <span className="feature-field-label">{MATE_PARAM_LABELS[param]}</span>
         <input
           type="number"
+          className="feature-field-input"
           value={numericValue(mate[param])}
           placeholder="0"
           onChange={e => {
@@ -156,10 +158,11 @@ export function MateEditor({
     // Clicks inside the editor must not bubble to the row, whose onClick would
     // re-select the mate and disarm the field a chip just armed.
     <div className="mate-editor" onClick={e => e.stopPropagation()}>
-      <label className="mate-name-row">
-        <span className="mate-ref-title">Name</span>
+      <label className="feature-field-row">
+        <span className="feature-field-label">Name</span>
         <input
           type="text"
+          className="feature-field-input"
           aria-label="Mate name"
           value={mate.label ?? ''}
           placeholder={defaultName}
@@ -170,8 +173,10 @@ export function MateEditor({
       {REF_FIELDS.map(field => {
         const picking = activeField?.featureId === featureId && activeField.field === field
         return (
-          <div key={field} className="mate-ref-row">
-            <span className="mate-ref-title">{REF_TITLES[field]}</span>
+          // Stacked like the part editor's pick fields: a reference string is far
+          // wider than the 80px label column leaves room for.
+          <div key={field} className="feature-field-row feature-field-row--stacked">
+            <span className="feature-field-label">{REF_TITLES[field]}</span>
             <button
               type="button"
               className={chipClass(mate[field], staleRefs.has(field), picking)}
