@@ -13,6 +13,7 @@ import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import { backendBundle } from '@/adapters/backend'
+import { useCloudAvailable } from '@/hooks/useCloudAvailable'
 import {
   appendMate,
   appendPartInstance,
@@ -88,19 +89,29 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const instanceSnapshot = useRef<{ handle: string; inst: PartInstance } | null>(null)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
+  // Both domains are consulted (a part may be instanced straight from the cloud
+  // browser category); the local home library wins on a uuid present in both.
+  // The cloud list is gated on a live session so a guest or offline editor
+  // never fires a doomed request; it re-runs when the session (re)appears.
+  const cloudListAvailable = useCloudAvailable()
   const [docNames, setDocNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    backendBundle.documents.list()
-      .then(list => {
+    Promise.allSettled([
+      cloudListAvailable ? backendBundle.cloudDocuments!.list() : Promise.resolve([]),
+      backendBundle.documents.list(),
+    ])
+      .then(results => {
         if (cancelled) return
         const map: Record<string, string> = {}
-        for (const d of list) map[d.uuid] = d.name
+        for (const r of results) {
+          if (r.status !== 'fulfilled') continue  // names are a nicety; fall back to the uuid
+          for (const d of r.value) map[d.uuid] = d.name
+        }
         setDocNames(map)
       })
-      .catch(() => { /* names are a nicety; fall back to the uuid */ })
     return () => { cancelled = true }
-  }, [])
+  }, [cloudListAvailable])
 
   useEffect(() => {
     if (doc) {

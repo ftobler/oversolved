@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
+import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { dropDeadAxisConstraints } from '@/utils/yamlMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
@@ -39,23 +40,10 @@ export function useDocumentState(
     // the listReqRef guard in Documents.tsx.
     let cancelled = false
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
-    // Two domains (doc-domain-move): prefer the local home copy, fall back to the
-    // cloud domain when the uuid lives there (e.g. a server document not yet pulled
-    // local). Whichever store answers becomes the save/rename target. The resolving
-    // store is committed to storeRef only in the guarded .then below, never inside
-    // this async fn, so a stale load cannot corrupt the save target.
-    const loadFromDomain = async (): Promise<{ data: Awaited<ReturnType<typeof backendBundle.documents.load>>; store: typeof backendBundle.documents }> => {
-      try {
-        const data = await backendBundle.documents.load(uuid)
-        return { data, store: backendBundle.documents }
-      } catch (localErr) {
-        const cloud = backendBundle.cloudDocuments
-        if (!cloud) throw localErr
-        const data = await cloud.load(uuid)
-        return { data, store: cloud }
-      }
-    }
-    loadFromDomain()
+    // Whichever domain answers becomes the save/rename target. The resolving
+    // store is committed to storeRef only in the guarded .then below, so a
+    // stale load cannot corrupt the save target.
+    loadDocumentAnyDomain(uuid)
       .then(({ data, store }) => {
         if (cancelled) return
         storeRef.current = store

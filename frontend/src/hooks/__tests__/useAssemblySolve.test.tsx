@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   buildBundleViaWorker: vi.fn(),
   list: vi.fn(),
   load: vi.fn(),
+  cloudLoad: vi.fn(),
 }))
 
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
@@ -17,7 +18,10 @@ vi.mock('@/kernel/worker/anchorSolverClient', () => ({
 }))
 vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBundleViaWorker }))
 vi.mock('@/adapters/backend', () => ({
-  backendBundle: { documents: { list: h.list, load: h.load } },
+  backendBundle: {
+    documents: { list: h.list, load: h.load },
+    cloudDocuments: { load: h.cloudLoad },
+  },
 }))
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentRevs } from '@/hooks/useAssemblySolve'
@@ -240,8 +244,21 @@ describe('useAssemblySolve', () => {
 
     const handlers = h.setRelayHandlers.mock.calls[0][0]
     expect(await handlers.partDocContent('doc-a')).toEqual({ kind: 'part', features: [] })
+    expect(h.cloudLoad).not.toHaveBeenCalled()  // local hit needs no cloud round-trip
 
     await handlers.buildBundle('doc-a', 4, { kind: 'part' })
     expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part' }, 'doc-a', 4)
+  })
+
+  it('falls back to the cloud store for a part with no local mirror', async () => {
+    // A part instanced from the picker's cloud category exists only in the
+    // cloud domain; the relay must resolve it there when the local load misses.
+    h.load.mockRejectedValue(new Error('not found'))
+    h.cloudLoad.mockResolvedValue({ content: 'kind: part\nfeatures: [{id: f1}]' })
+    renderHook(() => useAssemblySolve('asm-1', null))
+
+    const handlers = h.setRelayHandlers.mock.calls[0][0]
+    expect(await handlers.partDocContent('doc-cloud')).toEqual({ kind: 'part', features: [{ id: 'f1' }] })
+    expect(h.cloudLoad).toHaveBeenCalledWith('doc-cloud')
   })
 })

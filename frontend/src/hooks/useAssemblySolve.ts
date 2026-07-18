@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, AssemblyFeature, NumberOrExpr } from '@/types/cad'
 import { backendBundle } from '@/adapters/backend'
+import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
@@ -101,8 +102,10 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   useEffect(() => {
     setRelayHandlers({
       partDocContent: async (doc_id) => {
-        const payload = await backendBundle.documents.load(doc_id)
-        return (parseYaml(payload.content) ?? {}) as Record<string, unknown>
+        // A part picked from the cloud category has no local mirror; the shared
+        // resolver falls back to the cloud domain for it.
+        const { data } = await loadDocumentAnyDomain(doc_id)
+        return (parseYaml(data.content) ?? {}) as Record<string, unknown>
       },
       buildBundle: async (doc_id, doc_rev, spec) => buildBundleViaWorker(spec, doc_id, doc_rev),
     })

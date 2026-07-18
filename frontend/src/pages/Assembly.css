@@ -247,31 +247,3 @@
   width: 100%;
 }
 
-/* Part picker dialog. */
-.assembly-part-picker-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.assembly-part-picker-item {
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 1px solid transparent;
-  color: #e0e0e0;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 4px;
-}
-
-.assembly-part-picker-item:hover {
-  background: #2a2a2a;
-}
-
-.assembly-part-picker-item.selected {
-  border-color: #6ab0ff;
-  background: #1c2b3a;
-}

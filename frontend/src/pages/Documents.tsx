@@ -10,12 +10,15 @@ import { isConnectionError, parseHttpError } from '@/utils/core/httpClient'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments, importStepFile } from '@/stores/documentStore'
-import type { DocSummary, DocumentStore } from '@/stores/documentStore'
+import type { DocSummary } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
+import DocTilePreview from '@/components/shared/DocTilePreview'
+import { formatRelativeDate } from '@/utils/core/relativeDate'
 import { stringify as stringifyYaml } from 'yaml'
 import { emptyAssemblyDoc } from '@/utils/assemblyMutations'
 import type { TrashDoc } from '@/adapters/trash'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCloudAvailable } from '@/hooks/useCloudAvailable'
 import '@/pages/Documents.css'
 
 function stopClick(handler: () => void): React.MouseEventHandler {
@@ -27,35 +30,6 @@ function stopClick(handler: () => void): React.MouseEventHandler {
 }
 
 type DocumentMeta = DocSummary
-
-// Tile thumbnail: prefer the inline base64 preview (local store), else the
-// store's own thumbnail URL (the cloud store's /api path), else a placeholder.
-// The view asks the store for the URL instead of hardcoding /api -- the one spot
-// that used to reach past the adapter.
-function DocTilePreview(
-  { doc, store }: { doc: { uuid: string; name: string; preview_image?: string }; store: DocumentStore },
-) {
-  if (doc.preview_image) {
-    return <img src={`data:image/png;base64,${doc.preview_image}`} alt={doc.name} />
-  }
-  const url = store.thumbnailUrl(doc.uuid)
-  if (!url) return <div className="doc-tile-placeholder" />
-  return (
-    <>
-      <img
-        src={url}
-        alt={doc.name}
-        onError={(e) => {
-          const target = e.target as HTMLImageElement
-          target.style.display = 'none'
-          const next = target.nextElementSibling as HTMLElement
-          if (next) next.style.display = 'block'
-        }}
-      />
-      <div className="doc-tile-placeholder" style={{ display: 'none' }} />
-    </>
-  )
-}
 
 type SidebarFilter = 'owned' | 'shared' | 'public'
 type Domain = 'local' | 'cloud'
@@ -81,7 +55,7 @@ export default function Documents() {
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<{ uuid: string; name: string } | null>(null)
   const [moveTarget, setMoveTarget] = useState<{ uuid: string; name: string; toCloud: boolean } | null>(null)
   const [unshareTarget, setUnshareTarget] = useState<DocumentMeta | null>(null)
-  const { user, online, setOnline } = useAuth()
+  const { user, setOnline } = useAuth()
   // Guest sort lives on defaults only; the cloud preferences load is gated on a
   // signed-in session so a guest never fires a doomed 401 request.
   const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences(!!user)
@@ -95,7 +69,7 @@ export default function Documents() {
   // owned/shared/public sub-filter, sharing and trash are all cloud-domain concepts
   // (the local IndexedDB library is identity-free), so they render only under Cloud.
   const cloudStore = backendBundle.cloudDocuments
-  const cloudAvailable = cloudStore != null && user != null && online
+  const cloudAvailable = useCloudAvailable()
   // Fall back to local if the cloud domain vanishes (sign-out / offline) while active.
   const onCloud = activeDomain === 'cloud' && cloudAvailable
   const activeStore = onCloud ? cloudStore! : backendBundle.documents
@@ -398,19 +372,6 @@ export default function Documents() {
     }
   }
 
-  const formatDate = (isoString: string) => {
-    if (!isoString) return ''
-    const date = new Date(isoString)
-    const diffMs = Date.now() - date.getTime()
-    const diffSec = Math.floor(diffMs / 1000)
-    if (diffSec < 60) return `${diffSec}s ago`
-    const diffMin = Math.floor(diffSec / 60)
-    if (diffMin < 60) return `${diffMin}min ago`
-    const diffH = Math.floor(diffMin / 60)
-    if (diffH < 24) return `${diffH}h ago`
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
-
   // One flat sidebar of items grouped under "Local" / "Cloud" dividers, replacing
   // the old Local/Cloud toggle: a click picks BOTH the domain and the view (a
   // filter, or the domain's Trash) in one go. The local home is identity-free, so
@@ -652,7 +613,7 @@ export default function Documents() {
                           </div>
                           <div className="doc-tile-meta">
                             <span className="doc-tile-date">
-                              Deleted: {formatDate(doc.deleted_at)}
+                              Deleted: {formatRelativeDate(doc.deleted_at)}
                             </span>
                             <div className="doc-tile-actions">
                               <button
@@ -703,7 +664,7 @@ export default function Documents() {
                           </span>
                         </div>
                         <div className="doc-tile-meta">
-                          <span className="doc-tile-date">{formatDate(doc.updated_at)}</span>
+                          <span className="doc-tile-date">{formatRelativeDate(doc.updated_at)}</span>
                            <div className="doc-tile-actions">
                             {onCloud && doc.is_owner && (
                               <button

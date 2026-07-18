@@ -39,7 +39,10 @@ vi.mock('@/adapters/backend', () => ({
       })),
       list: vi.fn(async () => h.list),
       save: h.save,
+      // The picker's tile preview asks the store for a thumbnail URL.
+      thumbnailUrl: () => null,
     },
+    cloudDocuments: null,
   },
 }))
 
@@ -104,7 +107,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
   // already in the tree collides with the picker item text. Scope the lookup to
   // the picker so a second insert of the same part still finds the right node.
   const pickerItem = (name: string) =>
-    screen.getAllByText(name).find(el => el.closest('.assembly-part-picker-item'))
+    screen.getAllByText(name).find(el => el.closest('.doc-browser-tile'))
 
   async function insertPart(name: string) {
     act(() => { executeCommand('insert_part_instance') })

@@ -9,6 +9,9 @@ interface DialogProps {
   confirmLabel?: string
   cancelLabel?: string
   confirmDisabled?: boolean
+  // Extra class on the dialog box so complex dialogs (e.g. the document
+  // browser) can widen the standardized shell without forking its styling.
+  className?: string
 }
 
 export default function Dialog({
@@ -20,12 +23,13 @@ export default function Dialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   confirmDisabled = false,
+  className,
 }: DialogProps) {
   if (!isOpen) return null
 
   return (
     <div className="dialog-component-overlay" onClick={onClose}>
-      <div className="dialog-component" onClick={e => e.stopPropagation()}>
+      <div className={`dialog-component${className ? ` ${className}` : ''}`} onClick={e => e.stopPropagation()}>
         <div className="dialog-component-header">
           <h2 className="dialog-component-title">{title}</h2>
           <button

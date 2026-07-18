@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
+import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { mateFeatures } from '@/utils/assemblyMutations'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
@@ -23,18 +24,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
     if (!uuid) return
     let cancelled = false
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
-    const loadFromDomain = async (): Promise<{ data: Awaited<ReturnType<typeof backendBundle.documents.load>>; store: typeof backendBundle.documents }> => {
-      try {
-        const data = await backendBundle.documents.load(uuid)
-        return { data, store: backendBundle.documents }
-      } catch (localErr) {
-        const cloud = backendBundle.cloudDocuments
-        if (!cloud) throw localErr
-        const data = await cloud.load(uuid)
-        return { data, store: cloud }
-      }
-    }
-    loadFromDomain()
+    loadDocumentAnyDomain(uuid)
       .then(({ data, store }) => {
         if (cancelled) return
         storeRef.current = store
