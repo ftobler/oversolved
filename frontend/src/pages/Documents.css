@@ -221,11 +221,19 @@
   gap: 12px;
 }
 
+.dialog-component-icon {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: #f3f4f6;  /* deliberately untinted: this header marks the topic, it does not signal info/success/error */
+}
+
 .dialog-component-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   color: #f3f4f6;
+  flex: 1;  /* keeps the close button hard right once an icon joins the row */
+  text-align: left;  /* index.css centers globally, and flex:1 makes that visible */
 }
 
 .dialog-component-body {
@@ -253,9 +261,25 @@
   margin: 12px;
 }
 
-.dialog-component-close-btn:hover {
+.dialog-component-close-btn:hover:not(:disabled) {
   background: #333;
   color: #ccc;
+}
+
+.dialog-component-close-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* A busy dialog is frozen, not broken: fade the inputs the user can no longer
+   reach, but leave the confirm button at full strength so its spinner reads as
+   progress rather than as a dead control. */
+.dialog-component[aria-busy='true'] .dialog-component-body {
+  opacity: 0.6;
+}
+
+.dialog-component[aria-busy='true'] .btn-primary:disabled {
+  opacity: 1;
 }
 
 .dialog-component-close-btn .material-icons {
@@ -268,8 +292,13 @@
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
-  padding: 12px 20px;
-  border-top: 1px solid #333;
+  padding: 20px;
+}
+
+/* Footer actions read as a pair: a floor so a short label ("OK") does not
+   shrink to a stub next to a long one. Shape and colour come from `.btn`. */
+.dialog-component-buttons .btn {
+  min-width: 100px;
 }
 
 .dialog-component input {
@@ -309,58 +338,6 @@
   color: #ef5350;
   font-size: 12px;
   margin: 0;
-}
-
-.btn {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.btn-add {
-  background: #4fc3f7;
-  color: #111;
-}
-
-.btn-add:hover {
-  background: #81d4fa;
-}
-
-.btn-primary {
-  background: #4fc3f7;
-  color: #111;
-  flex: 1;
-}
-
-.btn-primary:hover {
-  background: #81d4fa;
-}
-
-.btn-secondary {
-  background: #333;
-  color: #ccc;
-  flex: 1;
-}
-
-.btn-secondary:hover {
-  background: #444;
-  color: #fff;
-}
-
-.btn .material-icons {
-  font-size: 16px;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .doc-tiles {

@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import MessageDialog from '@/components/dialogs/MessageDialog'
+import BugReportDialog from '@/components/dialogs/BugReportDialog'
 import '@/components/layout/AppHeader.css'
 
 interface AppHeaderProps {
@@ -17,6 +19,7 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   const { user, online, logout } = useAuth()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
+  const [bugReportOpen, setBugReportOpen] = useState(false)
 
   const handleUnsavedConfirm = () => {
     const cb = useUnsavedChangesStore.getState().pendingCallback
@@ -65,9 +68,14 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
       </div>
       <div className="app-header-right">
         {rightContent}
-        <Link to="/docs" className="toolbar-btn" title="Documentation" onClick={guardLink}>
-          <span className="material-icons-outlined">help</span>
-        </Link>
+        <button
+          className="toolbar-btn"
+          aria-label="Report a bug"
+          title="Report a bug"
+          onClick={() => setBugReportOpen(true)}
+        >
+          <span className="material-icons-outlined">bug_report</span>
+        </button>
         {/* Three states of one guest-first session:
             - no server reachable  -> "cloud not available" (login impossible here)
             - server, not signed in -> a "Sign in" affordance (the optional upgrade)
@@ -116,6 +124,8 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
       confirmLabel="Discard"
       cancelLabel="Stay"
     />
+
+    <BugReportDialog isOpen={bugReportOpen} onClose={() => setBugReportOpen(false)} />
     </>
   )
 }

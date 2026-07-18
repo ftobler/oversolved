@@ -9,13 +9,12 @@
 //
 // Two configurations of one app, not two code paths through it:
 //   - HTTP build   -> every capability wired to the Flask PDM backend.
-//   - static build -> documents = IndexedDB, telemetry = download; docs/sharing
-//     absent (no server to serve docs from, no other users to share with).
+//   - static build -> documents = IndexedDB, telemetry = download; sharing
+//     absent (no other users to share with).
 import type { DocumentStore } from '@/stores/documentStore'
 import { getLocalStore, getCloudStore, getLocalTrash } from '@/stores/documentStore'
 import { backend, type Backend as BackendFlag } from '@/config/capabilities'
 import { createBugReportSink, type BugReportSink } from './telemetry'
-import { createDocsSource, type DocsSource } from './docs'
 import { createSharingAdapter, type SharingAdapter } from './sharing'
 import { createTrashAdapter, type TrashAdapter } from './trash'
 import { createPreferencesAdapter, type PreferencesAdapter } from './preferences'
@@ -25,7 +24,6 @@ export interface BackendBundle {
   cloudDocuments: DocumentStore | null  // the additive CLOUD domain; null without a server
   telemetry: BugReportSink            // always present (POST with a server, file download without)
   preferences: PreferencesAdapter     // always present (per-user on the server, localStorage without)
-  docs: DocsSource | null             // null without a server to serve the markdown docs
   sharing: SharingAdapter | null      // null without other users to share with
   trash: TrashAdapter | null          // the CLOUD trash; null without a server-side soft-delete lifecycle
   localTrash: TrashAdapter            // the LOCAL trash; always present (the local home library always exists)
@@ -49,7 +47,6 @@ export function createBackend(
     cloudDocuments,
     telemetry: createBugReportSink(flag),
     preferences: createPreferencesAdapter(flag),
-    docs: createDocsSource(flag),
     sharing: createSharingAdapter(flag),
     trash: createTrashAdapter(flag),
     localTrash,

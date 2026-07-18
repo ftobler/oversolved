@@ -16,7 +16,6 @@ describe('backend capability bundle', () => {
     expect(bundle.documents).toBe(fakeLocal)      // local IndexedDB home
     expect(bundle.cloudDocuments).toBe(fakeCloud)  // additive cloud domain
     expect(bundle.telemetry).not.toBeNull()  // POST sink
-    expect(bundle.docs).not.toBeNull()        // server-served markdown
     expect(bundle.sharing).not.toBeNull()     // user-to-user handover
     expect(bundle.trash).not.toBeNull()       // cloud soft-delete lifecycle
     expect(bundle.localTrash).toBe(fakeLocalTrash)  // local soft-delete, always present
@@ -30,7 +29,6 @@ describe('backend capability bundle', () => {
     expect(bundle.telemetry).not.toBeNull()
     // No server -> these are structurally absent, not broken branches.
     expect(bundle.cloudDocuments).toBeNull()
-    expect(bundle.docs).toBeNull()
     expect(bundle.sharing).toBeNull()
     expect(bundle.trash).toBeNull()           // no server-side trash
     // The local trash survives offline: it is the local soft delete's other half.

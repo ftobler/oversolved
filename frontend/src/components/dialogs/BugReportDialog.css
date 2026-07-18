@@ -1,0 +1,82 @@
+/* The title input inherits `.dialog-component input` from the shared dialog
+   shell; only the fields the shell does not know about are styled here. */
+
+.bug-report-textarea {
+  width: 100%;
+  height: 160px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  background: #111;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.bug-report-textarea:focus {
+  outline: none;
+  border-color: #4fc3f7;
+  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+}
+
+.bug-report-input:disabled,
+.bug-report-textarea:disabled {
+  opacity: 0.5;
+}
+
+.bug-report-error {
+  color: #ef5350;
+  font-size: 12px;
+}
+
+.bug-report-attachments-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.bug-report-attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bug-report-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+}
+
+/* `.dialog-component input` stretches every field to full width, which would
+   blow up the inline checkbox and the history count. */
+.bug-report-checkbox-label input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.bug-report-checkbox-label input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Two classes deep to outrank the shell's `.dialog-component input` width. */
+.bug-report-checkbox-label .bug-report-history-input {
+  width: 48px;
+  padding: 2px 4px;
+  margin: 0 4px;
+  font-size: 12px;
+  background: #0a0a0a;
+  color: #aaa;
+  border: 1px solid #333;
+  border-radius: 2px;
+}

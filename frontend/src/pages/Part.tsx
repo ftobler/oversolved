@@ -35,7 +35,8 @@ import { useEditFeature } from '@/pages/useEditFeature'
 import measurementIcon from '@/assets/icons/measurement.svg'
 
 import { buildContextMenu } from './buildContextMenu'
-import type { BuildContextMenuInput, BuildContextMenuCallbacks } from './buildContextMenu'
+import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
+import RenameDialog from '@/components/dialogs/RenameDialog'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
@@ -85,6 +86,7 @@ export default function Part() {
     viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
   }, [])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
+  const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number]; session: number } | null>(null)
   const colorPopoverSession = useRef(0)
   const { user } = useAuth()
@@ -588,6 +590,15 @@ export default function Part() {
     handleMutation({ type: 'rename_part', bodyId, name: trimmed })
   }, [handleMutation])
 
+  // The context menu only names what is being renamed; the dialog collects the
+  // label and routes it back to the kind's own mutation.
+  const handleRenameConfirm = useCallback((name: string) => {
+    if (!renameTarget) return
+    if (renameTarget.kind === 'body') handleBodyRename(renameTarget.id, name)
+    else handleFeatureRename(renameTarget.id, name)
+    setRenameTarget(null)
+  }, [renameTarget, handleBodyRename, handleFeatureRename])
+
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
   const handleBodyColor = useCallback((bodyId: string, color: string) => {
@@ -705,8 +716,7 @@ export default function Part() {
       onEnterEditSketch: enterEditSketch,
       onExitSketch: handleExitSketch,
       onDeleteFeature: handleDeleteFeature,
-      onFeatureRename: handleFeatureRename,
-      onBodyRename: handleBodyRename,
+      onRequestRename: setRenameTarget,
       onAlignToFace: (normal, center) => viewportRef.current?.alignCameraToFace(normal, center),
       onNormalToPlane: handleNormalToPlane,
       onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
@@ -730,7 +740,7 @@ export default function Part() {
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
   }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
-    handleFeatureRename, handleBodyRename, handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
+    handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels,
     viewportRef, docRef, startPreviewMode])
 
@@ -849,6 +859,13 @@ export default function Part() {
           onClose={() => setContextMenu(null)}
         />
       )}
+      <RenameDialog
+        isOpen={renameTarget !== null}
+        title={renameTarget?.kind === 'body' ? 'Rename Body' : 'Rename Feature'}
+        currentName={renameTarget?.currentName ?? ''}
+        onRename={handleRenameConfirm}
+        onCancel={() => setRenameTarget(null)}
+      />
       <PartColorPopover
         popover={partColorPopover}
         onColorSet={handleBodyColor}

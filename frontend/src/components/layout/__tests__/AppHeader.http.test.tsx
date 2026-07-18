@@ -3,14 +3,21 @@ import { describe, it, expect, vi } from 'vitest'
 // Server build: login is reachable. The header is the view half of the one
 // guest-first session -- it shows a "Sign in" affordance when guest and the
 // account name + logout when signed in. (three-state header.)
-vi.mock('@/config/capabilities', () => ({ hasBackend: true }))
+// Partial mock: the header pulls in the backend bundle (bug report sink), which
+// reads `backend` too -- a bare { hasBackend } mock leaves that import undefined.
+vi.mock('@/config/capabilities', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/config/capabilities')>()),
+  backend: 'http' as const,
+  hasBackend: true,
+  debugToolsUnrestricted: false,
+}))
 
 const mockUseAuth = vi.fn()
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
 }))
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import AppHeader from '../AppHeader'
 
@@ -53,5 +60,15 @@ describe('AppHeader (http / server reachable)', () => {
     expect(screen.getByText('offline')).toBeInTheDocument()
     expect(screen.getByText('ada')).toBeInTheDocument()
     expect(screen.getByTitle('Sign out')).toBeInTheDocument()
+  })
+
+  // Bug reporting lives in the header, not the admin debug drawer: any user hits
+  // bugs, and the drawer is gated.
+  it('opens the bug report dialog from the header button', () => {
+    mockUseAuth.mockReturnValue({ user: null, online: true, logout: vi.fn() })
+    wrap()
+    expect(screen.queryByText('Report a Bug')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTitle('Report a bug'))
+    expect(screen.getByText('Report a Bug')).toBeInTheDocument()
   })
 })

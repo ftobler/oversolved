@@ -22,6 +22,45 @@ describe('ShareDialog', () => {
     expect(screen.getByText('Share "TestUser/TestDoc"')).toBeInTheDocument()
   })
 
+  it('renders nothing when closed', async () => {
+    // The shell owns the isOpen guard now; the dialog itself no longer has one.
+    const { container } = render(
+      <ShareDialog
+        isOpen={false}
+        documentUuid="doc-1"
+        documentName="TestDoc"
+        ownerUsername="TestUser"
+        isOwner
+        onClose={vi.fn()}
+      />
+    )
+    await act(async () => {})
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  // The dialog used to carry a hand-rolled overlay, header and close button. It
+  // must keep using the shared shell so its chrome cannot drift again.
+  it('renders in the shared dialog shell with a topic icon', async () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <ShareDialog
+        isOpen
+        documentUuid="doc-1"
+        documentName="TestDoc"
+        ownerUsername="TestUser"
+        isOwner
+        onClose={onClose}
+      />
+    )
+    await act(async () => {})
+
+    expect(container.querySelector('.dialog-component.share-dialog')).toBeInTheDocument()
+    expect(container.querySelector('.dialog-component-icon')).toHaveTextContent('share')
+
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('shows non-owner message when isOwner is false', async () => {
     render(
       <ShareDialog

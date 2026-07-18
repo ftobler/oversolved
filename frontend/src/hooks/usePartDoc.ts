@@ -146,10 +146,17 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     editSnapshotRef.current = null
     suppressUndoRef.current = false
     if (snapshot && docRef.current) {
-      pushUndo(
-        { type: 'edit_session', featureId: '' },
-        snapshot,
-      )
+      // Entering an edit and leaving it without touching anything must not leave
+      // an undo step behind: it would restore an identical doc, so undo would
+      // look dead to the user.
+      const changed = JSON.stringify(snapshot) !== JSON.stringify(docRef.current)
+      if (changed) {
+        // The store still holds the edited feature here — commitEditSession runs
+        // before the caller's exit cleanup clears it — so the undo label can name
+        // the feature instead of rendering an empty one.
+        const featureId = usePartEditorStore.getState().editingFeatureId ?? ''
+        pushUndo({ type: 'edit_session', featureId }, snapshot)
+      }
     }
     clearUndoStackSnapshot()
   }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef])

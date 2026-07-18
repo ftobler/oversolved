@@ -13,7 +13,6 @@ from oversolved.blueprints.users import users_bp
 from oversolved.blueprints.documents import documents_bp
 from oversolved.blueprints.upload_export import upload_export_bp
 from oversolved.blueprints.admin import admin_bp
-from oversolved.blueprints.docs import docs_bp
 from oversolved.migrations import discover_and_register
 
 logger = logging.getLogger(__name__)
@@ -51,7 +50,6 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(documents_bp)
     app.register_blueprint(upload_export_bp)
     app.register_blueprint(admin_bp)
-    app.register_blueprint(docs_bp)
 
 
 def _check_production_config(app: Flask) -> None:

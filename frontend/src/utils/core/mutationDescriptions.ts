@@ -163,7 +163,9 @@ export function describeMutation(m: Mutation): string {
     case 'set_rollback':
       return m.position === null ? 'move rollback to end' : `move rollback to ${m.position}`
     case 'edit_session':
-      return `edit session on ${m.featureId}`
+      // One entry collapses a whole edit session, so it names the feature that
+      // was edited rather than reading as an on/off toggle.
+      return m.featureId ? `edit ${m.featureId}` : 'edit feature'
     default:
       return 'unknown mutation'
   }

@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
-import Documentation from '@/pages/Documentation'
 import Documents from '@/pages/Documents'
 import DocumentPage from '@/pages/DocumentPage'
 import Registry from '@/pages/Registry'
@@ -12,6 +11,7 @@ import Backup from '@/pages/Backup'
 import AdminUsers from '@/pages/AdminUsers'
 import AdminPeriodicTasks from '@/pages/AdminPeriodicTasks'
 import Settings from '@/pages/Settings'
+import '@/components/shared/buttons.css'
 import '@/App.css'
 
 function App() {
@@ -30,8 +30,6 @@ function App() {
         <Route path="/" element={<Navigate to="/documents" replace />} />
         <Route path="/documents" element={<Documents />} />
         <Route path="/documents/:uuid" element={<DocumentPage />} />
-        <Route path="/docs" element={<Documentation />} />
-        <Route path="/docs/:doc" element={<Documentation />} />
         <Route path="/registry" element={<Registry />} />
         <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
         <Route path="/admin/users" element={<Navigate to="/settings/admin" replace />} />

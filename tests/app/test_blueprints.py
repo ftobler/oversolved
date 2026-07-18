@@ -13,7 +13,6 @@ class TestBlueprintRegistration:
         "/api/upload",
         "/api/admin",
         "/api/bug-report",
-        "/api/docs",
     ]
 
     def test_all_blueprints_registered(self, app):
@@ -72,11 +71,12 @@ class TestBlueprintRegistration:
         assert "/api/export/step" not in rules
         assert "/api/export/stl" not in rules
 
-    def test_docs_routes_registered(self, app):
-        """Documentation blueprint routes exist."""
+    def test_docs_routes_absent(self, app):
+        """The in-app documentation viewer was removed; the docs/*.md files stay
+        in the repo as plain source, with no route serving them."""
         rules = [rule.rule for rule in app.url_map.iter_rules()]
-        assert "/api/docs" in rules
-        assert "/api/docs/<doc_name>" in rules
+        assert "/api/docs" not in rules
+        assert "/api/docs/<doc_name>" not in rules
 
     def test_user_profile_routes_registered(self, app):
         """User profile blueprint routes exist."""

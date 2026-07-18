@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@/config/capabilities', () => ({ hasBackend: false }))
+// Partial mock: the header pulls in the backend bundle (bug report sink), which
+// reads `backend` too -- a bare { hasBackend } mock leaves that import undefined.
+vi.mock('@/config/capabilities', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/config/capabilities')>()),
+  backend: 'static' as const,
+  hasBackend: false,
+  debugToolsUnrestricted: true,
+}))
 
 import { render, screen } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'

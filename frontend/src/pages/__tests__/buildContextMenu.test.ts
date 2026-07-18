@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildContextMenu } from '@/pages/buildContextMenu'
-import type { BuildContextMenuInput, BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
+import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from '@/pages/buildContextMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import type { PartFeature } from '@/types/cad'
 
@@ -33,8 +33,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onEnterEditSketch: () => {},
     onExitSketch: () => {},
     onDeleteFeature: () => {},
-    onFeatureRename: () => {},
-    onBodyRename: () => {},
+    onRequestRename: () => {},
     onAlignToFace: () => {},
     onNormalToPlane: () => {},
     onAlignCameraToSketchPlane: () => {},
@@ -375,9 +374,10 @@ describe('buildContextMenu', () => {
     expect(findLabel(result.items, 'Hide')).toBeTruthy()
   })
 
-  it('calls onBodyRename when Rename on body is clicked', () => {
+  it('requests a body rename carrying the current label', () => {
+    const seen: RenameTarget[] = []
     const callbacks = defaultCallbacks()
-    callbacks.onBodyRename = () => {}
+    callbacks.onRequestRename = t => { seen.push(t) }
     const result = buildContextMenu(
       defaultInput({
         targetId: 'body:b1',
@@ -385,8 +385,33 @@ describe('buildContextMenu', () => {
       }),
       callbacks,
     )
-    const renameItem = findLabel(result.items, 'Rename')
-    expect(renameItem).toBeTruthy()
+    findLabel(result.items, 'Rename')!.onClick()
+    expect(seen).toEqual([{ kind: 'body', id: 'b1', currentName: 'Body1' }])
+  })
+
+  // An unlabelled body is named by its id, which is what the user sees in the tree.
+  it('falls back to the body id when it carries no label', () => {
+    const seen: RenameTarget[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onRequestRename = t => { seen.push(t) }
+    const result = buildContextMenu(defaultInput({ targetId: 'body:b1' }), callbacks)
+    findLabel(result.items, 'Rename')!.onClick()
+    expect(seen[0].currentName).toBe('b1')
+  })
+
+  it('requests a feature rename carrying the current label', () => {
+    const seen: RenameTarget[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onRequestRename = t => { seen.push(t) }
+    const result = buildContextMenu(
+      defaultInput({
+        targetId: 'sketch1',
+        features: [makeFeature({ id: 'sketch1', kind: 'sketch', label: 'Sketch A' })],
+      }),
+      callbacks,
+    )
+    findLabel(result.items, 'Rename')!.onClick()
+    expect(seen).toEqual([{ kind: 'feature', id: 'sketch1', currentName: 'Sketch A' }])
   })
 
   it('calls onRebuild when Rebuild is clicked', () => {

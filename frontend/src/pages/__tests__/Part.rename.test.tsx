@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
@@ -150,7 +150,9 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   )
 }
 
-describe('Part Color Preview', () => {
+// The context menu only names the rename target; these cover the rest of the
+// path, from the menu item through the dialog to the mutation.
+describe('Part rename dialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useSketchEditorStore.setState({
@@ -174,78 +176,48 @@ describe('Part Color Preview', () => {
     )
   }
 
-  it('opens color popover from context menu', async () => {
+  function openRename() {
     renderPart()
-
     fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByTestId('menu-item-0'))
+  }
 
-    expect(screen.getByTestId('context-menu')).toBeInTheDocument()
+  // The mocked context menu keeps its own 'Rename' item mounted, so the footer
+  // buttons have to be reached through the dialog box.
+  function dialogButton(name: string) {
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    return within(box).getByRole('button', { name })
+  }
+
+  it('opens seeded with the body label instead of a window prompt', () => {
+    const promptSpy = vi.spyOn(window, 'prompt')
+    openRename()
+    expect(screen.getByRole('textbox')).toHaveValue('Test Body')
+    expect(promptSpy).not.toHaveBeenCalled()
   })
 
-  it('starts preview mode when color popover opens', async () => {
-    renderPart()
-
-    fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByText('Color'))
-
-    expect(mockStartPreviewMode).toHaveBeenCalled()
+  it('routes a confirmed body rename to the rename_part mutation', () => {
+    openRename()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Bracket' } })
+    fireEvent.click(dialogButton('Rename'))
+    expect(mockHandleMutation).toHaveBeenCalledWith({
+      type: 'rename_part',
+      bodyId: 'body-1',
+      name: 'Bracket',
+    })
   })
 
-  it('calls cancelPreview when cancel button is clicked', async () => {
-    renderPart()
-
-    fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByText('Color'))
-
-    const cancelBtn = screen.getByText('Cancel')
-    fireEvent.click(cancelBtn)
-
-    expect(mockCancelPreview).toHaveBeenCalled()
+  it('mutates nothing when the rename is cancelled', () => {
+    openRename()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Bracket' } })
+    fireEvent.click(dialogButton('Cancel'))
+    expect(mockHandleMutation).not.toHaveBeenCalled()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('calls cancelPreview exactly once when cancel button is clicked twice', async () => {
-    renderPart()
-
-    fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByText('Color'))
-
-    const cancelBtn = screen.getByText('Cancel')
-    fireEvent.click(cancelBtn)
-    fireEvent.click(cancelBtn)
-
-    expect(mockCancelPreview).toHaveBeenCalledTimes(1)
-  })
-
-  it('calls commitPreview when apply button is clicked', async () => {
-    renderPart()
-
-    fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByText('Color'))
-
-    const applyBtn = screen.getByText('Apply')
-    fireEvent.click(applyBtn)
-
-    expect(mockCommitPreview).toHaveBeenCalled()
-  })
-
-  // The popover once carried its own button copy, which drifted out of step with
-  // the app-wide `.btn` system the dialogs use.
-  it('uses the shared button classes for its actions', async () => {
-    renderPart()
-
-    fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByText('Color'))
-
-    expect(screen.getByText('Apply').className).toBe('btn btn-primary')
-    expect(screen.getByText('Cancel').className).toBe('btn btn-secondary')
-  })
-
-  it('renders a header icon', async () => {
-    renderPart()
-
-    fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByText('Color'))
-
-    expect(screen.getByText('palette')).toBeInTheDocument()
+  it('closes after a confirmed rename', () => {
+    openRename()
+    fireEvent.click(dialogButton('Rename'))
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 })

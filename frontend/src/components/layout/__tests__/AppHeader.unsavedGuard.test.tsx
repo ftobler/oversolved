@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-vi.mock('@/config/capabilities', () => ({ hasBackend: true }))
+// Partial mock: the header pulls in the backend bundle (bug report sink), which
+// reads `backend` too -- a bare { hasBackend } mock leaves that import undefined.
+vi.mock('@/config/capabilities', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/config/capabilities')>()),
+  backend: 'http' as const,
+  hasBackend: true,
+  debugToolsUnrestricted: false,
+}))
 
 const mockUseAuth = vi.fn()
 vi.mock('@/contexts/AuthContext', () => ({
@@ -38,7 +45,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
   it('does not set a pending callback when there are no unsaved changes', () => {
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documentation'))
+      fireEvent.click(screen.getByTitle('Documents'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
   })
@@ -47,7 +54,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documentation'))
+      fireEvent.click(screen.getByTitle('Documents'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
@@ -59,7 +66,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documentation'))
+      fireEvent.click(screen.getByTitle('Documents'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     // Simulate the user confirming via the dialog.

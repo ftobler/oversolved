@@ -577,11 +577,19 @@
   gap: 8px;
 }
 
+.part-color-popover-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  color: #f3f4f6;
+}
+
 .part-color-popover-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   color: #f3f4f6;
+  flex: 1;  /* keeps the close button hard right once an icon joins the row */
+  text-align: left;  /* index.css centers globally, and flex:1 makes that visible */
 }
 
 .part-color-popover-close-btn {
@@ -672,37 +680,12 @@
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 16px;
-  border-top: 1px solid #333;
 }
 
-.part-color-popover-btn {
-  padding: 6px 14px;
-  border: none;
-  background: #333;
-  color: #ccc;
-  border-radius: 4px;
-  height: 28px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.part-color-popover-btn:hover {
-  background: #444;
-  color: #fff;
-}
-
-.part-color-popover-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.part-color-popover-btn-primary {
-  background: #2a5a8a;
-  color: #fff;
-}
-
-.part-color-popover-btn-primary:hover {
-  background: #3a6a9a;
+/* Same even-pair floor as the dialog footer, but narrower: 100px each would
+   push past the popover's 220px min-width. Shape and colour come from `.btn`. */
+.part-color-popover-actions .btn {
+  min-width: 80px;
 }
 
 .part-slider {
@@ -844,8 +827,8 @@
   width: 32px;
   height: 10px;
   background: var(--tiling-sine-fine) repeat-x;
-  transform: rotate(90deg);
-  margin: 0 0px;
+  transform: rotate(90deg) translateY(3px);
+  margin: 0px -10px;
   flex-shrink: 0;
 }
 
