@@ -38,15 +38,17 @@
   flex-wrap: wrap;
 }
 
-/* The grounded glyph after a part's name: the fixed icon, greyed and dimmed so
-   it reads as a status mark rather than a button. */
+/* The grounded glyph after a part's name. The icon assets are black strokes on
+   transparent, so every icon in this UI is lit by inverting it; grayscale and
+   brightness leave black black, which is why this badge used to vanish into the
+   #111 sidebar. One step below .feature-icon's invert(0.8) keeps it reading as a
+   status mark rather than a button, without dropping it out of sight. */
 .feature-fixed-badge {
   width: 14px;
   height: 14px;
   margin-left: 4px;
   flex-shrink: 0;
-  filter: grayscale(1) brightness(1.4);
-  opacity: 0.5;
+  filter: invert(0.65);
 }
 
 /* A mate whose reference no longer resolves: red, matching the part editor's
