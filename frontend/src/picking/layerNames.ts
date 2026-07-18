@@ -14,3 +14,7 @@ export const SKETCH_VERTEX_LAYER_NAME = 'sketchVertex'
 export const ORIGIN_LAYER_NAME = 'originMarker'
 export const DIMENSION_LABEL_LAYER_NAME = 'dimensionLabel'
 export const FEATURE_HANDLE_LAYER_NAME = 'featureHandle'
+// The assembly triad's grab regions. Its own name rather than a reuse of
+// featureHandle: both editors share the layer-name namespace, and a part-editor
+// dispatch switch must never see an assembly gizmo id.
+export const GIZMO_HANDLE_LAYER_NAME = 'gizmoHandle'

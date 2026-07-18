@@ -12,7 +12,7 @@
 // utils/anchorGizmos.ts — all viewport-free and unit-tested.
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { Canvas, type ThreeEvent } from '@react-three/fiber'
+import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
@@ -27,6 +27,7 @@ import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
 import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblySelectionHighlight'
+import GizmoPickLayer from '@/components/Viewport/assembly/GizmoPickLayer'
 import RollGuideGizmo, { type RollGuideSpec } from '@/components/Viewport/assembly/RollGuideGizmo'
 import TriadGizmo from '@/components/Viewport/assembly/TriadGizmo'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
@@ -35,7 +36,8 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import IdPickingDriver from '@/picking/IdPickingDriver'
 import type { IdPipeline } from '@/picking'
 import {
-  EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, VERTEX_LAYER_NAME,
+  EDGE_LAYER_NAME, FACE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME, ORIGIN_LAYER_NAME,
+  PLANE_LAYER_NAME, VERTEX_LAYER_NAME,
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
@@ -46,7 +48,8 @@ import {
   gizmoOrigin,
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
-import { createAssemblyPointerAdapter, type GizmoMode } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter } from '@/utils/assemblyPointer'
+import { parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
 import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
@@ -57,6 +60,11 @@ import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
 const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
   FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, ORIGIN_LAYER_NAME,
 ])
+
+// Kept out of ASSEMBLY_PICK_LAYERS on purpose: a triad handle is a drag
+// affordance, never a mate reference or a measurement target, so the mate
+// picker and the selection toggle must not be able to resolve one.
+const GIZMO_PICK_LAYERS: ReadonlySet<string> = new Set([GIZMO_HANDLE_LAYER_NAME])
 
 // Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
 // [] per render would rebuild every body's line geometry on every frame.
@@ -233,7 +241,10 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   }, [raycaster])
 
   // The ID buffer is read in drawing-buffer pixels; the pointer speaks CSS.
-  const resolveHitsAt = useCallback((e: { clientX: number; clientY: number }) => {
+  const resolveHitsAt = useCallback((
+    e: { clientX: number; clientY: number },
+    layers: ReadonlySet<string> = ASSEMBLY_PICK_LAYERS,
+  ) => {
     const gl = glRef.current
     const pipeline = pipelineRef.current
     if (!gl || !pipeline) return []
@@ -244,7 +255,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
       x: (e.clientX - rect.left) * (canvas.width / rect.width),
       y: (e.clientY - rect.top) * (canvas.height / rect.height),
     }
-    return pipeline.resolveAllSync(gl, cursor, { allowedLayers: ASSEMBLY_PICK_LAYERS })
+    return pipeline.resolveAllSync(gl, cursor, { allowedLayers: layers })
   }, [])
 
   // One GPU readback per frame at most. A pointermove fires far faster than the
@@ -316,6 +327,11 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   const handleGrabBody = useCallback((handle: string, point: Vec3) => {
     const camera = cameraRef.current
     if (!camera) return
+    // The triad already claimed this pointer-down in the capture phase below.
+    // AssemblyBody's R3F handler runs later (R3F listens natively on its own
+    // canvas wrapper, which this div encloses), so without this the body grab
+    // would overwrite the gesture the user actually started.
+    if (adapter.isActive()) return
     // Free drag happens in the plane facing the camera through the grab point,
     // so the part follows the cursor exactly under any view direction.
     const forward = camera.getWorldDirection(new THREE.Vector3())
@@ -327,15 +343,28 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     }
   }, [adapter, clearHover])
 
-  const handleGrabGizmo = useCallback((mode: GizmoMode, axis: Vec3, e: ThreeEvent<PointerEvent>) => {
-    if (!selectedPartHandle || !triad) return
+  // The triad's pointer-down, run in the CAPTURE phase. React registers capture
+  // listeners on its root container, an ancestor of this div, so this fires
+  // while the event is still travelling down -- before it reaches the canvas
+  // wrapper R3F listens on, and therefore before AssemblyBody's body grab. That
+  // ordering is the whole fix: the gizmo is drawn on top and now decides first
+  // too, with the ID buffer's layer priority as the single arbiter of what the
+  // pixel under the cursor belongs to.
+  const handleGizmoPointerDownCapture = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0 || e.ctrlKey || !selectedPartHandle || !triad) return
+    const hit = resolveHitsAt(e, GIZMO_PICK_LAYERS)[0]
+    const handle = parseGizmoHandleKey(hit?.entityKey)
+    if (!handle) return
     const ray = rayFromEvent(e)
     if (!ray) return
-    if (adapter.onGizmoPointerDown(selectedPartHandle, mode, axis, triad.origin, ray)) {
+    // The registered handles carry the part-local axis; the ray math works in
+    // world space, so lift it through the pose the triad is drawn in.
+    const axis = rotateVector(triad.orientation, handle.axis)
+    if (adapter.onGizmoPointerDown(selectedPartHandle, handle.kind, axis, triad.origin, ray)) {
       clearHover()  // the gizmo moves the part too; same stale-anchor trail
       setManipulating(true)
     }
-  }, [adapter, clearHover, rayFromEvent, selectedPartHandle, triad])
+  }, [adapter, clearHover, rayFromEvent, resolveHitsAt, selectedPartHandle, triad])
 
   // Pointer-down screen position, kept so pointer-up can tell a click from a
   // drag: a body grab (which fires on the R3F mesh handler before this one) is
@@ -434,6 +463,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   return (
     <div
       style={PARENT_STYLE}
+      onPointerDownCapture={handleGizmoPointerDownCapture}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -501,7 +531,12 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
         {aiming && <AnchorGizmos gizmos={gizmos} />}
         <RollGuideGizmo spec={rollGuideSpec} />
 
-        {triad && <TriadGizmo origin={triad.origin} orientation={triad.orientation} onGrab={handleGrabGizmo} />}
+        {triad && (
+          <>
+            <TriadGizmo origin={triad.origin} orientation={triad.orientation} />
+            <GizmoPickLayer origin={triad.origin} orientation={triad.orientation} enabled={!manipulating} />
+          </>
+        )}
       </Canvas>
 
       <CubeGizmoCanvas

@@ -9,7 +9,7 @@ import type { IdLayer } from './IdLayer'
 import {
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
-  FEATURE_HANDLE_LAYER_NAME,
+  FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 } from './layerNames'
 
 // Layer name constants now live in the pure ./layerNames module (no three.js)
@@ -18,7 +18,7 @@ import {
 export {
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
-  FEATURE_HANDLE_LAYER_NAME,
+  FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 }
 export const SKETCH_ENTITY_FAT_PIXELS = 8
 export const SKETCH_VERTEX_FAT_PIXELS = 12
@@ -72,6 +72,7 @@ export class IdPipeline {
   readonly originLayer: VertexIdLayer
   readonly dimensionLabelLayer: VertexIdLayer
   readonly featureHandleLayer: EdgeIdLayer
+  readonly gizmoHandleLayer: FaceIdLayer
   private layers: IdLayer[]
   private windowSize: number
   private renderCount = 0
@@ -122,6 +123,15 @@ export class IdPipeline {
       name: FEATURE_HANDLE_LAYER_NAME, priority: 80, zPolicy: 'no-depth',
       depthTest: false, depthWrite: false,
     })
+    // The assembly triad, one step above even the feature handles: while a
+    // triad is shown the part under it is already selected, so a pixel the
+    // gizmo covers can only mean "grab the gizmo". A face layer, not an edge
+    // one: the rings and plane quads are areas, not lines. `no-depth` clears
+    // the depth buffer first, so the handles win against the body they sit
+    // inside while still occluding each other correctly.
+    this.gizmoHandleLayer = new FaceIdLayer(this.registry, {
+      name: GIZMO_HANDLE_LAYER_NAME, priority: 90, zPolicy: 'no-depth',
+    })
 
     this.layers = []
     this.addLayer(this.planeLayer)           // -10  behind everything
@@ -134,6 +144,7 @@ export class IdPipeline {
     this.addLayer(this.originLayer)          //  60
     this.addLayer(this.dimensionLabelLayer)  //  70
     this.addLayer(this.featureHandleLayer)   //  80
+    this.addLayer(this.gizmoHandleLayer)     //  90
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
     this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false

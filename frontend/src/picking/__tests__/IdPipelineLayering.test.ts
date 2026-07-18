@@ -12,7 +12,7 @@ describe('IdPipeline layering', () => {
       'planeFace',
       FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
       'sketchSurface', 'sketchEntity', 'sketchVertex', 'originMarker', 'dimensionLabel',
-      'featureHandle',
+      'featureHandle', 'gizmoHandle',
     ])
     p.dispose()
   })
@@ -30,12 +30,13 @@ describe('IdPipeline layering', () => {
     expect(layers[7].zPolicy).toBe('no-depth')                  // originMarker
     expect(layers[8].zPolicy).toBe('no-depth')                  // dimensionLabel
     expect(layers[9].zPolicy).toBe('no-depth')                  // featureHandle
+    expect(layers[10].zPolicy).toBe('no-depth')                 // gizmoHandle
     p.dispose()
   })
 
   it('addLayer keeps the array sorted by priority', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
-    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 20, 30, 40, 50, 60, 70, 80])
+    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90])
     p.dispose()
   })
 
@@ -52,5 +53,6 @@ describe('IdPipeline layering', () => {
     expect(p.originLayer.bodyCount()).toBe(0)
     expect(p.dimensionLabelLayer.bodyCount()).toBe(0)
     expect(p.featureHandleLayer.bodyCount()).toBe(0)
+    expect(p.gizmoHandleLayer.bodyCount()).toBe(0)
   })
 })

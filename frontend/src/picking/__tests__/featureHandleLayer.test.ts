@@ -18,7 +18,8 @@ describe('featureHandle ID layer', () => {
 
   it('is part of the render order and layer priority map', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
-    expect(p.getLayers()[p.getLayers().length - 1].name).toBe(FEATURE_HANDLE_LAYER_NAME)
+    // Last but one now: the assembly's gizmoHandle layer sits above it.
+    expect(p.getLayers()[p.getLayers().length - 2].name).toBe(FEATURE_HANDLE_LAYER_NAME)
     expect(p.getLayerPriority()[FEATURE_HANDLE_LAYER_NAME]).toBe(80)
     p.dispose()
   })
