@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import Dialog from '@/components/dialogs/Dialog'
 import './MessageDialog.css'
 
 export type MessageVariant = 'info' | 'success' | 'error'
@@ -23,75 +24,47 @@ const ICON: Record<MessageVariant, string> = {
   error: 'error',
 }
 
+// A message box built on the shared dialog shell. What it adds over the shell is
+// the variant tint, Enter-to-acknowledge, and an OK-only mode for dialogs that
+// carry no decision. The tint rides in on the shell's className passthrough: the
+// shell's own icon is deliberately untinted, since a topic icon is not a signal.
 export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', showCancel = true, className }: MessageDialogProps) {
-  const okRef = useRef<HTMLButtonElement>(null)
-
+  // Escape comes from the shell. Enter stays here: it is only safe because a
+  // message box holds no field a newline could belong to.
   useEffect(() => {
     if (!isOpen) return
-
-    okRef.current?.focus()
-
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
+      if (e.key !== 'Enter') return
+      e.preventDefault()
+      if (onConfirm) {
+        onConfirm()
+      } else {
         onClose()
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        if (onConfirm) {
-          onConfirm()
-        } else {
-          onClose()
-        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isOpen, onClose, onConfirm])
 
-  if (!isOpen) return null
+  // Without a confirm handler the dialog is an acknowledgement: a lone OK that
+  // closes, and no cancel to sit beside it.
+  const isAcknowledgement = !onConfirm
 
   return (
-    <div className="message-dialog-overlay" onClick={onClose}>
-      <div className={`message-dialog-content message-dialog-${variant}${className ? ` ${className}` : ''}`} onClick={e => e.stopPropagation()}>
-        <div className="message-dialog-header">
-          <span className={`material-icons message-dialog-icon message-dialog-icon-${variant}`}>
-            {ICON[variant]}
-          </span>
-          <h2 className="message-dialog-title">{title}</h2>
-          <button
-            className="message-dialog-close-btn"
-            onClick={onClose}
-            title="Close"
-          >
-            <span className="material-icons">close</span>
-          </button>
-        </div>
-
-        <div className="message-dialog-body">
-          {/* div, not p: rich messages may contain their own paragraphs */}
-          <div className="message-dialog-message">{message}</div>
-        </div>
-
-        <div className="message-dialog-footer">
-          {onConfirm ? (
-            <>
-              <button ref={okRef} className="btn btn-primary message-dialog-confirm-btn" onClick={onConfirm}>
-                {confirmLabel}
-              </button>
-              {showCancel && (
-                <button className="btn btn-secondary message-dialog-cancel-btn" onClick={onClose}>
-                  {cancelLabel}
-                </button>
-              )}
-            </>
-          ) : (
-            <button ref={okRef} className="btn btn-primary message-dialog-ok-btn" onClick={onClose}>
-              OK
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    <Dialog
+      isOpen={isOpen}
+      title={title}
+      icon={ICON[variant]}
+      className={`message-dialog message-dialog-${variant}${className ? ` ${className}` : ''}`}
+      onClose={onClose}
+      onConfirm={isAcknowledgement ? onClose : onConfirm}
+      confirmLabel={isAcknowledgement ? 'OK' : confirmLabel}
+      cancelLabel={cancelLabel}
+      showCancel={!isAcknowledgement && showCancel}
+      autoFocusConfirm
+    >
+      {/* div, not p: rich messages may contain their own paragraphs */}
+      <div className="message-dialog-message">{message}</div>
+    </Dialog>
   )
 }

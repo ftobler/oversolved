@@ -1,64 +1,22 @@
-.message-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 20vh;
-  z-index: 9999;
-}
+/* Only the message body and the variant tint live here. Overlay, header, close
+   button and the footer come from the shared dialog shell. */
 
-.message-dialog-content {
-  background: #1e1e1e;
-  border: none;
-  border-radius: 16px;
-  width: 90%;
+.dialog-component.message-dialog {
   max-width: 440px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  font-size: 14px;
 }
 
-.message-dialog-header {
-  padding: 12px 12px 12px 20px;
-  border-bottom: 1px solid #333;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.message-dialog-icon {
-  font-size: 20px;
-}
-
-.message-dialog-icon-info {
+/* The shell keeps its header icon untinted because a topic icon is not a
+   signal. Here it is exactly that, so each variant claims its own colour. */
+.message-dialog-info .dialog-component-icon {
   color: #4fc3f7;
 }
 
-.message-dialog-icon-success {
+.message-dialog-success .dialog-component-icon {
   color: #66bb6a;
 }
 
-.message-dialog-icon-error {
+.message-dialog-error .dialog-component-icon {
   color: #ef5350;
-}
-
-.message-dialog-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #f3f4f6;
-  flex: 1;
-}
-
-.message-dialog-body {
-  padding: 16px 20px;
 }
 
 .message-dialog-message {
@@ -76,53 +34,4 @@
 
 .message-dialog-message p:last-child {
   margin-bottom: 0;
-}
-
-.message-dialog-footer {
-  padding: 20px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.message-dialog-ok-btn {
-  min-width: 100px;
-}
-
-.message-dialog-confirm-btn {
-  min-width: 100px;
-}
-
-.message-dialog-cancel-btn {
-  min-width: 100px;
-}
-
-.message-dialog-close-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  color: #666;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-}
-
-.message-dialog-close-btn:hover {
-  background: #333;
-  color: #ccc;
-}
-
-.message-dialog-close-btn .material-icons {
-  font-size: 20px;
-}
-
-@media (max-width: 768px) {
-  .message-dialog-content {
-    width: 95%;
-  }
 }
