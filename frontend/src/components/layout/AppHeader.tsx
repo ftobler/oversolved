@@ -76,9 +76,6 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         >
           <span className="material-icons-outlined">bug_report</span>
         </button>
-        <Link to="/docs" className="toolbar-btn" title="Documentation" onClick={guardLink}>
-          <span className="material-icons-outlined">help</span>
-        </Link>
         {/* Three states of one guest-first session:
             - no server reachable  -> "cloud not available" (login impossible here)
             - server, not signed in -> a "Sign in" affordance (the optional upgrade)

@@ -1,7 +1,6 @@
 """Tests for Flask API."""
 
 import json
-import pytest
 
 
 class TestAuthAPI:
@@ -351,37 +350,3 @@ class TestDocumentAPI:
         )
         assert response.status_code == 400
         assert "Invalid image" in json.loads(response.data)["error"]
-
-
-class TestDocsAPI:
-    """Tests for documentation API endpoint."""
-
-    def test_list_docs(self, client):
-        response = client.get("/api/docs")
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert "docs" in data
-        assert isinstance(data["docs"], list)
-        assert len(data["docs"]) > 0
-
-    def test_list_docs_sorted(self, client):
-        response = client.get("/api/docs")
-        data = json.loads(response.data)
-        docs = data["docs"]
-        assert docs == sorted(docs)
-
-    def test_get_doc(self, client):
-        response = client.get("/api/docs")
-        docs = json.loads(response.data)["docs"]
-        if not docs:
-            pytest.skip("No documentation files available")
-
-        response = client.get(f"/api/docs/{docs[0]}")
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert "content" in data
-        assert "name" in data
-
-    def test_get_doc_nonexistent(self, client):
-        response = client.get("/api/docs/nonexistent_doc_xyz")
-        assert response.status_code == 404

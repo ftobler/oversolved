@@ -45,7 +45,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
   it('does not set a pending callback when there are no unsaved changes', () => {
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documentation'))
+      fireEvent.click(screen.getByTitle('Documents'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
   })
@@ -54,7 +54,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documentation'))
+      fireEvent.click(screen.getByTitle('Documents'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
@@ -66,7 +66,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documentation'))
+      fireEvent.click(screen.getByTitle('Documents'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     // Simulate the user confirming via the dialog.
