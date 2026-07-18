@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
+import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
 import Documentation from '@/pages/Documentation'
 import Documents from '@/pages/Documents'
 import Part from '@/pages/Part'
@@ -16,6 +17,9 @@ import '@/App.css'
 function App() {
   return (
     <AuthProvider>
+      {/* Route-independent: the welcome/disclaimer popup must greet a visitor
+          no matter which page they land on. */}
+      <DisclaimerDialog />
       <Routes>
         {/* Guest-first: no wall. A fresh visitor lands straight on the documents
             library (the local IndexedDB home) and can create/export with no
