@@ -71,6 +71,7 @@
    matches the surrounding sidebar items. */
 .sidebar-item-login {
   text-decoration: none;
+  color: inherit;
 }
 
 .sidebar-item.active {
