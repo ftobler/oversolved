@@ -25,5 +25,11 @@ export default defineConfig({
     setupFiles: ['src/test-setup.ts'],
     testTimeout: ci ? 60000 : undefined,
     hookTimeout: ci ? 120000 : undefined,
+    // Vitest sizes the fork pool by core count. The `*Real.test.ts` files each
+    // instantiate their own OCC WASM kernel, so on a many-core box the pool
+    // outruns RAM: a worker gets OOM-killed mid-run and the suite dies with an
+    // unattributable "Channel closed" (ERR_IPC_CHANNEL_CLOSED) rejection rather
+    // than a test failure. Bound the pool by memory instead of by cores.
+    poolOptions: { forks: { maxForks: 6 } },
   },
 })
