@@ -24,6 +24,18 @@ describe('ExportDialog', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  // The dialog used to carry a hand-rolled overlay, header and button pair. It
+  // must keep using the shared shell so its chrome cannot drift again.
+  it('renders in the shared dialog shell with a topic icon', () => {
+    const { container } = render(
+      <ExportDialog isOpen defaultName="part" onDownload={vi.fn()} onCancel={vi.fn()} />
+    )
+    expect(container.querySelector('.dialog-component-overlay')).toBeInTheDocument()
+    expect(container.querySelector('.dialog-component-icon')).toHaveTextContent('download')
+    expect(screen.getByRole('button', { name: 'Download' })).toHaveClass('btn', 'btn-primary')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('btn', 'btn-secondary')
+  })
+
   it('passes format, tessellation and filename to onDownload', async () => {
     const onDownload = vi.fn()
     render(<ExportDialog isOpen defaultName="part" onDownload={onDownload} onCancel={vi.fn()} />)
@@ -140,7 +152,7 @@ describe('ExportDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     await screen.findByRole('button', { name: /Generating/ })
 
-    fireEvent.click(container.querySelector('.export-dialog-overlay') as Element)
+    fireEvent.click(container.querySelector('.dialog-component-overlay') as Element)
     expect(onCancel).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -148,7 +160,7 @@ describe('ExportDialog', () => {
       await gate.promise
     })
 
-    fireEvent.click(container.querySelector('.export-dialog-overlay') as Element)
+    fireEvent.click(container.querySelector('.dialog-component-overlay') as Element)
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 

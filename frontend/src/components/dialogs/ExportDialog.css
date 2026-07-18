@@ -1,81 +1,5 @@
-.export-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 20vh;
-  z-index: 9999;
-}
-
-.export-dialog {
-  background: #1e1e1e;
-  border: none;
-  border-radius: 16px;
-  width: 90%;
-  max-width: 420px;
-  max-height: 80vh;
-  margin: 0;
-  font-size: 14px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  color: #ddd;
-}
-
-.export-dialog-header {
-  padding-left: 20px;
-  border-bottom: 1px solid #333;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.export-dialog-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #f3f4f6;
-}
-
-.export-dialog-body {
-  flex: 1;
-  padding: 16px 20px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.export-dialog-close-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  color: #666;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin: 12px;
-}
-
-.export-dialog-close-btn:hover:not(:disabled) {
-  background: #333;
-  color: #ccc;
-}
-
-.export-dialog-close-btn .material-icons {
-  font-size: 20px;
-}
+/* Only the export-specific controls live here. Overlay, header, footer buttons
+   and the base input styling come from the shared dialog shell. */
 
 .export-dialog-section {
   display: flex;
@@ -102,7 +26,11 @@
   cursor: pointer;
 }
 
+/* `.dialog-component input` stretches every field to full width, which would
+   blow up the inline radios and the slider. */
 .export-dialog-radio input {
+  width: auto;
+  padding: 0;
   accent-color: #4fc3f7;
 }
 
@@ -112,8 +40,10 @@
   gap: 12px;
 }
 
-.export-dialog-slider {
+.export-dialog-slider-row .export-dialog-slider {
   flex: 1;
+  width: auto;
+  padding: 0;
   accent-color: #4fc3f7;
 }
 
@@ -132,71 +62,9 @@
   border-top: 1px solid #333;
 }
 
-.export-dialog-filename-input {
+.export-dialog-filename .export-dialog-filename-input {
   flex: 1;
-  padding: 8px 10px;
-  background: #2a2a2a;
-  border: none;
-  border-radius: 4px;
-  color: #ccc;
-  font-size: 14px;
-  box-sizing: border-box;
   font-family: monospace;
-}
-
-.export-dialog-filename-input:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
-}
-
-.export-dialog-buttons {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  padding: 12px 20px;
-  border-top: 1px solid #333;
-}
-
-.export-dialog-btn {
-  padding: 8px 14px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  border: none;
-  background: #333;
-  color: #ccc;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 35px;
-}
-
-.export-dialog-btn:hover:not(:disabled) {
-  background: #444;
-  color: #fff;
-}
-
-.export-dialog-btn-download {
-  background: #2a5a8a;
-  color: #fff;
-}
-
-.export-dialog-btn-download:hover:not(:disabled) {
-  background: #3a6a9a;
-}
-
-.export-dialog-btn:disabled,
-.export-dialog-close-btn:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-/* The download button keeps its accent while busy so the spinner reads as
-   progress rather than as a dead control. */
-.export-dialog-btn-download:disabled {
-  opacity: 1;
-  background: #24486b;
 }
 
 .export-dialog-spinner {
@@ -206,8 +74,9 @@
   animation: export-dialog-spin 1s linear infinite;
 }
 
+/* The confirm button is `.btn-primary`, so the spinner sits on a light fill. */
 .export-dialog-spinner circle {
-  stroke: #fff;
+  stroke: #111;
   stroke-dasharray: 80, 200;
   stroke-dashoffset: 0;
 }
@@ -215,14 +84,4 @@
 @keyframes export-dialog-spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-.export-dialog[aria-busy='true'] .export-dialog-body {
-  opacity: 0.6;
-}
-
-@media (max-width: 768px) {
-  .export-dialog {
-    width: 95%;
-  }
 }
