@@ -6,6 +6,7 @@ import { useAssemblyStore, setAssemblyCallbacks, type MateFieldTarget } from '@/
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { MateEditor } from '@/components/layout/MateEditor'
@@ -151,6 +152,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     setDoc(prev => (prev ? fn(prev) : prev))
     useUnsavedChangesStore.getState().setDirty(true)
   }, [setDoc])
+
+  useUnsavedChangesGuard()
 
   // The store owns the drag/gizmo state machine but not the document; give it
   // the doc mutator and the one-solve-per-pointer-up trigger.

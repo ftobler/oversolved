@@ -18,6 +18,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { debugToolsUnrestricted } from '@/config/capabilities'
 import '@/pages/Part.css'
@@ -477,24 +478,7 @@ export default function Part() {
     useSolverStore.getState().setIsSolving(solving)
   }, [solving])
 
-  // Warn on a hard browser exit (tab close, reload, external link) while the doc
-  // has unsaved edits. In-app navigation (the shared header links) is guarded
-  // separately via confirmDiscardUnsavedChanges; beforeunload is the only hook
-  // for leaving the SPA entirely. Clearing the flag on unmount stops a stale
-  // "dirty" from following the user onto other pages that share the header.
-  useEffect(() => {
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (useUnsavedChangesStore.getState().dirty) {
-        e.preventDefault()
-        e.returnValue = ''  // some browsers require returnValue to be set
-      }
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => {
-      window.removeEventListener('beforeunload', onBeforeUnload)
-      useUnsavedChangesStore.getState().setDirty(false)
-    }
-  }, [])
+  useUnsavedChangesGuard()
 
   // Undo/redo must never move the camera. Disarm any pending (deferred) fit
   // first so the doc/body change they trigger cannot reframe the viewport.
