@@ -41,9 +41,12 @@ const RING_SEGMENTS = 28
 
 export type GizmoHandleKind = 'translate' | 'rotate' | 'plane'
 
+/** The part-local axis a handle belongs to, as it appears in the handle key. */
+export type GizmoAxisName = 'x' | 'y' | 'z'
+
 export interface GizmoAxisDef {
   /** Suffix in the handle's entity key. */
-  name: string
+  name: GizmoAxisName
   /** The part-local axis this handle acts on. */
   axis: Vec3
   /** Right-handed companions: `u x v = axis`. */
@@ -64,12 +67,23 @@ export function gizmoHandleKey(kind: GizmoHandleKind, axisName: string): string 
 export interface GizmoHandleRef {
   kind: GizmoHandleKind
   /**
+   * Which axis, by name. Carried alongside `axis` because a consumer that has
+   * to name the handle back to the user (the drag state a dial renders from)
+   * would otherwise have to match a rotated vector against GIZMO_AXES.
+   */
+  name: GizmoAxisName
+  /**
    * Part-local; the caller rotates it into world space by the part's pose. For
    * a plane handle this is the plane's NORMAL, so `gizmo:plane:z` is the XY
    * quad -- the same convention a rotate handle uses, which is what lets one
    * dispatch serve all three kinds.
    */
   axis: Vec3
+  /**
+   * The axis's local `u` companion, the bearing a ring's angles are measured
+   * from. Part-local like `axis`, and lifted to world by the same pose.
+   */
+  reference: Vec3
 }
 
 /** Null for anything that is not one of this module's keys. */
@@ -81,7 +95,7 @@ export function parseGizmoHandleKey(key: string | null | undefined): GizmoHandle
   if (kind !== 'translate' && kind !== 'rotate' && kind !== 'plane') return null
   const def = GIZMO_AXES.find(a => a.name === name)
   if (!def) return null
-  return { kind, axis: def.axis }
+  return { kind, name: def.name, axis: def.axis, reference: def.u }
 }
 
 export interface GizmoPickGeometry {

@@ -7,6 +7,7 @@ import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
 import { bakeSolvedTransforms, findMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import { composeTransforms, IDENTITY_TRANSFORM, transformsEqual, type Vec3 } from '@/utils/transform3d'
 
 /** The mate reference slot a pick currently writes into; null when not authoring. */
@@ -14,6 +15,19 @@ export interface MateFieldTarget {
   featureId: string
   field: MateRefField
 }
+
+/**
+ * The triad gesture in progress, published for the renderer. The gesture itself
+ * lives in a closure inside the pointer adapter, which React cannot see, so the
+ * triad learns which handle is grabbed (and, for a ring, how far it has swung)
+ * from here. `axis` is the part-local axis name, not a world vector, so the
+ * renderer matches it against GIZMO_AXES without inverse-rotating anything.
+ */
+export type GizmoDragState =
+  | { kind: 'axis'; axis: GizmoAxisName }
+  | { kind: 'plane'; axis: GizmoAxisName }
+  /** `swing` is the SNAPPED angle the part receives, which is what the dial draws. */
+  | { kind: 'ring'; axis: GizmoAxisName; datum: number; swing: number; snapped: boolean }
 
 /** One entity the ID buffer found under the cursor, resolver-ordered. */
 export interface EntityHit {
@@ -93,6 +107,8 @@ export interface AssemblyEditorData {
   showPickDebug: boolean
   /** Live drag/gizmo state; null between manipulations. */
   manipulation: ManipulationSession | null
+  /** Which triad handle is being dragged right now; null when none is. */
+  gizmoDrag: GizmoDragState | null
   /**
    * Per-handle render offsets owed by a drag that is committed but not yet
    * re-meshed: the doc holds the new pose while the bodies are still baked at
@@ -129,6 +145,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   hoveredEntity: null,
   showPickDebug: false,
   manipulation: null,
+  gizmoDrag: null,
   settlingOffsets: {},
   isSolving: false,
   solveError: null,
@@ -145,7 +162,7 @@ export type AssemblySolveResult = Pick<
 
 // Fields owned exclusively by the store (not overwritten by setSnapshot).
 const STORE_OWNED_FIELDS = [
-  'activePartHandle', 'selectedPartHandle', 'manipulation', 'settlingOffsets',
+  'activePartHandle', 'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
@@ -209,6 +226,8 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setShowPickDebug: (enabled: boolean) => void
   /** The reference a mate pick chip would commit right now; the set is retained. */
   activePickCandidate: () => MateRef | null
+  /** Publish the triad gesture in progress, or null to retire it. */
+  setGizmoDrag: (drag: GizmoDragState | null) => void
   /** Pointer-down on a part body or its triad. No-op for a grounded instance. */
   beginPartManipulation: (handle: string) => boolean
   /** `delta` / `angle` are measured from pointer-down, not from the last frame. */
@@ -382,6 +401,8 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return pickIndex >= 0 ? pickCandidates[pickIndex] ?? null : null
   },
 
+  setGizmoDrag: (drag) => set({ gizmoDrag: drag }),
+
   beginPartManipulation: (handle) => {
     const doc = get().doc
     if (!doc) return false
@@ -413,7 +434,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
 
   endPartManipulation: () => {
     const { manipulation, doc, settlingOffsets } = get()
-    set({ manipulation: null })
+    // The drag state is retired here rather than by the caller so that a session
+    // ending by any route leaves the triad whole again; a stale gizmoDrag would
+    // keep it narrowed to a gesture that is no longer running.
+    set({ manipulation: null, gizmoDrag: null })
     if (!manipulation || !doc || !callbacks) return
     // The grabbed part's own drawn pose is what the drag offset was drawn over,
     // so the commit must compose against it, not against the doc seed the mates
@@ -455,7 +479,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // grabbed part restores itself, drawn from its own bodies once the offset is
     // gone. A session that never moved has nothing to restore.
     const moved = manipulation != null && !transformsEqual(manipulation.current, manipulation.seed)
-    set({ manipulation: null })
+    set({ manipulation: null, gizmoDrag: null })
     if (moved) callbacks?.requestSolve()
   },
 }))

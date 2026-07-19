@@ -25,6 +25,9 @@ import {
   unwrapAngle,
   type Ray,
 } from '@/utils/gizmoMath'
+import { datumAngle, snapSwing } from '@/utils/gizmoAngleSnap'
+import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
+import type { GizmoDragState } from '@/stores/assemblyStore'
 import type { Vec3 } from '@/utils/transform3d'
 
 /** The subset of assemblyStore the adapter drives. */
@@ -35,6 +38,8 @@ export interface AssemblyPointerStore {
   endPartManipulation: () => void
   cancelPartManipulation: () => void
   setSelectedPartHandle: (handle: string | null) => void
+  /** The store clears this itself when the session ends, so nothing here does. */
+  setGizmoDrag: (drag: GizmoDragState | null) => void
 }
 
 export type GizmoMode = 'translate' | 'rotate' | 'plane'
@@ -76,13 +81,37 @@ type Gesture =
   // `swing` is the running total since pointer-down, the one piece of gesture
   // state carried frame to frame: the measured angle alone tops out at a half
   // turn, so it is unwrapped against this to let a drag keep going round.
-  | { kind: 'ring'; axis: Vec3; origin: Vec3; startArm: Vec3; swing: number }
+  // It is the RAW swing, never the snapped one: unwrapping resolves each new
+  // reading against where the cursor was, and resolving it against a tick
+  // instead would let a snap capture the drag.
+  | {
+      kind: 'ring'
+      axis: Vec3
+      axisName: GizmoAxisName
+      origin: Vec3
+      startArm: Vec3
+      swing: number
+      datum: number
+    }
 
 export interface AssemblyPointerAdapter {
   /** Selects the part; opens a drag session unless it is grounded. */
   onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3) => boolean
-  /** `axis` is the world slide/swing axis, or for `plane` the plane's normal. */
-  onGizmoPointerDown: (handle: string, mode: GizmoMode, axis: Vec3, origin: Vec3, ray: Ray) => boolean
+  /**
+   * `axis` is the world slide/swing axis, or for `plane` the plane's normal.
+   * `axisName` names the same axis in part-local terms, for the drag state the
+   * triad renders from. `reference` is the axis's `u` companion in world space:
+   * a ring measures the grab bearing from it, and everything else ignores it.
+   */
+  onGizmoPointerDown: (
+    handle: string,
+    mode: GizmoMode,
+    axisName: GizmoAxisName,
+    axis: Vec3,
+    reference: Vec3,
+    origin: Vec3,
+    ray: Ray,
+  ) => boolean
   onPointerMove: (ray: Ray) => void
   /** Commits the session (assemblyStore re-solves once) if one is open. */
   onPointerUp: () => GestureOutcome
@@ -115,7 +144,9 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
   const onGizmoPointerDown = (
     handle: string,
     mode: GizmoMode,
+    axisName: GizmoAxisName,
     rawAxis: Vec3,
+    reference: Vec3,
     origin: Vec3,
     ray: Ray,
   ): boolean => {
@@ -133,6 +164,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
         store.cancelPartManipulation()
         return false
       }
+      store.setGizmoDrag({ kind: 'axis', axis: axisName })
       return open({ kind: 'axis', axis, origin, startParam }, 'gizmo')
     }
 
@@ -148,10 +180,15 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     if (mode === 'plane') {
       // The grab is on the plane already, so the drag needs no other anchor:
       // every later hit lands on the same plane and the difference is the move.
+      store.setGizmoDrag({ kind: 'plane', axis: axisName })
       return open({ kind: 'plane', grab: hit, normal: axis }, 'gizmo')
     }
 
-    return open({ kind: 'ring', axis, origin, startArm: sub(hit, origin), swing: 0 }, 'gizmo')
+    const startArm = sub(hit, origin)
+    const datum = datumAngle(signedAngleAbout(axis, reference, startArm))
+    // A swing of zero is a multiple of the step, so the dial starts on a tick.
+    store.setGizmoDrag({ kind: 'ring', axis: axisName, datum, swing: 0, snapped: true })
+    return open({ kind: 'ring', axis, axisName, origin, startArm, swing: 0, datum }, 'gizmo')
   }
 
   const onPointerMove = (ray: Ray): void => {
@@ -178,8 +215,19 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     if (!hit) return
     const measured = signedAngleAbout(gesture.axis, gesture.startArm, sub(hit, gesture.origin))
     gesture.swing = unwrapAngle(measured, gesture.swing)
-    if (gesture.swing !== 0) moved = true
-    store.rotatePartGizmo(gesture.axis, gesture.swing, gesture.origin)
+    const snap = snapSwing(gesture.swing)
+    // `moved` follows the angle the part receives, not the cursor's: a wobble
+    // small enough to be pulled back onto zero moves nothing, and must leave a
+    // click a click.
+    if (snap.angle !== 0) moved = true
+    store.setGizmoDrag({
+      kind: 'ring',
+      axis: gesture.axisName,
+      datum: gesture.datum,
+      swing: snap.angle,
+      snapped: snap.snapped,
+    })
+    store.rotatePartGizmo(gesture.axis, snap.angle, gesture.origin)
   }
 
   const onPointerUp = (): GestureOutcome => {

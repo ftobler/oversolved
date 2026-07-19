@@ -137,6 +137,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     endPartManipulation: () => useAssemblyStore.getState().endPartManipulation(),
     cancelPartManipulation: () => useAssemblyStore.getState().cancelPartManipulation(),
     setSelectedPartHandle: (h) => useAssemblyStore.getState().setSelectedPartHandle(h),
+    setGizmoDrag: (d) => useAssemblyStore.getState().setGizmoDrag(d),
   }), [])
 
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
@@ -371,10 +372,15 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     if (!handle) return
     const ray = rayFromEvent(e)
     if (!ray) return
-    // The registered handles carry the part-local axis; the ray math works in
-    // world space, so lift it through the pose the triad is drawn in.
+    // The registered handles carry the part-local axis and its `u` companion;
+    // the ray math works in world space, so lift both through the pose the
+    // triad is drawn in. The axis NAME stays local, because that is what the
+    // triad matches against GIZMO_AXES when it narrows to the grabbed handle.
     const axis = rotateVector(triad.orientation, handle.axis)
-    if (adapter.onGizmoPointerDown(selectedPartHandle, handle.kind, axis, triad.origin, ray)) {
+    const reference = rotateVector(triad.orientation, handle.reference)
+    if (adapter.onGizmoPointerDown(
+      selectedPartHandle, handle.kind, handle.name, axis, reference, triad.origin, ray,
+    )) {
       clearHover()  // the gizmo moves the part too; same stale-anchor trail
       setManipulating(true)
     }

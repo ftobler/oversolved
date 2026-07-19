@@ -56,6 +56,7 @@ function mountHost(initial: AssemblyDoc) {
     endPartManipulation: store.endPartManipulation,
     cancelPartManipulation: store.cancelPartManipulation,
     setSelectedPartHandle: store.setSelectedPartHandle,
+    setGizmoDrag: store.setGizmoDrag,
   })
   return { host, requestSolve, adapter, swings }
 }
@@ -142,7 +143,7 @@ describe('assembly pointer adapter (triad gizmo)', () => {
     const { host, requestSolve, adapter } = mountHost(docWith(instance('p1')))
 
     // Grab the X arrow while sighting down -Z at x = 1, then slide to x = 6.
-    expect(adapter.onGizmoPointerDown('p1', 'translate', [1, 0, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(true)
+    expect(adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(true)
     adapter.onPointerMove(ray([6, 3, 10], [0, 0, -1]))  // live solve
     adapter.onPointerUp()
 
@@ -154,7 +155,7 @@ describe('assembly pointer adapter (triad gizmo)', () => {
     const { host, adapter } = mountHost(docWith(instance('p1')))
 
     // Grab the Z ring at +X, swing to +Y: a quarter turn about Z.
-    expect(adapter.onGizmoPointerDown('p1', 'rotate', [0, 0, 1], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(true)
+    expect(adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(true)
     adapter.onPointerMove(ray([0, 1, 10], [0, 0, -1]))
     adapter.onPointerUp()
 
@@ -173,7 +174,7 @@ describe('assembly pointer adapter (triad gizmo)', () => {
       return ray([Math.cos(a) * 5, Math.sin(a) * 5, 10], [0, 0, -1])
     }
 
-    adapter.onGizmoPointerDown('p1', 'rotate', [0, 0, 1], [0, 0, 0], armAt(0))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
     for (const deg of [90, 170, 250, 330, 400]) adapter.onPointerMove(armAt(deg))
     adapter.onPointerUp()
 
@@ -188,7 +189,7 @@ describe('assembly pointer adapter (triad gizmo)', () => {
 
   it('a grounded part gets no gizmo session either', () => {
     const { requestSolve, adapter } = mountHost(docWith(instance('p1', { fixed: true })))
-    expect(adapter.onGizmoPointerDown('p1', 'translate', [1, 0, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(false)
+    expect(adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(false)
     expect(adapter.isActive()).toBe(false)
     adapter.onPointerUp()
     expect(requestSolve).not.toHaveBeenCalled()
@@ -197,17 +198,185 @@ describe('assembly pointer adapter (triad gizmo)', () => {
   it('sighting straight down a translate arrow opens no session', () => {
     const { adapter } = mountHost(docWith(instance('p1')))
     // Ray parallel to the X arrow: no readable slide.
-    expect(adapter.onGizmoPointerDown('p1', 'translate', [1, 0, 0], [0, 0, 0], ray([-9, 0, 0], [1, 0, 0]))).toBe(false)
+    expect(adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([-9, 0, 0], [1, 0, 0]))).toBe(false)
     expect(adapter.isActive()).toBe(false)
     expect(useAssemblyStore.getState().manipulation).toBeNull()
   })
 
   it('a non-unit axis still slides by the world distance the pointer travelled', () => {
     const { host, adapter } = mountHost(docWith(instance('p1')))
-    adapter.onGizmoPointerDown('p1', 'translate', [4, 0, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))
+    adapter.onGizmoPointerDown('p1', 'translate', 'x', [4, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))
     adapter.onPointerMove(ray([6, 0, 10], [0, 0, -1]))
     adapter.onPointerUp()
     expect(findInstance(host.doc, 'p1')!.transform.tx).toBeCloseTo(5, 6)
+  })
+})
+
+describe('assembly pointer adapter (ring angular snapping)', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    setAssemblyCallbacks(null)
+  })
+
+  /** A pointer on the Z ring at `deg` around the gizmo, sighted down -Z. */
+  const armAt = (deg: number): Ray => {
+    const a = deg * Math.PI / 180
+    return ray([Math.cos(a) * 5, Math.sin(a) * 5, 10], [0, 0, -1])
+  }
+
+  /** The Z ring grabbed at +X, the frame `armAt(0)` puts the pointer in. */
+  const grabZRing = (adapter: ReturnType<typeof mountHost>['adapter'], at = armAt(0)): boolean =>
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], at)
+
+  const lastDeg = (swings: number[]): number => swings[swings.length - 1] * 180 / Math.PI
+
+  it('a swing inside the band is applied as an exact multiple of 15 degrees', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88))  // 2 degrees short of a tick, inside the tolerance
+    adapter.onPointerUp()
+
+    expect(lastDeg(swings)).toBeCloseTo(90, 10)
+  })
+
+  it('a swing between two bands is applied untouched', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(82))  // 7 degrees off the nearest tick: free motion
+    adapter.onPointerUp()
+
+    expect(lastDeg(swings)).toBeCloseTo(82, 6)
+  })
+
+  // The unwrap accumulator must carry the RAW swing. Feeding the snapped angle
+  // back would make later frames resolve their turn from the tick instead of
+  // from where the cursor actually was, and a drag could never leave the tick it
+  // last touched. A jump that straddles the half turn between the two is the one
+  // motion that tells the two apart.
+  it('the accumulator carries the raw swing, not the snapped one', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88))  // snaps to 90, raw stays 88
+    adapter.onPointerMove(armAt(269))  // 179 back from 88, but 181 on from 90
+    adapter.onPointerUp()
+
+    expect(lastDeg(swings)).toBeCloseTo(-90, 10)
+  })
+
+  it('an arrow drag is never snapped', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))
+    adapter.onPointerMove(ray([6.3, 0, 10], [0, 0, -1]))
+    adapter.onPointerUp()
+
+    expect(findInstance(host.doc, 'p1')!.transform.tx).toBeCloseTo(5.3, 6)
+  })
+
+  it('a plane drag is never snapped', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))
+    adapter.onPointerMove(ray([1.7, 2.3, 10], [0, 0, -1]))
+    adapter.onPointerUp()
+
+    const t = findInstance(host.doc, 'p1')!.transform
+    expect(t.tx).toBeCloseTo(1.7, 6)
+    expect(t.ty).toBeCloseTo(2.3, 6)
+  })
+})
+
+describe('gizmoDrag state', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    setAssemblyCallbacks(null)
+  })
+
+  const armAt = (deg: number): Ray => {
+    const a = deg * Math.PI / 180
+    return ray([Math.cos(a) * 5, Math.sin(a) * 5, 10], [0, 0, -1])
+  }
+  const gizmoDrag = () => useAssemblyStore.getState().gizmoDrag
+
+  it('is null while nothing is grabbed', () => {
+    mountHost(docWith(instance('p1')))
+    expect(gizmoDrag()).toBeNull()
+  })
+
+  it('a body grab leaves it null: no triad handle is in play', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    expect(gizmoDrag()).toBeNull()
+  })
+
+  it('an arrow grab names the local axis, so the renderer needs no inverse rotation', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'translate', 'y', [0, 1, 0], [0, 0, 1], [0, 0, 0], ray([0, 1, 10], [0, 0, -1]))
+    expect(gizmoDrag()).toEqual({ kind: 'axis', axis: 'y' })
+  })
+
+  it('a plane grab records its handle', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))
+    expect(gizmoDrag()).toEqual({ kind: 'plane', axis: 'z' })
+  })
+
+  // The grab bearing is wherever the user clicked; the datum rounds it to a
+  // quarter turn so the dial reads its sweep from a clean tick.
+  it('a ring grab rounds the grab bearing to the nearest quarter turn', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(40))
+    expect(gizmoDrag()).toEqual({ kind: 'ring', axis: 'z', datum: 0, swing: 0, snapped: true })
+
+    adapter.onPointerUp()
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(50))
+    expect(gizmoDrag()!.kind).toBe('ring')
+    expect((gizmoDrag() as { datum: number }).datum).toBeCloseTo(Math.PI / 2, 10)
+  })
+
+  // The dial draws the swing the part receives, so what is published is the
+  // snapped angle, not the cursor's raw one.
+  it('a ring move publishes the snapped swing and whether it snapped', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
+
+    adapter.onPointerMove(armAt(88))
+    expect((gizmoDrag() as { swing: number; snapped: boolean }).swing).toBeCloseTo(Math.PI / 2, 10)
+    expect((gizmoDrag() as { snapped: boolean }).snapped).toBe(true)
+
+    adapter.onPointerMove(armAt(82))
+    expect((gizmoDrag() as { swing: number }).swing).toBeCloseTo(82 * Math.PI / 180, 10)
+    expect((gizmoDrag() as { snapped: boolean }).snapped).toBe(false)
+  })
+
+  it('pointer-up clears it', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
+    adapter.onPointerMove(armAt(30))
+    adapter.onPointerUp()
+    expect(gizmoDrag()).toBeNull()
+  })
+
+  it('cancel clears it', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
+    adapter.onPointerMove(armAt(30))
+    adapter.cancel()
+    expect(gizmoDrag()).toBeNull()
+  })
+
+  // A handle that opens no session must leave no drag behind, or the triad would
+  // narrow to a gesture that is not running.
+  it('a refused grab leaves it null', () => {
+    const { adapter } = mountHost(docWith(instance('p1', { fixed: true })))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
+    expect(gizmoDrag()).toBeNull()
   })
 })
 
@@ -223,7 +392,7 @@ describe('assembly pointer adapter (triad plane handles)', () => {
 
     // Grab the XY plane handle (normal +Z) sighting from an oblique direction,
     // so a hit off the z = 0 plane would show up as a non-zero tz.
-    expect(adapter.onGizmoPointerDown('p1', 'plane', [0, 0, 1], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
+    expect(adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
     adapter.onPointerMove(ray([4, -2, 6], [1, 0, -1]))
     adapter.onPointerUp()
 
@@ -239,7 +408,7 @@ describe('assembly pointer adapter (triad plane handles)', () => {
 
     // YZ handle: normal +X, so X must not move however the pointer travels.
     // The rays come in at 45 degrees; sighting down -Z would graze the quad.
-    adapter.onGizmoPointerDown('p1', 'plane', [1, 0, 0], [0, 0, 0], ray([5, 0, 5], [-1, 0, -1]))
+    adapter.onGizmoPointerDown('p1', 'plane', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([5, 0, 5], [-1, 0, -1]))
     adapter.onPointerMove(ray([5, 5, 5], [-1, 0, -1]))
     adapter.onPointerUp()
 
@@ -251,14 +420,14 @@ describe('assembly pointer adapter (triad plane handles)', () => {
   it('a ray grazing the quad opens no session', () => {
     const { adapter } = mountHost(docWith(instance('p1')))
     // Sighting along the XY plane: the ray never meets it in one point.
-    expect(adapter.onGizmoPointerDown('p1', 'plane', [0, 0, 1], [0, 0, 0], ray([-9, 0, 0], [1, 0, 0]))).toBe(false)
+    expect(adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([-9, 0, 0], [1, 0, 0]))).toBe(false)
     expect(adapter.isActive()).toBe(false)
     expect(useAssemblyStore.getState().manipulation).toBeNull()
   })
 
   it('a grounded part gets no plane session either', () => {
     const { requestSolve, adapter } = mountHost(docWith(instance('p1', { fixed: true })))
-    expect(adapter.onGizmoPointerDown('p1', 'plane', [0, 0, 1], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(false)
+    expect(adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(false)
     expect(adapter.isActive()).toBe(false)
     adapter.onPointerUp()
     expect(requestSolve).not.toHaveBeenCalled()
@@ -275,7 +444,7 @@ describe('assembly pointer adapter (triad plane handles)', () => {
     const handleRun = mountHost(docWith(instance('p1')))
     // VIEW_NORMAL is -Z, so the equivalent handle is the XY quad grabbed at
     // the gizmo origin, which is where the body grab point sat too.
-    handleRun.adapter.onGizmoPointerDown('p1', 'plane', VIEW_NORMAL, [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))
+    handleRun.adapter.onGizmoPointerDown('p1', 'plane', 'z', VIEW_NORMAL, [1, 0, 0], [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))
     handleRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
     handleRun.adapter.onPointerUp()
 
@@ -339,13 +508,13 @@ describe('click versus manipulation at pointer-up', () => {
   // The handle is drawn over the part, so a face behind it is not what the user
   // pointed at. Clicking an arrow, ring or quad must never toggle it in.
   it.each([
-    ['translate' as const, [1, 0, 0] as Vec3],
-    ['rotate' as const, [0, 0, 1] as Vec3],
-    ['plane' as const, [0, 0, 1] as Vec3],
-  ])('a %s handle click selects nothing behind the gizmo', (mode, axis) => {
+    ['translate' as const, 'x' as const, [1, 0, 0] as Vec3, [0, 1, 0] as Vec3],
+    ['rotate' as const, 'z' as const, [0, 0, 1] as Vec3, [1, 0, 0] as Vec3],
+    ['plane' as const, 'z' as const, [0, 0, 1] as Vec3, [1, 0, 0] as Vec3],
+  ])('a %s handle click selects nothing behind the gizmo', (mode, name, axis, reference) => {
     const { adapter } = mountHost(docWith(instance('p1')))
 
-    expect(adapter.onGizmoPointerDown('p1', mode, axis, [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
+    expect(adapter.onGizmoPointerDown('p1', mode, name, axis, reference, [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
     const gesture = adapter.onPointerUp()
 
     expect(gesture).toEqual({ source: 'gizmo', moved: false })
