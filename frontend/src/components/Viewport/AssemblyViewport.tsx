@@ -21,7 +21,7 @@ import type { Hit, Pv } from '@/components/misc/CubeGizmo.utils'
 import SceneController from '@/components/Viewport/SceneController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
-import { fitToContent } from '@/components/Viewport/cameraController'
+import { fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
 import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
 import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
@@ -220,14 +220,19 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     return origin && orientation ? { origin, orientation } : null
   }, [aiming, selectedPartHandle, groups, transforms, instances])
 
-  // Frame the assembly once, when its first geometry lands.
+  // Frame the assembly once, when its first geometry lands. `fittedRef` doubles
+  // as the abandon latch: see shouldAutoFit for why a grab has to retire a fit
+  // that never got its chance rather than merely postpone it.
   const fittedRef = useRef(false)
   useEffect(() => {
-    if (fittedRef.current || Object.keys(bodies).length === 0) return
+    if (manipulating) fittedRef.current = true
+  }, [manipulating])
+  useEffect(() => {
+    if (!shouldAutoFit(fittedRef.current, Object.keys(bodies).length, manipulating)) return
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
     if (fitToContent(camera, controlsRef.current, bodies, sceneRef.current)) fittedRef.current = true
-  }, [bodies])
+  }, [bodies, manipulating])
 
   // A drag continues while the pointer is outside the pane, so the move/up
   // listeners live on the wrapper (which captures the pointer), not on the

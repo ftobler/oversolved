@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { snapToDirection, alignToPlane, alignToFace, fitToContent } from '@/components/Viewport/cameraController'
+import { snapToDirection, alignToPlane, alignToFace, fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
 import type { BodyResult } from '@/types/cad'
 
 function makeControls() {
@@ -91,5 +91,20 @@ describe('cameraController', () => {
     syncHelper()
     expect(fitToContent(cam, makeControls() as never, {}, scene)).toBe(true)
     expect(cam.zoom).toBeCloseTo(zoomAfterFirst, 6)
+  })
+})
+
+describe('shouldAutoFit', () => {
+  it('fits once geometry has arrived and stops once it has succeeded', () => {
+    expect(shouldAutoFit(false, 0, false)).toBe(false)  // nothing to frame yet
+    expect(shouldAutoFit(false, 2, false)).toBe(true)
+    expect(shouldAutoFit(true, 2, false)).toBe(false)
+  })
+
+  // The regression: a live drag tick replaces the whole `bodies` record, so an
+  // auto-fit that never succeeded (zero-sized frustum, geometry not yet meshed)
+  // re-armed on every tick and reframed the camera mid-gesture.
+  it('never fits while a part is being manipulated', () => {
+    expect(shouldAutoFit(false, 2, true)).toBe(false)
   })
 })

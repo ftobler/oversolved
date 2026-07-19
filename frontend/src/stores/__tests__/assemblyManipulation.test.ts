@@ -286,6 +286,20 @@ describe('assemblyStore part manipulation', () => {
     expect(transforms.p2).toMatchObject({ tx: 4 })  // follower updated
   })
 
+  // Why the viewport's auto-fit has to be abandoned on grab rather than merely
+  // deferred (shouldAutoFit): every live tick hands out a fresh `bodies` object,
+  // so anything keyed on its identity re-fires throughout the whole gesture.
+  it('a live-drag result replaces the bodies record identity even when it adds nothing', () => {
+    mountHost(docWith(instance('p1')))
+    const before = useAssemblyStore.getState().bodies
+
+    useAssemblyStore.getState().setDragSolveResult({
+      transforms: {}, bodies: {}, edgeCurves: {}, mateResults: {},
+    })
+
+    expect(useAssemblyStore.getState().bodies).not.toBe(before)
+  })
+
   it('setSnapshot preserves the in-flight manipulation and the selection', () => {
     mountHost(docWith(instance('p1')))
     const s = useAssemblyStore.getState()

@@ -97,6 +97,19 @@ export function alignToFace(
   commitProjection(camera)
 }
 
+// Auto-fit is a document-load intent, not a running behaviour: it stays armed
+// and retries as geometry populates (bounds and the frustum are not ready on the
+// first attempt), then latches once it succeeds. The retry has to be keyed on
+// something that changes as geometry arrives, and in the assembly that is the
+// `bodies` record -- which a live drag tick also replaces wholesale, every tick
+// (assemblyStore.setDragSolveResult merges into a fresh object). A fit still
+// armed when the user grabs a part would therefore fire mid-gesture and reframe
+// the camera out from under the part being dragged. Once anything has been
+// grabbed the framing is the user's; the pending fit is abandoned, not deferred.
+export function shouldAutoFit(fitted: boolean, bodyCount: number, manipulating: boolean): boolean {
+  return !fitted && bodyCount > 0 && !manipulating
+}
+
 // Frame all body geometry (or, failing that, all scene meshes) so it fits the
 // viewport. Returns false when there is nothing finite to fit yet (geometry not
 // arrived), so the caller can retry. Camera-only; never mutates app state.
