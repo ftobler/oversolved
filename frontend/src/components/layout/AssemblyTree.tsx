@@ -170,7 +170,7 @@ export function AssemblyTree({
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
               { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },
               {
-                label: inst.fixed ? 'Unground' : 'Ground (fix)',
+                label: inst.fixed ? 'Unfix' : 'Fix',
                 icon: constraintFixedIcon,
                 onClick: () => onToggleFixed(inst.handle, !inst.fixed),
               },
@@ -193,8 +193,8 @@ export function AssemblyTree({
                     <img
                       className="feature-fixed-badge"
                       src={constraintFixedIcon}
-                      alt="Grounded"
-                      title="Grounded"
+                      alt="Fixed"
+                      title="Fixed"
                     />
                   )}
                   {/* Row actions are not selections: without stopPropagation the

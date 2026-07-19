@@ -1,6 +1,6 @@
-// The rotation row is the only orientation control a grounded part has (the
-// triad gizmo is refused for a `fixed` instance), so these tests guard that it
-// exists, commits degrees, and does not fight the typist.
+// The rotation row is the only orientation control an instance carrying the
+// `fixed` flag has (the triad gizmo is refused for one), so these tests guard
+// that it exists, commits degrees, and does not fight the typist.
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -23,7 +23,7 @@ function renderEditor(inst: PartInstance, onSetRotation = vi.fn()) {
   const utils = render(
     <PartInstanceEditor
       instance={inst}
-      onSetGrounded={vi.fn()}
+      onSetFixed={vi.fn()}
       onSetPosition={vi.fn()}
       onSetRotation={onSetRotation}
     />
@@ -41,7 +41,7 @@ describe('PartInstanceEditor rotation', () => {
     expect(screen.getByLabelText('Position X')).toBeTruthy()
   })
 
-  it('offers the rotation boxes for a GROUNDED instance (the gizmo will not)', () => {
+  it('offers the rotation boxes for a FIXED instance (the gizmo will not)', () => {
     renderEditor(instance({ fixed: true }))
     expect(rotBox('Z')).toBeTruthy()
     expect((rotBox('Z') as HTMLInputElement).disabled).toBe(false)
@@ -82,7 +82,7 @@ describe('PartInstanceEditor rotation', () => {
     rerender(
       <PartInstanceEditor
         instance={{ ...inst, transform: { ...IDENTITY_TRANSFORM, qx, qy, qz, qw } }}
-        onSetGrounded={vi.fn()}
+        onSetFixed={vi.fn()}
         onSetPosition={vi.fn()}
         onSetRotation={vi.fn()}
       />
@@ -98,7 +98,7 @@ describe('PartInstanceEditor rotation', () => {
     rerender(
       <PartInstanceEditor
         instance={{ ...inst, transform: { ...IDENTITY_TRANSFORM, qx, qy, qz, qw } }}
-        onSetGrounded={vi.fn()}
+        onSetFixed={vi.fn()}
         onSetPosition={vi.fn()}
         onSetRotation={vi.fn()}
       />

@@ -20,7 +20,7 @@ import { instanceRotation, type EulerDeg } from '@/utils/assemblyMutations'
 
 interface PartInstanceEditorProps {
   instance: PartInstance
-  onSetGrounded: (grounded: boolean) => void
+  onSetFixed: (fixed: boolean) => void
   onSetPosition: (pos: { tx: number; ty: number; tz: number }) => void
   onSetRotation: (euler: EulerDeg) => void
 }
@@ -42,7 +42,7 @@ function round3(v: number): number {
 }
 
 export function PartInstanceEditor({
-  instance, onSetGrounded, onSetPosition, onSetRotation,
+  instance, onSetFixed, onSetPosition, onSetRotation,
 }: PartInstanceEditorProps) {
   // The boxes' own text, not the transform directly: a partial keystroke ("-",
   // "1.") must stay visible rather than snap back to the last committed number.
@@ -112,11 +112,11 @@ export function PartInstanceEditor({
     // Clicks inside the editor must not bubble to the row's select handler.
     <div className="instance-editor" onClick={e => e.stopPropagation()}>
       <label className="feature-field-row">
-        <span className="feature-field-label instance-label--wide">Grounded</span>
+        <span className="feature-field-label instance-label--wide">Fixed</span>
         <input
           type="checkbox"
           checked={!!instance.fixed}
-          onChange={e => onSetGrounded(e.target.checked)}
+          onChange={e => onSetFixed(e.target.checked)}
         />
       </label>
       <div className="feature-field-row">

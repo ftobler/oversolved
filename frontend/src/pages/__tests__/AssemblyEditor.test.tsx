@@ -204,24 +204,40 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(instances[0].handle).not.toBe(instances[1].handle)
   })
 
-  it('ground toggle (in the options menu) marks the instance fixed', async () => {
+  it('fix toggle (in the options menu) marks the instance fixed', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     fireEvent.click(screen.getByLabelText('Part options'))
-    fireEvent.click(screen.getByText('Ground (fix)'))
+    fireEvent.click(screen.getByText('Fix'))
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
   })
 
-  // Grounding a part that is already in place must not re-solve: a re-solve can
+  // The menu verb pair is Fix/Unfix. The old wording (Ground/Unground) is gone,
+  // and asserting its absence keeps a half-done rename from passing.
+  it('offers Fix, then Unfix once the instance is fixed, and never the old wording', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Part options'))
+    expect(screen.getByText('Fix')).toBeTruthy()
+    expect(screen.queryByText('Ground (fix)')).toBeNull()
+    fireEvent.click(screen.getByText('Fix'))
+    await tick()
+
+    fireEvent.click(screen.getByLabelText('Part options'))
+    expect(screen.getByText('Unfix')).toBeTruthy()
+    expect(screen.queryByText('Unground')).toBeNull()
+  })
+
+  // Fixing a part that is already in place must not re-solve: a re-solve can
   // slide the whole assembly along the solver's gauge freedom, which the user
   // sees as the camera jumping. The flag flips; nothing re-poses.
-  it('ground toggle does not trigger a re-solve', async () => {
+  it('fix toggle does not trigger a re-solve', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
     fireEvent.click(screen.getByLabelText('Part options'))
-    fireEvent.click(screen.getByText('Ground (fix)'))
+    fireEvent.click(screen.getByText('Fix'))
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
@@ -236,22 +252,22 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances).toHaveLength(0)
   })
 
-  it('editing an instance opens the pink inline editor and grounds via its checkbox', async () => {
+  it('editing an instance opens the pink inline editor and fixes via its checkbox', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    const grounded = screen.getByLabelText('Grounded') as HTMLInputElement
-    expect(grounded.checked).toBe(false)
-    fireEvent.click(grounded)
+    const fixed = screen.getByLabelText('Fixed') as HTMLInputElement
+    expect(fixed.checked).toBe(false)
+    fireEvent.click(fixed)
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
   })
 
-  it('cancelling an instance edit reverts the grounded flag from the snapshot', async () => {
+  it('cancelling an instance edit reverts the fixed flag from the snapshot', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.click(screen.getByLabelText('Grounded'))
+    fireEvent.click(screen.getByLabelText('Fixed'))
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
 

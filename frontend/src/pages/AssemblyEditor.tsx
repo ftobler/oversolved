@@ -282,12 +282,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // doc's seeds in step with what is on screen, so the next real solve (a drag,
   // a mate edit) starts from the current configuration instead of stale seeds
   // and the new ground state takes effect cleanly then.
-  const groundOrUnground = useCallback((handle: string, fixed: boolean) => {
+  const fixOrUnfix = useCallback((handle: string, fixed: boolean) => {
     const transforms = useAssemblyStore.getState().transforms
     mutate(d => setInstanceFixedFromSolved(d, handle, fixed, transforms))
   }, [mutate])
 
-  const handleToggleFixed = groundOrUnground
+  const handleToggleFixed = fixOrUnfix
 
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
@@ -315,7 +315,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()  // undo any live position/ground edit
   }, [mutate, requestSolve])
 
-  const handleSetGrounded = groundOrUnground
+  const handleSetFixed = fixOrUnfix
 
   const handleSetPosition = useCallback((handle: string, pos: { tx: number; ty: number; tz: number }) => {
     // Bake first, then apply the reseat: the manual position overrides only the
@@ -456,11 +456,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const renderInstanceEditor = useCallback((inst: PartInstance) => (
     <PartInstanceEditor
       instance={inst}
-      onSetGrounded={g => handleSetGrounded(inst.handle, g)}
+      onSetFixed={f => handleSetFixed(inst.handle, f)}
       onSetPosition={pos => handleSetPosition(inst.handle, pos)}
       onSetRotation={euler => handleSetRotation(inst.handle, euler)}
     />
-  ), [handleSetGrounded, handleSetPosition, handleSetRotation])
+  ), [handleSetFixed, handleSetPosition, handleSetRotation])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
