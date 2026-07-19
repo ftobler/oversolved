@@ -20,7 +20,7 @@
 //! mates:          n_mates x mate-record (see below)
 //! ```
 //!
-//! ## Mate record (fixed length, 76 bytes)
+//! ## Mate record (fixed length, 84 bytes)
 //!
 //! ```text
 //!   u8   kind_code
@@ -33,7 +33,7 @@
 //!   f32  point_b_x, point_b_y, point_b_z  // anchor point in body B local frame
 //!   f32  axis_b_x, axis_b_y, axis_b_z     // anchor axis in body B local frame
 //!   u8   flags               // bit 0 = flip
-//!   f32  offset              // linear offset along axis (Fixed / ParallelPlaneDistance / Sliding / Tangential)
+//!   f32  offset_x, offset_y, offset_z  // offset vector in body A's LOCAL frame
 //!   f32  ratio               // for CopyRotation (gear-like ratio)
 //!   f32  radius              // for Tangential (mate-side radius fallback)
 //!   f32  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
@@ -168,9 +168,14 @@ pub struct Mate {
     pub a: MateRef,
     pub b: MateRef,
     pub flip: bool,
-    /// Linear offset along the shared axis. Used by Fixed, Sliding,
-    /// Tangential (plane-plane signed distance), and ParallelPlaneDistance.
-    pub offset: f64,
+    /// Offset vector expressed in body A's LOCAL frame, so it rotates with A:
+    /// the world offset is `R_a * offset`. Read by Fixed (all three components,
+    /// as a full 3D translation), and by Tangential and ParallelPlaneDistance
+    /// through `axial_offset` (those residuals are a single signed distance).
+    /// The pre-vector scalar form is a special case of this one: a scalar `s`
+    /// is `s * axis_a` in A's local frame, and `R_a * (s * axis_a) = s * a_w`
+    /// is exactly what the scalar residual used to subtract.
+    pub offset: [f64; 3],
     /// Gear-like ratio for CopyRotation: `roll_b = ratio * roll_a`.
     pub ratio: f64,
     /// Mate-side radius for Tangential when the geometry itself does
@@ -179,6 +184,30 @@ pub struct Mate {
     /// Fixed's seed-relative roll target, in radians. Read only by `Fixed`; see
     /// the seed-relative roll residual in `mate_residuals.rs`.
     pub angle: f64,
+}
+
+impl Mate {
+    /// The offset's signed length along A's anchor axis.
+    ///
+    /// Residuals that are a single distance measured along that axis
+    /// (Tangential's clearance, ParallelPlaneDistance's plane separation) read
+    /// only this component: the perpendicular part of the offset points along
+    /// DOF those mates deliberately leave free, so it has nowhere to act. A
+    /// rotation preserves dot products, so measuring the local offset against
+    /// the local axis is the same as measuring `R_a * offset` against `a_w` --
+    /// which is why this stays a pose-independent constant and the Jacobians of
+    /// those two kinds are unchanged by the widening.
+    ///
+    /// A degenerate (zero) axis yields 0 rather than NaN, matching the
+    /// fail-safe posture of `normalise_axis` in `mate_residuals.rs`.
+    pub fn axial_offset(&self) -> f64 {
+        let a = &self.a.geometry.axis;
+        let n2 = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+        if n2 < 1e-20 {
+            return 0.0;
+        }
+        (self.offset[0] * a[0] + self.offset[1] * a[1] + self.offset[2] * a[2]) / n2.sqrt()
+    }
 }
 
 /// Description of a rigid body in the parameter vector.
@@ -319,7 +348,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         let flags = r.u8()?;
         let flip = (flags & 0b001) != 0;
 
-        let offset = r.f32()? as f64;
+        let offset = [r.f32()? as f64, r.f32()? as f64, r.f32()? as f64];
         let ratio = r.f32()? as f64;
         let radius = r.f32()? as f64;
         let angle = r.f32()? as f64;
@@ -416,7 +445,9 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         }
         w.u8(flags);
 
-        w.f32(m.offset as f32);
+        w.f32(m.offset[0] as f32);
+        w.f32(m.offset[1] as f32);
+        w.f32(m.offset[2] as f32);
         w.f32(m.ratio as f32);
         w.f32(m.radius as f32);
         w.f32(m.angle as f32);
@@ -502,7 +533,7 @@ mod tests {
                 anchor_kind: AnchorKind::Point,
             },
             flip: false,
-            offset: 0.0,
+            offset: [0.0; 3],
             ratio: 1.0,
             radius: 0.0,
             angle: 0.0,
@@ -573,21 +604,22 @@ mod tests {
     #[test]
     fn mate_input_bad_kind_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
-        // In the 76-byte record, kind_code is at offset:
+        // In the 84-byte record, kind_code is at offset:
         // header(20) + bodies(8) + params_initial(56) + fixed_mask(1) = 85
         // + kind_code is first byte of mate record
         bytes[85] = 0xff; // kind_code in first mate record
         assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadKind(_))));
     }
 
-    // A buffer built to the pre-widen 72-byte stride (missing the trailing angle
-    // f32) must fail loudly rather than silently reading the next record's
-    // kind_code as an angle -- there is only one mate here, so the missing bytes
-    // run the reader off the end of the buffer.
+    // A buffer built to the pre-widen 76-byte stride (scalar offset, before it
+    // became a 3-component vector) must fail loudly rather than silently reading
+    // ratio/radius/angle out of the shifted positions -- there is only one mate
+    // here, so the missing bytes run the reader off the end of the buffer. The
+    // encoder and the TS side move in lockstep or not at all.
     #[test]
-    fn mate_input_old_72_byte_stride_rejected() {
+    fn mate_input_old_76_byte_stride_rejected() {
         let bytes = encode_mate_input(&sample_input());
-        let truncated = &bytes[..bytes.len() - 4];
+        let truncated = &bytes[..bytes.len() - 8];
         assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
     }
 
@@ -619,7 +651,7 @@ mod tests {
                     anchor_kind: AnchorKind::Plane,
                 },
                 flip: true,
-                offset: 0.0,
+                offset: [0.0; 3],
                 ratio: 1.0,
                 radius: 0.0,
                 angle: 0.0,
@@ -665,7 +697,7 @@ mod tests {
                     anchor_kind: AnchorKind::Cylinder,
                 },
                 flip: false,
-                offset: 1.5,
+                offset: [1.5, -2.5, 4.25],
                 ratio: 2.0,
                 radius: 3.0,
                 angle: 0.7,
@@ -673,10 +705,47 @@ mod tests {
         };
         let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
         let m = &decoded.mates[0];
-        assert!((m.offset - 1.5).abs() < 1e-4);
+        // All three offset components survive, and ratio/radius/angle read back
+        // from their shifted positions rather than out of the offset tail.
+        assert!((m.offset[0] - 1.5).abs() < 1e-4);
+        assert!((m.offset[1] - (-2.5)).abs() < 1e-4);
+        assert!((m.offset[2] - 4.25).abs() < 1e-4);
         assert!((m.ratio - 2.0).abs() < 1e-4);
         assert!((m.radius - 3.0).abs() < 1e-4);
         assert!((m.angle - 0.7).abs() < 1e-4);
+    }
+
+    /// The record stride the TS encoder must match byte for byte. A silent
+    /// disagreement here does not fail: it makes the solver read ratio out of
+    /// the offset's tail and mis-solve, which is why the stride is pinned.
+    #[test]
+    fn mate_record_is_84_bytes() {
+        let one = encode_mate_input(&sample_input()).len();
+        let mut two_mates = sample_input();
+        let extra = two_mates.mates[0].clone();
+        two_mates.mates.push(extra);
+        assert_eq!(encode_mate_input(&two_mates).len() - one, 84);
+    }
+
+    /// The axial reduction Tangential and ParallelPlaneDistance read. A scalar
+    /// offset `s` was authored as `s * axis_a`, and this must give back exactly
+    /// `s` -- that identity is the whole back-compat guarantee for those kinds.
+    #[test]
+    fn axial_offset_recovers_the_scalar_form() {
+        let axis = [0.0, 0.6, 0.8];  // unit, deliberately not a cardinal direction
+        let mut m = sample_input().mates.pop().unwrap();
+        m.a.geometry.axis = axis;
+        m.offset = [7.0 * axis[0], 7.0 * axis[1], 7.0 * axis[2]];
+        assert!((m.axial_offset() - 7.0).abs() < 1e-12);
+
+        // A purely perpendicular offset has no axial component at all.
+        m.offset = [1.0, 0.0, 0.0];
+        assert!(m.axial_offset().abs() < 1e-12);
+
+        // A degenerate axis yields 0, never NaN.
+        m.a.geometry.axis = [0.0, 0.0, 0.0];
+        m.offset = [1.0, 2.0, 3.0];
+        assert_eq!(m.axial_offset(), 0.0);
     }
 
     #[test]

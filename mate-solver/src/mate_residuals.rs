@@ -5,7 +5,7 @@
 //! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
 //!
 //! Residuals per mate kind:
-//! - Fixed:              point coincidence + offset (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
+//! - Fixed:              point coincidence + offset vector in A's frame (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
 //! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1)
@@ -323,13 +323,17 @@ impl MateProblem {
 
             match mate.kind {
                 MateKind::Fixed => {
-                    // Point coincidence with offset along A's world axis: p_a - p_b - offset * a_w
+                    // Point coincidence with a 3D offset carried in A's frame:
+                    // p_a - p_b - R_a * offset. The offset rotates with A, so a
+                    // weld holds the same relative placement however the pair is
+                    // oriented -- a world-frame offset would slide the parts
+                    // apart the moment A turned.
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
-                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
-                    r.push(pa[0] - pb[0] - mate.offset * a_w[0]);
-                    r.push(pa[1] - pb[1] - mate.offset * a_w[1]);
-                    r.push(pa[2] - pb[2] - mate.offset * a_w[2]);
+                    let off_w = world_direction(x, off_a, &mate.offset);
+                    r.push(pa[0] - pb[0] - off_w[0]);
+                    r.push(pa[1] - pb[1] - off_w[1]);
+                    r.push(pa[2] - pb[2] - off_w[2]);
                     // Axis alignment with a DEFINITE sign: a_w - sign * b_w.
                     // cross(a_w, b_w) vanishes for both parallel and anti-parallel
                     // b_w, so the weld could settle either way and flip a part
@@ -338,6 +342,7 @@ impl MateProblem {
                     // picked), never re-derived from the seed dot: a seed-derived
                     // sign flipped the weld the moment a drag swung the axes past
                     // perpendicular.
+                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
                     let s = axis_sign(mate.flip);
                     r.push(a_w[0] - s * b_w[0]);
@@ -428,7 +433,7 @@ impl MateProblem {
                     r.push(self.tangential_residual(
                         mate.a.anchor_kind, mate.b.anchor_kind,
                         &pa, &pb, &a_w, &b_w,
-                        mate.offset, mate.radius,
+                        mate.axial_offset(), mate.radius,
                     ));
                 }
                 MateKind::CopyRotation => {
@@ -458,7 +463,11 @@ impl MateProblem {
                     let d1 = pb[1] - pa[1];
                     let d2 = pb[2] - pa[2];
                     let dist = d0 * a_w[0] + d1 * a_w[1] + d2 * a_w[2];
-                    r.push(dist - mate.offset);
+                    // Only the axial component can act here: this residual
+                    // measures the plane separation along A's normal, and the
+                    // offset's in-plane part points along the two DOF the mate
+                    // deliberately leaves free. See `Mate::axial_offset`.
+                    r.push(dist - mate.axial_offset());
                     // Parallelism: nothing above aligns the normals -- the name and
                     // the Flip checkbox both promised it. Same formula as `Parallel`.
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
@@ -563,8 +572,7 @@ impl MateProblem {
                         &mut j, row, off_a, off_b, x,
                         &mate.a.geometry.point,
                         &mate.b.geometry.point,
-                        &mate.a.geometry.axis,
-                        mate.offset,
+                        &mate.offset,
                     );
                     row += 3;
                     // Signed axis difference: a_w - sign * b_w.
@@ -735,28 +743,32 @@ impl MateProblem {
         }
     }
 
-    /// Point coincidence with axis offset: `p_a - p_b - offset * a_w`.
+    /// Point coincidence with a local-frame offset vector: `p_a - p_b - R_a * offset`.
     #[allow(clippy::too_many_arguments)]
     fn fill_point_coincidence_offset(
         &self, j: &mut DMatrix<f64>, row0: usize,
         off_a: usize, off_b: usize, x: &[f64],
         pa: &[f64; 3], pb: &[f64; 3],
-        axis_a: &[f64; 3], offset: f64,
+        offset: &[f64; 3],
     ) {
         let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
         let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
         let dpa = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, pa);
         let dpb = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, pb);
-        let da_w = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
+        // drot_vec_dq is linear in the vector it rotates, so differentiating the
+        // offset vector directly IS the old `offset * d(a_w)` when the vector is
+        // the axial `offset * axis_a` -- the scalar form's Jacobian falls out of
+        // this one exactly, no special case.
+        let d_off = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, offset);
 
         for comp in 0..3 {
             let r = row0 + comp;
             // `+=` throughout: see fill_point_coincidence's self-mate note.
             // ∂r/∂t_a = +I
             j[(r, off_a + comp)] += 1.0;
-            // ∂r/∂q_a_i = drot_dq(q_a)(p_a)[i][comp] - offset * drot_dq(q_a)(axis_a)[i][comp]
+            // ∂r/∂q_a_i = drot_dq(q_a)(p_a)[i][comp] - drot_dq(q_a)(offset)[i][comp]
             for qi in 0..4 {
-                j[(r, off_a + 3 + qi)] += dpa[qi][comp] - offset * da_w[qi][comp];
+                j[(r, off_a + 3 + qi)] += dpa[qi][comp] - d_off[qi][comp];
             }
             // ∂r/∂t_b = -I
             j[(r, off_b + comp)] += -1.0;
@@ -959,7 +971,7 @@ impl MateProblem {
         self.tangential_residual(
             mate.a.anchor_kind, mate.b.anchor_kind,
             &pa, &pb, &a_w, &b_w,
-            mate.offset, mate.radius,
+            mate.axial_offset(), mate.radius,
         )
     }
 
@@ -1187,14 +1199,28 @@ mod tests {
         }
     }
 
+    /// Builds a mate from a SCALAR offset, the pre-vector authoring form: the
+    /// scalar is expanded to `offset * axis_a` in A's local frame. Every test
+    /// below that predates the vector widening still calls this, so they double
+    /// as the back-compat guarantee -- if the vector semantics ever stopped
+    /// collapsing onto the scalar ones, they would all move.
     fn mate(kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: f64, ratio: f64, radius: f64) -> Mate {
-        Mate { kind, a, b, flip, offset, ratio, radius, angle: 0.0 }
+        mate_with_angle(kind, a, b, flip, offset, ratio, radius, 0.0)
     }
 
     fn mate_with_angle(
         kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: f64, ratio: f64, radius: f64, angle: f64,
     ) -> Mate {
+        let ax = a.geometry.axis;
+        let offset = [offset * ax[0], offset * ax[1], offset * ax[2]];
         Mate { kind, a, b, flip, offset, ratio, radius, angle }
+    }
+
+    /// Builds a mate from a full offset VECTOR in A's local frame.
+    fn mate_with_offset_vec(
+        kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: [f64; 3], ratio: f64, radius: f64,
+    ) -> Mate {
+        Mate { kind, a, b, flip, offset, ratio, radius, angle: 0.0 }
     }
 
     /// (qz, qw) for a pure roll of `deg` degrees about world Z, qx = qy = 0.
@@ -1810,6 +1836,110 @@ mod tests {
         assert!(out.diagnostics.residual_norm < 1e-2);
     }
 
+    /// The legacy authoring form -- a bare scalar offset along A's axis -- must
+    /// still land in exactly the place it did before `offset` became a vector.
+    /// Written against the vector constructor with the scalar expanded by hand,
+    /// so it pins the equivalence rather than inheriting it from the `mate`
+    /// helper the older tests share.
+    #[test]
+    fn scalar_offset_and_its_axial_vector_agree() {
+        let build = |offset: [f64; 3]| MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_offset_vec(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, offset, 1.0, 0.0)],
+        };
+        // `offset: 7` on a Z axis is the vector (0, 0, 7).
+        let legacy = solve_mate(&build([0.0, 0.0, 7.0]));
+        assert!((legacy.params_solved[9] - (-7.0)).abs() < 1e-2,
+            "tz should be ~-7, got {}", legacy.params_solved[9]);
+        assert!(legacy.diagnostics.residual_norm < 1e-2);
+    }
+
+    /// An offset with components off A's axis translates the weld sideways --
+    /// the whole point of the widening. p_b = p_a - R_a * offset, and with A at
+    /// identity that is just the negated offset.
+    #[test]
+    fn fixed_with_off_axis_offset_vector() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_offset_vec(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, [3.0, 4.0, 2.0], 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        for (i, want) in [-3.0, -4.0, -2.0].into_iter().enumerate() {
+            assert!((out.params_solved[7 + i] as f64 - want).abs() < 1e-2,
+                "body 1 t[{}] should be ~{}, got {}", i, want, out.params_solved[7 + i]);
+        }
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    /// The frame decision, pinned: the offset lives in body A's LOCAL frame, so
+    /// rotating A rotates the applied offset with it. Body 0 is grounded a
+    /// quarter turn about Z, which maps the local offset (3, 4, 0) to the world
+    /// (-4, 3, 0); body 1 must therefore land at (4, -3, 0), not (-3, -4, 0).
+    /// Switching to a world-frame offset moves this assertion.
+    #[test]
+    fn fixed_offset_vector_rotates_with_body_a() {
+        let (qz, qw) = quat_roll_z(90.0);
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, qz, qw,
+                5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_offset_vec(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, [3.0, 4.0, 0.0], 1.0, 0.0)],
+        };
+        let out = solve_mate(&input);
+        assert!((out.params_solved[7] as f64 - 4.0).abs() < 1e-2,
+            "tx should be ~4, got {}", out.params_solved[7]);
+        assert!((out.params_solved[8] as f64 - (-3.0)).abs() < 1e-2,
+            "ty should be ~-3, got {}", out.params_solved[8]);
+        assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    /// ParallelPlaneDistance reads only the axial component: an offset with the
+    /// same axial part but arbitrary in-plane components must solve to the same
+    /// separation, because sliding within the plane is the mate's free DOF.
+    #[test]
+    fn parallel_plane_distance_ignores_the_in_plane_offset() {
+        let build = |offset: [f64; 3]| MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_offset_vec(MateKind::ParallelPlaneDistance,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, offset, 1.0, 0.0)],
+        };
+        let axial = solve_mate(&build([0.0, 0.0, 6.0]));
+        let with_slide = solve_mate(&build([9.0, -9.0, 6.0]));
+        assert!((axial.params_solved[9] - 6.0).abs() < 1e-2,
+            "tz should be ~6, got {}", axial.params_solved[9]);
+        assert!((with_slide.params_solved[9] - axial.params_solved[9]).abs() < 1e-3,
+            "in-plane offset must not change the separation");
+    }
+
     // ─── Jacobian vs finite-difference cross-checks ───
 
     #[test]
@@ -1861,6 +1991,30 @@ mod tests {
                 mate_ref(0, 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
                 mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
                 false, 0.0, 1.0, 0.0)],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    /// The offset-vector term enters the analytic Jacobian through
+    /// `drot_vec_dq(q_a, offset)`; evaluated at a rotated, off-axis pose so a
+    /// wrong derivative cannot hide behind an offset that happens to be axial.
+    #[test]
+    fn jacobian_vs_fd_fixed_with_offset_vector() {
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.1, -0.2, 0.3, f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
+                3.0, 4.0, 5.0, 0.1, 0.2, 0.3, f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate_with_offset_vec(MateKind::Fixed,
+                mate_ref(0, 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, [2.0, -3.0, 1.5], 1.0, 0.0)],
         };
         let p = MateProblem::new(&input);
         let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();

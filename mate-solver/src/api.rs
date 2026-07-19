@@ -61,7 +61,7 @@ mod tests {
                     anchor_kind: AnchorKind::Point,
                 },
                 flip: false,
-                offset: 0.0,
+                offset: [0.0; 3],
                 ratio: 1.0,
                 radius: 0.0,
                 angle: 0.0,
