@@ -103,12 +103,18 @@ export interface AssemblyPartGroup {
  * solved pose. The offset is measured against the session seed rather than the
  * solved transform, so the part tracks the pointer by exactly the drag delta
  * even when a mate had pulled it off its seed.
+ *
+ * `settlingOffsets` are the same offsets for drags already committed but not yet
+ * re-meshed by a solve. Dropping a part's offset the instant the pointer came up
+ * snapped it back to its pre-drag mesh for the length of the solve, so the
+ * offset outlives the session and only the re-bake retires it.
  */
 export function getAssemblyPartGroups(
   bodies: Record<string, BodyResult> | undefined,
   instances: PartInstance[],
   manipulation: ManipulationSession | null,
   selectedPartHandle: string | null,
+  settlingOffsets: Record<string, Transform3D> = {},
 ): AssemblyPartGroup[] {
   const byHandle = new Map<string, BodyRenderItem[]>()
   for (const item of getBodiesToRender(bodies, undefined, undefined, undefined)) {
@@ -124,9 +130,12 @@ export function getAssemblyPartGroups(
     if (!items || items.length === 0) continue
 
     const manipulating = manipulation?.handle === inst.handle
+    const settling = settlingOffsets[inst.handle] ?? IDENTITY_TRANSFORM
+    // A live drag rides on top of any offset still owed to the last one: both
+    // are measured against the same baked mesh.
     const offset: Transform3D = manipulating
-      ? manipulationDelta(manipulation!)
-      : IDENTITY_TRANSFORM
+      ? composeTransforms(manipulationDelta(manipulation!), settling)
+      : settling
 
     groups.push({
       handle: inst.handle,

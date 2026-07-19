@@ -93,6 +93,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   const instances = useAssemblyStore(s => s.instances)
   const transforms = useAssemblyStore(s => s.transforms)
   const manipulation = useAssemblyStore(s => s.manipulation)
+  const settlingOffsets = useAssemblyStore(s => s.settlingOffsets)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const pickGeometry = useAssemblyStore(s => s.pickGeometry)
   const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
@@ -148,8 +149,8 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   }), [])
 
   const groups = useMemo(
-    () => getAssemblyPartGroups(bodies, instances, manipulation, selectedPartHandle),
-    [bodies, instances, manipulation, selectedPartHandle],
+    () => getAssemblyPartGroups(bodies, instances, manipulation, selectedPartHandle, settlingOffsets),
+    [bodies, instances, manipulation, selectedPartHandle, settlingOffsets],
   )
   const builtins = useMemo(() => getAssemblyBuiltinsToRender(doc), [doc])
 

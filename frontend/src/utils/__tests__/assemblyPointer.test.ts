@@ -37,6 +37,10 @@ function mountHost(initial: AssemblyDoc) {
     requestSolve,
   })
   useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
+  // A committed drag leaves a render offset owed until the solve re-bakes the
+  // bodies, and setSnapshot preserves it (it is store-owned); a fresh host is a
+  // fresh scene, so it starts with none.
+  useAssemblyStore.setState({ settlingOffsets: {} })
   const store = useAssemblyStore.getState()
   // The swing angles are recorded on the way through: a drag past a half turn
   // is only observable frame by frame, since +190 and -170 end in the very same

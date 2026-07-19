@@ -2,7 +2,7 @@
 // viewport only ever feeds it pointer deltas.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartInstance } from '@/types/cad'
+import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
@@ -35,6 +35,23 @@ function docWith(...instances: PartInstance[]): AssemblyDoc {
   }
 }
 
+/**
+ * What the screen actually shows for `handle`: the render path's group offset
+ * applied over vertices baked at `baked`, which is the pose the last solve to
+ * touch this part left in its mesh.
+ */
+function drawnPose(handle: string, baked: Transform3D): Transform3D {
+  const { manipulation, settlingOffsets } = useAssemblyStore.getState()
+  const group = getAssemblyPartGroups(
+    { [`${handle}:body_0`]: solvedBody(handle) },
+    [instance(handle)],
+    manipulation,
+    null,
+    settlingOffsets,
+  )[0]
+  return composeTransforms(makeTransform(group.position, group.quaternion), baked)
+}
+
 /** Stands in for the AssemblyEditor: owns the doc, counts re-solves. */
 function mountHost(initial: AssemblyDoc) {
   const requestSolve = vi.fn()
@@ -51,6 +68,9 @@ describe('assemblyStore part manipulation', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().cancelPartManipulation()
+    // Store-owned, so setSnapshot preserves it: a committed drag would otherwise
+    // carry its offset into the next test.
+    useAssemblyStore.setState({ settlingOffsets: {} })
     setAssemblyCallbacks(null)
   })
 
@@ -126,6 +146,58 @@ describe('assemblyStore part manipulation', () => {
 
     expect(drawn.tx).toBeCloseTo(13, 9)  // guards the derivation itself
     expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: drawn.tx, ty: drawn.ty, tz: drawn.tz })
+  })
+
+  // The commit reaches the doc a solve round trip before the bodies are re-meshed
+  // at the new pose. Dropping the render offset on pointer-up drew the part back
+  // at its pre-drag mesh for that whole window: the snap-back the user sees.
+  it('keeps the part drawn where it was dropped until the solve re-bakes it', () => {
+    mountHost(docWith(instance('p1')))
+    const solvedP1 = { ...IDENTITY_TRANSFORM, tx: 10 }
+    useAssemblyStore.getState().setSnapshot({
+      ...useAssemblyStore.getState(),
+      transforms: { p1: solvedP1 },
+    })
+    const s = useAssemblyStore.getState()
+
+    s.beginPartManipulation('p1')
+    s.dragPartTranslate([3, 0, 0])
+    useAssemblyStore.getState().endPartManipulation()
+
+    const drawnAfterRelease = drawnPose('p1', solvedP1)
+    expect(drawnAfterRelease.tx).toBeCloseTo(13, 9)  // not back at the solved 10
+
+    // The solve returns with the body baked at its committed pose; the offset it
+    // stood in for is retired, or the part would render 3mm past the drop.
+    useAssemblyStore.getState().setSolveResult({
+      transforms: { p1: { ...IDENTITY_TRANSFORM, tx: 13 } },
+      bodies: {}, edgeCurves: {}, entityMateRefs: {}, anchors: {}, pickGeometry: [], mateResults: {},
+    })
+    expect(useAssemblyStore.getState().settlingOffsets).toEqual({})
+    expect(drawnPose('p1', { ...IDENTITY_TRANSFORM, tx: 13 }).tx).toBeCloseTo(13, 9)
+  })
+
+  // Grabbing again before the pointer-up solve lands means the mesh is still
+  // baked two poses back: the new drag has to ride on the offset it owes, and
+  // the commit has to compose against the drawn pose, not the stale solved one.
+  it('a second drag before the solve returns stacks on the offset still owed', () => {
+    const { host } = mountHost(docWith(instance('p1')))
+    useAssemblyStore.getState().setSnapshot({
+      ...useAssemblyStore.getState(),
+      transforms: { p1: { ...IDENTITY_TRANSFORM } },
+    })
+
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([3, 0, 0])
+    useAssemblyStore.getState().endPartManipulation()
+
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([0, 5, 0])
+    expect(drawnPose('p1', IDENTITY_TRANSFORM)).toMatchObject({ tx: 3, ty: 5 })
+
+    useAssemblyStore.getState().endPartManipulation()
+    expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3, ty: 5, tz: 0 })
+    expect(drawnPose('p1', IDENTITY_TRANSFORM)).toMatchObject({ tx: 3, ty: 5 })
   })
 
   it('gizmo rotation composes onto the instance quaternion and re-solves live then on commit', () => {

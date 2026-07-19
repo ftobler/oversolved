@@ -14,6 +14,7 @@ import type { AssemblyDoc, PartInstance, Transform3D } from '@/types/cad'
 import { findInstance, setInstanceTransform } from '@/utils/assemblyMutations'
 import {
   composeTransforms,
+  IDENTITY_TRANSFORM,
   relativeTransform,
   rotateTransformAboutPoint,
   translateTransform,
@@ -87,6 +88,27 @@ export function livePartPose(
   solved: Transform3D | undefined,
 ): Transform3D {
   return composeTransforms(manipulationDelta(session), solved ?? session.seed)
+}
+
+/**
+ * Where the parts are drawn right now: the baked (last solved) transforms
+ * carried by whatever settling offset a committed drag left behind.
+ *
+ * A drag commit lands in the doc long before the solve that re-meshes the part
+ * at its new pose, and until then the bodies are still baked at the old one.
+ * Everything that asks "where is this part" between the two -- the next grab's
+ * pin, the commit that follows it -- must read this rather than `transforms`,
+ * or it composes against a pose the screen abandoned.
+ */
+export function settledTransforms(
+  transforms: Record<string, Transform3D>,
+  settling: Record<string, Transform3D>,
+): Record<string, Transform3D> {
+  const out: Record<string, Transform3D> = { ...transforms }
+  for (const [handle, offset] of Object.entries(settling)) {
+    out[handle] = composeTransforms(offset, transforms[handle] ?? IDENTITY_TRANSFORM)
+  }
+  return out
 }
 
 export interface CommitResult {

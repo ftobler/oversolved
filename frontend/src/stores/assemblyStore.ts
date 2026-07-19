@@ -7,7 +7,7 @@ import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
 import { bakeSolvedTransforms, findMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
-import { transformsEqual, type Vec3 } from '@/utils/transform3d'
+import { composeTransforms, IDENTITY_TRANSFORM, transformsEqual, type Vec3 } from '@/utils/transform3d'
 
 /** The mate reference slot a pick currently writes into; null when not authoring. */
 export interface MateFieldTarget {
@@ -28,6 +28,8 @@ import {
   commitManipulation,
   dragTranslate,
   gizmoRotate,
+  manipulationDelta,
+  settledTransforms,
   type ManipulationSession,
 } from '@/utils/partManipulation'
 
@@ -91,6 +93,12 @@ export interface AssemblyEditorData {
   showPickDebug: boolean
   /** Live drag/gizmo state; null between manipulations. */
   manipulation: ManipulationSession | null
+  /**
+   * Per-handle render offsets owed by a drag that is committed but not yet
+   * re-meshed: the doc holds the new pose while the bodies are still baked at
+   * the old one. Retired by the solve that re-bakes them.
+   */
+  settlingOffsets: Record<string, Transform3D>
   isSolving: boolean
   solveError: string | null
   undoStack: UndoEntry[]
@@ -121,6 +129,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   hoveredEntity: null,
   showPickDebug: false,
   manipulation: null,
+  settlingOffsets: {},
   isSolving: false,
   solveError: null,
   undoStack: [],
@@ -136,7 +145,7 @@ export type AssemblySolveResult = Pick<
 
 // Fields owned exclusively by the store (not overwritten by setSnapshot).
 const STORE_OWNED_FIELDS = [
-  'activePartHandle', 'selectedPartHandle', 'manipulation',
+  'activePartHandle', 'selectedPartHandle', 'manipulation', 'settlingOffsets',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
@@ -261,6 +270,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // B-rep selection is positional too, so it clears for the same reason.
     pickCandidates: [], pickIndex: -1, hoverHits: [],
     selection: new Set(), hoveredEntity: null,
+    // Every body comes back baked at its solved pose, which is what the settling
+    // offsets were standing in for until now.
+    settlingOffsets: {},
   }),
 
   setDragSolveResult: (result) => set((prev) => ({
@@ -268,6 +280,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     bodies: { ...prev.bodies, ...result.bodies },
     edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
     mateResults: result.mateResults,
+    // The parts this tick re-posed are re-baked with it; only a part it left
+    // alone (the grabbed one) still owes its offset.
+    settlingOffsets: Object.fromEntries(
+      Object.entries(prev.settlingOffsets).filter(([handle]) => !(handle in result.transforms)),
+    ),
   })),
 
   setPickFromHits: (hits) => set((prev) => {
@@ -395,17 +412,31 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   },
 
   endPartManipulation: () => {
-    const { manipulation, doc } = get()
+    const { manipulation, doc, settlingOffsets } = get()
     set({ manipulation: null })
     if (!manipulation || !doc || !callbacks) return
-    // The grabbed part's own solved pose is what the drag offset was drawn over,
+    // The grabbed part's own drawn pose is what the drag offset was drawn over,
     // so the commit must compose against it, not against the doc seed the mates
     // may long since have pulled the part away from.
-    const solved = get().transforms
+    const solved = settledTransforms(get().transforms, settlingOffsets)
     const solvedGrab = solved[manipulation.handle]
     const { changed } = commitManipulation(doc, manipulation, solvedGrab)
     // A click that never moved the part must not dirty the doc or re-solve.
     if (!changed) return
+    // The doc now holds the dragged pose but the bodies are still baked at the
+    // pre-drag one, and the re-solve that fixes that is a round trip away.
+    // Handing the drag's offset over to the render as a settling offset is what
+    // keeps the part where the user dropped it; clearing it here made the part
+    // snap back to its pre-drag pose until the solve returned.
+    set(prev => ({
+      settlingOffsets: {
+        ...prev.settlingOffsets,
+        [manipulation.handle]: composeTransforms(
+          manipulationDelta(manipulation),
+          prev.settlingOffsets[manipulation.handle] ?? IDENTITY_TRANSFORM,
+        ),
+      },
+    }))
     // Bake every follower's live-solved pose into its seed before committing the
     // grabbed part's new seed. A drag otherwise writes back only the grabbed
     // part, leaving the followers' seeds at their placement poses; the cold

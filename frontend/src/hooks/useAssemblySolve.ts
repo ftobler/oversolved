@@ -22,7 +22,7 @@ import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec } from '@/kernel/solveAssembly'
 import { extractErrorMessage } from '@/kernel/errors'
-import { livePartPose } from '@/utils/partManipulation'
+import { livePartPose, settledTransforms } from '@/utils/partManipulation'
 
 // A mate offset/angle authored as an expression string is not evaluated here;
 // expression binding arrives with the mate authoring UI (Stage 8).
@@ -131,7 +131,8 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // the render offset and the drag commit read -- and ground it, so the
         // solve moves only the others. Its own bodies/transform are left
         // untouched below, so it keeps rendering from its drag offset.
-        const pinned = livePartPose(manip!, store.transforms[manip!.handle])
+        const settled = settledTransforms(store.transforms, store.settlingOffsets)
+        const pinned = livePartPose(manip!, settled[manip!.handle])
         parts = parts.map(p => (p.handle === manip!.handle ? { ...p, transform: pinned, fixed: true } : p))
       }
       // Revs are stable across a drag burst; a live tick reuses the last full
