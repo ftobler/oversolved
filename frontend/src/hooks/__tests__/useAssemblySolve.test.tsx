@@ -92,6 +92,25 @@ describe('partSpecs / mateSpecs', () => {
       ratio: undefined,
     }])
   })
+
+  it('carries a vector offset through unflattened', () => {
+    // The spec keeps the authored shape: normalizing needs the anchor axis to
+    // expand the legacy scalar form, and that only resolves inside the solve.
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{
+        id: 'mate-1',
+        kind: 'mate',
+        mate: {
+          kind: 'fixed',
+          ref_a: { part: 'p1', anchor: 'a1' },
+          ref_b: { part: 'p2', anchor: 'a2' },
+          offset: { x: 1, y: 2, z: 3 },
+        },
+      }],
+    }
+    expect(mateSpecs(doc)[0].offset).toEqual({ x: 1, y: 2, z: 3 })
+  })
 })
 
 describe('currentRevs', () => {

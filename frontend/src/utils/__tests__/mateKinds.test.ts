@@ -10,11 +10,13 @@ import {
   MATE_KIND_LABELS,
   isMateRefEmpty,
   mateParams,
+  mateOffsetVector,
   mateRefLabel,
   mateSummary,
   normalizeMateAngleDeg,
 } from '@/utils/mateKinds'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
+import type { Vec3 } from '@/utils/transform3d'
 
 describe('MATE_KINDS', () => {
   it('covers every MateKind the solver maps to a Rust kind code', () => {
@@ -156,6 +158,38 @@ describe('mateSummary', () => {
   it('shows the unpicked half of a half-authored mate', () => {
     const s = mateSummary('spherical', { part: 'h1', anchor: 'a1' }, EMPTY_MATE_REF)
     expect(s).toBe('Spherical: h1 / a1 to Pick a reference')
+  })
+})
+
+describe('mateOffsetVector', () => {
+  // The tolerant dual-read. Assembly documents are user YAML kept verbatim with
+  // no content migration anywhere in the stack, so the legacy scalar form has to
+  // keep working forever -- there is no version gate that could ever retire it.
+  const Z: Vec3 = [0, 0, 1]
+
+  it('expands a legacy scalar along body A\'s anchor axis', () => {
+    expect(mateOffsetVector(7, Z)).toEqual([0, 0, 7])
+    // Non-cardinal axis: the scalar is a distance ALONG the axis, not a z shift.
+    expect(mateOffsetVector(10, [0, 0.6, 0.8])).toEqual([0, 6, 8])
+  })
+
+  it('reads a vector offset componentwise, independent of the axis', () => {
+    expect(mateOffsetVector({ x: 3, y: 4, z: 5 }, Z)).toEqual([3, 4, 5])
+    expect(mateOffsetVector({ x: 3, y: 4, z: 5 }, [1, 0, 0])).toEqual([3, 4, 5])
+  })
+
+  it('fills an unnamed component with zero rather than dropping the offset', () => {
+    expect(mateOffsetVector({ y: 2 }, Z)).toEqual([0, 2, 0])
+    expect(mateOffsetVector({}, Z)).toEqual([0, 0, 0])
+  })
+
+  it('reads an absent, expression or non-finite offset as no offset', () => {
+    // Expression binding is not wired for mates yet; 0 is the solver's own
+    // default for an absent offset, so an unbound formula moves nothing.
+    expect(mateOffsetVector(undefined, Z)).toEqual([0, 0, 0])
+    expect(mateOffsetVector('w / 2', Z)).toEqual([0, 0, 0])
+    expect(mateOffsetVector({ x: 'w / 2', y: 1 }, Z)).toEqual([0, 1, 0])
+    expect(mateOffsetVector(NaN, Z)).toEqual([0, 0, 0])
   })
 })
 

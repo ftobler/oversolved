@@ -384,6 +384,27 @@ export type MateRefField = 'ref_a' | 'ref_b'
 
 export type MateKind = 'fixed' | 'sliding' | 'rotating' | 'sliding_rotating' | 'tangential' | 'copy_rotation' | 'spherical' | 'parallel' | 'parallel_plane_distance'
 
+/**
+ * A mate offset authored as a vector, in body A's LOCAL frame (it rotates with
+ * A). Components are individually optional so a hand-written document can name
+ * only the one it cares about; a missing component is 0.
+ */
+export interface MateOffsetVec {
+  x?: NumberOrExpr
+  y?: NumberOrExpr
+  z?: NumberOrExpr
+}
+
+/**
+ * A mate's offset in either authoring form. A bare number is the original
+ * scalar: a signed distance along body A's anchor axis, which is the vector
+ * `offset * axis_a` in that same local frame. Both forms are read, neither is
+ * migrated -- assembly documents are user YAML stored verbatim, so a doc
+ * written before the widening must keep solving to the identical pose. See
+ * `mateOffsetVector` in utils/mateKinds.ts, the one place that normalizes it.
+ */
+export type MateOffset = NumberOrExpr | MateOffsetVec
+
 export interface MateFeatureDef {
   kind: MateKind
   // User-facing name shown in the tree. Absent means "use the default", a
@@ -393,7 +414,7 @@ export interface MateFeatureDef {
   ref_b: MateRef
   flip?: boolean
   ratio?: number
-  offset?: NumberOrExpr
+  offset?: MateOffset
   angle?: NumberOrExpr
   radius?: NumberOrExpr
 }

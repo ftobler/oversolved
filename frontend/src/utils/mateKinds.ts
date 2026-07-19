@@ -5,13 +5,15 @@
 //
 // The parameter table is the single source of truth for "which inputs does this
 // mate show". It is bounded by the wire, not by the schema: `encodeMateInput`
-// (kernel/solveAssembly.ts) writes exactly `flip`, `offset`, `ratio`, `radius`
-// and `angle` per mate. `angle` belongs to `fixed` and `sliding`: the absolute
+// (kernel/solveAssembly.ts) writes exactly `flip`, `offset` (a 3D vector in
+// body A's local frame), `ratio`, `radius` and `angle` per mate. `angle`
+// belongs to `fixed` and `sliding`: the absolute
 // roll between the two anchors' canonical frames (mate_residuals.rs
 // abs_roll_residual), a control no other mate kind reads.
 
-import type { MateKind, MateRef } from '@/types/cad'
+import type { MateKind, MateOffset, MateRef } from '@/types/cad'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
+import type { Vec3 } from '@/utils/transform3d'
 
 /** Insert order in the UI: the workhorse first, the rare joints after. */
 export const MATE_KINDS: readonly MateKind[] = [
@@ -94,6 +96,38 @@ export function normalizeMateAngleDeg(deg: number): number {
   // The modulo alone leaves -0 for a negative whole turn, and its sign would
   // survive into the YAML; the addition folds that back onto plain 0.
   return ((deg % 360) + 360) % 360
+}
+
+/**
+ * A mate's `offset` in the one form the wire takes: a 3D vector in body A's
+ * LOCAL frame (mate.rs `Mate::offset`).
+ *
+ * This is the tolerant read for both authoring forms, and the only place that
+ * knows about the older one. A bare number is the original scalar offset, a
+ * signed distance along A's anchor axis, so it expands to `offset * axisA` --
+ * which the solver rotates back to `offset * a_w`, exactly what the scalar
+ * residual used to subtract. Assembly documents are user YAML stored verbatim
+ * with no content migration anywhere in the stack, so that equivalence is the
+ * back-compat guarantee, not a convenience.
+ *
+ * An expression string yields 0 for that component: expression binding is not
+ * wired for mates yet (same posture as `numeric` in hooks/useAssemblySolve.ts),
+ * and 0 is the solver's own default for an absent offset.
+ */
+export function mateOffsetVector(offset: MateOffset | undefined, axisA: Vec3): Vec3 {
+  if (typeof offset === 'number') {
+    const s = component(offset)
+    return [s * axisA[0], s * axisA[1], s * axisA[2]]
+  }
+  if (offset && typeof offset === 'object') {
+    return [component(offset.x), component(offset.y), component(offset.z)]
+  }
+  return [0, 0, 0]
+}
+
+/** One authored offset component: a finite number, or 0 for anything else. */
+function component(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
 /** A slot no pick has filled yet. Both halves empty; never a partial. */

@@ -51,7 +51,10 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
       ref_a: f.mate!.ref_a,
       ref_b: f.mate!.ref_b,
       flip: f.mate!.flip,
-      offset: numeric(f.mate!.offset),
+      // Passed through in its authored form, scalar or vector: normalizing it
+      // needs the anchor axis, which only resolves inside the solve (see
+      // `mateOffsetVector` at solveAssembly.ts's record build).
+      offset: f.mate!.offset,
       angle: numeric(f.mate!.angle),
       radius: numeric(f.mate!.radius),
       ratio: f.mate!.ratio,

@@ -9,10 +9,11 @@
 import { bundleCacheGet, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
 import { migrateBundle } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
-import type { Transform3D, MateKind } from '../types/cad'
+import type { Transform3D, MateKind, MateOffset } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { canonicalPerp } from '../utils/mateOrientation'
+import { mateOffsetVector } from '../utils/mateKinds'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 export type { AnchorPose }
@@ -36,7 +37,8 @@ export interface MateSpec {
   ref_a: { part: string; anchor: string }
   ref_b: { part: string; anchor: string }
   flip?: boolean
-  offset?: number
+  /** Either authoring form; `mateOffsetVector` normalizes it at the wire. */
+  offset?: MateOffset
   ratio?: number
   radius?: number
   angle?: number
@@ -187,7 +189,8 @@ export interface MateWireRecord {
   pointB: [number, number, number]
   axisB: [number, number, number]
   flip: boolean
-  offset: number
+  /** Offset vector in body A's LOCAL frame; see mate.rs `Mate::offset`. */
+  offset: Vec3
   ratio: number
   radius: number
   /** Radians. Fixed/Sliding's absolute roll target between the anchors'
@@ -210,12 +213,15 @@ export function encodeMateInput(
   // bodies: n_bodies * 4
   // params: bodyCount * 7 * 4
   // fixedMask: maskLen
-  // mates: n_mates * 76
+  // mates: n_mates * 84
   const headerSize = 20
   const bodiesSize = bodyCount * 4
   const paramsSize = params.length * 4
   const maskSize = maskLen
-  const matesSize = mates.length * 76
+  // 84, not 76: `offset` is three f32s, and ratio/radius/angle sit after it.
+  // This stride and mate.rs's decode move together or the solver reads ratio
+  // out of the offset's tail -- see `mate_record_is_84_bytes` over there.
+  const matesSize = mates.length * 84
   const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
@@ -260,7 +266,9 @@ export function encodeMateInput(
     w.setFloat32(pos, m.axisB[2], true); pos += 4
     const flags = m.flip ? 1 : 0
     w.setUint8(pos, flags); pos += 1
-    w.setFloat32(pos, m.offset, true); pos += 4
+    w.setFloat32(pos, m.offset[0], true); pos += 4
+    w.setFloat32(pos, m.offset[1], true); pos += 4
+    w.setFloat32(pos, m.offset[2], true); pos += 4
     w.setFloat32(pos, m.ratio, true); pos += 4
     w.setFloat32(pos, m.radius, true); pos += 4
     w.setFloat32(pos, m.angle, true); pos += 4
@@ -429,7 +437,10 @@ export async function solveAssembly(
       continue
     }
 
-    const offset = typeof mate.offset === 'number' ? mate.offset : 0
+    // A bare number here is the pre-vector authoring form and expands against
+    // A's anchor axis, which is why this cannot happen before the anchors are
+    // resolved. mateOffsetVector is the only reader of the legacy shape.
+    const offset = mateOffsetVector(mate.offset, rA.anchor!.axis)
     const ratio = typeof mate.ratio === 'number' ? mate.ratio : 1
     const radius = typeof mate.radius === 'number' ? mate.radius : 0
     // angle is authored in degrees in [0, 360) (the mate editor's +/-90 buttons

@@ -31,6 +31,12 @@ function at(tx: number, ty: number, tz: number): Transform3D {
   return { tx, ty, tz, qx: 0, qy: 0, qz: 0, qw: 1 }
 }
 
+/** At the origin, rolled `deg` about world Z. */
+function rollZ(deg: number): Transform3D {
+  const half = (deg * Math.PI) / 360
+  return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: Math.sin(half), qw: Math.cos(half) }
+}
+
 /** A part whose single anchor is a plane at the local origin facing +Z. */
 function planeBundle(doc_id: string, doc_rev: number): PartBundle {
   return {
@@ -195,7 +201,11 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(gap).toBeLessThan(0.01)
   })
 
-  it('honours a linear offset along the mate axis', async () => {
+  // The back-compat guarantee, end to end through the real WASM: a document
+  // authored before `offset` became a vector must still solve to the identical
+  // pose. Assembly documents are stored verbatim and never migrated, so a bare
+  // number stays a legal authoring form forever.
+  it('honours a legacy scalar offset along the mate axis', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(0, 0, 20) },
@@ -209,6 +219,50 @@ describeReal('solveAssembly with the real mate solver', () => {
     const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
     // pa's anchor axis is +Z, so pb sits 7 along it (sign per the residual).
     expect(Math.abs(result.transforms['pb'].tz)).toBeCloseTo(7, 2)
+    // And nowhere else: a scalar offset moves along the axis only.
+    expect(result.transforms['pb'].tx).toBeCloseTo(0, 2)
+    expect(result.transforms['pb'].ty).toBeCloseTo(0, 2)
+  })
+
+  it('honours an off-axis offset vector', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(0, 0, 20) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const, offset: { x: 3, y: 4, z: 2 },
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    // p_b = p_a - R_a * offset, and pa sits at identity, so pb is the negated
+    // offset. The x and y components are what the scalar form could never say.
+    expect(result.transforms['pb'].tx).toBeCloseTo(-3, 2)
+    expect(result.transforms['pb'].ty).toBeCloseTo(-4, 2)
+    expect(result.transforms['pb'].tz).toBeCloseTo(-2, 2)
+  })
+
+  // Pins the frame decision. The offset lives in body A's LOCAL frame, so
+  // rotating A rotates the applied offset with it: a quarter turn about Z maps
+  // the local (3, 4, 0) to the world (-4, 3, 0), putting pb at (4, -3, 0). A
+  // world-frame offset would leave pb at (-3, -4, 0) regardless of A's pose,
+  // so this test is what fails if the frame is ever switched.
+  it('rotates the offset vector with body A (local frame, not world)', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: rollZ(90), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(0, 0, 20) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed' as const, offset: { x: 3, y: 4, z: 0 },
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    expect(result.transforms['pb'].tx).toBeCloseTo(4, 2)
+    expect(result.transforms['pb'].ty).toBeCloseTo(-3, 2)
+    expect(result.transforms['pb'].tz).toBeCloseTo(0, 2)
   })
 
   // The bug this file was written for: `solve_mate` called `std::time::Instant`,
