@@ -8,6 +8,7 @@ import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/Right
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import contextEditIcon from '@/assets/icons/context-edit.svg'
 import contextDeleteIcon from '@/assets/icons/context-delete.svg'
+import contextDuplicateIcon from '@/assets/icons/context-duplicate.svg'
 import iconRenameIcon from '@/assets/icons/rename.svg'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
@@ -44,6 +45,7 @@ interface AssemblyTreeProps {
   editingInstanceHandle?: string | null
   onSelectPart?: (handle: string) => void
   onOpenPartNewTab: (handle: string) => void
+  onDuplicateInstance: (handle: string) => void
   onDeleteInstance: (handle: string) => void
   onToggleVisible: (handle: string, visible: boolean) => void
   onToggleFixed: (handle: string, fixed: boolean) => void
@@ -86,6 +88,7 @@ export function AssemblyTree({
   editingInstanceHandle,
   onSelectPart,
   onOpenPartNewTab,
+  onDuplicateInstance,
   onDeleteInstance,
   onToggleVisible,
   onToggleFixed,
@@ -165,6 +168,7 @@ export function AssemblyTree({
             const editing = editingInstanceHandle === inst.handle
             const menuItems: ContextMenuItem[] = [
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
+              { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },
               {
                 label: inst.fixed ? 'Unground' : 'Ground (fix)',
                 icon: constraintFixedIcon,

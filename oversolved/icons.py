@@ -829,6 +829,24 @@ def _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/context-duplicate.svg")
+def context_duplicate(ctx):
+    # The copy icon's two sheets, left bare: duplicating a part copies the thing
+    # itself, so the front sheet carries no content glyph the way the toolbar's
+    # copy-code and copy-result variants do.
+    bx0, by0, bx1, by1 = 0.30, 0.12, 0.82, 0.68
+    fx0, fy0, fx1, fy1 = 0.18, 0.32, 0.70, 0.88
+
+    _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1)
+
+    ctx.move_to(fx0, fy0)
+    ctx.line_to(fx1, fy0)
+    ctx.line_to(fx1, fy1)
+    ctx.line_to(fx0, fy1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/toolbar-copy-code.svg")
 def toolbar_copy_code(ctx):
     # Classic copy icon (two overlapping rectangles) with code lines on the front sheet

@@ -300,6 +300,24 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances).toHaveLength(1)
     openSpy.mockRestore()
   })
+
+  it('the options menu duplicates a part in place', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    const original = useAssemblyStore.getState().instances[0]
+    await waitFor(() => screen.getByText('Bracket'))
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Duplicate'))
+    await tick()
+
+    const insts = useAssemblyStore.getState().instances
+    expect(insts).toHaveLength(2)
+    expect(insts[1].doc_id).toBe(original.doc_id)
+    expect(insts[1].handle).not.toBe(original.handle)
+    // Both rows read the same name: an instance has no label of its own, it is
+    // named after the document it references.
+    expect(screen.getAllByText('Bracket')).toHaveLength(2)
+  })
 })
 
 // Stage 8: mate authoring. The picks are synthetic ID-buffer hits fed straight

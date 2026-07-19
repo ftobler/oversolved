@@ -4,6 +4,7 @@ import {
   appendMate,
   appendPartInstance,
   bakeSolvedTransforms,
+  duplicateInstance,
   emptyAssemblyDoc,
   findMate,
   mateFeatures,
@@ -113,6 +114,70 @@ describe('removeInstance', () => {
     const next = removeInstance(doc, handle)
     expect(next.features!.some(f => f.kind === 'mate')).toBe(true)
     expect(instances(next)).toHaveLength(0)
+  })
+})
+
+describe('duplicateInstance', () => {
+  it('clones the part reference and pose under a fresh handle', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 3)
+    const original = instances(doc)[0]
+    doc = setInstancePosition(doc, original.handle, { tx: 5, ty: 6, tz: 7 })
+    const posed = instances(doc)[0]
+
+    const next = duplicateInstance(doc, posed.handle)
+    const insts = instances(next)
+    expect(insts).toHaveLength(2)
+    const clone = insts[1]
+    expect(clone.doc_id).toBe('doc-A')
+    expect(clone.doc_rev).toBe(3)
+    // A duplicate lands exactly on the original; the user drags or mates it off.
+    expect(clone.transform).toEqual(posed.transform)
+    expect(clone.handle).not.toBe(posed.handle)
+  })
+
+  it('gives the clone its own feature id so the two rows are separable', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(doc)[0].handle
+    const next = duplicateInstance(doc, handle)
+    const ids = next.features!.filter(f => f.kind === 'part_instance').map(f => f.id)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it('leaves the original instance untouched', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const before = instances(doc)[0]
+    const next = duplicateInstance(doc, before.handle)
+    expect(instances(next)[0]).toEqual(before)
+  })
+
+  it('comes in unfixed even when the original is grounded', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(doc)[0].handle
+    doc = setInstanceFixed(doc, handle, true)
+    const next = duplicateInstance(doc, handle)
+    const [original, clone] = instances(next)
+    expect(original.fixed).toBe(true)
+    // Grounding is a statement about one part's role in the assembly, not a
+    // property of the geometry, so it does not ride along on the copy.
+    expect(clone.fixed).toBeFalsy()
+  })
+
+  it('does not clone mates that reference the original', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(doc)[0].handle
+    doc = appendMate(doc, 'fixed', 'm1')
+    doc = setMateRef(doc, 'm1', 'ref_a', { part: handle, anchor: 'face-1' })
+
+    const next = duplicateInstance(doc, handle)
+    const mates = next.features!.filter(f => f.kind === 'mate')
+    expect(mates).toHaveLength(1)
+    // The surviving mate still points at the original, never at the copy.
+    expect(mates[0].mate!.ref_a.part).toBe(handle)
+  })
+
+  it('is a no-op for an unknown handle', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    expect(duplicateInstance(doc, 'nope')).toEqual(doc)
   })
 })
 

@@ -64,6 +64,34 @@ export function appendPartInstance(doc: AssemblyDoc, docId: string, docRev: numb
   return { ...doc, features: [...features(doc), feature] }
 }
 
+// Copy an existing instance: same part at the same revision, landing on the
+// original's pose so the copy appears exactly on top of it, which is where CAD
+// users expect to find it before dragging or mating it into place.
+//
+// Two things deliberately do NOT ride along. `fixed` is a claim about one part
+// anchoring the assembly, so a second grounded copy at the same pose would
+// over-constrain the solve. Mates are relationships between parts rather than
+// properties of one, so they stay pointed at the original.
+export function duplicateInstance(doc: AssemblyDoc, handle: string): AssemblyDoc {
+  const source = features(doc).find(
+    f => f.kind === 'part_instance' && f.instance?.handle === handle,
+  )?.instance
+  if (!source) return doc
+  const instance: PartInstance = {
+    handle: mintInstanceHandle(doc),
+    doc_id: source.doc_id,
+    doc_rev: source.doc_rev,
+    transform: { ...source.transform },
+    visible: source.visible ?? true,
+  }
+  const feature: AssemblyFeature = {
+    id: mintFeatureId(),
+    kind: 'part_instance',
+    instance,
+  }
+  return { ...doc, features: [...features(doc), feature] }
+}
+
 // Drop the part_instance feature (and, by construction, its instance) whose
 // instance handle matches. Mates referencing it are left untouched here; a
 // dangling mate ref surfaces as stale at solve time (fail-safe over fail-wrong).

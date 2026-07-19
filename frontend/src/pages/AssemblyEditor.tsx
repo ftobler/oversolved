@@ -20,6 +20,7 @@ import {
   appendMate,
   appendPartInstance,
   bakeSolvedTransforms,
+  duplicateInstance,
   findInstance,
   findMate,
   mintFeatureId,
@@ -229,6 +230,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     const transforms = useAssemblyStore.getState().transforms
     mutate(d => appendPartInstance(bakeSolvedTransforms(d, transforms), docId, docRev))
     requestSolve()  // the new instance has no bodies until the assembly re-solves
+  }, [mutate, requestSolve])
+
+  const handleDuplicate = useCallback((handle: string) => {
+    // Same baking rule as inserting a part: the copy is a new unmated body, so
+    // without freezing the solved poses first the re-solve would restart the
+    // placed parts from stale seeds and visibly shuffle the assembly.
+    const transforms = useAssemblyStore.getState().transforms
+    mutate(d => duplicateInstance(bakeSolvedTransforms(d, transforms), handle))
+    requestSolve()  // the copy has no bodies until the assembly re-solves
   }, [mutate, requestSolve])
 
   const handleOpenPartNewTab = useCallback((handle: string) => {
@@ -491,6 +501,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
             onOpenPartNewTab={handleOpenPartNewTab}
+            onDuplicateInstance={handleDuplicate}
             onDeleteInstance={handleDelete}
             onToggleVisible={handleToggleVisible}
             onToggleFixed={handleToggleFixed}
