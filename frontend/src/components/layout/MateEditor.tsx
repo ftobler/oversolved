@@ -65,7 +65,7 @@ export function MateEditor({
   // '1e') must stay visible so the user can finish the number, rather than
   // snapping back to the last committed value mid-entry. Resynced
   // from the document whenever the committed angle changes from elsewhere (a
-  // +/-90 click, a different mate selected) -- done inline during render
+  // +90 click, a different mate selected) -- done inline during render
   // (the React-recommended way to adjust state on a prop change) rather than
   // in an effect, which would commit the stale text for one extra render.
   const [angleText, setAngleText] = useState(() => numericValue(mate.angle))
@@ -77,8 +77,9 @@ export function MateEditor({
     setAngleText(numericValue(mate.angle))
   }
 
-  // Overflow cleans itself up: the +/-90 buttons step forever and land back in
-  // [0, 360). Not used by the free-text box's per-keystroke commit, which would
+  // Overflow cleans itself up: the +90 button steps forever and lands back in
+  // [0, 360), so three presses reach what a -90 button would have. Not used by
+  // the free-text box's per-keystroke commit, which would
   // rewrite a leading '-' into 351 before the user could type the '90' after it.
   const commitAngle = (next: number) => {
     onUpdate({ angle: normalizeMateAngleDeg(next) })
@@ -135,9 +136,6 @@ export function MateEditor({
             />
           </label>
           <div className="mate-angle-buttons">
-            <button type="button" onClick={() => commitAngle(current - 90)}>
-              -90&deg;
-            </button>
             <button type="button" onClick={() => commitAngle(current + 90)}>
               +90&deg;
             </button>

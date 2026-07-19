@@ -68,7 +68,7 @@
    bodies are built from Part.css's field grammar (.feature-field-row,
    .feature-field-label, .feature-field-input), so an assembly panel reads as the
    same dialog as a part feature editor; only the pieces the part editor has no
-   equivalent for (reference chips, the +/-90 buttons, the axis triples) are
+   equivalent for (reference chips, the +90 button, the axis triples) are
    styled here, and those borrow its palette. */
 .mate-editor,
 .instance-editor {
@@ -115,9 +115,9 @@
   gap: 4px;
 }
 
+/* One button, parked at the right edge under the value box it steps. */
 .mate-angle-buttons {
   display: flex;
-  gap: 4px;
   justify-content: flex-end;
 }
 

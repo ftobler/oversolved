@@ -1,5 +1,5 @@
-// The mate roll-angle control. `angle` is authored in [0, 360) and the +/-90
-// buttons step forever: the range guard these replace made `+90` at 180 a
+// The mate roll-angle control. `angle` is authored in [0, 360) and the +90
+// button steps forever: the range guard it replaces made `+90` at 180 a
 // no-op that could only raise an error, even though the solver's roll residual
 // wraps the difference and cannot tell 270 from -90 (mate_residuals.rs
 // abs_roll_residual). The normalisation itself lives in mateKinds.ts and is
@@ -34,7 +34,6 @@ function renderEditor(m: MateFeatureDef, onUpdate = vi.fn()) {
 
 const angleBox = () => screen.getByLabelText('Angle') as HTMLInputElement
 const plus90 = () => screen.getByRole('button', { name: /\+90/ })
-const minus90 = () => screen.getByRole('button', { name: /-90/ })
 
 describe('MateEditor angle buttons', () => {
   it('steps +90 forever, wrapping a full turn back to zero', () => {
@@ -48,10 +47,12 @@ describe('MateEditor angle buttons', () => {
     }
   })
 
-  it('steps -90 below zero into the top of the range', () => {
-    const { onUpdate } = renderEditor(mate({ angle: 0 }))
-    fireEvent.click(minus90())
-    expect(onUpdate).toHaveBeenCalledWith({ angle: 270 })
+  it('offers stepping in one direction only', () => {
+    // Three presses of +90 reach everything a -90 button did, so the second
+    // button was sugar over the same onUpdate the box already writes.
+    renderEditor(mate({ angle: 0 }))
+    expect(screen.queryByRole('button', { name: /-90/ })).toBeNull()
+    expect(plus90()).toBeTruthy()
   })
 
   it('treats a mate with no authored angle as zero', () => {
