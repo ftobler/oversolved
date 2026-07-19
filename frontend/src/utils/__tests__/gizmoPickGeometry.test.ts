@@ -13,7 +13,9 @@ import {
   PICK_LINE_PX,
   PLANE_INNER,
   PLANE_OUTER,
+  PLANE_OUTLINE_MARGIN,
   planeHandleCorners,
+  planeHandleOutline,
   RING_PICK_TUBE,
   RING_RADIUS,
   RING_TUBE,
@@ -212,5 +214,67 @@ describe('buildGizmoPickGeometry', () => {
     // through the same pose, which must land on the same world direction.
     const world = rotateVector(q, parseGizmoHandleKey(gizmoHandleKey('translate', 'x'))!.axis)
     expect(world[1]).toBeCloseTo(1, 6)
+  })
+})
+
+describe('planeHandleOutline', () => {
+  const dot = (a: readonly number[], b: readonly number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+  it('closes the ring', () => {
+    for (const def of GIZMO_AXES) {
+      const ring = planeHandleOutline(def)
+      expect(ring).toHaveLength(5)
+      expect(ring[4]).toEqual(ring[0])
+    }
+  })
+
+  it('encloses the quad on all four sides', () => {
+    for (const def of GIZMO_AXES) {
+      const quad = planeHandleCorners(def)
+      const ring = planeHandleOutline(def)
+      // Per basis direction, not per world component: only in the handle's own
+      // u/v frame does "outside on all four sides" mean anything.
+      for (const basis of [def.u, def.v]) {
+        const quadCoords = quad.map(p => dot(p, basis))
+        const ringCoords = ring.map(p => dot(p, basis))
+        expect(Math.min(...ringCoords)).toBeLessThan(Math.min(...quadCoords))
+        expect(Math.max(...ringCoords)).toBeGreaterThan(Math.max(...quadCoords))
+      }
+    }
+  })
+
+  it('stands off by exactly the margin', () => {
+    for (const def of GIZMO_AXES) {
+      const ring = planeHandleOutline(def)
+      for (const basis of [def.u, def.v]) {
+        const coords = ring.map(p => dot(p, basis))
+        expect(Math.min(...coords)).toBeCloseTo(PLANE_INNER - PLANE_OUTLINE_MARGIN, 9)
+        expect(Math.max(...coords)).toBeCloseTo(PLANE_OUTER + PLANE_OUTLINE_MARGIN, 9)
+      }
+    }
+  })
+
+  it('derives the margin from the quad rather than a free constant', () => {
+    // Pins the relationship, not the value: resizing the plane handle must
+    // carry the halo with it.
+    expect(PLANE_OUTLINE_MARGIN).toBeCloseTo((PLANE_OUTER - PLANE_INNER) * 0.2, 9)
+    expect(PLANE_OUTLINE_MARGIN).toBeGreaterThan(0)
+    // Still tucked inside the ring it shares the gizmo with.
+    expect(PLANE_OUTER + PLANE_OUTLINE_MARGIN).toBeLessThan(RING_RADIUS)
+  })
+
+  it('lies flat in each handle plane, off that handle u/v companions', () => {
+    for (const def of GIZMO_AXES) {
+      for (const p of planeHandleOutline(def)) {
+        expect(dot(p, def.axis)).toBeCloseTo(0, 9)  // no component along the normal
+        // And it is reachable from u and v alone: reconstructing from the two
+        // projections must return the point, which no other basis would do.
+        const cu = dot(p, def.u)
+        const cv = dot(p, def.v)
+        for (let c = 0; c < 3; c++) {
+          expect(def.u[c] * cu + def.v[c] * cv).toBeCloseTo(p[c], 9)
+        }
+      }
+    }
   })
 })

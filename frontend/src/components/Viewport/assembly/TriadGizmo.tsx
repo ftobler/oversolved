@@ -15,13 +15,15 @@
 // a big and a small part get the same grab targets.
 
 import { useMemo } from 'react'
+import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import AngleDial from '@/components/Viewport/assembly/AngleDial'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import type { GizmoDragState } from '@/stores/assemblyStore'
 import {
   ARROW_LENGTH, GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey, HEAD_LENGTH, HEAD_RADIUS,
-  planeHandleCorners, RING_RADIUS, RING_TUBE, SHAFT_RADIUS, type GizmoAxisDef,
+  planeHandleCorners, planeHandleOutline, RING_RADIUS, RING_TUBE, SHAFT_RADIUS,
+  type GizmoAxisDef,
 } from '@/utils/gizmoPickGeometry'
 import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
 import type { Quat, Vec3 } from '@/utils/transform3d'
@@ -121,6 +123,19 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
 
               {shows('plane', def.name) && (
                 <PlaneHandle def={def} hovered={hovered === gizmoHandleKey('plane', def.name)} />
+              )}
+
+              {/* Emphasis only, while the quad is actually held: a halo around
+                  the one handle left on screen, with no grab region of its own. */}
+              {drag?.kind === 'plane' && drag.axis === def.name && (
+                <Line
+                  points={planeHandleOutline(def)}
+                  color={COLOR_HOVER}
+                  lineWidth={1.5}
+                  depthTest={false}
+                  transparent
+                  renderOrder={1001}
+                />
               )}
 
               {/* The dial is built from def.u/def.v rather than ringRotation, so

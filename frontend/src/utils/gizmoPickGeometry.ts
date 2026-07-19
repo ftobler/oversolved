@@ -229,6 +229,28 @@ export function planeHandleCorners(def: GizmoAxisDef): [Vec3, Vec3, Vec3, Vec3] 
 }
 
 /**
+ * How far the drag emphasis outline stands off the quad it surrounds. A
+ * fraction of the quad's own span rather than a free number, so the halo keeps
+ * its proportion if the plane handle is ever resized: a fifth of the side reads
+ * as clearly detached without touching the arrows the quad sits between.
+ */
+export const PLANE_OUTLINE_MARGIN = (PLANE_OUTER - PLANE_INNER) * 0.2
+
+/**
+ * The plane handle's emphasis outline: the quad's corner ring pushed outward by
+ * PLANE_OUTLINE_MARGIN on all four sides, and closed by repeating the first
+ * corner so a consumer can draw it as one polyline. Same `u`/`v` basis as the
+ * quad, so the outline lies in the handle's plane whatever the axis.
+ */
+export function planeHandleOutline(def: GizmoAxisDef): [Vec3, Vec3, Vec3, Vec3, Vec3] {
+  const { u, v, axis } = def
+  const lo = PLANE_INNER - PLANE_OUTLINE_MARGIN
+  const hi = PLANE_OUTER + PLANE_OUTLINE_MARGIN
+  const at = (cu: number, cv: number) => combine(u, v, axis, cu, cv, 0)
+  return [at(lo, lo), at(hi, lo), at(hi, hi), at(lo, hi), at(lo, lo)]
+}
+
+/**
  * Every triad handle as one registration payload, posed exactly like the drawn
  * gizmo: local units scaled by `scale` (which the caller derives from the
  * camera so the gizmo keeps its pixel size), rotated into the part's frame,
