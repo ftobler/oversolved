@@ -201,10 +201,6 @@ export function MateEditor({
         )
       })}
 
-      {activeField?.featureId === featureId && (
-        <p className="mate-editor-hint">Click geometry to aim; click again to cycle the corner.</p>
-      )}
-
       <div className="mate-param-list">{mateParams(mate.kind).map(renderParam)}</div>
     </div>
   )

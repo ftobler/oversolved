@@ -103,13 +103,6 @@
   background: #c0392b;
 }
 
-.mate-editor-hint {
-  margin: 0;
-  padding-left: 6px;
-  color: #6a5a6a;
-  font-size: 12px;
-}
-
 .mate-param-list {
   display: flex;
   flex-direction: column;
