@@ -112,7 +112,7 @@ export function PartInstanceEditor({
     // Clicks inside the editor must not bubble to the row's select handler.
     <div className="instance-editor" onClick={e => e.stopPropagation()}>
       <label className="feature-field-row">
-        <span className="feature-field-label">Grounded</span>
+        <span className="feature-field-label instance-label--wide">Grounded</span>
         <input
           type="checkbox"
           checked={!!instance.fixed}
