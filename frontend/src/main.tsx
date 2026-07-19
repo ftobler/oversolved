@@ -11,7 +11,7 @@ import '@fontsource/material-icons-outlined/index.css'
 import '@/index.css'
 import App from '@/App.tsx'
 import { initializeTools } from '@/tools'
-import { preloadPlaneLabelFont } from '@/components/Viewport/PlaneVisual'
+import { preloadViewportLabelFont } from '@/components/Viewport/labelFont'
 import { ToastProvider } from '@/contexts/ToastContext'
 
 const theme = createTheme({
@@ -19,9 +19,9 @@ const theme = createTheme({
 })
 
 initializeTools()
-// Off the gesture on purpose: the first plane label to mount would otherwise
-// suspend the whole Canvas on a CDN font fetch. See preloadPlaneLabelFont.
-preloadPlaneLabelFont()
+// Off the gesture on purpose: the first 3D label to mount would otherwise
+// suspend the whole Canvas on the font fetch. See preloadViewportLabelFont.
+preloadViewportLabelFont()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

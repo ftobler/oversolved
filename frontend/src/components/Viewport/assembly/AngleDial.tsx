@@ -10,9 +10,10 @@
 // the gizmo it annotates: the dial sits at the part's origin, usually inside the
 // solid, and would otherwise be swallowed by the body it is measuring.
 
-import { useMemo } from 'react'
+import { Suspense, useMemo } from 'react'
 import { Billboard, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
+import { LABEL_CHARACTERS, LABEL_FONT } from '@/components/Viewport/labelFont'
 import {
   DIAL_READOUT_RADIUS, dialCounterRotation, dialReadoutPosition, dialSpoke, dialSweepVertices,
   dialTicks, formatSwingDegrees, nearestTickIndex,
@@ -119,20 +120,30 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
       {/* Billboarded because the dial lies in the ring's plane, which the user
           is often looking at edge-on; the readout has to stay legible there. */}
       <Billboard position={readoutAt}>
-        <Text
-          fontSize={READOUT_SIZE}
-          anchorX="center"
-          anchorY="middle"
-          renderOrder={RENDER_ORDER}
-        >
-          {formatSwingDegrees(swing)}
-          <meshBasicMaterial
-            color={snapped ? SNAP_COLOR : LIVE_COLOR}
-            depthTest={false}
-            transparent
-            toneMapped={false}
-          />
-        </Text>
+        {/* The readout suspends on its font, and R3F gives the whole Canvas a
+            single Suspense boundary, so without a local one a cold font would
+            blank the entire viewport in the middle of a rotation drag. The
+            font args must be the shared ones: they are the suspend key drei
+            looks the warm-up up under, and a mismatch here puts this <Text>
+            back on a cold entry. See labelFont.ts. */}
+        <Suspense fallback={null}>
+          <Text
+            font={LABEL_FONT}
+            characters={LABEL_CHARACTERS}
+            fontSize={READOUT_SIZE}
+            anchorX="center"
+            anchorY="middle"
+            renderOrder={RENDER_ORDER}
+          >
+            {formatSwingDegrees(swing)}
+            <meshBasicMaterial
+              color={snapped ? SNAP_COLOR : LIVE_COLOR}
+              depthTest={false}
+              transparent
+              toneMapped={false}
+            />
+          </Text>
+        </Suspense>
       </Billboard>
     </group>
   )

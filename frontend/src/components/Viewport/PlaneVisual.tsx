@@ -3,50 +3,30 @@
 import { Suspense, useRef } from 'react'
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { Line, Text } from '@react-three/drei'
-import { preload } from 'suspend-react'
-import { preloadFont } from 'troika-three-text'
 import * as THREE from 'three'
+import { LABEL_CHARACTERS, LABEL_FONT } from '@/components/Viewport/labelFont'
 
 const Y_OFFSET = 0.03
 const LABEL_COLOR = '#888888'
 const LABEL_OPACITY = 0.20
+const LABEL_SIZE = 3
 
-// The font arguments every plane label renders with. drei's <Text> gates its
-// first paint on `suspend(..., ['troika-text', font, characters])`, and with the
-// font unset troika resolves it by fetching a codepoint index and a .woff off a
-// CDN. Left cold, that network round trip runs on whichever gesture first mounts
-// a label (unhiding a plane), and R3F gives the whole Canvas a single Suspense
-// boundary, so the entire viewport blanks until it lands.
+// Where the label's first baseline sits below the plane's top edge, in em.
 //
-// These constants feed BOTH the <Text> props and the warm-up key below, so the
-// preload cannot drift onto a different cache entry than the one <Text> looks
-// up. suspend-react matches keys by identity per slot, so a mismatch here would
-// silently fill a neighbouring entry and fix nothing.
-const LABEL_FONT: string | undefined = undefined
-const LABEL_CHARACTERS: string | undefined = undefined
-const LABEL_FONT_KEY = ['troika-text', LABEL_FONT, LABEL_CHARACTERS]
-
-/**
- * Fills drei's font cache ahead of the first label mount, so the fetch is paid
- * at app startup instead of on the user's gesture. Idempotent: suspend-react
- * returns the existing entry rather than refetching.
- *
- * It must go through suspend-react's `preload`, NOT `preloadFont` on its own.
- * Calling preloadFont directly warms troika's own internal font cache, which
- * looks like it should be enough and is not: drei gates on its suspend-react
- * entry, so with that entry still empty <Text> throws a promise on first mount
- * anyway and the viewport still flashes -- just for a shorter time, which makes
- * the bug look fixed while leaving it in. `preload` registers the entry under
- * the same key without throwing, which is the part that actually matters.
- */
-export function preloadPlaneLabelFont(): void {
-  preload(
-    () => new Promise<void>(resolve => {
-      preloadFont({ font: LABEL_FONT, characters: LABEL_CHARACTERS }, () => resolve())
-    }),
-    LABEL_FONT_KEY,
-  )
-}
+// Anchored to the BASELINE on purpose. The obvious anchorY="top" hangs the text
+// off the font's ascender, which troika reads from OS/2 sTypoAscender -- not a
+// visual quantity, and wildly inconsistent between faces. Noto Sans (what
+// troika used to resolve off the CDN) reports 1.069 em where the Roboto we now
+// self-host reports 0.750 em. The anchor sits ON the plane's top edge, so that
+// 0.32 em gap lifted the whole label up out of the quad the instant the font
+// changed. The baseline has no such freedom, so the placement below is the same
+// on any face.
+//
+// troika also offers "top-cap", which would express this more directly, but
+// drei's anchorY type does not admit it and a cast is not worth it.
+const LABEL_TOP_GAP_EM = 0.35  // clear space between the plane edge and the capitals
+const LABEL_CAP_HEIGHT_EM = 0.71  // Roboto sCapHeight 1456/2048; sans faces cluster near this
+const LABEL_BASELINE_DROP_EM = LABEL_TOP_GAP_EM + LABEL_CAP_HEIGHT_EM
 
 interface PlaneLabelProps {
   x: number
@@ -76,11 +56,14 @@ export function PlaneLabel({ x, y, children }: PlaneLabelProps) {
         <Text
           font={LABEL_FONT}
           characters={LABEL_CHARACTERS}
-          fontSize={3}
+          fontSize={LABEL_SIZE}
           color={LABEL_COLOR}
           fillOpacity={LABEL_OPACITY}
           anchorX="left"
-          anchorY="top"
+          anchorY="top-baseline"
+          // Local to the scaled group, so the drop stays a constant on-screen
+          // distance as the user zooms, matching the label's own fixed size.
+          position={[0, -LABEL_BASELINE_DROP_EM * LABEL_SIZE, 0]}
         >
           {children}
         </Text>
