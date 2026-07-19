@@ -2,7 +2,8 @@
 // mate's kind actually reads. Rendered inline inside the mate's tree row, below
 // the pink editing header the tree draws (kind label + accept/reject/delete), so
 // this component owns only the fields, mirroring the part editor's feature
-// editors that expand inside the feature-item.
+// editors that expand inside the feature-item. Renaming is deliberately absent:
+// it lives in the row's tridot menu, where every other feature in the app renames.
 //
 // The chips are NOT the part editor's PickChip: that one consumes
 // sketchEditorStore's normalSelection, which the assembly scene never writes.
@@ -30,11 +31,8 @@ interface MateEditorProps {
   result?: MateResult
   activeField: MateFieldTarget | null
   labelFor?: (handle: string) => string | undefined
-  // Placeholder shown when the mate has no explicit label ('Fixed 1').
-  defaultName: string
   onArmField: (target: MateFieldTarget | null) => void
   onUpdate: (patch: MateParamPatch) => void
-  onRename: (label: string | undefined) => void
 }
 
 const REF_FIELDS: readonly MateRefField[] = ['ref_a', 'ref_b']
@@ -60,7 +58,7 @@ function numericValue(v: unknown): string {
 }
 
 export function MateEditor({
-  featureId, mate, result, activeField, labelFor, defaultName, onArmField, onUpdate, onRename,
+  featureId, mate, result, activeField, labelFor, onArmField, onUpdate,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
   // The box's own text, not `mate.angle` directly: a half-typed keystroke ('-',
@@ -170,18 +168,6 @@ export function MateEditor({
     // Clicks inside the editor must not bubble to the row, whose onClick would
     // re-select the mate and disarm the field a chip just armed.
     <div className="mate-editor" onClick={e => e.stopPropagation()}>
-      <label className="feature-field-row">
-        <span className="feature-field-label">Name</span>
-        <input
-          type="text"
-          className="feature-field-input"
-          aria-label="Mate name"
-          value={mate.label ?? ''}
-          placeholder={defaultName}
-          onChange={e => onRename(e.target.value)}
-        />
-      </label>
-
       {REF_FIELDS.map(field => {
         const picking = activeField?.featureId === featureId && activeField.field === field
         const empty = isMateRefEmpty(mate[field])

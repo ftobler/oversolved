@@ -25,10 +25,8 @@ function renderEditor(m: MateFeatureDef, onUpdate = vi.fn()) {
       featureId="m1"
       mate={m}
       activeField={null}
-      defaultName="Fixed 1"
       onArmField={vi.fn()}
       onUpdate={onUpdate}
-      onRename={vi.fn()}
     />
   )
   return { onUpdate, ...utils }

@@ -8,6 +8,7 @@ import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/Right
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import contextEditIcon from '@/assets/icons/context-edit.svg'
 import contextDeleteIcon from '@/assets/icons/context-delete.svg'
+import iconRenameIcon from '@/assets/icons/rename.svg'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
@@ -59,9 +60,12 @@ interface AssemblyTreeProps {
   onCommitMate: () => void
   onCancelMate: () => void
   onDeleteMate: (featureId: string) => void
-  // Rendered inside the mate's row while it is being edited. The default name is
-  // the placeholder shown when the mate has no explicit label ('Fixed 1').
-  renderMateEditor: (mate: MateFeature, defaultName: string) => ReactNode
+  // A rename gesture only names its subject; the owner collects the new label in
+  // a dialog, the same split the part editor's context menu uses. The current
+  // name is what the row shows, so an unlabelled mate seeds 'Fixed 1'.
+  onRequestRenameMate: (featureId: string, currentName: string) => void
+  // Rendered inside the mate's row while it is being edited.
+  renderMateEditor: (mate: MateFeature) => ReactNode
 }
 
 // The assembly's feature tree, styled to mirror the part editor: a top pane of
@@ -97,6 +101,7 @@ export function AssemblyTree({
   onCommitMate,
   onCancelMate,
   onDeleteMate,
+  onRequestRenameMate,
   renderMateEditor,
 }: AssemblyTreeProps) {
   const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
@@ -271,6 +276,7 @@ export function AssemblyTree({
             const selected = selectedMateId === id
             const editing = editingMateId === id
             const menuItems: ContextMenuItem[] = [
+              { label: 'Rename', icon: iconRenameIcon, onClick: () => onRequestRenameMate(id, name) },
               { label: 'Delete', icon: contextDeleteIcon, className: 'danger', onClick: () => onDeleteMate(id) },
             ]
             return (
@@ -326,7 +332,7 @@ export function AssemblyTree({
                     </button>
                   </div>
                 </div>
-                {editing && renderMateEditor({ id, mate }, defaultName)}
+                {editing && renderMateEditor({ id, mate })}
               </li>
             )
           })}

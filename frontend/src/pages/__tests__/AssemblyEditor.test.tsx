@@ -536,13 +536,32 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     expect(mateDef().ref_a).toEqual({ part: 'hA', anchor: 'a_v' })
   })
 
-  it('renaming a mate writes its label and shows it in the tree', async () => {
+  it('renaming a mate from the tridot menu writes its label and shows it in the tree', async () => {
     await renderWithMate('fixed')
     disarm()
-    fireEvent.change(screen.getByLabelText('Mate name'), { target: { value: 'top clamp' } })
+    fireEvent.click(screen.getByLabelText('Mate options'))
+    fireEvent.click(screen.getByText('Rename'))
+
+    // The dialog seeds from the name the row was showing, so an unlabelled mate
+    // starts at its default rather than blank.
+    const input = screen.getByLabelText('Name') as HTMLInputElement
+    expect(input.value).toBe('Fixed 1')
+
+    fireEvent.change(input, { target: { value: 'top clamp' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     await tick()
+
     expect(mateDef().label).toBe('top clamp')
     expect(screen.getByText('top clamp')).toBeTruthy()
+  })
+
+  it('the mate parameter panel no longer carries a Name field', async () => {
+    await renderWithMate('fixed')
+    disarm()
+    expect(screen.queryByLabelText('Mate name')).toBeNull()
+    const labels = [...document.querySelectorAll('.mate-editor .feature-field-label')]
+      .map(n => n.textContent)
+    expect(labels).not.toContain('Name')
   })
 
   it('cancelling a mate edit reverts its parameters and closes the editor', async () => {

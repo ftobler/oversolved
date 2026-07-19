@@ -12,6 +12,7 @@ import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
+import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import { backendBundle } from '@/adapters/backend'
 import { useCloudAvailable } from '@/hooks/useCloudAvailable'
@@ -97,6 +98,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // Which mate has its inline parameter editor open. Distinct from the store's
   // selectedMateId: a plain row click selects (highlights), the pencil edits.
   const [editingMateId, setEditingMateId] = useState<string | null>(null)
+  // The mate the tridot menu asked to rename, with the name the row was showing
+  // so the dialog opens pre-filled even when the mate has no explicit label.
+  const [renameMateTarget, setRenameMateTarget] = useState<{ id: string; currentName: string } | null>(null)
   const { requestSolve } = useAssemblySolve(uuid, doc)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
@@ -408,6 +412,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => setMateLabel(d, featureId, label))
   }, [mutate])
 
+  // The dialog already trims and refuses an empty name, so whatever arrives here
+  // is a label worth writing.
+  const handleRenameMateConfirm = useCallback((label: string) => {
+    if (!renameMateTarget) return
+    handleRenameMate(renameMateTarget.id, label)
+    setRenameMateTarget(null)
+  }, [renameMateTarget, handleRenameMate])
+
   const handleArmMateField = useCallback((target: MateFieldTarget | null) => {
     useAssemblyStore.getState().setActiveMateField(target)
   }, [])
@@ -447,19 +459,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     />
   ), [handleSetGrounded, handleSetPosition, handleSetRotation])
 
-  const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }, defaultName: string) => (
+  const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
       featureId={mate.id}
       mate={mate.mate}
       result={mateResults[mate.id]}
       activeField={activeMateField}
       labelFor={labelFor}
-      defaultName={defaultName}
       onArmField={handleArmMateField}
       onUpdate={patch => handleUpdateMate(mate.id, patch)}
-      onRename={label => handleRenameMate(mate.id, label)}
     />
-  ), [mateResults, activeMateField, labelFor, handleArmMateField, handleUpdateMate, handleRenameMate])
+  ), [mateResults, activeMateField, labelFor, handleArmMateField, handleUpdateMate])
 
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>
@@ -502,7 +512,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onCommitMate={handleCommitMate}
             onCancelMate={handleCancelMate}
             onDeleteMate={handleDeleteMate}
-            renderMateEditor={(m, defaultName) => renderMateEditor(m, defaultName)}
+            onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
+            renderMateEditor={(m) => renderMateEditor(m)}
           />
         </aside>
         <div className="doc-editor">
@@ -575,6 +586,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
         selfUuid={uuid}
         onClose={() => setPickerOpen(false)}
         onPick={handlePick}
+      />
+      <RenameDialog
+        isOpen={renameMateTarget !== null}
+        title="Rename Mate"
+        currentName={renameMateTarget?.currentName ?? ''}
+        onRename={handleRenameMateConfirm}
+        onCancel={() => setRenameMateTarget(null)}
       />
       <AssemblyExport ref={exportRef} doc={doc} docName={docName} />
     </div>
