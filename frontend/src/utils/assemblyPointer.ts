@@ -38,7 +38,7 @@ export interface AssemblyPointerStore {
   endPartManipulation: () => void
   cancelPartManipulation: () => void
   setSelectedPartHandle: (handle: string | null) => void
-  /** The store clears this itself when the session ends, so nothing here does. */
+  /** Ending a session clears this store-side; the adapter only ever sets it. */
   setGizmoDrag: (drag: GizmoDragState | null) => void
 }
 
@@ -231,7 +231,13 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
   }
 
   const onPointerUp = (): GestureOutcome => {
-    if (!gesture) return NO_GESTURE
+    if (!gesture) {
+      // Belt and braces. Nothing should be able to leave a drag published with
+      // no gesture behind it, but a triad narrowed to a gesture that is not
+      // running is unusable, so the release clears it whatever happened.
+      store.setGizmoDrag(null)
+      return NO_GESTURE
+    }
     const outcome: GestureOutcome = { source, moved }
     gesture = null
     source = null

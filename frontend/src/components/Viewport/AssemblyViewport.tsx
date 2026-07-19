@@ -457,6 +457,13 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     setManipulating(false)
   }, [adapter])
 
+  // Unmounting mid-drag means the pointerup never arrives, and both the session
+  // and the published gizmoDrag live outside React (a closure and a module-level
+  // store), so they would survive into the next mount: the triad would come back
+  // narrowed to a handle nobody is holding, with GizmoPickLayer still registering
+  // all nine, leaving eight invisible handles that still take clicks.
+  useEffect(() => () => { adapter.cancel() }, [adapter])
+
   // Escape abandons the gesture: the part snaps back to its solved pose and no
   // re-solve runs, the standard out for a drag started by mistake.
   useEffect(() => {

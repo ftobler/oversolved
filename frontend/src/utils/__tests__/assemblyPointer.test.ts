@@ -11,8 +11,13 @@ import {
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
 import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
-import type { Ray } from '@/utils/gizmoMath'
-import { IDENTITY_TRANSFORM, rotateVector, type Vec3 } from '@/utils/transform3d'
+import { dialCounterRotation, dialSpoke, dialTicks, nearestTickIndex } from '@/utils/angleDialGeometry'
+import { signedAngleAbout, type Ray } from '@/utils/gizmoMath'
+import { GIZMO_AXES, type GizmoAxisDef } from '@/utils/gizmoPickGeometry'
+import { manipulationDelta } from '@/utils/partManipulation'
+import {
+  composeTransforms, IDENTITY_TRANSFORM, quatMultiply, rotateVector, transformQuat, type Quat, type Vec3,
+} from '@/utils/transform3d'
 
 const VIEW_NORMAL: [number, number, number] = [0, 0, -1]  // camera looking down -Z
 const ray = (origin: [number, number, number], direction: [number, number, number]): Ray => ({ origin, direction })
@@ -371,6 +376,16 @@ describe('gizmoDrag state', () => {
     expect(gizmoDrag()).toBeNull()
   })
 
+  // A triad narrowed to a gesture nobody is holding is unusable: eight of its
+  // nine handles are gone from the screen while the pick layer still registers
+  // them. A release clears the drag even when it finds no gesture to end.
+  it('a pointer-up with no session clears a drag left standing', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    useAssemblyStore.getState().setGizmoDrag({ kind: 'axis', axis: 'x' })
+    adapter.onPointerUp()
+    expect(gizmoDrag()).toBeNull()
+  })
+
   // A handle that opens no session must leave no drag behind, or the triad would
   // narrow to a gesture that is not running.
   it('a refused grab leaves it null', () => {
@@ -526,5 +541,105 @@ describe('click versus manipulation at pointer-up', () => {
 
     expect(adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)).toBe(false)
     expect(gestureAllowsSelect(adapter.onPointerUp())).toBe(true)
+  })
+})
+
+// The one composition nothing else covers: the angles the store publishes are
+// measured in the PRE-DRAG frame, while TriadGizmo nests the dial inside a group
+// posed with the part's LIVE orientation. Every assertion here therefore drives a
+// real ring drag, rebuilds the gizmo pose exactly as assemblyRender's `gizmoPose`
+// does, and asks where the dial's lines actually land in the world.
+//
+// A protractor is what is being checked: the datum line and the tick grid stay
+// put while the part turns under them, and only the live line sweeps. Drop the
+// dial's counter-rotation and the datum tracks the cursor while the live line
+// runs at twice its rate, which is what the wedge's correct WIDTH hides.
+describe('the angle dial as drawn through the drag pose', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    setAssemblyCallbacks(null)
+  })
+
+  const DEG = Math.PI / 180
+  const deg = (rad: number): number => rad / DEG
+
+  /** A pointer on `def`'s ring at `bearing` degrees from `def.u`, sighted down the axis. */
+  const armAt = (def: GizmoAxisDef, bearing: number): Ray => {
+    const a = bearing * DEG
+    const { u, v, axis } = def
+    const at = (i: 0 | 1 | 2) => u[i] * Math.cos(a) * 5 + v[i] * Math.sin(a) * 5 + axis[i] * 10
+    return ray([at(0), at(1), at(2)], [-axis[0], -axis[1], -axis[2]])
+  }
+
+  /**
+   * Runs a ring drag and returns the world quaternion the AngleDial's own group
+   * ends up with: the triad group's pose (`gizmoPose`) carrying the dial's local
+   * counter-rotation, which is precisely the nesting TriadGizmo renders.
+   */
+  function dragRing(def: GizmoAxisDef, grabBearing: number, toBearing: number) {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown(
+      'p1', 'rotate', def.name, def.axis, def.u, [0, 0, 0], armAt(def, grabBearing),
+    )
+    adapter.onPointerMove(armAt(def, toBearing))
+
+    const state = useAssemblyStore.getState()
+    const drag = state.gizmoDrag as { kind: 'ring'; datum: number; swing: number }
+    // The seed is identity here, so the pre-drag frame is the world frame and a
+    // bearing read against `def.u` is a world bearing.
+    const pose = composeTransforms(manipulationDelta(state.manipulation!), IDENTITY_TRANSFORM)
+    const dialQuat = quatMultiply(transformQuat(pose), dialCounterRotation(def, drag.swing))
+    return { drag, dialQuat }
+  }
+
+  /** Where a point drawn in the dial's local frame ends up, as a world bearing. */
+  const bearingOf = (def: GizmoAxisDef, dialQuat: Quat, local: Vec3): number =>
+    deg(signedAngleAbout(def.axis, def.u, rotateVector(dialQuat, local)))
+
+  // Grab bearings are deliberately off a quarter turn (40 rounds to 0, 130 to
+  // 90), so a datum that silently followed the raw grab arm would show up too.
+  it.each([
+    ['x', 40, 130, 90],
+    ['y', 40, 130, 90],
+    ['z', 40, 130, 90],
+    ['z', 130, 40, -90],
+    ['x', 40, -50, -90],
+  ])('the %s ring grabbed at %i and dragged to %i keeps its datum pinned', (name, grab, to, wantSwing) => {
+    const def = GIZMO_AXES.find(a => a.name === name)!
+    const { drag, dialQuat } = dragRing(def, grab, to)
+
+    expect(deg(drag.swing)).toBeCloseTo(wantSwing, 6)
+
+    const datumEnd = dialSpoke(def, drag.datum)[1]
+    const liveEnd = dialSpoke(def, drag.datum + drag.swing)[1]
+    // The datum marks where the rotation STARTED, so the part swinging under it
+    // must not move it; the live line carries the whole of the applied swing.
+    expect(bearingOf(def, dialQuat, datumEnd)).toBeCloseTo(deg(drag.datum), 6)
+    expect(bearingOf(def, dialQuat, liveEnd)).toBeCloseTo(deg(drag.datum) + wantSwing, 6)
+  })
+
+  it('the tick grid stays on world snap bearings while the part turns', () => {
+    const def = GIZMO_AXES.find(a => a.name === 'z')!
+    const { drag, dialQuat } = dragRing(def, 40, 122.5)  // 82.5, midway between two bands: free motion
+
+    const ticks = dialTicks(def)
+    for (const tick of ticks) {
+      const drawn = bearingOf(def, dialQuat, tick.end)
+      // Every tick must still sit on a multiple of the snap step in world, or a
+      // highlighted tick would advertise a bearing the part cannot snap to.
+      expect(Math.abs(drawn / 15 - Math.round(drawn / 15))).toBeLessThan(1e-6)
+    }
+    expect(bearingOf(def, dialQuat, ticks[0].end)).toBeCloseTo(0, 6)
+    expect(drag.swing).toBeCloseTo(82.5 * DEG, 6)
+  })
+
+  it('the highlighted tick sits under the live line when the swing snapped', () => {
+    const def = GIZMO_AXES.find(a => a.name === 'y')!
+    const { drag, dialQuat } = dragRing(def, 40, 128)  // 88 pulls onto the 90 tick
+
+    const lit = dialTicks(def)[nearestTickIndex(drag.datum + drag.swing)]
+    const liveEnd = dialSpoke(def, drag.datum + drag.swing)[1]
+    expect(bearingOf(def, dialQuat, lit.end)).toBeCloseTo(bearingOf(def, dialQuat, liveEnd), 6)
   })
 })

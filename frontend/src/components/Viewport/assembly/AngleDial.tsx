@@ -2,9 +2,9 @@
 // every snap step, a datum line where the drag started, a live line where it is
 // now, the wedge between them and a numeric readout.
 //
-// A thin renderer. Every position, the wrapping decision for sweeps past a full
-// turn and the readout's wording live in utils/angleDialGeometry.ts, so the dial
-// stays testable without a viewport.
+// A thin renderer. Every position, the dial's own counter-rotation, the wrapping
+// decision for sweeps past a full turn and the readout's wording live in
+// utils/angleDialGeometry.ts, so the dial stays testable without a viewport.
 //
 // Drawn with `depthTest: false` and a renderOrder above the triad's, matching
 // the gizmo it annotates: the dial sits at the part's origin, usually inside the
@@ -14,8 +14,8 @@ import { useMemo } from 'react'
 import { Billboard, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import {
-  DIAL_READOUT_RADIUS, dialReadoutPosition, dialSpoke, dialSweepVertices, dialTicks,
-  formatSwingDegrees, nearestTickIndex,
+  DIAL_READOUT_RADIUS, dialCounterRotation, dialReadoutPosition, dialSpoke, dialSweepVertices,
+  dialTicks, formatSwingDegrees, nearestTickIndex,
 } from '@/utils/angleDialGeometry'
 import type { GizmoAxisDef } from '@/utils/gizmoPickGeometry'
 
@@ -43,13 +43,17 @@ export default function AngleDial({ def, datum, swing, snapped }: AngleDialProps
   const datumLine = useMemo(() => dialSpoke(def, datum), [def, datum])
   const liveLine = useMemo(() => dialSpoke(def, datum + swing), [def, datum, swing])
   const readoutAt = dialReadoutPosition(def, datum, swing)
+  // The group TriadGizmo nests this in carries the live drag, so without taking
+  // that swing back out the dial would ride round with the part it is measuring:
+  // see dialCounterRotation. This is what makes the dial a protractor.
+  const counterRotation = useMemo(() => dialCounterRotation(def, swing), [def, swing])
 
   // While snapped the live line lands exactly on a tick, so lighting that tick
   // up as well makes the click visible even when the line covers it.
   const litTick = snapped ? nearestTickIndex(datum + swing) : -1
 
   return (
-    <group renderOrder={RENDER_ORDER}>
+    <group renderOrder={RENDER_ORDER} quaternion={counterRotation}>
       <mesh renderOrder={RENDER_ORDER}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[sweep, 3]} />

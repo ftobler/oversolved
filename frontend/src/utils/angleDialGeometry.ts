@@ -13,7 +13,7 @@
 
 import { SNAP_STEP_DEG, snapTickAngles } from '@/utils/gizmoAngleSnap'
 import { RING_RADIUS, RING_TUBE, type GizmoAxisDef } from '@/utils/gizmoPickGeometry'
-import type { Vec3 } from '@/utils/transform3d'
+import { quatFromAxisAngle, type Quat, type Vec3 } from '@/utils/transform3d'
 
 const TURN = Math.PI * 2
 const RAD_TO_DEG = 180 / Math.PI
@@ -33,6 +33,29 @@ const TICKS_PER_QUARTER = 90 / SNAP_STEP_DEG
 
 // Fine enough that a wedge edge reads as an arc rather than a chord at gizmo size.
 const SWEEP_SEGMENT_RAD = TURN / 144
+
+/**
+ * The dial's own orientation inside the triad group. It looks redundant; it is
+ * not, and removing it puts every drawn bearing an extra `swing` ahead of where
+ * it belongs.
+ *
+ * TriadGizmo's outer group is posed with the part's LIVE orientation, drag
+ * included (assemblyRender's `gizmoPose` composes the manipulation delta over
+ * the solved transform), so anything nested in it turns with the part as it
+ * swings. `datum`, though, is measured at pointer-down against the PRE-DRAG
+ * frame, and the dial is a protractor: its ticks and its datum line are the
+ * fixed scale the part turns under, not markings painted on the part. Undoing
+ * exactly the swing the group added puts the dial back in the pointer-down
+ * frame, which leaves the live line, drawn at `datum + swing`, as the only
+ * thing that sweeps.
+ *
+ * The counter-rotation is about the LOCAL axis, which is the same rotation as
+ * the world-axis one the drag applied: the drag's world axis is this local axis
+ * carried through the pre-drag pose, so the two conjugate into each other.
+ */
+export function dialCounterRotation(def: GizmoAxisDef, swing: number): Quat {
+  return quatFromAxisAngle(def.axis, -swing)
+}
 
 /** A point on the dial's plane, in gizmo-local coordinates. */
 export function dialPoint(def: GizmoAxisDef, angle: number, radius: number): Vec3 {
