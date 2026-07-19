@@ -95,6 +95,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   const manipulation = useAssemblyStore(s => s.manipulation)
   const settlingOffsets = useAssemblyStore(s => s.settlingOffsets)
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
+  const gizmoDrag = useAssemblyStore(s => s.gizmoDrag)
   const pickGeometry = useAssemblyStore(s => s.pickGeometry)
   const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
   const anchors = useAssemblyStore(s => s.anchors)
@@ -555,7 +556,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
         {triad && (
           <>
-            <TriadGizmo origin={triad.origin} orientation={triad.orientation} hovered={hoveredGizmo} />
+            <TriadGizmo origin={triad.origin} orientation={triad.orientation} hovered={hoveredGizmo} drag={gizmoDrag} />
             <GizmoPickLayer origin={triad.origin} orientation={triad.orientation} enabled={!manipulating} />
           </>
         )}

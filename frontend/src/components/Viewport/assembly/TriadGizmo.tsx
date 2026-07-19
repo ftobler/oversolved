@@ -16,7 +16,9 @@
 
 import { useMemo } from 'react'
 import * as THREE from 'three'
+import AngleDial from '@/components/Viewport/assembly/AngleDial'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
+import type { GizmoDragState } from '@/stores/assemblyStore'
 import {
   ARROW_LENGTH, GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey, HEAD_LENGTH, HEAD_RADIUS,
   planeHandleCorners, RING_RADIUS, RING_TUBE, SHAFT_RADIUS, type GizmoAxisDef,
@@ -41,6 +43,13 @@ interface TriadGizmoProps {
   orientation: Quat
   /** Entity key of the handle under the cursor, straight from the ID buffer. */
   hovered: string | null
+  /**
+   * The gesture in progress, or null when idle. Non-null narrows the triad down
+   * to the one handle being dragged: the other eight would only be clutter over
+   * a motion the user has already committed to, and a ring drag needs the room
+   * for its dial.
+   */
+  drag: GizmoDragState | null
 }
 
 /**
@@ -70,9 +79,14 @@ function PlaneHandle({ def, color, hovered }: { def: GizmoAxisDef; color: string
   )
 }
 
-export default function TriadGizmo({ origin, orientation, hovered }: TriadGizmoProps) {
+export default function TriadGizmo({ origin, orientation, hovered, drag }: TriadGizmoProps) {
   const ref = useScreenScale(GIZMO_PIXELS)
   const colorFor = (key: string, base: string) => (hovered === key ? HOVER_COLOR : base)
+
+  // Idle draws everything; a drag draws only the handle it grabbed. Each test
+  // is "no drag, or this exact handle", so the null case is untouched.
+  const shows = (kind: GizmoDragState['kind'], name: string) =>
+    drag === null || (drag.kind === kind && drag.axis === name)
 
   return (
     <group position={origin} quaternion={orientation}>
@@ -81,25 +95,37 @@ export default function TriadGizmo({ origin, orientation, hovered }: TriadGizmoP
           const { color, arrowRotation, ringRotation } = AXES[i]
           return (
             <group key={def.name}>
-              <group rotation={arrowRotation}>
-                <mesh position={[0, ARROW_LENGTH / 2, 0]}>
-                  <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, ARROW_LENGTH, 8]} />
-                  <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name), color)} depthTest={false} />
-                </mesh>
-                <mesh position={[0, ARROW_LENGTH, 0]}>
-                  <coneGeometry args={[HEAD_RADIUS, HEAD_LENGTH, 12]} />
-                  <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name), color)} depthTest={false} />
-                </mesh>
-              </group>
+              {shows('axis', def.name) && (
+                <group rotation={arrowRotation}>
+                  <mesh position={[0, ARROW_LENGTH / 2, 0]}>
+                    <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, ARROW_LENGTH, 8]} />
+                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name), color)} depthTest={false} />
+                  </mesh>
+                  <mesh position={[0, ARROW_LENGTH, 0]}>
+                    <coneGeometry args={[HEAD_RADIUS, HEAD_LENGTH, 12]} />
+                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name), color)} depthTest={false} />
+                  </mesh>
+                </group>
+              )}
 
-              <group rotation={ringRotation}>
-                <mesh>
-                  <torusGeometry args={[RING_RADIUS, RING_TUBE, 6, 48]} />
-                  <meshBasicMaterial color={colorFor(gizmoHandleKey('rotate', def.name), color)} depthTest={false} />
-                </mesh>
-              </group>
+              {shows('ring', def.name) && (
+                <group rotation={ringRotation}>
+                  <mesh>
+                    <torusGeometry args={[RING_RADIUS, RING_TUBE, 6, 48]} />
+                    <meshBasicMaterial color={colorFor(gizmoHandleKey('rotate', def.name), color)} depthTest={false} />
+                  </mesh>
+                </group>
+              )}
 
-              <PlaneHandle def={def} color={color} hovered={hovered === gizmoHandleKey('plane', def.name)} />
+              {shows('plane', def.name) && (
+                <PlaneHandle def={def} color={color} hovered={hovered === gizmoHandleKey('plane', def.name)} />
+              )}
+
+              {/* The dial is built from def.u/def.v rather than ringRotation, so
+                  it sits in the gizmo frame directly and is not nested here. */}
+              {drag?.kind === 'ring' && drag.axis === def.name && (
+                <AngleDial def={def} datum={drag.datum} swing={drag.swing} snapped={drag.snapped} />
+              )}
             </group>
           )
         })}
