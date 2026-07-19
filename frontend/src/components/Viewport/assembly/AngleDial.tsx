@@ -25,6 +25,13 @@ const SNAP_COLOR = '#ffd24a'
 const TICK_COLOR = '#9aa0a6'
 const SWEEP_OPACITY = 0.22
 
+// Disarmed, the ticks are still drawn but faded almost out: removing them
+// entirely would make the dial jump every time the cursor crosses the ring,
+// while leaving them lit would advertise bearings the drag can no longer reach.
+// Fading says "still there, not in play", which is exactly the state.
+const TICK_OPACITY = 1
+const TICK_OPACITY_DISARMED = 0.18
+
 const RENDER_ORDER = 1001
 const READOUT_SIZE = DIAL_READOUT_RADIUS * 0.2
 
@@ -35,9 +42,14 @@ interface AngleDialProps {
   /** The snapped swing the part is receiving, unwrapped and unbounded. */
   swing: number
   snapped: boolean
+  /**
+   * Whether snapping is in play at all: false once the cursor is pulled outside
+   * the ring. Distinct from `snapped`, which is only this frame's outcome.
+   */
+  snapArmed: boolean
 }
 
-export default function AngleDial({ def, datum, swing, snapped }: AngleDialProps) {
+export default function AngleDial({ def, datum, swing, snapped, snapArmed }: AngleDialProps) {
   const ticks = useMemo(() => dialTicks(def), [def])
   const sweep = useMemo(() => dialSweepVertices(def, datum, swing), [def, datum, swing])
   const datumLine = useMemo(() => dialSpoke(def, datum), [def, datum])
@@ -76,6 +88,7 @@ export default function AngleDial({ def, datum, swing, snapped }: AngleDialProps
           lineWidth={tick.major ? 2 : 1}
           depthTest={false}
           transparent
+          opacity={snapArmed ? TICK_OPACITY : TICK_OPACITY_DISARMED}
           renderOrder={RENDER_ORDER}
         />
       ))}

@@ -26,8 +26,21 @@ export interface MateFieldTarget {
 export type GizmoDragState =
   | { kind: 'axis'; axis: GizmoAxisName }
   | { kind: 'plane'; axis: GizmoAxisName }
-  /** `swing` is the SNAPPED angle the part receives, which is what the dial draws. */
-  | { kind: 'ring'; axis: GizmoAxisName; datum: number; swing: number; snapped: boolean }
+  /**
+   * `swing` is the SNAPPED angle the part receives, which is what the dial draws.
+   * `snapped` is this frame's outcome; `snapArmed` is whether snapping could
+   * happen at all, which the cursor's distance from the ring decides. The dial
+   * shows the two differently: a free angle inside the ring still has ticks to
+   * fall onto, a disarmed one has none, and the user must be able to see which.
+   */
+  | {
+      kind: 'ring'
+      axis: GizmoAxisName
+      datum: number
+      swing: number
+      snapped: boolean
+      snapArmed: boolean
+    }
 
 /** One entity the ID buffer found under the cursor, resolver-ordered. */
 export interface EntityHit {

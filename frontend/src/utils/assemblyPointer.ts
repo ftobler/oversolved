@@ -25,7 +25,7 @@ import {
   unwrapAngle,
   type Ray,
 } from '@/utils/gizmoMath'
-import { datumAngle, snapSwing } from '@/utils/gizmoAngleSnap'
+import { datumAngle, snapArmedAtRadius, snapSwing } from '@/utils/gizmoAngleSnap'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import type { GizmoDragState } from '@/stores/assemblyStore'
 import type { Vec3 } from '@/utils/transform3d'
@@ -112,7 +112,15 @@ export interface AssemblyPointerAdapter {
     origin: Vec3,
     ray: Ray,
   ) => boolean
-  onPointerMove: (ray: Ray) => void
+  /**
+   * `gizmoWorldScale` is the world size of one gizmo unit right now, which the
+   * ring branch needs to know where the drawn circle is (see snapArmedAtRadius).
+   * It is read per move rather than captured at pointer-down so a camera dolly
+   * mid-drag cannot leave the gate and the visible ring disagreeing. Omitting it
+   * leaves snapping armed: a caller with no camera to measure has no business
+   * disarming a feature the user asked for.
+   */
+  onPointerMove: (ray: Ray, gizmoWorldScale?: number) => void
   /** Commits the session (assemblyStore re-solves once) if one is open. */
   onPointerUp: () => GestureOutcome
   cancel: () => void
@@ -187,11 +195,13 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     const startArm = sub(hit, origin)
     const datum = datumAngle(signedAngleAbout(axis, reference, startArm))
     // A swing of zero is a multiple of the step, so the dial starts on a tick.
-    store.setGizmoDrag({ kind: 'ring', axis: axisName, datum, swing: 0, snapped: true })
+    // Armed by construction: the pointer-down resolved on the ring's own grab
+    // region, which is the boundary the gate is drawn at.
+    store.setGizmoDrag({ kind: 'ring', axis: axisName, datum, swing: 0, snapped: true, snapArmed: true })
     return open({ kind: 'ring', axis, axisName, origin, startArm, swing: 0, datum }, 'gizmo')
   }
 
-  const onPointerMove = (ray: Ray): void => {
+  const onPointerMove = (ray: Ray, gizmoWorldScale?: number): void => {
     if (!gesture) return
 
     if (gesture.kind === 'plane') {
@@ -213,9 +223,18 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
 
     const hit = intersectRayPlane(ray, gesture.origin, gesture.axis)
     if (!hit) return
-    const measured = signedAngleAbout(gesture.axis, gesture.startArm, sub(hit, gesture.origin))
+    const arm = sub(hit, gesture.origin)
+    const measured = signedAngleAbout(gesture.axis, gesture.startArm, arm)
     gesture.swing = unwrapAngle(measured, gesture.swing)
-    const snap = snapSwing(gesture.swing)
+    // How far out the cursor is arms or disarms snapping wholesale: inside the
+    // ring it clicks onto the ticks, outside it the user has pulled away for
+    // fine control and no angle may be touched. The arm is what the angle was
+    // just measured from, so the gate and the swing cannot sample different
+    // points. Arming does not disturb `swing`, which stays the raw unwrapped
+    // total whichever side of the ring the cursor is on.
+    const armed = gizmoWorldScale === undefined
+      || snapArmedAtRadius(Math.hypot(arm[0], arm[1], arm[2]), gizmoWorldScale)
+    const snap = snapSwing(gesture.swing, armed)
     // `moved` follows the angle the part receives, not the cursor's: a wobble
     // small enough to be pulled back onto zero moves nothing, and must leave a
     // click a click.
@@ -226,6 +245,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       datum: gesture.datum,
       swing: snap.angle,
       snapped: snap.snapped,
+      snapArmed: armed,
     })
     store.rotatePartGizmo(gesture.axis, snap.angle, gesture.origin)
   }

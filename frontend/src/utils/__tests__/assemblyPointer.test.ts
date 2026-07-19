@@ -13,7 +13,7 @@ import { findInstance } from '@/utils/assemblyMutations'
 import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
 import { dialCounterRotation, dialSpoke, dialTicks, nearestTickIndex } from '@/utils/angleDialGeometry'
 import { signedAngleAbout, type Ray } from '@/utils/gizmoMath'
-import { GIZMO_AXES, type GizmoAxisDef } from '@/utils/gizmoPickGeometry'
+import { GIZMO_AXES, GIZMO_PIXELS, RING_RADIUS, type GizmoAxisDef } from '@/utils/gizmoPickGeometry'
 import { manipulationDelta } from '@/utils/partManipulation'
 import {
   composeTransforms, IDENTITY_TRANSFORM, quatMultiply, rotateVector, transformQuat, type Quat, type Vec3,
@@ -295,6 +295,130 @@ describe('assembly pointer adapter (ring angular snapping)', () => {
   })
 })
 
+// "Pull away for precision": the cursor's distance from the ring centre is a
+// master switch over the tolerance band. Inside the drawn circle the drag clicks
+// onto the ticks as before; pull the cursor out past the ring and every angle is
+// free, however close to a tick it lands. The threshold is the ring's own world
+// radius, which moves with the camera because the triad is screen-scaled.
+describe('assembly pointer adapter (radius-gated snapping)', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    setAssemblyCallbacks(null)
+  })
+
+  // One gizmo unit is 10 world units here, so the ring's rim sits at 7.5: a
+  // sample at radius 5 is inside the circle and one at 12 is outside it.
+  const SCALE = 10
+  const INSIDE = RING_RADIUS * SCALE - 2.5
+  const OUTSIDE = RING_RADIUS * SCALE + 4.5
+
+  /** A pointer on the Z ring at `deg` around the gizmo and `radius` out, sighted down -Z. */
+  const armAt = (deg: number, radius: number): Ray => {
+    const a = deg * Math.PI / 180
+    return ray([Math.cos(a) * radius, Math.sin(a) * radius, 10], [0, 0, -1])
+  }
+
+  const grabZRing = (adapter: ReturnType<typeof mountHost>['adapter']): boolean =>
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0, INSIDE))
+
+  const lastDeg = (swings: number[]): number => swings[swings.length - 1] * 180 / Math.PI
+  const drag = () => useAssemblyStore.getState().gizmoDrag as { swing: number; snapArmed: boolean }
+
+  it('a drag inside the circle and inside the band still snaps', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88, INSIDE), SCALE)
+
+    expect(lastDeg(swings)).toBeCloseTo(90, 10)
+  })
+
+  // The pair that pins the feature: the only difference between this and the
+  // test above is how far out the cursor is.
+  it('the same angle sampled outside the circle is left alone', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88, OUTSIDE), SCALE)
+
+    expect(lastDeg(swings)).toBeCloseTo(88, 6)
+  })
+
+  it('crossing the boundary mid-drag arms and disarms without a jump in between', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88, INSIDE), SCALE)
+    expect(lastDeg(swings)).toBeCloseTo(90, 10)
+
+    adapter.onPointerMove(armAt(88, OUTSIDE), SCALE)  // pulled away, same bearing
+    expect(lastDeg(swings)).toBeCloseTo(88, 6)
+
+    adapter.onPointerMove(armAt(88, INSIDE), SCALE)  // back in, clicks again
+    expect(lastDeg(swings)).toBeCloseTo(90, 10)
+  })
+
+  // The gate must not touch the accumulator any more than the band does. A jump
+  // straddling the half turn is the one motion that can tell the raw swing from
+  // the snapped one, so it is run here from a DISARMED reading: if a disarmed
+  // frame ever fed something other than the cursor's own angle forward, this
+  // would resolve the turn the other way and land on 270.
+  it('an unarmed frame leaves the raw swing accumulator untouched', () => {
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88, OUTSIDE), SCALE)  // free 88, raw 88
+    adapter.onPointerMove(armAt(269, INSIDE), SCALE)  // 179 back from 88, but 181 on from 90
+
+    expect(lastDeg(swings)).toBeCloseTo(-90, 10)
+  })
+
+  it('publishes snapArmed on gizmoDrag and tracks the crossing', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+
+    // The grab lands on the ring itself, so a drag opens armed.
+    grabZRing(adapter)
+    expect(drag().snapArmed).toBe(true)
+
+    adapter.onPointerMove(armAt(88, OUTSIDE), SCALE)
+    expect(drag().snapArmed).toBe(false)
+
+    adapter.onPointerMove(armAt(88, INSIDE), SCALE)
+    expect(drag().snapArmed).toBe(true)
+  })
+
+  it('a caller that supplies no scale keeps snapping armed', () => {
+    // The viewport always has a camera to measure, but a drag must never lose a
+    // feature because some other caller could not answer where the ring is.
+    const { adapter, swings } = mountHost(docWith(instance('p1')))
+
+    grabZRing(adapter)
+    adapter.onPointerMove(armAt(88, OUTSIDE))
+
+    expect(lastDeg(swings)).toBeCloseTo(90, 10)
+  })
+
+  // The triad holds a constant size on SCREEN, so its world radius is
+  // GIZMO_PIXELS * p2w(camera), and p2w is 1 / zoom for the orthographic camera
+  // the assembly uses. Zooming in therefore SHRINKS the circle in world units,
+  // and one unmoved world sample can fall out of a ring it was inside of.
+  it('the threshold follows the gizmo world scale, so zoom decides the same sample', () => {
+    const scaleAtZoom = (zoom: number) => GIZMO_PIXELS / zoom
+    const sample = RING_RADIUS * scaleAtZoom(30)  // exactly the rim at zoom 30
+
+    const out = mountHost(docWith(instance('p1')))
+    out.adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0, sample))
+    out.adapter.onPointerMove(armAt(88, sample), scaleAtZoom(15))  // zoomed out: ring is twice as wide
+    expect(lastDeg(out.swings)).toBeCloseTo(90, 10)
+
+    const inn = mountHost(docWith(instance('p1')))
+    inn.adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0, sample))
+    inn.adapter.onPointerMove(armAt(88, sample), scaleAtZoom(60))  // zoomed in: the rim has shrunk past it
+    expect(lastDeg(inn.swings)).toBeCloseTo(88, 6)
+  })
+})
+
 describe('gizmoDrag state', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
@@ -337,7 +461,7 @@ describe('gizmoDrag state', () => {
     const { adapter } = mountHost(docWith(instance('p1')))
 
     adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(40))
-    expect(gizmoDrag()).toEqual({ kind: 'ring', axis: 'z', datum: 0, swing: 0, snapped: true })
+    expect(gizmoDrag()).toEqual({ kind: 'ring', axis: 'z', datum: 0, swing: 0, snapped: true, snapArmed: true })
 
     adapter.onPointerUp()
     adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(50))

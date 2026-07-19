@@ -124,7 +124,13 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
               {/* The dial is built from def.u/def.v rather than ringRotation, so
                   it sits in the gizmo frame directly and is not nested here. */}
               {drag?.kind === 'ring' && drag.axis === def.name && (
-                <AngleDial def={def} datum={drag.datum} swing={drag.swing} snapped={drag.snapped} />
+                <AngleDial
+                  def={def}
+                  datum={drag.datum}
+                  swing={drag.swing}
+                  snapped={drag.snapped}
+                  snapArmed={drag.snapArmed}
+                />
               )}
             </group>
           )

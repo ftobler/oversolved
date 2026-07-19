@@ -49,7 +49,8 @@ import {
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
-import { parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
+import { p2w } from '@/utils/geometry/sketchHelpers'
+import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
 import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
@@ -421,7 +422,15 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
       return
     }
     const ray = rayFromEvent(e)
-    if (ray) adapter.onPointerMove(ray)
+    if (!ray) return
+    // The very scale TriadGizmo's useScreenScale(GIZMO_PIXELS) applies, read
+    // fresh each move: the ring drag gates its snapping on the cursor being
+    // inside the DRAWN circle, and the camera may dolly mid-drag. Reading it
+    // here rather than caching it is what keeps the gate and the ring the user
+    // is aiming at the same circle. GizmoPickLayer quantizes the same product,
+    // but only because re-registering the ID buffer is expensive; this is free.
+    const camera = cameraRef.current
+    adapter.onPointerMove(ray, camera ? GIZMO_PIXELS * p2w(camera) : undefined)
   }, [adapter, rayFromEvent, scheduleHover])
 
   // The cursor left the pane, so nothing is under it. Gizmos drawn from the last

@@ -8,6 +8,8 @@
 // gizmoMath.ts) and so grows past a full turn without bound, so nothing here may
 // reduce it modulo a turn. A 725 degree swing belongs near 720, not near 0.
 
+import { RING_RADIUS } from '@/utils/gizmoPickGeometry'
+
 export const SNAP_STEP_DEG = 15
 export const SNAP_TOLERANCE_DEG = 4
 
@@ -24,6 +26,24 @@ export interface SwingSnap {
 }
 
 /**
+ * Whether snapping is armed for a sample point this far from the ring's centre.
+ *
+ * "Pull away for precision": drag near the ring and it clicks onto the ticks,
+ * pull the cursor out past the ring and it goes free, however close to a tick
+ * the angle happens to be. The ring the user can see IS the boundary, which is
+ * why the threshold is the ring's own radius and nothing is drawn for it.
+ *
+ * `gizmoWorldScale` is what the triad is currently scaled by (GIZMO_PIXELS
+ * worth of world units, see useScreenScale): the gizmo holds a constant SIZE ON
+ * SCREEN, so its radius in world units shrinks as the camera zooms in. Passing
+ * a scale captured earlier in the drag would let this gate drift away from the
+ * circle actually on screen, which is the only thing the user is aiming at.
+ */
+export function snapArmedAtRadius(sampleRadius: number, gizmoWorldScale: number): boolean {
+  return sampleRadius <= RING_RADIUS * gizmoWorldScale
+}
+
+/**
  * The swing pulled onto the nearest multiple of SNAP_STEP_DEG when it is within
  * SNAP_TOLERANCE_DEG of one, otherwise handed back verbatim.
  *
@@ -31,12 +51,16 @@ export interface SwingSnap {
  * the line" rather than a hard quantise; motion between bands stays free, and
  * the returned angle is then the caller's own value so free motion picks up no
  * rounding on the way through.
+ *
+ * `armed` is a master switch layered OVER that band, not a replacement for it:
+ * disarmed, every angle is free; armed, the band decides as it always did. The
+ * caller derives it from snapArmedAtRadius.
  */
-export function snapSwing(swingRad: number): SwingSnap {
+export function snapSwing(swingRad: number, armed = true): SwingSnap {
   const swingDeg = swingRad * RAD_TO_DEG
   const step = Math.round(swingDeg / SNAP_STEP_DEG)
   const targetDeg = step * SNAP_STEP_DEG
-  if (Math.abs(swingDeg - targetDeg) <= SNAP_TOLERANCE_DEG) {
+  if (armed && Math.abs(swingDeg - targetDeg) <= SNAP_TOLERANCE_DEG) {
     return { angle: targetDeg * DEG_TO_RAD, snapped: true, step }
   }
   return { angle: swingRad, snapped: false, step }

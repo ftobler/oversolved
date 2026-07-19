@@ -4,10 +4,12 @@ import { describe, it, expect } from 'vitest'
 import {
   SNAP_STEP_DEG,
   SNAP_TOLERANCE_DEG,
+  snapArmedAtRadius,
   snapSwing,
   datumAngle,
   snapTickAngles,
 } from '@/utils/gizmoAngleSnap'
+import { GIZMO_PIXELS, RING_RADIUS } from '@/utils/gizmoPickGeometry'
 
 const deg = (d: number) => d * Math.PI / 180
 const toDeg = (r: number) => r * 180 / Math.PI
@@ -89,6 +91,52 @@ describe('snapSwing', () => {
     expect(r.snapped).toBe(true)
     expect(toDeg(r.angle)).toBeCloseTo(-405, 6)
     expect(r.step).toBe(-27)
+  })
+})
+
+describe('snapArmedAtRadius', () => {
+  it('arms a sample inside the ring and disarms one outside it', () => {
+    expect(snapArmedAtRadius(RING_RADIUS * 0.5, 1)).toBe(true)
+    expect(snapArmedAtRadius(RING_RADIUS * 1.5, 1)).toBe(false)
+  })
+
+  it('arms the hub, so a cursor dragged toward the centre never loses the ticks', () => {
+    expect(snapArmedAtRadius(0, 1)).toBe(true)
+  })
+
+  it('counts the ring itself as armed, so the boundary belongs to the snapping side', () => {
+    // The grab lands on the ring by construction, and a drag that opened while
+    // disarmed would read as broken snapping rather than as deliberate freedom.
+    expect(snapArmedAtRadius(RING_RADIUS, 1)).toBe(true)
+  })
+
+  it('scales the threshold with the gizmo, so it follows the drawn circle', () => {
+    // The triad is screen-scaled: zooming IN raises camera.zoom, which shrinks
+    // p2w and with it the ring's world radius, so one and the same world sample
+    // falls outside the circle it was inside of a moment earlier.
+    const scaleAt = (zoom: number) => GIZMO_PIXELS / zoom  // p2w is 1 / zoom for the ortho camera
+    const sample = RING_RADIUS * GIZMO_PIXELS / 4  // exactly the rim at zoom 4
+
+    expect(snapArmedAtRadius(sample, scaleAt(2))).toBe(true)  // zoomed out: ring is wider
+    expect(snapArmedAtRadius(sample, scaleAt(8))).toBe(false)  // zoomed in: ring has shrunk past it
+  })
+})
+
+describe('snapSwing while disarmed', () => {
+  it('leaves an angle sitting on a tick exactly where the cursor put it', () => {
+    const swing = deg(30)
+    const r = snapSwing(swing, false)
+    expect(r.snapped).toBe(false)
+    expect(r.angle).toBe(swing)
+  })
+
+  it('leaves an angle inside the tolerance band free too: the gate outranks it', () => {
+    const swing = deg(29)
+    expect(snapSwing(swing, false)).toMatchObject({ angle: swing, snapped: false })
+  })
+
+  it('still snaps once armed again, so the band survives the gate', () => {
+    expect(toDeg(snapSwing(deg(29), true).angle)).toBeCloseTo(30, 9)
   })
 })
 
