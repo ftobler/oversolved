@@ -56,6 +56,109 @@ const BEVEL_INSET = 0.20
 const EXTRA_INSET = 0.05
 const CHAMFER = 0.15
 
+// Half-width of a drawn face in cube units, after both insets pull it in from
+// the unit cube. Derived rather than written out so the label fit below cannot
+// drift if the bevel is retuned.
+const FACE_HALF_EXTENT = (1 - BEVEL_INSET) * (1 - EXTRA_INSET)
+
+// ── Face label font ────
+
+// Roboto, to match the 3D scene text. Deliberately NOT sharing anything with
+// Viewport/labelFont.ts: that module exports a WOFF *URL* for troika, which
+// parses font binaries itself. Canvas `ctx.font` takes a CSS font shorthand and
+// resolves through the DOM's @font-face table, so the URL is the wrong currency
+// here. What the two have in common is the typeface, not the reference to it.
+//
+// sans-serif stays in the stack as a real fallback: the canvas paints whether
+// or not Roboto ever arrives.
+const LABEL_FONT_STACK = 'Roboto, sans-serif'
+const LABEL_FONT_WEIGHT = 'bold'
+const LABEL_FONT_SIZE = 10
+
+export function gizmoLabelFont(sizePx: number = LABEL_FONT_SIZE): string {
+  // Rounded because a shrunk size is a ratio; unrounded floats make the CSS
+  // shorthand (and any test assertion on it) needlessly noisy.
+  return `${LABEL_FONT_WEIGHT} ${Math.round(sizePx * 100) / 100}px ${LABEL_FONT_STACK}`
+}
+
+// Fraction of the face's inner width a label may occupy before it is shrunk.
+//
+// Sized against the geometry, not against one word: at 1.0 a label may touch
+// the exact polygon edge, where the chamfered corners and the antialias fringe
+// make it read as cramped even though it technically fits. 12% total (6% a
+// side) is the smallest margin that still looks deliberate at GIZMO_SIZE.
+// "Bottom" is the only one of the six names that trips this in Roboto Bold; the
+// point of measuring rather than hard-coding a smaller size is that a future
+// font change cannot silently reintroduce the overflow.
+const LABEL_WIDTH_FRACTION = 0.88
+
+type FontFaceSetLike = { load(font: string): Promise<unknown>; ready?: Promise<unknown> }
+
+let labelFontRequested = false
+let labelFontReady = false
+const labelFontListeners = new Set<() => void>()
+
+function markLabelFontReady(): void {
+  labelFontReady = true
+  for (const fn of labelFontListeners) fn()
+  labelFontListeners.clear()
+}
+
+export function isGizmoLabelFontReady(): boolean {
+  return labelFontReady
+}
+
+/**
+ * Requests the label font once, and notifies when it is usable.
+ *
+ * This is not merely a paint gate, it is what makes the font exist at all.
+ * Canvas text never triggers a font fetch: the browser loads a face only when
+ * the DOM uses it, and `fillText` is invisible to that machinery. main.tsx
+ * imports Roboto 400/500/700, but a weight nothing in the DOM happens to render
+ * would still sit undownloaded forever, and the cube would silently paint in
+ * the fallback with no later frame ever fixing it. Asking `document.fonts` for
+ * the exact shorthand we draw with is the request that pulls the file in.
+ *
+ * `document.fonts` is absent under jsdom and on old browsers; there we treat
+ * the font as immediately ready so the cube still draws in the fallback rather
+ * than throwing or waiting forever.
+ */
+export function ensureGizmoLabelFont(onReady?: () => void): void {
+  if (labelFontReady) {
+    onReady?.()
+    return
+  }
+  if (onReady) labelFontListeners.add(onReady)
+  if (labelFontRequested) return
+  labelFontRequested = true
+
+  const fonts = (globalThis as { document?: { fonts?: FontFaceSetLike } }).document?.fonts
+  if (!fonts?.load) {
+    markLabelFontReady()
+    return
+  }
+  // Resolve either way: a failed load means we keep painting the fallback,
+  // which is a worse-looking cube but never a missing one.
+  fonts.load(gizmoLabelFont()).then(markLabelFontReady, markLabelFontReady)
+}
+
+/** Test seam: forget the module-level load state between cases. */
+export function resetGizmoLabelFontForTest(): void {
+  labelFontRequested = false
+  labelFontReady = false
+  labelFontListeners.clear()
+}
+
+/**
+ * Font size that keeps `label` inside `usableWidth`, shrinking only on
+ * overflow so labels that already fit are returned untouched.
+ */
+export function fitLabelFontSize(measuredWidth: number, usableWidth: number): number {
+  if (!(measuredWidth > 0) || !Number.isFinite(measuredWidth)) return LABEL_FONT_SIZE
+  if (measuredWidth <= usableWidth) return LABEL_FONT_SIZE
+  return LABEL_FONT_SIZE * (usableWidth / measuredWidth)
+}
+
 // ── Types ────
 
 export type Pv = { sx: number; sy: number; z: number }
@@ -232,7 +335,20 @@ export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE
   return null
 }
 
-export function drawCubeGizmo(canvas: HTMLCanvasElement, camera: THREE.Camera, hover: Hit | null): Pv[] {
+export function drawCubeGizmo(
+  canvas: HTMLCanvasElement,
+  camera: THREE.Camera,
+  hover: Hit | null,
+  onFontReady?: () => void,
+): Pv[] {
+  // Idempotent, so calling it per frame costs one boolean check after the
+  // first. SceneController drives this from useFrame on a frameloop="always"
+  // Canvas, so a font arriving late is picked up by the next frame on its own
+  // and the cube self-corrects within ~16ms. onFontReady exists so that
+  // guarantee does not silently depend on the caller: a demand-rendered or
+  // one-shot caller passes an invalidate and gets the same repaint.
+  ensureGizmoLabelFont(onFontReady)
+
   const ctx = canvas.getContext('2d')
   if (!ctx) return []
   const dpr = window.devicePixelRatio || 1
@@ -290,9 +406,18 @@ export function drawCubeGizmo(canvas: HTMLCanvasElement, camera: THREE.Camera, h
         0, 0)
 
       ctx.fillStyle = '#000'
-      ctx.font = `bold 10px system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
+
+      // Measure in the same space the glyphs are drawn in. The transform above
+      // maps local units to screen by s*fs while cube units map by s, so one
+      // cube unit is 1/fs local units -- which is what makes the face width
+      // comparable to a px font size at all.
+      ctx.font = gizmoLabelFont()
+      const usable = (2 * FACE_HALF_EXTENT / fs) * LABEL_WIDTH_FRACTION
+      const size = fitLabelFontSize(ctx.measureText(poly.label).width, usable)
+      if (size !== LABEL_FONT_SIZE) ctx.font = gizmoLabelFont(size)
+
       ctx.fillText(poly.label, 0, 0)
       ctx.restore()
     }

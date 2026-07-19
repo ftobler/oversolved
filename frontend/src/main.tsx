@@ -5,6 +5,11 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import '@fontsource/roboto/400.css'
 import '@fontsource/roboto/500.css'
+// The cube gizmo paints its face labels with `bold` (700) via canvas fillText.
+// Without a declared 700 face the browser would synthesise bold from Medium,
+// which smears at the gizmo's 10px. Self-hosted through the package, same as
+// the others -- no external reference.
+import '@fontsource/roboto/700.css'
 import '@fontsource/roboto-mono/400.css'
 import '@fontsource/material-icons/index.css'
 import '@fontsource/material-icons-outlined/index.css'

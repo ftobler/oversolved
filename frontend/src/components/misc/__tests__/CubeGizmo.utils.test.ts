@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as THREE from 'three'
-import { computeGizmoHit, drawCubeGizmo, GIZMO_SIZE } from '@/components/misc/CubeGizmo.utils'
+import {
+  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE,
+  gizmoLabelFont, fitLabelFontSize, ensureGizmoLabelFont,
+  isGizmoLabelFontReady, resetGizmoLabelFontForTest,
+} from '@/components/misc/CubeGizmo.utils'
 
 // The navigation cube is pure geometry: project the 8 cube corners through the
 // inverted camera quaternion, sort by depth, hit-test the mouse against the
@@ -76,6 +80,9 @@ function makeRecordingCanvas() {
     clearRect: rec('clearRect'), beginPath: rec('beginPath'), moveTo: rec('moveTo'),
     lineTo: rec('lineTo'), closePath: rec('closePath'), fill: rec('fill'),
     translate: rec('translate'), transform: rec('transform'), fillText: rec('fillText'),
+    // Width proportional to the label so the fit logic sees something ordered;
+    // jsdom has no font metrics, so this is a stand-in, never a measurement.
+    measureText: (t: string) => ({ width: t.length }),
     fillStyle: '', font: '', textAlign: '', textBaseline: '',
   }
   const canvas = {
@@ -112,7 +119,7 @@ describe('drawCubeGizmo', () => {
     const ctx = {
       save() {}, restore() {}, scale() {}, clearRect() {}, beginPath() {},
       moveTo() {}, lineTo() {}, closePath() {}, translate() {}, transform() {},
-      fillText() {},
+      fillText() {}, measureText: (t: string) => ({ width: t.length }),
       fill() { fills.push(this.fillStyle as string) },
       fillStyle: '', font: '', textAlign: '', textBaseline: '',
     }
@@ -132,5 +139,194 @@ describe('drawCubeGizmo', () => {
     const snapDir = new THREE.Vector3(1, 1, 1).normalize()
     const hover = { type: 'vertex' as const, index: 6, snapDir }
     expect(drawCapturingFills(hover)).toContain('rgba(255,255,255,0.5)')
+  })
+})
+
+// ── Face label font ────
+
+describe('gizmoLabelFont', () => {
+  it('asks for Roboto and keeps a generic fallback in the stack', () => {
+    const font = gizmoLabelFont()
+    expect(font).toContain('Roboto')
+    expect(font).toContain('sans-serif')
+    expect(font).toBe('bold 10px Roboto, sans-serif')
+  })
+
+  it('carries the weight and stack through to a shrunk size', () => {
+    expect(gizmoLabelFont(9.2)).toBe('bold 9.2px Roboto, sans-serif')
+  })
+})
+
+describe('fitLabelFontSize', () => {
+  const USABLE = 30
+
+  it('leaves a label that already fits completely untouched', () => {
+    expect(fitLabelFontSize(20, USABLE)).toBe(10)
+    // Exactly filling the usable width is still a fit, not an overflow.
+    expect(fitLabelFontSize(USABLE, USABLE)).toBe(10)
+  })
+
+  it('shrinks an overflowing label to exactly the usable width', () => {
+    // 60 wide at size 10 must come back at the size that makes it 30 wide.
+    expect(fitLabelFontSize(60, USABLE)).toBeCloseTo(5)
+    expect(fitLabelFontSize(40, USABLE)).toBeCloseTo(7.5)
+  })
+
+  it('never scales a label up', () => {
+    expect(fitLabelFontSize(1, USABLE)).toBe(10)
+  })
+
+  it('falls back to the base size on a degenerate measurement', () => {
+    // A stub context (jsdom) can report 0 or NaN; that must not produce a
+    // zero-sized or NaN font.
+    expect(fitLabelFontSize(0, USABLE)).toBe(10)
+    expect(fitLabelFontSize(NaN, USABLE)).toBe(10)
+  })
+})
+
+// Draw the cube with a controllable measureText and report the font that was
+// in effect at each fillText. The assertion is about the fit ALGORITHM: jsdom
+// has no font metrics, so the widths are supplied, never measured.
+function drawCapturingLabelFonts(
+  camera: THREE.Camera,
+  widths: Record<string, number>,
+): Record<string, string> {
+  const seen: Record<string, string> = {}
+  const ctx = {
+    save() {}, restore() {}, scale() {}, clearRect() {}, beginPath() {},
+    moveTo() {}, lineTo() {}, closePath() {}, fill() {}, translate() {},
+    transform() {},
+    measureText: (t: string) => ({ width: widths[t] ?? 0 }),
+    fillText(t: string) { seen[t] = this.font as string },
+    fillStyle: '', font: '', textAlign: '', textBaseline: '',
+  }
+  const canvas = { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement
+  drawCubeGizmo(canvas, camera, null)
+  return seen
+}
+
+// The camera quaternion that brings a given face to the front. drawCubeGizmo
+// projects through the INVERTED camera quaternion, so these are inverses of the
+// rotation that carries the face normal toward +z.
+const facingTop = () =>
+  cameraWith(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2))
+const facingBottom = () =>
+  cameraWith(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2))
+
+describe('face label fit-to-width', () => {
+  it('shrinks a label that overflows the face', () => {
+    // 'Bottom' is the longest of the six names and the one the user reported
+    // as fitting with zero room to spare.
+    const fonts = drawCapturingLabelFonts(facingBottom(), { Bottom: 100 })
+    expect(fonts.Bottom).toBeDefined()
+    const size = Number(/bold ([\d.]+)px/.exec(fonts.Bottom)![1])
+    expect(size).toBeLessThan(10)
+    expect(fonts.Bottom).toContain('Roboto')
+  })
+
+  it('leaves a label that fits at the untouched base size', () => {
+    // Deliberately a width no plausible face can overflow.
+    const fonts = drawCapturingLabelFonts(facingTop(), { Top: 1 })
+    expect(fonts.Top).toBe('bold 10px Roboto, sans-serif')
+  })
+
+  it('does not shrink short labels just because a long one exists', () => {
+    // Same draw, same usable width: a global shrink would catch 'Top' too.
+    const wide = drawCapturingLabelFonts(facingBottom(), { Bottom: 100 })
+    const narrow = drawCapturingLabelFonts(facingTop(), { Top: 1 })
+    expect(narrow.Top).toBe(gizmoLabelFont())
+    expect(wide.Bottom).not.toBe(gizmoLabelFont())
+  })
+
+  it('shrinks by the overflow ratio, not by a fixed step', () => {
+    // Twice the overflow must yield half the size: proves the ratio drives it.
+    const a = drawCapturingLabelFonts(facingBottom(), { Bottom: 100 })
+    const b = drawCapturingLabelFonts(facingBottom(), { Bottom: 200 })
+    const sizeOf = (f: string) => Number(/bold ([\d.]+)px/.exec(f)![1])
+    expect(sizeOf(b.Bottom)).toBeCloseTo(sizeOf(a.Bottom) / 2, 1)
+  })
+})
+
+describe('label font readiness', () => {
+  beforeEach(() => resetGizmoLabelFontForTest())
+  afterEach(() => {
+    Reflect.deleteProperty(document as object, 'fonts')
+    resetGizmoLabelFontForTest()
+  })
+
+  const stubFonts = (load: (f: string) => Promise<unknown>) => {
+    Object.defineProperty(document, 'fonts', {
+      value: { load }, configurable: true, writable: true,
+    })
+  }
+
+  it('requests the exact shorthand it draws with, so the face is fetched', () => {
+    // Canvas fillText never triggers a font load; this request is what does.
+    const load = vi.fn(() => Promise.resolve())
+    stubFonts(load)
+    ensureGizmoLabelFont()
+    expect(load).toHaveBeenCalledWith(gizmoLabelFont())
+  })
+
+  it('requests the font only once across many frames', () => {
+    const load = vi.fn(() => Promise.resolve())
+    stubFonts(load)
+    ensureGizmoLabelFont()
+    ensureGizmoLabelFont()
+    ensureGizmoLabelFont()
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('notifies a paint that was scheduled before the font was ready', async () => {
+    let resolveLoad: () => void = () => {}
+    stubFonts(() => new Promise<void>(r => { resolveLoad = () => r() }))
+
+    const redraw = vi.fn()
+    ensureGizmoLabelFont(redraw)
+    // Still loading: nothing has fired, and the cube is painting the fallback.
+    expect(redraw).not.toHaveBeenCalled()
+    expect(isGizmoLabelFontReady()).toBe(false)
+
+    resolveLoad()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(redraw).toHaveBeenCalledTimes(1)
+    expect(isGizmoLabelFontReady()).toBe(true)
+  })
+
+  it('still becomes ready when the font fails to load', async () => {
+    stubFonts(() => Promise.reject(new Error('offline')))
+    const redraw = vi.fn()
+    ensureGizmoLabelFont(redraw)
+    await Promise.resolve()
+    await Promise.resolve()
+    // A missing font must degrade to the fallback, never to a blank gizmo.
+    expect(redraw).toHaveBeenCalled()
+    expect(isGizmoLabelFontReady()).toBe(true)
+  })
+
+  it('runs the callback immediately once the font is already ready', () => {
+    stubFonts(() => Promise.resolve())
+    ensureGizmoLabelFont()
+    // Force the ready state as a later frame would observe it.
+    resetGizmoLabelFontForTest()
+    Reflect.deleteProperty(document as object, 'fonts')
+    const redraw = vi.fn()
+    ensureGizmoLabelFont(redraw)  // no document.fonts: ready synchronously
+    const second = vi.fn()
+    ensureGizmoLabelFont(second)
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders rather than throwing when document.fonts is absent', () => {
+    Reflect.deleteProperty(document as object, 'fonts')
+    expect(() => ensureGizmoLabelFont()).not.toThrow()
+    expect(isGizmoLabelFontReady()).toBe(true)
+
+    // And the draw path still puts labels on the cube.
+    const { canvas, calls } = makeRecordingCanvas()
+    expect(() => drawCubeGizmo(canvas, cameraWith(new THREE.Quaternion()), null)).not.toThrow()
+    expect(calls.some(c => c[0] === 'fillText' && c[1] === 'Front')).toBe(true)
   })
 })
