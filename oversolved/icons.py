@@ -1305,7 +1305,8 @@ def feature_transform(ctx):
 # ─── Mate icons ───
 # One glyph per assembly mate kind, shown as insert buttons on the assembly
 # toolbar. Shared vocabulary: a straight double arrow means a sliding degree of
-# freedom, a swirl arc means a rotating one, hatching means grounded.
+# freedom, a swirl arc means a rotating one, hatching is the ground symbol and
+# marks the side that cannot move.
 
 
 def _rotation_arc(ctx, cx, cy, r, start_deg=-60, end_deg=170, arr=None):
