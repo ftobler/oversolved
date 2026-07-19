@@ -3,11 +3,50 @@
 import { useRef } from 'react'
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { Line, Text } from '@react-three/drei'
+import { preload } from 'suspend-react'
+import { preloadFont } from 'troika-three-text'
 import * as THREE from 'three'
 
 const Y_OFFSET = 0.03
 const LABEL_COLOR = '#888888'
 const LABEL_OPACITY = 0.20
+
+// The font arguments every plane label renders with. drei's <Text> gates its
+// first paint on `suspend(..., ['troika-text', font, characters])`, and with the
+// font unset troika resolves it by fetching a codepoint index and a .woff off a
+// CDN. Left cold, that network round trip runs on whichever gesture first mounts
+// a label (unhiding a plane), and R3F gives the whole Canvas a single Suspense
+// boundary, so the entire viewport blanks until it lands.
+//
+// These constants feed BOTH the <Text> props and the warm-up key below, so the
+// preload cannot drift onto a different cache entry than the one <Text> looks
+// up. suspend-react matches keys by identity per slot, so a mismatch here would
+// silently fill a neighbouring entry and fix nothing.
+const LABEL_FONT: string | undefined = undefined
+const LABEL_CHARACTERS: string | undefined = undefined
+const LABEL_FONT_KEY = ['troika-text', LABEL_FONT, LABEL_CHARACTERS]
+
+/**
+ * Fills drei's font cache ahead of the first label mount, so the fetch is paid
+ * at app startup instead of on the user's gesture. Idempotent: suspend-react
+ * returns the existing entry rather than refetching.
+ *
+ * It must go through suspend-react's `preload`, NOT `preloadFont` on its own.
+ * Calling preloadFont directly warms troika's own internal font cache, which
+ * looks like it should be enough and is not: drei gates on its suspend-react
+ * entry, so with that entry still empty <Text> throws a promise on first mount
+ * anyway and the viewport still flashes -- just for a shorter time, which makes
+ * the bug look fixed while leaving it in. `preload` registers the entry under
+ * the same key without throwing, which is the part that actually matters.
+ */
+export function preloadPlaneLabelFont(): void {
+  preload(
+    () => new Promise<void>(resolve => {
+      preloadFont({ font: LABEL_FONT, characters: LABEL_CHARACTERS }, () => resolve())
+    }),
+    LABEL_FONT_KEY,
+  )
+}
 
 interface PlaneLabelProps {
   x: number
@@ -26,7 +65,15 @@ export function PlaneLabel({ x, y, children }: PlaneLabelProps) {
   })
   return (
     <group ref={groupRef} position={[x + 1.0, y + Y_OFFSET, 0.001]}>
-      <Text fontSize={3} color={LABEL_COLOR} fillOpacity={LABEL_OPACITY} anchorX="left" anchorY="top">
+      <Text
+        font={LABEL_FONT}
+        characters={LABEL_CHARACTERS}
+        fontSize={3}
+        color={LABEL_COLOR}
+        fillOpacity={LABEL_OPACITY}
+        anchorX="left"
+        anchorY="top"
+      >
         {children}
       </Text>
     </group>
