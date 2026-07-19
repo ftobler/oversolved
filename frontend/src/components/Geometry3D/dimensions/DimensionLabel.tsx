@@ -40,7 +40,7 @@ export function DimensionLabel({
           onClick={(e) => { if (interactive) { e.stopPropagation(); onClick({ stopPropagation: () => {} }) } }}
           onDoubleClick={(e) => { if (interactive) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
           onPointerDown={(e) => { if (interactive) { e.stopPropagation(); onPointerDown({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
-          style={{ color, fontSize: 14, fontFamily: 'monospace', background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', ...(selectable ? { userSelect: 'none', WebkitUserSelect: 'none' } : {}), cursor: interactive ? 'pointer' : undefined }}
+          style={{ color, fontSize: 14, fontFamily: "'Roboto Mono', monospace", background: '#111', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', ...(selectable ? { userSelect: 'none', WebkitUserSelect: 'none' } : {}), cursor: interactive ? 'pointer' : undefined }}
         >
           {label}
         </div>

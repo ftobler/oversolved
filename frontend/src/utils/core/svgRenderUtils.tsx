@@ -352,7 +352,7 @@ export function renderConstraints(
             <path d={arrowhead(d2x, d2y, d1x, d1y)} fill={color} />
             <path d={arrowhead(d1x, d1y, d2x, d2y)} fill={color} />
             <rect x={mx - (label.length * 2.5 + textPadding)} y={my - 6} width={label.length * 5 + textPadding * 2} height={12} fill="#111" />
-            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       } else if (r.kind === 'dim_radius') {
@@ -377,7 +377,7 @@ export function renderConstraints(
             <line x1={x1} y1={y1} x2={x2_rot} y2={y2_rot} stroke={color} strokeWidth={1} />
             <path d={arrowhead(x1, y1, x2_rot, y2_rot)} fill={color} />
             <rect x={mx - (label.length * 2.5 + textPadding)} y={my - 6} width={label.length * 5 + textPadding * 2} height={12} fill="#111" />
-            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       } else if (r.kind === 'dim_angle') {
@@ -427,7 +427,7 @@ export function renderConstraints(
             <line x1={vx} y1={vy} x2={extBx} y2={extBy} stroke={color} strokeWidth={1} />
             <path d={arcPath} stroke={color} strokeWidth={1} fill="none" />
             <rect x={labelX - textWidth / 2} y={labelY - 7} width={textWidth} height={14} fill="#111" />
-            <text x={labelX} y={labelY} fill={color} fontSize={9} fontFamily="monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            <text x={labelX} y={labelY} fill={color} fontSize={9} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
           </g>
         )
       }

@@ -351,7 +351,7 @@ function HandleArrow({ featureId, feature, handle }: {
         {showLabel && (
           <Html position={[0, TIP, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
             <div style={{
-              color, fontSize: LABEL_FONT_PX, fontFamily: 'monospace', background: '#111',
+              color, fontSize: LABEL_FONT_PX, fontFamily: "'Roboto Mono', monospace", background: '#111',
               padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap',
               transform: `translate(${labelDx}px, ${labelDy}px)`,
               userSelect: 'none', WebkitUserSelect: 'none',

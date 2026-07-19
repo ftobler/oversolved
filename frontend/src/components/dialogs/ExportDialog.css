@@ -63,7 +63,7 @@
 
 .export-dialog-filename .export-dialog-filename-input {
   flex: 1;
-  font-family: monospace;
+  font-family: 'Roboto Mono', monospace;
 }
 
 .export-dialog-spinner {
