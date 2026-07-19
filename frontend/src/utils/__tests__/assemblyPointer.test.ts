@@ -10,9 +10,9 @@ import {
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
-import { createAssemblyPointerAdapter } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
 import type { Ray } from '@/utils/gizmoMath'
-import { IDENTITY_TRANSFORM, rotateVector } from '@/utils/transform3d'
+import { IDENTITY_TRANSFORM, rotateVector, type Vec3 } from '@/utils/transform3d'
 
 const VIEW_NORMAL: [number, number, number] = [0, 0, -1]  // camera looking down -Z
 const ray = (origin: [number, number, number], direction: [number, number, number]): Ray => ({ origin, direction })
@@ -277,5 +277,81 @@ describe('assembly pointer adapter (triad plane handles)', () => {
 
     expect(findInstance(handleRun.host.doc, 'p1')!.transform)
       .toEqual(findInstance(bodyRun.host.doc, 'p1')!.transform)
+  })
+})
+
+describe('click versus manipulation at pointer-up', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    useAssemblyStore.getState().setSelectedPartHandle(null)
+    setAssemblyCallbacks(null)
+  })
+
+  it('a pointer-up with no session leaves the plain click alone', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    const gesture = adapter.onPointerUp()
+    expect(gesture).toEqual({ source: null, moved: false })
+    expect(gestureAllowsSelect(gesture)).toBe(true)
+  })
+
+  it('a body click that never moved is still a select', () => {
+    const { requestSolve, adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    const gesture = adapter.onPointerUp()
+
+    expect(gesture).toEqual({ source: 'body', moved: false })
+    expect(gestureAllowsSelect(gesture)).toBe(true)
+    expect(requestSolve).not.toHaveBeenCalled()
+  })
+
+  it('a pointermove landing back on the grab point still counts as a click', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onBodyPointerDown('p1', [2, 3, 0], VIEW_NORMAL)
+    adapter.onPointerMove(ray([2, 3, 10], [0, 0, -1]))  // same pixel, zero delta
+    const gesture = adapter.onPointerUp()
+
+    expect(gesture.moved).toBe(false)
+    expect(gestureAllowsSelect(gesture)).toBe(true)
+  })
+
+  // The re-solve a moved drag commits drops the B-rep selection (its keys are
+  // positional), so selecting here would only make a highlight that vanishes
+  // when the solve lands. Even a drag too short to pass the viewport's click
+  // threshold moved the part, and is therefore a drag.
+  it('a body drag that moved the part is never a select', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    adapter.onPointerMove(ray([0.01, 0, 10], [0, 0, -1]))  // a hair, under any threshold
+    const gesture = adapter.onPointerUp()
+
+    expect(gesture).toEqual({ source: 'body', moved: true })
+    expect(gestureAllowsSelect(gesture)).toBe(false)
+  })
+
+  // The handle is drawn over the part, so a face behind it is not what the user
+  // pointed at. Clicking an arrow, ring or quad must never toggle it in.
+  it.each([
+    ['translate' as const, [1, 0, 0] as Vec3],
+    ['rotate' as const, [0, 0, 1] as Vec3],
+    ['plane' as const, [0, 0, 1] as Vec3],
+  ])('a %s handle click selects nothing behind the gizmo', (mode, axis) => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+
+    expect(adapter.onGizmoPointerDown('p1', mode, axis, [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
+    const gesture = adapter.onPointerUp()
+
+    expect(gesture).toEqual({ source: 'gizmo', moved: false })
+    expect(gestureAllowsSelect(gesture)).toBe(false)
+  })
+
+  it('a grounded part opens no session, so its click still selects', () => {
+    const { adapter } = mountHost(docWith(instance('p1', { fixed: true })))
+
+    expect(adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)).toBe(false)
+    expect(gestureAllowsSelect(adapter.onPointerUp())).toBe(true)
   })
 })

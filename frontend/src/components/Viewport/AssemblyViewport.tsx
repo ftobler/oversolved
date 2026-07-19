@@ -48,7 +48,7 @@ import {
   gizmoOrigin,
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
-import { createAssemblyPointerAdapter } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
 import { parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
 import type { Ray } from '@/utils/gizmoMath'
@@ -424,14 +424,16 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     const down = pointerDownPos.current
     pointerDownPos.current = null
-    if (adapter.isActive()) {
-      adapter.onPointerUp()  // commits the seed transform and asks for one re-solve
-      setManipulating(false)
-    }
+    // Commits the seed transform and asks for one re-solve; inert with no session.
+    const gesture = adapter.onPointerUp()
+    if (gesture.source) setManipulating(false)
     // Selection mode: a left click that never became a drag toggles the top
-    // entity under the cursor into the measurement set. A grab that moved the
-    // part committed above and is not a select. Aiming and Ctrl clicks are the
-    // mate picker's, handled on pointer-down, so they never fall through here.
+    // entity under the cursor into the measurement set. Which gestures are still
+    // a click is gestureAllowsSelect's call, not this handler's: a triad handle
+    // click and a drag that moved the part both end here and neither selects.
+    // Aiming and Ctrl clicks are the mate picker's, handled on pointer-down, so
+    // they never fall through here.
+    if (!gestureAllowsSelect(gesture)) return
     const store = useAssemblyStore.getState()
     if (store.activeMateField !== null || e.button !== 0 || !down || e.ctrlKey) return
     if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= CLICK_THRESHOLD_PX) return

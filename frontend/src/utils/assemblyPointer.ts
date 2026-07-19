@@ -39,6 +39,37 @@ export interface AssemblyPointerStore {
 
 export type GizmoMode = 'translate' | 'rotate' | 'plane'
 
+/** Which pointer-down opened the session: the part itself, or a triad handle. */
+export type GestureSource = 'body' | 'gizmo'
+
+/** What the finished gesture was, for the caller to tell a click from a drag. */
+export interface GestureOutcome {
+  /** null when pointer-down opened no session at all. */
+  source: GestureSource | null
+  /** The session actually moved the part, so a re-solve is owed. */
+  moved: boolean
+}
+
+const NO_GESTURE: GestureOutcome = { source: null, moved: false }
+
+/**
+ * Whether the pointer-up that ended this gesture may still toggle the B-rep
+ * entity under the cursor into the measurement selection.
+ *
+ * Two things must never select. A gesture that began on a triad handle is
+ * unambiguously a manipulation: the handle is drawn over the part, so the face
+ * behind it is not what the user pointed at, however short the gesture was. And
+ * a gesture that moved the part asked for a re-solve, which drops the selection
+ * (the keys are positional) a few frames later -- selecting there only makes a
+ * highlight that silently disappears.
+ *
+ * What is left is a body grab that never moved: a plain click on the part, which
+ * selects exactly as it would with no session open.
+ */
+export function gestureAllowsSelect(outcome: GestureOutcome): boolean {
+  return outcome.source !== 'gizmo' && !outcome.moved
+}
+
 type Gesture =
   | { kind: 'plane'; grab: Vec3; normal: Vec3 }
   | { kind: 'axis'; axis: Vec3; origin: Vec3; startParam: number }
@@ -54,19 +85,31 @@ export interface AssemblyPointerAdapter {
   onGizmoPointerDown: (handle: string, mode: GizmoMode, axis: Vec3, origin: Vec3, ray: Ray) => boolean
   onPointerMove: (ray: Ray) => void
   /** Commits the session (assemblyStore re-solves once) if one is open. */
-  onPointerUp: () => void
+  onPointerUp: () => GestureOutcome
   cancel: () => void
   isActive: () => boolean
 }
 
 export function createAssemblyPointerAdapter(store: AssemblyPointerStore): AssemblyPointerAdapter {
   let gesture: Gesture | null = null
+  // What the open session is, kept beside the gesture so pointer-up can report
+  // it once the gesture itself is gone. `moved` counts only moves that reached
+  // the store: a pointermove landing back on the grab point drags by nothing and
+  // must leave a click a click.
+  let source: GestureSource | null = null
+  let moved = false
+
+  const open = (g: Gesture, from: GestureSource): true => {
+    gesture = g
+    source = from
+    moved = false
+    return true
+  }
 
   const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3): boolean => {
     store.setSelectedPartHandle(handle)
     if (!store.beginPartManipulation(handle)) return false
-    gesture = { kind: 'plane', grab, normal: viewNormal }
-    return true
+    return open({ kind: 'plane', grab, normal: viewNormal }, 'body')
   }
 
   const onGizmoPointerDown = (
@@ -90,8 +133,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
         store.cancelPartManipulation()
         return false
       }
-      gesture = { kind: 'axis', axis, origin, startParam }
-      return true
+      return open({ kind: 'axis', axis, origin, startParam }, 'gizmo')
     }
 
     // Both remaining modes read the pointer against the plane through the gizmo
@@ -106,12 +148,10 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     if (mode === 'plane') {
       // The grab is on the plane already, so the drag needs no other anchor:
       // every later hit lands on the same plane and the difference is the move.
-      gesture = { kind: 'plane', grab: hit, normal: axis }
-      return true
+      return open({ kind: 'plane', grab: hit, normal: axis }, 'gizmo')
     }
 
-    gesture = { kind: 'ring', axis, origin, startArm: sub(hit, origin), swing: 0 }
-    return true
+    return open({ kind: 'ring', axis, origin, startArm: sub(hit, origin), swing: 0 }, 'gizmo')
   }
 
   const onPointerMove = (ray: Ray): void => {
@@ -120,13 +160,16 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     if (gesture.kind === 'plane') {
       const hit = intersectRayPlane(ray, gesture.grab, gesture.normal)
       if (!hit) return
-      store.dragPartTranslate(sub(hit, gesture.grab))
+      const delta = sub(hit, gesture.grab)
+      if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) moved = true
+      store.dragPartTranslate(delta)
       return
     }
 
     if (gesture.kind === 'axis') {
       const param = closestParamOnAxis(ray, gesture.origin, gesture.axis)
       if (param === null) return
+      if (param !== gesture.startParam) moved = true
       store.dragPartTranslate(scale(gesture.axis, param - gesture.startParam))
       return
     }
@@ -135,18 +178,23 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     if (!hit) return
     const measured = signedAngleAbout(gesture.axis, gesture.startArm, sub(hit, gesture.origin))
     gesture.swing = unwrapAngle(measured, gesture.swing)
+    if (gesture.swing !== 0) moved = true
     store.rotatePartGizmo(gesture.axis, gesture.swing, gesture.origin)
   }
 
-  const onPointerUp = (): void => {
-    if (!gesture) return
+  const onPointerUp = (): GestureOutcome => {
+    if (!gesture) return NO_GESTURE
+    const outcome: GestureOutcome = { source, moved }
     gesture = null
+    source = null
     store.endPartManipulation()
+    return outcome
   }
 
   const cancel = (): void => {
     if (!gesture) return
     gesture = null
+    source = null
     store.cancelPartManipulation()
   }
 
