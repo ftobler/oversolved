@@ -23,18 +23,20 @@ import {
   ARROW_LENGTH, GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey, HEAD_LENGTH, HEAD_RADIUS,
   planeHandleCorners, RING_RADIUS, RING_TUBE, SHAFT_RADIUS, type GizmoAxisDef,
 } from '@/utils/gizmoPickGeometry'
+import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
 import type { Quat, Vec3 } from '@/utils/transform3d'
 
-const HOVER_COLOR = '#ffd24a'
 const PLANE_OPACITY = 0.3
 const PLANE_OPACITY_HOVER = 0.62
 
-// Per part axis: the colour, and the euler angles that aim a +Y cylinder/cone
-// and a +Z-normal torus along it.
-const AXES: { color: string; arrowRotation: [number, number, number]; ringRotation: [number, number, number] }[] = [
-  { color: '#e5533d', arrowRotation: [0, 0, -Math.PI / 2], ringRotation: [0, Math.PI / 2, 0] },
-  { color: '#7cbb45', arrowRotation: [0, 0, 0],           ringRotation: [-Math.PI / 2, 0, 0] },
-  { color: '#3d7ee5', arrowRotation: [Math.PI / 2, 0, 0], ringRotation: [0, 0, 0] },
+// Per part axis: the euler angles that aim a +Y cylinder/cone and a +Z-normal
+// torus along it. No per-axis colour: the triad is uni-violet, so that a handle
+// is grabbable reads the same way here as it does on the extrusion arrows and
+// the preview overlay, and hover is what carries meaning instead of hue.
+const AXES: { arrowRotation: [number, number, number]; ringRotation: [number, number, number] }[] = [
+  { arrowRotation: [0, 0, -Math.PI / 2], ringRotation: [0, Math.PI / 2, 0] },
+  { arrowRotation: [0, 0, 0],            ringRotation: [-Math.PI / 2, 0, 0] },
+  { arrowRotation: [Math.PI / 2, 0, 0],  ringRotation: [0, 0, 0] },
 ]
 
 interface TriadGizmoProps {
@@ -57,7 +59,7 @@ interface TriadGizmoProps {
  * registers. The quad is drawn unrotated in the gizmo's own frame because the
  * corners are already expressed there.
  */
-function PlaneHandle({ def, color, hovered }: { def: GizmoAxisDef; color: string; hovered: boolean }) {
+function PlaneHandle({ def, hovered }: { def: GizmoAxisDef; hovered: boolean }) {
   const positions = useMemo(() => {
     const [a, b, c, d] = planeHandleCorners(def)
     return new Float32Array([...a, ...b, ...c, ...a, ...c, ...d])
@@ -69,7 +71,7 @@ function PlaneHandle({ def, color, hovered }: { def: GizmoAxisDef; color: string
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
       <meshBasicMaterial
-        color={hovered ? HOVER_COLOR : color}
+        color={hovered ? COLOR_HOVER : COLOR_PREVIEW_EDGE}
         transparent
         opacity={hovered ? PLANE_OPACITY_HOVER : PLANE_OPACITY}
         side={THREE.DoubleSide}
@@ -81,7 +83,7 @@ function PlaneHandle({ def, color, hovered }: { def: GizmoAxisDef; color: string
 
 export default function TriadGizmo({ origin, orientation, hovered, drag }: TriadGizmoProps) {
   const ref = useScreenScale(GIZMO_PIXELS)
-  const colorFor = (key: string, base: string) => (hovered === key ? HOVER_COLOR : base)
+  const colorFor = (key: string) => (hovered === key ? COLOR_HOVER : COLOR_PREVIEW_EDGE)
 
   // Idle draws everything; a drag draws only the handle it grabbed. Each test
   // is "no drag, or this exact handle", so the null case is untouched.
@@ -92,18 +94,18 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
     <group position={origin} quaternion={orientation}>
       <group ref={ref} renderOrder={1000}>
         {GIZMO_AXES.map((def, i) => {
-          const { color, arrowRotation, ringRotation } = AXES[i]
+          const { arrowRotation, ringRotation } = AXES[i]
           return (
             <group key={def.name}>
               {shows('axis', def.name) && (
                 <group rotation={arrowRotation}>
                   <mesh position={[0, ARROW_LENGTH / 2, 0]}>
                     <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, ARROW_LENGTH, 8]} />
-                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name), color)} depthTest={false} />
+                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name))} depthTest={false} />
                   </mesh>
                   <mesh position={[0, ARROW_LENGTH, 0]}>
                     <coneGeometry args={[HEAD_RADIUS, HEAD_LENGTH, 12]} />
-                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name), color)} depthTest={false} />
+                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name))} depthTest={false} />
                   </mesh>
                 </group>
               )}
@@ -112,13 +114,13 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
                 <group rotation={ringRotation}>
                   <mesh>
                     <torusGeometry args={[RING_RADIUS, RING_TUBE, 6, 48]} />
-                    <meshBasicMaterial color={colorFor(gizmoHandleKey('rotate', def.name), color)} depthTest={false} />
+                    <meshBasicMaterial color={colorFor(gizmoHandleKey('rotate', def.name))} depthTest={false} />
                   </mesh>
                 </group>
               )}
 
               {shows('plane', def.name) && (
-                <PlaneHandle def={def} color={color} hovered={hovered === gizmoHandleKey('plane', def.name)} />
+                <PlaneHandle def={def} hovered={hovered === gizmoHandleKey('plane', def.name)} />
               )}
 
               {/* The dial is built from def.u/def.v rather than ringRotation, so

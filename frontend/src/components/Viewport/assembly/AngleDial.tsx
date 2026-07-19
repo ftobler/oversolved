@@ -21,6 +21,9 @@ import type { GizmoAxisDef } from '@/utils/gizmoPickGeometry'
 
 const DATUM_COLOR = '#9aa0a6'
 const LIVE_COLOR = '#ffffff'
+// Amber, and deliberately not the triad's hover white: snap engagement is a
+// different signal from "the cursor is on this handle" and has to stay readable
+// as its own thing.
 const SNAP_COLOR = '#ffd24a'
 const TICK_COLOR = '#9aa0a6'
 const SWEEP_OPACITY = 0.22
