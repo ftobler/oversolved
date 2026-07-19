@@ -1,16 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ARROW_HEAD_PICK_RADIUS,
   ARROW_LENGTH,
+  ARROW_PICK_START,
   buildGizmoPickGeometry,
   GIZMO_AXES,
+  GIZMO_PIXELS,
   gizmoHandleKey,
   HEAD_LENGTH,
+  HEAD_RADIUS,
   parseGizmoHandleKey,
+  PICK_LINE_PX,
   PLANE_INNER,
   PLANE_OUTER,
   planeHandleCorners,
   RING_PICK_TUBE,
   RING_RADIUS,
+  RING_TUBE,
+  SHAFT_RADIUS,
 } from '@/utils/gizmoPickGeometry'
 import { IDENTITY_TRANSFORM, quatFromAxisAngle, rotateVector, type Quat } from '@/utils/transform3d'
 
@@ -33,6 +40,26 @@ function handleBounds(geom: ReturnType<typeof buildGizmoPickGeometry>, query: st
     }
   }
   return { min, max }
+}
+
+/** Every vertex of the triangles belonging to one handle. */
+function handlePoints(geom: ReturnType<typeof buildGizmoPickGeometry>, query: string): [number, number, number][] {
+  const face = geom.faceQueries.indexOf(query)
+  expect(face).toBeGreaterThanOrEqual(0)
+  const out: [number, number, number][] = []
+  for (let tri = 0; tri < geom.triangleToFace.length; tri++) {
+    if (geom.triangleToFace[tri] !== face) continue
+    for (let v = 0; v < 3; v++) {
+      const base = tri * 9 + v * 3
+      out.push([geom.positions[base], geom.positions[base + 1], geom.positions[base + 2]])
+    }
+  }
+  return out
+}
+
+/** Local units are GIZMO_PIXELS pixels each, so a local length is this many pixels. */
+function toPixels(local: number): number {
+  return local * GIZMO_PIXELS
 }
 
 describe('parseGizmoHandleKey', () => {
@@ -123,6 +150,56 @@ describe('buildGizmoPickGeometry', () => {
     const geom = buildGizmoPickGeometry(origin, IDENTITY, 4)
     const { max } = handleBounds(geom, gizmoHandleKey('translate', 'x'))
     expect(max[0]).toBeCloseTo(origin[0] + (ARROW_LENGTH + HEAD_LENGTH) * 4, 5)
+  })
+
+  // The grab regions used to be 3-4x the drawn line, which bought no reach the
+  // resolver's 17 px window was not already giving and made two handles fight
+  // over the same pixels. These pin the rule, not the numbers: a pick line is
+  // about as wide as the line the user is aiming at.
+  it('picks the arrow shaft at the width it is drawn, not a multiple of it', () => {
+    const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
+    // Shaft only. The arrowhead has its own, deliberately wider tube: it is a
+    // solid target rather than a line.
+    const shaft = handlePoints(geom, gizmoHandleKey('translate', 'x'))
+      .filter(p => p[0] < ARROW_LENGTH - HEAD_LENGTH)
+    const half = Math.max(...shaft.map(p => Math.max(Math.abs(p[1]), Math.abs(p[2]))))
+    expect(half).toBeLessThanOrEqual(SHAFT_RADIUS)
+    // Wide enough to always rasterize, narrow enough to still be a hairline.
+    expect(toPixels(2 * half)).toBeGreaterThanOrEqual(PICK_LINE_PX)
+    expect(toPixels(2 * half)).toBeLessThan(2 * PICK_LINE_PX)
+  })
+
+  it('picks the ring at the width it is drawn, not a multiple of it', () => {
+    const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
+    const radii = handlePoints(geom, gizmoHandleKey('rotate', 'z')).map(p => Math.hypot(p[0], p[1]))
+    const tube = (Math.max(...radii) - Math.min(...radii)) / 2
+    expect(tube).toBeLessThanOrEqual(RING_TUBE)
+    expect(toPixels(2 * tube)).toBeGreaterThanOrEqual(PICK_LINE_PX)
+    expect(toPixels(2 * tube)).toBeLessThan(2 * PICK_LINE_PX)
+  })
+
+  it('keeps the arrowhead grabbable over the cone the user can see', () => {
+    // Thinning the shaft must not thin the head with it: the head is the part
+    // of the arrow a user aims at the middle of.
+    const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
+    const pts = handlePoints(geom, gizmoHandleKey('translate', 'x'))
+    const widest = pts.reduce((best, p) => (Math.abs(p[1]) > Math.abs(best[1]) ? p : best))
+    expect(Math.abs(widest[1])).toBeCloseTo(ARROW_HEAD_PICK_RADIUS, 6)
+    expect(ARROW_HEAD_PICK_RADIUS).toBeLessThanOrEqual(HEAD_RADIUS)  // never wider than drawn
+    // And it sits over the drawn cone, which TriadGizmo centres on ARROW_LENGTH.
+    expect(widest[0]).toBeGreaterThanOrEqual(ARROW_LENGTH - HEAD_LENGTH / 2 - 1e-6)
+    expect(widest[0]).toBeLessThanOrEqual(ARROW_LENGTH + HEAD_LENGTH / 2 + 1e-6)
+  })
+
+  it('leaves the hub free and keeps the arrows off each other', () => {
+    // ARROW_PICK_START exists so the three arrows do not share the pixels where
+    // they meet. With hairline tubes an arrow reaches |y|,|z| <= its radius, so
+    // no arrow can enter the slab another arrow's start reserves.
+    const geom = buildGizmoPickGeometry([0, 0, 0], IDENTITY, 1)
+    const pts = handlePoints(geom, gizmoHandleKey('translate', 'x'))
+    expect(Math.min(...pts.map(p => p[0]))).toBeCloseTo(ARROW_PICK_START, 6)
+    const offAxis = Math.max(...pts.map(p => Math.max(Math.abs(p[1]), Math.abs(p[2]))))
+    expect(offAxis).toBeLessThan(ARROW_PICK_START)
   })
 
   it('turns with the part: a quarter turn about Z sends the X arrow up +Y', () => {

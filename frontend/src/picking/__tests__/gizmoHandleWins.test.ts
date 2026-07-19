@@ -10,10 +10,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
 import { resolvePixelWindow, resolvePixelWindowAll } from '../IdResolver'
 import { idToRGB } from '../idEncoding'
-import { IdPipeline } from '../IdPipeline'
+import { DEFAULT_WINDOW_SIZE, IdPipeline } from '../IdPipeline'
 import {
   FACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 } from '../layerNames'
+import {
+  ARROW_PICK_RADIUS, ARROW_PICK_START, GIZMO_PIXELS, PLANE_INNER, RING_PICK_TUBE,
+} from '@/utils/gizmoPickGeometry'
 
 function fillPixel(buf: Uint8Array, size: number, x: number, y: number, id: number): void {
   const [r, g, b] = idToRGB(id)
@@ -79,5 +82,37 @@ describe('gizmo handle layer priority', () => {
     fillPixel(buf, SIZE, 2, 2, faceId)
     const hits = resolvePixelWindowAll(buf, SIZE, reg, new Set([FACE_LAYER_NAME]), priority)
     expect(hits.map(h => h.layer)).toEqual([FACE_LAYER_NAME])
+  })
+})
+
+// Layer priority settles gizmo-vs-world. What settles gizmo-vs-gizmo is plain
+// distance, and that only means anything if the handles do not smear into each
+// other's pixels first. The triad's grab regions are hairlines for that reason:
+// the snap radius below is the only tolerance the user needs.
+describe('triad handles stay out of each others snap windows', () => {
+  const snapRadiusPx = (DEFAULT_WINDOW_SIZE - 1) / 2
+  // The triad is screen-scaled so one gizmo-local unit is GIZMO_PIXELS pixels.
+  const px = (local: number) => local * GIZMO_PIXELS
+
+  it('an arrow and the plane quad beside it are a whole window apart', () => {
+    // Aiming at the arrow, the plane quad is not even inside the window that
+    // gets read, so it cannot take the grab. The old fat tube left a gap of
+    // roughly 14 px here, well inside one window.
+    expect(px(PLANE_INNER - ARROW_PICK_RADIUS)).toBeGreaterThanOrEqual(DEFAULT_WINDOW_SIZE)
+  })
+
+  it('an arrow and a ring overlap over a couple of pixels where they cross', () => {
+    // An arrow runs straight through the two rings at their major radius, so
+    // some ambiguity there is unavoidable. What matters is its size: the span
+    // in which a pixel could belong to either is the two tube widths, which
+    // stays well inside the snap radius so the nearest-pixel rule decides by
+    // aim rather than by which triangle rasterized last.
+    expect(px(2 * (ARROW_PICK_RADIUS + RING_PICK_TUBE))).toBeLessThan(snapRadiusPx)
+  })
+
+  it('a click on the part origin itself grabs no arrow', () => {
+    // ARROW_PICK_START keeps the hub clear; it only holds if the gap it leaves
+    // outruns the snap radius, or the resolver would reach in and find an arrow.
+    expect(px(ARROW_PICK_START)).toBeGreaterThan(snapRadiusPx)
   })
 })

@@ -9,9 +9,14 @@
 // grab consumed the pointer first. The ID buffer resolves by layer priority
 // instead, which is the same rule the gizmo is drawn by.
 //
-// The shapes here are the PICK shapes, deliberately fatter than what
-// TriadGizmo.tsx draws: a 2%-radius shaft is a pixel-hunt. The visual constants
-// live here too so the two can never drift apart.
+// The shapes here are the PICK shapes. They are deliberately THIN: the ID
+// resolver already scans a 17 px window around the cursor and returns the
+// nearest entity in it (IdResolver.ts, DEFAULT_WINDOW_SIZE), so grab tolerance
+// is provided once, in pixel space, for every layer. Fattening the geometry on
+// top of that buys no reach and costs precision, because fat volumes from two
+// different handles overlap and the winner is then decided by which triangle
+// happened to rasterize last rather than by where the user aimed. The visual
+// constants live here too so the two can never drift apart.
 
 import { rotateVector, type Quat, type Vec3 } from '@/utils/transform3d'
 
@@ -25,19 +30,53 @@ export const HEAD_RADIUS = ARROW_LENGTH * 0.06
 export const RING_RADIUS = 0.75
 export const RING_TUBE = 0.02
 
-// Grab regions. The arrow's is a plain tube covering shaft and head; it starts
-// clear of the hub so the three arrows do not fight over the pixels where they
-// meet, and so a plane handle can own that corner instead.
-const ARROW_PICK_RADIUS = 0.085
-const ARROW_PICK_START = 0.14
-export const RING_PICK_TUBE = 0.06
-
 // The plane quads live in the corner between two arrows, inside the rings.
 export const PLANE_INNER = 0.24
 export const PLANE_OUTER = 0.55
 
 const TUBE_SIDES = 6
 const RING_SEGMENTS = 28
+
+/**
+ * Circumradius of a pick tube that rasterizes at least `px` pixels wide, seen
+ * from any angle.
+ *
+ * Derivation, so the next reader can re-derive rather than trust a number:
+ * GizmoPickLayer scales this soup by `GIZMO_PIXELS * p2w(camera)`, and `p2w` is
+ * world units per screen pixel, so one local unit is exactly GIZMO_PIXELS (90)
+ * pixels on screen at any zoom -- a local length L renders at L * 90 px.
+ * `addTube`/`addTorus` give the tube a regular TUBE_SIDES-gon cross-section of
+ * circumradius r, whose NARROWEST silhouette is across the flats, 2r*cos(pi/n).
+ * So the worst-case rasterized width is 2r*cos(pi/n)*GIZMO_PIXELS pixels, and
+ * this inverts that.
+ */
+function pickTubeRadius(px: number): number {
+  return px / (2 * Math.cos(Math.PI / TUBE_SIDES) * GIZMO_PIXELS)
+}
+
+/**
+ * The width every line-shaped grab region is drawn at in the ID buffer. Not 1:
+ * a band narrower than a pixel can slip between pixel centres and vanish from
+ * the buffer for a whole stretch of its length, so 1.5 buys a continuous run
+ * with margin. Still under half the drawn shaft (2 * SHAFT_RADIUS * 90 = 4 px).
+ */
+export const PICK_LINE_PX = 1.5
+
+// Grab regions. The arrow's is a hairline tube running the length of the shaft,
+// starting clear of the hub so the three arrows do not fight over the pixels
+// where they meet, and so a plane handle can own that corner instead.
+export const ARROW_PICK_RADIUS = pickTubeRadius(PICK_LINE_PX)
+export const ARROW_PICK_START = 0.14
+export const RING_PICK_TUBE = pickTubeRadius(PICK_LINE_PX)
+
+/**
+ * The head is the one part of the triad that is a solid target rather than a
+ * line, so its grab region is the drawn cone's own base radius: a user aiming
+ * at the middle of a visible arrowhead should hit it without leaning on the
+ * resolver's snap. A cylinder over the cone's span is never wider than the cone
+ * is at its base, so this still never exceeds what is drawn.
+ */
+export const ARROW_HEAD_PICK_RADIUS = HEAD_RADIUS
 
 export type GizmoHandleKind = 'translate' | 'rotate' | 'plane'
 
@@ -205,6 +244,9 @@ export function buildGizmoPickGeometry(
   for (const def of GIZMO_AXES) {
     b.beginHandle(gizmoHandleKey('translate', def.name))
     addTube(b, def, ARROW_PICK_START, ARROW_LENGTH + HEAD_LENGTH, ARROW_PICK_RADIUS)
+    // Second tube, same handle: TriadGizmo centres the cone on ARROW_LENGTH, so
+    // this is the span the user sees a solid arrowhead over.
+    addTube(b, def, ARROW_LENGTH - HEAD_LENGTH / 2, ARROW_LENGTH + HEAD_LENGTH / 2, ARROW_HEAD_PICK_RADIUS)
   }
   for (const def of GIZMO_AXES) {
     b.beginHandle(gizmoHandleKey('rotate', def.name))
