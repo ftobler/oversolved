@@ -450,6 +450,23 @@ describe('updateMate', () => {
     updateMate(doc, 'm1', { offset: 3 })
     expect(findMate(doc, 'm1')!.offset).toBeUndefined()
   })
+
+  // `offset` widened from a scalar to a 3D vector, so the patch path now carries
+  // an object. It must be stored verbatim: the components are individually
+  // optional, and filling in the missing ones would author values the user
+  // never asked for.
+  it('stores a vector offset with only the components it was given', () => {
+    let doc = appendMate(emptyDoc, 'fixed', 'm1')
+    doc = updateMate(doc, 'm1', { offset: { x: 1, z: 3 } })
+    expect(findMate(doc, 'm1')!.offset).toEqual({ x: 1, z: 3 })
+  })
+
+  it('deletes a vector offset rather than storing an all-zero one', () => {
+    let doc = appendMate(emptyDoc, 'fixed', 'm1')
+    doc = updateMate(doc, 'm1', { offset: { x: 1, y: 2, z: 3 } })
+    doc = updateMate(doc, 'm1', { offset: undefined })
+    expect('offset' in findMate(doc, 'm1')!).toBe(false)
+  })
 })
 
 describe('removeMate', () => {

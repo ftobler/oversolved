@@ -70,6 +70,20 @@ export function mateParams(kind: MateKind): readonly MateParam[] {
   return MATE_PARAMS[kind] ?? []
 }
 
+/**
+ * Whether a kind reduces its offset to a single signed distance along A's anchor
+ * axis (`Mate::axial_offset`, mate.rs) rather than reading the whole vector.
+ *
+ * Tangential's clearance and ParallelPlaneDistance's plane separation are both
+ * one distance measured along that axis; the perpendicular part of an offset
+ * points along DOF those mates deliberately leave free, so it has nowhere to
+ * act. Offering x/y/z for them would promise two components that provably do
+ * nothing, which is why the editor keeps them on a single box.
+ */
+export function mateOffsetIsAxial(kind: MateKind): boolean {
+  return kind === 'tangential' || kind === 'parallel_plane_distance'
+}
+
 export const MATE_PARAM_LABELS: Record<MateParam, string> = {
   offset: 'Offset',
   flip: 'Flip',

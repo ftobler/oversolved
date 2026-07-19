@@ -109,10 +109,27 @@
   gap: 6px;
 }
 
-.mate-param-angle {
+.mate-param-angle,
+.mate-param-offset {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Says what the solver actually reads, where that is narrower than the control
+   suggests (an axial-only kind, a legacy scalar offset). Muted and small: it is
+   a footnote to the box above it, not a warning. */
+.mate-param-hint {
+  color: #777;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* The offset triple borrows the instance editor's axis boxes, so it needs that
+   row's narrower label column too: at the shared 80px the three boxes are left
+   with a digit each. */
+.mate-offset-row .feature-field-label {
+  width: 46px;
 }
 
 /* One button, parked at the right edge under the value box it steps. */

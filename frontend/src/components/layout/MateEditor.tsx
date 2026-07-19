@@ -16,13 +16,13 @@
 // (mateKinds.ts, assemblyMutations.ts) stays viewport-free and unit-tested.
 
 import { useState } from 'react'
-import type { MateFeatureDef, MateRef, MateRefField } from '@/types/cad'
+import type { MateFeatureDef, MateOffsetVec, MateRef, MateRefField } from '@/types/cad'
 import type { MateResult } from '@/kernel/solveAssembly'
 import type { MateFieldTarget } from '@/stores/assemblyStore'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import {
-  MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel, normalizeMateAngleDeg,
-  type MateParam,
+  MATE_PARAM_LABELS, isMateRefEmpty, mateOffsetIsAxial, mateParams, mateRefLabel,
+  normalizeMateAngleDeg, type MateParam,
 } from '@/utils/mateKinds'
 
 interface MateEditorProps {
@@ -57,6 +57,32 @@ function numericValue(v: unknown): string {
   return typeof v === 'number' ? String(v) : ''
 }
 
+type Triple = readonly [string, string, string]
+const OFFSET_AXES = ['x', 'y', 'z'] as const
+
+/**
+ * The three boxes folded back into the document's shape. An empty box is an
+ * ABSENT component, never a zero: `mateOffsetVector` reads a missing component
+ * as 0 anyway, so writing one would only be YAML noise, and emptying all three
+ * must leave `offset` unset rather than `{x: 0, y: 0, z: 0}`. `undefined` is
+ * what `updateMate` deletes the key for.
+ */
+function offsetFromText(text: Triple): MateOffsetVec | undefined {
+  const vec: MateOffsetVec = {}
+  let authored = false
+  OFFSET_AXES.forEach((axis, i) => {
+    const raw = text[i].trim()
+    if (raw === '') return
+    const n = Number(raw)
+    // A half-typed box ('-', '1e') parses to nothing; leave that component out
+    // and keep the others, so entry on one axis never voids the row.
+    if (!Number.isFinite(n)) return
+    vec[axis] = n
+    authored = true
+  })
+  return authored ? vec : undefined
+}
+
 export function MateEditor({
   featureId, mate, result, activeField, labelFor, onArmField, onUpdate,
 }: MateEditorProps) {
@@ -75,6 +101,46 @@ export function MateEditor({
   if (syncedFor.featureId !== featureId || syncedFor.angle !== mate.angle) {
     setSyncedFor({ featureId, angle: mate.angle })
     setAngleText(numericValue(mate.angle))
+  }
+
+  // Which control `offset` gets is decided by the AUTHORED SHAPE first, and only
+  // then by the kind. A document is always shown in the form it actually holds,
+  // so nothing on screen has to be reconstructed from data that is not there.
+  //
+  // The legacy bare number is the case that forces this. It means "this distance
+  // along A's anchor axis", and that axis is resolved inside the solve, from
+  // geometry this panel does not have -- so there is no honest fixed x/y/z to
+  // put in three boxes. Decomposing it would need an axis we would have to
+  // invent, and inventing one MOVES THE PART. So a legacy scalar keeps its
+  // single box, showing the number the document really holds, and converting to
+  // a vector is left to the user: clear the box, and the triple takes over. That
+  // is lossless in both directions and never fabricates a component.
+  const offsetVec = mate.offset && typeof mate.offset === 'object' ? mate.offset : null
+  const legacyScalarOffset = typeof mate.offset === 'number'
+  const axialOnly = mateOffsetIsAxial(mate.kind)
+  const offsetTriple = offsetVec !== null || (!legacyScalarOffset && !axialOnly)
+  const offsetValues: Triple = [
+    numericValue(offsetVec?.x), numericValue(offsetVec?.y), numericValue(offsetVec?.z),
+  ]
+  // Same dirty-text discipline as the angle box and the instance editor's
+  // triples: the boxes hold the user's keystrokes, and follow the document only
+  // when the committed offset (or the mate itself) changes from elsewhere.
+  const offsetKey = `${featureId}|${offsetValues.join('|')}`
+  const [offsetText, setOffsetText] = useState<Triple>(offsetValues)
+  const [offsetSyncedFor, setOffsetSyncedFor] = useState(offsetKey)
+  if (offsetSyncedFor !== offsetKey) {
+    setOffsetSyncedFor(offsetKey)
+    setOffsetText(offsetValues)
+  }
+
+  const commitOffsetAxis = (index: number, raw: string) => {
+    const next: Triple = [
+      index === 0 ? raw : offsetText[0],
+      index === 1 ? raw : offsetText[1],
+      index === 2 ? raw : offsetText[2],
+    ]
+    setOffsetText(next)
+    onUpdate({ offset: offsetFromText(next) })
   }
 
   // Overflow cleans itself up: the +90 button steps forever and lands back in
@@ -96,6 +162,63 @@ export function MateEditor({
             onChange={e => onUpdate({ flip: e.target.checked || undefined })}
           />
         </label>
+      )
+    }
+    if (param === 'offset') {
+      if (offsetTriple) {
+        return (
+          <div key={param} className="mate-param-offset">
+            <div className="feature-field-row mate-offset-row">
+              <span className="feature-field-label">{MATE_PARAM_LABELS.offset}</span>
+              <div className="instance-triple">
+                {OFFSET_AXES.map((axis, i) => (
+                  <label key={axis} className="instance-axis">
+                    <span>{axis.toUpperCase()}</span>
+                    <input
+                      type="number"
+                      className="feature-field-input"
+                      aria-label={`Offset ${axis.toUpperCase()}`}
+                      value={offsetText[i]}
+                      placeholder="0"
+                      onChange={e => commitOffsetAxis(i, e.target.value)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+            {/* A vector authored on a kind that reduces it to one distance: the
+                boxes stay editable so the data can be fixed or cleared, but the
+                row must not pretend the other two components do anything. */}
+            {axialOnly && (
+              <span className="mate-param-hint">
+                Only the component along A&apos;s axis is used.
+              </span>
+            )}
+          </div>
+        )
+      }
+      return (
+        <div key={param} className="mate-param-offset">
+          <label className="feature-field-row">
+            <span className="feature-field-label">{MATE_PARAM_LABELS.offset}</span>
+            <input
+              type="number"
+              className="feature-field-input"
+              aria-label={MATE_PARAM_LABELS.offset}
+              value={numericValue(mate.offset)}
+              placeholder="0"
+              onChange={e => {
+                const raw = e.target.value
+                onUpdate({ offset: raw === '' ? undefined : Number(raw) })
+              }}
+            />
+          </label>
+          <span className="mate-param-hint">
+            {legacyScalarOffset && !axialOnly
+              ? 'Distance along A\'s axis. Clear the box to author X/Y/Z.'
+              : 'Signed distance along A\'s axis.'}
+          </span>
+        </div>
       )
     }
     if (param === 'angle') {

@@ -455,9 +455,9 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await renderWithMate('fixed')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
     disarm()
-    fireEvent.change(screen.getByLabelText('Offset'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
     await tick()
-    expect(mateDef().offset).toBe(5)
+    expect(mateDef().offset).toEqual({ x: 5 })
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
   })
 
@@ -466,9 +466,9 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
   it('a parameter edit while a chip is armed defers its solve to the disarm', async () => {
     await renderWithMate('fixed')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText('Offset'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
     await tick()
-    expect(mateDef().offset).toBe(5)
+    expect(mateDef().offset).toEqual({ x: 5 })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
 
     disarm()
@@ -605,9 +605,9 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
   it('cancelling a mate edit reverts its parameters and closes the editor', async () => {
     await renderWithMate('fixed')
     disarm()
-    fireEvent.change(screen.getByLabelText('Offset'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
     await tick()
-    expect(mateDef().offset).toBe(5)
+    expect(mateDef().offset).toEqual({ x: 5 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await tick()
