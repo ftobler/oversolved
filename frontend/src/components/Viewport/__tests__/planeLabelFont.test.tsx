@@ -1,7 +1,7 @@
-// Guards the plane-label font warm-up. The defect it covers is invisible to a
-// test that mocks drei's <Text> away, which is what the rest of the viewport
-// suite does, so this file deliberately renders the REAL drei Text against the
-// REAL suspend-react cache.
+// Guards the plane-label font warm-up and the label's own Suspense boundary.
+// Both defects are invisible to a test that mocks drei's <Text> away, which is
+// what the rest of the viewport suite does, so this file deliberately renders
+// the REAL drei Text against the REAL suspend-react cache.
 //
 // Two mocks are unavoidable and neither touches the mechanism under test:
 //   - `troika-three-text`, so the suite never reaches the jsdelivr CDN. The
@@ -129,5 +129,64 @@ describe('plane label font preload', () => {
     preloadPlaneLabelFont()
 
     expect(fontRequests).toHaveLength(1)
+  })
+})
+
+describe('plane label Suspense boundary', () => {
+  it('keeps sibling scene content mounted while the label font is still loading', async () => {
+    const { PlaneLabel } = await import('@/components/Viewport/PlaneVisual')
+
+    // The scene as R3F builds it: one Canvas-wide boundary around everything.
+    // Before Fix B a suspending label re-entered THIS fallback, which is what
+    // made the whole viewport blank on the first unhide.
+    const { container } = render(
+      <Suspense fallback={<div data-testid="canvas-fallback" />}>
+        <mesh data-testid="plane-surface" />
+        <PlaneLabel x={0} y={0}>Front</PlaneLabel>
+      </Suspense>
+    )
+    await settle()
+
+    // Font deliberately still unresolved: the label is suspended right now.
+    expect(releaseFont).not.toBeNull()
+    expect(container.querySelector('[data-testid="canvas-fallback"]')).toBeNull()
+    expect(container.querySelector('[data-testid="plane-surface"]')).not.toBeNull()
+
+    // ...and the label arrives later without disturbing the plane.
+    act(() => { releaseFont?.() })
+    await settle()
+
+    expect(container.querySelector('[data-testid="plane-surface"]')).not.toBeNull()
+    expect(container.querySelector('primitive')).not.toBeNull()
+  })
+
+  it('does not blank an already-mounted scene when a second label appears', async () => {
+    const { PlaneLabel } = await import('@/components/Viewport/PlaneVisual')
+
+    // Toggling a plane visible adds a label to a live scene. The assertion that
+    // matters is that the Canvas-wide boundary never re-enters its fallback
+    // after the initial mount: that re-entry is what R3F turns into
+    // hideInstance() on every object in the scene, i.e. the full-viewport flash.
+    function Scene({ showLabel }: { showLabel: boolean }) {
+      return (
+        <Suspense fallback={<div data-testid="canvas-fallback" />}>
+          <mesh data-testid="plane-surface" />
+          {showLabel && <PlaneLabel x={0} y={0}>Front</PlaneLabel>}
+        </Suspense>
+      )
+    }
+
+    const { container, rerender } = render(<Scene showLabel={false} />)
+    await settle()
+    const surfaceBeforeToggle = container.querySelector('[data-testid="plane-surface"]')
+    expect(surfaceBeforeToggle).not.toBeNull()
+
+    rerender(<Scene showLabel />)
+    await settle()
+
+    expect(container.querySelector('[data-testid="canvas-fallback"]')).toBeNull()
+    // Same DOM node, not a remount: the outer boundary never tore the scene
+    // down and rebuilt it.
+    expect(container.querySelector('[data-testid="plane-surface"]')).toBe(surfaceBeforeToggle)
   })
 })

@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { useRef } from 'react'
+import { Suspense, useRef } from 'react'
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { Line, Text } from '@react-three/drei'
 import { preload } from 'suspend-react'
@@ -65,17 +65,26 @@ export function PlaneLabel({ x, y, children }: PlaneLabelProps) {
   })
   return (
     <group ref={groupRef} position={[x + 1.0, y + Y_OFFSET, 0.001]}>
-      <Text
-        font={LABEL_FONT}
-        characters={LABEL_CHARACTERS}
-        fontSize={3}
-        color={LABEL_COLOR}
-        fillOpacity={LABEL_OPACITY}
-        anchorX="left"
-        anchorY="top"
-      >
-        {children}
-      </Text>
+      {/* R3F wraps ALL Canvas children in one Suspense boundary of its own, and
+          a suspended boundary is not merely invisible: R3F's hideInstance sets
+          object.visible = false on every host instance under it, so ANY leaf
+          that suspends blanks the entire viewport (and takes OrbitControls down
+          with it, see SceneController). drei's <Text> suspends on its font, so
+          the label needs its own boundary to keep that blast radius local. The
+          plane draws immediately; the label pops in a moment later. */}
+      <Suspense fallback={null}>
+        <Text
+          font={LABEL_FONT}
+          characters={LABEL_CHARACTERS}
+          fontSize={3}
+          color={LABEL_COLOR}
+          fillOpacity={LABEL_OPACITY}
+          anchorX="left"
+          anchorY="top"
+        >
+          {children}
+        </Text>
+      </Suspense>
     </group>
   )
 }
