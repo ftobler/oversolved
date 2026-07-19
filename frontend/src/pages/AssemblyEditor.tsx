@@ -231,13 +231,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()  // the new instance has no bodies until the assembly re-solves
   }, [mutate, requestSolve])
 
-  const handleOpenPart = useCallback((handle: string) => {
-    const inst = instances.find(i => i.handle === handle)
-    if (!inst) return
-    useAssemblyStore.getState().setActivePartHandle(handle)
-    navigate(`/documents/${inst.doc_id}`)
-  }, [instances, navigate])
-
   const handleOpenPartNewTab = useCallback((handle: string) => {
     const inst = instances.find(i => i.handle === handle)
     if (inst) window.open(`/documents/${inst.doc_id}`, '_blank')
@@ -497,7 +490,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             editingMateId={editingMateId}
             editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
-            onOpenPart={handleOpenPart}
             onOpenPartNewTab={handleOpenPartNewTab}
             onDeleteInstance={handleDelete}
             onToggleVisible={handleToggleVisible}

@@ -283,18 +283,22 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
   })
 
-  it('the options menu opens the part document', async () => {
+  it('the options menu opens the part in a new tab, never in place', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
     await renderLoaded()
     await insertPart('Bracket')
-    const handle = useAssemblyStore.getState().instances[0].handle
     await waitFor(() => screen.getByText('Bracket'))
     fireEvent.click(screen.getByLabelText('Part options'))
-    fireEvent.click(screen.getByText('Open'))
+    // Opening in place was dropped: a part now only ever opens in a new tab, so
+    // the assembly it was reached from stays on screen behind it.
+    expect(screen.queryByText('Open')).toBeNull()
+    fireEvent.click(screen.getByText('Open in new tab'))
     await tick()
-    expect(useAssemblyStore.getState().activePartHandle).toBe(handle)
-    expect(navigateSpy).toHaveBeenCalledWith('/documents/part-1')
+    expect(openSpy).toHaveBeenCalledWith('/documents/part-1', '_blank')
+    expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
     // Assembly state is unchanged by opening the part.
     expect(useAssemblyStore.getState().instances).toHaveLength(1)
+    openSpy.mockRestore()
   })
 })
 

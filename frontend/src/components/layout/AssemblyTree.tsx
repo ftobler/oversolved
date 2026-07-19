@@ -43,7 +43,6 @@ interface AssemblyTreeProps {
   // The instance whose inline editor is open.
   editingInstanceHandle?: string | null
   onSelectPart?: (handle: string) => void
-  onOpenPart: (handle: string) => void
   onOpenPartNewTab: (handle: string) => void
   onDeleteInstance: (handle: string) => void
   onToggleVisible: (handle: string, visible: boolean) => void
@@ -86,7 +85,6 @@ export function AssemblyTree({
   editingMateId,
   editingInstanceHandle,
   onSelectPart,
-  onOpenPart,
   onOpenPartNewTab,
   onDeleteInstance,
   onToggleVisible,
@@ -166,7 +164,6 @@ export function AssemblyTree({
             const selected = selectedHandle === inst.handle
             const editing = editingInstanceHandle === inst.handle
             const menuItems: ContextMenuItem[] = [
-              { label: 'Open', icon: featurePartIcon, onClick: () => onOpenPart(inst.handle) },
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
               {
                 label: inst.fixed ? 'Unground' : 'Ground (fix)',
