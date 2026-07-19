@@ -35,7 +35,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
 }
 
 describe('isManipulable', () => {
-  it('rejects a grounded instance and a missing one', () => {
+  it('rejects a fixed instance and a missing one', () => {
     expect(isManipulable(instance('p1'))).toBe(true)
     expect(isManipulable(instance('p1', { fixed: true }))).toBe(false)
     expect(isManipulable(undefined)).toBe(false)
@@ -169,17 +169,17 @@ describe('livePartPose', () => {
 })
 
 describe('fixed instances are not manipulable by either path', () => {
-  it('a part grounded mid-drag keeps its transform on commit', () => {
+  it('a part fixed mid-drag keeps its transform on commit', () => {
     const doc = docWith(instance('p1'))
     const dragged = dragTranslate(beginManipulation(doc, 'p1')!, [5, 5, 5])
     const spun = gizmoRotate(dragged, [0, 0, 1], HALF_PI)
 
-    // The user grounds the part before releasing the pointer.
-    const grounded = docWith(instance('p1', { fixed: true }))
+    // The user fixes the part before releasing the pointer.
+    const pinned = docWith(instance('p1', { fixed: true }))
     for (const session of [dragged, spun]) {
-      const { doc: next, changed } = commitManipulation(grounded, session)
+      const { doc: next, changed } = commitManipulation(pinned, session)
       expect(changed).toBe(false)
-      expect(next).toBe(grounded)
+      expect(next).toBe(pinned)
       expect(findInstance(next, 'p1')!.transform).toEqual(IDENTITY_TRANSFORM)
     }
   })

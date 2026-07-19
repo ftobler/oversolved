@@ -186,7 +186,7 @@ export function AssemblyTree({
                 <div className="feature-item-title">
                   <img className="feature-icon" src={featurePartIcon} alt="" />
                   <span className="feature-name">{label}</span>
-                  {/* A grounded part carries the fixed glyph, greyed, after its
+                  {/* A fixed part carries the fixed-mate glyph, greyed, after its
                       name -- the mark of the static frame without stealing a row
                       action. Opening the part now lives in the tridot menu. */}
                   {inst.fixed && (
@@ -199,7 +199,7 @@ export function AssemblyTree({
                   )}
                   {/* Row actions are not selections: without stopPropagation the
                       row's onClick would re-select the part these buttons just
-                      hid, grounded, or opened a menu on. */}
+                      hid, fixed, or opened a menu on. */}
                   <div className="feature-item-actions">
                     {editing ? (
                       <>

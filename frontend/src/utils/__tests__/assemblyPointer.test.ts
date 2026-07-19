@@ -192,7 +192,7 @@ describe('assembly pointer adapter (triad gizmo)', () => {
     }
   })
 
-  it('a grounded part gets no gizmo session either', () => {
+  it('a fixed part gets no gizmo session either', () => {
     const { requestSolve, adapter } = mountHost(docWith(instance('p1', { fixed: true })))
     expect(adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(false)
     expect(adapter.isActive()).toBe(false)
@@ -564,7 +564,7 @@ describe('assembly pointer adapter (triad plane handles)', () => {
     expect(useAssemblyStore.getState().manipulation).toBeNull()
   })
 
-  it('a grounded part gets no plane session either', () => {
+  it('a fixed part gets no plane session either', () => {
     const { requestSolve, adapter } = mountHost(docWith(instance('p1', { fixed: true })))
     expect(adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(false)
     expect(adapter.isActive()).toBe(false)
@@ -660,7 +660,7 @@ describe('click versus manipulation at pointer-up', () => {
     expect(gestureAllowsSelect(gesture)).toBe(false)
   })
 
-  it('a grounded part opens no session, so its click still selects', () => {
+  it('a fixed part opens no session, so its click still selects', () => {
     const { adapter } = mountHost(docWith(instance('p1', { fixed: true })))
 
     expect(adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)).toBe(false)

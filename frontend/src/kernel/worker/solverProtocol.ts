@@ -132,7 +132,8 @@ export interface PartInputSpec {
   doc_id: string
   doc_rev: number
   transform: Transform3D
-  /** Grounded: the transform is pinned and excluded from the LM state. */
+  /** The instance-level fixed flag, not a fixed mate: the transform is pinned
+   *  and excluded from the LM state. */
   fixed?: boolean
 }
 

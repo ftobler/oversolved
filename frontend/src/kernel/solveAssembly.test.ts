@@ -877,7 +877,7 @@ describe('solveAssembly', () => {
 
     // The solver saw the part body (0) + a pinned assembly frame body (1).
     expect(captured.input!.nBodies).toBe(2)
-    expect(captured.input!.fixedMask[0] & 0b10).toBe(0b10)  // body 1 grounded
+    expect(captured.input!.fixedMask[0] & 0b10).toBe(0b10)  // body 1 pinned
 
     // ref_b carried the Top-plane anchor geometry from assemblyAnchors.
     const rec = captured.input!.mates[0]
@@ -1020,7 +1020,7 @@ describe('solveAssembly', () => {
     expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
   })
 
-  // ── grounded instances (Stage 6d) ────────────────────────────────────
+  // ── fixed instances (Stage 6d) ───────────────────────────────────────
 
   it('pins a fixed part instance in the LM state and leaves free parts unpinned', async () => {
     const { relay, partDocs } = makeRelay()
@@ -1040,11 +1040,11 @@ describe('solveAssembly', () => {
     await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
 
     expect(captured.input!.nBodies).toBe(2)
-    expect(captured.input!.fixedMask[0] & 0b01).toBe(0b01)  // body 0 grounded
+    expect(captured.input!.fixedMask[0] & 0b01).toBe(0b01)  // body 0 pinned
     expect(captured.input!.fixedMask[0] & 0b10).toBe(0)     // body 1 free
   })
 
-  it('pins the grounded part alongside the assembly frame when a mate uses both', async () => {
+  it('pins the fixed part alongside the assembly frame when a mate uses both', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     await bundleCachePut(makeBundle('doc-a', 1))

@@ -207,7 +207,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   }, [rollGuideAnchor, rollGuideAngleDeg])
 
   const onPipelineReady = useCallback((p: IdPipeline) => { pipelineRef.current = p }, [])
-  // A grounded part is the assembly's static frame: it selects, but it gets no
+  // A `fixed` part is the assembly's static frame: it selects, but it gets no
   // gizmo, because there is nothing the gizmo could move. Nor does any part while
   // a mate chip is armed: the triad's arrows sit over the very geometry the user
   // is aiming at, and grabbing one would move the part instead of picking it.

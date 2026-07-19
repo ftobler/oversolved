@@ -69,7 +69,7 @@ export function appendPartInstance(doc: AssemblyDoc, docId: string, docRev: numb
 // users expect to find it before dragging or mating it into place.
 //
 // Two things deliberately do NOT ride along. `fixed` is a claim about one part
-// anchoring the assembly, so a second grounded copy at the same pose would
+// anchoring the assembly, so a second fixed copy at the same pose would
 // over-constrain the solve. Mates are relationships between parts rather than
 // properties of one, so they stay pointed at the original.
 export function duplicateInstance(doc: AssemblyDoc, handle: string): AssemblyDoc {
@@ -126,8 +126,8 @@ export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolea
   return updateInstance(doc, handle, inst => ({ ...inst, fixed }))
 }
 
-// Toggle a part's ground flag while keeping the doc's seeds in step with what is
-// on screen.
+// Toggle a part's instance-level `fixed` flag while keeping the doc's seeds in
+// step with what is on screen.
 //
 // The seed transforms in the doc go stale between solves: only the dragged
 // part's seed is written back, so every other part is displayed at its solved
@@ -165,7 +165,7 @@ export function setInstanceFixedFromSolved(
 }
 
 // Freeze every instance's current solved pose into its seed transform, mirroring
-// what setInstanceFixedFromSolved bakes but without touching any grounded flag.
+// what setInstanceFixedFromSolved bakes but without touching any `fixed` flag.
 //
 // The doc's seeds go stale between solves: only a dragged part's seed is written
 // back on pointer-up, so every other part is drawn at its solved pose while its
@@ -184,10 +184,10 @@ export function bakeSolvedTransforms(
     ...doc,
     features: features(doc).map(f => {
       if (f.kind !== 'part_instance' || !f.instance) return f
-      // A grounded instance's seed IS the authored truth: baking a solved pose
+      // A `fixed` instance's seed IS the authored truth: baking a solved pose
       // over it can only ever write solver error back into the document, and
       // every bake compounds the last one. solveAssembly already echoes a
-      // grounded part's seed verbatim, so this is belt-and-braces -- but it is
+      // fixed part's seed verbatim, so this is belt-and-braces -- but it is
       // the write that would make any leak permanent.
       if (f.instance.fixed) return f
       const solved = transforms[f.instance.handle]
@@ -209,9 +209,10 @@ export function setBuiltinVisible(doc: AssemblyDoc, id: string, visible: boolean
   }
 }
 
-// Write a manipulated seed transform. A `fixed` (grounded) instance is the
-// assembly's static reference frame: it is pinned here rather than only in the
-// UI, so no manipulation path can move it even by mistake.
+// Write a manipulated seed transform. An instance carrying the `fixed` flag
+// (the per-instance flag, not the fixed mate) is the assembly's static
+// reference frame: it is pinned here rather than only in the UI, so no
+// manipulation path can move it even by mistake.
 export function setInstanceTransform(
   doc: AssemblyDoc,
   handle: string,
@@ -224,7 +225,7 @@ export function setInstanceTransform(
 
 // Write the instance's translation from a numeric edit in the inline editor.
 // Unlike setInstanceTransform this ignores `fixed`: a manual position edit is an
-// explicit reseat, not a solver manipulation, so the grounded pin must not veto
+// explicit reseat, not a solver manipulation, so the `fixed` pin must not veto
 // it. Orientation is left to setInstanceRotation.
 export function setInstancePosition(
   doc: AssemblyDoc,
@@ -245,8 +246,8 @@ export interface EulerDeg {
 }
 
 // The orientation half of the numeric reseat, and the ONLY way to orient a
-// grounded part: the triad gizmo is refused for a `fixed` instance
-// (isManipulable, partManipulation.ts), so without this a part grounded at the
+// fixed part: the triad gizmo is refused for a `fixed` instance
+// (isManipulable, partManipulation.ts), so without this a part fixed at the
 // wrong angle could never be re-aimed -- and everything mates onto that frame.
 // Ignores the `fixed` veto for the same reason setInstancePosition does.
 export function setInstanceRotation(doc: AssemblyDoc, handle: string, euler: EulerDeg): AssemblyDoc {
@@ -269,7 +270,7 @@ export function instanceRotation(inst: PartInstance): EulerDeg {
 }
 
 // Restore a whole instance to a prior snapshot. The inline editor's Cancel path
-// reverts the live edits it applied (position, grounded flag) in one write.
+// reverts the live edits it applied (position, `fixed` flag) in one write.
 export function replaceInstance(doc: AssemblyDoc, handle: string, inst: PartInstance): AssemblyDoc {
   return updateInstance(doc, handle, () => ({ ...inst }))
 }

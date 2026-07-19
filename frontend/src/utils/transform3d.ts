@@ -64,7 +64,7 @@ export function quatToAxisAngle(q: Quat): { axis: Vec3; angle: number } {
  * then world Y, then world Z, so `q = qz * qy * qx`. Extrinsic is what makes a
  * single-axis edit read the way a user expects ("rotated 90 about Z" turns the
  * part about the world Z it can see), which is the dominant case for placing a
- * grounded frame; intrinsic would measure the later axes in the part's own
+ * fixed frame; intrinsic would measure the later axes in the part's own
  * already-turned frame.
  */
 export function quatFromEulerXyz(euler: Vec3): Quat {

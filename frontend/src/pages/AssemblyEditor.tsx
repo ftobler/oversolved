@@ -270,8 +270,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mutate(d => setBuiltinVisible(d, id, visible))
   }, [mutate])
 
-  // Ground/unground a part without moving anything on screen, including the
-  // camera. Grounding a part that is already in place adds no geometric
+  // Fix/unfix a part without moving anything on screen, including the
+  // camera. Fixing a part that is already in place adds no geometric
   // constraint (the part is at its solved pose), so the current view is already
   // correct and there is nothing to re-solve. Re-solving would only risk drift:
   // with no fixed anchor the mate solver has gauge freedom and can slide the
@@ -281,7 +281,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // We still bake every part's current solved pose into its seed. That keeps the
   // doc's seeds in step with what is on screen, so the next real solve (a drag,
   // a mate edit) starts from the current configuration instead of stale seeds
-  // and the new ground state takes effect cleanly then.
+  // and the new fixed state takes effect cleanly then.
   const fixOrUnfix = useCallback((handle: string, fixed: boolean) => {
     const transforms = useAssemblyStore.getState().transforms
     mutate(d => setInstanceFixedFromSolved(d, handle, fixed, transforms))
@@ -312,7 +312,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (snap) mutate(d => replaceInstance(d, snap.handle, snap.inst))
     instanceSnapshot.current = null
     setEditingInstanceHandle(null)
-    requestSolve()  // undo any live position/ground edit
+    requestSolve()  // undo any live position/fixed edit
   }, [mutate, requestSolve])
 
   const handleSetFixed = fixOrUnfix
@@ -329,8 +329,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [mutate, requestSolve])
 
   // Same bake-then-reseat discipline as the position edit. This is the only
-  // orientation control a GROUNDED part has (the triad gizmo refuses one), so
-  // it must not be vetoed by the ground flag -- setInstanceRotation is the
+  // orientation control a FIXED part has (the triad gizmo refuses one), so
+  // it must not be vetoed by the `fixed` flag -- setInstanceRotation is the
   // mutation that ignores it.
   const handleSetRotation = useCallback((handle: string, euler: EulerDeg) => {
     const transforms = useAssemblyStore.getState().transforms
@@ -402,7 +402,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // the solver's seed-relative angle (mate_residuals.rs) would then add
     // the new angle on top of that, accumulating every time the user types
     // a new value.  The part seeds stay at whatever the last position
-    // change (drag, ground toggle, mate deletion) wrote; a mate param edit
+    // change (drag, fix toggle, mate deletion) wrote; a mate param edit
     // only changes what the solver targets from that same seed.
     mutate(d => updateMate(d, featureId, patch))
     // Deferred while a chip is armed: a solve here would drop the candidate set

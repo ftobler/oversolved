@@ -87,7 +87,7 @@ beforeEach(async () => {
 
 describeReal('solveAssembly with the real mate solver', () => {
   // The user-visible bug: author a fixed mate, nothing springs into place.
-  it('a fixed mate pulls a free part onto a grounded one', async () => {
+  it('a fixed mate pulls a free part onto one marked fixed', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 40, 50) },
@@ -102,14 +102,14 @@ describeReal('solveAssembly with the real mate solver', () => {
 
     expect(result.mateResults['m1'].stale).toBe(false)
     expect(result.mateResults['m1'].error).toBeUndefined()
-    // The grounded pin is a soft residual, not a hard clamp, so `pa` drifts by
+    // The instance `fixed` pin is a soft residual, not a hard clamp, so `pa` drifts by
     // ~1e-6 rather than staying bit-exact at its seed.
     expect(dist(result.transforms['pa'])).toBeLessThan(0.001)
     // pb's anchor must land on pa's anchor, i.e. at the world origin.
     expect(dist(result.transforms['pb'])).toBeLessThan(0.01)
   })
 
-  it('leaves the grounded part exactly where it was placed', async () => {
+  it('leaves the fixed part exactly where it was placed', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: at(5, 5, 5), fixed: true },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
@@ -128,14 +128,14 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(result.transforms['pb'].tz).toBeCloseTo(5, 2)
   })
 
-  // Grounded means grounded: ORIENTATION as much as position. Nothing used to
+  // Fixed means fixed: ORIENTATION as much as position. Nothing used to
   // assert this -- the test above checks `tx` only -- and the pin behind it is a
   // soft residual that can be outvoted, over a body whose rotation is the least
-  // damped DOF in the system. `solveAssembly` now echoes a grounded part's seed
+  // damped DOF in the system. `solveAssembly` now echoes a fixed part's seed
   // verbatim, so these are exact equalities, not tolerances: any drift at all,
   // in any configuration, is a bug, because `bakeSolvedTransforms` would write
   // it into the document and compound it on the next solve.
-  it('leaves a grounded part bit-exact in ORIENTATION, not just position', async () => {
+  it('leaves a fixed part bit-exact in ORIENTATION, not just position', async () => {
     // 30 degrees about X, so a drift in any rotational DOF shows.
     const seed: Transform3D = { tx: 2, ty: -3, tz: 4, qx: 0.2588190451025207, qy: 0, qz: 0, qw: 0.9659258262890683 }
     const parts = [
@@ -160,8 +160,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 
   // The adversarial case for a soft pin: the mate CANNOT be satisfied by moving
   // anything free, because nothing is free. A least-squares optimum would split
-  // the error across both grounded bodies and rotate them.
-  it('holds both parts when two grounded parts are mated to each other', async () => {
+  // the error across both pinned bodies and rotate them.
+  it('holds both parts when two fixed parts are mated to each other', async () => {
     const seedA: Transform3D = at(0, 0, 0)
     const seedB: Transform3D = at(4, 0, 0)
     const parts = [
@@ -181,9 +181,9 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(result.transforms['pb']).toEqual(seedB)
   })
 
-  // Nothing grounded is the default an assembly starts in: the user inserts two
+  // Nothing fixed is the default an assembly starts in: the user inserts two
   // parts and mates them without marking either fixed.
-  it('with no grounded part the two still meet', async () => {
+  it('with no fixed part the two still meet', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
@@ -289,13 +289,13 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(result.transforms['pb'].tx).toBe(30)
   })
 
-  // Grounding a part must not shift the assembly in world space (the user reads
+  // Fixing a part must not shift the assembly in world space (the user reads
   // that as the camera jumping). With no part fixed the solver has translational
-  // gauge freedom, so the meeting point floats. The UI grounds by first baking
+  // gauge freedom, so the meeting point floats. The UI fixes by first baking
   // every part's current solved pose into its seed, then flipping the flag: the
   // re-solve then starts from a zero-residual configuration and holds it. This
   // asserts the world poses are preserved across that toggle.
-  it('grounding at the current solved pose leaves world positions put', async () => {
+  it('fixing at the current solved pose leaves world positions put', async () => {
     // No part fixed: solve to the floating meeting point.
     const free = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
@@ -310,13 +310,13 @@ describeReal('solveAssembly with the real mate solver', () => {
     const a0 = first.transforms['pa']
     const b0 = first.transforms['pb']
 
-    // Ground pa the way the UI does: bake the solved poses into the seeds, then
+    // Fix pa the way the UI does: bake the solved poses into the seeds, then
     // mark pa fixed. Re-solve and expect nothing to move.
-    const grounded = [
+    const pinned = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: { ...a0 }, fixed: true },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { ...b0 } },
     ]
-    const second = await solveAssembly(grounded, revs, mates, relay, solveMate!)
+    const second = await solveAssembly(pinned, revs, mates, relay, solveMate!)
     const a1 = second.transforms['pa']
     const b1 = second.transforms['pb']
 
@@ -374,7 +374,7 @@ describeReal('solveAssembly with the real mate solver', () => {
   })
 
   it('locks the roll angle when a part is placed with a rotation', async () => {
-    // Part A grounded at identity. Part B placed with a 45 deg roll about Z
+    // Part A marked fixed at identity. Part B placed with a 45 deg roll about Z
     // and offset in position, and the mate authored with angle=45 -- what the
     // editor's capture writes when the refs are picked at this pose. The fixed
     // mate must pull B to A's position while holding the AUTHORED roll: the
@@ -406,7 +406,7 @@ describeReal('solveAssembly with the real mate solver', () => {
   })
 
   it('locks the roll after a large axis swing (the arbitrary-angle bug)', async () => {
-    // Part A grounded with its anchor axis at world +Z (identity).
+    // Part A marked fixed with its anchor axis at world +Z (identity).
     // Part B rotated 90° about Y so its local Z axis points along world +X.
     // The fixed mate must swing B to align its axis with A's (+Z) AND lock the
     // resulting roll deterministically. A second solve from the same solved
@@ -456,7 +456,7 @@ describeReal('solveAssembly with the real mate solver', () => {
   })
 
   it('applies the authored angle as the absolute roll', async () => {
-    // Part A grounded at identity. Part B at identity, no pre-existing roll.
+    // Part A marked fixed at identity. Part B at identity, no pre-existing roll.
     // A 30° authored angle must produce a 30° roll about Z in B's solved pose.
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },

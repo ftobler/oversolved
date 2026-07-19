@@ -60,7 +60,7 @@ const okResponse = {
 }
 
 describe('partSpecs / mateSpecs', () => {
-  it('carries the grounded flag into the solver part spec', () => {
+  it('carries the fixed flag into the solver part spec', () => {
     const specs = partSpecs(docWith(instance('p1', { fixed: true }), instance('p2')))
     expect(specs.map(s => s.fixed)).toEqual([true, undefined])
   })

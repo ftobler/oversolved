@@ -10,10 +10,11 @@
 //   axis   - a triad arrow: slide along one world axis
 //   ring   - a triad ring: swing about one world axis, pivoting on the gizmo
 //
-// A grounded (`fixed`) part still selects on click but never opens a session:
-// beginPartManipulation refuses it, and we leave no gesture behind, so the
-// following move/up are inert. Grounding is the assembly's static frame, and it
-// is enforced again in setInstanceTransform — the UI is not the only guard.
+// A part carrying the instance-level `fixed` flag (not the fixed mate) still
+// selects on click but never opens a session: beginPartManipulation refuses it,
+// and we leave no gesture behind, so the following move/up are inert. Fixing a
+// part declares it the assembly's static frame, and it is enforced again in
+// setInstanceTransform: the UI is not the only guard.
 
 import {
   closestParamOnAxis,
@@ -95,7 +96,7 @@ type Gesture =
     }
 
 export interface AssemblyPointerAdapter {
-  /** Selects the part; opens a drag session unless it is grounded. */
+  /** Selects the part; opens a drag session unless it is fixed. */
   onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3) => boolean
   /**
    * `axis` is the world slide/swing axis, or for `plane` the plane's normal.

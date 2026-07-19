@@ -241,7 +241,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
   activePickCandidate: () => MateRef | null
   /** Publish the triad gesture in progress, or null to retire it. */
   setGizmoDrag: (drag: GizmoDragState | null) => void
-  /** Pointer-down on a part body or its triad. No-op for a grounded instance. */
+  /** Pointer-down on a part body or its triad. No-op for a `fixed` instance. */
   beginPartManipulation: (handle: string) => boolean
   /** `delta` / `angle` are measured from pointer-down, not from the last frame. */
   dragPartTranslate: (delta: Vec3) => void
@@ -480,7 +480,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // pointer-up solve would then restart from those stale seeds and could
     // relax the whole assembly off the pose the drag just previewed. Baking
     // first (commitManipulation then overwrites the grabbed part) keeps the
-    // seeds in step with the screen, the same discipline the ground toggle uses.
+    // seeds in step with the screen, the same discipline the fix toggle uses.
     callbacks.mutateDoc(d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },

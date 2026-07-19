@@ -150,14 +150,14 @@ describe('duplicateInstance', () => {
     expect(instances(next)[0]).toEqual(before)
   })
 
-  it('comes in unfixed even when the original is grounded', () => {
+  it('comes in unfixed even when the original is fixed', () => {
     let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     const handle = instances(doc)[0].handle
     doc = setInstanceFixed(doc, handle, true)
     const next = duplicateInstance(doc, handle)
     const [original, clone] = instances(next)
     expect(original.fixed).toBe(true)
-    // Grounding is a statement about one part's role in the assembly, not a
+    // Fixing is a statement about one part's role in the assembly, not a
     // property of the geometry, so it does not ride along on the copy.
     expect(clone.fixed).toBeFalsy()
   })
@@ -192,7 +192,7 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(map[b.handle]).toBe(true)
   })
 
-  it('sets the fixed (ground) flag', () => {
+  it('sets the instance-level fixed flag', () => {
     const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     const handle = instances(doc)[0].handle
     const next = setInstanceFixed(doc, handle, true)
@@ -208,7 +208,7 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(instances(doc)[0].fixed).toBeUndefined()
   })
 
-  // Toggling ground must not move anything: it bakes every part's current
+  // Toggling the fixed flag must not move anything: it bakes every part's current
   // solved pose into its seed so the next solve restarts at the current, already
   // mate-satisfying configuration, and only the toggled part's flag changes.
   it('setInstanceFixedFromSolved bakes all solved poses and flips one flag', () => {
@@ -270,7 +270,7 @@ describe('bakeSolvedTransforms', () => {
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
     expect(map[a.handle].transform).toEqual(poseA)
     expect(map[b.handle].transform).toEqual(poseB)
-    // Grounded flag untouched: baking is not a ground toggle.
+    // Fixed flag untouched: baking is not a fix toggle.
     expect(map[a.handle].fixed).toBeUndefined()
     expect(map[b.handle].fixed).toBeUndefined()
     // The written transform is a copy, not an alias of the solved map.
@@ -279,12 +279,12 @@ describe('bakeSolvedTransforms', () => {
     expect(instances(doc)[0].transform).toEqual(IDENTITY_TRANSFORM)
   })
 
-  // A grounded instance's seed is the authored truth. Baking a solved pose over
+  // A fixed instance's seed is the authored truth. Baking a solved pose over
   // it can only write solver error into the document, and each bake compounds
-  // the last -- the ratchet that makes a grounded part visibly drift over a
-  // session. solveAssembly echoes a grounded part's seed verbatim, so in the
+  // the last -- the ratchet that makes a fixed part visibly drift over a
+  // session. solveAssembly echoes a fixed part's seed verbatim, so in the
   // real pipeline the two poses agree; this is the guard for everything else.
-  it('does NOT overwrite a grounded instance seed, even with a divergent solved pose', () => {
+  it('does NOT overwrite a fixed instance seed, even with a divergent solved pose', () => {
     let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     doc = appendPartInstance(doc, 'doc-B', 1)
     doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
@@ -294,7 +294,7 @@ describe('bakeSolvedTransforms', () => {
 
     const next = bakeSolvedTransforms(doc, { [a.handle]: drifted, [b.handle]: poseB })
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
-    expect(map[a.handle].transform).toEqual(a.transform)  // grounded: untouched
+    expect(map[a.handle].transform).toEqual(a.transform)  // fixed: untouched
     expect(map[b.handle].transform).toEqual(poseB)        // free: baked
   })
 
@@ -506,15 +506,15 @@ describe('emptyAssemblyDoc', () => {
 
 describe('setInstancePosition / setInstanceRotation (numeric reseat)', () => {
   // The handle has to come from the same doc the mutation runs on.
-  function groundedDoc(): { doc: AssemblyDoc; handle: string } {
+  function fixedDoc(): { doc: AssemblyDoc; handle: string } {
     const base = appendPartInstance(emptyDoc, 'doc-A', 1)
     const handle = instances(base)[0].handle
     return { doc: setInstanceFixed(base, handle, true), handle }
   }
 
-  it('orients a GROUNDED instance: the gizmo refuses it, so this is the only way', () => {
-    const { doc, handle } = groundedDoc()
-    // setInstanceTransform is vetoed for a grounded part...
+  it('orients a FIXED instance: the gizmo refuses it, so this is the only way', () => {
+    const { doc, handle } = fixedDoc()
+    // setInstanceTransform is vetoed for a fixed part...
     const vetoed = setInstanceTransform(doc, handle, { ...IDENTITY_TRANSFORM, qz: 1, qw: 0 })
     expect(instances(vetoed)[0].transform).toEqual(IDENTITY_TRANSFORM)
     // ...but the explicit numeric reseat is not.
@@ -524,7 +524,7 @@ describe('setInstancePosition / setInstanceRotation (numeric reseat)', () => {
   })
 
   it('round-trips degrees through the stored quaternion', () => {
-    const { doc, handle } = groundedDoc()
+    const { doc, handle } = fixedDoc()
     const next = setInstanceRotation(doc, handle, { rx: 30, ry: -45, rz: 120 })
     const back = instanceRotation(instances(next)[0])
     expect(back.rx).toBeCloseTo(30, 6)
@@ -533,13 +533,13 @@ describe('setInstancePosition / setInstanceRotation (numeric reseat)', () => {
   })
 
   it('stores a unit quaternion', () => {
-    const { doc, handle } = groundedDoc()
+    const { doc, handle } = fixedDoc()
     const t = instances(setInstanceRotation(doc, handle, { rx: 10, ry: 20, rz: 30 }))[0].transform
     expect(Math.hypot(t.qx, t.qy, t.qz, t.qw)).toBeCloseTo(1, 12)
   })
 
   it('rotation leaves the translation alone, and position leaves the orientation alone', () => {
-    const { doc, handle } = groundedDoc()
+    const { doc, handle } = fixedDoc()
     const placed = setInstancePosition(doc, handle, { tx: 1, ty: 2, tz: 3 })
     const turned = setInstanceRotation(placed, handle, { rx: 0, ry: 0, rz: 90 })
     const t = instances(turned)[0].transform

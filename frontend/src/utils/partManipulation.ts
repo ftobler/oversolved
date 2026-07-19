@@ -31,12 +31,13 @@ export interface ManipulationSession {
   current: Transform3D
 }
 
-/** A `fixed` (grounded) instance is the static reference frame: never manipulable. */
+/** An instance carrying the `fixed` flag (the per-instance flag, not the fixed
+ *  mate) is the assembly's static reference frame: never manipulable. */
 export function isManipulable(inst: PartInstance | undefined): boolean {
   return !!inst && !inst.fixed
 }
 
-/** Returns null when the handle is unknown or its instance is grounded. */
+/** Returns null when the handle is unknown or its instance is fixed. */
 export function beginManipulation(doc: AssemblyDoc, handle: string): ManipulationSession | null {
   const inst = findInstance(doc, handle)
   if (!isManipulable(inst)) return null
@@ -124,7 +125,7 @@ export function commitManipulation(
   solved?: Transform3D,
 ): CommitResult {
   if (transformsEqual(session.seed, session.current)) return { doc, changed: false }
-  // A part grounded mid-drag must not land the pose it was dragged to; report
+  // A part fixed mid-drag must not land the pose it was dragged to; report
   // no change rather than a phantom re-solve.
   if (!isManipulable(findInstance(doc, session.handle))) return { doc, changed: false }
   return {

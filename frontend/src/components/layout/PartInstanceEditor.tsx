@@ -3,13 +3,13 @@
 // this component owns only the fields, mirroring the mate editor and the part
 // editor's feature editors.
 //
-// Presentational: grounded, position and rotation edits leave through
+// Presentational: the fixed flag, position and rotation edits leave through
 // callbacks, so the logic (assemblyMutations.ts) stays viewport-free and
 // unit-tested.
 //
-// The rotation row is the ONLY orientation control a grounded part has: the
+// The rotation row is the ONLY orientation control a fixed part has: the
 // triad gizmo is refused for a `fixed` instance (isManipulable,
-// partManipulation.ts), so a part grounded at the wrong angle would otherwise
+// partManipulation.ts), so a part fixed at the wrong angle would otherwise
 // be stuck there forever, with the whole assembly mated onto a frame nobody can
 // aim. Degrees, extrinsic XYZ (quatFromEulerXyz), matching the mate editor's
 // angle unit.

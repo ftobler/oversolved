@@ -131,7 +131,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       let parts = partSpecs(current)
       if (live) {
         // Pin the grabbed part at its drawn world pose -- the same livePartPose
-        // the render offset and the drag commit read -- and ground it, so the
+        // the render offset and the drag commit read -- and mark it fixed, so the
         // solve moves only the others. Its own bodies/transform are left
         // untouched below, so it keeps rendering from its drag offset.
         const settled = settledTransforms(store.transforms, store.settlingOffsets)

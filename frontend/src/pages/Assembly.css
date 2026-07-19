@@ -38,7 +38,7 @@
   flex-wrap: wrap;
 }
 
-/* The grounded glyph after a part's name. The icon assets are black strokes on
+/* The fixed glyph after a part's name. The icon assets are black strokes on
    transparent, so every icon in this UI is lit by inverting it; grayscale and
    brightness leave black black, which is why this badge used to vanish into the
    #111 sidebar. One step below .feature-icon's invert(0.8) keeps it reading as a
