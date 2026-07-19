@@ -31,27 +31,27 @@ function renderEditor(inst: PartInstance, onSetRotation = vi.fn()) {
   return { onSetRotation, ...utils }
 }
 
-const rotBox = (axis: 'RX' | 'RY' | 'RZ') =>
+const rotBox = (axis: 'X' | 'Y' | 'Z') =>
   screen.getByLabelText(`Rotation ${axis}`) as HTMLInputElement
 
 describe('PartInstanceEditor rotation', () => {
   it('renders a rotation box per axis, alongside the position boxes', () => {
     renderEditor(instance())
-    for (const axis of ['RX', 'RY', 'RZ'] as const) expect(rotBox(axis)).toBeTruthy()
+    for (const axis of ['X', 'Y', 'Z'] as const) expect(rotBox(axis)).toBeTruthy()
     expect(screen.getByLabelText('Position X')).toBeTruthy()
   })
 
   it('offers the rotation boxes for a GROUNDED instance (the gizmo will not)', () => {
     renderEditor(instance({ fixed: true }))
-    expect(rotBox('RZ')).toBeTruthy()
-    expect((rotBox('RZ') as HTMLInputElement).disabled).toBe(false)
+    expect(rotBox('Z')).toBeTruthy()
+    expect((rotBox('Z') as HTMLInputElement).disabled).toBe(false)
   })
 
   it('commits the typed degrees on every axis', () => {
     const { onSetRotation } = renderEditor(instance())
-    fireEvent.change(rotBox('RZ'), { target: { value: '90' } })
+    fireEvent.change(rotBox('Z'), { target: { value: '90' } })
     expect(onSetRotation).toHaveBeenCalledWith({ rx: 0, ry: 0, rz: 90 })
-    fireEvent.change(rotBox('RX'), { target: { value: '45' } })
+    fireEvent.change(rotBox('X'), { target: { value: '45' } })
     // The RZ the user already typed is carried, not dropped.
     expect(onSetRotation).toHaveBeenLastCalledWith({ rx: 45, ry: 0, rz: 90 })
   })
@@ -59,14 +59,14 @@ describe('PartInstanceEditor rotation', () => {
   it('shows the instance orientation as degrees', () => {
     const [qx, qy, qz, qw] = quatFromEulerXyz([0, 0, Math.PI / 2])
     renderEditor(instance({ transform: { ...IDENTITY_TRANSFORM, qx, qy, qz, qw } }))
-    expect(Number(rotBox('RZ').value)).toBeCloseTo(90, 3)
+    expect(Number(rotBox('Z').value)).toBeCloseTo(90, 3)
   })
 
   it('waits for a complete number instead of committing a bare minus sign', () => {
     const { onSetRotation } = renderEditor(instance())
     // `<input type="number">` reports an incomplete number as '' rather than
     // holding the raw text, so the guard, not the box, is what is under test.
-    fireEvent.change(rotBox('RX'), { target: { value: '-' } })
+    fireEvent.change(rotBox('X'), { target: { value: '-' } })
     expect(onSetRotation).not.toHaveBeenCalled()
   })
 
@@ -77,7 +77,7 @@ describe('PartInstanceEditor rotation', () => {
     // trip through the quaternion.
     const inst = instance()
     const { rerender } = renderEditor(inst)
-    fireEvent.change(rotBox('RY'), { target: { value: '30' } })
+    fireEvent.change(rotBox('Y'), { target: { value: '30' } })
     const [qx, qy, qz, qw] = quatFromEulerXyz([0, (30 * Math.PI) / 180, 0])
     rerender(
       <PartInstanceEditor
@@ -87,13 +87,13 @@ describe('PartInstanceEditor rotation', () => {
         onSetRotation={vi.fn()}
       />
     )
-    expect(rotBox('RY').value).toBe('30')
+    expect(rotBox('Y').value).toBe('30')
   })
 
   it('resyncs the boxes when the orientation changes from elsewhere (gizmo, undo)', () => {
     const inst = instance()
     const { rerender } = renderEditor(inst)
-    expect(Number(rotBox('RZ').value)).toBeCloseTo(0, 3)
+    expect(Number(rotBox('Z').value)).toBeCloseTo(0, 3)
     const [qx, qy, qz, qw] = quatFromEulerXyz([0, 0, Math.PI])
     rerender(
       <PartInstanceEditor
@@ -103,6 +103,6 @@ describe('PartInstanceEditor rotation', () => {
         onSetRotation={vi.fn()}
       />
     )
-    expect(Math.abs(Number(rotBox('RZ').value))).toBeCloseTo(180, 3)
+    expect(Math.abs(Number(rotBox('Z').value))).toBeCloseTo(180, 3)
   })
 })

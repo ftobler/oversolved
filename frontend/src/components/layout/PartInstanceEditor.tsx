@@ -31,7 +31,9 @@ const AXIS_LABELS: Record<Axis, string> = { tx: 'X', ty: 'Y', tz: 'Z' }
 
 type RotAxis = 'rx' | 'ry' | 'rz'
 const ROT_AXES: readonly RotAxis[] = ['rx', 'ry', 'rz']
-const ROT_LABELS: Record<RotAxis, string> = { rx: 'RX', ry: 'RY', rz: 'RZ' }
+// Bare axis letters, like the position row: the "Rotation" label already names
+// the row, and the extra R only ate width the value boxes need.
+const ROT_LABELS: Record<RotAxis, string> = { rx: 'X', ry: 'Y', rz: 'Z' }
 
 /** Degrees are round-tripped through a quaternion, so 90 can come back 89.999...
  *  3 decimals is far below anything visible and keeps the boxes readable. */
@@ -118,7 +120,7 @@ export function PartInstanceEditor({
         />
       </label>
       <div className="feature-field-row">
-        <span className="feature-field-label">Position</span>
+        <span className="feature-field-label">Pos.</span>
         <div className="instance-triple">
           {AXES.map(axis => (
             <label key={axis} className="instance-axis">
@@ -135,7 +137,7 @@ export function PartInstanceEditor({
         </div>
       </div>
       <div className="feature-field-row">
-        <span className="feature-field-label">Rotation&deg;</span>
+        <span className="feature-field-label">Rot.&deg;</span>
         <div className="instance-triple">
           {ROT_AXES.map(axis => (
             <label key={axis} className="instance-axis">

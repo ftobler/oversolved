@@ -165,5 +165,26 @@
 
 .instance-axis input {
   min-width: 0;
+  padding: 0 4px;  /* three boxes to a row: spend the width on digits */
+}
+
+/* The 80px label column of the shared field grammar is more than the abbreviated
+   captions need, and here every pixel of it comes out of the value boxes. */
+.instance-editor .feature-field-label {
+  width: 46px;
+}
+
+/* Six boxes share the row, so the native number spinners cost more width than
+   they are worth: with them the value is clipped to a digit or two. Scroll and
+   arrow keys still step the value. */
+.instance-axis input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.instance-axis input[type='number']::-webkit-outer-spin-button,
+.instance-axis input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
