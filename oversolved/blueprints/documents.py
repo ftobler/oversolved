@@ -184,13 +184,21 @@ def duplicate_document(uuid):
 def clone_document(uuid):
     doc = g.document
     doc_store = DocumentStore(get_db())
-    new_name = f"{doc['name']} (Clone)"
-    existing = doc_store.list_by_owner(g.current_user["id"])
-    existing_names = {d["name"] for d in existing}
-    counter = 1
-    while new_name in existing_names:
-        new_name = f"{doc['name']} (Clone {counter})"
-        counter += 1
+
+    # The caller may name the clone (the UI prompts with the suggested name
+    # prefilled). An explicit name is taken verbatim: the user saw it and chose
+    # it, so silently uniquifying it would be a surprise.
+    requested = (request.get_json(silent=True) or {}).get("name")
+    if isinstance(requested, str) and requested.strip():
+        new_name = requested.strip()
+    else:
+        new_name = f"{doc['name']} (Clone)"
+        existing = doc_store.list_by_owner(g.current_user["id"])
+        existing_names = {d["name"] for d in existing}
+        counter = 1
+        while new_name in existing_names:
+            new_name = f"{doc['name']} (Clone {counter})"
+            counter += 1
 
     new_uuid = doc_store.clone_document(uuid, g.current_user["id"], new_name)
     return jsonify({"uuid": new_uuid, "name": new_name}), 201

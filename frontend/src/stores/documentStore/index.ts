@@ -9,6 +9,7 @@ export { resolveBackend } from '@/config/capabilities'
 export { exportBundle, importBundle, buildBundleBytes } from './bundle'
 export { copyDocument, pushDocument, moveDocument, syncAllDocuments } from './transfer'
 export { buildStepContent, importStepFile } from './stepImport'
+export { suggestedCloneName } from './cloneName'
 
 // The two-domain model (doc-domain-move). Home is ALWAYS the local IndexedDB
 // library, on BOTH builds; the server store is the additive CLOUD domain, present

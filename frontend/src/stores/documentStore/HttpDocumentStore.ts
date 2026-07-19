@@ -45,8 +45,8 @@ export class HttpDocumentStore implements DocumentStore {
     return http.postJson<{ uuid: string }>(`/api/documents/${id}/duplicate`)
   }
 
-  async clone(id: string): Promise<{ uuid: string }> {
-    return http.postJson<{ uuid: string }>(`/api/documents/${id}/clone`)
+  async clone(id: string, name?: string): Promise<{ uuid: string }> {
+    return http.postJson<{ uuid: string }>(`/api/documents/${id}/clone`, name ? { name } : undefined)
   }
 
   thumbnailUrl(id: string): string {

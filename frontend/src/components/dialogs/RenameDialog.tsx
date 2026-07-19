@@ -7,6 +7,10 @@ export interface RenameDialogProps {
   title?: string
   label?: string
   currentName: string
+  // The gesture is not always a rename: cloning prompts for the new name with
+  // the same one-field shape, so the verb and icon are the caller's to set.
+  confirmLabel?: string
+  icon?: string
   onRename: (name: string) => void
   onCancel: () => void
 }
@@ -16,6 +20,8 @@ export default function RenameDialog({
   title = 'Rename',
   label = 'Name',
   currentName,
+  confirmLabel = 'Rename',
+  icon = 'edit',
   onRename,
   onCancel,
 }: RenameDialogProps) {
@@ -60,10 +66,10 @@ export default function RenameDialog({
     <Dialog
       isOpen={isOpen}
       title={title}
-      icon="edit"
+      icon={icon}
       onClose={onCancel}
       onConfirm={handleConfirm}
-      confirmLabel="Rename"
+      confirmLabel={confirmLabel}
       confirmDisabled={!trimmed}
     >
       <div className="rename-dialog-field">

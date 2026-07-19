@@ -3,12 +3,19 @@
 
 .rename-dialog-field {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
 }
 
 .rename-dialog-label {
   font-size: 12px;
   color: #888;
   margin: 0;
+  text-align: left;  /* the shell centres its body text; a field caption reads left */
+  white-space: nowrap;  /* the caption sets the row height, the input takes the rest */
+}
+
+.rename-dialog-field input {
+  flex: 1;
+  min-width: 0;
 }

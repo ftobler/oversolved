@@ -111,8 +111,8 @@ export function useDocumentState(
   // resolved from (a cloud doc clones server-side; a local doc copies locally).
   // Routing through storeRef fixes the cross-domain case the old build-flag fork
   // got wrong: on the HTTP build a LOCAL doc must not hit the server clone route.
-  const cloneDoc = useCallback(async (id: string): Promise<{ uuid: string }> => {
-    return storeRef.current.clone(id)
+  const cloneDoc = useCallback(async (id: string, name?: string): Promise<{ uuid: string }> => {
+    return storeRef.current.clone(id, name)
   }, [])
 
   return {
