@@ -20,7 +20,7 @@ import type { MateResult } from '@/kernel/solveAssembly'
 import type { MateFieldTarget } from '@/stores/assemblyStore'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import {
-  MATE_ANGLE_LIMIT_DEG, MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel,
+  MATE_PARAM_LABELS, isMateRefEmpty, mateParams, mateRefLabel, normalizeMateAngleDeg,
   type MateParam,
 } from '@/utils/mateKinds'
 
@@ -63,13 +63,9 @@ export function MateEditor({
   featureId, mate, result, activeField, labelFor, defaultName, onArmField, onUpdate, onRename,
 }: MateEditorProps) {
   const staleRefs = new Set(result?.staleRefs ?? [])
-  // Rejected entry is a local UI concern, not a document state: the mate keeps
-  // whatever angle it last held, and the message clears the moment a value
-  // within range is entered or a button lands in range.
-  const [angleError, setAngleError] = useState<string | null>(null)
-  // The box's own text, not `mate.angle` directly: a rejected keystroke must
-  // stay visible (so the user sees what they typed and why it was rejected)
-  // rather than snapping back to the last committed value mid-entry. Resynced
+  // The box's own text, not `mate.angle` directly: a half-typed keystroke ('-',
+  // '1e') must stay visible so the user can finish the number, rather than
+  // snapping back to the last committed value mid-entry. Resynced
   // from the document whenever the committed angle changes from elsewhere (a
   // +/-90 click, a different mate selected) -- done inline during render
   // (the React-recommended way to adjust state on a prop change) rather than
@@ -83,13 +79,11 @@ export function MateEditor({
     setAngleText(numericValue(mate.angle))
   }
 
+  // Overflow cleans itself up: the +/-90 buttons step forever and land back in
+  // [0, 360). Not used by the free-text box's per-keystroke commit, which would
+  // rewrite a leading '-' into 351 before the user could type the '90' after it.
   const commitAngle = (next: number) => {
-    if (Math.abs(next) > MATE_ANGLE_LIMIT_DEG) {
-      setAngleError(`Angle must stay within ±${MATE_ANGLE_LIMIT_DEG}°`)
-      return
-    }
-    setAngleError(null)
-    onUpdate({ angle: next })
+    onUpdate({ angle: normalizeMateAngleDeg(next) })
   }
 
   const renderParam = (param: MateParam) => {
@@ -120,9 +114,25 @@ export function MateEditor({
               onChange={e => {
                 const raw = e.target.value
                 setAngleText(raw)
-                if (raw === '') { setAngleError(null); onUpdate({ angle: undefined }); return }
+                if (raw === '') { onUpdate({ angle: undefined }); return }
                 const next = Number(raw)
-                if (!Number.isNaN(next)) commitAngle(next)
+                // Committed unnormalised so a negative stays typeable; the roll
+                // residual wraps either way, so the document is never wrong in
+                // between, only unnormalised. Garbage commits nothing and stays
+                // on screen for the user to fix.
+                if (Number.isFinite(next)) onUpdate({ angle: next })
+              }}
+              // Entry is finished: fold whatever was typed into [0, 360). 270
+              // and -90 name the same roll (mate_residuals.rs wraps the
+              // difference), so this is a display normalisation, not a change
+              // of pose.
+              onBlur={() => {
+                if (angleText.trim() === '') return
+                const typed = Number(angleText)
+                if (!Number.isFinite(typed)) return
+                const normalized = normalizeMateAngleDeg(typed)
+                setAngleText(String(normalized))
+                if (normalized !== typed) onUpdate({ angle: normalized })
               }}
             />
           </label>
@@ -134,7 +144,6 @@ export function MateEditor({
               +90&deg;
             </button>
           </div>
-          {angleError && <p className="mate-angle-error">{angleError}</p>}
         </div>
       )
     }

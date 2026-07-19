@@ -432,10 +432,14 @@ export async function solveAssembly(
     const offset = typeof mate.offset === 'number' ? mate.offset : 0
     const ratio = typeof mate.ratio === 'number' ? mate.ratio : 1
     const radius = typeof mate.radius === 'number' ? mate.radius : 0
-    // angle is authored in degrees (the mate editor's +/-90 buttons and free-angle
-    // box); the Rust side measures roll in radians via twist(), same units atan2
-    // returns. offset is millimetres and passes through unconverted -- do not
-    // "fix" this into a degrees-to-radians conversion too.
+    // angle is authored in degrees in [0, 360) (the mate editor's +/-90 buttons
+    // and free-angle box); the Rust side measures roll in radians, the units
+    // atan2 returns. No wrap is needed on the way out even though the measured
+    // roll lands in (-pi, pi]: abs_roll_residual (mate_residuals.rs) closes with
+    // `wrap_to_pi(atan2(sin_r, cos_r) - target)`, so a target and that target
+    // plus a full turn give the identical residual. offset is millimetres and
+    // passes through unconverted -- do not "fix" this into a degrees-to-radians
+    // conversion too.
     const angleDeg = typeof mate.angle === 'number' ? mate.angle : 0
     const angle = angleDeg * (Math.PI / 180)
 

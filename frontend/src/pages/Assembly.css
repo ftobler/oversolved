@@ -143,13 +143,6 @@
   color: #e060b0;
 }
 
-.mate-angle-error {
-  margin: 0;
-  color: #e07b6b;
-  font-size: 12px;
-  text-align: right;
-}
-
 /* Part instance editor: the position and rotation triples share one label cell,
    so each box keeps a small axis caption of its own. Grey, not pink: the pink is
    reserved for focus and for the editing header above. */

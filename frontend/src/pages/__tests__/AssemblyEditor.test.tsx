@@ -454,27 +454,29 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
       expect(mateDef().angle).toBe(180)
     })
 
-    it('a third +90 click is rejected rather than wrapping to -90', async () => {
+    it('keeps stepping +90 past 180, wrapping a full turn back to zero', async () => {
+      // A third click used to be refused on the theory that a wrapped angle
+      // locks the wrong roll. It does not: abs_roll_residual (mate_residuals.rs)
+      // wraps the target-to-measured difference, so 270 and -90 are one pose.
       await renderWithMate('fixed')
       disarm()
       const plus90 = () => screen.getByRole('button', { name: '+90°' })
-      fireEvent.click(plus90())
-      await tick()
-      fireEvent.click(plus90())
-      await tick()
-      fireEvent.click(plus90())
-      await tick()
-      expect(mateDef().angle).toBe(180)
-      expect(screen.getByText(/must stay within/)).toBeTruthy()
+      for (const expected of [90, 180, 270, 0]) {
+        fireEvent.click(plus90())
+        await tick()
+        expect(mateDef().angle).toBe(expected)
+      }
     })
 
-    it('typing an out-of-range angle is rejected with a visible message', async () => {
+    it('normalises a typed out-of-range angle instead of refusing it', async () => {
       await renderWithMate('fixed')
       disarm()
-      fireEvent.change(screen.getByLabelText('Angle'), { target: { value: '270' } })
+      const input = screen.getByLabelText('Angle')
+      fireEvent.change(input, { target: { value: '400' } })
       await tick()
-      expect(mateDef().angle).toBeUndefined()
-      expect(screen.getByText(/must stay within/)).toBeTruthy()
+      fireEvent.blur(input)
+      await tick()
+      expect(mateDef().angle).toBe(40)
     })
 
     it('an angle edit re-solves once no chip is armed, like offset', async () => {
@@ -487,23 +489,20 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
       await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
     })
 
-    it('a rejected keystroke keeps the digits the user typed visible', async () => {
+    it('keeps every digit the user typed visible while the number grows', async () => {
       await renderWithMate('fixed')
       disarm()
       const input = screen.getByLabelText('Angle') as HTMLInputElement
-      // Typed digit by digit: "2" -> "27" both commit (in range), "270" is
-      // rejected. The box must still show "270", not snap back to "27" --
-      // a controlled input bound straight to the last-committed value would
-      // erase the very keystroke that triggered the rejection.
-      fireEvent.change(input, { target: { value: '2' } })
-      await tick()
-      fireEvent.change(input, { target: { value: '27' } })
-      await tick()
-      fireEvent.change(input, { target: { value: '270' } })
-      await tick()
-      expect(input.value).toBe('270')
-      expect(mateDef().angle).toBe(27)
-      expect(screen.getByText(/must stay within/)).toBeTruthy()
+      // Typed digit by digit: each keystroke commits, and the box must show
+      // what was typed rather than snapping back. A controlled input bound
+      // straight to the last-committed value would erase the keystroke in
+      // flight; normalising per keystroke would fight the typist the same way.
+      for (const typed of ['2', '27', '270']) {
+        fireEvent.change(input, { target: { value: typed } })
+        await tick()
+        expect(input.value).toBe(typed)
+      }
+      expect(mateDef().angle).toBe(270)
     })
 
     it('an angle edit while a chip is armed defers its solve to the disarm', async () => {

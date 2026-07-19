@@ -13,7 +13,7 @@ import type { MateFeatureDef, MateRef } from '@/types/cad'
 import { dot } from '@/utils/gizmoMath'
 import { lookupAnchor, type AnchorTable } from '@/utils/anchorGizmos'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
-import { isMateRefEmpty, mateParams } from '@/utils/mateKinds'
+import { isMateRefEmpty, mateParams, normalizeMateAngleDeg } from '@/utils/mateKinds'
 import { rollAboutAxisDeg } from '@/utils/mateOrientation'
 
 /** Round to make the captured value read like a number a user typed. 3
@@ -56,7 +56,14 @@ export function captureMateOrientationPatch(
   // the mate then holds the canonical zero roll.
   if (params.includes('angle')) {
     const measurable = poseA.x_axis && poseB.x_axis
-    const angle = measurable ? round3(rollAboutAxisDeg(poseA.x_axis!, poseB.x_axis!, poseA.axis)) : 0
+    // Normalised into the editor's [0, 360) authoring form, so a captured roll
+    // reads the same as one typed or clicked into the box: rollAboutAxisDeg
+    // returns atan2's (-180, 180], and a -10 degree pose would otherwise show
+    // as -10 in a box that can produce no negative value itself. Rounding comes
+    // FIRST -- normalising a hair below zero lands just under 360, and rounding
+    // that afterwards would author a 360 the range does not contain.
+    const raw = measurable ? round3(rollAboutAxisDeg(poseA.x_axis!, poseB.x_axis!, poseA.axis)) : 0
+    const angle = normalizeMateAngleDeg(raw)
     patch.angle = angle === 0 ? undefined : angle
   }
 

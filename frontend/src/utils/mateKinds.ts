@@ -76,11 +76,25 @@ export const MATE_PARAM_LABELS: Record<MateParam, string> = {
   angle: 'Angle',
 }
 
-/** `angle`'s wrap limit: `twist()` (mate_residuals.rs) extracts an angle from a
- *  quaternion, which wraps at +/-180 degrees. Widening past that must be
- *  rejected at entry, not silently wrapped -- a mate is a lock, and a wrapped
- *  value would lock the wrong roll without telling anyone. */
-export const MATE_ANGLE_LIMIT_DEG = 180
+/**
+ * `angle` in its authoring form: degrees in [0, 360). Wrapping is lossless, not
+ * a silent corruption -- `abs_roll_residual` (mate_residuals.rs) ends in
+ * `wrap_to_pi(atan2(sin_r, cos_r) - target)`, so a target and that target plus a
+ * full turn produce the identical residual. 270 and -90 name the same physical
+ * roll, and the solver cannot tell them apart. An earlier revision rejected
+ * anything past +/-180 on the theory that a wrapped value would lock the wrong
+ * roll; it locks the same roll, and the rejection only blocked legal poses (at
+ * 180, `+90` could do nothing but raise an error). Do not reinstate a range
+ * guard here.
+ *
+ * A non-finite input yields 0 so a half-typed box can never author NaN.
+ */
+export function normalizeMateAngleDeg(deg: number): number {
+  if (!Number.isFinite(deg)) return 0
+  // The modulo alone leaves -0 for a negative whole turn, and its sign would
+  // survive into the YAML; the addition folds that back onto plain 0.
+  return ((deg % 360) + 360) % 360
+}
 
 /** A slot no pick has filled yet. Both halves empty; never a partial. */
 export const EMPTY_MATE_REF: MateRef = { part: '', anchor: '' }

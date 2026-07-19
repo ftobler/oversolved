@@ -32,8 +32,10 @@ const SEGMENTS_PER_TURN = 24
 
 /**
  * `angleDeg` may be any finite value; the arc simply winds past a full turn if
- * asked to (the UI's own +/-180 guard is a separate, earlier check). A
- * degenerate axis (zero-length) yields no guide rather than NaN points.
+ * asked to. The editor authors it in [0, 360), so a quarter turn back from zero
+ * draws as the long way round (270) rather than as a short -90 arc: that is the
+ * authored number made visible, not a bug. A degenerate axis (zero-length)
+ * yields no guide rather than NaN points.
  */
 export function buildRollGuide(point: Vec3, axis: Vec3, angleDeg: number, radius: number): RollGuide | null {
   const primary = normalize(axis)

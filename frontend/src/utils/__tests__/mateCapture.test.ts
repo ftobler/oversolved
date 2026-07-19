@@ -34,6 +34,18 @@ describe('captureMateOrientationPatch', () => {
     expect(captureMateOrientationPatch({ kind: 'fixed' }, A, B, t)).toEqual({ flip: undefined, angle: 30 })
   })
 
+  it('normalises a negative captured roll into the editor\'s [0, 360) form', () => {
+    const s = Math.sin(Math.PI / 6)
+    const c = Math.cos(Math.PI / 6)
+    // B rolled -30 degrees about the shared +Z axis. rollAboutAxisDeg reports
+    // atan2's -30; the box only ever shows [0, 360), so the capture must agree
+    // with it or a picked mate reads differently from a clicked one.
+    const t = table({}, { x_axis: [s, c, 0] })
+    expect(captureMateOrientationPatch({ kind: 'fixed' }, A, B, t)).toEqual({
+      flip: undefined, angle: 330,
+    })
+  })
+
   it('resolves an identical pose to the empty defaults, deleting stale keys', () => {
     // flip/angle come back undefined so updateMate strips them: an untouched
     // pair carries no params, and a re-pick clears a previously captured pair.

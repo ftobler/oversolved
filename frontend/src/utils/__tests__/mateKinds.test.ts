@@ -12,6 +12,7 @@ import {
   mateParams,
   mateRefLabel,
   mateSummary,
+  normalizeMateAngleDeg,
 } from '@/utils/mateKinds'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 
@@ -155,5 +156,51 @@ describe('mateSummary', () => {
   it('shows the unpicked half of a half-authored mate', () => {
     const s = mateSummary('spherical', { part: 'h1', anchor: 'a1' }, EMPTY_MATE_REF)
     expect(s).toBe('Spherical: h1 / a1 to Pick a reference')
+  })
+})
+
+describe('normalizeMateAngleDeg', () => {
+  it('walks a full turn of +90 presses back to zero', () => {
+    // The behaviour the editor's +90 button is built on: pressing it forever
+    // must keep landing on a legal angle, never on a rejected one.
+    let a = 0
+    const seen: number[] = []
+    for (let i = 0; i < 4; i++) {
+      a = normalizeMateAngleDeg(a + 90)
+      seen.push(a)
+    }
+    expect(seen).toEqual([90, 180, 270, 0])
+  })
+
+  it('wraps a -90 press below zero up into the top of the range', () => {
+    expect(normalizeMateAngleDeg(0 - 90)).toBe(270)
+    expect(normalizeMateAngleDeg(270 - 90)).toBe(180)
+  })
+
+  it('collapses a whole turn onto zero from either side', () => {
+    expect(normalizeMateAngleDeg(360)).toBe(0)
+    expect(normalizeMateAngleDeg(-360)).toBe(0)
+    // A negative zero would reach the YAML as `-0`; the range's floor is plain 0.
+    expect(Object.is(normalizeMateAngleDeg(-360), 0)).toBe(true)
+  })
+
+  it('keeps values already inside [0, 360) untouched', () => {
+    expect(normalizeMateAngleDeg(0)).toBe(0)
+    expect(normalizeMateAngleDeg(30)).toBe(30)
+    expect(normalizeMateAngleDeg(180)).toBe(180)
+    expect(normalizeMateAngleDeg(359.999)).toBe(359.999)
+  })
+
+  it('folds a typed negative or many-turn value into the range', () => {
+    expect(normalizeMateAngleDeg(-90)).toBe(270)
+    expect(normalizeMateAngleDeg(-10)).toBe(350)
+    expect(normalizeMateAngleDeg(400)).toBe(40)
+    expect(normalizeMateAngleDeg(1080 + 45)).toBe(45)
+    expect(normalizeMateAngleDeg(-1080 - 45)).toBe(315)
+  })
+
+  it('authors zero rather than NaN for a non-finite input', () => {
+    expect(normalizeMateAngleDeg(NaN)).toBe(0)
+    expect(normalizeMateAngleDeg(Infinity)).toBe(0)
   })
 })
