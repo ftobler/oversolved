@@ -94,8 +94,18 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
   // Picking is the ID buffer's job, never R3F raycasting: these overlays sit on
   // top and must not intercept the grab ray meant for the body beneath, nor turn
   // an empty-space click into a hit that suppresses the deselect.
+  //
+  // This wrapper must NOT carry a renderOrder. three.js turns a Group's
+  // renderOrder into the groupOrder of everything below it, and the render-list
+  // sort compares groupOrder BEFORE renderOrder, so a renderOrder here would
+  // out-sort objects that are meant to draw last no matter how high their own
+  // renderOrder is -- notably the collision/ID debug pass (IdDebugOverlay,
+  // renderOrder 9999 at groupOrder 0), which the highlights then painted over.
+  // Every child below sets RENDER_ORDER_HIGHLIGHT itself, so layering against
+  // the bodies is unaffected. The part editor's Body3D root group is likewise
+  // renderOrder-free, which is why part mode never had this bug.
   return (
-    <group renderOrder={RENDER_ORDER_HIGHLIGHT}>
+    <group>
       {selFaces && (
         <mesh geometry={selFaces} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
           <meshBasicMaterial
