@@ -29,6 +29,12 @@ export const DIMENSION_LABEL_FAT_PIXELS = 18
 
 export const DEFAULT_WINDOW_SIZE = 17
 
+// Screen-space edge length of the B-rep vertex pick cube. Three pixels is the
+// smallest odd size that still leaves a lit centre pixel after rasterisation,
+// and its half-extent toward the camera is what lifts the vertex out of the
+// face it sits on in the depth buffer.
+export const VERTEX_PICK_CUBE_PIXELS = 3
+
 export interface IdPipelineOptions {
   width: number
   height: number
@@ -89,8 +95,11 @@ export class IdPipeline {
     this.faceLayer = new FaceIdLayer(this.registry)
     this.edgeLayer = new EdgeIdLayer(this.registry)
     // depth-test-against-prev keeps B-rep face depth alive for the sketch surface
-    // layer; the material still has depthTest=false so B-rep vertices always win.
-    this.vertexLayer = new VertexIdLayer(this.registry, { zPolicy: 'depth-test-against-prev' })
+    // layer. The vertex cubes have real depth extent, so ordinary depth testing
+    // ranks vertex over edge over face without any always-win escape hatch.
+    this.vertexLayer = new VertexIdLayer(this.registry, {
+      zPolicy: 'depth-test-against-prev', cubePixels: VERTEX_PICK_CUBE_PIXELS,
+    })
 
     // Helper layers. The plane renders at a negative priority so it sits
     // behind the B-rep stack -- bodies occlude the plane in the ID buffer.

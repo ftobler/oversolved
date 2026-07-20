@@ -4,24 +4,39 @@ import type { IdRegistry } from './IdRegistry'
 import { idToRGBNormalized } from './idEncoding'
 import { VERTEX_LAYER_NAME } from './layerNames'
 import { primitivePickKey } from './pickKey'
+import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
 
 /**
  * Concrete ID layer for B-rep vertices.
  *
- * Each registered body becomes one THREE.Points with per-vertex ID colors.
- * The ID buffer's windowed resolver (default 17px) provides the snap radius,
- * so only 1-pixel points are needed -- no fattened quads required.
+ * Each registered body becomes one drawable with per-vertex ID colors. The
+ * ID buffer's windowed resolver (default 17px) provides the snap radius, so
+ * the drawn footprint only has to mark where the vertex is, not how far the
+ * snap reaches.
  *
- * Depth: `zPolicy = 'no-depth'` (the pipeline clears depth before this
- * layer), and the material itself runs `depthTest = false` so vertices
- * always win where they draw -- matching the architecture's "vertex
- * wins over edge wins over face" priority via geometric layering.
+ * Two shapes, chosen by `cubePixels`:
+ *
+ * - unset (helper reusers: sketch vertices, origin marker, dimension labels):
+ *   one THREE.Points of 1-pixel dots with `depthTest = false`. These are
+ *   gizmo-style overlays that are meant to win unconditionally.
+ * - set (B-rep vertices in the part and assembly viewports): one THREE.Mesh
+ *   of view-aligned cubes, each `cubePixels` pixels on a side at any zoom.
+ *   The cube's depth extent is what ranks it above the face and edge it sits
+ *   on, so this layer needs no depth-test escape hatch: it runs `depthTest =
+ *   true` and the depth buffer resolves vertex over edge over face by itself.
+ *   The same depth test correctly hides vertices on the far side of a solid,
+ *   matching how the edge layer already behaves.
  */
 export { VERTEX_LAYER_NAME }
 export interface VertexIdLayerConfig {
   name?: string
   priority?: number
   zPolicy?: LayerZPolicy
+  /**
+   * Draw each vertex as a screen-space cube of this many pixels on a side
+   * instead of a 1-pixel depth-less point. See the class doc comment.
+   */
+  cubePixels?: number
 }
 
 export interface VertexBodyRegistration {
@@ -54,28 +69,126 @@ const FRAG_SHADER = `
   }
 `
 
-function buildVertexIdMaterial(): THREE.ShaderMaterial {
+// Mirrors worldUnitsPerPixel() from ./screenSpaceScale. It has to live in the
+// shader because under a perspective camera the pixel size depends on each
+// vertex's own view depth; projectionMatrix[2][3] is -1 for perspective and 0
+// for orthographic, which selects the right clip-space w.
+const CUBE_VERT_SHADER = `
+  attribute vec3 aColor;
+  attribute vec3 aCorner;
+  uniform float uHalfPixels;
+  uniform float uViewportHeight;
+  varying vec3 vColor;
+
+  void main() {
+    vColor = aColor;
+    vec4 view = modelViewMatrix * vec4(position, 1.0);
+    float clipW = projectionMatrix[2][3] == 0.0 ? 1.0 : -view.z;
+    float unitsPerPixel = (2.0 * clipW) / (projectionMatrix[1][1] * max(uViewportHeight, 1.0));
+    view.xyz += aCorner * (uHalfPixels * unitsPerPixel);
+    gl_Position = projectionMatrix * view;
+  }
+`
+
+function buildVertexIdMaterial(cubePixels?: number): THREE.ShaderMaterial {
+  if (cubePixels === undefined) {
+    return new THREE.ShaderMaterial({
+      vertexShader: VERT_SHADER,
+      fragmentShader: FRAG_SHADER,
+      depthTest: false,
+      depthWrite: false,
+    })
+  }
   return new THREE.ShaderMaterial({
-    vertexShader: VERT_SHADER,
+    vertexShader: CUBE_VERT_SHADER,
     fragmentShader: FRAG_SHADER,
-    depthTest: false,
+    uniforms: {
+      uHalfPixels: { value: cubePixels / 2 },
+      uViewportHeight: { value: 1 },
+    },
+    // DoubleSide so the near cube face marks the pixel regardless of winding;
+    // depthWrite stays off (as on edges) so the cubes do not punch 3px holes
+    // in the face depth that later layers test against.
+    side: THREE.DoubleSide,
+    depthTest: true,
     depthWrite: false,
   })
 }
 
-export class VertexIdLayer extends IdLayerBase<THREE.Points> {
+function buildPointGeometry(positions: Float32Array, colors: Float32Array): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setAttribute('aColor',   new THREE.BufferAttribute(colors,    3))
+  return geometry
+}
+
+/**
+ * Expand one point per vertex into 8 cube corners sharing that vertex's
+ * position and ID color. The shader displaces each corner along the view axes
+ * by `aCorner * halfExtent`, so the cube is built entirely at draw time and
+ * stays a constant pixel size without rebuilding this buffer on zoom.
+ */
+function buildCubeGeometry(positions: Float32Array, colors: Float32Array, count: number): THREE.BufferGeometry {
+  const corners = CUBE_CORNER_SIGNS.length
+  const cubePositions = new Float32Array(count * corners * 3)
+  const cubeColors    = new Float32Array(count * corners * 3)
+  const cubeCorners   = new Float32Array(count * corners * 3)
+  const indices = new Uint32Array(count * CUBE_TRIANGLE_INDICES.length)
+
+  for (let i = 0; i < count; i++) {
+    const src = i * 3
+    for (let c = 0; c < corners; c++) {
+      const dst = (i * corners + c) * 3
+      cubePositions[dst]     = positions[src]
+      cubePositions[dst + 1] = positions[src + 1]
+      cubePositions[dst + 2] = positions[src + 2]
+      cubeColors[dst]        = colors[src]
+      cubeColors[dst + 1]    = colors[src + 1]
+      cubeColors[dst + 2]    = colors[src + 2]
+      const sign = CUBE_CORNER_SIGNS[c]
+      cubeCorners[dst]     = sign[0]
+      cubeCorners[dst + 1] = sign[1]
+      cubeCorners[dst + 2] = sign[2]
+    }
+    const idxBase = i * CUBE_TRIANGLE_INDICES.length
+    const vertBase = i * corners
+    for (let k = 0; k < CUBE_TRIANGLE_INDICES.length; k++) {
+      indices[idxBase + k] = vertBase + CUBE_TRIANGLE_INDICES[k]
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(cubePositions, 3))
+  geometry.setAttribute('aColor',   new THREE.BufferAttribute(cubeColors,    3))
+  geometry.setAttribute('aCorner',  new THREE.BufferAttribute(cubeCorners,   3))
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  return geometry
+}
+
+export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
 
-  private material = buildVertexIdMaterial()
+  private readonly cubePixels: number | undefined
+  private material: THREE.ShaderMaterial
 
   constructor(registry: IdRegistry, _config?: VertexIdLayerConfig) {
     super(registry)
     this.name = _config?.name ?? VERTEX_LAYER_NAME
     this.priority = _config?.priority ?? 20
     this.zPolicy = _config?.zPolicy ?? 'no-depth'
+    this.cubePixels = _config?.cubePixels
+    this.material = buildVertexIdMaterial(this.cubePixels)
+  }
+
+  /** Screen-space cube size in pixels, or undefined when drawing flat points. */
+  getCubePixels(): number | undefined { return this.cubePixels }
+
+  onBeforeRender(_width: number, height: number): void {
+    const u = this.material.uniforms?.uViewportHeight
+    if (u) u.value = height
   }
 
   registerBody(reg: VertexBodyRegistration): void {
@@ -112,13 +225,16 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points> {
 
     if (written === 0) return
 
-    const geometry = new THREE.BufferGeometry()
     const finalPositions = written === count ? positions : positions.subarray(0, written * 3)
     const finalColors    = written === count ? colors    : colors.subarray(0, written * 3)
-    geometry.setAttribute('position', new THREE.BufferAttribute(finalPositions, 3))
-    geometry.setAttribute('aColor',   new THREE.BufferAttribute(finalColors,     3))
 
-    const mesh = new THREE.Points(geometry, this.material)
+    const geometry = this.cubePixels === undefined
+      ? buildPointGeometry(finalPositions, finalColors)
+      : buildCubeGeometry(finalPositions, finalColors, written)
+
+    const mesh = this.cubePixels === undefined
+      ? new THREE.Points(geometry, this.material)
+      : new THREE.Mesh(geometry, this.material)
     mesh.frustumCulled = false
     this.scene.add(mesh)
     this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })

@@ -11,7 +11,9 @@ import type { IdRegistry } from './IdRegistry'
  * - 'clear-then-fresh': clearDepth() then render with normal depth test
  *   and write; used by face layer here, and by helper/plane layers later.
  * - 'no-depth': depth test off, always wins where it draws; used by
- *   gizmo-style layers (vertices in #262, origin in #263).
+ *   gizmo-style layers (sketch vertices, origin marker, dimension labels).
+ *   B-rep vertices deliberately do NOT use this: their pick cubes have real
+ *   depth extent and rank themselves through the depth buffer.
  */
 export type LayerZPolicy = 'depth-test-against-prev' | 'clear-then-fresh' | 'no-depth'
 
