@@ -167,17 +167,22 @@ interface SketchEditorState {
   // Normal selection — traditional selection, persists until explicitly changed.
   // Query-keyed: the durable/ancestral identity every consumer reads.
   normalSelection: Set<string>
-  // Live per-primitive refinement of the b-rep selection: query -> pickKey
-  // (bodyKey#layer#index). A click records the exact primitive's pickKey here
-  // alongside its query in normalSelection, so the viewport highlight isolates
-  // the one clicked edge even when several edges share a query. Keyed by query
-  // so toggling a query off always drops its pick claim -- a bare pickKey set
-  // could keep a stale sibling's key alive across an off/on cycle of the same
-  // query and co-highlight a primitive the user never re-clicked. Transient:
-  // unlike normalSelection it is not persisted and is empty after a re-solve,
-  // where the query-keyed fallback takes over (see computeHighlight). Cleared
-  // whenever the normal selection is cleared/reset.
-  selectedPicks: Map<string, string>
+  // Live per-primitive refinement of the b-rep selection: query -> the SET of
+  // pickKeys (bodyKey#layer#index) selected under that query. A click records
+  // the exact primitive's pickKey here alongside its query in normalSelection,
+  // so the viewport highlight isolates the primitives actually clicked even when
+  // several of them share a query.
+  //
+  // A set, not a single key: a query is a many-to-one durable identity (two
+  // primitives that earned no construction UUID legitimately share one), so a
+  // single key per query made the query the de-facto selection identity and let
+  // a second click on a colliding sibling evict the first. Grouping by query
+  // still keeps the claims tied to their durable entry, so toggling a query off
+  // drops every claim under it and no stale sibling key survives an off/on cycle.
+  // Transient: unlike normalSelection it is not persisted and is empty after a
+  // re-solve, where the query-keyed fallback takes over (see computeHighlight).
+  // Cleared whenever the normal selection is cleared/reset.
+  selectedPicks: Map<string, Set<string>>
   // Derived domain of the current normal selection.
   selectionDomain: SelectionDomain
   isPointerDown: boolean
@@ -387,20 +392,49 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   clearNormalSelection: () => set({ normalSelection: new Set(), selectedPicks: new Map(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
 
+  // The unit of selection is one PRIMITIVE, not one query. When the click
+  // carries a pickKey the (query, pickKey) pair is what toggles, so two distinct
+  // primitives that share an ancestral query hold independent selection state
+  // instead of evicting each other. The query stays in normalSelection until its
+  // last claiming primitive is deselected.
   toggleNormalSelection: (id, pickKey) =>
     set(s => {
       const next = new Set(s.normalSelection)
       const nextPicks = new Map(s.selectedPicks)
-      if (next.has(id)) {
-        next.delete(id)
-        // Drop the claim by query, not by the passed pickKey: the toggle-off
-        // may come from a shared-query SIBLING whose pickKey differs from the
-        // one that made the claim, and the stale claim would otherwise
-        // resurrect on the next re-select of this query.
-        nextPicks.delete(id)
-      } else {
+      const claims = nextPicks.get(id)
+
+      // No per-primitive identity (sketch entities, planes, origin), or a
+      // query-only selection left over from a re-solve: the query IS the whole
+      // selection, so toggle it wholesale.
+      if (pickKey === undefined || (next.has(id) && claims === undefined)) {
+        if (next.has(id)) {
+          next.delete(id)
+          nextPicks.delete(id)
+        } else {
+          next.add(id)
+          if (pickKey !== undefined) nextPicks.set(id, new Set([pickKey]))
+        }
+        return { normalSelection: next, selectedPicks: nextPicks, selectionDomain: deriveSelectionDomain(next) }
+      }
+
+      if (claims === undefined) {
         next.add(id)
-        if (pickKey !== undefined) nextPicks.set(id, pickKey)
+        nextPicks.set(id, new Set([pickKey]))
+      } else if (claims.has(pickKey)) {
+        const remaining = new Set(claims)
+        remaining.delete(pickKey)
+        // The durable entry outlives an individual primitive: it only leaves
+        // normalSelection once nothing claims it any more.
+        if (remaining.size === 0) {
+          nextPicks.delete(id)
+          next.delete(id)
+        } else {
+          nextPicks.set(id, remaining)
+        }
+      } else {
+        // A colliding sibling: additive, never a replacement. This is the click
+        // that used to silently un-select whatever already held this query.
+        nextPicks.set(id, new Set(claims).add(pickKey))
       }
       return { normalSelection: next, selectedPicks: nextPicks, selectionDomain: deriveSelectionDomain(next) }
     }),
@@ -454,7 +488,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       // per-tool rule lives with the tool's policy, not buried here.
       if (getToolPickConfig(tool).clearsSelectionOnEnter) {
         updates.normalSelection = new Set<string>()
-        updates.selectedPicks = new Map<string, string>()
+        updates.selectedPicks = new Map<string, Set<string>>()
       }
       // Clear stale pick-field state when entering any tool. Start from the
       // selection the clearsSelectionOnEnter branch may already have emptied:
@@ -467,7 +501,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         const nextNormal = new Set(baseNormal)
         for (const v of state.chipOwnedSelection) nextNormal.delete(v)
         updates.normalSelection = nextNormal
-        updates.selectedPicks = new Map<string, string>()
+        updates.selectedPicks = new Map<string, Set<string>>()
         if (state.modeStack[state.modeStack.length - 1] === 'pick') {
           updates.modeStack = state.modeStack.slice(0, -1)
         }
@@ -814,7 +848,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       drawPoints: [],
       drawHover: null,
       drawSnapVertexId: null,
-      ...(opts?.seed ? {} : { normalSelection: new Set<string>(), selectedPicks: new Map<string, string>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
+      ...(opts?.seed ? {} : { normalSelection: new Set<string>(), selectedPicks: new Map<string, Set<string>>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
     })
     get().pushMode('pick')
 

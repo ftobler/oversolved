@@ -66,7 +66,7 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().toggleNormalSelection('edge@q', 'ex1/b0#3')
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('edge@q')).toBe(true)
-      expect(s.selectedPicks.get('edge@q')).toBe('ex1/b0#3')
+      expect(s.selectedPicks.get('edge@q')).toEqual(new Set(['ex1/b0#3']))
     })
 
     it('drops the pickKey when the query is toggled back off', () => {
@@ -78,18 +78,35 @@ describe('sketchEditorStore', () => {
       expect(s.selectedPicks.has('edge@q')).toBe(false)
     })
 
-    it('drops a stale sibling claim when the query toggles off via a different pickKey', () => {
-      // Regression: edges A and B share query Q. Clicking A claims Q with A's
-      // pickKey; clicking B toggles Q OFF (same query). The claim must go with
-      // it -- a claim keyed by pickKey survived here, so re-selecting Q via B
-      // co-highlighted A, a primitive the user never re-clicked.
+    it('a shared-query sibling is added, not swapped in for the first pick', () => {
+      // Regression: edges A and B share query Q because neither earned a
+      // construction UUID. Clicking B used to toggle Q off and take A's
+      // selection with it -- the query, not the primitive, was the selection
+      // identity. Both must now be selected, and each must toggle off alone.
       const { toggleNormalSelection } = useSketchEditorStore.getState()
       toggleNormalSelection('Q', 'ex1/b0#edge#0')  // click edge A
-      toggleNormalSelection('Q', 'ex1/b0#edge#1')  // click sibling B -> Q off
-      expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
-      toggleNormalSelection('Q', 'ex1/b0#edge#1')  // re-select via B
+      toggleNormalSelection('Q', 'ex1/b0#edge#1')  // click sibling B
+      expect(useSketchEditorStore.getState().selectedPicks.get('Q'))
+        .toEqual(new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1']))
+
+      toggleNormalSelection('Q', 'ex1/b0#edge#0')  // deselect A only
       const s = useSketchEditorStore.getState()
-      expect([...s.selectedPicks.entries()]).toEqual([['Q', 'ex1/b0#edge#1']])
+      expect(s.selectedPicks.get('Q')).toEqual(new Set(['ex1/b0#edge#1']))
+      expect(s.normalSelection.has('Q')).toBe(true)
+    })
+
+    it('the query leaves normalSelection when its last claiming primitive does', () => {
+      // No stale claim may outlive the query: once B (the last claimer) is
+      // deselected the whole entry goes, so a later re-select of Q cannot
+      // resurrect A's key and co-highlight a primitive nobody clicked.
+      const { toggleNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('Q', 'ex1/b0#edge#0')
+      toggleNormalSelection('Q', 'ex1/b0#edge#1')
+      toggleNormalSelection('Q', 'ex1/b0#edge#0')
+      toggleNormalSelection('Q', 'ex1/b0#edge#1')
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('Q')).toBe(false)
+      expect(s.selectedPicks.size).toBe(0)
     })
 
     it('leaves the pickKey channel untouched for selections with no pickKey', () => {

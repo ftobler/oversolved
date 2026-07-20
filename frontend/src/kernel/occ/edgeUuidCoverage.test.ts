@@ -9,8 +9,9 @@
 // back to createdBy+classifiers -- non-unique, so they collided in both the id
 // buffer and the fillet/chamfer resolver. This file locks two things:
 //   1. every edge of a named-face solid gets a UUID (incl. the seam edge), and
-//   2. the full build pipeline emits NO duplicate edge_queries or face_queries
-//      for the representative bodies (box, cylinder, filleted box, boolean cut).
+//   2. the full build pipeline emits NO duplicate edge_queries, face_queries or
+//      vertex_queries for the representative bodies (box, cylinder, filleted
+//      box, boolean cut).
 // (2) is the guard that would have caught the original break at commit time.
 //
 // Skips when opencascade.js (or, for the build-level lock, the Rust solver) is
@@ -162,6 +163,32 @@ function edgeQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): stri
   return (h.body(r, bodyId).edge_queries as string[]) ?? []
 }
 
+function vertexQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
+  return (h.body(r, bodyId).vertex_queries as string[]) ?? []
+}
+
+/**
+ * Every pickable primitive of `bodyId` carries a query no sibling shares.
+ *
+ * Vertices are in here for the same reason edges were: a query is the key of
+ * the durable selection, so two primitives that emit the same string are ONE
+ * selectable thing. A cylinder's two seam vertices used to do exactly that --
+ * neither met the >=3-named-faces bar for a construction UUID, and a vertex
+ * query carries no classifiers to fall back on (faces and edges do), so both
+ * collapsed onto a single `createdBy + bodyId` string.
+ */
+function expectUniquePrimitiveQueries(h: SharedHarness, r: BuildResponse, bodyId: string) {
+  const faces = faceQueriesOf(h, r, bodyId)
+  const edges = edgeQueriesOf(h, r, bodyId)
+  const vertices = vertexQueriesOf(h, r, bodyId)
+  expect(faces.length).toBeGreaterThan(0)
+  expect(edges.length).toBeGreaterThan(0)
+  expect(vertices.length).toBeGreaterThan(0)
+  expect(duplicates(faces)).toEqual([])
+  expect(duplicates(edges)).toEqual([])
+  expect(duplicates(vertices)).toEqual([])
+}
+
 describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OCC + Rust solver)', () => {
   const h = new SharedHarness(oc!)
 
@@ -170,15 +197,9 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  /** Build the spec, then assert the body's face and edge queries are unique. */
+  /** Build the spec, then assert the body's face, edge and vertex queries are unique. */
   function expectUniqueQueries(spec: { features: Array<Record<string, unknown>> }, bodyId: string) {
-    const r = h.run(spec)
-    const faces = faceQueriesOf(h, r, bodyId)
-    const edges = edgeQueriesOf(h, r, bodyId)
-    expect(faces.length).toBeGreaterThan(0)
-    expect(edges.length).toBeGreaterThan(0)
-    expect(duplicates(faces)).toEqual([])
-    expect(duplicates(edges)).toEqual([])
+    expectUniquePrimitiveQueries(h, h.run(spec), bodyId)
   }
 
   it('box: no duplicate face or edge queries', () => {
@@ -250,12 +271,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
         translation: [20, 0, 0],
       },
     ] })
-    const faces = faceQueriesOf(h, r, 'body_tr1')
-    const edges = edgeQueriesOf(h, r, 'body_tr1')
-    expect(faces.length).toBeGreaterThan(0)
-    expect(edges.length).toBeGreaterThan(0)
-    expect(duplicates(faces)).toEqual([])
-    expect(duplicates(edges)).toEqual([])
+    expectUniquePrimitiveQueries(h, r, 'body_tr1')
   })
 
   it('circular array new: no duplicate face or edge queries in any instance body', () => {
@@ -269,12 +285,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       },
     ] })
     for (const bodyId of ['body_ca1', 'body_ca1_1']) {
-      const faces = faceQueriesOf(h, r, bodyId)
-      const edges = edgeQueriesOf(h, r, bodyId)
-      expect(faces.length).toBeGreaterThan(0)
-      expect(edges.length).toBeGreaterThan(0)
-      expect(duplicates(faces)).toEqual([])
-      expect(duplicates(edges)).toEqual([])
+      expectUniquePrimitiveQueries(h, r, bodyId)
     }
   })
 })

@@ -11,21 +11,22 @@ const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>()
 
 /**
  * Click framing: the durable selection state exactly as the store holds it.
- * `selectedPicks` maps query -> pickKey (the store keys the live claims by
- * query so a toggle-off drops them); the highlight decision only needs the
- * claimed pickKeys, so the values are flattened into the set shape
- * computeHighlight consumes. This is the ONE builder Body3D uses for the
- * selection highlight, so the memo that wraps it and the symmetry test both
- * exercise identical wiring.
+ * `selectedPicks` maps query -> the pickKeys of the primitives selected under it
+ * (the store groups the live claims by query so a toggle-off drops them, and
+ * holds a SET because several distinct primitives can share one query); the
+ * highlight decision only needs the claimed pickKeys, so the groups are
+ * flattened into the set shape computeHighlight consumes. This is the ONE
+ * builder Body3D uses for the selection highlight, so the memo that wraps it and
+ * the symmetry test both exercise identical wiring.
  */
 export function selectActiveFrom(
-  selectedPicks: ReadonlyMap<string, string>,
+  selectedPicks: ReadonlyMap<string, ReadonlySet<string>>,
   normalSelection: ReadonlySet<string>,
 ): ActiveHighlight {
-  return {
-    pickKeys: selectedPicks.size > 0 ? new Set(selectedPicks.values()) : EMPTY_STRING_SET,
-    queries: normalSelection,
-  }
+  if (selectedPicks.size === 0) return { pickKeys: EMPTY_STRING_SET, queries: normalSelection }
+  const pickKeys = new Set<string>()
+  for (const claims of selectedPicks.values()) for (const k of claims) pickKeys.add(k)
+  return { pickKeys, queries: normalSelection }
 }
 
 /**

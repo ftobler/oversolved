@@ -34,7 +34,7 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
       const pointedQuery = 'Q'
 
       const clickFlags = computeHighlight(BODY, layer, queries,
-        selectActiveFrom(new Map([[pointedQuery, pointedPickKey]]), new Set([pointedQuery])))
+        selectActiveFrom(new Map([[pointedQuery, new Set([pointedPickKey])]]), new Set([pointedQuery])))
       const hoverFlags = computeHighlight(BODY, layer, queries,
         hoverActiveFrom(pointedPickKey, pointedQuery))
 
@@ -49,7 +49,7 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
         const pkI = primitivePickKey(BODY, i, layer)
         const expected = queries.map((_, j) => j === i)
         expect(computeHighlight(BODY, layer, queries,
-          selectActiveFrom(new Map([['Q', pkI]]), new Set(['Q'])))).toEqual(expected)
+          selectActiveFrom(new Map([['Q', new Set([pkI])]]), new Set(['Q'])))).toEqual(expected)
         expect(computeHighlight(BODY, layer, queries,
           hoverActiveFrom(pkI, 'Q'))).toEqual(expected)
       }
@@ -62,7 +62,7 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
       // The foreign pickKey never matches this layer, and its query is not active,
       // so nothing lights up in either framing.
       expect(computeHighlight(BODY, layer, queries,
-        selectActiveFrom(new Map([['Q', foreignKey]]), new Set<string>()))).toEqual([false, false, false])
+        selectActiveFrom(new Map([['Q', new Set([foreignKey])]]), new Set<string>()))).toEqual([false, false, false])
       expect(computeHighlight(BODY, layer, queries,
         hoverActiveFrom(foreignKey, null))).toEqual([false, false, false])
     })
@@ -74,7 +74,7 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
       // the seam to naming-by-construction, not a bug -- both framings agree.
       const queries = ['Q', 'Q', 'R']
       const clickFlags = computeHighlight(BODY, layer, queries,
-        selectActiveFrom(new Map<string, string>(), new Set(['Q'])))
+        selectActiveFrom(new Map<string, Set<string>>(), new Set(['Q'])))
       const hoverFlags = computeHighlight(BODY, layer, queries,
         hoverActiveFrom(null, 'Q'))
       expect(clickFlags).toEqual([true, true, false])
@@ -83,16 +83,15 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
   }
 
   it('re-selecting a query via a shared-query sibling isolates only that sibling', () => {
-    // The store scenario behind the query-keyed selectedPicks map: edge A
-    // (index 0) claimed Q, a click on sibling B toggled Q off (claim dropped
-    // with it), a second click on B re-selected Q with B's key. Only B may
-    // highlight -- a pickKey-keyed claim store leaked A's key through the
-    // off/on cycle and lit both.
+    // The store scenario behind grouping the claims by query: edges A and B
+    // share Q, A was selected then deselected, leaving B the only claimer. Only
+    // B may highlight -- a claim store that let A's key outlive its deselection
+    // would light both.
     const layer = EDGE_LAYER_NAME
     const queries = ['Q', 'Q']
     const kB = primitivePickKey(BODY, 1, layer)
     expect(computeHighlight(BODY, layer, queries,
-      selectActiveFrom(new Map([['Q', kB]]), new Set(['Q'])))).toEqual([false, true])
+      selectActiveFrom(new Map([['Q', new Set([kB])]]), new Set(['Q'])))).toEqual([false, true])
   })
 
   it('an empty hover (nothing under the cursor) highlights nothing', () => {

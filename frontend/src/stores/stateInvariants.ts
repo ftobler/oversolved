@@ -28,10 +28,10 @@ export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_r
 
 export interface SelectionInvariantState {
   normalSelection: Set<string>
-  // Live pick refinement: query -> pickKey. Every claimed query must still be
-  // in normalSelection; an orphan claim would resurrect as a ghost highlight
-  // when its query is re-selected.
-  selectedPicks: Map<string, string>
+  // Live pick refinement: query -> the pickKeys of the primitives selected under
+  // it. Every claimed query must still be in normalSelection; an orphan claim
+  // would resurrect as a ghost highlight when its query is re-selected.
+  selectedPicks: Map<string, Set<string>>
   chipOwnedSelection: Set<string>
   selectionDomain: SelectionDomain
 }
@@ -81,10 +81,15 @@ export function validateSelectionState(state: SelectionInvariantState): void {
     }
   }
 
-  for (const q of selectedPicks.keys()) {
+  for (const [q, claims] of selectedPicks.entries()) {
     if (!normalSelection.has(q)) {
       failLoud(
         `[invariant] selectedPicks has orphan claim for query '${q}' not in normalSelection`,
+      )
+    }
+    if (claims.size === 0) {
+      failLoud(
+        `[invariant] selectedPicks has empty claim set for query '${q}'`,
       )
     }
   }
@@ -120,8 +125,8 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
   }
 
   const repairedPicks = new Map(selectedPicks)
-  for (const q of selectedPicks.keys()) {
-    if (!normalSelection.has(q)) {
+  for (const [q, claims] of selectedPicks.entries()) {
+    if (!normalSelection.has(q) || claims.size === 0) {
       repairedPicks.delete(q)
     }
   }

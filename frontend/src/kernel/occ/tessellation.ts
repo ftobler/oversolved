@@ -401,13 +401,22 @@ interface SolidVerticesResult {
 
 /**
  * Vertex construction UUIDs derived from face adjacency, keyed by vertex geom
- * hash so a lookup on a vertex point lines up. A vertex is where >=3 faces meet,
- * so its UUID is the (unordered) set of its adjacent NAMED face UUIDs
- * (`deriveVertexUuid`); a vertex touching fewer than 3 named faces stays unnamed
- * (curved bodies: a cylinder seam vertex touches <2 faces) and falls back to the
- * descriptor/ancestral path. Multiplicity (>1 vertex sharing one face set) is
- * ordered by `orderSplitChildren` and refuses on a near-tie -- never fail-wrong.
- * Mirrors the edge derivation, op-independent.
+ * hash so a lookup on a vertex point lines up. A vertex's UUID is the
+ * (unordered) set of its adjacent NAMED face UUIDs (`deriveVertexUuid`).
+ * Multiplicity (>1 vertex sharing one face set) is ordered by
+ * `orderSplitChildren` and refuses on a near-tie -- never fail-wrong. Mirrors
+ * the edge derivation, op-independent.
+ *
+ * ANY non-empty named-face set identifies a vertex; there is no >=3 bar. The
+ * bar came from "a vertex is where 3 faces meet", which holds for a box but not
+ * for a curved body: a cylinder's two seam vertices each touch only 2 named
+ * faces (one cap + the lateral face). They therefore earned no UUID, and unlike
+ * a face or an edge a vertex query has no classifier tokens to fall back on, so
+ * both collapsed onto the identical `createdBy + bodyId` ancestral string. Since
+ * that string is the key of the durable selection, the two were ONE selectable
+ * entity and the second could never be added. Naming them off their adjacent
+ * face set is the identity fix: the ingredients stay symbolic (face UUIDs), and
+ * geometry stays confined to the split-sibling ordering it was already allowed.
  */
 function vertexUuidsFromFaces(
   oc: OccModule,
@@ -437,7 +446,7 @@ function vertexUuidsFromFaces(
   const out: Record<string, string> = {}
   const bySet: Record<string, string[]> = {}  // "uuidA|uuidB|uuidC..." -> [vertex gh...]
   for (const [vgh, uuidSet] of Object.entries(adjacency)) {
-    if (uuidSet.size < 3) continue  // a vertex needs >=3 named faces to be identified
+    if (uuidSet.size === 0) continue  // no named neighbour: nothing symbolic to name it by
     const setKey = [...uuidSet].sort().join('|')
     ;(bySet[setKey] ??= []).push(vgh)
   }
@@ -634,10 +643,11 @@ export function solidToVertices(
     if (createdBy) {
       // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
       // op-independent). Stage 7d dropped the @gdv| geometry descriptor: a vertex
-      // query now carries only its @u| UUID (when it meets >=3 named faces) plus
-      // the ancestral tokens. A vertex that earns no UUID (a curved-body seam
-      // vertex touching <3 named faces) falls back to the ancestral net or fails
-      // loud -- the accepted fail-safe outcome of dropping geometry identity.
+      // query now carries only its @u| UUID (whenever it touches at least one
+      // named face) plus the ancestral tokens. A vertex with no named neighbour
+      // at all falls back to the ancestral net; that net is shared with its
+      // siblings, so such a vertex is not individually selectable -- the
+      // fail-safe outcome of having nothing symbolic to name it by.
       const uuidByGh = opts.faceNames ? vertexUuidsFromFaces(oc, scope, solid, opts.faceNames) : {}
       for (let idx = 0; idx < vertices.length; idx++) {
         const v = vertices[idx]
