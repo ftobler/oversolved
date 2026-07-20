@@ -31,7 +31,6 @@ import GizmoPickLayer from '@/components/Viewport/assembly/GizmoPickLayer'
 import RollGuideGizmo, { type RollGuideSpec } from '@/components/Viewport/assembly/RollGuideGizmo'
 import TriadGizmo from '@/components/Viewport/assembly/TriadGizmo'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
-import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import IdPickingDriver from '@/picking/IdPickingDriver'
 import type { IdPipeline } from '@/picking'
@@ -48,7 +47,8 @@ import {
   gizmoOrigin,
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
-import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearsSelection } from '@/utils/assemblyPointer'
+import { createClickGestureTracker } from '@/utils/clickGesture'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
@@ -393,10 +393,13 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     }
   }, [adapter, clearHover, rayFromEvent, resolveHitsAt, selectedPartHandle, triad])
 
-  // Pointer-down screen position, kept so pointer-up can tell a click from a
-  // drag: a body grab (which fires on the R3F mesh handler before this one) is
-  // still a select if the pointer never moved.
-  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
+  // Which button opened the gesture and how far it has travelled, shared with
+  // the part editor so both agree on what a click is. Two readers: pointer-up
+  // (a body grab that never moved is still a select) and onPointerMissed (a
+  // camera gesture must not deselect). Every button is recorded, not just the
+  // left one, because the camera runs on the right button and the deselect
+  // guard has to be able to see that.
+  const clickGesture = useRef(createClickGestureTracker())
 
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
@@ -406,7 +409,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     // Record before the active-gesture early-out: the mesh handler has already
     // opened the grab by the time this bubbles up, so an early return here would
     // lose the down position a plain select needs.
-    if (e.button === 0) pointerDownPos.current = { x: e.clientX, y: e.clientY }
+    clickGesture.current.down(e.button, e.clientX, e.clientY)
     if (adapter.isActive()) {
       e.currentTarget.setPointerCapture(e.pointerId)
       return
@@ -422,6 +425,9 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   }, [adapter, aiming, resolveHitsAt])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    // Latch the travel as it happens: an orbit that swings out and comes back
+    // would read as a stationary click if only the two end points were compared.
+    clickGesture.current.move(e.clientX, e.clientY)
     if (!adapter.isActive()) {
       scheduleHover(e)
       return
@@ -444,8 +450,9 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    const down = pointerDownPos.current
-    pointerDownPos.current = null
+    // Close the gesture unconditionally: the click event that decides whether to
+    // deselect arrives after this handler and reads the verdict left behind.
+    const click = clickGesture.current.up(e.clientX, e.clientY)
     // Commits the seed transform and asks for one re-solve; inert with no session.
     const gesture = adapter.onPointerUp()
     if (gesture.source) setManipulating(false)
@@ -457,8 +464,8 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     // they never fall through here.
     if (!gestureAllowsSelect(gesture)) return
     const store = useAssemblyStore.getState()
-    if (store.activeMateField !== null || e.button !== 0 || !down || e.ctrlKey) return
-    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= CLICK_THRESHOLD_PX) return
+    if (store.activeMateField !== null || e.button !== 0 || e.ctrlKey) return
+    if (click.button !== 0 || click.wasDrag) return
     const hits = resolveHitsAt(e)
     if (hits.length > 0) store.toggleSelection(hits[0].entityKey)
   }, [adapter, resolveHitsAt])
@@ -492,7 +499,13 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   }, [adapter, manipulating])
 
   const onPointerMissed = useCallback(() => {
-    if (adapter.isActive()) return
+    // R3F counts `contextmenu` as a click event, and Chrome on Linux fires it on
+    // the pointer-DOWN that starts a right-button orbit -- so this handler runs
+    // at the very start of every camera rotation, with a travel distance of zero
+    // that R3F's own delta guard cannot reject. Deferring to the gesture (which
+    // knows the orbit opened on the right button) is what keeps the camera from
+    // wiping the selection.
+    if (!missClearsSelection(clickGesture.current.state, adapter.isActive())) return
     const store = useAssemblyStore.getState()
     store.setSelectedPartHandle(null)
     store.setSelectedMateId(null)

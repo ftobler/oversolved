@@ -44,7 +44,8 @@ import {
   wasLastClickStaleResolve,
 } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
-import { CLICK_THRESHOLD_PX, DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
+import { DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
+import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/clickGesture'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import {
   getBodiesToRender,
@@ -376,9 +377,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
 
-  const pointerDownPos = useRef<[number, number] | null>(null)
-  const pointerDownButton = useRef<number | null>(null)
-  const wasPointerDrag = useRef(false)
+  // Which button opened the gesture and how far it travelled. Shared with the
+  // assembly viewport (utils/clickGesture) so the two editors can never disagree
+  // about what counts as a click and what counts as a camera drag.
+  const clickGesture = useRef(createClickGestureTracker())
 
   // Layer 3B: clear isPointerDown on any pointer-up (including off-canvas releases).
   useSelectionPointerUpCleanup()
@@ -390,17 +392,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (wasLastClickConsumedByIdDispatch()) return
     if (wasLastClickStaleResolve()) return
     if (rubberBand.state.isDraggingRef.current) return
-    if (!wasPointerDrag.current && pointerDownButton.current === 0) {
+    if (isStationaryPrimaryClick(clickGesture.current.state)) {
       useSketchEditorStore.getState().clearNormalSelection()
     }
   }, [rubberBand])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
-    pointerDownButton.current = e.button
-    if (e.button === 0 || e.button === 1 || e.button === 2) {
-      pointerDownPos.current = [e.clientX, e.clientY]
-    }
+    clickGesture.current.down(e.button, e.clientX, e.clientY)
     if (e.button !== 2) closeContextMenu()
 
     // 268: attempt rubber-band on left-click in empty space.
@@ -423,21 +422,16 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
-    if (!pointerDownPos.current) {
-      wasPointerDrag.current = false
-      pointerDownButton.current = null
-      return
-    }
-    const dx = e.clientX - pointerDownPos.current[0]
-    const dy = e.clientY - pointerDownPos.current[1]
-    const wasDrag = Math.hypot(dx, dy) >= CLICK_THRESHOLD_PX
-    wasPointerDrag.current = wasDrag
-    pointerDownPos.current = null
+    const hadDown = clickGesture.current.state.origin !== null
+    const click = clickGesture.current.up(e.clientX, e.clientY)
+    // A release with no matching press (the gesture started outside the pane)
+    // owns neither the rubber band nor the context menu.
+    if (!hadDown) return
 
     // Always commit or cancel the rubber-band so it never stays sticky after release.
     rubberBand.onPointerUp()
 
-    if (wasDrag) return
+    if (click.wasDrag) return
 
     if (e.button === 2 && onRightClick) {
       onRightClick([e.clientX, e.clientY])
@@ -511,6 +505,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return sizes
   }, [features, featureDefs, bodies])
 
+  // Latch the travel as it happens, then hand the move on to the rubber band. An
+  // orbit that swings out and returns near its start would otherwise read as a
+  // stationary click when only the two end points are compared.
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    clickGesture.current.move(e.clientX, e.clientY)
+    rubberBand.onPointerMove(e)
+  }, [rubberBand])
+
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
   const renderBodyItem = (b: BodyRenderItem) => (
@@ -538,7 +540,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       style={PARENT_STYLE}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
-      onPointerMove={rubberBand.onPointerMove}
+      onPointerMove={handlePointerMove}
       onContextMenu={handleContextMenu}
     >
       <Canvas

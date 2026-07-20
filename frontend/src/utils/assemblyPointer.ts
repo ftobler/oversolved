@@ -27,6 +27,7 @@ import {
   type Ray,
 } from '@/utils/gizmoMath'
 import { datumAngle, snapArmedAtRadius, snapSwing } from '@/utils/gizmoAngleSnap'
+import { isStationaryPrimaryClick, type ClickGestureState } from '@/utils/clickGesture'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import type { GizmoDragState } from '@/stores/assemblyStore'
 import type { Vec3 } from '@/utils/transform3d'
@@ -74,6 +75,26 @@ const NO_GESTURE: GestureOutcome = { source: null, moved: false }
  */
 export function gestureAllowsSelect(outcome: GestureOutcome): boolean {
   return outcome.source !== 'gizmo' && !outcome.moved
+}
+
+/**
+ * Whether a click that hit no geometry may clear the assembly selection.
+ *
+ * Camera manipulation must never cost the user their selection, and it very
+ * nearly always looks like a miss: the camera is driven with the right button
+ * (SceneController maps LEFT to no camera action at all), and Chrome on Linux
+ * fires `contextmenu` on the pointer-DOWN that opens the orbit. R3F counts
+ * `contextmenu` as a click event, so it reaches onPointerMissed with a travel
+ * distance of zero -- its own `delta <= 2` guard cannot catch it, because at
+ * that instant the pointer genuinely has not moved yet.
+ *
+ * So the guard is on the gesture, not the distance: only a stationary LEFT
+ * click is a deselect. A gesture still in flight (nothing released yet) is
+ * judged on the button it opened with, which is what rejects the orbit.
+ */
+export function missClearsSelection(gesture: ClickGestureState, adapterActive: boolean): boolean {
+  if (adapterActive) return false  // a part drag owns the pointer; its release is not a deselect
+  return isStationaryPrimaryClick(gesture)
 }
 
 type Gesture =
