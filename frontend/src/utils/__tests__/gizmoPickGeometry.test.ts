@@ -11,6 +11,9 @@ import {
   HEAD_RADIUS,
   parseGizmoHandleKey,
   PICK_LINE_PX,
+  PLANE_BASE_INNER,
+  PLANE_BASE_OUTER,
+  PLANE_HANDLE_SCALE,
   PLANE_INNER,
   PLANE_OUTER,
   PLANE_OUTLINE_MARGIN,
@@ -133,6 +136,25 @@ describe('buildGizmoPickGeometry', () => {
     // Outside the arrow tube's radius, inside the ring.
     expect(PLANE_INNER).toBeGreaterThan(0.1)
     expect(PLANE_OUTER).toBeLessThan(RING_RADIUS)
+  })
+
+  it('sizes the plane quad at the handle scale, grown about its own centre', () => {
+    // Pins the rule the enlargement was made under: the side is exactly
+    // PLANE_HANDLE_SCALE of the span it started from, and the centre does not
+    // move, so the growth is symmetric rather than pushed outward.
+    const side = PLANE_OUTER - PLANE_INNER
+    expect(side).toBeCloseTo((PLANE_BASE_OUTER - PLANE_BASE_INNER) * PLANE_HANDLE_SCALE, 9)
+    expect(PLANE_HANDLE_SCALE).toBeCloseTo(1.2, 9)
+    expect((PLANE_INNER + PLANE_OUTER) / 2).toBeCloseTo((PLANE_BASE_INNER + PLANE_BASE_OUTER) / 2, 9)
+
+    // Both edges move, by the same amount and in opposite directions. This is
+    // what separates growing in place from scaling about the origin, which would
+    // have left PLANE_INNER >= its base and put the whole increase on the outer
+    // edge, closest to the rings.
+    const grew = PLANE_OUTER - PLANE_BASE_OUTER
+    expect(grew).toBeGreaterThan(0)
+    expect(PLANE_BASE_INNER - PLANE_INNER).toBeCloseTo(grew, 9)
+    expect(PLANE_OUTER).toBeLessThan(PLANE_BASE_OUTER * PLANE_HANDLE_SCALE)
   })
 
   it('draws and registers the same quad', () => {

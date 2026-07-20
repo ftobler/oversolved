@@ -31,8 +31,33 @@ export const RING_RADIUS = 0.75
 export const RING_TUBE = 0.02
 
 // The plane quads live in the corner between two arrows, inside the rings.
-export const PLANE_INNER = 0.24
-export const PLANE_OUTER = 0.55
+// These are the span the handle had before it was enlarged; the shipped span is
+// derived from them below.
+export const PLANE_BASE_INNER = 0.24
+export const PLANE_BASE_OUTER = 0.55
+
+/**
+ * How much bigger the plane grabber is than the span above. Applied about the
+ * quad's OWN CENTRE, not about the origin, because the handle is boxed in at
+ * both ends: inward by the arrow shafts (PLANE_INNER has to stay a full snap
+ * window clear of ARROW_PICK_RADIUS, pinned in gizmoHandleWins.test.ts) and
+ * outward by the rings (PLANE_OUTER plus its outline has to stay under
+ * RING_RADIUS). Scaling about the origin would spend the whole increase on the
+ * outer edge and drag the centre out with it, moving the target away from where
+ * the user already aims; growing in place splits the cost between the two edges
+ * and leaves the centre put.
+ *
+ * Note the quad's far CORNER sits at PLANE_OUTER * sqrt(2), which is outside
+ * RING_RADIUS at any size this handle has ever had. The ring is not what guards
+ * that corner, so do not read the bound above as a diagonal clearance.
+ */
+export const PLANE_HANDLE_SCALE = 1.2
+
+const PLANE_CENTER = (PLANE_BASE_INNER + PLANE_BASE_OUTER) / 2
+const PLANE_HALF_SPAN = ((PLANE_BASE_OUTER - PLANE_BASE_INNER) / 2) * PLANE_HANDLE_SCALE
+
+export const PLANE_INNER = PLANE_CENTER - PLANE_HALF_SPAN
+export const PLANE_OUTER = PLANE_CENTER + PLANE_HALF_SPAN
 
 const TUBE_SIDES = 6
 const RING_SEGMENTS = 28
