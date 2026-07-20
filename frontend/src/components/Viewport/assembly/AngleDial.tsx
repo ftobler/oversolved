@@ -37,6 +37,16 @@ const TICK_OPACITY = 1
 const TICK_OPACITY_DISARMED = 0.18
 
 const RENDER_ORDER = 1001
+
+// The readout draws one step below the dial's line art, which is exactly where
+// it already sat: <Billboard> is a group, so it used to reset groupOrder to 0
+// for the text while the ticks and spokes inherited the dial group's 1001 and
+// therefore always won. Now that the group carries no renderOrder (see below)
+// both sides share groupOrder 0, and without this the tie would fall through to
+// a depth sort and let the text flip in front of a spoke when the ring is
+// viewed edge-on and the billboard swings across it.
+const READOUT_RENDER_ORDER = RENDER_ORDER - 1
+
 const READOUT_SIZE = DIAL_READOUT_RADIUS * 0.2
 
 interface AngleDialProps {
@@ -69,7 +79,13 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
   const litTick = snapped ? nearestTickIndex(datum + swing) : -1
 
   return (
-    <group renderOrder={RENDER_ORDER} quaternion={counterRotation}>
+    // Deliberately no renderOrder on this group. three.js turns a Group's
+    // renderOrder into the groupOrder of its subtree and the render-list sort
+    // compares groupOrder before renderOrder, so one here outranks the
+    // collision/ID debug pass (IdDebugOverlay, renderOrder 9999 at groupOrder 0)
+    // and paints the dial over it. Each drawn child names RENDER_ORDER itself,
+    // which is what actually lifts the dial above the triad and the body.
+    <group quaternion={counterRotation}>
       <mesh renderOrder={RENDER_ORDER}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[sweep, 3]} />
@@ -133,7 +149,7 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
             fontSize={READOUT_SIZE}
             anchorX="center"
             anchorY="middle"
-            renderOrder={RENDER_ORDER}
+            renderOrder={READOUT_RENDER_ORDER}
           >
             {formatSwingDegrees(swing)}
             <meshBasicMaterial

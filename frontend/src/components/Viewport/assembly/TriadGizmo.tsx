@@ -135,7 +135,15 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
 
   return (
     <group position={origin} quaternion={orientation}>
-      <group ref={ref} renderOrder={1000}>
+      {/* No renderOrder on these groups: three.js promotes a Group's
+          renderOrder to the groupOrder of its subtree and sorts on groupOrder
+          before renderOrder, so it would out-sort the collision/ID debug pass
+          (IdDebugOverlay, renderOrder 9999 at groupOrder 0) and hide it behind
+          the gizmo. The per-axis <group> below already reset groupOrder to 0,
+          so the 1000 that used to sit here reached nothing and its removal
+          cannot move a pixel. Handles that must draw above their siblings say
+          so on the drawn object itself, as the plane outline does. */}
+      <group ref={ref}>
         {GIZMO_AXES.map((def, i) => {
           const arrowRotation = ARROW_ROTATIONS[i]
           return (
