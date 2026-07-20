@@ -24,6 +24,9 @@ export const RENDER_ORDER_DEFAULT = 0
 export const RENDER_ORDER_EDITING = 10
 export const RENDER_ORDER_HIGHLIGHT = 999
 
+// Shared edge highlight line width so Part Editor and Assembly mode read the same
+export const EDGE_HIGHLIGHT_LINE_WIDTH = 3
+
 export const HOVER_BLEND = 0.4  // how much white to blend into the body color on hover (0 = body color, 1 = white)
 
 /** Returns a hex color that blends `baseColor` with white by `factor`. */

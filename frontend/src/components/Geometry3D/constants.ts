@@ -27,6 +27,7 @@ export {
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
+  EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/utils/core/partColors'
 
 // ─── sketch entity render layering ───

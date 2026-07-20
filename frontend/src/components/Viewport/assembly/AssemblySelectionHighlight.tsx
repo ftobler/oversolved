@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
-import { COLOR_SELECTED, COLOR_HOVER, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_HOVER, RENDER_ORDER_HIGHLIGHT, EDGE_HIGHLIGHT_LINE_WIDTH } from '@/components/Geometry3D/constants'
 import { buildAssemblySelectionGeometry } from '@/utils/assemblySelectionGeometry'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
@@ -95,22 +95,22 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
       )}
       {selFaceBoundary && (
         <lineSegments geometry={selFaceBoundary} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_SELECTED} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
         </lineSegments>
       )}
       {hovFaceBoundary && (
         <lineSegments geometry={hovFaceBoundary} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_HOVER} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
         </lineSegments>
       )}
       {selEdges && (
         <lineSegments geometry={selEdges} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_SELECTED} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
         </lineSegments>
       )}
       {hovEdges && (
         <lineSegments geometry={hovEdges} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_HOVER} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
         </lineSegments>
       )}
       {selVerts && (

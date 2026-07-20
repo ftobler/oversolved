@@ -14,6 +14,7 @@ import {
   DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_HIGHLIGHT,
+  EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/components/Geometry3D/constants'
 import {
   buildBodyGeometry,
@@ -562,7 +563,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={`edge-hover-${edgeIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} />
           </lineSegments>
         )
       })}
@@ -572,7 +573,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={edgeIdx} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
           </lineSegments>
         )
       })}
@@ -584,7 +585,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={`face-hover-${faceIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={3} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} />
           </lineSegments>
         )
       })}
@@ -594,7 +595,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = [], edgeQuerie
         if (!geo) return null
         return (
           <lineSegments key={faceIdx} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={3} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
           </lineSegments>
         )
       })}
