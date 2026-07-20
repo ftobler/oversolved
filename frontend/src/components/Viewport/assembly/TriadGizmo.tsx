@@ -20,9 +20,10 @@ import * as THREE from 'three'
 import AngleDial from '@/components/Viewport/assembly/AngleDial'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import type { GizmoDragState } from '@/stores/assemblyStore'
+import { dialPoint } from '@/utils/angleDialGeometry'
 import {
   ARROW_LENGTH, GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey, HEAD_LENGTH, HEAD_RADIUS,
-  planeHandleCorners, planeHandleOutline, RING_RADIUS, RING_TUBE, SHAFT_RADIUS,
+  planeHandleCorners, planeHandleOutline, RING_RADIUS,
   type GizmoAxisDef,
 } from '@/utils/gizmoPickGeometry'
 import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
@@ -31,15 +32,55 @@ import type { Quat, Vec3 } from '@/utils/transform3d'
 const PLANE_OPACITY = 0.3
 const PLANE_OPACITY_HOVER = 0.62
 
-// Per part axis: the euler angles that aim a +Y cylinder/cone and a +Z-normal
-// torus along it. No per-axis colour: the triad is uni-violet, so that a handle
-// is grabbable reads the same way here as it does on the extrusion arrows and
-// the preview overlay, and hover is what carries meaning instead of hue.
-const AXES: { arrowRotation: [number, number, number]; ringRotation: [number, number, number] }[] = [
-  { arrowRotation: [0, 0, -Math.PI / 2], ringRotation: [0, Math.PI / 2, 0] },
-  { arrowRotation: [0, 0, 0],            ringRotation: [-Math.PI / 2, 0, 0] },
-  { arrowRotation: [Math.PI / 2, 0, 0],  ringRotation: [0, 0, 0] },
+// Line art everywhere: THREE.LineBasicMaterial's `linewidth` is ignored by most
+// WebGL backends, so a real 2px-on-screen line needs drei's <Line>, which keeps
+// its own LineMaterial/Line2 instead (see Geometry3D/constants.ts). depthTest
+// stays off, same as the old meshes: the triad sits at the part's origin,
+// usually inside the solid, so it must draw over the body to stay grabbable.
+const LINE_WIDTH = 2
+
+// Per part axis: the euler angles that aim a +Y shaft-and-head arrow along it.
+// No per-axis colour: the triad is uni-violet, so that a handle is grabbable
+// reads the same way here as it does on the extrusion arrows and the preview
+// overlay, and hover is what carries meaning instead of hue.
+const ARROW_ROTATIONS: [number, number, number][] = [
+  [0, 0, -Math.PI / 2],
+  [0, 0, 0],
+  [Math.PI / 2, 0, 0],
 ]
+
+// Arrow drawn as three short polylines in the +Y-aimed local frame: a shaft
+// spoke, plus a head built from two crossed V's (one in the X/Y plane, one in
+// Z/Y) so the arrowhead reads as a point from any viewing angle, not just one.
+// The head spans the same [ARROW_LENGTH - HEAD_LENGTH/2, ARROW_LENGTH +
+// HEAD_LENGTH/2] range the old cone occupied, matching what gizmoPickGeometry
+// still hit-tests against.
+const HEAD_BASE_Y = ARROW_LENGTH - HEAD_LENGTH / 2
+const HEAD_TIP_Y = ARROW_LENGTH + HEAD_LENGTH / 2
+const SHAFT_POINTS: Vec3[] = [[0, 0, 0], [0, ARROW_LENGTH, 0]]
+const HEAD_POINTS_X: Vec3[] = [[-HEAD_RADIUS, HEAD_BASE_Y, 0], [0, HEAD_TIP_Y, 0], [HEAD_RADIUS, HEAD_BASE_Y, 0]]
+const HEAD_POINTS_Z: Vec3[] = [[0, HEAD_BASE_Y, -HEAD_RADIUS], [0, HEAD_TIP_Y, 0], [0, HEAD_BASE_Y, HEAD_RADIUS]]
+
+// Fine enough that the ring reads as a circle rather than a polygon at gizmo
+// scale (RING_RADIUS * GIZMO_PIXELS px radius on screen).
+const RING_LINE_SEGMENTS = 64
+
+/**
+ * A closed ring of points around `def`'s u/v plane, reusing the same
+ * angle-to-point math the angle dial's ticks are built from (dialPoint), so
+ * the drawn ring and the dial that grows out of it never disagree on where
+ * the circle sits. Computed once per axis at module scope since GIZMO_AXES is
+ * static, rather than recomputed on every TriadGizmo render.
+ */
+function ringLinePoints(def: GizmoAxisDef): Vec3[] {
+  const points: Vec3[] = []
+  for (let i = 0; i <= RING_LINE_SEGMENTS; i++) {
+    points.push(dialPoint(def, (i / RING_LINE_SEGMENTS) * Math.PI * 2, RING_RADIUS))
+  }
+  return points
+}
+
+const RING_POINTS: Vec3[][] = GIZMO_AXES.map(ringLinePoints)
 
 interface TriadGizmoProps {
   origin: Vec3
@@ -96,29 +137,39 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
     <group position={origin} quaternion={orientation}>
       <group ref={ref} renderOrder={1000}>
         {GIZMO_AXES.map((def, i) => {
-          const { arrowRotation, ringRotation } = AXES[i]
+          const arrowRotation = ARROW_ROTATIONS[i]
           return (
             <group key={def.name}>
               {shows('axis', def.name) && (
                 <group rotation={arrowRotation}>
-                  <mesh position={[0, ARROW_LENGTH / 2, 0]}>
-                    <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, ARROW_LENGTH, 8]} />
-                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name))} depthTest={false} />
-                  </mesh>
-                  <mesh position={[0, ARROW_LENGTH, 0]}>
-                    <coneGeometry args={[HEAD_RADIUS, HEAD_LENGTH, 12]} />
-                    <meshBasicMaterial color={colorFor(gizmoHandleKey('translate', def.name))} depthTest={false} />
-                  </mesh>
+                  <Line
+                    points={SHAFT_POINTS}
+                    color={colorFor(gizmoHandleKey('translate', def.name))}
+                    lineWidth={LINE_WIDTH}
+                    depthTest={false}
+                  />
+                  <Line
+                    points={HEAD_POINTS_X}
+                    color={colorFor(gizmoHandleKey('translate', def.name))}
+                    lineWidth={LINE_WIDTH}
+                    depthTest={false}
+                  />
+                  <Line
+                    points={HEAD_POINTS_Z}
+                    color={colorFor(gizmoHandleKey('translate', def.name))}
+                    lineWidth={LINE_WIDTH}
+                    depthTest={false}
+                  />
                 </group>
               )}
 
               {shows('ring', def.name) && (
-                <group rotation={ringRotation}>
-                  <mesh>
-                    <torusGeometry args={[RING_RADIUS, RING_TUBE, 6, 48]} />
-                    <meshBasicMaterial color={colorFor(gizmoHandleKey('rotate', def.name))} depthTest={false} />
-                  </mesh>
-                </group>
+                <Line
+                  points={RING_POINTS[i]}
+                  color={colorFor(gizmoHandleKey('rotate', def.name))}
+                  lineWidth={LINE_WIDTH}
+                  depthTest={false}
+                />
               )}
 
               {shows('plane', def.name) && (
@@ -138,8 +189,9 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
                 />
               )}
 
-              {/* The dial is built from def.u/def.v rather than ringRotation, so
-                  it sits in the gizmo frame directly and is not nested here. */}
+              {/* The dial is built from def.u/def.v, the same basis the ring
+                  line above is drawn in, so it sits in the gizmo frame
+                  directly and is not nested inside a rotation group here. */}
               {drag?.kind === 'ring' && drag.axis === def.name && (
                 <AngleDial
                   def={def}
