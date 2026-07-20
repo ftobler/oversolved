@@ -66,6 +66,52 @@ describe('measure3dSelection two edges', () => {
   })
 })
 
+// A face pair is labelled from the two surface types, not from a fixed string:
+// two cylinders have no plane between them, the number is an axis offset.
+const faceData = [
+  { centroid: [0, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number], surface_type: 'flatface' },      // 0
+  { centroid: [0, 0, 4] as [number, number, number], normal: [0, 0, 1] as [number, number, number], surface_type: 'flatface' },      // 1
+  { centroid: [0, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number], surface_type: 'cylinderface' },  // 2
+  { centroid: [4, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number], surface_type: 'cylinderface' },  // 3
+  { centroid: [0, 0, 4] as [number, number, number], normal: [0, 0, 1] as [number, number, number], surface_type: 'cylinderface' },  // 4
+  { centroid: [0, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] },                                // 5: pre-surface_type body
+  { centroid: [0, 0, 4] as [number, number, number], normal: [0, 0, 1] as [number, number, number] },                                // 6: pre-surface_type body
+]
+
+function faceBodies(): Record<string, BodyResult> {
+  return {
+    B: {
+      id: 'B',
+      created_by: 'ex',
+      modified_by: [],
+      mesh: {
+        vertices: [],
+        faces: [],
+        face_data: faceData,
+        face_queries: ['f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6'],
+      },
+    },
+  }
+}
+
+describe('measure3dSelection two faces', () => {
+  it('two planar faces report a plane distance', () => {
+    expect(measure3dSelection(new Set(['f0', 'f1']), faceBodies())).toEqual(['plane distance: 4.00 mm'])
+  })
+
+  it('two cylindrical faces report a center distance', () => {
+    expect(measure3dSelection(new Set(['f2', 'f3']), faceBodies())).toEqual(['center distance: 4.00 mm'])
+  })
+
+  it('a planar + cylindrical mix keeps the plane wording', () => {
+    expect(measure3dSelection(new Set(['f0', 'f4']), faceBodies())).toEqual(['plane distance: 4.00 mm'])
+  })
+
+  it('faces without a surface_type keep the plane wording', () => {
+    expect(measure3dSelection(new Set(['f5', 'f6']), faceBodies())).toEqual(['plane distance: 4.00 mm'])
+  })
+})
+
 describe('measure3dSelection selection-count guard', () => {
   it('returns [] for an empty selection', () => {
     expect(measure3dSelection(new Set([]), bodies())).toEqual([])

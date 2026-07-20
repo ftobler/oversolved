@@ -288,6 +288,18 @@ export function measurePointToPlane(point: PointEntity, plane: Plane3D): string[
   return [`plane distance: ${dist.toFixed(2)} mm`]
 }
 
+/**
+ * Name the quantity a face-pair distance actually is. Two cylinders have no
+ * plane to measure between: the number is the offset between their axes, so
+ * it reads as a center distance. Everything else (plane/plane, and mixed or
+ * unknown pairs from bodies solved before `surface_type` existed) keeps the
+ * plane wording.
+ */
+function facePairDistanceLabel(typeA?: string, typeB?: string): string {
+  if (typeA === 'cylinderface' && typeB === 'cylinderface') return 'center distance'
+  return 'plane distance'
+}
+
 // Resolve a selection ID to a body + element kind + index by reverse-lookup in bodies.
 function findBodyElement(
   id: string,
@@ -380,7 +392,7 @@ export function measure3dSelection(
       if (Math.abs(dot - 1) > 1e-6) return []
       const dx = fB.centroid[0] - fA.centroid[0], dy = fB.centroid[1] - fA.centroid[1], dz = fB.centroid[2] - fA.centroid[2]
       const dist = Math.abs(dx * fA.normal[0] + dy * fA.normal[1] + dz * fA.normal[2])
-      return [`plane distance: ${dist.toFixed(2)} mm`]
+      return [`${facePairDistanceLabel(fA.surface_type, fB.surface_type)}: ${dist.toFixed(2)} mm`]
     }
 
     // ─── Face + Vertex: perpendicular distance ───
