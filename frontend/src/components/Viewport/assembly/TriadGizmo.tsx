@@ -14,15 +14,19 @@
 // Screen-scaled so the gizmo keeps its size as the user zooms, which also means
 // a big and a small part get the same grab targets.
 
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { Line } from '@react-three/drei'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import AngleDial from '@/components/Viewport/assembly/AngleDial'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import type { GizmoDragState } from '@/stores/assemblyStore'
 import { dialPoint } from '@/utils/angleDialGeometry'
 import {
-  ARROW_LENGTH, GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey, HEAD_LENGTH, HEAD_RADIUS,
+  ARROW_HEAD_BASE, arrowHeadPositions, cylindricalBillboardAngle,
+} from '@/utils/arrowHeadGeometry'
+import {
+  GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey,
   planeHandleCorners, planeHandleOutline, RING_RADIUS,
   type GizmoAxisDef,
 } from '@/utils/gizmoPickGeometry'
@@ -31,11 +35,12 @@ import {
 } from '@/utils/core/gizmoColors'
 import type { Quat, Vec3 } from '@/utils/transform3d'
 
-// Line art everywhere: THREE.LineBasicMaterial's `linewidth` is ignored by most
-// WebGL backends, so a real 2px-on-screen line needs drei's <Line>, which keeps
-// its own LineMaterial/Line2 instead (see Geometry3D/constants.ts). depthTest
-// stays off, same as the old meshes: the triad sits at the part's origin,
-// usually inside the solid, so it must draw over the body to stay grabbable.
+// Line art for everything but the arrowheads and the plane quads:
+// THREE.LineBasicMaterial's `linewidth` is ignored by most WebGL backends, so a
+// real 2px-on-screen line needs drei's <Line>, which keeps its own
+// LineMaterial/Line2 instead (see Geometry3D/constants.ts). depthTest stays off
+// on every piece: the triad sits at the part's origin, usually inside the
+// solid, so it must draw over the body to stay grabbable.
 const LINE_WIDTH = 2
 
 // Per part axis: the euler angles that aim a +Y shaft-and-head arrow along it.
@@ -48,17 +53,10 @@ const ARROW_ROTATIONS: [number, number, number][] = [
   [Math.PI / 2, 0, 0],
 ]
 
-// Arrow drawn as three short polylines in the +Y-aimed local frame: a shaft
-// spoke, plus a head built from two crossed V's (one in the X/Y plane, one in
-// Z/Y) so the arrowhead reads as a point from any viewing angle, not just one.
-// The head spans the same [ARROW_LENGTH - HEAD_LENGTH/2, ARROW_LENGTH +
-// HEAD_LENGTH/2] range the old cone occupied, matching what gizmoPickGeometry
-// still hit-tests against.
-const HEAD_BASE_Y = ARROW_LENGTH - HEAD_LENGTH / 2
-const HEAD_TIP_Y = ARROW_LENGTH + HEAD_LENGTH / 2
-const SHAFT_POINTS: Vec3[] = [[0, 0, 0], [0, ARROW_LENGTH, 0]]
-const HEAD_POINTS_X: Vec3[] = [[-HEAD_RADIUS, HEAD_BASE_Y, 0], [0, HEAD_TIP_Y, 0], [HEAD_RADIUS, HEAD_BASE_Y, 0]]
-const HEAD_POINTS_Z: Vec3[] = [[0, HEAD_BASE_Y, -HEAD_RADIUS], [0, HEAD_TIP_Y, 0], [0, HEAD_BASE_Y, HEAD_RADIUS]]
+// The shaft stops where the solid head begins rather than running under it:
+// the billboarded head is coplanar with the shaft line by construction, so an
+// overlapping stretch would fight it for pixels instead of being hidden by it.
+const SHAFT_POINTS: Vec3[] = [[0, 0, 0], [0, ARROW_HEAD_BASE, 0]]
 
 // Fine enough that the ring reads as a circle rather than a polygon at gizmo
 // scale (RING_RADIUS * GIZMO_PIXELS px radius on screen).
@@ -94,6 +92,52 @@ interface TriadGizmoProps {
    * for its dial.
    */
   drag: GizmoDragState | null
+}
+
+// Reused across frames and arrows: the billboard runs three times per frame,
+// and a fresh Vector3 each time is pure churn for the collector.
+const CAMERA_LOCAL = new THREE.Vector3()
+
+/**
+ * The solid arrowhead, spun about its own axis each frame so its face turns
+ * toward the camera while its point stays on the shaft (see
+ * utils/arrowHeadGeometry for why the spin is cylindrical and not a full
+ * billboard). Drawn double-sided because the spin lands the back face toward
+ * the viewer for half of the orbit.
+ */
+function ArrowHead({ color }: { color: string }) {
+  const ref = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  const positions = useMemo(() => arrowHeadPositions(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh?.parent) return
+    // Asked of the PARENT, not of the mesh: the mesh's own world matrix carries
+    // the rotation this callback is about to overwrite, so measuring through it
+    // would make the head chase its own previous answer instead of settling.
+    const local = mesh.parent.worldToLocal(CAMERA_LOCAL.copy(camera.position))
+    mesh.rotation.y = cylindricalBillboardAngle([local.x, local.y, local.z])
+  })
+
+  return (
+    <mesh ref={ref}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      {/* depthWrite off alongside depthTest off, the pairing every other
+          overlay here uses (FeatureHandles, Body3D): this is the triad's only
+          opaque mesh, so without it the head would stamp its own far depth
+          into the buffer while ignoring what is already there, and whatever
+          drew after it would depth-test against a lie. */}
+      <meshBasicMaterial
+        color={color}
+        side={THREE.DoubleSide}
+        depthTest={false}
+        depthWrite={false}
+      />
+    </mesh>
+  )
 }
 
 /**
@@ -155,18 +199,7 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
                     lineWidth={LINE_WIDTH}
                     depthTest={false}
                   />
-                  <Line
-                    points={HEAD_POINTS_X}
-                    color={colorFor(gizmoHandleKey('translate', def.name))}
-                    lineWidth={LINE_WIDTH}
-                    depthTest={false}
-                  />
-                  <Line
-                    points={HEAD_POINTS_Z}
-                    color={colorFor(gizmoHandleKey('translate', def.name))}
-                    lineWidth={LINE_WIDTH}
-                    depthTest={false}
-                  />
+                  <ArrowHead color={colorFor(gizmoHandleKey('translate', def.name))} />
                 </group>
               )}
 
