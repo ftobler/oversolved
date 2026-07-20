@@ -53,3 +53,13 @@
   align-items: center;
   justify-content: center;
 }
+
+/* The icon-only tile buttons take `.btn` for the shared reset but size
+   themselves with a fixed 40px box. This file loads after the page
+   stylesheets, so the pill padding above was winning on equal specificity and
+   padding out every tile button to 72x56, which is what pushed the action rows
+   apart. Their own width/height stay in charge. */
+.btn.btn-tile-action,
+.btn.btn-delete-tile {
+  padding: 0;
+}
