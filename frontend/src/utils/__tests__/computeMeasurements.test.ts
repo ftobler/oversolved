@@ -35,7 +35,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates distance correctly', () => {
       const result = computeMeasurements(sel(vertex('L1', 'start'), vertex('L1', 'end')), sketch)
-      expect(result).toEqual(['dist: 5.00 mm'])
+      expect(result).toEqual(['dist: 5.000 mm'])
     })
   })
 
@@ -57,7 +57,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates length correctly', () => {
       const result = computeMeasurements(sel(entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.00 mm'])
+      expect(result).toEqual(['[LINE] 5.000 mm'])
     })
   })
 
@@ -98,7 +98,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates arc correctly', () => {
       const result = computeMeasurements(sel(entity('A1')), sketch)
-      expect(result[0]).toMatch(/\[ARC\] r=2\.00 mm, θ=90°/)
+      expect(result[0]).toMatch(/\[ARC\] r=2\.000 mm, θ=90°/)
     })
   })
 
@@ -110,7 +110,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates diameter correctly', () => {
       const result = computeMeasurements(sel(entity('C1')), sketch)
-      expect(result).toEqual(['[CIRCLE] d=6.00 mm'])
+      expect(result).toEqual(['[CIRCLE] d=6.000 mm'])
     })
   })
 
@@ -122,7 +122,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates arc center distance correctly', () => {
       const result = computeMeasurements(sel(entity('A1'), entity('A2')), sketch)
-      expect(result).toEqual(['arc-center dist: 5.00 mm'])
+      expect(result).toEqual(['arc-center dist: 5.000 mm'])
     })
   })
 
@@ -134,7 +134,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates center distance correctly', () => {
       const result = computeMeasurements(sel(entity('A1'), entity('C2')), sketch)
-      expect(result).toEqual(['center dist: 4.00 mm'])
+      expect(result).toEqual(['center dist: 4.000 mm'])
     })
   })
 
@@ -146,7 +146,7 @@ describe('Measurement Selection and Evaluation', () => {
     })
     it('evaluates circle center distance correctly', () => {
       const result = computeMeasurements(sel(entity('C1'), entity('C2')), sketch)
-      expect(result).toEqual(['center dist: 4.00 mm'])
+      expect(result).toEqual(['center dist: 4.000 mm'])
     })
   })
 
@@ -159,7 +159,7 @@ describe('Measurement Selection and Evaluation', () => {
     it('evaluates center distance correctly', () => {
       const result = computeMeasurements(sel(vertex('L1', 'end'), entity('A1')), sketch)
       const dist = Math.hypot(3 - 0, 4 - 0)  // L1.end (3,4) to A1 center (0,0)
-      expect(result).toEqual([`center dist: ${dist.toFixed(2)} mm`])
+      expect(result).toEqual([`center dist: ${dist.toFixed(3)} mm`])
     })
   })
 
@@ -172,7 +172,7 @@ describe('Measurement Selection and Evaluation', () => {
     it('evaluates center distance correctly', () => {
       const result = computeMeasurements(sel(vertex('L1', 'end'), entity('C1')), sketch)
       const dist = Math.hypot(3 - 0, 4 - 0)  // L1.end (3,4) to C1 center (0,0)
-      expect(result).toEqual([`center dist: ${dist.toFixed(2)} mm`])
+      expect(result).toEqual([`center dist: ${dist.toFixed(3)} mm`])
     })
   })
 
@@ -215,7 +215,7 @@ describe('Measurement Selection and Evaluation', () => {
         solveResults
       )
       expect(result[0]).toMatch(/plane distance: \d+\.\d+ mm/)
-      expect(result[0]).toEqual('plane distance: 5.00 mm')
+      expect(result[0]).toEqual('plane distance: 5.000 mm')
     })
   })
 
@@ -253,7 +253,7 @@ describe('Measurement Selection and Evaluation', () => {
         sketch,
         solveResults
       )
-      expect(result[0]).toEqual('plane distance: 5.00 mm')
+      expect(result[0]).toEqual('plane distance: 5.000 mm')
     })
   })
 
@@ -339,12 +339,12 @@ describe('Measurement Selection and Evaluation', () => {
 
     it('measures line edge length via simple format', () => {
       const r = computeMeasurements(new Set(['@ex1/edge/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['[EDGE] 5.00 mm'])
+      expect(r).toEqual(['[EDGE] 5.000 mm'])
     })
 
     it('measures arc edge via simple format', () => {
       const r = computeMeasurements(new Set(['@ex1/edge/1']), sketch, undefined, bodies)
-      expect(r[0]).toMatch(/\[EDGE\] r=2\.00 mm/)
+      expect(r[0]).toMatch(/\[EDGE\] r=2\.000 mm/)
     })
 
     it('measures face area via simple format', () => {
@@ -361,7 +361,7 @@ describe('Measurement Selection and Evaluation', () => {
         undefined,
         { ex1: bodyWithQueries }
       )
-      expect(r).toEqual(['[EDGE] 5.00 mm'])
+      expect(r).toEqual(['[EDGE] 5.000 mm'])
     })
 
     it('measures face via ancestry query format', () => {
@@ -416,7 +416,7 @@ describe('Measurement Selection and Evaluation', () => {
 
     it('measures distance between two parallel faces', () => {
       const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/face/1']), sketch, undefined, bodies)
-      expect(r).toEqual(['plane distance: 5.00 mm'])
+      expect(r).toEqual(['plane distance: 5.000 mm'])
     })
 
     it('returns empty for non-parallel faces', () => {
@@ -453,7 +453,7 @@ describe('Measurement Selection and Evaluation', () => {
 
     it('measures perpendicular distance from vertex to face plane', () => {
       const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/vertex/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['plane distance: 10.00 mm'])
+      expect(r).toEqual(['plane distance: 10.000 mm'])
     })
   })
 
@@ -476,7 +476,7 @@ describe('Measurement Selection and Evaluation', () => {
 
     it('measures perpendicular distance from edge midpoint to face plane', () => {
       const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/edge/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['plane distance: 10.00 mm'])
+      expect(r).toEqual(['plane distance: 10.000 mm'])
     })
   })
 
@@ -484,17 +484,17 @@ describe('Measurement Selection and Evaluation', () => {
     it('ignores ids that are neither entity, vertex, plane, nor a 3D ref', () => {
       // A junk id falls through the else-continue and only L1 is measured.
       const result = computeMeasurements(sel('garbage', entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.00 mm'])
+      expect(result).toEqual(['[LINE] 5.000 mm'])
     })
 
     it('skips an entity selection with an empty entity id', () => {
       const result = computeMeasurements(sel('entity:S1:', entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.00 mm'])
+      expect(result).toEqual(['[LINE] 5.000 mm'])
     })
 
     it('skips a selection that references a missing sketch entity', () => {
       const result = computeMeasurements(sel(entity('GHOST'), entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.00 mm'])
+      expect(result).toEqual(['[LINE] 5.000 mm'])
     })
   })
 
@@ -507,7 +507,7 @@ describe('Measurement Selection and Evaluation', () => {
     it('measures the distance between two whole-entity points', () => {
       // P1 (0,0) and P2 (3,4) selected as entities -> point-point distance.
       const result = computeMeasurements(sel(entity('P1'), entity('P2')), sketch)
-      expect(result).toEqual(['dist: 5.00 mm'])
+      expect(result).toEqual(['dist: 5.000 mm'])
     })
   })
 

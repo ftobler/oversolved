@@ -27,17 +27,17 @@ const point = (x: number, y: number): PointEntity => ({ x, y })
 
 describe('measureSingleEntity', () => {
   it('reports circle diameter as 2*radius', () => {
-    expect(measureSingleEntity(circle(0, 0, 2.5))).toEqual(['[CIRCLE] d=5.00 mm'])
+    expect(measureSingleEntity(circle(0, 0, 2.5))).toEqual(['[CIRCLE] d=5.000 mm'])
   })
 
   it('reports arc radius and sweep in degrees', () => {
     // Quarter turn (pi/2) -> 90 degrees.
-    expect(measureSingleEntity(arc(0, 0, 3, 0, Math.PI / 2))).toEqual(['[ARC] r=3.00 mm, θ=90°'])
+    expect(measureSingleEntity(arc(0, 0, 3, 0, Math.PI / 2))).toEqual(['[ARC] r=3.000 mm, θ=90°'])
   })
 
   it('reports line length via hypot', () => {
     // 3-4-5 triangle -> length 5.
-    expect(measureSingleEntity(line(0, 0, 3, 4))).toEqual(['[LINE] 5.00 mm'])
+    expect(measureSingleEntity(line(0, 0, 3, 4))).toEqual(['[LINE] 5.000 mm'])
   })
 
   it('returns no measurement for a bare point', () => {
@@ -56,7 +56,7 @@ describe('measurePair', () => {
   it('measures perpendicular point-to-line distance', () => {
     // Horizontal segment on y=0; point at (1,2) -> foot at (1,0), distance 2.
     expect(measurePair({ line1: line(0, 0, 4, 0), point1: point(1, 2) })).toEqual([
-      'point-line distance: 2.00 mm',
+      'point-line distance: 2.000 mm',
     ])
   })
 
@@ -64,7 +64,7 @@ describe('measurePair', () => {
     // Point is beyond the far endpoint (4,0); clamped foot is (4,0), so the
     // distance is to that endpoint: hypot(6-4, 0) = 2.
     expect(measurePair({ line1: line(0, 0, 4, 0), point1: point(6, 0) })).toEqual([
-      'point-line distance: 2.00 mm',
+      'point-line distance: 2.000 mm',
     ])
   })
 
@@ -78,21 +78,21 @@ describe('measurePair', () => {
   it('reports parallel-line separation instead of an angle', () => {
     // y=0 and y=3, both horizontal -> parallel, distance 3.
     expect(measurePair({ line1: line(0, 0, 5, 0), line2: line(0, 3, 5, 3) })).toEqual([
-      'parallel lines, distance: 3.00 mm',
+      'parallel lines, distance: 3.000 mm',
     ])
   })
 
   it('measures circle-circle center distance', () => {
     expect(measurePair({ circle1: circle(0, 0, 1), circle2: circle(3, 4, 1) })).toEqual([
-      'center dist: 5.00 mm',
+      'center dist: 5.000 mm',
     ])
   })
 
   it('measures point-point distance above the noise floor', () => {
-    expect(measurePair({ point1: point(0, 0), point2: point(3, 4) })).toEqual(['dist: 5.00 mm'])
+    expect(measurePair({ point1: point(0, 0), point2: point(3, 4) })).toEqual(['dist: 5.000 mm'])
   })
 
-  it('suppresses point-point distance at or below 0.01 mm', () => {
+  it('suppresses point-point distance at or below 0.010 mm', () => {
     expect(measurePair({ point1: point(0, 0), point2: point(0.005, 0) })).toEqual([])
   })
 
@@ -116,7 +116,7 @@ describe('measurePointToPlane', () => {
       x_axis: [1, 0, 0],
       y_axis: [0, 1, 0],
     }
-    expect(measurePointToPlane(point(2, 3), plane)).toEqual(['plane distance: 5.00 mm'])
+    expect(measurePointToPlane(point(2, 3), plane)).toEqual(['plane distance: 5.000 mm'])
   })
 })
 
@@ -129,12 +129,12 @@ describe('measurePlanes', () => {
   })
 
   it('measures distance between parallel planes', () => {
-    expect(measurePlanes(xy(0), xy(7))).toEqual(['plane distance: 7.00 mm'])
+    expect(measurePlanes(xy(0), xy(7))).toEqual(['plane distance: 7.000 mm'])
   })
 
   it('treats anti-parallel normals as parallel', () => {
     const flipped: Plane3D = { origin: [0, 0, 4], normal: [0, 0, -1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
-    expect(measurePlanes(xy(0), flipped)).toEqual(['plane distance: 4.00 mm'])
+    expect(measurePlanes(xy(0), flipped)).toEqual(['plane distance: 4.000 mm'])
   })
 
   it('returns no measurement for non-parallel planes', () => {

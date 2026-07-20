@@ -56,13 +56,13 @@ describe('measure3dSelection two edges', () => {
 
   it('two parallel lines report the perpendicular distance', () => {
     const r = measure3dSelection(new Set(['q0', 'q3']), bodies())
-    expect(r).toEqual(['parallel edges, distance: 5.00 mm'])
+    expect(r).toEqual(['parallel edges, distance: 5.000 mm'])
   })
 
   it('two arc/circle edges report the center-to-center distance', () => {
     // arc center (0,0,0), circle center (3,4,0) -> distance 5
     const r = measure3dSelection(new Set(['q1', 'q5']), bodies())
-    expect(r).toEqual(['center dist: 5.00 mm'])
+    expect(r).toEqual(['center dist: 5.000 mm'])
   })
 })
 
@@ -96,19 +96,19 @@ function faceBodies(): Record<string, BodyResult> {
 
 describe('measure3dSelection two faces', () => {
   it('two planar faces report a plane distance', () => {
-    expect(measure3dSelection(new Set(['f0', 'f1']), faceBodies())).toEqual(['plane distance: 4.00 mm'])
+    expect(measure3dSelection(new Set(['f0', 'f1']), faceBodies())).toEqual(['plane distance: 4.000 mm'])
   })
 
   it('two cylindrical faces report a center distance', () => {
-    expect(measure3dSelection(new Set(['f2', 'f3']), faceBodies())).toEqual(['center distance: 4.00 mm'])
+    expect(measure3dSelection(new Set(['f2', 'f3']), faceBodies())).toEqual(['center distance: 4.000 mm'])
   })
 
   it('a planar + cylindrical mix keeps the plane wording', () => {
-    expect(measure3dSelection(new Set(['f0', 'f4']), faceBodies())).toEqual(['plane distance: 4.00 mm'])
+    expect(measure3dSelection(new Set(['f0', 'f4']), faceBodies())).toEqual(['plane distance: 4.000 mm'])
   })
 
   it('faces without a surface_type keep the plane wording', () => {
-    expect(measure3dSelection(new Set(['f5', 'f6']), faceBodies())).toEqual(['plane distance: 4.00 mm'])
+    expect(measure3dSelection(new Set(['f5', 'f6']), faceBodies())).toEqual(['plane distance: 4.000 mm'])
   })
 })
 
