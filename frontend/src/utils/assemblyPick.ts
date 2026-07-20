@@ -10,11 +10,12 @@
 // anchor-less entity must resolve to an empty candidate set (Stage 7's
 // contract), and it can only do that if the entity has a pick id at all.
 
-import { toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
+import { buildFaceBoundarySegments, toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { assemblyBodyId } from '@/utils/assemblyBodies'
 import type { AnchorTable } from '@/utils/anchorGizmos'
+import type { Mesh3D } from '@/types/cad'
 import { buildIndexedCurveSegments } from '@/utils/edgeSampling'
 import type { Vec3 } from '@/utils/transform3d'
 
@@ -24,6 +25,9 @@ export interface AssemblyPickBody {
   faces: { positions: Float32Array; triangleToFace: Uint32Array; faceQueries: string[] } | null
   edges: { segmentPositions: Float32Array; segmentToEdge: Uint32Array; edgeQueries: string[] } | null
   vertices: { vertices: Vec3[]; vertexQueries: string[] } | null
+  /** Per-face boundary-loop segments (6 floats per segment), keyed by face index.
+   *  Absent for a face that produced no closed loop (degenerate/open tessellation). */
+  faceBoundaries: Map<number, Float32Array> | null
 }
 
 function faceCount(m: MeshPayload): number {
@@ -48,6 +52,31 @@ function buildFaces(handle: string, bodyIndex: number, m: MeshPayload): Assembly
     triangleToFace: m.faceIdsPerTriangle,
     faceQueries,
   }
+}
+
+/**
+ * Part editor's boundary-loop algorithm (`buildFaceBoundarySegments`) needs the
+ * original indexed mesh: an edge shared by exactly one triangle within a face is
+ * on that face's boundary, and that count only works before the mesh gets
+ * flattened into the non-indexed triangle soup `buildFaces` produces. So this
+ * runs on the raw `MeshPayload`, ahead of that flattening, wrapped in a shim
+ * matching the `Mesh3D` shape the shared algorithm expects.
+ */
+function buildFaceBoundaries(m: MeshPayload): AssemblyPickBody['faceBoundaries'] {
+  if (m.indices.length === 0) return null
+  const n = faceCount(m)
+  if (n === 0) return null
+  const mesh: Mesh3D = {
+    vertices: m.vertices,
+    faces: m.indices,
+    triangle_to_face: Array.from(m.faceIdsPerTriangle),
+  }
+  const boundaries = new Map<number, Float32Array>()
+  for (let i = 0; i < n; i++) {
+    const segments = buildFaceBoundarySegments(mesh, i)
+    if (segments.length > 0) boundaries.set(i, segments)
+  }
+  return boundaries.size > 0 ? boundaries : null
 }
 
 function buildEdges(handle: string, bodyIndex: number, m: MeshPayload): AssemblyPickBody['edges'] {
@@ -100,6 +129,7 @@ export function buildPickBodies(
         faces: buildFaces(handle, bodyIndex, m),
         edges: buildEdges(handle, bodyIndex, m),
         vertices: buildVertices(handle, bodyIndex, m, anchors),
+        faceBoundaries: buildFaceBoundaries(m),
       })
     })
   }

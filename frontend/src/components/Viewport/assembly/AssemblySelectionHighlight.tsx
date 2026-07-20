@@ -53,6 +53,8 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
 
   const selFaces = useTriMesh(geometry.selectedFaces)
   const hovFaces = useTriMesh(geometry.hoveredFaces)
+  const selFaceBoundary = useTriMesh(geometry.selectedFaceBoundary)
+  const hovFaceBoundary = useTriMesh(geometry.hoveredFaceBoundary)
   const selEdges = useTriMesh(geometry.selectedEdges)
   const hovEdges = useTriMesh(geometry.hoveredEdges)
   const selVerts = usePointsGeometry(geometry.selectedVertices)
@@ -90,6 +92,16 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
             polygonOffsetUnits={-1}
           />
         </mesh>
+      )}
+      {selFaceBoundary && (
+        <lineSegments geometry={selFaceBoundary} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
+          <lineBasicMaterial color={COLOR_SELECTED} depthTest={false} transparent />
+        </lineSegments>
+      )}
+      {hovFaceBoundary && (
+        <lineSegments geometry={hovFaceBoundary} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
+          <lineBasicMaterial color={COLOR_HOVER} depthTest={false} transparent />
+        </lineSegments>
       )}
       {selEdges && (
         <lineSegments geometry={selEdges} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>

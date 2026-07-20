@@ -23,6 +23,10 @@ export interface AssemblySelectionGeometry {
   /** Line-segment positions (6 floats per segment). */
   selectedEdges: Float32Array
   hoveredEdges: Float32Array
+  /** Face boundary-loop line segments (6 floats per segment), same precedence
+   *  rule as the tint: a face that is both selected and hovered draws only here. */
+  selectedFaceBoundary: Float32Array
+  hoveredFaceBoundary: Float32Array
   selectedVertices: Vec3[]
   hoveredVertices: Vec3[]
 }
@@ -32,6 +36,8 @@ const EMPTY: AssemblySelectionGeometry = {
   hoveredFaces: new Float32Array(0),
   selectedEdges: new Float32Array(0),
   hoveredEdges: new Float32Array(0),
+  selectedFaceBoundary: new Float32Array(0),
+  hoveredFaceBoundary: new Float32Array(0),
   selectedVertices: [],
   hoveredVertices: [],
 }
@@ -44,6 +50,12 @@ function pushTriangle(out: number[], positions: Float32Array, tri: number): void
 function pushSegment(out: number[], positions: Float32Array, seg: number): void {
   const base = seg * 6
   for (let k = 0; k < 6; k++) out.push(positions[base + k])
+}
+
+/** Appends a whole face's boundary loop (variable segment count, unlike the
+ *  fixed-stride edge/vertex layers). */
+function pushBoundary(out: number[], segments: Float32Array): void {
+  for (let k = 0; k < segments.length; k++) out.push(segments[k])
 }
 
 /**
@@ -62,11 +74,13 @@ export function buildAssemblySelectionGeometry(
   const hovFaces: number[] = []
   const selEdges: number[] = []
   const hovEdges: number[] = []
+  const selFaceBoundary: number[] = []
+  const hovFaceBoundary: number[] = []
   const selVerts: Vec3[] = []
   const hovVerts: Vec3[] = []
 
   for (const body of pickBodies) {
-    const { faces, edges, vertices } = body
+    const { faces, edges, vertices, faceBoundaries } = body
 
     if (faces) {
       const { triangleToFace, faceQueries, positions } = faces
@@ -75,6 +89,18 @@ export function buildAssemblySelectionGeometry(
         if (query === undefined) continue
         if (selection.has(query)) pushTriangle(selFaces, positions, tri)
         else if (query === hovered) pushTriangle(hovFaces, positions, tri)
+      }
+
+      if (faceBoundaries) {
+        const { faceQueries: boundaryQueries } = faces
+        for (const [faceIdx, segments] of faceBoundaries) {
+          const query = boundaryQueries[faceIdx]
+          if (query === undefined) continue
+          // Selection wins over hover, same as the tint above: a face that is
+          // both draws its selected-colour outline only.
+          if (selection.has(query)) pushBoundary(selFaceBoundary, segments)
+          else if (query === hovered) pushBoundary(hovFaceBoundary, segments)
+        }
       }
     }
 
@@ -103,6 +129,8 @@ export function buildAssemblySelectionGeometry(
     hoveredFaces: Float32Array.from(hovFaces),
     selectedEdges: Float32Array.from(selEdges),
     hoveredEdges: Float32Array.from(hovEdges),
+    selectedFaceBoundary: Float32Array.from(selFaceBoundary),
+    hoveredFaceBoundary: Float32Array.from(hovFaceBoundary),
     selectedVertices: selVerts,
     hoveredVertices: hovVerts,
   }

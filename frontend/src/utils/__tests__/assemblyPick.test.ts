@@ -120,6 +120,33 @@ describe('buildPickBodies', () => {
     expect(body.faces!.faceQueries).toHaveLength(2)
   })
 
+  it('builds a triangle-perimeter boundary loop for a face with one triangle', () => {
+    const { faceBoundaries } = build(makeMesh())
+    // Triangle 0 (verts 0,1,2): all 3 edges are unshared within face 0, so all 3 survive.
+    expect(faceBoundaries!.get(0)!.length).toBe(3 * 6)
+    expect(faceBoundaries!.get(1)!.length).toBe(3 * 6)
+  })
+
+  it('drops the shared interior edge when two triangles tessellate one face', () => {
+    const mesh = makeMesh({ faceIdsPerTriangle: new Uint32Array([0, 0]) })
+    const { faceBoundaries } = build(mesh)
+    // Triangles (0,1,2) and (1,3,2) share edge (1,2): that edge appears twice
+    // within face 0 and is interior, not boundary, so only the 4 outer edges
+    // of the resulting quad remain.
+    expect(faceBoundaries!.get(0)!.length).toBe(4 * 6)
+    expect(faceBoundaries!.has(1)).toBe(false)
+  })
+
+  it('offers no face boundaries for an empty mesh', () => {
+    const body = build({
+      vertices: new Float32Array(0),
+      indices: new Uint32Array(0),
+      faceIdsPerTriangle: new Uint32Array(0),
+      edges: [],
+    })
+    expect(body.faceBoundaries).toBeNull()
+  })
+
   it('offers no layers at all for an empty mesh', () => {
     const body = build({
       vertices: new Float32Array(0),

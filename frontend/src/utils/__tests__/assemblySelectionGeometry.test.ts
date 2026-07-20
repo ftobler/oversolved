@@ -28,6 +28,10 @@ function body(): AssemblyPickBody {
       vertices: [[9, 9, 9], [8, 8, 8]],
       vertexQueries: ['v0', 'v1'],
     },
+    faceBoundaries: new Map([
+      [0, new Float32Array([0, 0, 0, 1, 0, 0])],  // face 0's boundary loop, one segment
+      [1, new Float32Array([2, 0, 0, 3, 0, 0, 3, 0, 0, 2, 1, 0])],  // face 1's, two segments
+    ]),
   }
 }
 
@@ -61,5 +65,31 @@ describe('buildAssemblySelectionGeometry', () => {
     const g = buildAssemblySelectionGeometry([body()], new Set(['v0']), 'v1')
     expect(g.selectedVertices).toEqual([[9, 9, 9]])
     expect(g.hoveredVertices).toEqual([[8, 8, 8]])
+  })
+
+  it('extracts the selected face boundary loop', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(['f1']), null)
+    expect(Array.from(g.selectedFaceBoundary)).toEqual([2, 0, 0, 3, 0, 0, 3, 0, 0, 2, 1, 0])
+    expect(g.hoveredFaceBoundary.length).toBe(0)
+  })
+
+  it('routes the hovered face boundary loop to its own buffer', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(), 'f0')
+    expect(Array.from(g.hoveredFaceBoundary)).toEqual([0, 0, 0, 1, 0, 0])
+    expect(g.selectedFaceBoundary.length).toBe(0)
+  })
+
+  it('lets selection win over hover for a face boundary loop, not both', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(['f0']), 'f0')
+    expect(Array.from(g.selectedFaceBoundary)).toEqual([0, 0, 0, 1, 0, 0])
+    expect(g.hoveredFaceBoundary.length).toBe(0)
+  })
+
+  it('allocates no face boundary when the body has none', () => {
+    const b = body()
+    b.faceBoundaries = null
+    const g = buildAssemblySelectionGeometry([b], new Set(['f0']), null)
+    expect(g.selectedFaces.length).toBe(9)
+    expect(g.selectedFaceBoundary.length).toBe(0)
   })
 })
