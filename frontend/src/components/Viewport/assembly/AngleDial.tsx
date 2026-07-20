@@ -18,23 +18,20 @@ import {
   DIAL_READOUT_RADIUS, dialCounterRotation, dialReadoutPosition, dialSpoke, dialSweepVertices,
   dialTicks, formatSwingDegrees, nearestTickIndex,
 } from '@/utils/angleDialGeometry'
+import {
+  DIAL_SWEEP_OPACITY, DIAL_TICK_OPACITY, DIAL_TICK_OPACITY_DISARMED,
+  TRIAD_COLOR, TRIAD_COLOR_DIM, TRIAD_COLOR_HOVER,
+} from '@/utils/core/gizmoColors'
 import type { GizmoAxisDef } from '@/utils/gizmoPickGeometry'
 
-const DATUM_COLOR = '#9aa0a6'
-const LIVE_COLOR = '#ffffff'
-// Amber, and deliberately not the triad's hover white: snap engagement is a
-// different signal from "the cursor is on this handle" and has to stay readable
-// as its own thing.
-const SNAP_COLOR = '#ffd24a'
-const TICK_COLOR = '#9aa0a6'
-const SWEEP_OPACITY = 0.22
-
-// Disarmed, the ticks are still drawn but faded almost out: removing them
-// entirely would make the dial jump every time the cursor crosses the ring,
-// while leaving them lit would advertise bearings the drag can no longer reach.
-// Fading says "still there, not in play", which is exactly the state.
-const TICK_OPACITY = 1
-const TICK_OPACITY_DISARMED = 0.18
+// The dial is part of the triad, so it stays in the triad's one hue and says
+// everything through brightness instead: dim for the reference marks the drag
+// is measured against, base for the live reading, the emphasis shade once a
+// snap actually engages. See utils/core/gizmoColors.
+const DATUM_COLOR = TRIAD_COLOR_DIM
+const TICK_COLOR = TRIAD_COLOR_DIM
+const LIVE_COLOR = TRIAD_COLOR
+const SNAP_COLOR = TRIAD_COLOR_HOVER
 
 const RENDER_ORDER = 1001
 
@@ -93,7 +90,7 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
         <meshBasicMaterial
           color={snapped ? SNAP_COLOR : LIVE_COLOR}
           transparent
-          opacity={SWEEP_OPACITY}
+          opacity={DIAL_SWEEP_OPACITY}
           side={THREE.DoubleSide}
           depthTest={false}
           depthWrite={false}
@@ -108,7 +105,7 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
           lineWidth={tick.major ? 2 : 1}
           depthTest={false}
           transparent
-          opacity={snapArmed ? TICK_OPACITY : TICK_OPACITY_DISARMED}
+          opacity={snapArmed ? DIAL_TICK_OPACITY : DIAL_TICK_OPACITY_DISARMED}
           renderOrder={RENDER_ORDER}
         />
       ))}

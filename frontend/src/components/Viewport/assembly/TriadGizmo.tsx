@@ -26,11 +26,10 @@ import {
   planeHandleCorners, planeHandleOutline, RING_RADIUS,
   type GizmoAxisDef,
 } from '@/utils/gizmoPickGeometry'
-import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
+import {
+  TRIAD_COLOR, TRIAD_COLOR_HOVER, TRIAD_PLANE_OPACITY, TRIAD_PLANE_OPACITY_HOVER,
+} from '@/utils/core/gizmoColors'
 import type { Quat, Vec3 } from '@/utils/transform3d'
-
-const PLANE_OPACITY = 0.3
-const PLANE_OPACITY_HOVER = 0.62
 
 // Line art everywhere: THREE.LineBasicMaterial's `linewidth` is ignored by most
 // WebGL backends, so a real 2px-on-screen line needs drei's <Line>, which keeps
@@ -40,9 +39,9 @@ const PLANE_OPACITY_HOVER = 0.62
 const LINE_WIDTH = 2
 
 // Per part axis: the euler angles that aim a +Y shaft-and-head arrow along it.
-// No per-axis colour: the triad is uni-violet, so that a handle is grabbable
-// reads the same way here as it does on the extrusion arrows and the preview
-// overlay, and hover is what carries meaning instead of hue.
+// No per-axis colour: the triad is uni-hue (see utils/core/gizmoColors), so
+// that a handle is grabbable reads the same way on every handle, and hover is
+// what carries meaning instead of hue.
 const ARROW_ROTATIONS: [number, number, number][] = [
   [0, 0, -Math.PI / 2],
   [0, 0, 0],
@@ -114,9 +113,9 @@ function PlaneHandle({ def, hovered }: { def: GizmoAxisDef; hovered: boolean }) 
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
       <meshBasicMaterial
-        color={hovered ? COLOR_HOVER : COLOR_PREVIEW_EDGE}
+        color={hovered ? TRIAD_COLOR_HOVER : TRIAD_COLOR}
         transparent
-        opacity={hovered ? PLANE_OPACITY_HOVER : PLANE_OPACITY}
+        opacity={hovered ? TRIAD_PLANE_OPACITY_HOVER : TRIAD_PLANE_OPACITY}
         side={THREE.DoubleSide}
         depthTest={false}
       />
@@ -126,7 +125,7 @@ function PlaneHandle({ def, hovered }: { def: GizmoAxisDef; hovered: boolean }) 
 
 export default function TriadGizmo({ origin, orientation, hovered, drag }: TriadGizmoProps) {
   const ref = useScreenScale(GIZMO_PIXELS)
-  const colorFor = (key: string) => (hovered === key ? COLOR_HOVER : COLOR_PREVIEW_EDGE)
+  const colorFor = (key: string) => (hovered === key ? TRIAD_COLOR_HOVER : TRIAD_COLOR)
 
   // Idle draws everything; a drag draws only the handle it grabbed. Each test
   // is "no drag, or this exact handle", so the null case is untouched.
@@ -189,7 +188,7 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
               {drag?.kind === 'plane' && drag.axis === def.name && (
                 <Line
                   points={planeHandleOutline(def)}
-                  color={COLOR_HOVER}
+                  color={TRIAD_COLOR_HOVER}
                   lineWidth={1.5}
                   depthTest={false}
                   transparent
