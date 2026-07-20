@@ -387,3 +387,69 @@ export function updateMate(
     return next
   })
 }
+
+// ─── Reordering ───
+
+// Move the feature `movingId` so it sits immediately before `beforeId` in the
+// document's authored feature order, or at the end of its own kind group when
+// `beforeId` is null. Feature-array order IS the assembly's authored order (the
+// tree renders it and the solver applies mates in it), so a tree drag-reorder is
+// just a splice here. A no-op when the moving feature is absent, when it is
+// dropped onto itself, or when the named target vanished between grab and drop.
+export function reorderFeature(
+  doc: AssemblyDoc,
+  movingId: string,
+  beforeId: string | null,
+): AssemblyDoc {
+  const list = features(doc)
+  const from = list.findIndex(f => f.id === movingId)
+  if (from < 0 || beforeId === movingId) return doc
+  const moving = list[from]
+  const without = list.filter((_, i) => i !== from)
+  let insertAt: number
+  if (beforeId === null) {
+    // Land past the last sibling of the same kind, so a part dropped below the
+    // last row stays among the parts and a mate stays among the mates rather
+    // than sinking to the bottom of the whole feature list.
+    let last = -1
+    without.forEach((f, i) => { if (f.kind === moving.kind) last = i })
+    insertAt = last + 1
+  } else {
+    insertAt = without.findIndex(f => f.id === beforeId)
+    if (insertAt < 0) return doc
+  }
+  const next = [...without.slice(0, insertAt), moving, ...without.slice(insertAt)]
+  return { ...doc, features: next }
+}
+
+// The feature id of the part_instance carrying `handle`, if any. The tree keys
+// part rows by handle, not feature id, so a part drag arrives in handle space.
+function featureIdForInstance(doc: AssemblyDoc, handle: string): string | undefined {
+  return features(doc).find(f => f.kind === 'part_instance' && f.instance?.handle === handle)?.id
+}
+
+// Reorder a part instance (by its handle) to sit before the instance carrying
+// `beforeHandle`, or last among the parts when null. Resolves both handles to
+// their feature ids and defers to reorderFeature; a stale `beforeHandle` no-ops.
+export function moveInstance(
+  doc: AssemblyDoc,
+  movingHandle: string,
+  beforeHandle: string | null,
+): AssemblyDoc {
+  const movingId = featureIdForInstance(doc, movingHandle)
+  if (!movingId) return doc
+  if (beforeHandle === null) return reorderFeature(doc, movingId, null)
+  const beforeId = featureIdForInstance(doc, beforeHandle)
+  if (!beforeId) return doc
+  return reorderFeature(doc, movingId, beforeId)
+}
+
+// Reorder a mate (by feature id) before `beforeId`, or last among the mates when
+// null. Mate rows are already keyed by feature id, so this is a thin pass-through.
+export function moveMate(
+  doc: AssemblyDoc,
+  movingId: string,
+  beforeId: string | null,
+): AssemblyDoc {
+  return reorderFeature(doc, movingId, beforeId)
+}

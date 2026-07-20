@@ -44,6 +44,11 @@ interface AssemblyTreeProps {
   // The instance whose inline editor is open.
   editingInstanceHandle?: string | null
   onSelectPart?: (handle: string) => void
+  // Drag-reorder callbacks. `beforeHandle`/`beforeId` name the row the dragged
+  // item is dropped in front of, or null when dropped past the last row of its
+  // list. The owner persists the new order in the document's feature array.
+  onReorderInstance?: (movingHandle: string, beforeHandle: string | null) => void
+  onReorderMate?: (movingId: string, beforeId: string | null) => void
   onOpenPartNewTab: (handle: string) => void
   onDuplicateInstance: (handle: string) => void
   onDeleteInstance: (handle: string) => void
@@ -87,6 +92,8 @@ export function AssemblyTree({
   editingMateId,
   editingInstanceHandle,
   onSelectPart,
+  onReorderInstance,
+  onReorderMate,
   onOpenPartNewTab,
   onDuplicateInstance,
   onDeleteInstance,
@@ -109,6 +116,16 @@ export function AssemblyTree({
   const [menu, setMenu] = useState<{ position: [number, number]; items: ContextMenuItem[] } | null>(null)
   const isDraggingRef = useRef(false)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // The row picked up by an HTML5 drag. Held in a ref, not state: it changes only
+  // at drag start/end and the reorder reads it on drop, so it never needs to
+  // re-render. `dragOverKey` does drive a render -- it paints the drop indicator.
+  const dragItemRef = useRef<{ kind: 'part' | 'mate'; id: string } | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+  const endDrag = useCallback(() => {
+    dragItemRef.current = null
+    setDragOverKey(null)
+  }, [])
 
   const handleMouseDown = useCallback(() => { isDraggingRef.current = true }, [])
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -140,7 +157,21 @@ export function AssemblyTree({
     <div className="assembly-tree" ref={rootRef}>
       <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
         <div className="sidebar-header"><span>Parts</span></div>
-        <ul className="features-list">
+        <ul
+          className="features-list"
+          onDragOver={(e) => {
+            if (dragItemRef.current?.kind !== 'part') return
+            e.preventDefault()  // a row dropped past the last one appends to the parts list
+            setDragOverKey('part:end')
+          }}
+          onDrop={(e) => {
+            if (dragItemRef.current?.kind !== 'part') return
+            e.preventDefault()
+            const moving = dragItemRef.current.id
+            endDrag()
+            onReorderInstance?.(moving, null)
+          }}
+        >
           {builtins.map(b => (
             <li key={b.id} className={`feature-item builtin${b.visible ? '' : ' invisible'}`}>
               <div className="feature-item-title">
@@ -179,9 +210,28 @@ export function AssemblyTree({
             return (
               <li
                 key={inst.handle}
-                className={`feature-item${selected ? ' selected' : ''}${editing ? ' editing' : ''}${visible ? '' : ' invisible'}`}
+                className={`feature-item${selected ? ' selected' : ''}${editing ? ' editing' : ''}${visible ? '' : ' invisible'}${dragOverKey === `part:${inst.handle}` ? ' drag-over' : ''}`}
                 aria-selected={selected}
                 onClick={() => onSelectPart?.(inst.handle)}
+                // Not draggable while its inline editor is open: a draggable
+                // ancestor blocks the editor's inputs from taking focus.
+                draggable={!editing}
+                onDragStart={(e) => { dragItemRef.current = { kind: 'part', id: inst.handle }; e.dataTransfer.effectAllowed = 'move' }}
+                onDragEnd={endDrag}
+                onDragOver={(e) => {
+                  if (dragItemRef.current?.kind !== 'part') return
+                  e.preventDefault()
+                  e.stopPropagation()  // a row target beats the list's append target
+                  setDragOverKey(`part:${inst.handle}`)
+                }}
+                onDrop={(e) => {
+                  if (dragItemRef.current?.kind !== 'part') return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const moving = dragItemRef.current.id
+                  endDrag()
+                  if (moving !== inst.handle) onReorderInstance?.(moving, inst.handle)
+                }}
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={featurePartIcon} alt="" />
@@ -268,7 +318,21 @@ export function AssemblyTree({
 
       <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
         <div className="sidebar-header"><span>Mates</span></div>
-        <ul className="features-list">
+        <ul
+          className="features-list"
+          onDragOver={(e) => {
+            if (dragItemRef.current?.kind !== 'mate') return
+            e.preventDefault()
+            setDragOverKey('mate:end')
+          }}
+          onDrop={(e) => {
+            if (dragItemRef.current?.kind !== 'mate') return
+            e.preventDefault()
+            const moving = dragItemRef.current.id
+            endDrag()
+            onReorderMate?.(moving, null)
+          }}
+        >
           {mates.map(({ id, mate }) => {
             kindOrdinal[mate.kind] = (kindOrdinal[mate.kind] ?? 0) + 1
             const defaultName = `${MATE_KIND_LABELS[mate.kind] ?? mate.kind} ${kindOrdinal[mate.kind]}`
@@ -283,10 +347,27 @@ export function AssemblyTree({
             return (
               <li
                 key={id}
-                className={`feature-item mate-item${stale ? ' stale' : ''}${selected ? ' selected' : ''}${editing ? ' editing' : ''}`}
+                className={`feature-item mate-item${stale ? ' stale' : ''}${selected ? ' selected' : ''}${editing ? ' editing' : ''}${dragOverKey === `mate:${id}` ? ' drag-over' : ''}`}
                 aria-selected={selected}
                 title={stale ? 'A reference no longer resolves; re-pick it.' : undefined}
                 onClick={() => onSelectMate?.(id)}
+                draggable={!editing}
+                onDragStart={(e) => { dragItemRef.current = { kind: 'mate', id }; e.dataTransfer.effectAllowed = 'move' }}
+                onDragEnd={endDrag}
+                onDragOver={(e) => {
+                  if (dragItemRef.current?.kind !== 'mate') return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setDragOverKey(`mate:${id}`)
+                }}
+                onDrop={(e) => {
+                  if (dragItemRef.current?.kind !== 'mate') return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const moving = dragItemRef.current.id
+                  endDrag()
+                  if (moving !== id) onReorderMate?.(moving, id)
+                }}
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={mateIcon} alt="" />

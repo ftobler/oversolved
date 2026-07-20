@@ -24,6 +24,8 @@ import {
   findInstance,
   findMate,
   mintFeatureId,
+  moveInstance,
+  moveMate,
   removeInstance,
   removeMate,
   replaceInstance,
@@ -216,11 +218,18 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     store.setActiveMateField({ featureId: id, field: 'ref_a' })
   }, [mutate])
 
+  // The [Delete] key maps to `delete_selected` (CORE_KEYBINDINGS); the store
+  // decides whether that is the selected mate or the selected part.
+  const handleDeleteSelected = useCallback(() => {
+    useAssemblyStore.getState().deleteSelected()
+  }, [])
+
   const commands = useMemo(() => [
     { name: 'insert_part_instance', fn: openPicker },
     { name: 'export_assembly', fn: openExport },
+    { name: 'delete_selected', fn: handleDeleteSelected },
     ...MATE_KINDS.map(kind => ({ name: `insert_mate_${kind}`, fn: () => handleInsertMate(kind) })),
-  ], [openPicker, openExport, handleInsertMate])
+  ], [openPicker, openExport, handleDeleteSelected, handleInsertMate])
   useCommandRegistration(commands)
 
   const handlePick = useCallback((docId: string, docRev: number) => {
@@ -410,6 +419,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useAssemblyStore.getState().requestSolveOrDefer()
   }, [mutate])
 
+  // Reordering is a pure authored-order edit persisted in the feature array. Like
+  // a rename or a visibility toggle it moves nothing on screen, so it does not
+  // re-solve: the new order is picked up by the next solve a real edit triggers.
+  const handleReorderInstance = useCallback((movingHandle: string, beforeHandle: string | null) => {
+    mutate(d => moveInstance(d, movingHandle, beforeHandle))
+  }, [mutate])
+
+  const handleReorderMate = useCallback((movingId: string, beforeId: string | null) => {
+    mutate(d => moveMate(d, movingId, beforeId))
+  }, [mutate])
+
   // Renaming is a pure label edit: no solve, it constrains nothing.
   const handleRenameMate = useCallback((featureId: string, label: string | undefined) => {
     mutate(d => setMateLabel(d, featureId, label))
@@ -500,6 +520,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             editingMateId={editingMateId}
             editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
+            onReorderInstance={handleReorderInstance}
+            onReorderMate={handleReorderMate}
             onOpenPartNewTab={handleOpenPartNewTab}
             onDuplicateInstance={handleDuplicate}
             onDeleteInstance={handleDelete}

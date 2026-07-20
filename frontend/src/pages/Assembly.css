@@ -38,6 +38,12 @@
   flex-wrap: wrap;
 }
 
+/* Drop indicator for a drag-reorder: a line above the row the dragged item would
+   land in front of. box-shadow rather than border so the row does not shift. */
+.assembly-tree .feature-item.drag-over {
+  box-shadow: inset 0 2px 0 0 #4a90d9;
+}
+
 /* The fixed glyph after a part's name. The icon assets are black strokes on
    transparent, so every icon in this UI is lit by inverting it; grayscale and
    brightness leave black black, which is why this badge used to vanish into the

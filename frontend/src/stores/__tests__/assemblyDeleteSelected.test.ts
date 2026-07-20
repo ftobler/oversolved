@@ -1,0 +1,119 @@
+// Feature A: the [Delete] key removes the selected mate or part. The store owns
+// the decision (deleteSelected) so the logic is testable without the viewport or
+// the page's React state, the same contract the manipulation state machine keeps.
+
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { AssemblyDoc, AssemblyFeature, MateFeatureDef, PartInstance } from '@/types/cad'
+import {
+  useAssemblyStore,
+  setAssemblyCallbacks,
+  DEFAULT_ASSEMBLY_EDITOR_DATA,
+} from '@/stores/assemblyStore'
+import { EMPTY_MATE_REF } from '@/utils/mateKinds'
+import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+
+function inst(handle: string): PartInstance {
+  return { handle, doc_id: `d-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true }
+}
+
+function mate(refA: string, refB: string): MateFeatureDef {
+  return {
+    kind: 'fixed',
+    ref_a: { ...EMPTY_MATE_REF, part: refA },
+    ref_b: { ...EMPTY_MATE_REF, part: refB },
+  }
+}
+
+// Two parts and one mate that references both, the smallest doc that exercises
+// the no-cascade contract when a referenced part is deleted.
+function sampleDoc(): AssemblyDoc {
+  return {
+    kind: 'assembly',
+    features: [
+      { id: 'fp1', kind: 'part_instance', instance: inst('h1') },
+      { id: 'fp2', kind: 'part_instance', instance: inst('h2') },
+      { id: 'fm1', kind: 'mate', mate: mate('h1', 'h2') },
+    ],
+  }
+}
+
+function ids(doc: AssemblyDoc, kind: AssemblyFeature['kind']): string[] {
+  return (doc.features ?? []).filter(f => f.kind === kind).map(f => f.id)
+}
+
+/** Stands in for the AssemblyEditor: owns the doc, counts re-solves. */
+function mountHost(initial: AssemblyDoc) {
+  const requestSolve = vi.fn()
+  const host = { doc: initial }
+  setAssemblyCallbacks({
+    mutateDoc: (fn) => { host.doc = fn(host.doc) },
+    requestSolve,
+  })
+  useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
+  return { host, requestSolve }
+}
+
+describe('assemblyStore deleteSelected', () => {
+  beforeEach(() => {
+    // setSnapshot preserves store-owned fields (selection included), so the
+    // selection has to be cleared directly or it leaks between tests.
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.setState({ selectedPartHandle: null, selectedMateId: null })
+    setAssemblyCallbacks(null)
+  })
+
+  it('deletes the selected mate, clears the selection and re-solves', () => {
+    const { host, requestSolve } = mountHost(sampleDoc())
+    useAssemblyStore.getState().setSelectedMateId('fm1')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    expect(ids(host.doc, 'mate')).toEqual([])
+    expect(ids(host.doc, 'part_instance')).toEqual(['fp1', 'fp2'])
+    expect(useAssemblyStore.getState().selectedMateId).toBeNull()
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes the selected part, clears the selection and re-solves', () => {
+    const { host, requestSolve } = mountHost(sampleDoc())
+    useAssemblyStore.getState().setSelectedPartHandle('h1')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    expect(ids(host.doc, 'part_instance')).toEqual(['fp2'])
+    expect(useAssemblyStore.getState().selectedPartHandle).toBeNull()
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a mate referencing the deleted part in place (no cascade; it goes stale at solve)', () => {
+    const { host } = mountHost(sampleDoc())
+    useAssemblyStore.getState().setSelectedPartHandle('h1')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    // The mate survives with its now-dangling ref_a; the solver reports it stale.
+    expect(ids(host.doc, 'mate')).toEqual(['fm1'])
+    const survived = host.doc.features!.find(f => f.kind === 'mate')!.mate!
+    expect(survived.ref_a.part).toBe('h1')
+  })
+
+  it('deletes the mate first when both a mate and a part are selected', () => {
+    const { host } = mountHost(sampleDoc())
+    useAssemblyStore.getState().setSelectedPartHandle('h1')
+    useAssemblyStore.getState().setSelectedMateId('fm1')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    expect(ids(host.doc, 'mate')).toEqual([])
+    expect(ids(host.doc, 'part_instance')).toEqual(['fp1', 'fp2'])  // the part is untouched
+  })
+
+  it('is a no-op with nothing selected', () => {
+    const { host, requestSolve } = mountHost(sampleDoc())
+
+    useAssemblyStore.getState().deleteSelected()
+
+    expect(host.doc).toEqual(sampleDoc())
+    expect(requestSolve).not.toHaveBeenCalled()
+  })
+})

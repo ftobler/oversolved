@@ -10,6 +10,9 @@ import {
   mateFeatures,
   mintFeatureId,
   mintInstanceHandle,
+  moveInstance,
+  moveMate,
+  reorderFeature,
   removeInstance,
   removeMate,
   setBuiltinVisible,
@@ -584,5 +587,73 @@ describe('setInstancePosition / setInstanceRotation (numeric reseat)', () => {
     expect(r.rx).toBeCloseTo(0, 12)
     expect(r.ry).toBeCloseTo(0, 12)
     expect(r.rz).toBeCloseTo(0, 12)
+  })
+})
+
+describe('reorderFeature / moveInstance / moveMate', () => {
+  function inst(handle: string): PartInstance {
+    return { handle, doc_id: 'd', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true }
+  }
+  // origin, three parts, two mates: enough to prove a moved feature stays inside
+  // its own kind group and that "before" lands on either side of the target.
+  const sample = (): AssemblyDoc => ({
+    kind: 'assembly',
+    features: [
+      { id: 'origin', kind: 'origin' },
+      { id: 'fp1', kind: 'part_instance', instance: inst('h1') },
+      { id: 'fp2', kind: 'part_instance', instance: inst('h2') },
+      { id: 'fp3', kind: 'part_instance', instance: inst('h3') },
+      { id: 'fm1', kind: 'mate' },
+      { id: 'fm2', kind: 'mate' },
+    ],
+  })
+  const order = (d: AssemblyDoc) => (d.features ?? []).map(f => f.id)
+
+  it('moves a feature before a later target', () => {
+    expect(order(reorderFeature(sample(), 'fp1', 'fp3')))
+      .toEqual(['origin', 'fp2', 'fp1', 'fp3', 'fm1', 'fm2'])
+  })
+
+  it('moves a feature before an earlier target', () => {
+    expect(order(reorderFeature(sample(), 'fp3', 'fp1')))
+      .toEqual(['origin', 'fp3', 'fp1', 'fp2', 'fm1', 'fm2'])
+  })
+
+  it('a null target lands past the last sibling of the moved feature kind', () => {
+    // A part dropped past the last row stays before the mates, not below them.
+    expect(order(reorderFeature(sample(), 'fp1', null)))
+      .toEqual(['origin', 'fp2', 'fp3', 'fp1', 'fm1', 'fm2'])
+    expect(order(reorderFeature(sample(), 'fm1', null)))
+      .toEqual(['origin', 'fp1', 'fp2', 'fp3', 'fm2', 'fm1'])
+  })
+
+  it('no-ops on a self-drop or a missing id', () => {
+    expect(order(reorderFeature(sample(), 'fp2', 'fp2'))).toEqual(order(sample()))
+    expect(order(reorderFeature(sample(), 'nope', 'fp1'))).toEqual(order(sample()))
+    expect(order(reorderFeature(sample(), 'fp1', 'nope'))).toEqual(order(sample()))
+  })
+
+  it('moveInstance reorders by handle, before a sibling and to the end', () => {
+    expect(order(moveInstance(sample(), 'h3', 'h1')))
+      .toEqual(['origin', 'fp3', 'fp1', 'fp2', 'fm1', 'fm2'])
+    expect(order(moveInstance(sample(), 'h1', null)))
+      .toEqual(['origin', 'fp2', 'fp3', 'fp1', 'fm1', 'fm2'])
+  })
+
+  it('moveInstance no-ops on an unknown moving or target handle', () => {
+    expect(order(moveInstance(sample(), 'nope', 'h1'))).toEqual(order(sample()))
+    expect(order(moveInstance(sample(), 'h1', 'nope'))).toEqual(order(sample()))
+  })
+
+  it('moveMate reorders by feature id', () => {
+    expect(order(moveMate(sample(), 'fm2', 'fm1')))
+      .toEqual(['origin', 'fp1', 'fp2', 'fp3', 'fm2', 'fm1'])
+  })
+
+  it('does not mutate the input document', () => {
+    const doc = sample()
+    const before = order(doc)
+    reorderFeature(doc, 'fp1', 'fp3')
+    expect(order(doc)).toEqual(before)
   })
 })

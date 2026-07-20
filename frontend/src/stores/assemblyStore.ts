@@ -4,7 +4,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { MateResult } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { bakeSolvedTransforms, findMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
+import { bakeSolvedTransforms, findMate, removeInstance, removeMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
@@ -249,6 +249,13 @@ interface AssemblyEditorState extends AssemblyEditorData {
   /** Pointer-up: write the seed transform, then re-solve once if it moved. */
   endPartManipulation: () => void
   cancelPartManipulation: () => void
+  /**
+   * The [Delete] key's target: remove whatever the tree has selected. A selected
+   * mate wins over a selected part (the two selections are independent fields, so
+   * both can be set; deleting the constraint first is the less destructive of the
+   * two). No-op when nothing is selected.
+   */
+  deleteSelected: () => void
 }
 
 export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
@@ -494,5 +501,28 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const moved = manipulation != null && !transformsEqual(manipulation.current, manipulation.seed)
     set({ manipulation: null, gizmoDrag: null })
     if (moved) callbacks?.requestSolve()
+  },
+
+  // Bake-then-remove, the same discipline the tree's own delete actions use
+  // (handleDelete / handleDeleteMate): the doc's seeds are stale between solves,
+  // so removing a part or mate and re-solving straight from them would snap the
+  // survivors back to their placement poses. Freezing the solved poses first
+  // leaves only the freed DOF to relax. A deleted part's referencing mates are
+  // left in place on purpose (removeInstance's contract): they surface as stale
+  // at the next solve rather than being silently cascaded away.
+  deleteSelected: () => {
+    const { doc, selectedMateId, selectedPartHandle, transforms } = get()
+    if (!doc || !callbacks) return
+    if (selectedMateId) {
+      callbacks.mutateDoc(d => removeMate(bakeSolvedTransforms(d, transforms), selectedMateId))
+      set({ selectedMateId: null })
+      callbacks.requestSolve()
+      return
+    }
+    if (selectedPartHandle) {
+      callbacks.mutateDoc(d => removeInstance(bakeSolvedTransforms(d, transforms), selectedPartHandle))
+      set({ selectedPartHandle: null })
+      callbacks.requestSolve()
+    }
   },
 }))
