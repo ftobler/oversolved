@@ -21,6 +21,37 @@ interface Props {
 // A no-op raycast keeps R3F from ever hitting these visual-only overlays.
 const NO_RAYCAST = () => undefined
 
+// THREE.Points sprites rasterize as hardware squares with no shape control of
+// their own. The part editor's vertex dot is a circleGeometry mesh, so this
+// bakes a filled circle once and hands it to pointsMaterial as an alpha mask,
+// making the batched point sprite read as a circle like the part editor's.
+let vertexDotAlphaMap: THREE.Texture | null = null
+// eslint-disable-next-line react-refresh/only-export-components
+export function getVertexDotAlphaMap(): THREE.Texture {
+  if (vertexDotAlphaMap) return vertexDotAlphaMap
+  const size = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    ctx.beginPath()
+    ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+  }
+  vertexDotAlphaMap = new THREE.CanvasTexture(canvas)
+  return vertexDotAlphaMap
+}
+
+// Test-only escape hatch for the module-level cache, mirroring
+// resetGizmoLabelFontForTest: without it, whichever test runs first would
+// permanently decide what every later getVertexDotAlphaMap() call observes.
+// eslint-disable-next-line react-refresh/only-export-components
+export function resetVertexDotAlphaMapForTest(): void {
+  vertexDotAlphaMap = null
+}
+
 function useTriMesh(positions: Float32Array): THREE.BufferGeometry | null {
   const geo = useMemo(() => {
     if (positions.length === 0) return null
@@ -115,12 +146,26 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
       )}
       {selVerts && (
         <points geometry={selVerts} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <pointsMaterial color={COLOR_SELECTED} size={9} sizeAttenuation={false} depthTest={false} transparent />
+          <pointsMaterial
+            color={COLOR_SELECTED}
+            size={9}
+            sizeAttenuation={false}
+            depthTest={false}
+            alphaMap={getVertexDotAlphaMap()}
+            transparent
+          />
         </points>
       )}
       {hovVerts && (
         <points geometry={hovVerts} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <pointsMaterial color={COLOR_HOVER} size={9} sizeAttenuation={false} depthTest={false} transparent />
+          <pointsMaterial
+            color={COLOR_HOVER}
+            size={9}
+            sizeAttenuation={false}
+            depthTest={false}
+            alphaMap={getVertexDotAlphaMap()}
+            transparent
+          />
         </points>
       )}
     </group>
