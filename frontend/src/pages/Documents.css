@@ -403,6 +403,30 @@
   margin-left: auto;
 }
 
+/* The tile buttons ask for a 40x40 box, but buttons.css loads later and its
+   base `.btn { padding: 8px 16px }` wins on equal specificity, so each one
+   actually renders 72x56. That 32px of horizontal padding is dead space which
+   drove the icons apart. Keep the larger box (it is the deliberate click
+   target) and claw the spacing back with negative margin instead: `gap` cannot
+   go negative, it is silently dropped. -24px between siblings pulls the pitch
+   from 72px down to 48px, which is the most we can take before a hovered
+   button's painted background (36px half-width) would reach into its
+   neighbour's 20px icon. It sits only between buttons so the row still ends on
+   its real edges. Do not "clean up" the negative value, it is load-bearing. */
+.doc-tile-actions > .btn + .btn {
+  margin-left: -24px;
+}
+
+.doc-tile-actions > .btn {
+  position: relative;
+}
+
+/* Backgrounds now overlap, so lift the hovered one out of source order to be
+   sure it paints above its neighbours rather than under them. */
+.doc-tile-actions > .btn:hover {
+  z-index: 1;
+}
+
 .btn-tile-action,
 .btn-delete-tile {
   flex-shrink: 0;
