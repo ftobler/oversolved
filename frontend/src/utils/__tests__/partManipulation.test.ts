@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import {
+  beginBodyManipulation,
   beginManipulation,
   commitManipulation,
   dragTranslate,
   gizmoRotate,
   isManipulable,
   livePartPose,
+  settledTransforms,
 } from '@/utils/partManipulation'
 import { findInstance } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM, quatFromAxisAngle, makeTransform, rotateVector } from '@/utils/transform3d'
@@ -182,5 +184,69 @@ describe('fixed instances are not manipulable by either path', () => {
       expect(next).toBe(pinned)
       expect(findInstance(next, 'p1')!.transform).toEqual(IDENTITY_TRANSFORM)
     }
+  })
+})
+
+describe('settledTransforms', () => {
+  it('returns a copy of transforms when settling is empty', () => {
+    const transforms = {
+      a: { ...IDENTITY_TRANSFORM, tx: 1 },
+      b: { ...IDENTITY_TRANSFORM, tx: 2 },
+    }
+    const result = settledTransforms(transforms, {})
+    expect(result).toEqual(transforms)
+    expect(result).not.toBe(transforms)
+    expect(transforms.a.tx).toBe(1)  // input not mutated
+  })
+
+  it('composes settling offset onto the base transform', () => {
+    const base = { ...IDENTITY_TRANSFORM, tx: 10 }
+    const offset = { ...IDENTITY_TRANSFORM, tx: 5 }
+    const result = settledTransforms({ p1: base }, { p1: offset })
+    expect(result.p1.tx).toBeCloseTo(15, 9)
+    expect(result.p1.qw).toBeCloseTo(1, 9)
+  })
+
+  it('falls back to IDENTITY_TRANSFORM for handles only in settling', () => {
+    const offset = { ...IDENTITY_TRANSFORM, tx: 3, ty: 4 }
+    const result = settledTransforms({}, { lone: offset })
+    expect(result.lone.tx).toBeCloseTo(3, 9)
+    expect(result.lone.ty).toBeCloseTo(4, 9)
+    expect(result.lone.qw).toBeCloseTo(1, 9)
+  })
+
+  it('does not mutate input objects', () => {
+    const transforms = { a: { ...IDENTITY_TRANSFORM, tx: 1 } }
+    const settling = { a: { ...IDENTITY_TRANSFORM, tx: 2 } }
+    const transformsCopy = { ...transforms, a: { ...transforms.a } }
+    const settlingCopy = { ...settling, a: { ...settling.a } }
+    settledTransforms(transforms, settling)
+    expect(transforms).toEqual(transformsCopy)
+    expect(settling).toEqual(settlingCopy)
+  })
+})
+
+describe('beginBodyManipulation', () => {
+  it('returns a session with a dragObjective', () => {
+    const doc = docWith(instance('p1'))
+    const worldGrab: [number, number, number] = [1, 2, 3]
+    const session = beginBodyManipulation(doc, 'p1', worldGrab, IDENTITY_TRANSFORM)!
+    expect(session).not.toBeNull()
+    expect(session.dragObjective).toBeDefined()
+    expect(session.dragObjective!.handle).toBe('p1')
+    expect(session.dragObjective!.localGrab).toEqual([1, 2, 3])
+    expect(session.dragObjective!.target).toEqual([1, 2, 3])
+    expect(session.seed).toEqual(IDENTITY_TRANSFORM)
+    expect(session.current).toEqual(IDENTITY_TRANSFORM)
+  })
+
+  it('returns null for a fixed instance', () => {
+    const doc = docWith(instance('p1', { fixed: true }))
+    expect(beginBodyManipulation(doc, 'p1', [0, 0, 0], IDENTITY_TRANSFORM)).toBeNull()
+  })
+
+  it('returns null for an unknown handle', () => {
+    const doc = docWith(instance('p1'))
+    expect(beginBodyManipulation(doc, 'nope', [0, 0, 0], IDENTITY_TRANSFORM)).toBeNull()
   })
 })

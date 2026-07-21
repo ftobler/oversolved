@@ -249,6 +249,27 @@ describe('useSolver', () => {
       expect(result.current.solveError).toBe('Error: kernel boom')
     })
 
+    it('suppresses solveError for a cancelled solve', async () => {
+      const { result } = setupHook()
+      mockSolveLocally.mockRejectedValue(new Error('solve cancelled'))
+      await act(async () => { await result.current.reSolve(solvableDoc()) })
+      expect(result.current.solveError).toBeNull()
+    })
+
+    it('suppresses solveError for a solver worker timeout', async () => {
+      const { result } = setupHook()
+      mockSolveLocally.mockRejectedValue(new Error('solver worker timed out'))
+      await act(async () => { await result.current.reSolve(solvableDoc()) })
+      expect(result.current.solveError).toBeNull()
+    })
+
+    it('other error messages still set solveError', async () => {
+      const { result } = setupHook()
+      mockSolveLocally.mockRejectedValue(new Error('unexpected failure'))
+      await act(async () => { await result.current.reSolve(solvableDoc()) })
+      expect(result.current.solveError).toBe('Error: unexpected failure')
+    })
+
     it('sets solveError when the local solver is unavailable (returns null)', async () => {
       const { result } = setupHook()
       mockSolveLocally.mockResolvedValue(null)
