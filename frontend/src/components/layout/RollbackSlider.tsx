@@ -2,30 +2,20 @@ import React from 'react'
 
 interface RollbackSliderProps {
   isDragging: boolean
-  draggable: boolean
-  onDragStart: (e: React.DragEvent) => void
-  onDragOver: (e: React.DragEvent) => void
-  onDrop: (e: React.DragEvent) => void
-  onDragEnd: () => void
+  enabled: boolean
+  onGrab: (e: React.PointerEvent) => void
 }
 
-export function RollbackSlider({
-  isDragging,
-  draggable,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
-}: RollbackSliderProps) {
+export function RollbackSlider({ isDragging, enabled, onGrab }: RollbackSliderProps) {
   return (
     <li
       className={`rollback-bar ${isDragging ? 'dragging' : ''}`}
       title="Rollback"
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
+      onPointerDown={(e) => {
+        if (!enabled || e.button !== 0) return
+        e.preventDefault()  // no text selection while the bar is being pulled
+        onGrab(e)
+      }}
     ></li>
   )
 }

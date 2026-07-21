@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isBodyFeatureResult } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -41,7 +41,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
     onEditCancel,
     onToggleVisibility,
     onRightClick,
-    onRollbackDragStart,
     onMutation,
     onSetRollbackPosition,
     onRebuild,
@@ -50,6 +49,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
   const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
+  const listRef = useRef<HTMLUListElement>(null)
 
   // null means "end of stack" (edit exit resets to null), and out-of-order
   // deletes can leave a stale position past the end until the owner clamps it.
@@ -59,23 +59,59 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   // solver invariant depends on that), so the bar must not be draggable.
   const rollbackDraggable = editingFeatureId === null
 
+  // Which slot the bar would land in for a cursor at `clientY`: the first
+  // feature whose upper half the cursor is in, clamped past the built-ins
+  // (the bar can never be parked above Origin/Top/Front/Right).
+  const rollbackTargetAt = useCallback((clientY: number) => {
+    const featureEls = listRef.current?.querySelectorAll('.feature-item') ?? []
+    for (let i = 0; i < featureEls.length; i++) {
+      const rect = featureEls[i].getBoundingClientRect()
+      if (clientY < rect.top + rect.height / 2) {
+        return Math.max(i, BUILT_IN_IDS.size)
+      }
+    }
+    return features.length
+  }, [features.length])
+
+  // The rollback bar drags on raw pointer events instead of HTML5 drag-and-drop.
+  // Native DnD only completes a drop if the browser processed a preventDefault'd
+  // `dragover` at the moment the button is released; applying a finished rebuild
+  // stalls the main thread right past that moment, so the release was swallowed
+  // and the bar could not be let go while a rebuild ran. Pointer events queue up
+  // instead of being discarded, so the release always arrives.
+  useEffect(() => {
+    if (!draggedRollback) return
+    const stop = () => {
+      setDraggedRollback(false)
+      setDropTargetIndex(null)
+    }
+    const onMove = (e: PointerEvent) => setDropTargetIndex(rollbackTargetAt(e.clientY))
+    const onUp = (e: PointerEvent) => {
+      // A click that never left the bar's own slot is not an edit: committing it
+      // would dirty the document and re-solve for nothing.
+      const target = rollbackTargetAt(e.clientY)
+      if (target !== effectiveRollback) onSetRollbackPosition(target)
+      stop()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') stop()  // abandon the drag, leave the bar where it was
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', stop)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', stop)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
+
   return (
     <div
       className="sidebar-top"
       style={{ height: `${splitPercent}%` }}
-      onDragOver={(e) => {
-        if (!draggedRollback) return
-        e.preventDefault()
-        e.stopPropagation()
-      }}
-      onDrop={(e) => {
-        if (!draggedRollback) return
-        e.preventDefault()
-        e.stopPropagation()
-        onSetRollbackPosition(features.length)
-        setDraggedRollback(false)
-        setDropTargetIndex(null)
-      }}
     >
       <div className="sidebar-header">
         <span>Features</span>
@@ -83,105 +119,20 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
           <RebuildButton featureTimings={featureTimings} features={features} onClick={onRebuild} isLoading={isRebuilding} validation={validation} />
         )}
       </div>
-      <ul
-        className="features-list"
-        onDragOver={(e) => {
-          if (!draggedRollback) return
-          e.preventDefault()
-          e.stopPropagation()
-          const featureEls = e.currentTarget.querySelectorAll('.feature-item')
-          let targetIndex = features.length
-          for (let i = 0; i < featureEls.length; i++) {
-            const rect = featureEls[i].getBoundingClientRect()
-            if (e.clientY < rect.top + rect.height / 2) {
-              targetIndex = Math.max(i, BUILT_IN_IDS.size)
-              break
-            }
-          }
-          setDropTargetIndex(targetIndex)
-        }}
-        onDrop={(e) => {
-          if (!draggedRollback) return
-          e.preventDefault()
-          e.stopPropagation()
-          const featureEls = e.currentTarget.querySelectorAll('.feature-item')
-          let targetIndex = features.length
-          for (let i = 0; i < featureEls.length; i++) {
-            const rect = featureEls[i].getBoundingClientRect()
-            if (e.clientY < rect.top + rect.height / 2) {
-              targetIndex = Math.max(i, BUILT_IN_IDS.size)
-              break
-            }
-          }
-          onSetRollbackPosition(targetIndex)
-          setDraggedRollback(false)
-          setDropTargetIndex(null)
-        }}
-      >
+      <ul className="features-list" ref={listRef}>
       {features.length === 0 ? (
         <li className="empty">No features</li>
       ) : (
         features.map((feature, index) => {
-          const handleDragOver = (e: React.DragEvent, useFeatureRect = false) => {
-            if (BUILT_IN_IDS.has(feature.id)) return
-            e.preventDefault()
-            e.stopPropagation()
-            let targetEl = e.currentTarget as Element
-            if (useFeatureRect) {
-              const featureEl = (e.currentTarget as Element).querySelector('.feature-item')
-              if (featureEl) targetEl = featureEl
-            }
-            const rect = targetEl.getBoundingClientRect()
-            const midY = rect.top + rect.height / 2
-            const targetIndex = e.clientY < midY ? index : index + 1
-            setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
-          }
-
-          const handleDrop = (e: React.DragEvent) => {
-            e.preventDefault()
-            e.stopPropagation()
-            if (dropTargetIndex !== null) {
-              onSetRollbackPosition(dropTargetIndex)
-            }
-            setDraggedRollback(false)
-            setDropTargetIndex(null)
-          }
-
           const isBuiltIn = BUILT_IN_IDS.has(feature.id)
 
           return (
-          <div
-            key={`feature-${feature.id}`}
-            onDragOver={(e) => {
-              if (!draggedRollback) return
-              handleDragOver(e, true)
-            }}
-            onDrop={(e) => {
-              if (!draggedRollback) return
-              handleDrop(e)
-            }}
-          >
+          <div key={`feature-${feature.id}`}>
             {effectiveRollback === index && (
               <RollbackSlider
                 isDragging={draggedRollback}
-                draggable={rollbackDraggable}
-                onDragStart={(e) => {
-                  if (!rollbackDraggable) return
-                  setDraggedRollback(true)
-                  onRollbackDragStart(e)
-                }}
-                onDragOver={(e) => {
-                  if (!draggedRollback) return
-                  handleDragOver(e)
-                }}
-                onDrop={(e) => {
-                  if (!draggedRollback) return
-                  handleDrop(e)
-                }}
-                onDragEnd={() => {
-                  setDraggedRollback(false)
-                  setDropTargetIndex(null)
-                }}
+                enabled={rollbackDraggable}
+                onGrab={() => setDraggedRollback(true)}
               />
             )}
             <li
@@ -195,35 +146,28 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 e.dataTransfer.setData('text/plain', feature.id)
               }}
               onDragOver={(e) => {
-                if (draggedFeatureId) {
-                  if (isBuiltIn) return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const midY = rect.top + rect.height / 2
-                  const targetIndex = e.clientY < midY ? index : index + 1
-                  setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
-                } else if (draggedRollback) {
-                  handleDragOver(e)
-                }
+                if (!draggedFeatureId || isBuiltIn) return
+                e.preventDefault()
+                e.stopPropagation()
+                const rect = e.currentTarget.getBoundingClientRect()
+                const midY = rect.top + rect.height / 2
+                const targetIndex = e.clientY < midY ? index : index + 1
+                setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
               }}
               onDragEnd={() => {
                 setDraggedFeatureId(null)
                 setDropTargetIndex(null)
               }}
               onDrop={(e) => {
-                if (draggedFeatureId) {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const fid = e.dataTransfer.getData('text/plain')
-                  if (fid && dropTargetIndex !== null && !BUILT_IN_IDS.has(fid)) {
-                    onMutation({ type: 'reorder_features', featureId: fid, toIndex: dropTargetIndex })
-                  }
-                  setDraggedFeatureId(null)
-                  setDropTargetIndex(null)
-                } else if (draggedRollback) {
-                  handleDrop(e)
+                if (!draggedFeatureId) return
+                e.preventDefault()
+                e.stopPropagation()
+                const fid = e.dataTransfer.getData('text/plain')
+                if (fid && dropTargetIndex !== null && !BUILT_IN_IDS.has(fid)) {
+                  onMutation({ type: 'reorder_features', featureId: fid, toIndex: dropTargetIndex })
                 }
+                setDraggedFeatureId(null)
+                setDropTargetIndex(null)
               }}
               onClick={() => {
                 onToggleSelect(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`)
@@ -298,30 +242,8 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
       {effectiveRollback === features.length && (
         <RollbackSlider
           isDragging={draggedRollback}
-          draggable={rollbackDraggable}
-          onDragStart={(e) => {
-            if (!rollbackDraggable) return
-            setDraggedRollback(true)
-            onRollbackDragStart(e)
-          }}
-          onDragOver={(e) => {
-            if (!draggedRollback) return
-            e.preventDefault()
-            e.stopPropagation()
-            setDropTargetIndex(features.length)
-          }}
-          onDrop={(e) => {
-            if (!draggedRollback) return
-            e.preventDefault()
-            e.stopPropagation()
-            onSetRollbackPosition(features.length)
-            setDraggedRollback(false)
-            setDropTargetIndex(null)
-          }}
-          onDragEnd={() => {
-            setDraggedRollback(false)
-            setDropTargetIndex(null)
-          }}
+          enabled={rollbackDraggable}
+          onGrab={() => setDraggedRollback(true)}
         />
       )}
     </ul>

@@ -34,7 +34,6 @@ function makeCallbacks(): PartEditorCallbacks {
     onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
-    onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
   }

@@ -743,6 +743,8 @@
   margin: 5px 0;
   list-style: none;
   user-select: none;
+  cursor: grab;
+  touch-action: none;  /* the bar drags on pointer events, don't let it scroll the tree */
 }
 
 .rollback-bar:hover {
@@ -753,6 +755,7 @@
 
 .rollback-bar.dragging {
   opacity: 0.5;
+  cursor: grabbing;
 }
 
 .doc-editor {

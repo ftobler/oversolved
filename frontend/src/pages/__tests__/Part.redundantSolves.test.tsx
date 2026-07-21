@@ -167,22 +167,26 @@ describe('Part - eliminate redundant solves', () => {
 
     vi.mocked(solveViaWorker).mockClear()
 
-    const rollbackBars = screen.getAllByTitle('Rollback')
-    const lastBar = rollbackBars[rollbackBars.length - 1]
-
-    const dragStartEvent = new MouseEvent('dragstart', { bubbles: true, cancelable: true })
-    Object.defineProperty(dragStartEvent, 'dataTransfer', {
-      value: { effectAllowed: '', setData: vi.fn(), getData: vi.fn() },
-      configurable: true,
+    // The bar drags on pointer events: press it, release over another slot.
+    // jsdom reports zero rects, so lay the rows out as a 40px stack first.
+    document.querySelectorAll('.feature-item').forEach((el, i) => {
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+        top: i * 40, bottom: i * 40 + 40, height: 40,
+        left: 0, right: 200, width: 200, x: 0, y: i * 40,
+        toJSON: () => {},
+      })
     })
-    fireEvent(lastBar, dragStartEvent)
+    const bar = () => screen.getAllByTitle('Rollback')[0]
 
-    const dropEvent = new MouseEvent('drop', { bubbles: true, cancelable: true })
-    Object.defineProperty(dropEvent, 'dataTransfer', {
-      value: { effectAllowed: '', setData: vi.fn(), getData: vi.fn() },
-      configurable: true,
-    })
-    fireEvent(lastBar, dropEvent)
+    // Park the bar before the extrude first. That leaves nothing to solve, so
+    // it issues no worker call -- it only sets up a bar position to drag back.
+    fireEvent(bar(), new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
+    fireEvent(window, new MouseEvent('pointerup', { clientY: 10 }))
+
+    vi.mocked(solveViaWorker).mockClear()
+
+    fireEvent(bar(), new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
+    fireEvent(window, new MouseEvent('pointerup', { clientY: 500 }))  // back to the end
 
     await waitFor(() => {
       expect(countSolveCalls()).toBe(1)

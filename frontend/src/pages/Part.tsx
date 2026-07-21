@@ -538,10 +538,6 @@ export default function Part() {
     }
   }
 
-  const handleRollbackDragStart = useCallback((e: React.DragEvent) => {
-    e.dataTransfer.effectAllowed = 'move'
-  }, [])
-
   // User-initiated rollback drag: update the store, then persist the position
   // into the document. handleMutation writes doc.rollback from the store, marks
   // the doc dirty, and re-solves, so the bar survives a save/reload round trip.
@@ -763,14 +759,13 @@ export default function Part() {
     onToggleVisibility: toggleVisibility,
     onRightClick: handleRightClick,
     onRename: handleFeatureRename,
-    onRollbackDragStart: handleRollbackDragStart,
     onMutation: handleMutation,
     onSetRollbackPosition: handleUserRollbackChange,
     onRebuild: handleClearCacheAndRebuild,
   }), [toggleNormalSelection, enterEditSketch, exitEditSketch, handleAlignCameraToSketchPlane,
     enterEditFeature, exitEditFeature, commitEditFeature, cancelEditFeature,
     toggleVisibility, handleRightClick, handleFeatureRename,
-    handleRollbackDragStart, handleMutation, handleUserRollbackChange,
+    handleMutation, handleUserRollbackChange,
     handleClearCacheAndRebuild])
 
   return (

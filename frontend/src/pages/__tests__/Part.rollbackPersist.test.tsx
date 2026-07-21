@@ -64,13 +64,25 @@ function mockFetch(rollbackLine: string) {
   })
 }
 
-function createDragEvent(type: string, overrides: Record<string, unknown> = {}) {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...overrides })
-  Object.defineProperty(event, 'dataTransfer', {
-    value: { effectAllowed: '', dropEffect: 'move', setData: vi.fn(), getData: vi.fn(() => '') },
-    configurable: true,
+// The rollback bar drags on pointer events, not HTML5 drag-and-drop.
+function grabRollback(bar: Element) {
+  fireEvent(bar, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
+}
+
+function releasePointer(clientY: number) {
+  fireEvent(window, new MouseEvent('pointerup', { clientY }))
+}
+
+// jsdom reports a zero rect for everything, but the drop-slot maths needs real
+// rows: lay the feature items out as a 40px stack starting at y = 0.
+function layoutFeatureRows() {
+  document.querySelectorAll('.feature-item').forEach((el, i) => {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      top: i * 40, bottom: i * 40 + 40, height: 40,
+      left: 0, right: 200, width: 200, x: 0, y: i * 40,
+      toJSON: () => {},
+    })
   })
-  return event
 }
 
 const theme = createTheme()
@@ -151,17 +163,10 @@ describe('rollback bar position round trips through the document', () => {
       expect(screen.getByText('extrude 1')).toBeInTheDocument()
     })
 
+    layoutFeatureRows()
     const bars = screen.getAllByTitle('Rollback')
-    const bar = bars[bars.length - 1]
-    const extrudeItem = screen.getByText('extrude 1').closest('.feature-item')!
-    vi.spyOn(extrudeItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100, left: 0, width: 200, height: 40, bottom: 140, right: 200, x: 0, y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(bar, createDragEvent('dragstart'))
-    fireEvent(extrudeItem, createDragEvent('dragover', { clientY: 110 }))  // top half -> before ex1
-    fireEvent(extrudeItem, createDragEvent('drop'))
+    grabRollback(bars[bars.length - 1])
+    releasePointer(210)  // top half of ex1 (row 5 spans 200..240) -> before ex1
 
     await waitFor(() => {
       expect(usePartEditorStore.getState().rollbackPosition).toBe(5)
@@ -180,16 +185,9 @@ describe('rollback bar position round trips through the document', () => {
       expect(usePartEditorStore.getState().rollbackPosition).toBe(5)
     })
 
-    const bar = screen.getAllByTitle('Rollback')[0]
-    const extrudeItem = screen.getByText('extrude 1').closest('.feature-item')!
-    vi.spyOn(extrudeItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100, left: 0, width: 200, height: 40, bottom: 140, right: 200, x: 0, y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(bar, createDragEvent('dragstart'))
-    fireEvent(extrudeItem, createDragEvent('dragover', { clientY: 130 }))  // bottom half -> after ex1
-    fireEvent(extrudeItem, createDragEvent('drop'))
+    layoutFeatureRows()
+    grabRollback(screen.getAllByTitle('Rollback')[0])
+    releasePointer(230)  // bottom half of ex1 -> after ex1, i.e. the end
 
     await waitFor(() => {
       expect(usePartEditorStore.getState().rollbackPosition).toBe(6)

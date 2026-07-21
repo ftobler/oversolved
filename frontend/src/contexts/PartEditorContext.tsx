@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react'
+import { createContext, useContext } from 'react'
 import type { Mutation } from '@/types/cad'
 
 export interface PartEditorCallbacks {
@@ -13,7 +13,6 @@ export interface PartEditorCallbacks {
   onToggleVisibility: (featureId: string) => void
   onRightClick: (pos: [number, number], targetId?: string) => void
   onRename?: (featureId: string, label: string) => void
-  onRollbackDragStart: (e: React.DragEvent) => void
   onMutation: (mutation: Mutation) => void
   onSetRollbackPosition: (pos: number | null) => void
   onRebuild?: () => void

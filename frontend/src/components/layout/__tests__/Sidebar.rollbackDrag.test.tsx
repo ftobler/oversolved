@@ -18,7 +18,6 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
     onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
-    onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
     ...overrides,
@@ -49,6 +48,39 @@ function createDragEvent(type: string, overrides: Record<string, unknown> = {}) 
     configurable: true,
   })
   return event
+}
+
+// The rollback bar rides on raw pointer events (native HTML5 drag drops the
+// release when a rebuild stalls the main thread), so drive it the way a browser
+// would: press the bar, move the pointer, release it anywhere on the page.
+function grabRollback(bar: Element) {
+  fireEvent(bar, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
+}
+
+function movePointer(clientY: number) {
+  fireEvent(window, new MouseEvent('pointermove', { clientY }))
+}
+
+function releasePointer(clientY: number) {
+  fireEvent(window, new MouseEvent('pointerup', { clientY }))
+}
+
+// jsdom reports a zero rect for everything, but the drop-slot maths needs real
+// rows: lay the feature items out as a 40px stack starting at y = 0.
+function layoutFeatureRows() {
+  document.querySelectorAll('.feature-item').forEach((el, i) => {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      top: i * 40,
+      bottom: i * 40 + 40,
+      height: 40,
+      left: 0,
+      right: 200,
+      width: 200,
+      x: 0,
+      y: i * 40,
+      toJSON: () => {},
+    })
+  })
 }
 
 const builtInFeatures: PartFeature[] = [
@@ -116,7 +148,7 @@ describe('rollback bar drag convergence', () => {
     renderSidebar()
 
     const rollbackBar = screen.getByTitle('Rollback')
-    fireEvent(rollbackBar, createDragEvent('dragstart'))
+    grabRollback(rollbackBar)
     expect(rollbackBar.classList.contains('dragging')).toBe(true)
   })
 
@@ -124,24 +156,13 @@ describe('rollback bar drag convergence', () => {
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 4)
     renderSidebar()
+    layoutFeatureRows()
 
     const rollbackBar = screen.getByTitle('Rollback')
     const featureItem = screen.getByText('ex1').closest('.feature-item')!
 
-    vi.spyOn(featureItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100,
-      left: 0,
-      width: 200,
-      height: 40,
-      bottom: 140,
-      right: 200,
-      x: 0,
-      y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(rollbackBar, createDragEvent('dragstart'))
-    fireEvent(featureItem, createDragEvent('dragover', { clientY: 110 }))
+    grabRollback(rollbackBar)
+    movePointer(170)  // upper half of ex1 (row 4 spans 160..200)
 
     expect(featureItem.classList.contains('drop-target-top')).toBe(true)
     expect(featureItem.classList.contains('drop-target-bottom')).toBe(false)
@@ -151,82 +172,84 @@ describe('rollback bar drag convergence', () => {
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 4)
     renderSidebar()
+    layoutFeatureRows()
 
     const rollbackBar = screen.getByTitle('Rollback')
     const featureItem = screen.getByText('ex1').closest('.feature-item')!
 
-    vi.spyOn(featureItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100,
-      left: 0,
-      width: 200,
-      height: 40,
-      bottom: 140,
-      right: 200,
-      x: 0,
-      y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(rollbackBar, createDragEvent('dragstart'))
-    fireEvent(featureItem, createDragEvent('dragover', { clientY: 130 }))
+    grabRollback(rollbackBar)
+    movePointer(190)  // lower half of ex1
 
     expect(featureItem.classList.contains('drop-target-bottom')).toBe(true)
     expect(featureItem.classList.contains('drop-target-top')).toBe(false)
   })
 
-  it('calls onSetRollbackPosition with correct index on rollback bar drop', () => {
+  it('calls onSetRollbackPosition with correct index on rollback bar release', () => {
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 4)
     renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
 
-    const rollbackBar = screen.getByTitle('Rollback')
-    const featureItem = screen.getByText('ex1').closest('.feature-item')!
-
-    vi.spyOn(featureItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100,
-      left: 0,
-      width: 200,
-      height: 40,
-      bottom: 140,
-      right: 200,
-      x: 0,
-      y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(rollbackBar, createDragEvent('dragstart'))
-    fireEvent(featureItem, createDragEvent('dragover', { clientY: 130 }))
-    fireEvent(featureItem, createDragEvent('drop'))
+    grabRollback(screen.getByTitle('Rollback'))
+    movePointer(190)
+    releasePointer(190)
 
     expect(onSetRollbackPosition).toHaveBeenCalledWith(5)
   })
 
+  it('releases the rollback bar while a rebuild is in progress', () => {
+    // Native drag-and-drop lost the release when applying a finished rebuild
+    // blocked the main thread past the last dragover, so the bar could not be
+    // let go mid-rebuild. Pointer events must commit regardless.
+    const onSetRollbackPosition = vi.fn()
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, 5)
+    usePartEditorStore.setState({ isRebuilding: true })
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
+
+    grabRollback(screen.getByTitle('Rollback'))
+    movePointer(170)
+    releasePointer(170)
+
+    expect(onSetRollbackPosition).toHaveBeenCalledWith(4)
+    expect(screen.getByTitle('Rollback').classList.contains('dragging')).toBe(false)
+  })
+
+  it('abandons the drag on Escape without moving the bar', () => {
+    const onSetRollbackPosition = vi.fn()
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, 5)
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
+
+    const rollbackBar = screen.getByTitle('Rollback')
+    grabRollback(rollbackBar)
+    movePointer(170)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    releasePointer(170)
+
+    expect(onSetRollbackPosition).not.toHaveBeenCalled()
+    expect(rollbackBar.classList.contains('dragging')).toBe(false)
+  })
+
   it('does not highlight built-in features during rollback bar drag', () => {
+    const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 1)
-    renderSidebar()
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
 
-    const rollbackBars = screen.getAllByTitle('Rollback')
     const originItem = screen.getByText('Origin').closest('.feature-item')!
 
-    vi.spyOn(originItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100,
-      left: 0,
-      width: 200,
-      height: 40,
-      bottom: 140,
-      right: 200,
-      x: 0,
-      y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(rollbackBars[0], createDragEvent('dragstart'))
-    fireEvent(originItem, createDragEvent('dragover', { clientY: 110 }))
-
+    grabRollback(screen.getAllByTitle('Rollback')[0])
+    movePointer(10)  // over Origin, which the bar may never be parked above
     expect(originItem.classList.contains('drop-target-top')).toBe(false)
     expect(originItem.classList.contains('drop-target-bottom')).toBe(false)
+
+    releasePointer(10)
+    expect(onSetRollbackPosition).toHaveBeenCalledWith(4)  // clamped past the built-ins
   })
 
   it('still reorders features when dragging a feature item', () => {
@@ -282,48 +305,63 @@ describe('rollback bar drag convergence', () => {
   })
 
   it('rollback bar is not draggable while a feature is being edited', () => {
-    const onRollbackDragStart = vi.fn()
+    const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 5)
     usePartEditorStore.setState({ editingFeatureId: 'ex1' })
-    renderSidebar(makeCallbacks({ onRollbackDragStart }))
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
 
     const rollbackBar = screen.getByTitle('Rollback')
-    expect(rollbackBar.getAttribute('draggable')).toBe('false')
-
-    fireEvent(rollbackBar, createDragEvent('dragstart'))
-    expect(onRollbackDragStart).not.toHaveBeenCalled()
+    grabRollback(rollbackBar)
     expect(rollbackBar.classList.contains('dragging')).toBe(false)
+
+    releasePointer(170)
+    expect(onSetRollbackPosition).not.toHaveBeenCalled()
   })
 
   it('mid-list rollback bar is not draggable while a feature is being edited', () => {
-    const onRollbackDragStart = vi.fn()
+    const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, sketchFeature, extrudeFeature]
     setupStore(features, 5)
     usePartEditorStore.setState({ editingFeatureId: 'sk1' })
-    renderSidebar(makeCallbacks({ onRollbackDragStart }))
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
 
     const rollbackBar = screen.getByTitle('Rollback')
-    expect(rollbackBar.getAttribute('draggable')).toBe('false')
+    grabRollback(rollbackBar)
+    expect(rollbackBar.classList.contains('dragging')).toBe(false)
 
-    fireEvent(rollbackBar, createDragEvent('dragstart'))
-    expect(onRollbackDragStart).not.toHaveBeenCalled()
+    releasePointer(170)
+    expect(onSetRollbackPosition).not.toHaveBeenCalled()
   })
 
-  it('end-of-list rollback bar can be dragged to set rollback to end', () => {
+  it('dragging the bar below every feature parks it at the end', () => {
+    const onSetRollbackPosition = vi.fn()
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, 4)
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
+
+    grabRollback(screen.getByTitle('Rollback'))
+    releasePointer(500)  // below every feature row
+
+    expect(onSetRollbackPosition).toHaveBeenCalledWith(5)
+  })
+
+  it('a click that does not move the bar commits nothing', () => {
+    // The bar is 10px tall and sits inside a click-happy tree; a stray press
+    // must not dirty the document with a rollback it never moved.
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 5)
     renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
 
-    const rollbackBars = screen.getAllByTitle('Rollback')
-    const lastRollbackBar = rollbackBars[rollbackBars.length - 1]
+    grabRollback(screen.getByTitle('Rollback'))
+    releasePointer(500)  // still past the last row, where the bar already is
 
-    fireEvent(lastRollbackBar, createDragEvent('dragstart'))
-    fireEvent(lastRollbackBar, createDragEvent('dragover'))
-    fireEvent(lastRollbackBar, createDragEvent('drop'))
-
-    expect(onSetRollbackPosition).toHaveBeenCalledWith(5)
+    expect(onSetRollbackPosition).not.toHaveBeenCalled()
   })
 })
 

@@ -18,7 +18,6 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
     onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
-    onRollbackDragStart: vi.fn(),
     onMutation: vi.fn(),
     onSetRollbackPosition: vi.fn(),
     ...overrides,
