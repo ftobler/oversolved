@@ -28,6 +28,8 @@ import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
  *   matching how the edge layer already behaves.
  */
 export { VERTEX_LAYER_NAME }
+export const VERTEX_CUBE_DEPTH_BIAS = -2e-4
+
 export interface VertexIdLayerConfig {
   name?: string
   priority?: number
@@ -37,6 +39,13 @@ export interface VertexIdLayerConfig {
    * instead of a 1-pixel depth-less point. See the class doc comment.
    */
   cubePixels?: number
+  /**
+   * Clip-space depth bias applied to cube vertices. Mirrors the edge layer's
+   * `EDGE_DEPTH_BIAS` pattern: a small negative bias moves the vertex cube
+   * slightly toward the camera so it reliably wins over coplanar faces and
+   * edges at all frustum depths. Only used when cubePixels is set.
+   */
+  depthBias?: number
 }
 
 export interface VertexBodyRegistration {
@@ -78,6 +87,7 @@ const CUBE_VERT_SHADER = `
   attribute vec3 aCorner;
   uniform float uHalfPixels;
   uniform float uViewportHeight;
+  uniform float uDepthBias;
   varying vec3 vColor;
 
   void main() {
@@ -86,11 +96,13 @@ const CUBE_VERT_SHADER = `
     float clipW = projectionMatrix[2][3] == 0.0 ? 1.0 : -view.z;
     float unitsPerPixel = (2.0 * clipW) / (projectionMatrix[1][1] * max(uViewportHeight, 1.0));
     view.xyz += aCorner * (uHalfPixels * unitsPerPixel);
-    gl_Position = projectionMatrix * view;
+    vec4 clip = projectionMatrix * view;
+    clip.z += uDepthBias * clip.w;
+    gl_Position = clip;
   }
 `
 
-function buildVertexIdMaterial(cubePixels?: number): THREE.ShaderMaterial {
+function buildVertexIdMaterial(cubePixels?: number, depthBias?: number): THREE.ShaderMaterial {
   if (cubePixels === undefined) {
     return new THREE.ShaderMaterial({
       vertexShader: VERT_SHADER,
@@ -105,6 +117,7 @@ function buildVertexIdMaterial(cubePixels?: number): THREE.ShaderMaterial {
     uniforms: {
       uHalfPixels: { value: cubePixels / 2 },
       uViewportHeight: { value: 1 },
+      uDepthBias: { value: depthBias ?? VERTEX_CUBE_DEPTH_BIAS },
     },
     // DoubleSide so the near cube face marks the pixel regardless of winding;
     // depthWrite stays off (as on edges) so the cubes do not punch 3px holes
@@ -180,7 +193,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
     this.priority = _config?.priority ?? 20
     this.zPolicy = _config?.zPolicy ?? 'no-depth'
     this.cubePixels = _config?.cubePixels
-    this.material = buildVertexIdMaterial(this.cubePixels)
+    this.material = buildVertexIdMaterial(this.cubePixels, _config?.depthBias)
   }
 
   /** Screen-space cube size in pixels, or undefined when drawing flat points. */

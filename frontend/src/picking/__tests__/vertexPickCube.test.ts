@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
 import { IdRegistry } from '../IdRegistry'
-import { VertexIdLayer } from '../VertexIdLayer'
+import { VertexIdLayer, VERTEX_CUBE_DEPTH_BIAS } from '../VertexIdLayer'
 import { IdPipeline, VERTEX_PICK_CUBE_PIXELS } from '../IdPipeline'
 import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES, pixelCubeHalfExtent } from '../screenSpaceScale'
 
@@ -123,6 +123,33 @@ describe('vertex pick cubes', () => {
     expect(reg.size()).toBe(1)
     expect((layer.scene.children[0] as THREE.Mesh).geometry.getAttribute('position').count).toBe(8)
     layer.dispose()
+  })
+
+  it('cube material carries a clip-space depth bias so vertices reliably win over faces and edges', () => {
+    const layer = cubeLayer(new IdRegistry())
+    const mat = (layer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
+    expect(mat.uniforms.uDepthBias).toBeDefined()
+    expect(mat.uniforms.uDepthBias.value).toBe(VERTEX_CUBE_DEPTH_BIAS)
+    layer.dispose()
+  })
+
+  it('custom depthBias config overrides the default', () => {
+    const reg = new IdRegistry()
+    const layer = new VertexIdLayer(reg, { cubePixels: 3, depthBias: -5e-4 })
+    layer.registerBody({ bodyKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
+    const mat = (layer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
+    expect(mat.uniforms.uDepthBias.value).toBe(-5e-4)
+    layer.dispose()
+  })
+
+  it('point-mode layers do not carry a depth bias uniform', () => {
+    const p = new IdPipeline({ width: 100, height: 100 })
+    for (const layer of [p.sketchVertexLayer, p.originLayer, p.dimensionLabelLayer]) {
+      layer.registerBody({ bodyKey: 'h', vertices: VERTICES, vertexQueries: QUERIES })
+      const mat = ((layer.scene.children[0] as THREE.Points).material as THREE.ShaderMaterial)
+      expect(mat.uniforms).not.toHaveProperty('uDepthBias')
+    }
+    p.dispose()
   })
 
   it('helper vertex layers are untouched: still 1px depth-less points', () => {
