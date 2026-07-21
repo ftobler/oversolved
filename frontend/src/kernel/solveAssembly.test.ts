@@ -58,6 +58,7 @@ function makeBundle(doc_id: string, doc_rev: number, overrides?: Partial<PartBun
           faceIdsPerTriangle: new Uint32Array([0, 0]),
         },
         edges: [],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
       },
     ],
     anchors: {
@@ -377,6 +378,33 @@ describe('solveAssembly', () => {
     ])
   })
 
+  it('rebuilds a cached bundle whose bodies lack entityAnchors (pre-Stage-7 cache)', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    // Cache a bundle deliberately missing entityAnchors on every body.
+    const stale = makeBundle('doc-a', 3, {
+      bodies: [{
+        mesh: {
+          vertices: new Float32Array([0, 0, 0]),
+          indices: new Uint32Array([]),
+          faceIdsPerTriangle: new Uint32Array([]),
+        },
+        edges: [],
+      }],
+    })
+    await bundleCachePut(stale)
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+    ]
+    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+
+    // The stale cache should force a rebuild: relay is called.
+    expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
+    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, expect.any(Object))
+  })
+
   // ── mate solve branch ────────────────────────────────────────────────
 
   it('solves a spherical mate between two parts', async () => {
@@ -521,6 +549,7 @@ describe('solveAssembly', () => {
           faceIdsPerTriangle: new Uint32Array([]),
         },
         edges: [],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
       }],
     }))
 
@@ -569,6 +598,7 @@ describe('solveAssembly', () => {
             endpoints: [[5, 0, 0], [5, 0, 0]],
           },
         ],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
       }],
     }))
 
@@ -623,6 +653,7 @@ describe('solveAssembly', () => {
             points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]],
           },
         ],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
       }],
     }))
 
@@ -668,6 +699,7 @@ describe('solveAssembly', () => {
           id: 'e_line', kind: 'line', point: [1, 0, 0], axis: [1, 0, 0],
           endpoints: [[0, 0, 0], [2, 0, 0]],
         }],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
       }],
     }))
 

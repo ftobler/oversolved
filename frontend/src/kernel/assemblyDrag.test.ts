@@ -51,6 +51,7 @@ function anchoredBundle(doc_id: string, axis: Vec3): PartBundle {
         faceIdsPerTriangle: new Uint32Array([0]),
       },
       edges: [],
+      entityAnchors: { faces: [], edges: [], vertices: [] },
     }],
     anchors: { hub: anchor },
   }

@@ -50,6 +50,7 @@ function planeBundle(doc_id: string, doc_rev: number): PartBundle {
         faceIdsPerTriangle: new Uint32Array([0]),
       },
       edges: [],
+      entityAnchors: { faces: [], edges: [], vertices: [] },
     }],
     anchors: {
       face: {

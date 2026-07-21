@@ -345,7 +345,13 @@ export async function solveAssembly(
 
     // Path 1: cache hit
     let bundle = await bundleCacheGet(part.doc_id, currentRev)
-    if (bundle) {
+    // A bundle cached before entityAnchors was introduced (Stage 7) carries
+    // no per-body entity anchor index; its vertices, edges and face mate refs
+    // are all invisible to the assembly pick pass. Treat it as a miss so the
+    // rebuild populates entityAnchors. A bundle is a derivable artifact, so
+    // a cold rebuild costs one OCC evaluation per stale part.
+    const hasEntityAnchors = bundle ? bundle.bodies.every(b => b.entityAnchors) : false
+    if (bundle && hasEntityAnchors) {
       partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
       bodyMeshes.set(part.handle, bundle.bodies)
       handleIndex++
