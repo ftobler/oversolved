@@ -55,6 +55,19 @@
   margin: 0;
 }
 
+/* loading cancel button */
+.loading-cancel-btn {
+  margin-top: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  pointer-events: auto;
+  text-decoration: underline;
+}
+
 @keyframes md3-rotate {
   100% {
     transform: rotate(360deg);

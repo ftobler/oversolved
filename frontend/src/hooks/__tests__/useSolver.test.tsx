@@ -12,7 +12,7 @@ const { mockUnflattenGeometry } = vi.hoisted(() => ({
 vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
 vi.mock('@/stores/solverStore', () => ({
-  useSolverStore: { getState: () => ({ setIsSolving: vi.fn() }) },
+  useSolverStore: { getState: () => ({ setIsSolving: vi.fn(), setOnCancelSolve: vi.fn(), onCancelSolve: null }) },
 }))
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'

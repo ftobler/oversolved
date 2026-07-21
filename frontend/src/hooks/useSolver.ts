@@ -10,7 +10,7 @@ import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/core/partColors'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
-import { solveViaWorker } from '@/kernel/worker/solverClient'
+import { solveViaWorker, cancelSolver } from '@/kernel/worker/solverClient'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
@@ -358,8 +358,10 @@ export function useSolver(
       if (!cancelledRef.current) setSolving(false)
     } catch (e) {
       const msg = String(e)
-      setSolveError(msg)
-      setSolveRawResult(msg)
+      if (msg !== 'Error: solve cancelled' && msg !== 'Error: solver worker timed out') {
+        setSolveError(msg)
+        setSolveRawResult(msg)
+      }
     } finally {
       if (isCurrent()) setSolving(false)
     }
@@ -368,6 +370,15 @@ export function useSolver(
   useEffect(() => {
     cancelledRef.current = false
     return () => { cancelledRef.current = true }
+  }, [])
+
+  useEffect(() => {
+    useSolverStore.getState().setOnCancelSolve(() => {
+      cancelSolver()
+    })
+    return () => {
+      useSolverStore.getState().setOnCancelSolve(null)
+    }
   }, [])
 
   useEffect(() => {

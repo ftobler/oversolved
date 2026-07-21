@@ -55,10 +55,12 @@ interface Pending {
   timer: ReturnType<typeof setTimeout> | null
 }
 
-// Watchdog ceiling for a single Worker request. Generous enough that a heavy but
-// finite solve/export finishes normally; a request still pending past it is
-// treated as a hung Worker and force-killed. Adjustable for tests.
-let solveTimeoutMs = 30000
+// Watchdog ceiling for a single Worker request. Set to Infinity to disable the
+// automated timeout (the UI provides a user-initiated cancel button instead).
+// Tests can lower via setSolverTimeoutForTest(). When Infinity, no timer is
+// created — `setTimeout(fn, Infinity)` is spec-equivalent to 0, which would kill
+// every request immediately.
+let solveTimeoutMs = Infinity
 
 function defaultFactory(): SolverWorkerLike | null {
   try {
@@ -115,6 +117,11 @@ function onTimeout(): void {
   dropWorker(new Error('solver worker timed out'))
 }
 
+/** User-initiated cancel: kill the Worker so any in-flight solve is rejected. */
+export function cancelSolver(): void {
+  dropWorker(new Error('solve cancelled'))
+}
+
 function ensureWorker(): SolverWorkerLike | null {
   if (worker) return worker
   const w = workerFactory()
@@ -138,7 +145,7 @@ function sendRequest<T>(
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<T | null>((resolve, reject) => {
-    const timer = setTimeout(onTimeout, solveTimeoutMs)
+    const timer = isFinite(solveTimeoutMs) ? setTimeout(onTimeout, solveTimeoutMs) : null
     pending.set(id, { resolve: (res) => resolve(extract(res)), reject, timer })
     w.postMessage(buildMsg(id))
   })
