@@ -62,13 +62,23 @@ function pushBoundary(out: number[], segments: Float32Array): void {
  * Split every pickable face triangle, edge segment and vertex into selected /
  * hovered / neither, keeping only the first two. Returns the shared empty result
  * when nothing is selected or hovered, so an idle scene allocates nothing.
+ *
+ * `mateHighlighted` draws in the same hover colour as `hovered`, for a mate
+ * selected in the feature tree: its referenced geometry should read exactly
+ * like the mouse is resting on it, without a second colour to invent. An
+ * entity named by both `selection` and `mateHighlighted` still draws only
+ * once, in the selected colour.
  */
 export function buildAssemblySelectionGeometry(
   pickBodies: readonly AssemblyPickBody[],
   selection: ReadonlySet<string>,
   hovered: string | null,
+  mateHighlighted?: ReadonlySet<string>,
 ): AssemblySelectionGeometry {
-  if (selection.size === 0 && hovered === null) return EMPTY
+  const hasMateHighlight = mateHighlighted !== undefined && mateHighlighted.size > 0
+  if (selection.size === 0 && hovered === null && !hasMateHighlight) return EMPTY
+
+  const isHoverColor = (query: string): boolean => query === hovered || (mateHighlighted?.has(query) ?? false)
 
   const selFaces: number[] = []
   const hovFaces: number[] = []
@@ -88,7 +98,7 @@ export function buildAssemblySelectionGeometry(
         const query = faceQueries[triangleToFace[tri]]
         if (query === undefined) continue
         if (selection.has(query)) pushTriangle(selFaces, positions, tri)
-        else if (query === hovered) pushTriangle(hovFaces, positions, tri)
+        else if (isHoverColor(query)) pushTriangle(hovFaces, positions, tri)
       }
 
       if (faceBoundaries) {
@@ -99,7 +109,7 @@ export function buildAssemblySelectionGeometry(
           // Selection wins over hover, same as the tint above: a face that is
           // both draws its selected-colour outline only.
           if (selection.has(query)) pushBoundary(selFaceBoundary, segments)
-          else if (query === hovered) pushBoundary(hovFaceBoundary, segments)
+          else if (isHoverColor(query)) pushBoundary(hovFaceBoundary, segments)
         }
       }
     }
@@ -110,7 +120,7 @@ export function buildAssemblySelectionGeometry(
         const query = edgeQueries[segmentToEdge[seg]]
         if (query === undefined) continue
         if (selection.has(query)) pushSegment(selEdges, segmentPositions, seg)
-        else if (query === hovered) pushSegment(hovEdges, segmentPositions, seg)
+        else if (isHoverColor(query)) pushSegment(hovEdges, segmentPositions, seg)
       }
     }
 
@@ -119,7 +129,7 @@ export function buildAssemblySelectionGeometry(
       points.forEach((p, i) => {
         const query = vertexQueries[i]
         if (selection.has(query)) selVerts.push(p)
-        else if (query === hovered) hovVerts.push(p)
+        else if (isHoverColor(query)) hovVerts.push(p)
       })
     }
   }

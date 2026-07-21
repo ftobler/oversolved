@@ -16,6 +16,9 @@ interface Props {
   pickBodies: readonly AssemblyPickBody[]
   selection: ReadonlySet<string>
   hovered: string | null
+  /** Entity keys to draw in the hover colour alongside `hovered`, e.g. a mate
+   *  selected in the feature tree highlighting the geometry it references. */
+  mateHighlighted?: ReadonlySet<string>
 }
 
 // A no-op raycast keeps R3F from ever hitting these visual-only overlays.
@@ -76,10 +79,10 @@ function usePointsGeometry(points: readonly Vec3[]): THREE.BufferGeometry | null
   return geo
 }
 
-export default function AssemblySelectionHighlight({ pickBodies, selection, hovered }: Props) {
+export default function AssemblySelectionHighlight({ pickBodies, selection, hovered, mateHighlighted }: Props) {
   const geometry = useMemo(
-    () => buildAssemblySelectionGeometry(pickBodies, selection, hovered),
-    [pickBodies, selection, hovered],
+    () => buildAssemblySelectionGeometry(pickBodies, selection, hovered, mateHighlighted),
+    [pickBodies, selection, hovered, mateHighlighted],
   )
 
   const selFaces = useTriMesh(geometry.selectedFaces)

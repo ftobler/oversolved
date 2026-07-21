@@ -63,6 +63,25 @@
   color: #ff6b6b;
 }
 
+/* Cross-highlight: selecting a part or mate row draws its counterparts in the
+   other pane with the same look as a mouse hover, so the relation reads
+   without inventing a second visual language. */
+.feature-item.related {
+  background: #222;
+  border-color: #4fc3f7;
+  color: white;
+}
+
+/* A row can be both the driver of a cross-highlight and, via a self-mate, its
+   own target. Three classes outrank .selected or .related alone (each two),
+   so the selected look always wins regardless of Part.css/Assembly.css import
+   order or rule position within either file. */
+.feature-item.selected.related {
+  background: #1a1a2a;
+  color: white;
+  outline: 1px solid #1e3a4a;
+}
+
 .assembly-tree-list {
   list-style: none;
   margin: 0;

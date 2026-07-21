@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { MateResult } from '@/kernel/solveAssembly'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
+import { relatedMateIds, relatedPartHandles } from '@/utils/assemblyTreeHighlight'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
@@ -153,6 +154,13 @@ export function AssemblyTree({
   // Per-kind ordinal for the default mate name ('Fixed 1', 'Parallel 2', ...).
   const kindOrdinal: Record<string, number> = {}
 
+  // Cross-highlight: a selected part row lights up the mates that reference it,
+  // and a selected mate row lights up the two parts it mates. Symmetric and
+  // pane-crossing only -- the row that is actually selected never also carries
+  // .related, since each function only looks at the other pane's selection.
+  const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedHandle), [mates, selectedHandle])
+  const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, selectedMateId), [mates, selectedMateId])
+
   return (
     <div className="assembly-tree" ref={rootRef}>
       <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
@@ -196,6 +204,7 @@ export function AssemblyTree({
             const visible = inst.visible !== false
             const label = labelFor?.(inst.handle) || inst.doc_id
             const selected = selectedHandle === inst.handle
+            const related = highlightedPartHandles.has(inst.handle)
             const editing = editingInstanceHandle === inst.handle
             const menuItems: ContextMenuItem[] = [
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
@@ -210,7 +219,7 @@ export function AssemblyTree({
             return (
               <li
                 key={inst.handle}
-                className={`feature-item${selected ? ' selected' : ''}${editing ? ' editing' : ''}${visible ? '' : ' invisible'}${dragOverKey === `part:${inst.handle}` ? ' drag-over' : ''}`}
+                className={`feature-item${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${visible ? '' : ' invisible'}${dragOverKey === `part:${inst.handle}` ? ' drag-over' : ''}`}
                 aria-selected={selected}
                 onClick={() => onSelectPart?.(inst.handle)}
                 // Not draggable while its inline editor is open: a draggable
@@ -339,6 +348,7 @@ export function AssemblyTree({
             const name = mate.label || defaultName
             const stale = !!mateResults?.[id]?.stale
             const selected = selectedMateId === id
+            const related = highlightedMateIds.has(id)
             const editing = editingMateId === id
             const menuItems: ContextMenuItem[] = [
               { label: 'Rename', icon: iconRenameIcon, onClick: () => onRequestRenameMate(id, name) },
@@ -347,7 +357,7 @@ export function AssemblyTree({
             return (
               <li
                 key={id}
-                className={`feature-item mate-item${stale ? ' stale' : ''}${selected ? ' selected' : ''}${editing ? ' editing' : ''}${dragOverKey === `mate:${id}` ? ' drag-over' : ''}`}
+                className={`feature-item mate-item${stale ? ' stale' : ''}${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${dragOverKey === `mate:${id}` ? ' drag-over' : ''}`}
                 aria-selected={selected}
                 title={stale ? 'A reference no longer resolves; re-pick it.' : undefined}
                 onClick={() => onSelectMate?.(id)}

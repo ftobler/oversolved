@@ -40,6 +40,7 @@ import {
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
+import { entityKeysForMate } from '@/utils/mateHighlight'
 import {
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
@@ -203,6 +204,18 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     ? lookupAnchor(anchors, selectedMate.ref_a)
     : undefined
   const rollGuideAngleDeg = typeof selectedMate?.angle === 'number' ? selectedMate.angle : 0
+  // Selecting a mate in the tree highlights the geometry its refs resolve to,
+  // in the same colour a hover would use. Deps are the whole values, not
+  // sub-fields like `selectedMate?.ref_a.part`: `mates` is itself memoized on
+  // `doc` (useAssemblyDoc.ts), so `selectedMate`'s identity is already stable
+  // across renders that do not mutate the document, and this Set must stay
+  // referentially stable too -- it feeds AssemblySelectionHighlight's own
+  // useMemo, and a fresh Set every render would rebuild the highlight's
+  // Float32Arrays and dispose/recreate every THREE.BufferGeometry each frame.
+  const mateHighlighted = useMemo(
+    () => entityKeysForMate(selectedMate, entityMateRefs),
+    [selectedMate, entityMateRefs],
+  )
   const rollGuideSpec = useMemo((): RollGuideSpec | null => {
     if (!rollGuideAnchor) return null
     return { point: [...rollGuideAnchor.point] as Vec3, axis: [...rollGuideAnchor.axis] as Vec3, angleDeg: rollGuideAngleDeg }
@@ -582,6 +595,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
             pickBodies={pickGeometry}
             selection={selection}
             hovered={hoveredEntity}
+            mateHighlighted={mateHighlighted}
           />
         )}
 

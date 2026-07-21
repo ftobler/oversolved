@@ -92,4 +92,29 @@ describe('buildAssemblySelectionGeometry', () => {
     expect(g.selectedFaces.length).toBe(9)
     expect(g.selectedFaceBoundary.length).toBe(0)
   })
+
+  it('draws mate-highlighted keys in the hover buffers', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(), null, new Set(['f1', 'e0']))
+    expect(Array.from(g.hoveredFaces)).toEqual([2, 0, 0, 3, 0, 0, 2, 1, 0])
+    expect(Array.from(g.hoveredEdges)).toEqual([0, 0, 0, 1, 1, 1])
+    expect(g.selectedFaces.length).toBe(0)
+  })
+
+  it('a key that is both selected and mate-highlighted draws only in the selected colour', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(['f0']), null, new Set(['f0']))
+    expect(g.selectedFaces.length).toBe(9)
+    expect(g.hoveredFaces.length).toBe(0)
+  })
+
+  it('a mate-highlighted key alongside a separately hovered key draws both in the hover buffer', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(), 'e0', new Set(['f1']))
+    expect(Array.from(g.hoveredFaces)).toEqual([2, 0, 0, 3, 0, 0, 2, 1, 0])
+    expect(Array.from(g.hoveredEdges)).toEqual([0, 0, 0, 1, 1, 1])
+  })
+
+  it('allocates nothing when mateHighlighted is an empty set and nothing else is active', () => {
+    const g = buildAssemblySelectionGeometry([body()], new Set(), null, new Set())
+    expect(g.hoveredFaces.length).toBe(0)
+    expect(g.selectedFaces.length).toBe(0)
+  })
 })
