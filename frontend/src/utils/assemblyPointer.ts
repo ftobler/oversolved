@@ -35,6 +35,10 @@ import type { Vec3 } from '@/utils/transform3d'
 /** The subset of assemblyStore the adapter drives. */
 export interface AssemblyPointerStore {
   beginPartManipulation: (handle: string) => boolean
+  /** A body grab: begins a solver-driven session, capturing the grab point. */
+  beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
+  /** Where the grab point is being pulled to, in world space. */
+  setDragTarget: (target: Vec3) => void
   dragPartTranslate: (delta: Vec3) => void
   rotatePartGizmo: (axis: Vec3, angle: number, pivot?: Vec3) => void
   endPartManipulation: () => void
@@ -98,6 +102,11 @@ export function missClearsSelection(gesture: ClickGestureState, adapterActive: b
 }
 
 type Gesture =
+  // A body grab: solver-driven. The move feeds the cursor's world position (the
+  // hit on the grab plane) to the solver as the target for the grab point, and
+  // the SOLVED pose drives the part. Distinct from `plane` (a triad handle),
+  // which drives the part geometrically by a translation delta.
+  | { kind: 'bodyDrag'; grab: Vec3; normal: Vec3 }
   | { kind: 'plane'; grab: Vec3; normal: Vec3 }
   | { kind: 'axis'; axis: Vec3; origin: Vec3; startParam: number }
   // `swing` is the running total since pointer-down, the one piece of gesture
@@ -167,8 +176,8 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
 
   const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3): boolean => {
     store.setSelectedPartHandle(handle)
-    if (!store.beginPartManipulation(handle)) return false
-    return open({ kind: 'plane', grab, normal: viewNormal }, 'body')
+    if (!store.beginBodyDrag(handle, grab)) return false
+    return open({ kind: 'bodyDrag', grab, normal: viewNormal }, 'body')
   }
 
   const onGizmoPointerDown = (
@@ -225,6 +234,17 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
 
   const onPointerMove = (ray: Ray, gizmoWorldScale?: number): void => {
     if (!gesture) return
+
+    if (gesture.kind === 'bodyDrag') {
+      const hit = intersectRayPlane(ray, gesture.grab, gesture.normal)
+      if (!hit) return
+      // A hit back on the grab point is a zero-move click: it must not ask for a
+      // solve, so the release stays a plain select.
+      if (hit[0] === gesture.grab[0] && hit[1] === gesture.grab[1] && hit[2] === gesture.grab[2]) return
+      moved = true
+      store.setDragTarget(hit)
+      return
+    }
 
     if (gesture.kind === 'plane') {
       const hit = intersectRayPlane(ray, gesture.grab, gesture.normal)

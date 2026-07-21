@@ -31,11 +31,21 @@ export const assemblyAnchors: Record<string, Anchor> = Object.fromEntries(
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
+export interface MateRefSpec {
+  part: string
+  anchor: string
+  /** Inline anchor geometry that bypasses the bundle/assembly-frame lookup.
+   *  Set for synthetic mates whose anchor is not authored in any part document,
+   *  the live drag objective being the one caller (see kernel/assemblyDrag.ts):
+   *  its grab point is a per-drag point on the part, not a picked B-rep entity. */
+  inlineAnchor?: Anchor
+}
+
 export interface MateSpec {
   id: string
   kind: MateKind | string
-  ref_a: { part: string; anchor: string }
-  ref_b: { part: string; anchor: string }
+  ref_a: MateRefSpec
+  ref_b: MateRefSpec
   flip?: boolean
   /** Either authoring form; `mateOffsetVector` normalizes it at the wire. */
   offset?: MateOffset
@@ -390,12 +400,18 @@ export async function solveAssembly(
   // to the static assembly-frame anchors; any other handle routes to that part
   // instance's bundle. A missing bundle or missing anchor yields undefined,
   // which the caller flags as a stale ref (fail-safe over fail-wrong).
-  const resolveRef = (ref: { part: string; anchor: string }): { anchor: Anchor | undefined; bodyIndex: number } => {
+  const resolveRef = (ref: MateRefSpec): { anchor: Anchor | undefined; bodyIndex: number } => {
+    const bodyIndex = ref.part === ASSEMBLY_HANDLE
+      ? assemblyBodyIndex
+      : (handleToIndex.get(ref.part) ?? -1)
+    // An inline anchor is authored on the ref itself (the drag objective), so it
+    // resolves against neither a part bundle nor the static assembly frame.
+    if (ref.inlineAnchor) return { anchor: ref.inlineAnchor, bodyIndex }
     if (ref.part === ASSEMBLY_HANDLE) {
-      return { anchor: assemblyAnchors[ref.anchor], bodyIndex: assemblyBodyIndex }
+      return { anchor: assemblyAnchors[ref.anchor], bodyIndex }
     }
     const b = partBundles.get(ref.part)
-    return { anchor: b?.anchors[ref.anchor], bodyIndex: handleToIndex.get(ref.part) ?? -1 }
+    return { anchor: b?.anchors[ref.anchor], bodyIndex }
   }
 
   for (const mate of mates) {

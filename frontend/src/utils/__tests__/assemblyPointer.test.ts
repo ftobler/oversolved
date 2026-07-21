@@ -53,6 +53,8 @@ function mountHost(initial: AssemblyDoc) {
   const swings: number[] = []
   const adapter = createAssemblyPointerAdapter({
     beginPartManipulation: store.beginPartManipulation,
+    beginBodyDrag: store.beginBodyDrag,
+    setDragTarget: store.setDragTarget,
     dragPartTranslate: store.dragPartTranslate,
     rotatePartGizmo: (axis, angle, pivot) => {
       swings.push(angle)
@@ -66,7 +68,15 @@ function mountHost(initial: AssemblyDoc) {
   return { host, requestSolve, adapter, swings }
 }
 
+// A body grab is solver-driven now (the rigid, grab-point rework): the adapter
+// captures the grab point and feeds the cursor as the target, and the SOLVED pose
+// drives the part. With no solver mounted here the store's manipulation.current is
+// only advanced by a simulated solve (setDragSolvedPose), which stands in for what
+// useAssemblySolve does after each live solve.
 describe('assembly pointer adapter (body drag)', () => {
+  const IDENT = { ...IDENTITY_TRANSFORM }
+  const solved = (tx: number, ty: number) => useAssemblyStore.getState().setDragSolvedPose({ ...IDENT, tx, ty, tz: 0 })
+
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().cancelPartManipulation()
@@ -74,21 +84,58 @@ describe('assembly pointer adapter (body drag)', () => {
     setAssemblyCallbacks(null)
   })
 
-  it('a hit on a free part opens one session and pointer-up commits once', () => {
-    const { host, requestSolve, adapter } = mountHost(docWith(instance('p1')))
+  it('opens a session, targets the cursor world point, and re-solves on the move', () => {
+    const { requestSolve, adapter } = mountHost(docWith(instance('p1')))
 
     expect(adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)).toBe(true)
     expect(adapter.isActive()).toBe(true)
 
     // Pointer drags to (3, 4) in the plane z = 0 facing the camera.
     adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
-    expect(requestSolve).toHaveBeenCalledTimes(1)  // live solve: the rest follows
+    expect(requestSolve).toHaveBeenCalledTimes(1)  // live solve: the whole scene follows
+    // The objective pulls the grab point to the cursor's world position on the plane.
+    expect(useAssemblyStore.getState().manipulation!.dragObjective!.target).toEqual([3, 4, 0])
+  })
 
+  it('commits the SOLVED pose the drag solve produced, not the raw cursor', () => {
+    const { host, requestSolve, adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
+    // The solver brought the free part's grab point onto the cursor: pose (3, 4).
+    solved(3, 4)
     adapter.onPointerUp()
 
-    expect(requestSolve).toHaveBeenCalledTimes(2)  // plus the final commit solve
+    expect(requestSolve).toHaveBeenCalledTimes(2)  // live tick + commit
     expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3, ty: 4, tz: 0 })
     expect(adapter.isActive()).toBe(false)
+  })
+
+  // Rigid, no stretch: if the solver could only reach part-way (a constraint held
+  // the part back), the committed pose is that solved pose, never the cursor.
+  it('commits where the constraints allowed, not where the pointer went', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    adapter.onPointerMove(ray([10, 10, 10], [0, 0, -1]))  // cursor way out at (10, 10)
+    solved(2, 0)  // the solver only got the part to (2, 0)
+    adapter.onPointerUp()
+
+    // The committed pose is the solved one, not the (10, 10) the pointer asked for.
+    expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 2, ty: 0, tz: 0 })
+  })
+
+  it('captures the grab point in the part frame', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+
+    adapter.onBodyPointerDown('p1', [1, 1, 0], VIEW_NORMAL)
+    adapter.onPointerMove(ray([4, 1, 10], [0, 0, -1]))
+
+    const obj = useAssemblyStore.getState().manipulation!.dragObjective!
+    // Part at identity, so the local grab equals the world grab; the target is the
+    // cursor's world point on the grab plane.
+    expect(obj.localGrab).toEqual([1, 1, 0])
+    expect(obj.target).toEqual([4, 1, 0])
   })
 
   it('a hit on a fixed part selects it but starts no session', () => {
@@ -106,16 +153,6 @@ describe('assembly pointer adapter (body drag)', () => {
     expect(requestSolve).not.toHaveBeenCalled()
   })
 
-  it('the drag delta is measured from the grab point, not the world origin', () => {
-    const { host, adapter } = mountHost(docWith(instance('p1')))
-
-    adapter.onBodyPointerDown('p1', [1, 1, 0], VIEW_NORMAL)
-    adapter.onPointerMove(ray([4, 1, 10], [0, 0, -1]))
-    adapter.onPointerUp()
-
-    expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3, ty: 0, tz: 0 })
-  })
-
   it('a pointer-up with no session commits nothing', () => {
     const { requestSolve, adapter } = mountHost(docWith(instance('p1')))
     adapter.onPointerUp()
@@ -128,6 +165,7 @@ describe('assembly pointer adapter (body drag)', () => {
 
     adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
     adapter.onPointerMove(ray([5, 0, 10], [0, 0, -1]))  // one live solve
+    solved(5, 0)  // the solve landed, so the part has moved
     adapter.cancel()  // one restore solve
     adapter.onPointerUp()
 
@@ -572,23 +610,27 @@ describe('assembly pointer adapter (triad plane handles)', () => {
     expect(requestSolve).not.toHaveBeenCalled()
   })
 
-  it('the body grab and a plane handle run the very same gesture', () => {
-    // Both are a plane-constrained drag; the body's plane is just the one
-    // facing the camera. A regression that splits them would show here.
+  // The body grab and the plane handle are now DIFFERENT gestures: the body grab
+  // is solver-driven (drag objective, no gizmoDrag state), the plane handle is a
+  // geometric translation of the whole part (a triad drag). This asserts the
+  // split rather than the old equivalence -- the body grab opens no triad drag.
+  it('the body grab is solver-driven while the plane handle is a geometric triad drag', () => {
     const bodyRun = mountHost(docWith(instance('p1')))
     bodyRun.adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
     bodyRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
+    expect(useAssemblyStore.getState().manipulation!.dragObjective).toBeDefined()
+    expect(useAssemblyStore.getState().gizmoDrag).toBeNull()
     bodyRun.adapter.onPointerUp()
 
     const handleRun = mountHost(docWith(instance('p1')))
-    // VIEW_NORMAL is -Z, so the equivalent handle is the XY quad grabbed at
-    // the gizmo origin, which is where the body grab point sat too.
     handleRun.adapter.onGizmoPointerDown('p1', 'plane', 'z', VIEW_NORMAL, [1, 0, 0], [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))
     handleRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
+    // A triad drag carries no drag objective and does publish a gizmoDrag.
+    expect(useAssemblyStore.getState().manipulation!.dragObjective).toBeUndefined()
+    expect(useAssemblyStore.getState().gizmoDrag).toEqual({ kind: 'plane', axis: 'z' })
     handleRun.adapter.onPointerUp()
-
-    expect(findInstance(handleRun.host.doc, 'p1')!.transform)
-      .toEqual(findInstance(bodyRun.host.doc, 'p1')!.transform)
+    // The triad drag still commits its geometric translation with no solver.
+    expect(findInstance(handleRun.host.doc, 'p1')!.transform).toMatchObject({ tx: 3, ty: 4, tz: 0 })
   })
 })
 

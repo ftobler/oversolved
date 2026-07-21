@@ -12,6 +12,7 @@
 
 import type { AssemblyDoc, PartInstance, Transform3D } from '@/types/cad'
 import { findInstance, setInstanceTransform } from '@/utils/assemblyMutations'
+import { captureGrabPoint, type DragObjective } from '@/kernel/assemblyDrag'
 import {
   composeTransforms,
   IDENTITY_TRANSFORM,
@@ -29,6 +30,14 @@ export interface ManipulationSession {
   seed: Transform3D
   /** The live preview transform; written to the doc on commit. */
   current: Transform3D
+  /**
+   * Set for a body grab: the grab point (part-local) and the world point the
+   * pointer is pulling it to. A grab drag is solver-driven -- the solver brings
+   * the grab point to the target subject to the mates, and `current` is then set
+   * from the SOLVED pose (setDragSolvedPose), never from the raw cursor. Absent
+   * for a triad gizmo drag, which drives `current` geometrically instead.
+   */
+  dragObjective?: DragObjective
 }
 
 /** An instance carrying the `fixed` flag (the per-instance flag, not the fixed
@@ -42,6 +51,49 @@ export function beginManipulation(doc: AssemblyDoc, handle: string): Manipulatio
   const inst = findInstance(doc, handle)
   if (!isManipulable(inst)) return null
   return { handle, seed: { ...inst!.transform }, current: { ...inst!.transform } }
+}
+
+/**
+ * Begin a body grab: a manipulation carrying a drag objective. `drawnWorld` is
+ * the part's current on-screen pose (its solved pose plus any settling offset),
+ * which is what the grab point must be captured against -- a mate can have pulled
+ * the part off its doc seed, and the grab landed on where the part is DRAWN.
+ */
+export function beginBodyManipulation(
+  doc: AssemblyDoc,
+  handle: string,
+  worldGrab: Vec3,
+  drawnWorld: Transform3D,
+): ManipulationSession | null {
+  const session = beginManipulation(doc, handle)
+  if (!session) return null
+  return {
+    ...session,
+    dragObjective: { handle, localGrab: captureGrabPoint(worldGrab, drawnWorld), target: worldGrab },
+  }
+}
+
+/** Move where the grab point is being pulled to; the next solve reads this. */
+export function setDragTarget(session: ManipulationSession, target: Vec3): ManipulationSession {
+  if (!session.dragObjective) return session
+  return { ...session, dragObjective: { ...session.dragObjective, target } }
+}
+
+/**
+ * Fold the grab's SOLVED pose into the session so the drawn part and the eventual
+ * commit both track the solver, not the cursor. `solvedGrab` is the grabbed
+ * part's pose from the drag solve, `drawnBaked` the pose its bodies are still
+ * baked at (the drag drops it from the re-baked set). The render offset carries
+ * the baked mesh onto the solved pose, so `current` is set to reproduce exactly
+ * that through `manipulationDelta`.
+ */
+export function setDragSolvedPose(
+  session: ManipulationSession,
+  solvedGrab: Transform3D,
+  drawnBaked: Transform3D,
+): ManipulationSession {
+  const delta = relativeTransform(solvedGrab, drawnBaked)
+  return { ...session, current: composeTransforms(delta, session.seed) }
 }
 
 /** `delta` is the world-space translation since pointer-down. */

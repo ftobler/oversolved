@@ -4,7 +4,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { MateResult } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { bakeSolvedTransforms, findMate, removeInstance, removeMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
+import { bakeSolvedTransforms, findInstance, findMate, removeInstance, removeMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
@@ -51,11 +51,14 @@ function sameEntityHits(a: readonly EntityHit[], b: readonly EntityHit[]): boole
   return a.length === b.length && a.every((h, i) => h.entityKey === b[i].entityKey)
 }
 import {
+  beginBodyManipulation,
   beginManipulation,
   commitManipulation,
   dragTranslate,
   gizmoRotate,
   manipulationDelta,
+  setDragSolvedPose as setDragSolvedPoseOnSession,
+  setDragTarget as setDragTargetOnSession,
   settledTransforms,
   type ManipulationSession,
 } from '@/utils/partManipulation'
@@ -243,6 +246,17 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setGizmoDrag: (drag: GizmoDragState | null) => void
   /** Pointer-down on a part body or its triad. No-op for a `fixed` instance. */
   beginPartManipulation: (handle: string) => boolean
+  /**
+   * Pointer-down on a part body: begin a solver-driven grab, capturing the model
+   * point under the cursor. `worldGrab` is that point in world space. No-op for a
+   * `fixed` instance.
+   */
+  beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
+  /** Move where the grabbed point is pulled to; re-solves so the part tracks it. */
+  setDragTarget: (target: Vec3) => void
+  /** Fold the drag solve's grabbed-part pose into the session (what it draws and
+   *  commits), so the part shows the SOLVED pose rather than the raw cursor. */
+  setDragSolvedPose: (solvedGrab: Transform3D) => void
   /** `delta` / `angle` are measured from pointer-down, not from the last frame. */
   dragPartTranslate: (delta: Vec3) => void
   rotatePartGizmo: (axis: Vec3, angle: number, pivot?: Vec3) => void
@@ -430,6 +444,37 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     if (!session) return false
     set({ manipulation: session })
     return true
+  },
+
+  beginBodyDrag: (handle, worldGrab) => {
+    const { doc, transforms, settlingOffsets } = get()
+    if (!doc) return false
+    // The grab landed on where the part is DRAWN: its solved pose carried by any
+    // settling offset, falling back to the doc seed before the first solve.
+    const drawn = settledTransforms(transforms, settlingOffsets)[handle]
+      ?? findInstance(doc, handle)?.transform
+    if (!drawn) return false
+    const session = beginBodyManipulation(doc, handle, worldGrab, drawn)
+    if (!session) return false
+    set({ manipulation: session })
+    return true
+  },
+
+  setDragTarget: (target) => {
+    const { manipulation } = get()
+    if (!manipulation?.dragObjective) return
+    set({ manipulation: setDragTargetOnSession(manipulation, target) })
+    // Every move re-solves: the grabbed part and the rest of the assembly are
+    // solved together against the drag objective, so the whole scene stays rigid.
+    callbacks?.requestSolve()
+  },
+
+  setDragSolvedPose: (solvedGrab) => {
+    const { manipulation, transforms, settlingOffsets } = get()
+    if (!manipulation?.dragObjective) return
+    const drawnBaked = settledTransforms(transforms, settlingOffsets)[manipulation.handle]
+      ?? manipulation.seed
+    set({ manipulation: setDragSolvedPoseOnSession(manipulation, solvedGrab, drawnBaked) })
   },
 
   // Every move re-solves so the rest of the assembly follows the dragged part

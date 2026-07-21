@@ -134,6 +134,8 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
   const adapter = useMemo(() => createAssemblyPointerAdapter({
     beginPartManipulation: (h) => useAssemblyStore.getState().beginPartManipulation(h),
+    beginBodyDrag: (h, grab) => useAssemblyStore.getState().beginBodyDrag(h, grab),
+    setDragTarget: (t) => useAssemblyStore.getState().setDragTarget(t),
     dragPartTranslate: (d) => useAssemblyStore.getState().dragPartTranslate(d),
     rotatePartGizmo: (a, angle, pivot) => useAssemblyStore.getState().rotatePartGizmo(a, angle, pivot),
     endPartManipulation: () => useAssemblyStore.getState().endPartManipulation(),
