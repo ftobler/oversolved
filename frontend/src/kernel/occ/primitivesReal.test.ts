@@ -22,6 +22,9 @@ import {
   makeFaceFromWire,
   makePrism,
   makeWire,
+  readEdgeSamplePoints,
+  readSolidEdges,
+  readSolidVertices,
   type SurfaceType,
   type Vec3,
 } from './primitives'
@@ -353,6 +356,83 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       }
     } finally {
       scope.dispose()
+    }
+  })
+
+  // Topological-identity dedup (occ-o-n-dedup-primitives): the explorer yields
+  // each shared edge/vertex once per owning face, so the readers must collapse
+  // those raw hits to the true unique count. A box's 12 edges are each shared by
+  // 2 faces (24 raw hits) and its 8 vertices by 3 (24 raw hits).
+  it('readSolidEdges dedups a box to its 12 unique edges', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
+    const scope = new DisposeScope()
+    try {
+      const edges = readSolidEdges(occ, scope, table.get(h))
+      expect(edges).toHaveLength(12)
+    } finally {
+      scope.dispose()
+      table.release(h)
+    }
+  })
+
+  it('readSolidVertices dedups a box to its 8 unique vertices', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
+    const scope = new DisposeScope()
+    try {
+      const verts = readSolidVertices(occ, scope, table.get(h))
+      expect(verts).toHaveLength(8)
+      // The eight corners of a 10x10x5 box, deduped and complete.
+      const key = (v: Vec3): string => v.map((x) => Math.round(x * 1e6) / 1e6).join(',')
+      const got = new Set(verts.map(key))
+      const want = new Set(
+        ([
+          [0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
+          [0, 0, 5], [10, 0, 5], [0, 10, 5], [10, 10, 5],
+        ] as Vec3[]).map(key),
+      )
+      expect(got).toEqual(want)
+    } finally {
+      scope.dispose()
+      table.release(h)
+    }
+  })
+
+  it('readSolidEdges/Vertices dedup a cylinder to 3 edges and 2 vertices', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildCylinder(occ, table, {
+      center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10, owner: 'cyl',
+    })
+    const scope = new DisposeScope()
+    try {
+      // Two circular cap edges + one vertical seam edge; the seam's two endpoints.
+      expect(readSolidEdges(occ, scope, table.get(h))).toHaveLength(3)
+      expect(readSolidVertices(occ, scope, table.get(h))).toHaveLength(2)
+    } finally {
+      scope.dispose()
+      table.release(h)
+    }
+  })
+
+  it('readEdgeSamplePoints carries the full box AABB from deduped edges', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
+    const scope = new DisposeScope()
+    try {
+      const pts = readEdgeSamplePoints(occ, scope, table.get(h), 8)
+      const xs = pts.map((p) => p[0])
+      const ys = pts.map((p) => p[1])
+      const zs = pts.map((p) => p[2])
+      expect(Math.min(...xs)).toBeCloseTo(0, 6)
+      expect(Math.max(...xs)).toBeCloseTo(10, 6)
+      expect(Math.min(...ys)).toBeCloseTo(0, 6)
+      expect(Math.max(...ys)).toBeCloseTo(10, 6)
+      expect(Math.min(...zs)).toBeCloseTo(0, 6)
+      expect(Math.max(...zs)).toBeCloseTo(5, 6)
+    } finally {
+      scope.dispose()
+      table.release(h)
     }
   })
 

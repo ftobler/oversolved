@@ -23,6 +23,7 @@ import {
   readEdgeSamplePoints,
   readSolidEdges,
   readSolidVertices,
+  SubShapeDedup,
   tessellateFace,
   type EdgeSortKey,
   type SurfaceFrame,
@@ -557,10 +558,11 @@ export function solidToEdges(
 function sortedUniqueEdges(oc: OccModule, scope: DisposeScope, solid: OccShape): OccSubShape[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  const dedup = new SubShapeDedup()
   const uniq: OccSubShape[] = []
   for (; exp.More(); exp.Next()) {
     const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
-    if (!uniq.some((u) => u.IsSame(edge))) uniq.push(edge)
+    if (dedup.add(edge)) uniq.push(edge)
   }
   const entries = uniq.map((shape) => ({ shape, sortKey: edgeToGeom(oc, scope, shape as unknown as OccShape).sortKey }))
   entries.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))

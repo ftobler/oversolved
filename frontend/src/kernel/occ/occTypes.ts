@@ -324,6 +324,9 @@ export interface OccSubShape extends OccDisposable {
   IsSame(other: OccDisposable): boolean
   /** True when the two shapes share the same TShape (ignores orientation). */
   IsPartner(other: OccDisposable): boolean
+  /** TShape-derived hash in [1, upperBound], orientation-independent (matches
+   *  `IsSame`). Bounded, so equal hashes still need an `IsSame` confirm. */
+  HashCode(upperBound: number): number
 }
 
 export interface OccAxisDir {

@@ -604,6 +604,35 @@ export function edgeToGeom(
   }
 }
 
+/** Upper bound handed to `TopoDS_Shape.HashCode`. The largest signed 32-bit int
+ *  spreads TShapes across the full range so identity buckets stay tiny. */
+const SHAPE_HASH_UPPER = 2147483647  // 2^31 - 1
+
+/**
+ * O(n) topological-identity dedup for TopExp_Explorer output. A solid's explorer
+ * yields each shared edge/vertex once per owning face, so a growing-array
+ * `some(IsSame)` scan is O(n^2) in C++/JS boundary crossings (a 12k-edge STEP
+ * import is ~150M IsSame calls). OCC's `HashCode` is TShape-derived and
+ * orientation-independent, matching `IsSame`, so it buckets identities in one
+ * crossing each; the bucket is confirmed with `IsSame` because the hash is
+ * bounded and can (rarely) collide, keeping the result exactly correct.
+ */
+export class SubShapeDedup {
+  private readonly buckets = new Map<number, OccSubShape[]>()
+  /** Register a shape; returns true the first time this identity is seen. */
+  add(shape: OccSubShape): boolean {
+    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const bucket = this.buckets.get(key)
+    if (bucket === undefined) {
+      this.buckets.set(key, [shape])
+      return true
+    }
+    if (bucket.some((u) => u.IsSame(shape))) return false
+    bucket.push(shape)
+    return true
+  }
+}
+
 /** Unique edges of a solid (deduped by topological identity), with geometry + sort key. */
 export function readSolidEdges(
   oc: OccModule,
@@ -612,10 +641,11 @@ export function readSolidEdges(
 ): { ed: EdgeData; sortKey: EdgeSortKey }[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  const dedup = new SubShapeDedup()
   const uniq: OccSubShape[] = []
   for (; exp.More(); exp.Next()) {
     const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
-    if (!uniq.some((u) => u.IsSame(edge))) uniq.push(edge)
+    if (dedup.add(edge)) uniq.push(edge)
   }
   return uniq.map((edge) => edgeToGeom(oc, scope, edge))
 }
@@ -624,12 +654,11 @@ export function readSolidEdges(
 export function readSolidVertices(oc: OccModule, scope: DisposeScope, solid: OccShape): Vec3[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
-  const uniq: OccSubShape[] = []
+  const dedup = new SubShapeDedup()
   const out: Vec3[] = []
   for (; exp.More(); exp.Next()) {
     const v = scope.track(oc.TopoDS.Vertex_1(exp.Current())) as OccSubShape
-    if (uniq.some((u) => u.IsSame(v))) continue
-    uniq.push(v)
+    if (!dedup.add(v)) continue
     const p = oc.BRep_Tool.Pnt(v)
     out.push([p.X(), p.Y(), p.Z()])
   }
@@ -652,12 +681,11 @@ export function readEdgeSamplePoints(
 ): Vec3[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  const seen: OccSubShape[] = []
+  const dedup = new SubShapeDedup()
   const out: Vec3[] = []
   for (; exp.More(); exp.Next()) {
     const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
-    if (seen.some((u) => u.IsSame(edge))) continue
-    seen.push(edge)
+    if (!dedup.add(edge)) continue
     const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
     const isLine = ad.GetType().value === oc.GeomAbs_CurveType.GeomAbs_Line.value
     const u0 = ad.FirstParameter()
