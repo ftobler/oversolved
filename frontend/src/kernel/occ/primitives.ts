@@ -633,6 +633,35 @@ export class SubShapeDedup {
   }
 }
 
+/**
+ * O(1)-amortised map from a sub-shape's topological identity to an index,
+ * the lookup counterpart to `SubShapeDedup`. Same `HashCode` bucketing so a
+ * per-face `sortedEdges.findIndex(IsSame)` (O(F x E x E)) collapses to one
+ * hash + a tiny bucket scan. Buckets are confirmed with `IsSame` because the
+ * hash is bounded and can (rarely) collide, keeping the result exact.
+ */
+export class SubShapeIndexMap {
+  private readonly buckets = new Map<number, { shape: OccSubShape; index: number }[]>()
+  /** Record `shape -> index`; later duplicates of the same identity are kept but never win a lookup. */
+  set(shape: OccSubShape, index: number): void {
+    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const bucket = this.buckets.get(key)
+    if (bucket === undefined) {
+      this.buckets.set(key, [{ shape, index }])
+      return
+    }
+    if (bucket.some((b) => b.shape.IsSame(shape))) return
+    bucket.push({ shape, index })
+  }
+  /** Index registered for this identity, or -1 if none. */
+  get(shape: OccSubShape): number {
+    const bucket = this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))
+    if (bucket === undefined) return -1
+    const hit = bucket.find((b) => b.shape.IsSame(shape))
+    return hit ? hit.index : -1
+  }
+}
+
 /** Unique edges of a solid (deduped by topological identity), with geometry + sort key. */
 export function readSolidEdges(
   oc: OccModule,

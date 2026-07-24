@@ -24,6 +24,7 @@ import {
   readSolidEdges,
   readSolidVertices,
   SubShapeDedup,
+  SubShapeIndexMap,
   tessellateFace,
   type EdgeSortKey,
   type SurfaceFrame,
@@ -588,8 +589,10 @@ export function solidToFaceEdgeQueries(
   const scope = new DisposeScope()
   try {
     const sortedEdges = sortedUniqueEdges(oc, scope, solid)
-    const indexOfEdge = (edge: OccSubShape): number =>
-      sortedEdges.findIndex((e) => e.IsSame(edge))
+    // O(1) identity->position lookup, built once. Replaces a per-edge
+    // per-face findIndex(IsSame) scan (O(F x E x E)).
+    const edgeIndex = new SubShapeIndexMap()
+    sortedEdges.forEach((e, i) => edgeIndex.set(e, i))
 
     // Faces in the same sorted order solidToMesh/readShapeFaceMetadata use.
     const E = oc.TopAbs_ShapeEnum
@@ -607,14 +610,13 @@ export function solidToFaceEdgeQueries(
     faces.sort((a, b) => compareFaceSortKeys(a.sortKey, b.sortKey))
 
     return faces.map(({ shape }) => {
-      const seen: OccSubShape[] = []
+      const seen = new SubShapeDedup()
       const queries: string[] = []
       const eexp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
       for (; eexp.More(); eexp.Next()) {
         const edge = scope.track(oc.TopoDS.Edge_1(eexp.Current())) as OccSubShape
-        if (seen.some((s) => s.IsSame(edge))) continue
-        seen.push(edge)
-        const idx = indexOfEdge(edge)
+        if (!seen.add(edge)) continue
+        const idx = edgeIndex.get(edge)
         if (idx >= 0 && edgeQueries[idx]) queries.push(edgeQueries[idx])
       }
       return queries
