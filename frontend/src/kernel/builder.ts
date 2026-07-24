@@ -687,6 +687,45 @@ function reuseFinalMeshOnCleanRebuild(
   return out
 }
 
+// Reuse the render mesh of imported bodies that are byte-identical to the
+// previous solve, even when the tail is dirty. An imported body carries heavy
+// STEP geometry (1000+ faces) whose tessellation is pure recomputation on every
+// downstream edit. When the body's producing feature AND every feature that
+// modified it sit in the clean prefix (indices < firstDirty), `findFirstDirty`
+// guarantees its geometry is unchanged, so last solve's mesh is exact. The
+// handle itself is NOT a usable cache key: the clean-prefix restore deep-copies
+// each shape (BRepBuilderAPI_Copy), minting a fresh handle every solve.
+//
+// Returns a partial {bodyId -> reused render result} covering only the reusable
+// imported bodies; the caller tessellates the rest. Empty on a fully-clean
+// rebuild (handled by reuseFinalMeshOnCleanRebuild) or a full rebuild (nothing
+// clean). The source is the previous solve's final checkpoint snapshot, the only
+// place a full render mesh is stored.
+function reuseCleanImportedBodyMeshes(
+  prevState: BuildState | null | undefined,
+  firstDirty: number,
+  bodyStore: Record<string, Body>,
+): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {}
+  if (!prevState || firstDirty <= 0) return out
+  const cleanFids = new Set(prevState.feature_order.slice(0, firstDirty))
+  const prevLastFid = prevState.feature_order[prevState.feature_order.length - 1]
+  if (prevLastFid == null) return out
+  const prevSnap = prevState.checkpoints[prevLastFid]?.bodies_snapshot as
+    | Record<string, Record<string, unknown>>
+    | undefined
+  if (!prevSnap) return out
+  for (const [bid, body] of Object.entries(bodyStore)) {
+    if (body.shape == null || !body.imported) continue
+    // Wholly produced within the clean prefix => geometry unchanged this solve.
+    if (!cleanFids.has(body.created_by)) continue
+    if (body.modified_by.some((fid) => !cleanFids.has(fid))) continue
+    const mesh = prevSnap[bid]
+    if (mesh && Object.keys(mesh).length) out[bid] = mesh
+  }
+  return out
+}
+
 // ── Build orchestration ──────────────────────────────────────────────────────
 
 export function build(
@@ -855,9 +894,17 @@ export function build(
 
   // On a fully-clean rebuild the final bodies are unchanged, so reuse the prior
   // build's final render mesh instead of re-tessellating the whole document.
+  // Otherwise, still reuse the render mesh of any clean-prefix imported body
+  // (unchanged heavy STEP geometry) and tessellate only the remaining bodies.
   const bodiesOut =
     reuseFinalMeshOnCleanRebuild(options.prevState, features, firstDirty, bodyStore, lastFid)
-    ?? deps.tessellateBodies(bodyStore, globalRepo)
+    ?? (() => {
+      const reused = reuseCleanImportedBodyMeshes(options.prevState, firstDirty, bodyStore)
+      const toTessellate = Object.fromEntries(
+        Object.entries(bodyStore).filter(([bid]) => !(bid in reused)),
+      )
+      return { ...reused, ...deps.tessellateBodies(toTessellate, globalRepo) }
+    })()
 
   // Rebuild checkpoints for dirty features. Re-register B-rep ancestry into each
   // checkpoint's persisted repo snapshot from cheap mesh-free metadata (no

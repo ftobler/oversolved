@@ -29,6 +29,7 @@ import { copyShape } from './occ/transforms'
 import type { OccShape } from './occ/occTypes'
 import { setSketchSolver, resetSketchSolver } from './features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import importFixture from './occ/__fixtures__/importStep.json'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -71,6 +72,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
 class CountingHarness {
   readonly table = new HandleTable({ finalizerGuard: false })
   renderCount = 0
+  rendered: string[] = []  // body ids passed through the render tessellation this run
 
   run(
     spec: Record<string, unknown>,
@@ -87,6 +89,7 @@ class CountingHarness {
             if (!body.shape) continue
             try {
               this.renderCount += 1  // one render triangulation for this body
+              this.rendered.push(body.id)
               const mesh = solidToMesh(oc!, this.table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id,
                 faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
@@ -199,5 +202,65 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     const r2 = h2.run(doc, { prevState: r1._build_state })
     expect(Object.keys(r2.bodies).length).toBe(1)
     expect(h2.renderCount - countAfterFirst).toBe(0)
+  })
+
+  // Imported-body tessellation cache (feature `cache-imported-tessellation`).
+  // An imported STEP body carries heavy geometry whose tessellation is pure
+  // recomputation on every unrelated downstream edit. When the import feature
+  // sits in the clean prefix, its render mesh is reused from the previous solve
+  // rather than re-triangulated. The shape HANDLE cannot key this: the
+  // clean-prefix restore deep-copies each shape and mints a fresh handle every
+  // solve, so identity has to come from the clean-prefix determination itself.
+  const importFx = importFixture as unknown as { file_data: string }
+
+  // Import a STEP box (body_imp1) plus an independent native box (body_ex1) via
+  // `operation: 'new'`, so the two bodies never fuse and the import stays clean
+  // when only the native box is edited.
+  function importPlusNativeDoc(distance: number) {
+    return { features: [
+      { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 },
+      rectSketch('sk1', 20, 20),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance, direction: 'normal', operation: 'new' },
+    ] }
+  }
+
+  it('reuses a clean imported body mesh when an unrelated body is edited', () => {
+    const h = new CountingHarness()
+    const r1 = h.run(importPlusNativeDoc(10))
+    expect(new Set(Object.keys(r1.bodies))).toEqual(new Set(['body_imp1', 'body_ex1']))
+    // First solve tessellates both bodies.
+    expect(new Set(h.rendered)).toEqual(new Set(['body_imp1', 'body_ex1']))
+
+    // Edit only the native extrude distance: imp1 is a clean-prefix import, ex1
+    // is dirty. The imported body's mesh is reused; only body_ex1 re-tessellates.
+    h.rendered = []
+    h.renderCount = 0
+    const r2 = h.run(importPlusNativeDoc(15), { prevState: r1._build_state })
+    expect(new Set(Object.keys(r2.bodies))).toEqual(new Set(['body_imp1', 'body_ex1']))
+    expect(h.rendered).toEqual(['body_ex1'])
+    expect(h.renderCount).toBe(1)
+  })
+
+  it('reused imported mesh is byte-identical to a fresh tessellation', () => {
+    const h = new CountingHarness()
+    const r1 = h.run(importPlusNativeDoc(10))
+    const fresh = h.body(r1, 'body_imp1').mesh
+
+    const r2 = h.run(importPlusNativeDoc(15), { prevState: r1._build_state })
+    const reused = h.body(r2, 'body_imp1').mesh
+    expect(reused).toEqual(fresh)
+  })
+
+  it('re-tessellates the imported body when the import feature itself is dirty', () => {
+    const h = new CountingHarness()
+    const r1 = h.run(importPlusNativeDoc(10))
+
+    // Change the import scale: imp1 is now dirty (firstDirty == 0), so no reuse.
+    h.rendered = []
+    const doc2 = importPlusNativeDoc(10)
+    ;(doc2.features[0] as Record<string, unknown>).scale = 2
+    const r2 = h.run(doc2, { prevState: r1._build_state })
+    expect(Object.keys(r2.bodies).length).toBe(2)
+    expect(h.rendered).toContain('body_imp1')
   })
 })
