@@ -68,11 +68,13 @@ function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
 }
 
 // Counting harness: identical wiring to SharedHarness, but every body meshed by
-// the RENDER path (`tessellateBodies` -> `solidToMesh`) bumps `renderCount`.
+// the RENDER path (`tessellateBodies` -> `solidToMesh`) bumps `renderCount`, and
+// every body read by the mesh-free metadata path is recorded in `metaExtracted`.
 class CountingHarness {
   readonly table = new HandleTable({ finalizerGuard: false })
   renderCount = 0
   rendered: string[] = []  // body ids passed through the render tessellation this run
+  metaExtracted: string[] = []  // body ids passed through extractBrepMetadata this run
 
   run(
     spec: Record<string, unknown>,
@@ -111,7 +113,10 @@ class CountingHarness {
           }
           return out
         },
-        extractBrepMetadata: (bodyStore) => extractBrepMetadata(oc!, this.table, bodyStore),
+        extractBrepMetadata: (bodyStore) => {
+          for (const b of Object.values(bodyStore)) if (b.shape) this.metaExtracted.push(b.id)
+          return extractBrepMetadata(oc!, this.table, bodyStore)
+        },
         brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
         brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
         brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
@@ -262,5 +267,51 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     const r2 = h.run(doc2, { prevState: r1._build_state })
     expect(Object.keys(r2.bodies).length).toBe(2)
     expect(h.rendered).toContain('body_imp1')
+  })
+
+  // Mesh-free metadata is extracted per DIRTY CHECKPOINT, and every checkpoint
+  // snapshots the whole body store -- so an untouched body used to be re-read
+  // once per feature behind it, making each edit cost more the longer the stack
+  // grew. Metadata depends only on the body's shape, so one read per distinct
+  // body version is enough.
+  function importPlusTwoNativeDoc() {
+    return { features: [
+      { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 },
+      rectSketch('sk1', 20, 20),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      rectSketch('sk2', 8, 8, '@builtin_plane_top'),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 4, direction: 'normal', operation: 'new' },
+    ] }
+  }
+
+  it('reads an untouched body metadata once, not once per checkpoint', () => {
+    const h = new CountingHarness()
+    const r = h.run(importPlusTwoNativeDoc())
+    for (const fid of ['imp1', 'ex1', 'ex2']) {
+      expect((r.result as Record<string, Record<string, unknown>>)[fid].status).toBe('ok')
+    }
+    // Each body is created once and never modified, so it has exactly one
+    // version and is read exactly once -- even though body_imp1 is live in four
+    // non-final checkpoints (imp1, sk1, ex1, sk2) plus the solve loop, and
+    // body_ex1 in two plus the solve loop. The final checkpoint reads the render
+    // mesh instead, so it never adds here.
+    const times = (bid: string): number => h.metaExtracted.filter((b) => b === bid).length
+    expect(times('body_imp1')).toBe(1)
+    expect(times('body_ex1')).toBe(1)
+  })
+
+  it('re-reads metadata for a body that actually changes between checkpoints', () => {
+    const h = new CountingHarness()
+    const seed = h.run({ features: [rectSketch('sk1', 20, 20), extrudeSpec('sk1', 'ex1', 10)] })
+    const eq = (h.body(seed, 'body_ex1').edge_queries as string[]) ?? []
+    expect(eq.length).toBeGreaterThanOrEqual(3)
+
+    const h2 = new CountingHarness()
+    // Each fillet mutates body_ex1, so the cache must NOT collapse them. Four
+    // versions exist (after ex1, fi1, fi2, fi3) and each is read exactly once:
+    // the solve loop registers every new version, and the non-final checkpoints
+    // (ex1, fi1, fi2) then hit the cache the loop already filled.
+    h2.run(chainDoc(eq))
+    expect(h2.metaExtracted.filter((b) => b === 'body_ex1').length).toBe(4)
   })
 })

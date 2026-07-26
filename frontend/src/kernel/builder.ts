@@ -165,6 +165,14 @@ export function findFirstDirty(
 // Without it the handle is aliased (non-OCC tests).
 type ShapeMapper = (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
 
+// Mesh-free B-rep metadata for a set of bodies: the shape of both
+// ``BuildDeps.extractBrepMetadata`` and the build-scoped memoised wrapper the
+// solve loop and the checkpoint pass share.
+type MetaExtractor = (
+  bodyStore: Record<string, Body>,
+  repo: Repository | null,
+) => Record<string, Record<string, unknown>>
+
 function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
   return {
     id: body.id,
@@ -596,12 +604,13 @@ function _registerBodyFaces(
   globalRepo: Repository,
   body: Body,
   deps: BuildDeps,
+  extractCached?: MetaExtractor,
 ): void {
   if (body.shape == null) return
   try {
     // Identify off the B-rep alone (no triangulation); fall back to the mesh
     // path when no metadata extractor is wired (pure non-OCC tests).
-    const extract = deps.extractBrepMetadata ?? deps.tessellateBodies
+    const extract = extractCached ?? deps.extractBrepMetadata ?? deps.tessellateBodies
     const out = extract({ [body.id]: body }, globalRepo)[body.id]
     if (!out) return
     const mesh = out.mesh as TessMesh | undefined
@@ -760,6 +769,46 @@ export function build(
   const result: Record<string, unknown> = {}
   const newCheckpoints: Record<string, FeatureCheckpoint> = {}
 
+  // Mesh-free metadata is a pure function of a body's shape, but it is asked for
+  // twice over: once per feature in the solve loop (`_registerBodyFaces`) and
+  // again per dirty checkpoint, where every checkpoint snapshots the WHOLE body
+  // store. An untouched body -- typically the heavy imported one -- was
+  // therefore re-read once per feature behind it, so each edit cost more the
+  // longer the stack grew. One read per distinct body version is enough.
+  //
+  // `bodyVersion` is the identity the builder already trusts elsewhere (see the
+  // `modified_by.length` re-registration check in the solve loop): a feature
+  // that changes a body registers a new shape handle and appends to
+  // `modified_by`. The cache lives for one build only, so it can never serve a
+  // handle from a previous solve -- the clean-prefix restore deep-copies each
+  // shape and mints fresh handles.
+  //
+  // Both real extractors ignore the `repo` argument (identification reads the
+  // B-rep, not the repo), so a hit is valid regardless of which call site filled
+  // it; a miss still forwards the caller's repo through.
+  const extractMeta = deps.extractBrepMetadata ?? deps.tessellateBodies
+  const bodyVersion = (b: Body): string =>
+    `${b.id}|${b.created_by}|${String(b.shape)}|${b.modified_by.length}`
+  const metaCache = new Map<string, Record<string, unknown>>()
+  const extractMetaCached: MetaExtractor = (snapshot, repo) => {
+    const out: Record<string, Record<string, unknown>> = {}
+    const missing: Record<string, Body> = {}
+    for (const [bid, body] of Object.entries(snapshot)) {
+      const hit = body.shape != null ? metaCache.get(bodyVersion(body)) : undefined
+      if (hit) out[bid] = hit
+      else missing[bid] = body
+    }
+    if (Object.keys(missing).length) {
+      const fresh = extractMeta(missing, repo)
+      for (const [bid, meta] of Object.entries(fresh)) {
+        out[bid] = meta
+        const body = missing[bid]
+        if (body?.shape != null) metaCache.set(bodyVersion(body), meta)
+      }
+    }
+    return out
+  }
+
   // Preserve previous topology on full rebuild so area re-ID can fire after
   // entity deletions.  Mirrors Python's _topo_ preservation block.
   if (options.prevState && firstDirty === 0) {
@@ -854,13 +903,13 @@ export function build(
 
     for (const [bodyId, body] of Object.entries(bodyStore)) {
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
-        _registerBodyFaces(globalRepo, body, deps)
+        _registerBodyFaces(globalRepo, body, deps, extractMetaCached)
         _registerSolidAncestry(globalRepo, body)
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
       } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates.
-        _registerBodyFaces(globalRepo, body, deps)
+        _registerBodyFaces(globalRepo, body, deps, extractMetaCached)
       }
     }
 
@@ -910,7 +959,6 @@ export function build(
   // checkpoint's persisted repo snapshot from cheap mesh-free metadata (no
   // triangulation); store the render mesh only on the final checkpoint. Pure
   // non-OCC tests wire no extractor, so fall back to tessellateBodies there.
-  const extractMeta = deps.extractBrepMetadata ?? deps.tessellateBodies
   for (const fid of Object.keys(newCheckpoints)) {
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]
@@ -920,7 +968,7 @@ export function build(
     // face_data/edges/queries, so re-extracting metadata for it would be wasted
     // work. Earlier checkpoints identify off cheap mesh-free metadata (no
     // triangulation) and stay lazy (empty snapshot).
-    const cpMeta = isLast ? bodiesOut : extractMeta(checkpoint.body_store_snapshot, null)
+    const cpMeta = isLast ? bodiesOut : extractMetaCached(checkpoint.body_store_snapshot, null)
     const bodiesSnapshot = isLast
       ? Object.fromEntries(
           Object.keys(checkpoint.body_store_snapshot).map((bid) => [bid, bodiesOut[bid] ?? {}]),
