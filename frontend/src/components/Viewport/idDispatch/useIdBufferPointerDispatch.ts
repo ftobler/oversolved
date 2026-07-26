@@ -139,6 +139,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     let lastHoverPickKey: string | null = null
     let attached: HTMLCanvasElement | null = null
     let raf = 0
+    // The claimed hover frame, and the cursor waiting for it. See onPointerMove.
+    let hoverFrame = 0
+    let queuedHover: { cursor: { x: number; y: number }; allowed: ReadonlySet<string> } | null = null
 
     const computeAllowed = (): ReadonlySet<string> => {
       const tool = useSketchEditorStore.getState().activeTool
@@ -175,21 +178,50 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       lastHoverPickKey = pick
     }
 
-    const onPointerMove = (e: MouseEvent) => {
+    const resolveHover = (cursor: { x: number; y: number }, allowed: ReadonlySet<string>) => {
       const pipeline = getLivePipeline()
       const gl = glRef.current
-      if (!pipeline || !gl || !attached) return
+      if (!pipeline || !gl) return
+      void pipeline
+        .resolveAsync(gl, cursor, { allowedLayers: allowed })
+        .then(hit => {
+          applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
+        })
+        .catch(() => {})
+    }
+
+    /**
+     * Hover resolves are capped at ~two per animation frame: the first move in a
+     * frame resolves immediately, and every further move until the next frame
+     * collapses into one trailing resolve at the last cursor.
+     *
+     * Reading the ID buffer means `readRenderTargetPixels`, which blocks the main
+     * thread until the GPU has drained its queue -- on a heavy model that is the
+     * better part of a frame, EACH TIME. A high-rate pointer delivers several moves
+     * per frame, and resolving each one stacked those stalls until hovering alone
+     * dropped the viewport below 1 fps. Coalescing them costs at most one frame of
+     * hover latency and nothing else: clicks and drags resolve synchronously on
+     * their own events and are untouched.
+     */
+    const onPointerMove = (e: MouseEvent) => {
+      if (!attached) return
       const allowed = computeAllowed()
       if (allowed.size === 0) {
         applyHoverHit(null, null)
         return
       }
-      void pipeline
-        .resolveAsync(gl, cursorFromEvent(e, attached), { allowedLayers: allowed })
-        .then(hit => {
-          applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
-        })
-        .catch(() => {})
+      const cursor = cursorFromEvent(e, attached)
+      if (hoverFrame !== 0) {
+        queuedHover = { cursor, allowed }
+        return
+      }
+      resolveHover(cursor, allowed)
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0
+        const queued = queuedHover
+        queuedHover = null
+        if (queued) resolveHover(queued.cursor, queued.allowed)
+      })
     }
 
     const onClick = (e: MouseEvent) => {
@@ -300,6 +332,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     return () => {
       if (raf) cancelAnimationFrame(raf)
+      if (hoverFrame) cancelAnimationFrame(hoverFrame)
+      queuedHover = null
       if (attached) {
         attached.removeEventListener('pointermove', onPointerMove)
         attached.removeEventListener('pointerdown', onPointerDown)

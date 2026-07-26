@@ -13,6 +13,18 @@ class StubRenderer {
   constructor(canvas: HTMLCanvasElement) { this.domElement = canvas }
 }
 
+/**
+ * Let the hover throttle's trailing frame fire. Hover resolves are capped at ~two
+ * per animation frame (see onPointerMove): the first move in a frame reads the ID
+ * buffer straight away, later ones wait for the frame boundary.
+ */
+async function flushHoverFrame(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    await Promise.resolve()
+  })
+}
+
 function makeCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = 800; c.height = 600
@@ -231,13 +243,45 @@ describe('useIdBufferPointerDispatch', () => {
     })
     expect(onOver).toHaveBeenCalledTimes(1)
 
-    // Move away: resolver returns null -> onOut fires.
+    // Move away: resolver returns null -> onOut fires. This second move lands in
+    // the frame the first one claimed, so it resolves at the frame boundary.
     nextHit = null
     await act(async () => {
       canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 700, clientY: 50 }))
       await Promise.resolve()
     })
+    await flushHoverFrame()
     expect(onOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('coalesces a burst of moves within one frame into one trailing resolve', async () => {
+    // The cost this guards: every resolve is a blocking readRenderTargetPixels, so
+    // a 120 Hz pointer must not buy 120 GPU stalls per second on a heavy model.
+    const resolved: number[] = []
+    pipeline.resolveAsync = vi.fn().mockImplementation(async (_gl, cursor: { x: number; y: number }) => {
+      resolved.push(cursor.x)
+      return null
+    }) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      for (const x of [10, 20, 30, 40, 50]) {
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: 50 }))
+      }
+      await Promise.resolve()
+    })
+
+    // Leading edge only: the other four moves are still waiting on the frame.
+    expect(resolved).toEqual([10])
+
+    await flushHoverFrame()
+
+    // One trailing resolve, at the LATEST cursor -- the intermediate ones are dropped.
+    expect(resolved).toEqual([10, 50])
   })
 
   it('hover over sketchSurface layer sets hoveredSelectionId', async () => {
