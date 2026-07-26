@@ -8,7 +8,7 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { COLOR_SELECTED, COLOR_HOVER, RENDER_ORDER_HIGHLIGHT, EDGE_HIGHLIGHT_LINE_WIDTH } from '@/components/Geometry3D/constants'
-import { buildAssemblySelectionGeometry } from '@/utils/assemblySelectionGeometry'
+import { AssemblySelectionIndex } from '@/utils/assemblySelectionGeometry'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
@@ -80,9 +80,14 @@ function usePointsGeometry(points: readonly Vec3[]): THREE.BufferGeometry | null
 }
 
 export default function AssemblySelectionHighlight({ pickBodies, selection, hovered, mateHighlighted }: Props) {
+  // The index outlives the pointer: it is keyed on the pick geometry, so a hover
+  // change costs only the primitives of the newly hovered entity. Rebuilding it
+  // per move (what calling the one-shot helper would do) would walk every
+  // entity of the assembly again on each one.
+  const index = useMemo(() => new AssemblySelectionIndex(pickBodies), [pickBodies])
   const geometry = useMemo(
-    () => buildAssemblySelectionGeometry(pickBodies, selection, hovered, mateHighlighted),
-    [pickBodies, selection, hovered, mateHighlighted],
+    () => index.build(selection, hovered, mateHighlighted),
+    [index, selection, hovered, mateHighlighted],
   )
 
   const selFaces = useTriMesh(geometry.selectedFaces)
