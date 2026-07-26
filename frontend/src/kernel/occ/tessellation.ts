@@ -199,9 +199,16 @@ const SAMPLES_PER_EDGE = 16
  * tolerance. `BRepBndLib` would be the one-line swap if that corner ever matters.
  */
 export function bodyFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): { center: Vec3; half: Vec3 } {
-  const points = readSolidVertices(oc, scope, solid)
-  points.push(...readEdgeSamplePoints(oc, scope, solid, SAMPLES_PER_EDGE))
-  return bodyFrameFromPoints(points)
+  // The two point sets are folded separately, never concatenated: an imported
+  // STEP assembly has tens of thousands of edges, and `push(...samples)` passes
+  // one argument per point, which overflows the call stack well before the
+  // geometry itself is a problem. That threw a RangeError out of every
+  // identification path, and `tessellateBodies`/`extractBrepMetadata` swallow a
+  // per-body throw, so the whole import silently rendered as nothing.
+  return bodyFrameFromPoints(
+    readSolidVertices(oc, scope, solid),
+    readEdgeSamplePoints(oc, scope, solid, SAMPLES_PER_EDGE),
+  )
 }
 
 interface SolidMeshOptions extends TessellateOptions {
@@ -467,17 +474,23 @@ function vertexUuidsFromFaces(
   return out
 }
 
-/** AABB center + half-extents from a point cloud; degrades to zero-extent. */
-function bodyFrameFromPoints(points: Vec3[]): { center: Vec3; half: Vec3 } {
-  if (points.length === 0) return { center: [0, 0, 0], half: [0, 0, 0] }
+/** AABB center + half-extents over one or more point clouds; degrades to
+ *  zero-extent. Takes the clouds separately so a caller never has to merge two
+ *  large arrays just to bound them. */
+function bodyFrameFromPoints(...clouds: Vec3[][]): { center: Vec3; half: Vec3 } {
   const min: Vec3 = [Infinity, Infinity, Infinity]
   const max: Vec3 = [-Infinity, -Infinity, -Infinity]
-  for (const p of points) {
-    for (let i = 0; i < 3; i++) {
-      if (p[i] < min[i]) min[i] = p[i]
-      if (p[i] > max[i]) max[i] = p[i]
+  let seen = 0
+  for (const points of clouds) {
+    seen += points.length
+    for (const p of points) {
+      for (let i = 0; i < 3; i++) {
+        if (p[i] < min[i]) min[i] = p[i]
+        if (p[i] > max[i]) max[i] = p[i]
+      }
     }
   }
+  if (seen === 0) return { center: [0, 0, 0], half: [0, 0, 0] }
   return {
     center: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
     half: [(max[0] - min[0]) / 2, (max[1] - min[1]) / 2, (max[2] - min[2]) / 2],
