@@ -1,4 +1,4 @@
-import { primitivePickKey } from './pickKey'
+import { pickedIndicesForBody } from './pickKey'
 
 /**
  * An active highlight request, expressed as two identity sets. This is the ONE
@@ -61,21 +61,79 @@ export function computeHighlight(
   queries: ReadonlyArray<string>,
   active: ActiveHighlight,
 ): boolean[] {
-  // Queries in THIS body already claimed by a precise pickKey pick. Only worth
-  // computing when a live pick exists; the persisted path leaves it empty. The
-  // pick key is layer-qualified so a pick in another layer (a vertex, say) at the
-  // same body index cannot claim this layer's primitive.
-  const claimed = new Set<string>()
-  if (active.pickKeys.size > 0) {
-    for (let i = 0; i < queries.length; i++) {
-      if (active.pickKeys.has(primitivePickKey(bodyKey, i, layer))) claimed.add(queries[i])
-    }
-  }
   const out = new Array<boolean>(queries.length)
+  if (active.queries.size === 0) { out.fill(false); return out }
+
+  // Primitive indices in THIS body/layer claimed by a precise pickKey pick, read
+  // out of the pick set rather than by minting a key per primitive (see
+  // pickedIndicesForBody). Null when the live pick belongs elsewhere -- the
+  // persisted path and every unrelated body land here.
+  const picked = pickedIndicesForBody(active.pickKeys, bodyKey, layer)
+  // Queries those claimed primitives own, so a sibling sharing one loses.
+  const claimed = new Set<string>()
+  if (picked) for (const i of picked) { if (i < queries.length) claimed.add(queries[i]) }
+
   for (let i = 0; i < queries.length; i++) {
     const q = queries[i]
     if (!active.queries.has(q)) { out[i] = false; continue }
-    out[i] = active.pickKeys.has(primitivePickKey(bodyKey, i, layer)) || !claimed.has(q)
+    out[i] = picked?.has(i) === true || !claimed.has(q)
   }
   return out
+}
+
+/**
+ * Per-(body, layer) highlight cache.
+ *
+ * `computeHighlight` is pure and O(primitives); a heavy model calls it for every
+ * body on every pointer move, and the arrays it returns feed the memos that
+ * rebuild vertex-colour buffers and re-upload them to the GPU. Both costs are
+ * wasted on a body the pointer never touched, so this index adds the two things
+ * a per-body cache can:
+ *
+ * - a query-set pre-check, so a body owning none of the active queries answers in
+ *   O(smaller set) instead of scanning its primitives, and
+ * - a shared all-false array for that answer, so the identity of the result does
+ *   not change either. Downstream `useMemo`s keyed on the flags then skip
+ *   entirely, which is what keeps hover cost independent of scene size.
+ *
+ * Build one per (bodyKey, layer, queries) and keep it for as long as the queries
+ * array lives; it holds no state that a pick can invalidate.
+ */
+export class HighlightIndex {
+  /** The all-false answer, shared by reference so memos can skip on identity. */
+  readonly none: readonly boolean[]
+  private readonly bodyKey: string
+  private readonly layer: string
+  private readonly queries: ReadonlyArray<string>
+  private readonly querySet: ReadonlySet<string>
+
+  constructor(bodyKey: string, layer: string, queries: ReadonlyArray<string>) {
+    this.bodyKey = bodyKey
+    this.layer = layer
+    this.queries = queries
+    this.querySet = new Set(queries)
+    this.none = new Array<boolean>(queries.length).fill(false)
+  }
+
+  compute(active: ActiveHighlight): readonly boolean[] {
+    if (!this.intersects(active.queries)) return this.none
+    return computeHighlight(this.bodyKey, this.layer, this.queries, active)
+  }
+
+  /** Whether any primitive is flagged. O(1) for the shared all-false answer. */
+  hasAny(flags: readonly boolean[] | null | undefined): boolean {
+    if (!flags || flags === this.none) return false
+    return flags.some(Boolean)
+  }
+
+  /** Does the active set name any query this body owns? Iterates the smaller of
+   *  the two sets: a wide selection against a small body costs the body's size,
+   *  and a single hovered query against a big body costs one lookup. */
+  private intersects(queries: ReadonlySet<string>): boolean {
+    if (queries.size === 0 || this.querySet.size === 0) return false
+    const [small, large] = queries.size <= this.querySet.size
+      ? [queries, this.querySet] : [this.querySet, queries]
+    for (const q of small) if (large.has(q)) return true
+    return false
+  }
 }

@@ -37,6 +37,15 @@ export function getSketchCallback<K extends keyof typeof _sketchCbs>(key: K): (t
   return _sketchCbs[key]
 }
 
+/** Coordinate-wise equality for the small tuples the hover setters carry, so a
+ *  freshly built tuple holding the same numbers counts as "unchanged". */
+function samePoint(a: readonly number[] | null, b: readonly number[] | null): boolean {
+  if (a === b) return true
+  if (a === null || b === null || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
 function requireMutation(name: string): ((m: Mutation) => void) | null {
   const onMutation = _sketchCbs.onMutation
   if (!onMutation) {
@@ -535,9 +544,22 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
 
-  setHoveredVertex: (id, position, snapKind) => set({ hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: snapKind ?? null }),
+  // Both hover setters return the state object untouched when nothing changes,
+  // which makes zustand skip the notification entirely. Load-bearing for pointer
+  // performance: every pointer move tears the hover down before applying the new
+  // one, so without the guard each move woke every subscriber in the scene (and
+  // clearAllBodyHover did it once per registered body) to re-deliver null.
+  setHoveredVertex: (id, position, snapKind) => set(s => {
+    const kind = snapKind ?? null
+    if (s.hoveredVertexId === id && s.hoveredSnapKind === kind
+      && samePoint(s.hoveredVertexPosition, position)) return s
+    return { hoveredVertexId: id, hoveredVertexPosition: position, hoveredSnapKind: kind }
+  }),
   setHoveredConstraintEntities: (ids) => set({ hoveredConstraintEntityIds: ids }),
-  setHoveredFaceGeometry: (normal, center) => set({ hoveredFaceNormal: normal, hoveredFaceCenter: center }),
+  setHoveredFaceGeometry: (normal, center) => set(s => {
+    if (samePoint(s.hoveredFaceNormal, normal) && samePoint(s.hoveredFaceCenter, center)) return s
+    return { hoveredFaceNormal: normal, hoveredFaceCenter: center }
+  }),
 
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId, entityKindMap } = get()

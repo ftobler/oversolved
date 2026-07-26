@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bodyKeyFor, primitivePickKey, pickedPrimitiveIndex } from '../pickKey'
+import { bodyKeyFor, primitivePickKey, pickedPrimitiveIndex, pickedIndicesForBody } from '../pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
 
 describe('primitivePickKey', () => {
@@ -49,5 +49,43 @@ describe('pickedPrimitiveIndex (id -> element back-mapping)', () => {
   it('does not resolve a pick key from another body', () => {
     const otherKey = primitivePickKey(bodyKeyFor('extrude1', 'body1'), 1, EDGE_LAYER_NAME)
     expect(pickedPrimitiveIndex(body, 5, EDGE_LAYER_NAME, otherKey)).toBe(-1)
+  })
+
+  it('rejects an index beyond the body primitive count', () => {
+    const key = primitivePickKey(body, 9, EDGE_LAYER_NAME)
+    expect(pickedPrimitiveIndex(body, 5, EDGE_LAYER_NAME, key)).toBe(-1)
+  })
+})
+
+describe('pickedIndicesForBody (pick set -> this body/layer)', () => {
+  const body = bodyKeyFor('extrude1', 'body0')
+  const other = bodyKeyFor('extrude1', 'body1')
+
+  it('collects every index the pick set claims in this body / layer', () => {
+    const keys = new Set([primitivePickKey(body, 4, EDGE_LAYER_NAME), primitivePickKey(body, 7, EDGE_LAYER_NAME)])
+    expect([...pickedIndicesForBody(keys, body, EDGE_LAYER_NAME)!].sort()).toEqual([4, 7])
+  })
+
+  it('returns null when nothing in the set belongs here (the skip-everything path)', () => {
+    // A pick living in another body or another layer must leave this body with no
+    // claims at all, so the caller can bypass the claim logic entirely.
+    const keys = new Set([
+      primitivePickKey(other, 4, EDGE_LAYER_NAME),
+      primitivePickKey(body, 4, VERTEX_LAYER_NAME),
+    ])
+    expect(pickedIndicesForBody(keys, body, EDGE_LAYER_NAME)).toBeNull()
+    expect(pickedIndicesForBody(new Set<string>(), body, EDGE_LAYER_NAME)).toBeNull()
+  })
+
+  it('ignores a key whose tail is not a bare index', () => {
+    expect(pickedIndicesForBody(new Set([`${body}#${EDGE_LAYER_NAME}#2x`]), body, EDGE_LAYER_NAME)).toBeNull()
+  })
+
+  it('costs the size of the pick set, not the size of the body', () => {
+    // The old direction minted a key per primitive to test against the set. With
+    // a single live pick this must not touch the body's primitive count at all,
+    // which is only observable as: no argument carries that count.
+    const keys = new Set([primitivePickKey(body, 12345, FACE_LAYER_NAME)])
+    expect([...pickedIndicesForBody(keys, body, FACE_LAYER_NAME)!]).toEqual([12345])
   })
 })

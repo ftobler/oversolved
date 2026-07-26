@@ -40,8 +40,44 @@ export function pickedPrimitiveIndex(
   pickKey: string | null,
 ): number {
   if (pickKey === null) return -1
-  for (let i = 0; i < count; i++) {
-    if (primitivePickKey(bodyKey, i, layer) === pickKey) return i
+  return parsePickKeyIndex(pickKey, `${bodyKey}#${layer}#`, count)
+}
+
+/**
+ * Which primitive indices of `(bodyKey, layer)` the live pick set claims.
+ *
+ * The direction matters for a heavy model: the pick set holds one key while
+ * hovering and a handful while multi-selected, whereas a body holds thousands of
+ * primitives. Parsing the index back out of each pick key costs O(picks); minting
+ * a key per primitive to compare against the set would cost O(primitives) string
+ * allocations per body, on every pointer move. Returns null when nothing in the
+ * set belongs to this body/layer, so callers can skip the claim logic entirely.
+ */
+export function pickedIndicesForBody(
+  pickKeys: ReadonlySet<string>,
+  bodyKey: string,
+  layer: string,
+): Set<number> | null {
+  if (pickKeys.size === 0) return null
+  const prefix = `${bodyKey}#${layer}#`
+  let out: Set<number> | null = null
+  for (const key of pickKeys) {
+    const idx = parsePickKeyIndex(key, prefix)
+    if (idx < 0) continue
+    if (!out) out = new Set<number>()
+    out.add(idx)
   }
-  return -1
+  return out
+}
+
+/** Index encoded in `key` when it carries `prefix`, else -1. `count`, when given,
+ *  bounds the index to the primitives the caller actually has. */
+function parsePickKeyIndex(key: string, prefix: string, count = Infinity): number {
+  if (!key.startsWith(prefix)) return -1
+  const tail = key.slice(prefix.length)
+  // Reject anything that is not a bare non-negative integer: a body key
+  // containing '#' could otherwise let a foreign key parse as an index.
+  if (!/^\d+$/.test(tail)) return -1
+  const idx = Number(tail)
+  return idx < count ? idx : -1
 }

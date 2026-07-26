@@ -207,6 +207,68 @@ describe('findFaceBoundaryEdges', () => {
   })
 })
 
+// These lookups run on every pointer move. They used to scan every registered
+// body and indexOf its whole query array (and findFaceBoundaryEdges compounded
+// that with a scan per boundary edge), so hover cost grew with the model.
+// Registration now builds reverse indexes; the tests below pin the upkeep those
+// indexes need in order to stay honest, which the stateless scan got for free.
+describe('reverse index upkeep', () => {
+  it('resolves a query in a heavy model, whichever body owns it', () => {
+    const BODIES = 300
+    const FACES = 100
+    for (let b = 0; b < BODIES; b++) {
+      registerBodyCallbacks(`body${b}`, makeCallbacks({
+        mesh: makeMesh({ face_queries: Array.from({ length: FACES }, (_, i) => `face-${b}-${i}`) }),
+        edgeQueries: Array.from({ length: FACES }, (_, i) => `edge-${b}-${i}`),
+        edgeKinds: Array.from({ length: FACES }, () => 'circle'),
+      }))
+    }
+    // Last face of the last body: the entry the full scan reached last.
+    expect(findBodyForFaceQuery(`face-${BODIES - 1}-${FACES - 1}`)?.index).toBe(FACES - 1)
+    expect(findBodyForFaceQuery('face-0-0')?.index).toBe(0)
+    expect(findEdgeKindForQuery(`edge-${BODIES - 1}-7`)).toBe('circle')
+    expect(findBodyForFaceQuery('face-300-0')).toBeNull()
+  })
+
+  it('stops resolving a query once its body unregisters', () => {
+    const unregister = registerBodyCallbacks('b1', makeCallbacks())
+    registerBodyCallbacks('b2', makeCallbacks({
+      mesh: makeMesh({ face_queries: ['otherFace'] }),
+      edgeQueries: ['otherEdge'],
+      edgeKinds: ['circle'],
+    }))
+    unregister()
+    expect(findBodyForFaceQuery('faceQ0')).toBeNull()
+    expect(findEdgeKindForQuery('edgeQ0')).toBeUndefined()
+    // The surviving body must be untouched by the other's eviction.
+    expect(findBodyForFaceQuery('otherFace')?.index).toBe(0)
+    expect(findEdgeKindForQuery('otherEdge')).toBe('circle')
+  })
+
+  it('re-registering a body under the same key retires its old queries', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    registerBodyCallbacks('b1', makeCallbacks({
+      mesh: makeMesh({ face_queries: ['reworkedFace'] }),
+      edgeQueries: ['reworkedEdge'],
+      edgeKinds: ['spline'],
+    }))
+    expect(findBodyForFaceQuery('faceQ0')).toBeNull()
+    expect(findEdgeKindForQuery('edgeQ0')).toBeUndefined()
+    expect(findBodyForFaceQuery('reworkedFace')?.index).toBe(0)
+    expect(findEdgeKindForQuery('reworkedEdge')).toBe('spline')
+  })
+
+  it('when two bodies share a query the first registered one answers', () => {
+    const first = makeCallbacks()
+    registerBodyCallbacks('b1', first)
+    const unregisterSecond = registerBodyCallbacks('b2', makeCallbacks())
+    expect(findBodyForFaceQuery('faceQ0')?.body).toBe(first)
+    // ...and dropping the loser leaves the winner resolvable.
+    unregisterSecond()
+    expect(findBodyForFaceQuery('faceQ0')?.body).toBe(first)
+  })
+})
+
 describe('clearAllBodyHover', () => {
   it('calls clearFaceGeometry on every registered body', () => {
     const a = makeCallbacks()
