@@ -27,6 +27,8 @@ import {
   lazyFaceTriangles,
 } from '@/components/Geometry3D/bodyGeometry'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
+import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
+import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
@@ -101,9 +103,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
-
-  const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
-  const edgeColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
 
   // Triangles-per-face grouping, built on first use and then shared by everything
   // that works face-by-face. Lazy on purpose: a body is meshed and mounted far
@@ -199,11 +198,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [edgeHighlightIndex, hoverActive],
   )
 
-  const getIsEdgeSelected = useCallback(
-    (edgeIndex: number): boolean => edgeSelectionFlags[edgeIndex] ?? false,
-    [edgeSelectionFlags],
-  )
-
   // Face highlight, decoupled from raw query membership exactly like edges:
   // sibling faces sharing an ancestral query (no minted UUID) must not co-highlight.
   // Indexed by B-rep face index; null when the mesh carries no face queries (the
@@ -291,17 +285,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // Precompute segment counts for edge index mapping
   const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
 
-  // Build a map from segment index to edge index for quick lookup
-  const segmentToEdgeMap = useMemo(() => {
-    const map: number[] = []
-    edgeSegmentCounts.forEach((count, edgeIdx) => {
-      for (let i = 0; i < count; i++) {
-        map.push(edgeIdx)
-      }
-    })
-    return map
-  }, [edgeSegmentCounts])
-
   const bodyColor = isBodySelected ? COLOR_BODY_SELECTED : (color || COLOR_BODY_DEFAULT)
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
@@ -349,18 +332,27 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     return topoFallbackQuery(featureId, 'face', triangleIndex)
   }, [mesh, featureId])
 
-  // Legacy per-triangle highlight, for meshes carrying no usable B-rep face
-  // metadata: membership in the raw query sets, triangle by triangle. Kept out of
-  // the colour memo below and returning a stable null on the B-rep path, so that
-  // memo need not depend on `normalSelection` / `hoveredSelectionId` -- those
-  // change on every pointer move and would otherwise rebuild and re-upload the
-  // colour buffer of every body in the scene on each one.
-  const fallbackTriangleFlags = useMemo(() => {
+  // Which primitives the face colour buffer is divided into: B-rep faces when the
+  // mesh carries usable per-face metadata, else one primitive per triangle (the
+  // legacy query-membership path below). Both feed the same in-place painter, so
+  // the two highlight paths differ only in what indexes their flags.
+  const facePaintTarget = useMemo(() => {
     const numTris = faceCount(mesh.faces)
-    const { triangle_to_face } = mesh
-    const covered = faceSelectionFlags !== null && triangle_to_face !== undefined
-      && triangle_to_face.length >= numTris
-    if (covered || !interactive) return null
+    const { triangle_to_face, face_queries } = mesh
+    const brep = face_queries !== undefined && face_queries.length > 0
+      && triangle_to_face !== undefined && triangle_to_face.length >= numTris
+    if (!brep) return { brep: false as const, runs: triangleRuns(numTris) }
+    return { brep: true as const, runs: faceRuns(face_queries.length, i => faceTriangles.get(i)) }
+  }, [mesh, faceTriangles])
+
+  // Legacy per-triangle highlight, for meshes carrying no usable B-rep face
+  // metadata: membership in the raw query sets, triangle by triangle. Returns a
+  // stable null on the B-rep path so the painter below need not depend on
+  // `normalSelection` / `hoveredSelectionId` -- those change on every pointer move
+  // and would otherwise re-diff the colour buffer of every body in the scene.
+  const fallbackTriangleFlags = useMemo(() => {
+    if (facePaintTarget.brep || !interactive) return null
+    const numTris = faceCount(mesh.faces)
     const selected = new Array<boolean>(numTris)
     const hovered = new Array<boolean>(numTris)
     for (let i = 0; i < numTris; i++) {
@@ -369,105 +361,52 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       hovered[i] = query === hoveredSelectionId
     }
     return { selected, hovered }
-  }, [mesh, faceSelectionFlags, normalSelection, hoveredSelectionId, resolveFaceQuery, interactive])
+  }, [mesh, facePaintTarget, normalSelection, hoveredSelectionId, resolveFaceQuery, interactive])
 
-  // Always compute face colors -- avoids toggling vertexColors on the material which
-  // causes shader recompilation and a black-frame artifact.
-  const faceColors = useMemo(() => {
-    const numTris = faceCount(mesh.faces)
-    const colors = new Float32Array(numTris * 3 * 3)
-    const defaultColor = new THREE.Color(bodyColor)
-    const selectedColor = new THREE.Color(COLOR_SELECTED)
-    const hoverColor = new THREE.Color(blendWhite(bodyColor))
-    const { triangle_to_face } = mesh
+  // The palettes. Only these three colours can move a primitive, and only a
+  // change to one of them forces the painter to rewrite the whole buffer -- which
+  // is why the body's own selection colour lives here and not in the flags.
+  const facePalette = useMemo<HighlightPalette>(() => ({
+    base: paletteRGB(bodyColor),
+    selected: paletteRGB(COLOR_SELECTED),
+    hovered: paletteRGB(blendWhite(bodyColor)),
+  }), [bodyColor])
 
-    for (let i = 0; i < numTris; i++) {
-      let color = defaultColor
-      if (interactive) {
-        // With B-rep face metadata, isolate by face index / pick key so shared-query
-        // siblings do not co-highlight. Without it, keep the legacy query membership.
-        const brepFaceIndex = faceSelectionFlags && triangle_to_face ? (triangle_to_face[i] ?? -1) : -1
-        if (brepFaceIndex >= 0) {
-          if (faceSelectionFlags![brepFaceIndex]) color = selectedColor
-          else if (faceHoverFlags?.[brepFaceIndex]) color = hoverColor
-        } else if (fallbackTriangleFlags) {
-          if (fallbackTriangleFlags.selected[i]) color = selectedColor
-          else if (fallbackTriangleFlags.hovered[i]) color = hoverColor
-        }
-      }
+  const edgePalette = useMemo<HighlightPalette>(() => ({
+    base: paletteRGB(edgeColor),
+    selected: paletteRGB(COLOR_SELECTED),
+    hovered: paletteRGB(COLOR_HOVER),
+  }), [edgeColor])
 
-      const baseIdx = i * 9
-      for (let v = 0; v < 9; v += 3) {
-        colors[baseIdx + v] = color.r
-        colors[baseIdx + v + 1] = color.g
-        colors[baseIdx + v + 2] = color.b
-      }
-    }
-    return colors
-  }, [mesh, faceSelectionFlags, faceHoverFlags, fallbackTriangleFlags, bodyColor, interactive])
+  // Face and edge colours are painted IN PLACE on the attribute the geometry was
+  // built with: only the primitives whose highlight state changed are rewritten,
+  // and only their float ranges are uploaded. Rebuilding the whole buffer (and
+  // handing it to a fresh BufferAttribute, which re-allocates the GL buffer) cost
+  // O(triangles + segments) plus a full re-upload on EVERY pointer move -- tens of
+  // megabytes per move on an imported solid, which is what pinned hover under
+  // 1 fps there. vertexColors stays permanently enabled either way, so the
+  // material never recompiles.
+  useHighlightColors({
+    geometry,
+    runs: facePaintTarget.runs,
+    selected: !interactive ? null
+      : facePaintTarget.brep ? faceSelectionFlags : (fallbackTriangleFlags?.selected ?? null),
+    hovered: !interactive ? null
+      : facePaintTarget.brep ? faceHoverFlags : (fallbackTriangleFlags?.hovered ?? null),
+    palette: facePalette,
+  })
 
-  // Build edge colors array for selected/hovered edges
-  const edgeColors = useMemo(() => {
-    const totalSegments = segmentToEdgeMap.length
-    if (totalSegments === 0) return null
+  const edgePaintRuns = useMemo(() => edgeRuns(edgeSegmentCounts), [edgeSegmentCounts])
 
-    const colors = new Float32Array(totalSegments * 2 * 3)  // 2 vertices per segment, 3 components per color
-    const defaultColor = new THREE.Color(edgeColor)
-    const selectedColor = new THREE.Color(COLOR_SELECTED)
-    const hoverColor = new THREE.Color(COLOR_HOVER)
-
-    for (let segIdx = 0; segIdx < totalSegments; segIdx++) {
-      const edgeIdx = segmentToEdgeMap[segIdx]
-      let color: THREE.Color
-      if (interactive) {
-        if (getIsEdgeSelected(edgeIdx)) {
-          color = selectedColor
-        // Hover isolates the single hovered edge (edgeHoverFlags resolves by pick
-        // key, then query): two edges sharing a query must not co-highlight.
-        } else if (edgeHoverFlags[edgeIdx]) {
-          color = hoverColor
-        } else {
-          color = defaultColor
-        }
-      } else {
-        color = defaultColor
-      }
-
-      // Set color for both vertices of this segment
-      const baseIdx = segIdx * 6
-      colors[baseIdx] = color.r
-      colors[baseIdx + 1] = color.g
-      colors[baseIdx + 2] = color.b
-      colors[baseIdx + 3] = color.r
-      colors[baseIdx + 4] = color.g
-      colors[baseIdx + 5] = color.b
-    }
-    return colors
-  }, [segmentToEdgeMap, getIsEdgeSelected, edgeHoverFlags, edgeColor, interactive])
-
-  // Always update the color attribute -- faceColors is always non-null so vertexColors
-  // stays permanently enabled, avoiding shader recompilation on selection change.
-  // Dispose the previous attribute to avoid leaking GPU memory on each hover/selection change.
-  useEffect(() => {
-    const oldAttr = faceColorAttrRef.current
-    const attr = new THREE.BufferAttribute(faceColors, 3)
-    geometry.setAttribute('color', attr)
-    faceColorAttrRef.current = attr
-    oldAttr?.dispose?.()
-  }, [geometry, faceColors])
-
-  // Always update the color attribute -- edgeColors is always non-null so vertexColors
-  // stays permanently enabled, avoiding shader recompilation on selection change.
-  // Dispose the previous attribute to avoid leaking GPU memory on each hover/selection change.
-  useEffect(() => {
-    if (edgeColors) {
-      const oldAttr = edgeColorAttrRef.current
-      const attr = new THREE.BufferAttribute(edgeColors, 3)
-      edgeGeometry.setAttribute('color', attr)
-      edgeColorAttrRef.current = attr
-      oldAttr?.dispose?.()
-    }
-  }, [edgeGeometry, edgeColors])
+  useHighlightColors({
+    geometry: edgeGeometry,
+    runs: edgePaintRuns,
+    // Hover isolates the single hovered edge (edgeHoverFlags resolves by pick
+    // key, then query): two edges sharing a query must not co-highlight.
+    selected: interactive ? edgeSelectionFlags : null,
+    hovered: interactive ? edgeHoverFlags : null,
+    palette: edgePalette,
+  })
 
   const vertexMeshRef = useRef<THREE.InstancedMesh>(null)
   const vertexDotRef = useRef<THREE.InstancedMesh>(null)
