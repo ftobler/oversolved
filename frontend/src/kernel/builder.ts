@@ -190,7 +190,9 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
   }
 }
 
-function _snapshotRepo(repo: Repository): Record<string, unknown> {
+/** The persisted repo shape. Exported for the shape guard in `ancestryIndex.test.ts`:
+ *  the derived indices must never leak in here, the parity gate hashes this. */
+export function snapshotRepo(repo: Repository): Record<string, unknown> {
   return {
     elements: Object.fromEntries(repo.elements),
     ancestral: Object.fromEntries(
@@ -220,7 +222,7 @@ function _dedupeRepo(repo: Repository): void {
       if (payload === undefined) continue
       const payloadHash = JSON.stringify(payload, Object.keys(payload as object).sort())
       if (seen.has(payloadHash)) {
-        repo.elements.delete(elementId)
+        repo.deleteElement(elementId)
         continue
       }
       seen.add(payloadHash)
@@ -229,7 +231,7 @@ function _dedupeRepo(repo: Repository): void {
     if (uniqueIds.length) {
       entry.eids = uniqueIds
     } else {
-      repo.ancestral.delete(key)
+      repo.deleteAncestral(key)
     }
   }
 }
@@ -246,6 +248,7 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
     repo.byUuid = new Map(
       Object.entries((repoSnapshot.byUuid as Record<string, string[]>) ?? {}).map(([k, v]) => [k, [...v]])
     )
+    repo.rebuildIndices()  // the maps were replaced wholesale, so the derived indices are stale
   }
   _dedupeRepo(repo)
   return repo
@@ -656,16 +659,9 @@ function _snapshotWithBrepGeometry(
       _registerExtrusionFeature(repo, body.created_by, body.sketch_id)
     }
   }
-  return {
-    version: 2,
-    elements: Object.fromEntries(repo.elements),
-    ancestral: Object.fromEntries(
-      [...repo.ancestral.entries()].map(([k, v]) => [k, { set: [...v.set], eids: [...v.eids] }])
-    ),
-    byUuid: Object.fromEntries(
-      [...repo.byUuid.entries()].map(([k, v]) => [k, [...v]])
-    ),
-  }
+  // One serializer, so the "derived indices never reach the persisted shape"
+  // guard on snapshotRepo covers this path too.
+  return { version: 2, ...snapshotRepo(repo) }
 }
 
 // On a fully-clean rebuild (nothing dirty) the final bodies are byte-identical
@@ -873,7 +869,7 @@ export function build(
       newCheckpoints[fid] = {
         spec: { ...feature },
         result: { status: 'suppressed' },
-        repo_snapshot: _snapshotRepo(globalRepo),
+        repo_snapshot: snapshotRepo(globalRepo),
         body_store_snapshot: cpSnapshot,
         bodies_snapshot: {},
       }
@@ -917,7 +913,7 @@ export function build(
     newCheckpoints[fid] = {
       spec: JSON.parse(JSON.stringify(feature)),
       result: JSON.parse(JSON.stringify(result[fid])),
-      repo_snapshot: _snapshotRepo(globalRepo),
+      repo_snapshot: snapshotRepo(globalRepo),
       body_store_snapshot: cpSnapshot,
       bodies_snapshot: {},
     }

@@ -336,6 +336,18 @@ export class Repository {
   elements = new Map<string, unknown>()
   ancestral = new Map<string, AncestralEntry>()
   byUuid = new Map<string, string[]>()
+  /** Reverse index: ancestor id -> the ancestral keys whose entry.set contains it.
+   *  Turns index-tag eviction from a full scan of `ancestral` into a lookup. Every
+   *  ancestor id is indexed, not just tag-shaped ones, because eviction tests plain
+   *  set membership. Derived state: never persisted (see `snapshotRepo`), rebuilt by
+   *  `rebuildIndices()` whenever `ancestral` is assigned wholesale instead of mutated. */
+  byAncestorId = new Map<string, Set<string>>()
+  /** eid -> the uuid it was registered under (at most one, by construction), so
+   *  deleting an element can re-check that single `byUuid` bucket. */
+  elementUuid = new Map<string, string>()
+  /** uuids whose bucket may have lost its last live element. Drained at exactly the
+   *  points the old full `byUuid` sweep ran, so pruning stays observably identical. */
+  private _dirtyUuids = new Set<string>()
   featureIndex = new Map<string, number>()
   _lastTier: ResolveTier = "miss"
 
@@ -347,6 +359,70 @@ export class Repository {
     for (const [u, eids] of [...this.byUuid]) {
       if (!eids.some(eid => this.elements.has(eid))) this.byUuid.delete(u)
     }
+    this._dirtyUuids.clear()
+  }
+
+  /** Prune only the uuid buckets touched since the last drain. */
+  prunePendingUuids(): void {
+    for (const u of this._dirtyUuids) {
+      const eids = this.byUuid.get(u)
+      if (eids && !eids.some(eid => this.elements.has(eid))) this.byUuid.delete(u)
+    }
+    this._dirtyUuids.clear()
+  }
+
+  /** Recompute `byAncestorId` / `elementUuid` from `ancestral` / `byUuid`. Required
+   *  after assigning those maps wholesale (`repoFromSnapshot`). Every loaded uuid is
+   *  marked pending: a snapshot may carry a bucket that is already fully dead, which
+   *  the old full sweep would have collected on the next eviction. */
+  rebuildIndices(): void {
+    this.byAncestorId = new Map()
+    for (const [key, entry] of this.ancestral) this.indexAncestral(key, entry)
+    this.elementUuid = new Map()
+    this._dirtyUuids = new Set()
+    for (const [uuid, eids] of this.byUuid) {
+      // Live elements only, so `elementUuid` stays exactly "live eid -> its uuid"
+      // and a missed `deleteElement` is detectable. A snapshot's byUuid list can
+      // carry eids that were already dead when it was written; those need no
+      // future prune trigger, and the seeding below covers their bucket anyway.
+      for (const eid of eids) if (this.elements.has(eid)) this.elementUuid.set(eid, uuid)
+      this._dirtyUuids.add(uuid)
+    }
+  }
+
+  private indexAncestral(key: string, entry: AncestralEntry): void {
+    for (const id of entry.set) {
+      let keys = this.byAncestorId.get(id)
+      if (!keys) {
+        keys = new Set()
+        this.byAncestorId.set(id, keys)
+      }
+      keys.add(key)
+    }
+  }
+
+  /** Drop an ancestral entry, keeping `byAncestorId` in step. Does not touch the
+   *  entry's elements: callers decide whether those die with it. */
+  deleteAncestral(key: string): void {
+    const entry = this.ancestral.get(key)
+    if (entry === undefined) return
+    this.ancestral.delete(key)
+    for (const id of entry.set) {
+      const keys = this.byAncestorId.get(id)
+      if (keys === undefined) continue
+      keys.delete(key)
+      if (keys.size === 0) this.byAncestorId.delete(id)
+    }
+  }
+
+  /** Drop an element and flag its uuid bucket for re-check. Every element deletion
+   *  must go through here, or a dead uuid bucket survives into the snapshot. */
+  deleteElement(eid: string): void {
+    this.elements.delete(eid)
+    const uuid = this.elementUuid.get(eid)
+    if (uuid === undefined) return
+    this.elementUuid.delete(eid)
+    this._dirtyUuids.add(uuid)
   }
 
   register(elementId: string, obj: unknown): void {
@@ -364,6 +440,7 @@ export class Repository {
     if (!entry) {
       entry = { set: new Set(ancestors), eids: [] }
       this.ancestral.set(key, entry)
+      this.indexAncestral(key, entry)
     }
     entry.eids.push(id)
     this.elements.set(id, obj)
@@ -371,13 +448,14 @@ export class Repository {
       const list = this.byUuid.get(uuid) ?? []
       list.push(id)
       this.byUuid.set(uuid, list)
+      this.elementUuid.set(id, uuid)
     }
     return id
   }
 
   clearBySketchId(sketchId: string): void {
     for (const [k, v] of [...this.elements]) {
-      if (isDict(v) && v["sketch_id"] === sketchId) this.elements.delete(k)
+      if (isDict(v) && v["sketch_id"] === sketchId) this.deleteElement(k)
     }
   }
 
@@ -389,8 +467,8 @@ export class Repository {
       let intersects = false
       for (const r of refs) if (activeFids.has(r)) { intersects = true; break }
       if (!intersects) {
-        for (const eid of entry.eids) this.elements.delete(eid)
-        this.ancestral.delete(key)
+        for (const eid of entry.eids) this.deleteElement(eid)
+        this.deleteAncestral(key)
       }
     }
     this.pruneUuid()
@@ -687,23 +765,31 @@ export function evictAncestryAndRegister(
   const key = canonical(ancestorIds)
 
   if (indexTag !== null) {
-    for (const [k, entry] of [...repo.ancestral]) {
-      if (entry.set.has(indexTag) && k !== key) {
-        for (const eid of entry.eids) repo.elements.delete(eid)
-        repo.ancestral.delete(k)
+    // Only the entries actually carrying the tag, via the reverse index: scanning all
+    // of `ancestral` here made a whole registration pass quadratic (288s on a 62k
+    // entity STEP assembly). The spread is over the matched keys, not the repo.
+    const tagged = repo.byAncestorId.get(indexTag)
+    if (tagged) {
+      for (const k of [...tagged]) {
+        if (k === key) continue
+        const entry = repo.ancestral.get(k)
+        if (entry === undefined) {
+          tagged.delete(k)  // index rot: self-heal rather than let the dangling key persist
+          continue
+        }
+        for (const eid of entry.eids) repo.deleteElement(eid)
+        repo.deleteAncestral(k)
       }
     }
   }
 
   const exact = repo.ancestral.get(key)
   if (exact) {
-    for (const eid of exact.eids) repo.elements.delete(eid)
-    repo.ancestral.delete(key)
+    for (const eid of exact.eids) repo.deleteElement(eid)
+    repo.deleteAncestral(key)
   }
 
-  for (const [u, eids] of [...repo.byUuid]) {
-    if (!eids.some(eid => repo.elements.has(eid))) repo.byUuid.delete(u)
-  }
+  repo.prunePendingUuids()
 
   return repo.registerAncestor(ancestorIds, payload, uuid)
 }

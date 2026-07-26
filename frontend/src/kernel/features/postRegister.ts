@@ -204,8 +204,8 @@ export function clearFeatureGeometryRegistrations(globalRepo: Repository, featur
     }
   }
 
-  for (const eid of eidsToRemove) globalRepo.elements.delete(eid)
-  for (const key of keysToRemove) globalRepo.ancestral.delete(key)
+  for (const eid of eidsToRemove) globalRepo.deleteElement(eid)
+  for (const key of keysToRemove) globalRepo.deleteAncestral(key)
   globalRepo.clearBySketchId(featureId)
 }
 
