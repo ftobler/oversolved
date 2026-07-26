@@ -10,7 +10,7 @@
 // anchor-less entity must resolve to an empty candidate set (Stage 7's
 // contract), and it can only do that if the entity has a pick id at all.
 
-import { buildFaceBoundarySegments, toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
+import { buildFaceBoundarySegments, lazyFaceTriangles, toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { assemblyBodyId } from '@/utils/assemblyBodies'
@@ -71,9 +71,13 @@ function buildFaceBoundaries(m: MeshPayload): AssemblyPickBody['faceBoundaries']
     faces: m.indices,
     triangle_to_face: Array.from(m.faceIdsPerTriangle),
   }
+  // One grouping pass, shared by every face. Without it each face re-scans the
+  // whole triangle list to find its own triangles, making the loop
+  // O(faces x triangles) -- the shape that froze the UI on an imported assembly.
+  const triangles = lazyFaceTriangles(mesh)
   const boundaries = new Map<number, Float32Array>()
   for (let i = 0; i < n; i++) {
-    const segments = buildFaceBoundarySegments(mesh, i)
+    const segments = buildFaceBoundarySegments(mesh, i, triangles.get(i))
     if (segments.length > 0) boundaries.set(i, segments)
   }
   return boundaries.size > 0 ? boundaries : null

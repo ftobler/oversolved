@@ -24,7 +24,9 @@ import {
   buildEdgeSegments,
   getEdgeSegmentCounts,
   faceCount,
+  lazyFaceTriangles,
 } from '@/components/Geometry3D/bodyGeometry'
+import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
@@ -103,17 +105,23 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const faceColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
   const edgeColorAttrRef = useRef<(THREE.BufferAttribute & { dispose?: () => void }) | null>(null)
 
+  // Triangles-per-face grouping, built on first use and then shared by everything
+  // that works face-by-face. Lazy on purpose: a body is meshed and mounted far
+  // more often than any of its faces is pointed at, and this must not land in the
+  // solve-to-first-frame path.
+  const faceTriangles = useMemo(() => lazyFaceTriangles(mesh), [mesh])
+
   const updateFaceGeometryForQuery = useCallback((faceQuery: string) => {
     const { face_queries } = mesh
     if (!face_queries) return
     const brepFaceIndex = face_queries.indexOf(faceQuery)
     if (brepFaceIndex < 0) return
-    const faceGeo = extractFaceGeometry(mesh, brepFaceIndex)
+    const faceGeo = extractFaceGeometry(mesh, brepFaceIndex, faceTriangles.get(brepFaceIndex))
     if (!faceGeo) return
     const props = calculateFaceProperties(faceGeo)
     if (!props) return
     setHoveredFaceGeometry(props.normal, props.center)
-  }, [mesh, setHoveredFaceGeometry])
+  }, [mesh, faceTriangles, setHoveredFaceGeometry])
 
   const clearFaceGeometry = useCallback(() => {
     setHoveredFaceGeometry(null, null)
@@ -298,47 +306,34 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
-  // Build segment geometries for every B-rep edge, keyed by edge index. Used to
-  // render the overlay of a hovered or selected edge. Keyed by index (not query)
-  // so two edges sharing a query keep distinct overlays instead of one clobbering
-  // the other in the map (mirrors faceBoundaryGeos).
+  // Overlay geometry for a hovered or selected B-rep edge, keyed by edge index
+  // (not query) so two edges sharing a query keep distinct overlays instead of
+  // one clobbering the other (mirrors faceBoundaryGeos).
+  //
+  // Built on demand: at most a handful of these are ever drawn, but a body can
+  // carry thousands of edges, and minting a BufferGeometry per edge at mount put
+  // all of that between the finished solve and the first frame.
   const edgeBoundaryGeos = useMemo(() => {
     if (edges.length === 0) return null
-    const geos = new Map<number, THREE.BufferGeometry>()
-    edges.forEach((edge, i) => {
-      const pts = buildEdgeSegments([edge])
-      if (pts.length === 0) return
-      const geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
-      geos.set(i, geo)
-    })
-    return geos
+    return lazyGeometryCache(i => (edges[i] ? buildEdgeSegments([edges[i]]) : null))
   }, [edges])
 
   useEffect(() => {
-    return () => { edgeBoundaryGeos?.forEach(geo => geo.dispose()) }
+    return () => { edgeBoundaryGeos?.dispose() }
   }, [edgeBoundaryGeos])
 
-  // Build boundary edge geometries for every B-rep face, keyed by face index.
-  // Used to render the outline of a hovered or selected face. Keyed by index (not
-  // query) so two faces sharing a query keep distinct outlines instead of one
-  // overwriting the other.
+  // Outline geometry for a hovered or selected B-rep face, keyed by face index
+  // (not query) so two faces sharing a query keep distinct outlines. On demand
+  // for the same reason as the edges above -- and here the eager build was
+  // quadratic on top: buildFaceBoundarySegments scans the whole triangle list, so
+  // asking it for every face cost O(faces x triangles) per body.
   const faceBoundaryGeos = useMemo(() => {
-    const { face_queries } = mesh
-    if (!face_queries) return null
-    const geos = new Map<number, THREE.BufferGeometry>()
-    for (let i = 0; i < face_queries.length; i++) {
-      const pts = buildFaceBoundarySegments(mesh, i)
-      if (pts.length === 0) continue
-      const geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
-      geos.set(i, geo)
-    }
-    return geos
-  }, [mesh])
+    if (!mesh.face_queries) return null
+    return lazyGeometryCache(i => buildFaceBoundarySegments(mesh, i, faceTriangles.get(i)))
+  }, [mesh, faceTriangles])
 
   useEffect(() => {
-    return () => { faceBoundaryGeos?.forEach(geo => geo.dispose()) }
+    return () => { faceBoundaryGeos?.dispose() }
   }, [faceBoundaryGeos])
 
   // Resolve a triangle index to a stable B-rep face query, or fall back to triangle-based query.
