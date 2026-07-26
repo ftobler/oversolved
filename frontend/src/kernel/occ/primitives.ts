@@ -313,18 +313,29 @@ export function makePrism(
 /**
  * BRepMesh_IncrementalMesh on a shape, matching cadquery's `Shape.mesh`:
  * `BRepMesh_IncrementalMesh(shape, tol, True, angTol)` -- isRelative=True,
- * parallel defaulting False. The relative flag scales deflection by the shape's
- * size, so meshing each face individually (as cadquery does) is what reproduces
- * Python's per-face triangulation; do not substitute a single solid-level mesh.
+ * parallel defaulting False.
+ *
+ * Callers mesh face-by-face, and should keep doing so. Not for the reason this
+ * comment used to give (isRelative was believed to scale deflection by the
+ * meshed shape's size; it does not -- OCC derives it per sub-shape, so a
+ * shape-level call triangulates identically, verified node-for-node on a
+ * compound whose faces differ in size by three orders of magnitude). The real
+ * reason is peak memory: one shape-level call builds a meshing context spanning
+ * every face at once. On a 3468-face import that raised the emscripten heap
+ * high-water mark from 77 to 191 MiB to buy ~5% wall time -- the wrong trade for
+ * a kernel whose large-import failure mode is running out of heap.
+ *
+ * The mesher object is deleted immediately: it is needed only for its
+ * constructor side effect (the triangulation is stored on the face's TShape and
+ * outlives it), and tracking one per face left thousands live for the walk.
  */
 function meshShape(
   oc: OccModule,
-  scope: DisposeScope,
   shape: OccShape,
   linearDeflection: number,
   angularDeflection: number,
 ): void {
-  scope.track(new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, true, angularDeflection, false))
+  new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, true, angularDeflection, false).delete()
 }
 
 interface FaceTessellation {
@@ -348,7 +359,7 @@ export function tessellateFace(
   linearDeflection: number,
   angularDeflection: number,
 ): FaceTessellation {
-  meshShape(oc, scope, face, linearDeflection, angularDeflection)
+  meshShape(oc, face, linearDeflection, angularDeflection)
   const loc = scope.track(new oc.TopLoc_Location_1())
   const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
   if (handle.IsNull()) return { vertices: [], triangles: [] }
@@ -358,11 +369,21 @@ export function tessellateFace(
   const trsf = scope.track(loc.Transformation())
   const reverse = isReversed(oc, face)
 
+  // `Node`/`Triangle` hand back embind proxies over freshly allocated COPIES
+  // (verified: mutating the proxy does not write back into the triangulation),
+  // so each one owns WASM memory and must be deleted here. Tracking them in the
+  // scope instead would hold one live object per mesh node until the whole shape
+  // finished -- linear in triangulation size, which is what ran the heap out on
+  // a large STEP import. Deleting eagerly keeps the live set O(1) per face.
+  // The node is transformed IN PLACE (`Transform`, not `Transformed`) so the
+  // loop allocates one object per node rather than two.
   const vertices: Vec3[] = []
   const nbNodes = poly.NbNodes()
   for (let i = 1; i <= nbNodes; i++) {
-    const n = scope.track(poly.Node(i).Transformed(trsf))
+    const n = poly.Node(i)
+    n.Transform(trsf)
     vertices.push([n.X(), n.Y(), n.Z()])
+    n.delete()
   }
 
   const triangles: [number, number, number][] = []
@@ -372,6 +393,7 @@ export function tessellateFace(
     const a = t.Value(1) - 1
     const b = t.Value(2) - 1
     const c = t.Value(3) - 1
+    t.delete()
     triangles.push(reverse ? [a, c, b] : [a, b, c])
   }
   return { vertices, triangles }

@@ -147,7 +147,10 @@ export interface OccXYZ extends OccDisposable {
 
 /** gp_Pnt additionally transforms by a gp_Trsf (mesh node -> world). */
 export interface OccPntValue extends OccXYZ {
+  /** Allocates a new point; the caller owns it. Prefer `Transform` in hot loops. */
   Transformed(trsf: OccTrsf): OccPntValue
+  /** In-place transform -- no allocation. */
+  Transform(trsf: OccTrsf): void
 }
 
 /** Embind enum value carrying a numeric `.value`. */
@@ -155,7 +158,7 @@ export interface OccEnumValue {
   value: number
 }
 
-export interface OccTriangle {
+export interface OccTriangle extends OccDisposable {
   /** 1-based node index for corner i (i in 1..3). */
   Value(i: number): number
 }
