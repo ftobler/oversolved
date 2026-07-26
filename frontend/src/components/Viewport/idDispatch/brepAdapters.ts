@@ -27,7 +27,7 @@ export const brepFaceAdapter = {
     // pickKey isolates the single hovered face when its query collides with a
     // sibling's; the caller (applyHoverHit) cleared it to null beforehand.
     s.setHoveredPickKey(pickKey ?? null)
-    found.body.updateFaceGeometryForQuery(entityKey)
+    found.body.updateFaceGeometryForIndex(found.index)
   },
 }
 

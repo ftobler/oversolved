@@ -33,7 +33,7 @@ function makeCallbacks(over: Partial<BodyDispatchCallbacks> = {}): BodyDispatchC
     edgeQueries: ['edgeQ0', 'edgeQ1'],
     edgeKinds: ['line', 'arc'],
     vertexQueries: ['vtxQ0'],
-    updateFaceGeometryForQuery: vi.fn(),
+    updateFaceGeometryForIndex: vi.fn(),
     clearFaceGeometry: vi.fn(),
     ...over,
   }

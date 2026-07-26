@@ -22,7 +22,9 @@ export interface BodyDispatchCallbacks {
   /** Curve kind ('line' | 'circle' | 'arc' | 'spline') parallel to edgeQueries. */
   edgeKinds?: readonly string[]
   vertexQueries: readonly string[] | undefined
-  updateFaceGeometryForQuery: (faceQuery: string) => void
+  /** Takes the B-rep face index the lookup below resolved, so the body does not
+   *  scan its own query list again on every pointer move. */
+  updateFaceGeometryForIndex: (brepFaceIndex: number) => void
   clearFaceGeometry: () => void
 }
 

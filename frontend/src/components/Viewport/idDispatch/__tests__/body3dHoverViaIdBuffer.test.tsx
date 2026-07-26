@@ -36,14 +36,14 @@ afterEach(() => {
 
 describe('body3dHoverViaIdBuffer', () => {
   it('face hover sets hoveredSelectionId and calls updateFaceGeometry', () => {
-    let faceQueryCalled = ''
+    let faceIndexCalled = -1
     registerBodyCallbacks('feat1/b1', {
       featureId: 'feat1',
       bodyId: 'b1',
       mesh: stubMesh(['@feat1/face/0', '@feat1/face/1']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: (q: string) => { faceQueryCalled = q },
+      updateFaceGeometryForIndex: (i: number) => { faceIndexCalled = i },
       clearFaceGeometry: () => {},
     })
 
@@ -51,7 +51,7 @@ describe('body3dHoverViaIdBuffer', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.hoveredSelectionId).toBe('@feat1/face/0')
-    expect(faceQueryCalled).toBe('@feat1/face/0')
+    expect(faceIndexCalled).toBe(0)  // resolved by the reverse index, not re-scanned here
   })
 
   it('face hover propagates the pick key so Body3D can isolate one of two shared-query faces', () => {
@@ -61,7 +61,7 @@ describe('body3dHoverViaIdBuffer', () => {
       mesh: stubMesh(['@feat1b/face/dup', '@feat1b/face/dup']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 
@@ -79,7 +79,7 @@ describe('body3dHoverViaIdBuffer', () => {
       mesh: stubMesh(),
       edgeQueries: ['@feat2/edge/0', '@feat2/edge/1'],
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 
@@ -96,7 +96,7 @@ describe('body3dHoverViaIdBuffer', () => {
       mesh: stubMesh(),
       edgeQueries: undefined,
       vertexQueries: ['@feat3/vertex/0'],
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 
@@ -115,7 +115,7 @@ describe('body3dHoverViaIdBuffer', () => {
       mesh: stubMesh(['@feat4/face/0']),
       edgeQueries: ['@feat4/edge/0'],
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => { faceGeometryCleared = true },
     })
 
@@ -140,7 +140,7 @@ describe('body3dHoverViaIdBuffer', () => {
       mesh: stubMesh(['@feat5/face/0']),
       edgeQueries: ['@feat5/edge/0'],
       vertexQueries: ['@feat5/vertex/0'],
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => { faceCleared = true },
     })
 

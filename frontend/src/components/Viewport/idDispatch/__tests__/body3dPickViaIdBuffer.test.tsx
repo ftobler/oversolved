@@ -40,7 +40,7 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(['@feat1/face/0', '@feat1/face/1']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 
@@ -59,7 +59,7 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(),
       edgeQueries: ['@feat2/edge/0', '@feat2/edge/1'],
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 
@@ -78,7 +78,7 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(),
       edgeQueries: undefined,
       vertexQueries: ['@feat3/vertex/0'],
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 
@@ -96,7 +96,7 @@ describe('body3dPickViaIdBuffer', () => {
       mesh: stubMesh(['@feat4/face/0']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      updateFaceGeometryForQuery: () => {},
+      updateFaceGeometryForIndex: () => {},
       clearFaceGeometry: () => {},
     })
 

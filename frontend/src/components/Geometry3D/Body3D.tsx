@@ -110,11 +110,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // solve-to-first-frame path.
   const faceTriangles = useMemo(() => lazyFaceTriangles(mesh), [mesh])
 
-  const updateFaceGeometryForQuery = useCallback((faceQuery: string) => {
-    const { face_queries } = mesh
-    if (!face_queries) return
-    const brepFaceIndex = face_queries.indexOf(faceQuery)
-    if (brepFaceIndex < 0) return
+  // Takes the B-rep face INDEX, not its query: the dispatcher's reverse index
+  // already resolved the query to an index to find this body at all, so taking the
+  // query here meant a second `face_queries.indexOf` -- a linear scan of string
+  // compares over every face of the body, on every pointer move.
+  const updateFaceGeometryForIndex = useCallback((brepFaceIndex: number) => {
     const faceGeo = extractFaceGeometry(mesh, brepFaceIndex, faceTriangles.get(brepFaceIndex))
     if (!faceGeo) return
     const props = calculateFaceProperties(faceGeo)
@@ -143,10 +143,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       edgeQueries,
       edgeKinds: edges.map(e => e.kind),
       vertexQueries,
-      updateFaceGeometryForQuery,
+      updateFaceGeometryForIndex,
       clearFaceGeometry,
     })
-  }, [interactive, visible, featureId, bodyId, mesh, edges, edgeQueries, vertexQueries, updateFaceGeometryForQuery, clearFaceGeometry])
+  }, [interactive, visible, featureId, bodyId, mesh, edges, edgeQueries, vertexQueries, updateFaceGeometryForIndex, clearFaceGeometry])
 
   const isBodySelected = normalSelection.has('@' + bodyId)
 
