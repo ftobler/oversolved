@@ -26,7 +26,9 @@ function quadStrip(numFaces: number): Mesh3D {
     vertices[i * 6 + 3] = i; vertices[i * 6 + 4] = 1; vertices[i * 6 + 5] = 0
   }
   const faces = new Uint32Array(numTris * 3)
-  const triangle_to_face = new Uint32Array(numTris)
+  // A plain array, not a Uint32Array: `Mesh3D.triangle_to_face` is `number[]`,
+  // and the solver payloads are converted before they ever reach this shape.
+  const triangle_to_face = new Array<number>(numTris)
   for (let f = 0; f < numFaces; f++) {
     const a = f * 2, b = a + 1, c = a + 2, d = a + 3
     faces.set([a, b, c], f * 6)
