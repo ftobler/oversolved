@@ -29,6 +29,7 @@ import {
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
+import { VertexInstancePainter } from '@/components/Geometry3D/vertexInstancePainter'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
@@ -69,6 +70,11 @@ function buildEdgeMaterial(): THREE.ShaderMaterial {
     vertexColors: true,
   })
 }
+
+// Vertex-dot colours, hoisted out of the frame loop: three.js Color parsing is not
+// free and neither of these ever changes.
+const DOT_COLOR_HOVER = new THREE.Color(COLOR_HOVER)
+const DOT_COLOR_SELECTED = new THREE.Color(COLOR_SELECTED)
 
 // Shared empty default so a body rendered without edges keeps one identity for
 // the prop across renders. A fresh `[]` per render would invalidate every memo
@@ -411,31 +417,20 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const vertexMeshRef = useRef<THREE.InstancedMesh>(null)
   const vertexDotRef = useRef<THREE.InstancedMesh>(null)
 
-  // Reusable objects to avoid per-frame allocation
-  const _vtxPos = useMemo(() => new THREE.Vector3(), [])
-  const _vtxQuat = useMemo(() => new THREE.Quaternion(), [])  // identity
-  const _vtxScale = useMemo(() => new THREE.Vector3(), [])
-  const _vtxMatrix = useMemo(() => new THREE.Matrix4(), [])
-  const _dotScale = useMemo(() => new THREE.Vector3(), [])
+  // One painter per instanced mesh: each re-writes its instances only when its
+  // inputs actually change, instead of once per frame per vertex.
+  const hitSpherePainter = useMemo(() => new VertexInstancePainter(), [])
+  const dotPainter = useMemo(() => new VertexInstancePainter(), [])
 
   useFrame(({ camera }) => {
     const vmesh = vertexMeshRef.current
     if (!vmesh || !vertices?.length) return
 
     // Scale vertex spheres to POINT_HIT_PIXELS screen radius (same as 2D vertex dots).
-    const s = POINT_HIT_PIXELS * p2w(camera)
-    _vtxScale.set(s, s, s)
-
-    vertices.forEach(([x, y, z], i) => {
-      _vtxPos.set(x, y, z)
-      _vtxMatrix.compose(_vtxPos, _vtxQuat, _vtxScale)
-      vmesh.setMatrixAt(i, _vtxMatrix)
-    })
-
-    vmesh.instanceMatrix.needsUpdate = true
+    hitSpherePainter.sync({ target: vmesh, vertices, scale: POINT_HIT_PIXELS * p2w(camera) })
 
     const dmesh = vertexDotRef.current
-    if (dmesh && vertices?.length) {
+    if (dmesh) {
       // Only show visual dots when a vertex is hovered or selected. Both are
       // resolved by pick key (via vertexSelectionFlags / vertexHoverFlags) so a
       // shared-query sibling does not co-show, mirroring the face path.
@@ -445,37 +440,19 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       const hasHover = vertexHighlightIndex?.hasAny(vertexHoverFlags) ?? false
       const hasSelection = vertexHighlightIndex?.hasAny(vertexSelectionFlags) ?? false
 
-      if (!hasHover && !hasSelection) {
-        dmesh.visible = false
-      } else {
-        dmesh.visible = true
-        const ds = POINT_VIS_PIXELS * p2w(camera)
-        _dotScale.set(ds, ds, ds)
-
-        const hoverColorObj = new THREE.Color(COLOR_HOVER)
-        const selectedColorObj = new THREE.Color(COLOR_SELECTED)
-
-        vertices.forEach(([x, y, z], i) => {
-          _vtxPos.set(x, y, z)
-          _vtxMatrix.compose(_vtxPos, _vtxQuat, _dotScale)
-          dmesh.setMatrixAt(i, _vtxMatrix)
-
-          let color: THREE.Color
-          if (vertexSelectionFlags && vertexSelectionFlags[i]) {
-            color = selectedColorObj
-          } else if (vertexHoverFlags && vertexHoverFlags[i]) {
-            color = hoverColorObj
-          } else {
-            // Hide non-hovered, non-selected vertices by scaling to 0
-            _vtxMatrix.compose(_vtxPos, _vtxQuat, _vtxScale.set(0, 0, 0))
-            dmesh.setMatrixAt(i, _vtxMatrix)
-            return  // skip setColorAt
-          }
-          dmesh.setColorAt(i, color)
+      dmesh.visible = hasHover || hasSelection
+      if (dmesh.visible) {
+        dotPainter.sync({
+          target: dmesh,
+          vertices,
+          scale: POINT_VIS_PIXELS * p2w(camera),
+          // Reference-stable while a pick holds (see HighlightIndex), which is what
+          // lets the painter treat identity as the whole change test.
+          selected: vertexSelectionFlags,
+          hovered: vertexHoverFlags,
+          selectedColor: DOT_COLOR_SELECTED,
+          hoveredColor: DOT_COLOR_HOVER,
         })
-
-        dmesh.instanceMatrix.needsUpdate = true
-        if (dmesh.instanceColor) dmesh.instanceColor.needsUpdate = true
       }
     }
   })
