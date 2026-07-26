@@ -11,6 +11,22 @@ import { INITIAL_ZOOM } from './cameraConstants'
 // fixed-pose Reset Viewport is gone).
 export const FIT_MARGIN = 2.5
 
+// ─── clip planes ───
+// near/far are sized to the content, not fixed, because the depth range is not
+// free: for an ortho camera the depth-buffer resolution unit is proportional to
+// (far - near), and Body3D pushes faces back by polygonOffsetUnits=1 of exactly
+// that unit to keep edges off their own faces. A range big enough for the worst
+// case therefore turns that offset into a visible penetration depth and makes
+// small parts look transparent (their back faces beat the offset front faces).
+// Sizing to the content keeps the offset imperceptible at every scale.
+//
+// The pad is what the view may gain after the fit without clipping: the camera
+// can still orbit (an AABB measured along one axis grows by up to sqrt(3) when
+// turned) and geometry can still be added. Two extents of slack on each side
+// covers both, and reproduces the historical ~1000-unit range for small models.
+export const CLIP_PAD_FACTOR = 2
+export const MIN_CLIP_PAD = 500
+
 // ─── camera chokepoint ───
 // Every programmatic camera move in the viewport goes through this module.
 // The camera itself is otherwise only touched by the user (OrbitControls) and
@@ -196,11 +212,23 @@ export function fitToContent(
     [minX, minY, maxZ], [maxX, minY, maxZ], [minX, maxY, maxZ], [maxX, maxY, maxZ],
   ]
   let minVX = Infinity, maxVX = -Infinity, minVY = Infinity, maxVY = -Infinity
+  // View-space z runs negative into the screen; depth is its negation, which is
+  // the axis near/far are measured on.
+  let minDepth = Infinity, maxDepth = -Infinity
   const tmp = new THREE.Vector3()
   for (const [x, y, z] of corners) {
     tmp.set(x, y, z).applyMatrix4(viewMatrix)
     if (tmp.x < minVX) minVX = tmp.x; if (tmp.x > maxVX) maxVX = tmp.x
     if (tmp.y < minVY) minVY = tmp.y; if (tmp.y > maxVY) maxVY = tmp.y
+    if (-tmp.z < minDepth) minDepth = -tmp.z; if (-tmp.z > maxDepth) maxDepth = -tmp.z
+  }
+  // The world origin counts for depth only: the reference planes and origin
+  // marker have to survive the clip even when the model sits far from them, but
+  // they must not drag the framing back toward the origin.
+  {
+    const originDepth = -tmp.set(0, 0, 0).applyMatrix4(viewMatrix).z
+    if (originDepth < minDepth) minDepth = originDepth
+    if (originDepth > maxDepth) maxDepth = originDepth
   }
   const viewSizeX = maxVX - minVX
   const viewSizeY = maxVY - minVY
@@ -218,6 +246,14 @@ export function fitToContent(
     .addScaledVector(camRight, camRight.dot(centerWorld) - camRight.dot(camera.position))
     .addScaledVector(camUp, camUp.dot(centerWorld) - camUp.dot(camera.position))
   camera.position.copy(newPos)
+
+  // Safe after the move: it slid along camRight/camUp, both perpendicular to
+  // the view axis, so every depth measured above is unchanged.
+  const pad = Math.max((maxDepth - minDepth) * CLIP_PAD_FACTOR, MIN_CLIP_PAD)
+  camera.near = minDepth - pad
+  camera.far = maxDepth + pad
+  traceCamera('fitToContent', 'clip=', [camera.near, camera.far])
+
   controls?.target.set(cx, cy, cz)
   controls?.update()
   commitProjection(camera)

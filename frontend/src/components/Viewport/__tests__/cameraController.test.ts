@@ -94,6 +94,72 @@ describe('cameraController', () => {
   })
 })
 
+// fitToContent owns the clip planes because a fixed range cannot serve both
+// ends: wide enough for a large model makes the depth-buffer resolution unit
+// coarse, and Body3D's polygonOffsetUnits=1 is one such unit, so the edge/face
+// separation grows into a visible penetration depth that makes small parts
+// transparent. Sized to the content, neither end has to lose.
+describe('fitToContent clip planes', () => {
+  function boxBody(cx: number, cy: number, cz: number, half: number): Record<string, BodyResult> {
+    return {
+      a: {
+        mesh: {
+          vertices: new Float32Array([cx - half, cy - half, cz - half, cx + half, cy + half, cz + half]),
+        },
+      } as unknown as BodyResult,
+    }
+  }
+
+  // Depth along the view axis, the axis near/far are measured on.
+  function depthOf(cam: THREE.OrthographicCamera, p: [number, number, number]): number {
+    cam.updateMatrixWorld()
+    return -new THREE.Vector3(...p).applyMatrix4(cam.matrixWorldInverse).z
+  }
+
+  function cornersOf(cx: number, cy: number, cz: number, half: number): [number, number, number][] {
+    const out: [number, number, number][] = []
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      out.push([cx + sx * half, cy + sy * half, cz + sz * half])
+    }
+    return out
+  }
+
+  it('keeps the range tight for a small model so the polygon offset stays invisible', () => {
+    const cam = makeOrtho()
+    expect(fitToContent(cam, makeControls() as never, boxBody(0, 0, 0, 10), null)).toBe(true)
+    expect(cam.far - cam.near).toBeLessThanOrEqual(1500)
+  })
+
+  it('clips neither end of a model far deeper than any fixed range', () => {
+    const cam = makeOrtho()
+    expect(fitToContent(cam, makeControls() as never, boxBody(0, 0, 0, 10000), null)).toBe(true)
+    for (const corner of cornersOf(0, 0, 0, 10000)) {
+      const depth = depthOf(cam, corner)
+      expect(depth).toBeGreaterThan(cam.near)
+      expect(depth).toBeLessThan(cam.far)
+    }
+  })
+
+  it('keeps the world origin visible when the model sits far from it', () => {
+    const cam = makeOrtho()
+    expect(fitToContent(cam, makeControls() as never, boxBody(0, 0, 3000, 10), null)).toBe(true)
+    const originDepth = depthOf(cam, [0, 0, 0])
+    expect(originDepth).toBeGreaterThan(cam.near)
+    expect(originDepth).toBeLessThan(cam.far)
+  })
+
+  it('does not let the origin drag the framing away from the model', () => {
+    const atOrigin = makeOrtho()
+    fitToContent(atOrigin, makeControls() as never, boxBody(0, 0, 0, 10), null)
+
+    // Same model, moved far off. The origin counts for depth only, so zoom -
+    // which is decided by the lateral extents - must not change.
+    const farOff = makeOrtho()
+    fitToContent(farOff, makeControls() as never, boxBody(3000, 3000, 0, 10), null)
+    expect(farOff.zoom).toBeCloseTo(atOrigin.zoom, 6)
+  })
+})
+
 describe('shouldAutoFit', () => {
   it('fits once geometry has arrived and stops once it has succeeded', () => {
     expect(shouldAutoFit(false, 0, false)).toBe(false)  // nothing to frame yet
