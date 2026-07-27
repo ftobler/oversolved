@@ -262,7 +262,9 @@
         "body_t_1": {
           "volume": 399.9999999999999,
           "created_by": "ex_t",
-          "modified_by": []
+          "modified_by": [
+            "bool1"
+          ]
         }
       }
     }

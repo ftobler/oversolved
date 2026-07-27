@@ -29,6 +29,9 @@
       "result": {
         "status": "ok",
         "body_id": "body_s",
+        "body_ids": [
+          "body_s"
+        ],
         "operation": "add"
       },
       "store": {
@@ -70,6 +73,11 @@
       "result": {
         "status": "ok",
         "body_id": "body_arr2",
+        "body_ids": [
+          "body_arr2",
+          "body_arr2_1",
+          "body_arr2_2"
+        ],
         "operation": "new"
       },
       "store": {
@@ -123,11 +131,38 @@
       "result": {
         "status": "ok",
         "body_id": "body_s",
+        "body_ids": [
+          "body_s",
+          "body_s_1",
+          "body_s_2",
+          "body_s_3"
+        ],
         "operation": "add"
       },
       "store": {
         "body_s": {
-          "volume": 255.9999999999999,
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": [
+            "ca1"
+          ]
+        },
+        "body_s_1": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": [
+            "ca1"
+          ]
+        },
+        "body_s_2": {
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": [
+            "ca1"
+          ]
+        },
+        "body_s_3": {
+          "volume": 63.999999999999986,
           "created_by": "ex_s",
           "modified_by": [
             "ca1"
@@ -164,6 +199,9 @@
       "result": {
         "status": "ok",
         "body_id": "body_tr1",
+        "body_ids": [
+          "body_tr1"
+        ],
         "operation": "new"
       },
       "store": {
@@ -214,6 +252,9 @@
       "result": {
         "status": "ok",
         "body_id": "body_s",
+        "body_ids": [
+          "body_s"
+        ],
         "operation": "replace"
       },
       "store": {
@@ -256,6 +297,9 @@
       "result": {
         "status": "ok",
         "body_id": "body_tr3",
+        "body_ids": [
+          "body_tr3"
+        ],
         "operation": "new"
       },
       "store": {
@@ -297,11 +341,22 @@
       "result": {
         "status": "ok",
         "body_id": "body_s",
+        "body_ids": [
+          "body_s",
+          "body_s_1"
+        ],
         "operation": "merge"
       },
       "store": {
         "body_s": {
-          "volume": 127.99999999999994,
+          "volume": 63.999999999999986,
+          "created_by": "ex_s",
+          "modified_by": [
+            "mi1"
+          ]
+        },
+        "body_s_1": {
+          "volume": 63.999999999999986,
           "created_by": "ex_s",
           "modified_by": [
             "mi1"

@@ -49,6 +49,9 @@
       "result": {
         "status": "ok",
         "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
         "hole_count": 2
       },
       "volume": 3717.256661176919
@@ -97,6 +100,9 @@
       "result": {
         "status": "ok",
         "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
         "hole_count": 1
       },
       "volume": 3874.336293856408
@@ -146,8 +152,11 @@
       "result": {
         "status": "partial",
         "body_id": "body_t",
+        "body_ids": [
+          "body_t"
+        ],
         "hole_count": 1,
-        "exception": "hole: 1/2 point(s) skipped \u2014 no XY data for: p2"
+        "exception": "hole: 1/2 point(s) skipped — no XY data for: p2"
       },
       "volume": 3858.6283305884594
     }
