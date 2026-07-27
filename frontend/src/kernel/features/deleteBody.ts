@@ -7,7 +7,7 @@ import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared'
+import { resolveBody, resolveBodyIds } from './shared'
 
 type Dict = Record<string, unknown>
 
@@ -16,14 +16,27 @@ interface DeleteBodyResult {
   deleted_body_ids: string[]
 }
 
-/** Resolve one body ref to its store key, throwing when it names nothing. */
-function resolveBodyKey(bodyQuery: string, globalRepo: Repository, bodyStore: Record<string, Body>): string {
-  if (!bodyQuery.startsWith('?')) return resolveBody(bodyQuery, bodyStore).id
+/**
+ * Resolve one body ref to the store keys it names, throwing when it names none.
+ *
+ * A `?` query is body-exact -- it resolves through a specific face/edge, so it
+ * names the one sibling that owns it, and that is what the UI picker writes. A
+ * plain ref may instead name a FEATURE, and a feature owns every body it made
+ * (features/bodySplit.ts): `delete_body: {bodies: ['@extrude1']}` has to remove
+ * `body_extrude1` AND its split siblings, not quietly leave the other halves
+ * standing. `resolveBody` is still the fallback for the viewport-prefix forms
+ * (`face:id:...`) it alone understands.
+ */
+function resolveBodyKeys(bodyQuery: string, globalRepo: Repository, bodyStore: Record<string, Body>): string[] {
+  if (!bodyQuery.startsWith('?')) {
+    const ids = resolveBodyIds(bodyQuery, bodyStore)
+    return ids.length > 0 ? ids : [resolveBody(bodyQuery, bodyStore).id]
+  }
   const resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
   if (resolved === null) throw new Error(`delete_body: body not found: ${JSON.stringify(bodyQuery)}`)
   // A resolved Body carries created_by + id; a geometry dict carries body_id.
-  if ('created_by' in resolved && typeof resolved.id === 'string') return resolved.id
-  if (resolved.body_id) return String(resolved.body_id)
+  if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
+  if (resolved.body_id) return [String(resolved.body_id)]
   throw new Error(`delete_body: query did not resolve to a body: ${JSON.stringify(bodyQuery)}`)
 }
 
@@ -44,8 +57,9 @@ export function solveDeleteBody(
   // deletion instead of letting the second ref fail against an emptied slot.
   const keys: string[] = []
   for (const bodyQuery of bodyQueries) {
-    const key = resolveBodyKey(bodyQuery, globalRepo, bodyStore)
-    if (!keys.includes(key)) keys.push(key)
+    for (const key of resolveBodyKeys(bodyQuery, globalRepo, bodyStore)) {
+      if (!keys.includes(key)) keys.push(key)
+    }
   }
 
   for (const bodyKey of keys) {

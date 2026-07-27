@@ -86,4 +86,33 @@ describe('solveDeleteBody', () => {
     ).toThrow()
     expect(Object.keys(bodyStore)).toEqual(['body_a'])
   })
+
+  it('a feature ref deletes every body that feature made, siblings included', () => {
+    // A feature owns each solid its result split into (features/bodySplit.ts).
+    // Resolving '@ex1' to the first sibling alone deleted one half of a severed
+    // part and reported status ok, leaving the rest of it standing.
+    const table = new HandleTable({ finalizerGuard: false })
+    const bodyStore: Record<string, Body> = {
+      body_ex1: body('body_ex1'), body_ex1_1: body('body_ex1_1'), body_other: body('body_other'),
+    }
+    bodyStore.body_ex1.created_by = 'ex1'
+    bodyStore.body_ex1_1.created_by = 'ex1'
+    bodyStore.body_other.created_by = 'ex2'
+
+    const result = solveDeleteBody(oc, scope, table, { id: 'd', delete_body: { bodies: ['@ex1'] } }, new Repository(), bodyStore)
+
+    expect(result.deleted_body_ids).toEqual(['body_ex1', 'body_ex1_1'])
+    expect(Object.keys(bodyStore)).toEqual(['body_other'])
+  })
+
+  it('an exact body id still deletes exactly that one sibling', () => {
+    const bodyStore: Record<string, Body> = { body_ex1: body('body_ex1'), body_ex1_1: body('body_ex1_1') }
+    bodyStore.body_ex1.created_by = 'ex1'
+    bodyStore.body_ex1_1.created_by = 'ex1'
+
+    const result = solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['body_ex1_1'] } }, new Repository(), bodyStore)
+
+    expect(result.deleted_body_ids).toEqual(['body_ex1_1'])
+    expect(Object.keys(bodyStore)).toEqual(['body_ex1'])
+  })
 })

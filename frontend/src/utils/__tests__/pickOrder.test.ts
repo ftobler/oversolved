@@ -29,6 +29,16 @@ describe('selectionSourceFeatureIds', () => {
     expect(selectionSourceFeatureIds('@body_ex1', KNOWN)).toEqual(['ex1'])
   })
 
+  it('maps a SPLIT SIBLING body ref back to the same feature', () => {
+    // One feature owns several bodies once its result splits into disjoint
+    // solids (kernel/features/bodySplit.ts). Stripping `body_` and demanding an
+    // exact feature-id hit attributed every sibling to nothing, and this guard
+    // fails open, so `ex1` could pick its own second half.
+    expect(selectionSourceFeatureIds('@body_ex1_1', KNOWN)).toEqual(['ex1'])
+    expect(selectionSourceFeatureIds('@body_ex1_2', KNOWN)).toEqual(['ex1'])
+    expect(selectionSourceFeatureIds('@body_ex1_1/face/3', KNOWN)).toEqual(['ex1'])
+  })
+
   it('reads the owner out of the topo fallback query', () => {
     expect(selectionSourceFeatureIds('@ex1/face/3', KNOWN)).toEqual(['ex1'])
     expect(selectionSourceFeatureIds('@ex1/edge/2', KNOWN)).toEqual(['ex1'])
@@ -79,6 +89,12 @@ describe('isPickAllowed', () => {
     expect(isPickAllowed('@body_ex1', 'ex1', FEATURES)).toBe(false)
     expect(isPickAllowed('@ex1/face/3', 'ex1', FEATURES)).toBe(false)
     expect(isPickAllowed(makeAncestryQuery(['@gdf|0,0,5|0,0,1', '@ex1', '@body_ex1'], 'flatface'), 'ex1', FEATURES)).toBe(false)
+  })
+
+  it('rejects a feature referencing a split sibling of its own body', () => {
+    expect(isPickAllowed('@body_ex1_1', 'ex1', FEATURES)).toBe(false)
+    expect(isPickAllowed('@body_ex2_3', 'ex1', FEATURES)).toBe(false)  // later feature
+    expect(isPickAllowed('@body_ex1_1', 'ex2', FEATURES)).toBe(true)   // earlier feature
   })
 
   it('rejects a feature referencing a later feature', () => {

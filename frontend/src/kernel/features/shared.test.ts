@@ -199,6 +199,22 @@ describe('resolveMergeTargets parity', () => {
       }
     })
   }
+
+  // Deliberately beyond the frozen Python cases, which only ever had one body
+  // per creator: a feature routinely owns several bodies once its result splits
+  // (features/bodySplit.ts), and targeting the FEATURE must reach all of them.
+  it('a feature id resolves to every body that feature made, not just the first', () => {
+    const store = makeStore({
+      body_ex1: 'ex1',
+      body_ex1_1: 'ex1',
+      body_ex1_2: 'ex1',
+      body_other: 'ex2',
+    })
+    expect(resolveMergeTargets('ex1', store)).toEqual(['body_ex1', 'body_ex1_1', 'body_ex1_2'])
+    expect(resolveMergeTargets('@ex1', store)).toEqual(['body_ex1', 'body_ex1_1', 'body_ex1_2'])
+    // An explicit body id still means exactly that one sibling.
+    expect(resolveMergeTargets('body_ex1_1', store)).toEqual(['body_ex1_1'])
+  })
 })
 
 describe('brepDiffIsEmpty parity', () => {

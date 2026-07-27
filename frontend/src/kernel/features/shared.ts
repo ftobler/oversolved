@@ -299,22 +299,48 @@ export function bareBody(id: string, createdBy: string, sketchId = ''): Body {
 }
 
 /**
+ * Every body id a ref names, or `[]` when it names none. The plural counterpart
+ * to `resolveBody`, and the one place the feature->bodies direction is decided.
+ *
+ * A FEATURE id resolves to every body that feature made, not just the first.
+ * One feature routinely owns several bodies -- it produced disjoint solids, or a
+ * later cut severed what it produced (features/bodySplit.ts) -- so returning
+ * only the first meant "cut everything @extrude1 made" quietly cut one half and
+ * left the other standing.
+ *
+ * Callers decide what "no match" means, which is why this returns `[]` rather
+ * than throwing: the merge-target and delete-body errors read differently, and
+ * delete-body still falls back to `resolveBody` for viewport-prefix forms.
+ */
+export function resolveBodyIds(ref: string, bodyStore: Record<string, Body>): string[] {
+  const key = ref.replace(/^@+/, '')
+  // An exact body id names exactly that one sibling.
+  if (key in bodyStore) return [key]
+  // Otherwise the ref names a FEATURE. The creator scan has to come before the
+  // `body_<key>` lookup: the first sibling is literally called `body_<feature>`,
+  // so that lookup would match it and hide the rest.
+  const byCreator = Object.entries(bodyStore)
+    .filter(([, body]) => body.created_by === key)
+    .map(([bid]) => bid)
+  if (byCreator.length > 0) return byCreator
+  const prefixed = 'body_' + key
+  if (prefixed in bodyStore) return [prefixed]
+  return []
+}
+
+/**
  * Body IDs a body operation should target (mirrors `_resolve_merge_targets`).
- * Empty/None merge target means ALL bodies; otherwise the ref resolves to one.
+ * Empty/None merge target means ALL bodies; anything else goes through
+ * `resolveBodyIds`.
  */
 export function resolveMergeTargets(
   mergeTarget: string | null | undefined,
   bodyStore: Record<string, Body>,
 ): string[] {
   if (!mergeTarget) return Object.keys(bodyStore)
-  const key = mergeTarget.replace(/^@+/, '')
-  if (key in bodyStore) return [key]
-  const prefixed = 'body_' + key
-  if (prefixed in bodyStore) return [prefixed]
-  for (const [bid, body] of Object.entries(bodyStore)) {
-    if (body.created_by === key) return [bid]
-  }
-  throw new Error(`extrude: body not found for merge_target '${mergeTarget}'`)
+  const ids = resolveBodyIds(mergeTarget, bodyStore)
+  if (ids.length === 0) throw new Error(`extrude: body not found for merge_target '${mergeTarget}'`)
+  return ids
 }
 
 // ─── BrepDiff predicate ───

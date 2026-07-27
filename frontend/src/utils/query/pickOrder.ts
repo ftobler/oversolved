@@ -29,10 +29,16 @@ function featureIdOfToken(token: string, known: ReadonlySet<string>): string | n
   if (slash >= 0) id = id.slice(0, slash)
   if (known.has(id)) return id
 
-  // A body is named after the feature that first created it.
+  // A body is named after the feature that first created it -- but that feature
+  // can own several bodies, and split siblings carry a `_1`, `_2` suffix
+  // (kernel/features/bodySplit.ts). Strip the prefix and fall through to the
+  // longest-known-prefix match below, so `@body_ex1_1` still attributes to
+  // `ex1`. Stripping and demanding an EXACT hit resolved every sibling to
+  // null, and this guard fails open, so each sibling silently became pickable
+  // by the feature that made it.
   if (id.startsWith(BODY_PREFIX)) {
-    const fid = id.slice(BODY_PREFIX.length)
-    return known.has(fid) ? fid : null
+    id = id.slice(BODY_PREFIX.length)
+    if (known.has(id)) return id
   }
 
   // `@<featureId><eid>` has no separator, so the feature id can only be
