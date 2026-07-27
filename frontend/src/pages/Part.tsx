@@ -133,6 +133,7 @@ export default function Part() {
     ownerUsername,
     bodies,
     pickBodies,
+    pickStateReady,
     permission,
     isCloudDoc,
     startPreviewMode,
@@ -271,11 +272,14 @@ export default function Part() {
     return sketches.some(f => f.id === editingFeatureId) ? editingFeatureId : undefined
   }, [features, rollbackPosition, visibleFeaturesWithEdit, editingFeatureId])
 
+  // Ghost preview waits for the solve that carries the pick bodies: until it
+  // lands there is no "before" state to draw the ghosts from, and the overlay
+  // would flash the whole model as new (violet) geometry.
   const ghostMode = useMemo(() => {
-    if (!editingFeatureId) return false
+    if (!editingFeatureId || !pickStateReady) return false
     const feature = features.find(f => f.id === editingFeatureId)
     return !!feature && feature.kind !== 'sketch' && feature.kind !== 'plane'
-  }, [features, editingFeatureId])
+  }, [features, editingFeatureId, pickStateReady])
 
   const measurementSketch = useMemo(() => {
     if (activeSketchFeatureId && solveResults?.[activeSketchFeatureId]?.solved) {

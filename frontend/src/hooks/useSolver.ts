@@ -94,6 +94,11 @@ export function useSolver(
   const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {} })
   const bodies: Record<string, BodyResult> = world.bodies
   const pickBodies: Record<string, BodyResult> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
+  // True once a solve carrying pick bodies has landed. Entering an edit flips
+  // the store's editing flags immediately, but the two worlds only exist after
+  // that solve returns -- a ghost preview drawn before it has no "before" state
+  // to subtract, so it paints the entire model as new (violet) geometry.
+  const pickStateReady = world.status === 'editing'
   const [solving, setSolving] = useState(false)
   const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})
   const [solveTime, setSolveTime] = useState<number | null>(null)
@@ -410,6 +415,7 @@ export function useSolver(
     setSolveResults,
     bodies,
     pickBodies,
+    pickStateReady,
     solving,
     solveTime,
     solveError,
