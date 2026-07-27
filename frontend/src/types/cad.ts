@@ -98,7 +98,7 @@ export interface SweepFeatureDef {
 }
 
 export interface DeleteBodyFeatureDef {
-  body: string
+  bodies: string[]  // one ref per body to remove; picking is multi-select
 }
 
 export interface HoleFeatureDef {
@@ -865,8 +865,9 @@ export type Mutation =
   | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
   | { type: 'add_circular_array'; featureId: string; label?: string }
   | { type: 'set_circular_array_field'; featureId: string; field: keyof CircularArrayFeatureDef; value: unknown }
-  | { type: 'add_delete_body'; featureId: string; body?: string; label?: string }
-  | { type: 'set_delete_body_field'; featureId: string; field: keyof DeleteBodyFeatureDef; value: unknown }
+  | { type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string }
+  | { type: 'add_delete_body_ref'; featureId: string; bodyQuery: string }
+  | { type: 'remove_delete_body_ref'; featureId: string; index: number }
   | { type: 'add_hole'; featureId: string; label?: string }
   | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
   | { type: 'add_transform'; featureId: string; label?: string }

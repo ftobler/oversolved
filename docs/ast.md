@@ -182,7 +182,9 @@ A rotational array is its own feature kind (not a `mode` of `array`):
 - id: db1
   kind: delete_body
   delete_body:
-    body: "@body_ex1"
+    bodies:                         # one or more body refs/queries; duplicates collapse
+      - "@body_ex1"
+      - "@body_ex2"
 ```
 
 ```yaml

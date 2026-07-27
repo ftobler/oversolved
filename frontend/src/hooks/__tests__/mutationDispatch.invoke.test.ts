@@ -264,8 +264,11 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.set_mirror_field(doc, { type: 'set_mirror_field', featureId: 'MI', field: 'plane', value: '@builtin_plane_top' })
     mutationHandlers.add_variable(doc, { type: 'add_variable', featureId: 'VR' })
     mutationHandlers.set_variable_field(doc, { type: 'set_variable_field', featureId: 'VR', field: 'value', value: '2*3' })
-    mutationHandlers.add_delete_body(doc, { type: 'add_delete_body', featureId: 'DB', body: '@body_1' })
-    mutationHandlers.set_delete_body_field(doc, { type: 'set_delete_body_field', featureId: 'DB', field: 'body', value: '@body_2' })
+    mutationHandlers.add_delete_body(doc, { type: 'add_delete_body', featureId: 'DB', bodies: ['@body_1'] })
+    mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
+    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_1', '@body_2'])
+    mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
+    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_2'])
     expect(['HO', 'TR', 'MI', 'VR', 'DB'].every(id => !!feature(doc, id))).toBe(true)
   })
 

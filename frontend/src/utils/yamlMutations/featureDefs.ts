@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, DeleteBodyFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
 import { ALL_COORD_INDICES } from '@/registry'
 import { warn, round, findFeature, randomId, normalizeRefList } from './helpers'
 
@@ -54,12 +54,6 @@ export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof
     return
   }
   setFeatureField(feature.array as unknown as Record<string, unknown>, field, value)
-}
-
-export function applySetDeleteBodyField(doc: PartDoc, featureId: string, field: keyof DeleteBodyFeatureDef, value: unknown): void {
-  const feat = doc.features?.find(f => f.id === featureId)
-  if (!feat?.delete_body) return
-  setFeatureField(feat.delete_body as unknown as Record<string, unknown>, field, value)
 }
 
 export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
@@ -399,15 +393,40 @@ export function applySetCircularArrayField(doc: PartDoc, featureId: string, fiel
 export function applyAddDeleteBody(
   doc: PartDoc,
   featureId: string,
-  body = '',
+  bodies: string[] = [],
   label?: string,
 ): void {
   pushFeature(doc, {
     id: featureId,
     kind: 'delete_body',
     label: label ?? 'Delete Body',
-    delete_body: { body },
+    delete_body: { bodies: [...bodies] },
   })
+}
+
+// Picking is a toggle, like the fillet/chamfer edge lists: re-picking a body
+// that is already listed drops it again.
+export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery: string): void {
+  const sub = findFeature(doc, featureId)?.delete_body
+  if (!sub) {
+    warn(`applyAddDeleteBodyRef: feature ${featureId} has no delete_body`)
+    return
+  }
+  const idx = sub.bodies.indexOf(bodyQuery)
+  if (idx >= 0) {
+    sub.bodies.splice(idx, 1)
+  } else {
+    sub.bodies.push(bodyQuery)
+  }
+}
+
+export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index: number): void {
+  const sub = findFeature(doc, featureId)?.delete_body
+  if (!sub) {
+    warn(`applyRemoveDeleteBodyRef: feature ${featureId} has no delete_body`)
+    return
+  }
+  sub.bodies.splice(index, 1)
 }
 
 export function applyAddHole(doc: PartDoc, featureId: string, label?: string): void {

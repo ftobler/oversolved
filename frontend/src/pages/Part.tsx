@@ -67,7 +67,7 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   boolean: { field: 'target' },
   transform: { field: 'body' },
   mirror: { field: 'body' },
-  delete_body: { field: 'body' },
+  delete_body: { field: 'bodies', multi: true },
   circular_array: { field: 'axis' },
 }
 

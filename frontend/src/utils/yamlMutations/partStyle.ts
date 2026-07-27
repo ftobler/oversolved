@@ -202,6 +202,9 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
     case 'tools':
       arr = feature.boolean?.tools
       break
+    case 'bodies':
+      arr = feature.delete_body?.bodies
+      break
     case 'sketch':
       if (feature.extrude?.sketch !== undefined) {
         arr = Array.isArray(feature.extrude.sketch) ? feature.extrude.sketch : feature.extrude.sketch ? [feature.extrude.sketch] : []

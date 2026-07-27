@@ -32,16 +32,58 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b') }
     bodyStore.body_a.shape = table.register(stub, 'ex')
 
-    const result = solveDeleteBody(oc, scope, table, { id: 'd', delete_body: { body: 'body_a' } }, new Repository(), bodyStore)
+    const result = solveDeleteBody(oc, scope, table, { id: 'd', delete_body: { bodies: ['body_a'] } }, new Repository(), bodyStore)
 
-    expect(result).toEqual({ status: 'ok', deleted_body_id: 'body_a' })
+    expect(result).toEqual({ status: 'ok', deleted_body_ids: ['body_a'] })
     expect(Object.keys(bodyStore)).toEqual(['body_b'])
     expect(deleted).toBe(true)
   })
 
+  it('removes every listed body and releases each handle', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const deleted: string[] = []
+    const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b'), body_c: body('body_c') }
+    bodyStore.body_a.shape = table.register({ delete: () => { deleted.push('a') } }, 'ex')
+    bodyStore.body_c.shape = table.register({ delete: () => { deleted.push('c') } }, 'ex')
+
+    const result = solveDeleteBody(oc, scope, table, { id: 'd', delete_body: { bodies: ['body_a', 'body_c'] } }, new Repository(), bodyStore)
+
+    expect(result).toEqual({ status: 'ok', deleted_body_ids: ['body_a', 'body_c'] })
+    expect(Object.keys(bodyStore)).toEqual(['body_b'])
+    expect(deleted).toEqual(['a', 'c'])
+  })
+
+  it('collapses two refs that name the same body', () => {
+    const bodyStore: Record<string, Body> = { body_ex1: body('body_ex1'), body_b: body('body_b') }
+
+    const result = solveDeleteBody(
+      oc, scope, new HandleTable({ finalizerGuard: false }),
+      { id: 'd', delete_body: { bodies: ['face:ex1:?4;@ex1:face', 'face:ex1:?7;@ex1:face'] } },
+      new Repository(), bodyStore,
+    )
+
+    expect(result).toEqual({ status: 'ok', deleted_body_ids: ['body_ex1'] })
+    expect(Object.keys(bodyStore)).toEqual(['body_b'])
+  })
+
+  it('deletes nothing when the list is empty', () => {
+    const bodyStore: Record<string, Body> = { body_a: body('body_a') }
+    const result = solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: [] } }, new Repository(), bodyStore)
+    expect(result).toEqual({ status: 'ok', deleted_body_ids: [] })
+    expect(Object.keys(bodyStore)).toEqual(['body_a'])
+  })
+
   it('throws when the body ref does not resolve', () => {
     expect(() =>
-      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { body: 'nope' } }, new Repository(), { body_b: body('body_b') }),
+      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['nope'] } }, new Repository(), { body_b: body('body_b') }),
     ).toThrow()
+  })
+
+  it('leaves the store untouched when a later ref in the list is bad', () => {
+    const bodyStore: Record<string, Body> = { body_a: body('body_a') }
+    expect(() =>
+      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['body_a', 'nope'] } }, new Repository(), bodyStore),
+    ).toThrow()
+    expect(Object.keys(bodyStore)).toEqual(['body_a'])
   })
 })

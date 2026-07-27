@@ -246,9 +246,12 @@ export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
 export const DELETE_BODY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_delete_body',
   subKey: 'delete_body',
-  defaults: { body: '' },
+  defaults: { bodies: [] },
   fields: [
-    { type: 'pick', key: 'body', label: 'Body' },
+    { type: 'pick', key: 'bodies', label: 'Bodies', multi: true,
+      addMutationType: 'add_delete_body_ref', addValueKey: 'bodyQuery',
+      removeMutationType: 'remove_delete_body_ref',
+      emptyText: '(pick one or more bodies)' },
   ],
 }
 

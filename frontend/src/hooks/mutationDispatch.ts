@@ -58,7 +58,8 @@ import {
   applyAddCircularArray,
   applySetCircularArrayField,
   applyAddDeleteBody,
-  applySetDeleteBodyField,
+  applyAddDeleteBodyRef,
+  applyRemoveDeleteBodyRef,
   applyAddHole,
   applySetHoleField,
   applyAddTransform,
@@ -210,9 +211,11 @@ export const mutationHandlers: MutationHandlers = {
   set_body_visibility: (next, m) =>
     applySetBodyVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>
-    applyAddDeleteBody(next, m.featureId, m.body, m.label),
-  set_delete_body_field: (next, m) =>
-    applySetDeleteBodyField(next, m.featureId, m.field, m.value),
+    applyAddDeleteBody(next, m.featureId, m.bodies, m.label),
+  add_delete_body_ref: (next, m) =>
+    applyAddDeleteBodyRef(next, m.featureId, m.bodyQuery),
+  remove_delete_body_ref: (next, m) =>
+    applyRemoveDeleteBodyRef(next, m.featureId, m.index),
   add_hole: (next, m) =>
     applyAddHole(next, m.featureId, m.label),
   set_hole_field: (next, m) =>
