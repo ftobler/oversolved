@@ -12,8 +12,10 @@ import { loadOcc } from './occ/loadOcc'
 import { SharedHarness } from './occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from './features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import importFixture from './occ/__fixtures__/importStep.json'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+const importFx = importFixture as unknown as { file_data: string }
 
 function rectSketch(sketchId: string, w: number, h: number, opts?: { plane?: string; label?: string }) {
   return {
@@ -362,5 +364,55 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(h.res(rDelB, 'exA').status).toBe('ok')
     expect(h.res(rDelB, 'exB').status).toBe('exception')
     expect(h.res(rDelB, 'filA').status).toBe('ok')
+  })
+
+  // `handleMutation` (hooks/usePartDoc.ts) used to pass `bypassCache: true` for
+  // every doc edit, so no ordinary edit ever exercised the incremental path.
+  // Now only a drag does, which makes these the sequences the app actually runs.
+  // `_validate` builds the doc a SECOND time from scratch and diffs spec
+  // hashes, result dicts and repo snapshots (validateIncremental, builder.ts):
+  // level 3 + passed is the statement that incremental == full rebuild here.
+  describe('an app-shaped edit sequence stays identical to a full rebuild', () => {
+    const sk1 = rectSketch('sk1', 10, 10)
+    const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5, operation: 'new' })
+    const sk2 = rectSketch('sk2', 3, 3, { plane: '@builtin_plane_right' })
+    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 4, operation: 'new' })
+
+    it('deleting a mid-stack feature', () => {
+      const r1 = h.run({ features: [sk1, ex1, sk2, ex2] })
+      expect(h.res(r1, 'ex2').status).toBe('ok')
+
+      // The delete_feature mutation: sk2 and its extrude leave the stack.
+      const r2 = h.run({ features: [sk1, ex1], _validate: true }, { prevState: r1._build_state })
+      expect(r2._validation).toMatchObject({ level: 3, passed: true })
+    })
+
+    it('editing a parameter behind another feature', () => {
+      const r1 = h.run({ features: [sk1, ex1, sk2, ex2] })
+      // Edit the FIRST extrude: everything behind it is dirty, sk1 is not.
+      const edited = extrudeSpec('sk1', 'ex1', { distance: 9, operation: 'new' })
+      const r2 = h.run({ features: [sk1, edited, sk2, ex2], _validate: true }, { prevState: r1._build_state })
+      expect(r2._validation).toMatchObject({ level: 3, passed: true })
+    })
+
+    it('appending a feature after an import', () => {
+      const imp = { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 }
+      const r1 = h.run({ features: [imp, sk1] })
+      const r2 = h.run({ features: [imp, sk1, ex1], _validate: true }, { prevState: r1._build_state })
+      expect(r2._validation).toMatchObject({ level: 3, passed: true })
+    })
+
+    it('deleting an imported body', () => {
+      const imp = { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 }
+      const r1 = h.run({ features: [imp, sk1, ex1] })
+      const importedId = Object.keys(r1.bodies).find((b) => b.startsWith('body_imp1'))
+      expect(importedId).toBeDefined()
+
+      const del = { id: 'del1', kind: 'delete_body', delete_body: { bodies: [importedId] } }
+      const r2 = h.run({ features: [imp, sk1, ex1, del], _validate: true }, { prevState: r1._build_state })
+      expect(h.res(r2, 'del1').status).toBe('ok')
+      expect(Object.keys(r2.bodies)).not.toContain(importedId)
+      expect(r2._validation).toMatchObject({ level: 3, passed: true })
+    })
   })
 })

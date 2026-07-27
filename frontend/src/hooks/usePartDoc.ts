@@ -88,7 +88,14 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint' || m.type === 'move_entity'
         ? { featureId: m.featureId, entityId: m.entityId }
         : undefined
-    reSolve(next, { bypassCache: true, dragAnchor, _suppressFirstSolve: true })
+    // Bypass the checkpoint cache for exactly the edits dirty detection cannot
+    // see: `drag_anchor` is a VOLATILE_FEATURE_KEY (kernel/builder.ts), so a
+    // solve differing only in the anchor reads as clean and would never rebuild.
+    // Every other edit changes the feature spec itself, which findFirstDirty
+    // sees -- and bypassing there rebuilt the whole stack per edit, so deleting
+    // one part out of a large STEP import cost a full re-import (28.5s vs 0.5s
+    // on a measured 200-part file).
+    reSolve(next, { bypassCache: dragAnchor !== undefined, dragAnchor, _suppressFirstSolve: true })
   }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
