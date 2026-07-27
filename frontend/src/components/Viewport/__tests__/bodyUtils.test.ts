@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getBodiesToRender, computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
+import { getBodiesToRender, getGhostBodiesToRender, computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
 import type { Feature, BodyResult, PartStyleEntry } from '@/types/cad'
 
 describe('getBodiesToRender', () => {
@@ -122,6 +122,51 @@ describe('getBodiesToRender', () => {
     expect(items).toHaveLength(2)
     expect(items[0].visible).toBe(true)
     expect(items[1].visible).toBe(false)
+  })
+})
+
+describe('getGhostBodiesToRender', () => {
+  const features: Feature[] = [
+    { id: 'ex1', kind: 'extrude' },
+    { id: 'ex2', kind: 'extrude' },
+    { id: 'db1', kind: 'delete_body' },
+  ]
+  const ghostBody = (id: string, createdBy: string): BodyResult =>
+    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [], face_data: [], face_queries: [] } } as unknown as BodyResult)
+
+  const pickBodies: Record<string, BodyResult> = {
+    body_ex1: ghostBody('body_ex1', 'ex1'),
+    body_ex2: ghostBody('body_ex2', 'ex2'),
+  }
+  const visibleOf = (bodies: Record<string, BodyResult>) => new Set(Object.keys(bodies))
+
+  it('hides the ghost of a body the edited feature deleted', () => {
+    const preview = { body_ex1: pickBodies.body_ex1 }
+    const items = getGhostBodiesToRender(pickBodies, preview, features, visibleOf(preview))
+    expect(items.map(i => [i.bodyId, i.visible])).toEqual([['body_ex1', true], ['body_ex2', false]])
+  })
+
+  it('hides every ghost when the edited feature deletes all bodies', () => {
+    // Regression: computeEffectiveVisibleBodies returns undefined ("show all")
+    // for an empty preview, so deleting the last bodies used to pop the whole
+    // model back into the ghost layer as if nothing was deleted.
+    const items = getGhostBodiesToRender(pickBodies, {}, features, computeEffectiveVisibleBodies({}, new Set(), {}))
+    expect(items.map(i => i.visible)).toEqual([false, false])
+  })
+
+  it('keeps ghosts of bodies the edit leaves alone', () => {
+    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, visibleOf(pickBodies))
+    expect(items.map(i => i.visible)).toEqual([true, true])
+  })
+
+  it('keeps a user-hidden body hidden even though the edit keeps it', () => {
+    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, new Set(['body_ex1']))
+    expect(items.map(i => i.visible)).toEqual([true, false])
+  })
+
+  it('ignores rollbackPosition so every prior body stays pickable', () => {
+    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, undefined)
+    expect(items).toHaveLength(2)
   })
 })
 

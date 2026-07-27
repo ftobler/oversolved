@@ -24,8 +24,8 @@ vi.mock('../../Geometry3D', () => ({
 }))
 
 vi.mock('../../Geometry3D/Body3D', () => ({
-  default: ({ interactive }: { interactive?: boolean }) => (
-    <div data-testid="body-3d" data-interactive={interactive} />
+  default: ({ interactive, bodyId, visible }: { interactive?: boolean; bodyId?: string; visible?: boolean }) => (
+    <div data-testid="body-3d" data-interactive={interactive} data-body-id={bodyId} data-visible={String(visible)} />
   ),
   __esModule: true,
 }))
@@ -85,6 +85,15 @@ vi.mock('../UserDefinedPlane', () => ({
 
 function makeFeature(id: string, kind: string, overrides?: Partial<Feature>): Feature {
   return { id, kind, ...overrides } as Feature
+}
+
+function makeNamedBody(id: string, createdBy: string): BodyResult {
+  return {
+    id,
+    created_by: createdBy,
+    modified_by: [],
+    mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
+  } as unknown as BodyResult
 }
 
 function makeBody(): Record<string, BodyResult> {
@@ -191,5 +200,51 @@ describe('Viewport body interactivity', () => {
     const lastCall = previewEdgeOverlayProps.mock.calls.at(-1)?.[0]
     expect(lastCall?.pickItems).toBeDefined()
     expect(Array.isArray(lastCall?.pickItems)).toBe(true)
+  })
+})
+
+describe('Viewport delete_body ghost preview', () => {
+  const ex2: Feature = makeFeature('ex2', 'extrude')
+  const del: Feature = makeFeature('db1', 'delete_body')
+  const twoBodies = () => ({
+    body_ex1: makeNamedBody('body_ex1', 'ex1'),
+    body_ex2: makeNamedBody('body_ex2', 'ex2'),
+  })
+  const visibleOf = (bodies: Record<string, BodyResult>) => new Set(Object.keys(bodies))
+
+  const ghostVisibility = (container: HTMLElement) =>
+    Object.fromEntries(
+      [...container.querySelectorAll('[data-testid="body-3d"]')]
+        .map(el => [el.getAttribute('data-body-id'), el.getAttribute('data-visible')])
+    )
+
+  it('hides the ghost of the body being deleted', () => {
+    const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
+    usePartEditorStore.setState({
+      features: [sketch, extrude, ex2, del],
+      bodies: preview,
+      pickBodies: twoBodies(),
+      visibleBodies: visibleOf(preview),
+      ghostMode: true,
+      rollbackPosition: 4,
+    })
+    const { container } = render(<Viewport />)
+    expect(ghostVisibility(container)).toEqual({ body_ex1: 'true', body_ex2: 'false' })
+  })
+
+  it('hides both ghosts when the delete empties the body store', () => {
+    // Regression: the ghost layer used to fall back to "show everything" once
+    // the preview held no body at all, so deleting the last bodies redisplayed
+    // the untouched model and the preview looked like a no-op.
+    usePartEditorStore.setState({
+      features: [sketch, extrude, ex2, del],
+      bodies: {},
+      pickBodies: twoBodies(),
+      visibleBodies: undefined,
+      ghostMode: true,
+      rollbackPosition: 4,
+    })
+    const { container } = render(<Viewport />)
+    expect(ghostVisibility(container)).toEqual({ body_ex1: 'false', body_ex2: 'false' })
   })
 })

@@ -49,6 +49,7 @@ import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/cli
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import {
   getBodiesToRender,
+  getGhostBodiesToRender,
   getSketchesToRender,
   getPreviewBodies,
   type BodyRenderItem,
@@ -450,10 +451,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to
-  // pick faces/edges as references for the feature being edited.
+  // pick faces/edges as references for the feature being edited. Bodies the edit
+  // removes drop out (see getGhostBodiesToRender).
   const pickBodyItems = useMemo(
-    () => getBodiesToRender(pickBodies, features, undefined, visibleBodies),
-    [pickBodies, features, visibleBodies]
+    () => getGhostBodiesToRender(pickBodies, bodies, features, visibleBodies),
+    [pickBodies, bodies, features, visibleBodies]
   )
 
   const previewBodyItems = useMemo(() => {

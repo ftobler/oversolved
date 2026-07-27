@@ -92,6 +92,30 @@ export function getBodiesToRender(
   return items
 }
 
+/**
+ * Ghost items: the body state from before the edited feature, drawn behind the
+ * preview. Rollback is deliberately not applied -- the user picks references off
+ * every prior body.
+ *
+ * A body the edited feature removes (delete_body, or a boolean that swallows its
+ * tool) must vanish from the ghosts, otherwise the preview looks like the edit
+ * did nothing. `visibleBodies` cannot carry that alone: it is derived from the
+ * preview bodies and collapses to "show everything" as soon as the preview
+ * leaves no body at all, which popped every deleted body back into view.
+ */
+export function getGhostBodiesToRender(
+  pickBodies: Record<string, BodyResult> | undefined,
+  previewBodies: Record<string, BodyResult> | undefined,
+  features: Feature[] | undefined,
+  visibleBodies: Set<string> | undefined,
+): BodyRenderItem[] {
+  const items = getBodiesToRender(pickBodies, features, undefined, visibleBodies)
+  if (!previewBodies) return items
+  return items.map(item =>
+    item.visible && !(item.bodyId in previewBodies) ? { ...item, visible: false } : item
+  )
+}
+
 /** Returns bodies created by features at or after rollbackPosition (the "preview" bodies excluded by getBodiesToRender). */
 export function getPreviewBodies(
   bodies: Record<string, BodyResult> | undefined,
