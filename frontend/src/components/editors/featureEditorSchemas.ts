@@ -2,7 +2,7 @@ import type { FeatureEditorSchema } from './FeatureEditor'
 import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
-import { resolveBodyPickRef, resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
+import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 
 function stripFacePrefix(selectionId: string): string {
   return selectionId.startsWith('face:') ? selectionId.split(':').slice(2).join(':') : selectionId
@@ -45,7 +45,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyMergeRef, removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolveBodyPickRef, removeValue: undefined,
       emptyText: '(all bodies)' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }, { value: 'symmetric', label: 'Symmetric' }] },
@@ -67,7 +67,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyMergeRef, removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolveBodyPickRef, removeValue: undefined,
       emptyText: '(all bodies)' },
     { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery },
   ],
@@ -88,7 +88,7 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyMergeRef, removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolveBodyPickRef, removeValue: undefined,
       emptyText: '(all bodies)' },
   ],
 }

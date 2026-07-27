@@ -9,7 +9,10 @@ import { describe, it, expect } from 'vitest'
 import type { OccModule } from '../occ/occTypes'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { Repository } from '../query'
-import { buildArrayTransforms, buildCircularTransforms } from './array'
+import type { HandleTable } from '../occ/handleTable'
+import type { Body } from '../types3d'
+import { buildArrayTransforms, buildCircularTransforms, solveArray, solveCircularArray } from './array'
+import { bareBody } from './shared'
 
 // Recording trsf doubles: each builder leaves its translation or rotation on
 // the returned object so tests can assert the produced offsets/angles.
@@ -77,6 +80,7 @@ function makeFake(): OccModule {
 }
 
 const scope = { track: <T>(x: T): T => x } as unknown as DisposeScope
+const noTable = null as unknown as HandleTable
 // Empty queries on every feature -> resolve helpers return the fallbacks
 // without ever touching the repo, so a stub repo is enough.
 const repo = { query: () => null, elements: new Map() } as unknown as Repository
@@ -338,6 +342,34 @@ describe('buildCircularTransforms', () => {
     // and should resolve to the face normal direction.
     const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'cf' }, badCylRepo, {})
     expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
+  })
+})
+
+// Both array leaves resolve their source body before touching OCC, so the two
+// diagnoses they can report are reachable with no kernel at all.
+describe('array source body diagnosis', () => {
+  const store = (): Record<string, Body> => ({
+    body_ex1: bareBody('body_ex1', 'ex1'),
+    body_ex1_1: bareBody('body_ex1_1', 'ex1'),
+  })
+  const noOcc = null as unknown as OccModule
+  const noRepo = null as unknown as Repository
+
+  // The leaf wraps a resolve failure in "not found; available body IDs: [...]".
+  // An ambiguous ref must NOT be wrapped: it would tell the user the body does
+  // not exist while listing the very ids that matched it.
+  it('reports a feature ref that names several bodies as ambiguous, not as missing', () => {
+    for (const [solve, key] of [[solveArray, 'array'], [solveCircularArray, 'circular_array']] as const) {
+      const feature = { id: 'ar1', [key]: { source_body: '@ex1' } }
+      expect(() => solve(noOcc, scope, noTable, feature, noRepo, store())).toThrow(/ambiguous/)
+      expect(() => solve(noOcc, scope, noTable, feature, noRepo, store())).not.toThrow(/not found/)
+    }
+  })
+
+  it('still reports a ref that matches nothing as missing', () => {
+    const feature = { id: 'ar1', array: { source_body: '@nope' } }
+    expect(() => solveArray(noOcc, scope, noTable, feature, noRepo, store()))
+      .toThrow(/source body '@nope' not found/)
   })
 })
 

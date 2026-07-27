@@ -241,42 +241,52 @@ export function resolveDirection(
 // ─── Body resolution ───
 
 /**
+ * A ref that names several bodies where the caller can only use one. Its own
+ * type because "ambiguous" and "not found" are opposite diagnoses -- leaves
+ * that wrap a resolve failure in a friendlier message (array.ts) must let this
+ * one through rather than tell the user the body does not exist while listing
+ * the very ids that matched.
+ */
+export class AmbiguousBodyRefError extends Error {}
+
+/**
+ * The single body a ref names, or null when it names none. Throws when the ref
+ * names a FEATURE that owns several bodies: which sibling was meant is the
+ * caller's question, and answering it with "the first one" is what let a
+ * boolean subtract one half of a split body and report success.
+ */
+function singleBodyOf(ref: string, bodyStore: Record<string, Body>): Body | null {
+  const ids = resolveBodyIds(ref, bodyStore)
+  if (ids.length === 0) return null
+  if (ids.length > 1) {
+    throw new AmbiguousBodyRefError(
+      `body ref '${ref}' is ambiguous: it names a feature owning ${ids.length} bodies ` +
+      `(${ids.join(', ')}); name one of them`,
+    )
+  }
+  return bodyStore[ids[0]]
+}
+
+/**
  * Resolve a body reference to its Body (mirrors `_resolve_body`). Accepts
  * "@feat", "feat", "body_feat", viewport selection forms ("face:id:...",
  * "entity:...", "body:id", "edge:...", "vertex:..."), and "?...:type" ancestry
  * queries (matched via their "@body_*" ancestors). Throws if nothing matches.
+ *
+ * Singular by contract -- every call site here wants ONE body (a boolean
+ * target, a mirror source, a hole target). Exact body ids and `?` queries are
+ * body-exact and always safe; a bare feature ref is only safe while that
+ * feature owns one body, and fails loud otherwise (see `singleBodyOf`). Use
+ * `resolveBodyIds` where every body of a feature is the right answer.
  */
 export function resolveBody(ref: string, bodyStore: Record<string, Body>): Body {
-  const key = ref.replace(/^@+/, '')
-  if (key in bodyStore) return bodyStore[key]
-  const prefixed = 'body_' + key
-  if (prefixed in bodyStore) return bodyStore[prefixed]
-  for (const body of Object.values(bodyStore)) {
-    if (body.created_by === key) return body
-  }
-  if (ref.startsWith('?')) {
-    try {
-      const [ids] = parseAncestry(ref)
-      for (const aid of ids) {
-        if (aid.startsWith('@body_')) {
-          const bid = aid.slice(1)
-          if (bid in bodyStore) return bodyStore[bid]
-        }
-      }
-    } catch {
-      // fall through to the viewport-prefix and error paths
-    }
-  }
+  const direct = singleBodyOf(ref, bodyStore)
+  if (direct !== null) return direct
   if (ref.includes(':')) {
     const parts = ref.split(':')
     if (parts.length >= 2) {
-      const candidate = parts[1]
-      if (candidate in bodyStore) return bodyStore[candidate]
-      const bodyPrefixed = 'body_' + candidate
-      if (bodyPrefixed in bodyStore) return bodyStore[bodyPrefixed]
-      for (const body of Object.values(bodyStore)) {
-        if (body.created_by === candidate) return body
-      }
+      const viewport = singleBodyOf(parts[1], bodyStore)
+      if (viewport !== null) return viewport
     }
   }
   throw new Error(`body not found for ref '${ref}'`)
@@ -316,6 +326,22 @@ export function resolveBodyIds(ref: string, bodyStore: Record<string, Body>): st
   const key = ref.replace(/^@+/, '')
   // An exact body id names exactly that one sibling.
   if (key in bodyStore) return [key]
+  // A `?` ancestry query is body-exact: it resolves through one picked face or
+  // edge, so the `@body_*` ancestor it carries IS the answer and no feature
+  // scan applies. First match only, like `resolveBody` -- a query can name more
+  // than one body (a boolean face descends from both inputs), and the owner is
+  // the first one written.
+  if (ref.startsWith('?')) {
+    try {
+      const [ids] = parseAncestry(ref)
+      for (const aid of ids) {
+        if (aid.startsWith('@body_') && aid.slice(1) in bodyStore) return [aid.slice(1)]
+      }
+    } catch {
+      // unparseable query: fall through, the ref names nothing
+    }
+    return []
+  }
   // Otherwise the ref names a FEATURE. The creator scan has to come before the
   // `body_<key>` lookup: the first sibling is literally called `body_<feature>`,
   // so that lookup would match it and hide the rest.

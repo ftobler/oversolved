@@ -11,7 +11,7 @@ import type { Body, BrepDiff } from '../types3d'
 import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { edgeGeometryHash, faceGeometryHash, geometryClassifiers } from '../geomHash'
 import { bestDescriptorMatch, type GeomDescriptor } from '../geomDescriptor'
-import { resolveBody } from './shared'
+import { resolveBody, resolveBodyIds } from './shared'
 import { resplitBody } from './bodySplit'
 import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceCentroid, faceNormal, edgeToGeom, type Vec3 } from '../occ/primitives'
@@ -358,14 +358,20 @@ function applyEdgeFeature(
   const groups = new Map<string, string[]>()
   const unresolved: string[] = []
   if (sourceBody) {
+    // `resolveBodyIds` rather than a local created_by scan: a feature ref can
+    // name several bodies, and every edge would otherwise be grouped onto
+    // whichever sibling came first. A ref matching nothing stays as-is, so the
+    // group lookup below reports it as unresolved.
     let resolvedSrc = sourceBody
     if (!(sourceBody in bodyStore)) {
-      for (const [bid, body] of Object.entries(bodyStore)) {
-        if (body.created_by === sourceBody) {
-          resolvedSrc = bid
-          break
-        }
+      const ids = resolveBodyIds(sourceBody, bodyStore)
+      if (ids.length > 1) {
+        throw new Error(
+          `${featureKind}: source body '${sourceBody}' names ${ids.length} bodies ` +
+          `(${ids.join(', ')}); pick one`,
+        )
       }
+      if (ids.length === 1) resolvedSrc = ids[0]
     }
     groups.set(resolvedSrc, [...edges])
   } else {

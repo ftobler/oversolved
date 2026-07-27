@@ -1,6 +1,7 @@
-// Shared tail for the two body-ref resolvers: collapse a `body:`/`@.../`
-// selection to a single feature segment, then coerce any bare `@ref` into the
-// canonical `@body_<...>` form. Inputs that match no branch pass through.
+// Collapse a `body:`/`@.../` selection to a single segment, then coerce any
+// bare `@ref` into the canonical `@body_<...>` form. Inputs that match no
+// branch pass through. `@body_ex1_1/face/0` keeps its sibling suffix: the
+// segment before the first slash is the whole body id.
 function normalizeBodyRef(ref: string): string {
   if (ref.startsWith('body:')) {
     ref = '@' + ref.slice(5)
@@ -14,28 +15,22 @@ function normalizeBodyRef(ref: string): string {
 }
 
 /**
- * Convert a viewport selection ID to a body reference for a field that names a
- * whole body (circular_array source_body). Picking a face of the body is the
- * natural gesture, so a `face:` selection yields its inner ancestry query and a
- * `?` query passes through untouched: both resolve to the owning body in the
- * kernel's `resolveBody`.
+ * Convert a viewport selection ID to a body reference for any field that names
+ * a whole body (circular_array `source_body`, extrude/revolve `merge_target`).
+ * Picking a face of the body is the natural gesture, so a `face:` selection
+ * yields its inner ancestry query and a `?` query passes through untouched:
+ * both are body-exact and resolve to the owning body in the kernel
+ * (`resolveBody` / `resolveBodyIds`).
+ *
+ * The merge-target field used to have its own variant that mapped a `?` query
+ * to `'@body_' + id.slice(1).split('/')[0]` -- meaningless string surgery on a
+ * query, turning `?4;@ex1:solid` into the literal id `@body_4;@ex1:solid`,
+ * which was then PERSISTED as `merge_target` where it could only fail to
+ * resolve. The two fields want the same thing; there is one function.
  */
 export function resolveBodyPickRef(id: string): string {
   if (id.startsWith('face:')) {
     return id.split(':').slice(2).join(':')
-  }
-  return normalizeBodyRef(id)
-}
-
-/**
- * Convert a viewport selection ID to a body reference for a merge/boolean
- * target field (extrude/revolve merge_target). Unlike resolveBodyPickRef, a
- * `?` ancestry query is coerced to `@body_<first-segment>` rather than passed
- * through. Shared by ExtrudeEditor and RevolveEditor.
- */
-export function resolveBodyMergeRef(id: string): string {
-  if (id.startsWith('?')) {
-    return '@body_' + id.slice(1).split('/')[0]
   }
   return normalizeBodyRef(id)
 }

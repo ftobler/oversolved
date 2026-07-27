@@ -579,6 +579,11 @@ function _registerBrepVertexAncestry(
   }
 }
 
+// Keyed on the creating feature alone, so the N bodies of one feature all land
+// under one ancestral key -- `registerAncestor` accumulates (query.ts), so the
+// entry ends up holding N solid elements. Deliberate: an ambiguous entry makes
+// a `:solid`-restricted query fail loud, no production code issues that
+// restriction, and body-scoping the key is the change to make when one does.
 function _registerSolidAncestry(globalRepo: Repository, body: Body): void {
   if (!body.created_by) return
   globalRepo.registerAncestor([ref(body.created_by)], {

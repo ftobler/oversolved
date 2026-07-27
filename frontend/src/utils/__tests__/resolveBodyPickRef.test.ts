@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveBodyPickRef, resolveBodyMergeRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
+import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 
 describe('resolveBodyPickRef', () => {
   it('converts body: prefix to @body_ ref', () => {
@@ -30,29 +30,22 @@ describe('resolveBodyPickRef', () => {
   it('extracts inner query when face inner query contains colons', () => {
     expect(resolveBodyPickRef('face:ex1:?4;@ex1:face')).toBe('?4;@ex1:face')
   })
-})
 
-describe('resolveBodyMergeRef', () => {
-  it('converts body: prefix to @body_ ref', () => {
-    expect(resolveBodyMergeRef('body:body_ex1')).toBe('@body_ex1')
+  // A merge target is written by the same transform as a source_body pick. The
+  // merge-target variant used to mint '@body_' + everything before the first
+  // slash of a '?' query, i.e. the literal id '@body_4;@ex1:solid', and persist
+  // it; nothing could ever resolve that. Body-exact refs must survive verbatim.
+  it('never mints a "@body_" id out of a ? query', () => {
+    for (const q of ['?4;@ex1:solid', '?9,9;@ex1face0@ex1face1:face']) {
+      expect(resolveBodyPickRef(q)).toBe(q)
+    }
   })
 
-  it('converts @featureId to @body_featureId', () => {
-    expect(resolveBodyMergeRef('@ex1')).toBe('@body_ex1')
-  })
-
-  it('converts @featureId/face/N to @body_featureId', () => {
-    expect(resolveBodyMergeRef('@ex1/face/0')).toBe('@body_ex1')
-  })
-
-  it('coerces a ? ancestry query to @body_<first-segment> (unlike resolveBodyPickRef)', () => {
-    // slice(1) strips the leading '?', then the first '/'-segment is taken;
-    // this preserves the pre-existing editor behaviour verbatim.
-    expect(resolveBodyMergeRef('?4;@ex1:solid')).toBe('@body_4;@ex1:solid')
-  })
-
-  it('passes @body_ refs through unchanged', () => {
-    expect(resolveBodyMergeRef('@body_ex1')).toBe('@body_ex1')
+  // The render fallback now names the BODY, so a pick on a split sibling
+  // arrives as '@body_ex1_1/...' and must keep its sibling suffix.
+  it('keeps a split sibling id intact', () => {
+    expect(resolveBodyPickRef('@body_ex1_1/face/0')).toBe('@body_ex1_1')
+    expect(resolveBodyPickRef('body:body_ex1_1')).toBe('@body_ex1_1')
   })
 })
 

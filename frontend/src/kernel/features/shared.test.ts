@@ -168,6 +168,42 @@ describe('resolveBody fallback resolution paths', () => {
   })
 })
 
+// `resolveBody` answers with ONE body (a boolean target, a mirror source, a
+// hole target). Once a feature owns several bodies, a ref that names the
+// FEATURE has no single answer, and the old "first match wins" quietly picked
+// half of a split body and reported success.
+describe('resolveBody ambiguity', () => {
+  const split = () => makeStore({ body_ex1: 'ex1', body_ex1_1: 'ex1', body_other: 'ex2' })
+
+  it('throws, naming the candidates, when a feature ref covers several bodies', () => {
+    for (const ref of ['ex1', '@ex1']) {
+      expect(() => resolveBody(ref, split())).toThrow(/ambiguous/)
+      expect(() => resolveBody(ref, split())).toThrow(/body_ex1, body_ex1_1/)
+    }
+  })
+
+  it('throws for a viewport-prefixed ref that names the same feature', () => {
+    expect(() => resolveBody('face:ex1:whatever', split())).toThrow(/ambiguous/)
+  })
+
+  it('resolves an exact body id to that sibling', () => {
+    // `body_ex1` IS the first sibling's id, so the exact-id branch has to win
+    // over the feature reading -- otherwise naming a sibling is impossible.
+    expect(resolveBody('body_ex1', split()).id).toBe('body_ex1')
+    expect(resolveBody('@body_ex1_1', split()).id).toBe('body_ex1_1')
+    expect(resolveBody('body:body_ex1_1:0', split()).id).toBe('body_ex1_1')
+  })
+
+  it('resolves a body-exact "?" query naming a sibling', () => {
+    const ref = makeAncestryQuery(['@body_ex1_1', '@ex1'], 'face')
+    expect(resolveBody(ref, split()).id).toBe('body_ex1_1')
+  })
+
+  it('leaves a single-body feature ref alone', () => {
+    expect(resolveBody('ex2', split()).id).toBe('body_other')
+  })
+})
+
 describe('surfaceEntityIds', () => {
   it('returns [] for a surface with no ancestry query', () => {
     expect(surfaceEntityIds({ query: '@sketch1/line1' })).toEqual([])
@@ -214,6 +250,20 @@ describe('resolveMergeTargets parity', () => {
     expect(resolveMergeTargets('@ex1', store)).toEqual(['body_ex1', 'body_ex1_1', 'body_ex1_2'])
     // An explicit body id still means exactly that one sibling.
     expect(resolveMergeTargets('body_ex1_1', store)).toEqual(['body_ex1_1'])
+  })
+
+  // The editors write a body pick as a `?` ancestry query (the face the user
+  // clicked), and that value is PERSISTED as merge_target. It has to resolve.
+  it('resolves a "?" pick to the one body that owns the picked geometry', () => {
+    const store = makeStore({ body_ex1: 'ex1', body_ex1_1: 'ex1' })
+    const ref = makeAncestryQuery(['@body_ex1_1', '@ex1'], 'face')
+    expect(resolveMergeTargets(ref, store)).toEqual(['body_ex1_1'])
+  })
+
+  it('throws for a "?" query whose bodies are gone', () => {
+    const store = makeStore({ body_ex1: 'ex1' })
+    const ref = makeAncestryQuery(['@body_gone', '@ex9'], 'face')
+    expect(() => resolveMergeTargets(ref, store)).toThrow(/body not found/)
   })
 })
 

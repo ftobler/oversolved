@@ -8,7 +8,7 @@ import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
+import { resolveBody, AmbiguousBodyRefError, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
@@ -245,7 +245,10 @@ function resolveSourceBody(
   let body: Body
   try {
     body = resolveBody(ref, bodyStore)
-  } catch {
+  } catch (e) {
+    // "Names several bodies" is not "does not exist": rewriting it would tell
+    // the user the body is missing while listing the ids that matched it.
+    if (e instanceof AmbiguousBodyRefError) throw e
     throw new Error(`${opLabel}: source body '${ref}' not found; available body IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
   }
   if (body.shape === null) throw new Error(`${opLabel}: source body has no shape`)
