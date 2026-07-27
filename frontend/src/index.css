@@ -89,6 +89,16 @@ p {
   margin: 0;
 }
 
+/* Form controls do not inherit font-family in any browser's UA stylesheet, so
+   without this every button/input/select/textarea falls back to the OS UI
+   font (e.g. Liberation Sans on Linux) instead of Roboto. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 code,
 .counter {
   font-family: var(--mono);
