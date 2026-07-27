@@ -736,6 +736,37 @@ function reuseCleanImportedBodyMeshes(
   return out
 }
 
+// The same reuse for the PICK world (the body set before the edited feature).
+// Only the final feature's checkpoint stores a render mesh, so a pick boundary
+// anywhere else re-tessellated the whole document -- and it never self-healed,
+// because a clean-prefix checkpoint is carried over verbatim and keeps its empty
+// bodies_snapshot, so the cost repeated on every solve while the editor stayed
+// open. With a heavy STEP import behind the edit that was 25% of a full import
+// each time.
+//
+// `finalBodies` is the guard this wrapper exists for: the mesh on offer comes
+// from the previous solve's FINAL checkpoint, but a body can be clean at the
+// pick boundary and still be modified by a later clean-prefix feature, in which
+// case that mesh is the wrong shape for the pick world. `modified_by` only ever
+// appends and the pick-checkpoint history is a prefix of the final one, so equal
+// lengths is an exact "same shape in both worlds" test. A body the edited
+// feature deletes is absent from the live store and falls through to a real
+// tessellation -- correct, and it is one body rather than all of them.
+function reusePickBodyMeshes(
+  prevState: BuildState | null | undefined,
+  firstDirty: number,
+  pickBodies: Record<string, Body>,
+  finalBodies: Record<string, Body>,
+): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const [bid, mesh] of Object.entries(reuseCleanImportedBodyMeshes(prevState, firstDirty, pickBodies))) {
+    const live = finalBodies[bid]
+    if (!live || live.modified_by.length !== pickBodies[bid].modified_by.length) continue
+    out[bid] = mesh
+  }
+  return out
+}
+
 // ── Build orchestration ──────────────────────────────────────────────────────
 
 export function build(
@@ -998,9 +1029,16 @@ export function build(
     const pickCheckpoint = newCheckpoints[targetFid] ?? options.prevState?.checkpoints[targetFid]
     if (pickCheckpoint) {
       const snap = pickCheckpoint.bodies_snapshot
-      pickBodiesOut = (Object.keys(snap).length)
-        ? snap
-        : deps.tessellateBodies(pickCheckpoint.body_store_snapshot, null)
+      if (Object.keys(snap).length) {
+        pickBodiesOut = snap
+      } else {
+        const pickStore = pickCheckpoint.body_store_snapshot
+        const reused = reusePickBodyMeshes(options.prevState, firstDirty, pickStore, bodyStore)
+        const toTessellate = Object.fromEntries(
+          Object.entries(pickStore).filter(([bid]) => !(bid in reused)),
+        )
+        pickBodiesOut = { ...reused, ...deps.tessellateBodies(toTessellate, null) }
+      }
     } else {
       // Checkpoint not found (e.g. prevState was null on first solve, or the
       // checkpoint was evicted between solves). Return empty so the caller

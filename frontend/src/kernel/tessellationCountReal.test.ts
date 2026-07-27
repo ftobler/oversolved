@@ -314,4 +314,91 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     h2.run(chainDoc(eq))
     expect(h2.metaExtracted.filter((b) => b === 'body_ex1').length).toBe(4)
   })
+
+  // The pick world (the body set BEFORE the edited feature) is served from the
+  // pick checkpoint's own bodies_snapshot -- but only the LAST feature's
+  // checkpoint ever stores a render mesh, so a pick boundary anywhere else used
+  // to re-tessellate the whole document. With a heavy STEP import behind the
+  // edit that was 25% of a full import, on EVERY solve while the editor is open
+  // (a clean-prefix checkpoint is carried over verbatim, so its empty snapshot
+  // never fills in). An imported body clean at both the pick boundary and the
+  // final checkpoint is byte-identical in both worlds, so last solve's mesh is
+  // exact for the pick world too.
+  describe('pick_boundary mesh reuse', () => {
+    it('does not re-tessellate a clean imported body for the pick world', () => {
+      const h = new CountingHarness()
+      const doc = importPlusTwoNativeDoc()
+      const r1 = h.run(doc)
+      expect(Object.keys(r1.bodies)).toContain('body_imp1')
+
+      // Enter the editor on ex2: pick_boundary lands on sk2, whose checkpoint
+      // has no stored mesh. Only the edited feature's own body may re-render.
+      h.rendered = []
+      h.renderCount = 0
+      const r2 = h.run(doc, { prevState: r1._build_state, pickBoundary: 4 })
+      expect(Object.keys(r2.pick_bodies as object)).toContain('body_imp1')
+      expect(h.rendered).not.toContain('body_imp1')
+    })
+
+    it('the reused pick mesh is byte-identical to a fresh tessellation', () => {
+      const h = new CountingHarness()
+      const doc = importPlusTwoNativeDoc()
+      const r1 = h.run(doc)
+      const fresh = (h.body(r1, 'body_imp1').mesh)
+
+      const r2 = h.run(doc, { prevState: r1._build_state, pickBoundary: 4 })
+      const picked = (r2.pick_bodies as Record<string, Record<string, unknown>>)['body_imp1']
+      expect(picked.mesh).toEqual(fresh)
+    })
+
+    it('re-tessellates for the pick world when the import itself is dirty', () => {
+      const h = new CountingHarness()
+      const r1 = h.run(importPlusTwoNativeDoc())
+
+      // Nothing is clean, so there is no previous mesh that can be trusted.
+      const doc2 = importPlusTwoNativeDoc()
+      ;(doc2.features[0] as Record<string, unknown>).scale = 2
+      h.rendered = []
+      const r2 = h.run(doc2, { prevState: r1._build_state, pickBoundary: 4 })
+      expect(Object.keys(r2.pick_bodies as object)).toContain('body_imp1')
+      expect(h.rendered).toContain('body_imp1')
+    })
+
+    // The sharp case the reuse guard exists for. The mesh on offer comes from
+    // the FINAL checkpoint, so an imported body that a later (still clean)
+    // feature modified is a DIFFERENT shape in the pick world. Its own history
+    // at the pick checkpoint does not yet name that feature, so the clean-prefix
+    // test alone says "reuse" and would serve the post-modification geometry as
+    // the "before" state.
+    it('re-tessellates an imported body a later clean feature modified', () => {
+      const imp = { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 }
+      const seedH = new CountingHarness()
+      const seed = seedH.run({ features: [imp] })
+      const eq = (seedH.body(seed, 'body_imp1').edge_queries as string[]) ?? []
+      expect(eq.length).toBeGreaterThan(0)
+
+      const h = new CountingHarness()
+      const doc = {
+        features: [
+          imp,
+          { id: 'fi1', kind: 'fillet', edges: [eq[0]], radius: 0.5 },
+          rectSketch('sk2', 8, 8, '@builtin_plane_top'),
+          { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 4, direction: 'normal', operation: 'new' },
+        ],
+      }
+      const r1 = h.run(doc)
+      expect((r1.result as Record<string, Record<string, unknown>>)['fi1'].status).toBe('ok')
+
+      // Pick boundary right after the import: body_imp1 there is UNFILLETED,
+      // while the mesh the reuse path could offer is the filleted one.
+      h.rendered = []
+      const r2 = h.run(doc, { prevState: r1._build_state, pickBoundary: 1 })
+      const pick = r2.pick_bodies as Record<string, Record<string, unknown>>
+      expect(Object.keys(pick)).toContain('body_imp1')
+      expect(h.rendered).toContain('body_imp1')
+      // The point of the guard, stated as geometry rather than as a call count:
+      // the pick world must not be handed the modified shape.
+      expect(pick['body_imp1'].mesh).not.toEqual(h.body(r2, 'body_imp1').mesh)
+    })
+  })
 })
