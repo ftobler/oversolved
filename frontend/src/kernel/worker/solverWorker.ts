@@ -25,6 +25,7 @@ import type {
   BundleRequest, BundleResponse,
   ExportAssemblyRequest,
 } from './solverProtocol'
+import { SUPERSEDED_ERROR } from './solverProtocol'
 import { toPartBundle } from '../partBundle'
 import type { BodyResult } from '../../types/cad'
 
@@ -218,15 +219,93 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
 // The engine (solveLocally) owns mutable cross-solve state (HandleTable +
 // last BuildState), and both solve and export touch the single-threaded OCC
 // module. Concurrent requests would race on these shared resources. The Actor
-// guarantees sequential access by chaining every job onto the previous one's
-// completion promise.
+// guarantees sequential access by running one job at a time.
+//
+// Queue policy: only the newest solve is ever wanted. A burst of solves (a
+// sketch drag fires one per pointer move) would otherwise each be built in
+// full, and the main thread throws all but the last away on arrival -- so a
+// new solve drops the solves still waiting, and the user waits for one build
+// instead of ten. Exports and bundle builds are distinct one-shot actions and
+// are never dropped.
+//
+// The job already running is not interruptible: an OCC build is a single
+// synchronous WASM call, and the only way out of it is terminating the whole
+// Worker -- which throws away the checkpoint cache and forces a rebuild from
+// feature 0. That trade only pays when the user explicitly asks for it, which
+// is what the cancel button (`cancelSolver`) does.
 
-class WorkerActor {
-  private queue: Promise<void> = Promise.resolve()
+/** One unit of Worker work: queued, then run to completion in isolation. */
+export type ActorJob =
+  | { supersedable: false; run: () => Promise<void> }
+  /** A solve: a newer solve arriving while this one still waits replaces it,
+   *  and `onSuperseded` sends the reply it will now never produce itself. */
+  | { supersedable: true; run: () => Promise<void>; onSuperseded: () => void }
 
-  run<T>(job: () => Promise<T>, respond: (res: T) => void): void {
-    this.queue = this.queue.then(() => job().then(respond))
+/**
+ * A macrotask yield. Requests that arrived while the previous job held the
+ * thread are still undelivered message events; letting them land before the
+ * next job is picked is what makes the flush effective, otherwise the Actor
+ * commits to a solve that the message right behind it already obsoleted.
+ * MessageChannel rather than setTimeout because timers are throttled hard in
+ * background tabs and a queued solve must not wait on that.
+ */
+function nextMacrotask(): Promise<void> {
+  if (typeof MessageChannel === 'undefined') {
+    return new Promise(resolve => { setTimeout(resolve, 0) })
   }
+  return new Promise(resolve => {
+    const channel = new MessageChannel()
+    channel.port1.onmessage = () => {
+      channel.port1.close()
+      resolve()
+    }
+    channel.port2.postMessage(null)
+  })
+}
+
+export class WorkerActor {
+  private queue: ActorJob[] = []
+  private draining = false
+
+  submit(job: ActorJob): void {
+    if (job.supersedable) {
+      const kept: ActorJob[] = []
+      for (const queued of this.queue) {
+        if (queued.supersedable) queued.onSuperseded()
+        else kept.push(queued)
+      }
+      this.queue = kept
+    }
+    this.queue.push(job)
+    void this.drain()
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) return
+    this.draining = true
+    try {
+      while (this.queue.length > 0) {
+        await nextMacrotask()
+        const job = this.queue.shift()
+        if (!job) break
+        try {
+          await job.run()
+        } catch {
+          // The handlers already turn engine failures into error responses, so
+          // a throw here can only come from the reply itself (a payload that
+          // will not clone). Swallow it: letting it escape would leave every
+          // job queued behind it unrun and wedge the Worker for good.
+        }
+      }
+    } finally {
+      this.draining = false
+    }
+  }
+}
+
+/** An un-droppable job (export, bundle build): run it, then post its reply. */
+function oneShot<T>(job: () => Promise<T>, respond: (res: T) => void): ActorJob {
+  return { supersedable: false, run: async () => { respond(await job()) } }
 }
 
 // --- Worker bootstrap (skipped on the main thread / in tests) -------------
@@ -245,25 +324,31 @@ if (inWorker()) {
   ctx.onmessage = (e) => {
     const msg = e.data
     if (msg.kind === 'export') {
-      actor.run(
+      actor.submit(oneShot(
         () => handleExportRequest(msg, exportLocally),
         (res) => { ctx.postMessage(res, exportTransferables(res)) },
-      )
+      ))
     } else if (msg.kind === 'exportAssembly') {
-      actor.run(
+      actor.submit(oneShot(
         () => handleExportAssemblyRequest(msg, exportAssemblyLocally),
         (res) => { ctx.postMessage(res, exportTransferables(res)) },
-      )
+      ))
     } else if (msg.kind === 'buildBundle') {
-      actor.run(
+      actor.submit(oneShot(
         () => handleBundleRequest(msg, solveLocally),
         (res) => { ctx.postMessage(res, bundleTransferables(res)) },
-      )
+      ))
     } else {
-      actor.run(
-        () => handleSolveRequest(msg, solveLocally),
-        (res) => { ctx.postMessage(res, collectTransferables(res)) },
-      )
+      actor.submit({
+        supersedable: true,
+        run: async () => {
+          const res = await handleSolveRequest(msg, solveLocally)
+          ctx.postMessage(res, collectTransferables(res))
+        },
+        onSuperseded: () => {
+          ctx.postMessage({ id: msg.id, ok: false, error: SUPERSEDED_ERROR }, [])
+        },
+      })
     }
   }
 }

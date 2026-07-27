@@ -30,6 +30,13 @@ export interface SolveRequest {
   options: SolveRequestOptions
 }
 
+/**
+ * Error reported for a solve request that a newer solve flushed out of the
+ * Worker queue before it ever ran. Not a document failure: its result was
+ * already obsolete, so the UI drops it silently instead of showing it.
+ */
+export const SUPERSEDED_ERROR = 'solve superseded'
+
 /** Build a PartBundle from a PartDoc spec Worker-side. */
 export interface BundleRequest {
   id: number

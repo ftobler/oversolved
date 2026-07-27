@@ -11,8 +11,13 @@ import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
 import { solveViaWorker, cancelSolver } from '@/kernel/worker/solverClient'
+import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
+// Solve failures that are not document errors and must not reach the error
+// banner: the user cancelled, the watchdog killed a hung Worker, or a newer
+// solve flushed this one out of the Worker queue before it ran.
+const BENIGN_SOLVE_FAILURES = new Set(['solve cancelled', 'solver worker timed out', SUPERSEDED_ERROR])
 const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
 
 /**
@@ -357,10 +362,10 @@ export function useSolver(
       }
       if (!cancelledRef.current) setSolving(false)
     } catch (e) {
-      const msg = String(e)
-      if (msg !== 'Error: solve cancelled' && msg !== 'Error: solver worker timed out') {
-        setSolveError(msg)
-        setSolveRawResult(msg)
+      const reason = e instanceof Error ? e.message : String(e)
+      if (!BENIGN_SOLVE_FAILURES.has(reason)) {
+        setSolveError(String(e))
+        setSolveRawResult(String(e))
       }
     } finally {
       if (isCurrent()) setSolving(false)
