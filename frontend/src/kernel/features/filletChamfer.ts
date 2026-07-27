@@ -12,6 +12,7 @@ import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifi
 import { edgeGeometryHash, faceGeometryHash, geometryClassifiers } from '../geomHash'
 import { bestDescriptorMatch, type GeomDescriptor } from '../geomDescriptor'
 import { resolveBody } from './shared'
+import { resplitBody } from './bodySplit'
 import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceCentroid, faceNormal, edgeToGeom, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
@@ -442,19 +443,17 @@ function applyEdgeFeature(
       : null
     const res = applyFn(oc, scope, oldShape, topoEdges, oldNames)
 
-    const oldHandle = body.shape
-    scope.track(res.shape)
-    body.shape = table.register(scope.detach(res.shape), body.created_by)
-    table.release(oldHandle)
     if (res.names !== null) {
       body.face_names = res.names.faceNames
       body.edge_names = res.names.edgeNames
       body.face_ancestry = res.names.faceAncestry
       body.edge_ancestry = res.names.edgeAncestry
     }
+    // A chamfer removes material and can sever a thin web, so even this leaf
+    // can turn one body into two.
+    applied.push(...resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId))
     body.brep_diff = res.diff
     body.modified_by.push(featureId)
-    applied.push(body.id)
   }
 
   if (applied.length === 0) throw new Error(`${featureKind}: no edges resolved`)

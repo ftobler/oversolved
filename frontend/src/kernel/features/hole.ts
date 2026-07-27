@@ -15,6 +15,7 @@ import type { Repository } from '../query'
 import { resolveBody } from './shared'
 import { makeCylinder, readSolidVertices, type Vec3 } from '../occ/primitives'
 import { booleanWithDiff } from '../occ/booleans'
+import { resplitBody } from './bodySplit'
 import type { PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
@@ -23,6 +24,7 @@ interface HoleResult {
   [key: string]: unknown
   status: string
   body_id: string
+  body_ids: string[]
   hole_count: number
 }
 
@@ -141,10 +143,11 @@ export function solveHole(
     cutAny = true
   }
 
+  let bodyIds = [targetBody.id]
   if (cutAny) {
-    const oldHandle = targetBody.shape
-    targetBody.shape = table.register(scope.detach(currentShape), targetBody.created_by)
-    table.release(oldHandle)
+    // A hole is a cut, so it can sever the body: a through-hole wider than the
+    // web between two features leaves two disconnected solids.
+    bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string)
     targetBody.brep_diff = lastDiff
   }
 
@@ -159,7 +162,8 @@ export function solveHole(
 
   const result: HoleResult = {
     status: skippedCount > 0 ? 'partial' : 'ok',
-    body_id: targetBody.id,
+    body_id: bodyIds[0],
+    body_ids: bodyIds,
     hole_count: placed,
   }
   if (skippedCount > 0) {

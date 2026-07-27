@@ -8,13 +8,22 @@ import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { bareBody, resolveBody, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
+import { resolveBody, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
+import { registerSplitBodies, resplitBody } from './bodySplit'
 
 type Dict = Record<string, unknown>
+
+interface ArrayResult {
+  status: string
+  /** The first body; `body_ids` carries the rest when instances or splits add more. */
+  body_id: string
+  body_ids: string[]
+  operation: string
+}
 
 /**
  * Resolve a required array direction from its picker query, applying the
@@ -120,7 +129,7 @@ function applyArray(
   featureId: string,
   bodyStore: Record<string, Body>,
   opLabel: string,
-): { status: string; body_id: string; operation: string } {
+): ArrayResult {
   const sourceShape = table.get<OccShape>(body.shape!)
   const sourceNames: NameMaps = {
     faceNames: body.face_names ?? {},
@@ -152,17 +161,17 @@ function applyArray(
       })
     }
     if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
-    instances.forEach((inst, i) => {
-      const bid = i === 0 ? resultBodyId : `${resultBodyId}_${i}`
-      const nb = bareBody(bid, featureId)
-      nb.shape = table.register(scope.detach(inst.shape), featureId)
-      nb.face_names = inst.names.faceNames
-      nb.face_ancestry = inst.names.faceAncestry
-      nb.edge_names = inst.names.edgeNames
-      nb.edge_ancestry = inst.names.edgeAncestry
-      bodyStore[bid] = nb
-    })
-    return { status: 'ok', body_id: resultBodyId, operation: 'new' }
+    // One instance is normally one solid, so this normally mints exactly the
+    // old `body_<feat>`, `body_<feat>_1`, ... run. Going through bodySplit is
+    // what keeps that true when the source body is itself multi-solid: the
+    // instances would otherwise each copy the violation verbatim.
+    const bodyIds: string[] = []
+    for (const inst of instances) {
+      bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, inst.shape, {
+        id: resultBodyId, createdBy: featureId, ...inst.names,
+      }))
+    }
+    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'new' }
   }
 
   // operation === "add": fuse incrementally and rebuild construction names
@@ -185,7 +194,7 @@ function applyArray(
   if (instances.length === 1) {
     body.modified_by.push(featureId)
     body.brep_diff = null
-    return { status: 'ok', body_id: body.id, operation: 'add' }
+    return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'add' }
   }
   let fused = instances[0]
   let fusedNames = instanceNames[0]
@@ -209,16 +218,17 @@ function applyArray(
     }
     lastDiff = r.diff
   }
-  const oldHandle = body.shape!
-  body.shape = table.register(scope.detach(fused), body.created_by)
-  table.release(oldHandle)
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff
   body.face_names = fusedNames.faceNames
   body.face_ancestry = fusedNames.faceAncestry
   body.edge_names = fusedNames.edgeNames
   body.edge_ancestry = fusedNames.edgeAncestry
-  return { status: 'ok', body_id: body.id, operation: 'add' }
+  // "add" fuses the instances into the source body, but a pitch wider than the
+  // part leaves that fuse disjoint: the union of N non-touching copies is an
+  // N-solid compound, which is N parts, not one.
+  const bodyIds = resplitBody(oc, scope, table, bodyStore, body, fused, featureId)
+  return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'add' }
 }
 
 function resolveSourceBody(
@@ -250,7 +260,7 @@ export function solveArray(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): { status: string; body_id: string; operation: string } {
+): ArrayResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.array as Dict) ?? {}
   const merged: Dict = { ...sub, ...feature }
@@ -269,7 +279,7 @@ export function solveCircularArray(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): { status: string; body_id: string; operation: string } {
+): ArrayResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.circular_array as Dict) ?? {}
   const merged: Dict = { ...sub, ...feature }

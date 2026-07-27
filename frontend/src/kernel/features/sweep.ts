@@ -349,7 +349,7 @@ export function solveSweep(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): { [key: string]: unknown; status: string; body_id: string } {
+): { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.sweep as Dict) ?? {}
   const mergeTarget = ((sub.merge_target as string) ?? (feature.merge_target as string)) ?? null
@@ -462,7 +462,7 @@ export function solveSweep(
   const [spineEdges] = collectPathEdges(oc, scope, pathRefs, globalRepo)
 
   const bodyId = 'body_' + featureId
-  const result: { [key: string]: unknown; status: string; body_id: string } = { status: 'ok', body_id: bodyId }
+  const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
   const operation = ((merged.operation as string) ?? 'add') as BodyOperation
 
   const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId)

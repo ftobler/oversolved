@@ -24,7 +24,10 @@ describe('applyBodyOperation OCC-free branches', () => {
       sketchId: 'skF',
       opName: 'extrude',
     })
-    expect(result).toEqual({ status: 'ok', body_id: 'body_f', operation: 'cut' })
+    // body_ids is explicitly empty, not absent: `body_id` names the body this
+    // feature WOULD have minted, and a consumer reading `body_ids ?? [body_id]`
+    // must not chase it.
+    expect(result).toEqual({ status: 'ok', body_id: 'body_f', operation: 'cut', body_ids: [] })
   })
 
   it('cut with an unknown merge target throws', () => {

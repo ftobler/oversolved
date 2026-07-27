@@ -23,6 +23,7 @@ import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
 import { extractBrepMetadata } from '../solveLocally'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { copyShape } from '../occ/transforms'
+import { assertOneSolidPerBody } from '../features/bodySplit'
 import type { OccShape } from '../occ/occTypes'
 
 export class SharedHarness {
@@ -41,6 +42,11 @@ export class SharedHarness {
         trySolveFeature: createFeatureSolver(this.oc, scope, this.table),
         postRegister, initGlobalRepo,
         tessellateBodies: (bodyStore) => {
+          // The one-Body-one-solid gate, at the point every real-OCC build test
+          // already passes through: a leaf that produces a multi-solid body
+          // fails its own test rather than shipping one Parts row that is
+          // really N parts. See features/bodySplit.ts.
+          assertOneSolidPerBody(this.oc, scope, this.table, bodyStore)
           const out: Record<string, Record<string, unknown>> = {}
           for (const [, body] of Object.entries(bodyStore)) {
             if (!body.shape) continue

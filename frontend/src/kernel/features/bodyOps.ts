@@ -15,10 +15,11 @@
 import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
-import type { OccHandle, HandleTable } from '../occ/handleTable'
+import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets, brepDiffIsEmpty } from './shared'
-import { booleanWithDiff, volumeOf, exploreSolids, countSolids } from '../occ/booleans'
+import { booleanWithDiff, volumeOf, countSolids } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
+import { registerSplitBodies, resplitBody } from './bodySplit'
 
 export type BodyOperation = 'add' | 'cut' | 'new'
 
@@ -45,38 +46,6 @@ export interface ApplyBodyOperationResult {
   operation?: string
   body_ids?: string[]
   solver_warning?: string
-}
-
-interface NameMaps {
-  faceNames?: Record<string, string> | null
-  edgeNames?: Record<string, string> | null
-  faceAncestry?: Record<string, string[]> | null
-  edgeAncestry?: Record<string, string[]> | null
-}
-
-function newBody(
-  id: string,
-  createdBy: string,
-  shape: OccHandle,
-  sketchId: string,
-  profileQueries: string[],
-  imported = false,
-  names: NameMaps = {},
-): Body {
-  return {
-    id,
-    created_by: createdBy,
-    modified_by: [],
-    shape,
-    sketch_id: sketchId,
-    brep_diff: null,
-    profile_queries: [...profileQueries],
-    face_names: { ...(names.faceNames ?? {}) },
-    edge_names: { ...(names.edgeNames ?? {}) },
-    face_ancestry: { ...(names.faceAncestry ?? {}) },
-    edge_ancestry: { ...(names.edgeAncestry ?? {}) },
-    ...(imported ? { imported: true } : {}),
-  }
 }
 
 /**
@@ -108,8 +77,9 @@ export function applyBodyOperation(
   } = input
 
   // The tool body's construction-name maps, carried onto a body the tool becomes
-  // (the "new"/no-target paths). Boolean paths (add/cut) rebuild them in Stage 2.
-  const toolNames: NameMaps = { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  // (the "new"/no-target paths) and narrowed per sibling when it splits. Boolean
+  // paths (add/cut) rebuild them in Stage 2.
+  const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry }
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
 
@@ -121,8 +91,13 @@ export function applyBodyOperation(
       needNewBody = true
     } else {
       if (!targetIds.length && !mergeTarget && operation === 'cut') {
-        // No bodies exist and no target specified: silently succeed.
+        // No bodies exist and no target specified: silently succeed. `body_id`
+        // keeps the id this feature WOULD have minted (parity with Python), so
+        // `body_ids` has to be explicitly empty -- a consumer reading
+        // `body_ids ?? [body_id]` would otherwise chase a body that was never
+        // created.
         result.operation = 'cut'
+        result.body_ids = []
         return result
       }
       if (!targetIds.length) {
@@ -172,31 +147,12 @@ export function applyBodyOperation(
       existingBody.edge_ancestry = names.edge_ancestry
 
       cutAnything = true
-      cutBodyIds.push(bid)
       if (cutBodyId === null) cutBodyId = bid
 
-      const oldHandle = existingBody.shape
-      const solids = exploreSolids(oc, scope, newShape)
-      if (solids.length > 1) {
-        existingBody.shape = table.register(scope.detach(solids[0]), existingBody.created_by)
-        for (let i = 1; i < solids.length; i++) {
-          let suffix = i
-          while (`${bid}_${suffix}` in bodyStore) suffix++
-          const newBid = `${bid}_${suffix}`
-          bodyStore[newBid] = newBody(
-            newBid,
-            existingBody.created_by,
-            table.register(scope.detach(solids[i]), existingBody.created_by),
-            existingBody.sketch_id,
-            [],
-            existingBody.imported,
-          )
-          cutBodyIds.push(newBid)
-        }
-      } else {
-        existingBody.shape = table.register(scope.detach(newShape), existingBody.created_by)
-      }
-      table.release(oldHandle)
+      // A cut is the classic disconnector, and the sibling bodies inherit the
+      // names just transferred onto `newShape`, narrowed to the faces each one
+      // actually owns.
+      cutBodyIds.push(...resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId))
     }
     if (!cutAnything) {
       throw new Error(`${opName}: cut does not intersect any target body - nothing to remove`)
@@ -212,20 +168,8 @@ export function applyBodyOperation(
   }
 
   if (operation === 'new') {
-    const solids = exploreSolids(oc, scope, toolShape)
-    const bodyIds: string[] = []
-    solids.forEach((solid, i) => {
-      const bid = i === 0 ? bodyId : `${bodyId}_${i}`
-      bodyStore[bid] = newBody(
-        bid,
-        featureId,
-        table.register(scope.detach(solid), featureId),
-        sketchId,
-        profileQueries,
-        false,
-        toolNames,
-      )
-      bodyIds.push(bid)
+    const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
+      id: bodyId, createdBy: featureId, sketchId, profileQueries, ...toolNames,
     })
     result.body_id = bodyIds[0]
     result.body_ids = bodyIds
@@ -236,6 +180,7 @@ export function applyBodyOperation(
   // operation === 'add'
   let fused = false
   let fusedBodyId: string | null = null
+  let fusedIds: string[] = []
   if (!needNewBody) {
     for (const bid of targetIds) {
       const existingBody = bodyStore[bid]
@@ -274,15 +219,16 @@ export function applyBodyOperation(
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
       })
-      const oldHandle = existingBody.shape
-      existingBody.shape = table.register(scope.detach(newShape), existingBody.created_by)
-      table.release(oldHandle)
-      existingBody.modified_by.push(featureId)
-      existingBody.brep_diff = diff
       existingBody.face_names = names.face_names
       existingBody.edge_names = names.edge_names
       existingBody.face_ancestry = names.face_ancestry
       existingBody.edge_ancestry = names.edge_ancestry
+      // The connectivity guards above make a disjoint fuse unreachable here, so
+      // this normally re-seats the body on one solid. It still goes through
+      // resplitBody so the guards are the only thing that has to stay right.
+      fusedIds = resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId)
+      existingBody.modified_by.push(featureId)
+      existingBody.brep_diff = diff
       fused = true
       fusedBodyId = bid
       break
@@ -291,7 +237,7 @@ export function applyBodyOperation(
 
   if (fused) {
     result.body_id = fusedBodyId as string
-    result.body_ids = [fusedBodyId as string]
+    result.body_ids = fusedIds
     result.operation = 'add'
     const fusedBody = fusedBodyId !== null ? bodyStore[fusedBodyId] : undefined
     if (fusedBody && brepDiffIsEmpty(fusedBody.brep_diff)) {
@@ -303,20 +249,8 @@ export function applyBodyOperation(
     throw new Error(`${opName}: add could not fuse with any target body`)
   }
   // No target body: the tool becomes its own body (one per solid).
-  const solids = exploreSolids(oc, scope, toolShape)
-  const bodyIds: string[] = []
-  solids.forEach((solid, i) => {
-    const bid = i === 0 ? bodyId : `${bodyId}_${i}`
-    bodyStore[bid] = newBody(
-      bid,
-      featureId,
-      table.register(scope.detach(solid), featureId),
-      sketchId,
-      profileQueries,
-      false,
-      toolNames,
-    )
-    bodyIds.push(bid)
+  const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
+    id: bodyId, createdBy: featureId, sketchId, profileQueries, ...toolNames,
   })
   result.body_id = bodyIds[0]
   result.body_ids = bodyIds

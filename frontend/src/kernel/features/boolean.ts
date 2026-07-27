@@ -1,7 +1,12 @@
 // The explicit boolean leaf (union / subtract / intersect of whole bodies, vs the implicit
 // cut/add an extrude does). It resolves a target body and a list of tool bodies, folds each
-// tool into the target via booleanWithDiff, removes consumed tools, and (for subtract) splits
-// any disconnected result solids into extra bodies.
+// tool into the target via booleanWithDiff, removes consumed tools, and splits any
+// disconnected result solids into extra bodies.
+//
+// The split used to be limited to `subtract`, on the assumption that only a cut can
+// disconnect a body. It cannot: a union of two bodies that do not touch is a two-solid
+// compound, and an intersect can leave several lumps just as a cut can. Every operation now
+// goes through `resplitBody`.
 //
 // Unlike bodyOps' cut/add this does NOT transfer per-entity lineage: the target keeps its (now
 // partly stale) lineage dicts, matching Python's single-op-history behaviour. Only the LAST
@@ -12,8 +17,9 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { bareBody, resolveBody } from './shared'
-import { booleanWithDiff, exploreSolids } from '../occ/booleans'
+import { resolveBody } from './shared'
+import { booleanWithDiff } from '../occ/booleans'
+import { resplitBody } from './bodySplit'
 
 type Dict = Record<string, unknown>
 
@@ -72,28 +78,7 @@ export function solveBoolean(
   targetBody.modified_by.push(featureId)
   targetBody.brep_diff = lastDiff
 
-  const oldHandle = targetBody.shape
-  const bodyIds: string[] = [targetBody.id]
-
-  if (operation === 'subtract') {
-    const solids = exploreSolids(oc, scope, resultShape)
-    if (solids.length > 1) {
-      targetBody.shape = table.register(scope.detach(solids[0]), targetBody.created_by)
-      for (let i = 1; i < solids.length; i++) {
-        let suffix = i
-        while (`${targetBody.id}_${suffix}` in bodyStore) suffix++
-        const newBid = `${targetBody.id}_${suffix}`
-        bodyStore[newBid] = bareBody(newBid, targetBody.created_by, targetBody.sketch_id)
-        bodyStore[newBid].shape = table.register(scope.detach(solids[i]), targetBody.created_by)
-        bodyIds.push(newBid)
-      }
-    } else {
-      targetBody.shape = table.register(scope.detach(resultShape), targetBody.created_by)
-    }
-  } else {
-    targetBody.shape = table.register(scope.detach(resultShape), targetBody.created_by)
-  }
-  table.release(oldHandle)
+  const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
 
   // Drop consumed tool bodies (release their handles first). Dedup so a tool
   // listed twice is not double-released.

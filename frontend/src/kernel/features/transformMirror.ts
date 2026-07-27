@@ -9,11 +9,12 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared'
-import { bareBody, resolveBody } from './shared'
+import { resolveBody } from './shared'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
+import { registerSplitBodies, resplitBody } from './bodySplit'
 
 type Dict = Record<string, unknown>
 
@@ -139,26 +140,23 @@ export function solveTransform(
   const operation = (cfg.operation as string) ?? 'new'
   if (operation === 'replace') {
     const names = rekeyNamesForTransformedBody(oc, scope, newShape, sourceShape, sourceNames, builder)
-    const oldHandle = sourceBody.shape
-    sourceBody.shape = table.register(scope.detach(scope.track(newShape)), sourceBody.created_by)
-    table.release(oldHandle)
-    sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
     sourceBody.face_names = names.faceNames
     sourceBody.face_ancestry = names.faceAncestry
     sourceBody.edge_names = names.edgeNames
     sourceBody.edge_ancestry = names.edgeAncestry
-    return { status: 'ok', body_id: sourceBody.id, operation: 'replace' }
+    // A rigid transform cannot disconnect a body, but a non-uniform scale is in
+    // the same composed Trsf, so this goes through the one path anyway rather
+    // than resting on that argument.
+    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId)
+    sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
+    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'replace' }
   }
   const newBodyId = 'body_' + featureId
-  const nb = bareBody(newBodyId, featureId, sourceBody.sketch_id)
-  nb.shape = table.register(scope.detach(scope.track(newShape)), featureId)
   const names = rebuildNamesForTransformedCopy(oc, scope, newShape, sourceShape, sourceNames, featureId, 0, builder)
-  nb.face_names = names.faceNames
-  nb.face_ancestry = names.faceAncestry
-  nb.edge_names = names.edgeNames
-  nb.edge_ancestry = names.edgeAncestry
-  bodyStore[newBodyId] = nb
-  return { status: 'ok', body_id: newBodyId, operation: 'new' }
+  const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
+    id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...names,
+  })
+  return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'new' }
 }
 
 /** Solve a mirror feature (mirrors `_solve_mirror`). */
@@ -212,15 +210,13 @@ export function solveMirror(
   const mirroredNames = rebuildNamesForTransformedCopy(oc, scope, mirrored, sourceShape, sourceNames, featureId, 0, builder)
 
   if (!keepOriginal) {
-    const oldHandle = sourceBody.shape
-    sourceBody.shape = table.register(scope.detach(scope.track(mirrored)), sourceBody.created_by)
-    table.release(oldHandle)
-    sourceBody.modified_by.push(featureId)
     sourceBody.face_names = mirroredNames.faceNames
     sourceBody.face_ancestry = mirroredNames.faceAncestry
     sourceBody.edge_names = mirroredNames.edgeNames
     sourceBody.edge_ancestry = mirroredNames.edgeAncestry
-    return { status: 'ok', body_id: sourceBody.id, operation: 'replace' }
+    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(mirrored), featureId)
+    sourceBody.modified_by.push(featureId)
+    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'replace' }
   }
 
   if (merge) {
@@ -233,25 +229,21 @@ export function solveMirror(
       toolFaceNames: mirroredNames.faceNames,
       toolFaceAncestry: mirroredNames.faceAncestry,
     })
-    const oldHandle = sourceBody.shape
-    sourceBody.shape = table.register(scope.detach(scope.track(res.shape)), sourceBody.created_by)
-    table.release(oldHandle)
-    sourceBody.modified_by.push(featureId)
-    sourceBody.brep_diff = res.diff
     sourceBody.face_names = names.face_names
     sourceBody.face_ancestry = names.face_ancestry
     sourceBody.edge_names = names.edge_names
     sourceBody.edge_ancestry = names.edge_ancestry
-    return { status: 'ok', body_id: sourceBody.id, operation: 'merge' }
+    // "merge" is a fuse, and a body mirrored across a plane it does not reach
+    // fuses into two disjoint solids: two parts, not one merged part.
+    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId)
+    sourceBody.modified_by.push(featureId)
+    sourceBody.brep_diff = res.diff
+    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'merge' }
   }
 
   const newBodyId = 'body_' + featureId
-  const nb = bareBody(newBodyId, featureId, sourceBody.sketch_id)
-  nb.shape = table.register(scope.detach(scope.track(mirrored)), featureId)
-  nb.face_names = mirroredNames.faceNames
-  nb.face_ancestry = mirroredNames.faceAncestry
-  nb.edge_names = mirroredNames.edgeNames
-  nb.edge_ancestry = mirroredNames.edgeAncestry
-  bodyStore[newBodyId] = nb
-  return { status: 'ok', body_id: newBodyId, body_ids: [sourceBody.id, newBodyId], operation: 'new' }
+  const newIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(mirrored), {
+    id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...mirroredNames,
+  })
+  return { status: 'ok', body_id: newIds[0], body_ids: [sourceBody.id, ...newIds], operation: 'new' }
 }

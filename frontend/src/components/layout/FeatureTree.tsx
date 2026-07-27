@@ -184,12 +184,20 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 {(() => {
                   const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'sweep' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' || feature.kind === 'variable' ? solveResults?.[feature.id] : undefined
                   const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
-                  const hasMeshError = bodyResult?.body_id
-                    ? bodies?.[bodyResult.body_id]?.mesh_error : undefined
+                  // A feature owns every body it made, and any ONE of them
+                  // failing to tessellate has to redden the row: reading only
+                  // `body_id` left a split sibling rendering nothing with a
+                  // green feature and no tooltip (features/bodySplit.ts).
+                  const resultBodyIds = bodyResult
+                    ? (bodyResult.body_ids ?? (bodyResult.body_id ? [bodyResult.body_id] : []))
+                    : []
+                  const hasMeshError = resultBodyIds
+                    .map((bid) => bodies?.[bid]?.mesh_error)
+                    .find((m) => !!m)
                   const isError = !!r && ((r as { status?: string }).status !== 'ok' || !!hasMeshError)
                   const errMsg: string = bodyResult?.exception
                     ?? (r as { exception?: string } | undefined)?.exception
-                    ?? (bodyResult?.body_id ? bodies?.[bodyResult.body_id]?.mesh_error : undefined)
+                    ?? hasMeshError
                     ?? ''
                   // Variables surface their solved value inline: `width = 100`.
                   const varValue = feature.kind === 'variable' && !isError

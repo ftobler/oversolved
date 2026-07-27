@@ -10,6 +10,17 @@
 // Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_transform_fixture.py) was deleted with the Python kernel in
 // phase 4d.
+//
+// The fixture was deliberately re-frozen when the leaves moved onto
+// features/bodySplit.ts, in two ways:
+//   - every result gained `body_ids`, which these leaves did not use to emit;
+//   - `circular_add` and `mirror_merge` changed STORE SHAPE. Both fuse copies
+//     that never touch (4 boxes around an axis at radius 5; a box at z=[2,6]
+//     mirrored to z=[-6,-2]), so Python left one body holding 4 resp. 2 solids.
+//     That is the "one Parts row that is really N parts" bug, so the snapshot
+//     was of wrong behaviour; it now expects 4 resp. 2 bodies of one solid each.
+// Their total volumes are unchanged, which is what says the geometry did not
+// move -- only its division into parts did.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
@@ -127,8 +138,13 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   describe('array inline cases', () => {
     // ── Rectangular array ──
 
-    it('rectangular 2x2 array add', () => {
-      /** 2x2 array with pitch 15 in X and Y, include_source=true. */
+    it('rectangular 2x2 array add keeps the disjoint instances as separate parts', () => {
+      /**
+       * 2x2 array, pitch 15, include_source=true, on a 5-cube: the three
+       * instances never touch, so "add" fuses them into a 3-solid compound.
+       * That is 3 parts, not one 375-volume part -- this used to assert the
+       * fused volume on `body_s`, i.e. the pre-bodySplit behaviour.
+       */
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -152,8 +168,12 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         }, repo, bodyStore)
         expect(result.status).toBe('ok')
         expect(result.body_id).toBe('body_s')
-        // 3 instances: source + copies at (15,0) and (15,15)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))).toBeCloseTo(srcVol * 3, 2)
+        // 3 instances: source + copies at (15,0) and (15,15), each its own part.
+        expect(result.body_ids).toEqual(['body_s', 'body_s_1', 'body_s_2'])
+        expect(Object.keys(bodyStore).sort()).toEqual(['body_s', 'body_s_1', 'body_s_2'])
+        for (const bid of ['body_s', 'body_s_1', 'body_s_2']) {
+          expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore[bid].shape!))).toBeCloseTo(srcVol, 2)
+        }
         expect(bodyStore.body_s.modified_by).toContain('arr1')
       } finally {
         scope.dispose()

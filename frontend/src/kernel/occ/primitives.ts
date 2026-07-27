@@ -416,6 +416,18 @@ export function faceArea(oc: OccModule, scope: DisposeScope, face: OccShape): nu
   return props.Mass()
 }
 
+/**
+ * Centre of mass of a solid. The volume integral (not the vertex hull) so the
+ * split-sibling ordering key in `features/bodySplit.ts` follows where the
+ * material actually is, which is what makes it survive a resize of the parent.
+ */
+export function solidCentroid(oc: OccModule, scope: DisposeScope, solid: OccShape): Vec3 {
+  const props = scope.track(new oc.GProp_GProps_1())
+  oc.BRepGProp.VolumeProperties_1(solid, props, true, false, false)
+  const c = props.CentreOfMass()
+  return [c.X(), c.Y(), c.Z()]
+}
+
 export function faceSurfaceType(oc: OccModule, scope: DisposeScope, face: OccShape): SurfaceType {
   const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
   const t = adaptor.GetType().value
