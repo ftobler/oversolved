@@ -112,6 +112,32 @@ describe('measure3dSelection two faces', () => {
   })
 })
 
+// The topo fallback (`@<id>/<kind>/<idx>`) is what a body without kernel
+// queries is measured through, and `bodies` here is keyed by BODY id. That is
+// the contract these two lock: the token must name a body. While the render
+// side minted the creating FEATURE instead, this lookup missed on every
+// fallback query (and the exhaustive query scan below it finds nothing for one
+// either), so measuring a queryless body's edge did not work at all.
+describe('measure3dSelection topo-fallback ids across split siblings', () => {
+  const line = (len: number, y: number): EdgeData => ({ kind: 'line', start: [0, y, 0], end: [len, y, 0] })
+  const siblings = (): Record<string, BodyResult> => ({
+    body_ex: { id: 'body_ex', created_by: 'ex', modified_by: [], edges: [line(10, 0)] },
+    body_ex_1: { id: 'body_ex_1', created_by: 'ex', modified_by: [], edges: [line(3, 5)] },
+  })
+
+  it('measures the sibling named by the query, not the first body of the feature', () => {
+    expect(measure3dSelection(new Set(['@body_ex/edge/0']), siblings())).toEqual(['[EDGE] 10.000 mm'])
+    expect(measure3dSelection(new Set(['@body_ex_1/edge/0']), siblings())).toEqual(['[EDGE] 3.000 mm'])
+  })
+
+  it('measures between the two siblings\' own edges', () => {
+    // The two edges are parallel, 5 apart. Resolving both tokens to one body
+    // would compare an edge to itself and report a distance of 0.
+    expect(measure3dSelection(new Set(['@body_ex/edge/0', '@body_ex_1/edge/0']), siblings()))
+      .toEqual(['parallel edges, distance: 5.000 mm'])
+  })
+})
+
 describe('measure3dSelection selection-count guard', () => {
   it('returns [] for an empty selection', () => {
     expect(measure3dSelection(new Set([]), bodies())).toEqual([])

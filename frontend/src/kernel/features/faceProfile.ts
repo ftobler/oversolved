@@ -76,11 +76,22 @@ export function extractLoopsFromOccFace(
   return { loops, plane, face }
 }
 
-function findBodyForFeature(bodyStore: Record<string, Body>, featId: string): Body | null {
-  const direct = bodyStore['body_' + featId]
-  if (direct !== undefined && direct.shape !== null) return direct
+/**
+ * Body a `@<id>/...` reference names. `<id>` is a BODY id in everything the
+ * render layer mints today (utils/query/selectionId.ts topoFallbackQuery), so
+ * an exact body id has to be tried FIRST: a sibling ref `body_ex1_1` would
+ * otherwise be read as a feature name, looked up as `body_body_ex1_1`, miss,
+ * and throw. The feature branches below stay for hand-written and legacy refs;
+ * they answer with the feature's first body, which is also the index space
+ * `@<feat>/face/N` was always understood in.
+ */
+function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | null {
+  const exact = bodyStore[id]
+  if (exact !== undefined && exact.shape !== null) return exact
+  const prefixed = bodyStore['body_' + id]
+  if (prefixed !== undefined && prefixed.shape !== null) return prefixed
   for (const b of Object.values(bodyStore)) {
-    if (b.created_by === featId && b.shape !== null) return b
+    if (b.created_by === id && b.shape !== null) return b
   }
   return null
 }
@@ -89,7 +100,7 @@ const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
 
 /**
  * Resolve a profile reference to (loops, plane, face) (mirrors
- * `_resolve_face_profile`). Handles the body-face slash form `@feat/face/N`,
+ * `_resolve_face_profile`). Handles the body-face slash form `@body/face/N`,
  * repo entries carrying body_id+face_index, `@feat`/`?...` topo-surface forms.
  */
 export function resolveFaceProfile(
@@ -102,10 +113,10 @@ export function resolveFaceProfile(
 ): FaceProfile {
   const slash = SLASH_FACE.exec(sketchRef)
   if (slash) {
-    const featId = slash[1]
+    const refId = slash[1]
     let faceIndex = parseInt(slash[2], 10)
-    const body = findBodyForFeature(bodyStore, featId)
-    if (body === null) throw new Error(`No body found for feature '${featId}'`)
+    const body = findBodyForRef(bodyStore, refId)
+    if (body === null) throw new Error(`No body found for '${refId}'`)
     const shape = bodyShape(table, body)
     const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo)
     if (resolved !== null) faceIndex = resolved
@@ -126,9 +137,9 @@ export function resolveFaceProfile(
   }
 
   if (sketchRef.startsWith('@')) {
-    const featId = sketchRef.slice(1).split('/')[0]
-    const body = findBodyForFeature(bodyStore, featId)
-    if (body === null) throw new Error(`No body found for feature '${featId}'`)
+    const refId = sketchRef.slice(1).split('/')[0]
+    const body = findBodyForRef(bodyStore, refId)
+    if (body === null) throw new Error(`No body found for '${refId}'`)
     const topo = (globalRepo.elements.get('_topo_' + body.sketch_id) as Dict | undefined) ?? {}
     const surfaces = (topo.surfaces as Dict[]) ?? []
     const effectivePlane: PlaneLike = {

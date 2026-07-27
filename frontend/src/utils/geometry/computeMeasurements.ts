@@ -35,7 +35,7 @@ export function computeMeasurements(
   const body3dIds = new Set<string>()
 
   for (const id of selection) {
-    // 3D body element: @featureId/edge/N, @featureId/face/N, or ancestry query (?...)
+    // 3D body element: @bodyId/edge/N, @bodyId/face/N, or ancestry query (?...)
     if (id.startsWith('?') || parseTopoFallbackQuery(id) !== null) {
       body3dIds.add(id)
       continue

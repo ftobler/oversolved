@@ -13,7 +13,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox } from '../occ/primitives'
+import { makeBox, makeBoxAt } from '../occ/primitives'
 import { Repository } from '../query'
 import { resolveFaceProfile } from './faceProfile'
 import type { Body } from '../types3d'
@@ -90,6 +90,47 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         'plane',
       )
       expect(face).not.toBeNull()
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // One feature owns N bodies, so `@<id>/face/N` has to say WHICH body it
+  // indexes into. The render fallback names the body (topoFallbackQuery), and
+  // the resolver has to honour a sibling id exactly: reading `body_feat_1` as a
+  // feature name looked up `body_body_feat_1`, missed, and fell back to a
+  // created_by scan that always answered with sibling 0.
+  it('resolves a split sibling body id to that sibling, not to sibling 0', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const SEP = 100
+      const first = makeBox(occ, scope, 10, 10, 10)
+      const second = makeBoxAt(occ, scope, [SEP, 0, 0], 10, 10, 10)
+      const body = (id: string, shape: ReturnType<typeof makeBox>): Body => ({
+        id,
+        created_by: 'feat',
+        modified_by: [],
+        shape: table.register(scope.detach(shape), 'feat'),
+        sketch_id: 'sk',
+        brep_diff: null,
+        profile_queries: [],
+      })
+      const bodyStore: Record<string, Body> = {
+        body_feat: body('body_feat', first),
+        body_feat_1: body('body_feat_1', second),
+      }
+      const repo = new Repository()
+      const resolve = (ref: string) =>
+        resolveFaceProfile(occ, scope, table, ref, repo, bodyStore).plane.origin
+
+      const sibling0 = resolve('@body_feat/face/0')
+      const sibling1 = resolve('@body_feat_1/face/0')
+      // Same face index of two identical boxes: only the body they belong to
+      // separates them, and that separation is exactly the x offset.
+      expect(sibling1[0] - sibling0[0]).toBeCloseTo(SEP, 6)
+      // A ref naming the FEATURE keeps its documented meaning: the first body.
+      expect(resolve('@feat/face/0')).toEqual(sibling0)
     } finally {
       scope.dispose()
     }

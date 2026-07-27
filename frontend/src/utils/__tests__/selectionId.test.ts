@@ -157,16 +157,21 @@ describe('emitAbsoluteSelectionQuery', () => {
 
 describe('parseTopoFallbackQuery', () => {
   it('parses edge query', () => {
-    expect(parseTopoFallbackQuery('@ex1/edge/0')).toEqual({ featureId: 'ex1', kind: 'edge', idx: 0 })
+    expect(parseTopoFallbackQuery('@body_ex1/edge/0')).toEqual({ bodyId: 'body_ex1', kind: 'edge', idx: 0 })
   })
   it('parses face query', () => {
-    expect(parseTopoFallbackQuery('@body1/face/3')).toEqual({ featureId: 'body1', kind: 'face', idx: 3 })
+    expect(parseTopoFallbackQuery('@body1/face/3')).toEqual({ bodyId: 'body1', kind: 'face', idx: 3 })
   })
   it('parses vertex query', () => {
-    expect(parseTopoFallbackQuery('@sk1/vertex/7')).toEqual({ featureId: 'sk1', kind: 'vertex', idx: 7 })
+    expect(parseTopoFallbackQuery('@sk1/vertex/7')).toEqual({ bodyId: 'sk1', kind: 'vertex', idx: 7 })
   })
   it('multi-digit index', () => {
-    expect(parseTopoFallbackQuery('@ex1/edge/123')).toEqual({ featureId: 'ex1', kind: 'edge', idx: 123 })
+    expect(parseTopoFallbackQuery('@ex1/edge/123')).toEqual({ bodyId: 'ex1', kind: 'edge', idx: 123 })
+  })
+  // The leading token is a body id, and split siblings carry an `_N` suffix that
+  // must survive the round trip -- it is the only thing separating two siblings.
+  it('keeps a split sibling id whole', () => {
+    expect(parseTopoFallbackQuery('@body_ex1_1/edge/0')).toEqual({ bodyId: 'body_ex1_1', kind: 'edge', idx: 0 })
   })
   it('non-numeric idx returns null', () => {
     expect(parseTopoFallbackQuery('@ex1/edge/abc')).toBeNull()
@@ -188,16 +193,17 @@ describe('parseTopoFallbackQuery', () => {
   })
 
   describe('round-trip with topoFallbackQuery', () => {
-    const cases: Array<{ featureId: string; kind: 'edge' | 'face' | 'vertex'; idx: number }> = [
-      { featureId: 'ex1', kind: 'edge', idx: 0 },
-      { featureId: 'body1', kind: 'face', idx: 5 },
-      { featureId: 'sk1', kind: 'vertex', idx: 99 },
+    const cases: Array<{ bodyId: string; kind: 'edge' | 'face' | 'vertex'; idx: number }> = [
+      { bodyId: 'body_ex1', kind: 'edge', idx: 0 },
+      { bodyId: 'body_ex1_1', kind: 'edge', idx: 0 },
+      { bodyId: 'body1', kind: 'face', idx: 5 },
+      { bodyId: 'sk1', kind: 'vertex', idx: 99 },
     ]
-    cases.forEach(({ featureId, kind, idx }) => {
-      it(`${kind}/${idx}`, () => {
-        const serialized = topoFallbackQuery(featureId, kind, idx)
+    cases.forEach(({ bodyId, kind, idx }) => {
+      it(`${bodyId} ${kind}/${idx}`, () => {
+        const serialized = topoFallbackQuery(bodyId, kind, idx)
         const parsed = parseTopoFallbackQuery(serialized)
-        expect(parsed).toEqual({ featureId, kind, idx })
+        expect(parsed).toEqual({ bodyId, kind, idx })
       })
     })
   })

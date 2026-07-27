@@ -173,12 +173,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   )
 
   // Resolved query per edge (real query, else a topo fallback). The single
-  // primitive list every edge highlight decision indexes into.
+  // primitive list every edge highlight decision indexes into. The fallback is
+  // keyed on the BODY: this feature's split siblings each index their own edges
+  // from 0, so a feature-keyed fallback gave two different edges one query.
   const edgeQueriesResolved = useMemo(() => {
     const numEdges = Math.max(edgeQueries?.length ?? 0, edges.length)
     return Array.from({ length: numEdges }, (_, i) =>
-      edgeQueries?.[i] ?? topoFallbackQuery(featureId, 'edge', i))
-  }, [featureId, edgeQueries, edges])
+      edgeQueries?.[i] ?? topoFallbackQuery(bodyId, 'edge', i))
+  }, [bodyId, edgeQueries, edges])
 
   // One highlight index per (body, layer). It answers "nothing of mine is
   // active" without touching the primitives and always with the SAME all-false
@@ -227,8 +229,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // Resolved query per vertex, mirroring edges.
   const vertexQueriesResolved = useMemo(() => {
     if (!vertices || vertices.length === 0) return null
-    return vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(featureId, 'vertex', i))
-  }, [featureId, vertices, vertexQueries])
+    return vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(bodyId, 'vertex', i))
+  }, [bodyId, vertices, vertexQueries])
 
   const vertexHighlightIndex = useMemo(
     () => vertexQueriesResolved && new HighlightIndex(bodyKey, VERTEX_LAYER_NAME, vertexQueriesResolved),
@@ -335,8 +337,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (query !== undefined) return query
       }
     }
-    return topoFallbackQuery(featureId, 'face', triangleIndex)
-  }, [mesh, featureId])
+    return topoFallbackQuery(bodyId, 'face', triangleIndex)
+  }, [mesh, bodyId])
 
   // Which primitives the face colour buffer is divided into: B-rep faces when the
   // mesh carries usable per-face metadata, else one primitive per triangle (the

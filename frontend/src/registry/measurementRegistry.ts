@@ -313,11 +313,13 @@ function findBodyElement(
   id: string,
   bodies: Record<string, BodyResult>
 ): { body: BodyResult; kind: 'edge' | 'face' | 'vertex'; index: number } | null {
-  // Simple slash format: @featureId/edge/N, @featureId/face/N, or @featureId/vertex/N
+  // Simple slash format: @bodyId/edge/N, @bodyId/face/N, or @bodyId/vertex/N.
+  // `bodies` is keyed by body id, which is exactly what the render fallback
+  // mints, so this lookup lands on the sibling the user actually picked.
   const parsed = parseTopoFallbackQuery(id)
   if (parsed) {
-    const { featureId, kind, idx: index } = parsed
-    const body = bodies[featureId]
+    const { bodyId, kind, idx: index } = parsed
+    const body = bodies[bodyId]
     if (body) return { body, kind, index }
   }
   // Ancestry / query format: search all bodies for a matching query string
