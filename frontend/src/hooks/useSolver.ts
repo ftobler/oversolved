@@ -121,6 +121,8 @@ export function useSolver(
       constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous: boolean }>
       plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }
       body_id?: string
+      body_ids?: string[]
+      value?: number
       exception?: string
       handle?: FeatureHandleData
       solve_ms?: number
@@ -195,6 +197,12 @@ export function useSolver(
           solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
           status: feature.status ?? 'exception',
           ...(feature.body_id !== undefined && { body_id: feature.body_id }),
+          // `body_ids` and `value` are read by the feature tree and were being
+          // dropped here, so both consumers silently saw undefined: the
+          // split-sibling mesh-error check fell back to `body_id` alone, and a
+          // variable's inline `name = 100` never rendered.
+          ...(feature.body_ids !== undefined && { body_ids: feature.body_ids }),
+          ...(feature.value !== undefined && { value: feature.value }),
           ...(feature.exception !== undefined && { exception: feature.exception }),
           ...(feature.handle !== undefined && { handle: feature.handle }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),

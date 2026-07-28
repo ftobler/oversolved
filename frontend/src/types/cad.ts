@@ -798,6 +798,8 @@ export interface SketchData {
   plane_transform?: PlaneTransform
   plane?: { origin: [number, number, number]; x_axis: [number, number, number]; y_axis: [number, number, number]; normal: [number, number, number] }
   body_id?: string
+  body_ids?: string[]  // every body the feature made; body_id is only the first
+  value?: number  // a variable's solved value, rendered inline in the tree
   exception?: string
   handle?: FeatureHandleData  // editing handle for brep features (extrude/revolve/fillet/chamfer)
 }
