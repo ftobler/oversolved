@@ -8,7 +8,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import { faceGh } from '../occ/lineageHash'
 import { mintFaceUuid, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
-import { deriveEdgeNames, faceSplitKey } from '../occ/constructionLineage'
+import { deriveEdgeNames, faceSplitKey, nameFacesFromNeighbours } from '../occ/constructionLineage'
 import type { FaceOrigin } from '../occ/booleans'
 
 // ─── construction-name transfer (query-naming-by-construction) ───
@@ -93,6 +93,11 @@ export function transferBooleanNames(
       faceAncestry[childUuid] = ancestryOf[uuid]
     })
   }
+
+  // A face with no named source (a tool that carried no names, or a near-tie
+  // split refusal above) is named off its named neighbours, so the edges around
+  // it do not all collapse onto the body-wide ancestral fallback.
+  nameFacesFromNeighbours(oc, scope, bodyShape, faceNames, faceAncestry)
 
   const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, bodyShape, faceNames, faceAncestry)
   return { face_names: faceNames, edge_names: edgeNames, face_ancestry: faceAncestry, edge_ancestry: edgeAncestry }

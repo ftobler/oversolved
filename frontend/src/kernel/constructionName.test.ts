@@ -11,6 +11,7 @@ import {
   mintFaceUuid,
   deriveEdgeUuid,
   deriveVertexUuid,
+  deriveCornerFaceUuid,
   orderSplitChildren,
   type SplitChild,
 } from './constructionName'
@@ -69,6 +70,18 @@ describe('edge/vertex derivation', () => {
     const v2 = deriveVertexUuid([f[2], f[0], f[1]])
     expect(v1).toBe(v2)
     expect(v1.startsWith(VERTEX_UUID_PREFIX)).toBe(true)
+  })
+
+  it('derives a corner-face UUID from the unordered neighbour set', () => {
+    const f = [mintFaceUuid('a'), mintFaceUuid('b'), mintFaceUuid('c')]
+    const c1 = deriveCornerFaceUuid(f)
+    const c2 = deriveCornerFaceUuid([f[2], f[0], f[1]])
+    expect(c1).toBe(c2)
+    expect(c1.startsWith(FACE_UUID_PREFIX)).toBe(true)
+    // Same ingredients as a vertex, different namespace: the |corner marker
+    // keeps a corner patch from colliding with the vertex its blends meet at.
+    expect(c1.slice(FACE_UUID_PREFIX.length)).not.toBe(deriveVertexUuid(f).slice(VERTEX_UUID_PREFIX.length))
+    expect(deriveCornerFaceUuid(f, 1)).not.toBe(c1)
   })
 
   it('multiplicity suffix keeps edge 0 stable but separates edge 1', () => {

@@ -99,6 +99,20 @@ export function deriveSeamEdgeUuid(faceUuid: string, multiplicity = 0): string {
 }
 
 /**
+ * A face no producer could name -- typically the corner patch a fillet grows
+ * where several blend faces meet, which OCC generates from a VERTEX rather than
+ * from any filleted edge. Its identity is the (unordered) set of its named
+ * neighbour faces, mirroring `deriveVertexUuid`. The `|corner` marker keeps the
+ * path out of the vertex namespace, which uses the bare joined set.
+ */
+export function deriveCornerFaceUuid(neighbourUuids: string[], multiplicity = 0): string {
+  const sorted = [...new Set(neighbourUuids)].sort()
+  const base = `${sorted.join('|')}|corner`
+  const path = multiplicity > 0 ? `${base}|${multiplicity}` : base
+  return FACE_UUID_PREFIX + shortHash(path)
+}
+
+/**
  * A vertex is where >=3 faces meet, so its identity is the (unordered) set of
  * adjacent face UUIDs. `multiplicity` handles >1 vertex per face set, mirroring
  * `deriveEdgeUuid`.

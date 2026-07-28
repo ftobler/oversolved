@@ -8,9 +8,12 @@
 // compound, and an intersect can leave several lumps just as a cut can. Every operation now
 // goes through `resplitBody`.
 //
-// Unlike bodyOps' cut/add this does NOT transfer per-entity lineage: the target keeps its (now
-// partly stale) lineage dicts, matching Python's single-op-history behaviour. Only the LAST
-// tool's brep_diff is retained.
+// Construction names are folded through the tool loop the same way bodyOps' cut/add and the
+// array fuse do: each `booleanWithDiff` hands back a faceOrigin map, and `transferBooleanNames`
+// carries the accumulated names onto the new shape by subshape identity. Skipping that (which
+// this leaf used to do, keeping the target's now-stale geom-hash keys) silently unnamed every
+// face the boolean reshaped, and every edge around them with it. Only the LAST tool's brep_diff
+// is retained.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -20,6 +23,7 @@ import type { Repository } from '../query'
 import { resolveBody } from './shared'
 import { booleanWithDiff } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
+import { transferBooleanNames } from './booleanLineage'
 
 type Dict = Record<string, unknown>
 
@@ -64,6 +68,12 @@ export function solveBoolean(
   let resultShape: OccShape = table.get<OccShape>(targetBody.shape)
   const consumedKeys: string[] = []
   let lastDiff: BrepDiff | null = null
+  // Folded across the tools: each step's output names are the next step's target
+  // names, so a face keeps its identity through a multi-tool boolean.
+  let faceNames = targetBody.face_names ?? {}
+  let faceAncestry = targetBody.face_ancestry ?? {}
+  let edgeNames = targetBody.edge_names ?? {}
+  let edgeAncestry = targetBody.edge_ancestry ?? {}
 
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)
@@ -71,12 +81,28 @@ export function solveBoolean(
     const toolShape = table.get<OccShape>(toolBody.shape)
     const res = booleanWithDiff(oc, scope, resultShape, toolShape, op)
     resultShape = scope.track(res.shape)
+    const names = transferBooleanNames(oc, scope, {
+      bodyShape: resultShape,
+      faceOrigin: res.faceOrigin,
+      targetFaceNames: faceNames,
+      targetFaceAncestry: faceAncestry,
+      toolFaceNames: toolBody.face_names ?? null,
+      toolFaceAncestry: toolBody.face_ancestry ?? null,
+    })
+    faceNames = names.face_names
+    faceAncestry = names.face_ancestry
+    edgeNames = names.edge_names
+    edgeAncestry = names.edge_ancestry
     lastDiff = res.diff
     if (!keepTools) consumedKeys.push(toolBody.id)
   }
 
   targetBody.modified_by.push(featureId)
   targetBody.brep_diff = lastDiff
+  targetBody.face_names = faceNames
+  targetBody.face_ancestry = faceAncestry
+  targetBody.edge_names = edgeNames
+  targetBody.edge_ancestry = edgeAncestry
 
   const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
 

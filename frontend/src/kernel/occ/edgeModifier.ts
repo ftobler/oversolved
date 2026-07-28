@@ -15,7 +15,7 @@ import { edgeGeometryHash } from '../geomHash'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
-import { deriveEdgeNames, faceSplitKey } from './constructionLineage'
+import { deriveEdgeNames, faceSplitKey, nameFacesFromNeighbours } from './constructionLineage'
 
 type Lineage = Record<string, string[]>
 type Names = Record<string, string>
@@ -166,6 +166,10 @@ function extractNames(
       if (ordered !== null) ordered.forEach((f, i) => assign(f, mintFaceUuid(splitFacePath(base, i))))
     }
   }
+
+  // Step 3: the corner patches steps 1-2 cannot reach (generated from a vertex
+  // where blends meet), named off their neighbours so their edges stay pickable.
+  nameFacesFromNeighbours(oc, scope, newShape, faceNames, faceAncestry)
 
   const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, newShape, faceNames, faceAncestry)
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }

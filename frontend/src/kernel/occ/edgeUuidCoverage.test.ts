@@ -20,7 +20,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { makeBox, makeCylinder } from './primitives'
-import { deriveEdgeNames } from './constructionLineage'
+import { deriveEdgeNames, nameFacesFromNeighbours } from './constructionLineage'
 import { faceGh, edgeGh } from './lineageHash'
 import type { OccShape } from './occTypes'
 import { SharedHarness } from './sharedHarness'
@@ -82,6 +82,52 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
       }
       // seam edge uses the seam derivation (e_ prefix, single-face path)
       expect(Object.values(edgeNames).every(u => u.startsWith('e_'))).toBe(true)
+    } finally { scope.dispose() }
+  })
+
+  // A producer that cannot name every face it makes (the fillet corner patch of
+  // bugreports/edge_resolves_not_unique_20260728_213049.md) leaves a hole that
+  // spreads to the edges: an edge whose other face is unnamed is misread as a
+  // SEAM of the one named face, and where both faces are unnamed the edge gets
+  // no UUID at all and falls back to the body-wide ancestral string every other
+  // unnamed edge also carries.
+  it('a face the producer could not name is named off its neighbours', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const { faceNames, faceAncestry } = nameAllFaces(scope, box)
+      const orphan = Object.keys(faceNames)[0]
+      const kept = { ...faceNames }
+      delete faceNames[orphan]
+      delete faceAncestry[kept[orphan]]
+
+      const before = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry).edgeNames
+
+      nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
+      expect(faceNames[orphan]).toBeDefined()
+      expect(faceNames[orphan]).not.toBe(kept[orphan])  // its own identity, not the lost one
+      // Ancestry is inherited from the neighbours, so a stale UUID still lands
+      // in the right lineage.
+      expect(faceAncestry[faceNames[orphan]].length).toBeGreaterThan(0)
+
+      const after = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry).edgeNames
+      const ghs = edgeGhs(scope, box)
+      for (const g of ghs) expect(after[g]).toBeDefined()
+      expect(new Set(Object.values(after)).size).toBe(ghs.length)
+      // The 4 edges bounding the orphan were deriving from ONE face (the seam
+      // path, ordered by multiplicity); now they derive from a real face pair.
+      expect(ghs.filter((g) => after[g] !== before[g]).length).toBe(4)
+    } finally { scope.dispose() }
+  })
+
+  it('leaves a face with no named neighbour unnamed rather than guessing', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const faceNames: Record<string, string> = {}
+      const faceAncestry: Record<string, string[]> = {}
+      nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
+      expect(faceNames).toEqual({})
     } finally { scope.dispose() }
   })
 
@@ -236,6 +282,33 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       rectSketch('sk2', 4, 4, { offsetX: 3, offsetY: 3 }),
       { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
     ] }, 'body_ex1')
+  })
+
+  // The EXPLICIT boolean leaf (features/boolean.ts), which the cut case above
+  // does not reach -- that one goes through bodyOps. This leaf used to skip the
+  // construction-name transfer entirely ("the target keeps its now partly stale
+  // lineage dicts"), so every face the fuse reshaped lost its UUID and every
+  // edge around it fell back to the body-wide ancestral string. See
+  // bugreports/pick_identity_20260728_215425.md, where one edge pick highlighted
+  // six edges and the fillet after the union could not resolve it.
+  it('explicit boolean union: every primitive keeps a construction UUID', () => {
+    const spec = { features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      rectSketch('sk2', 4, 4, { offsetX: 8, offsetY: 3 }),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 6, direction: 'normal', operation: 'new' },
+      { id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '@body_ex1', tools: ['@body_ex2'] } },
+    ] }
+    const result = h.run(spec)
+    expect((h.res(result, 'bool1') as { status: string }).status).toBe('ok')
+    expectUniquePrimitiveQueries(h, result, 'body_ex1')
+    // Uniqueness alone would pass on classifiers that happen to separate the
+    // unnamed siblings; the identity itself has to survive the boolean.
+    const unnamed = [
+      ...faceQueriesOf(h, result, 'body_ex1'),
+      ...edgeQueriesOf(h, result, 'body_ex1'),
+    ].filter((q) => !q.includes('@u|'))
+    expect(unnamed).toEqual([])
   })
 
   it('circular array add: no duplicate face or edge queries', () => {
