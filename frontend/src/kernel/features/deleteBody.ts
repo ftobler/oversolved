@@ -32,11 +32,21 @@ function resolveBodyKeys(bodyQuery: string, globalRepo: Repository, bodyStore: R
     const ids = resolveBodyIds(bodyQuery, bodyStore)
     return ids.length > 0 ? ids : [resolveBody(bodyQuery, bodyStore).id]
   }
+  // The repo goes first because it is the precise answer: it resolves the picked
+  // face itself and reads the body that owns it, which is what disambiguates a
+  // boolean face descending from two inputs.
   const resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
-  if (resolved === null) throw new Error(`delete_body: body not found: ${JSON.stringify(bodyQuery)}`)
   // A resolved Body carries created_by + id; a geometry dict carries body_id.
-  if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
-  if (resolved.body_id) return [String(resolved.body_id)]
+  if (resolved !== null) {
+    if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
+    if (resolved.body_id) return [String(resolved.body_id)]
+  }
+  // The face the user picked may no longer exist -- a later edit reshaped the
+  // body under it. The body still does, and it is the body this feature names,
+  // so fall back to the `@body_*` ancestor the query carries rather than
+  // failing the whole solve over an element nobody asked to keep.
+  const ids = resolveBodyIds(bodyQuery, bodyStore)
+  if (ids.length > 0) return ids
   throw new Error(`delete_body: query did not resolve to a body: ${JSON.stringify(bodyQuery)}`)
 }
 

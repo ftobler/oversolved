@@ -155,6 +155,31 @@ describe('resolveBody fallback resolution paths', () => {
     expect(resolveBody('face:extrude1:whatever', store).id).toBe('body_1')
   })
 
+  it('resolves a topo-fallback element ref to the body it sits on', () => {
+    // `@<body>/face|edge|vertex/<n>` is what the render layer mints for a pick
+    // the kernel gave no named query for (utils/query/selectionId.ts
+    // topoFallbackQuery). As a BODY ref it means the body carrying that element.
+    const store = makeStore({ body_1: 'extrude1' })
+    for (const ref of ['@body_1/face/0', '@body_1/edge/12', '@body_1/vertex/3']) {
+      expect(resolveBody(ref, store).id).toBe('body_1')
+    }
+  })
+
+  it('reads the topo-fallback leading segment as a body before a feature', () => {
+    // `body_ex1` is the first sibling's own id, so the exact-id branch has to
+    // win; reading it as a feature would make the ref ambiguous instead.
+    const store = makeStore({ body_ex1: 'ex1', body_ex1_1: 'ex1' })
+    expect(resolveBody('@body_ex1_1/face/2', store).id).toBe('body_ex1_1')
+    expect(resolveBody('@body_ex1/face/2', store).id).toBe('body_ex1')
+  })
+
+  it('leaves a slash ref that is not an element index alone', () => {
+    // `@sk1/left` is a sketch entity, not a body ref -- it must not be read as
+    // "the body of sk1".
+    const store = makeStore({ body_1: 'extrude1' })
+    expect(() => resolveBody('@extrude1/left', store)).toThrow(/body not found/)
+  })
+
   it('throws when a malformed "?"-ancestry ref cannot be parsed', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // parseAncestry throws on a bad header; the catch falls through to the error.

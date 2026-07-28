@@ -71,6 +71,19 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
     expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'db1', field: 'bodies', multi: true })
   })
 
+  it('stores a face pick verbatim when it is already an ancestry query', () => {
+    // What the viewport actually writes for a b-rep face click: the raw query,
+    // which resolves through the face to the one body that owns it.
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_BODY_SCHEMA} />)
+    fireEvent.click(document.querySelector('.feature-pick-chip')!)
+    const faceQuery = '?15,4,9,7;@u|u_f38db052aaf9026c@ex1@body_ex1@cls_zn:flatface'
+    pick(faceQuery)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: faceQuery,
+    })
+  })
+
   it('collects a second pick instead of replacing the first', () => {
     const onMutation = vi.fn()
     // The doc mutation is external to the editor, so re-render with the value the
@@ -88,6 +101,29 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
       type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: 'face:ex2:?4;@ex2:face',
     })
     expect(onMutation).toHaveBeenCalledTimes(2)
+  })
+
+  it('stores a picked ref verbatim, never narrowed to one body', () => {
+    // This field must NOT carry `resolveBodyPickRef` the way the singular body
+    // fields do. That transform coerces a feature ref to a body id
+    // (`@ex1` -> `@body_ex1`), and here `@ex1` means EVERY body that feature
+    // made -- coercing it deletes the first split sibling and leaves the rest
+    // standing, which is the bug `resolveBodyIds` exists to prevent. The topo
+    // fallback is likewise left for the kernel to resolve.
+    const onMutation = vi.fn()
+    for (const picked of ['@ex1', '@body_ex1/face/0']) {
+      onMutation.mockClear()
+      const { unmount } = render(
+        <FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_BODY_SCHEMA} />,
+      )
+      fireEvent.click(document.querySelector('.feature-pick-chip')!)
+      pick(picked)
+      expect(onMutation, picked).toHaveBeenCalledWith({
+        type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: picked,
+      })
+      unmount()
+      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null }) })
+    }
   })
 
   it('re-picking an already-picked body removes it again', () => {

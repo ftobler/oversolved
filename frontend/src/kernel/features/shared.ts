@@ -308,6 +308,9 @@ export function bareBody(id: string, createdBy: string, sketchId = ''): Body {
   }
 }
 
+/** `@<body-or-feature>/face|edge|vertex/<index>` -- see `topoFallbackQuery`. */
+const TOPO_FALLBACK_REF = /^@([^/]+)\/(?:face|edge|vertex)\/\d+$/
+
 /**
  * Every body id a ref names, or `[]` when it names none. The plural counterpart
  * to `resolveBody`, and the one place the feature->bodies direction is decided.
@@ -326,6 +329,14 @@ export function resolveBodyIds(ref: string, bodyStore: Record<string, Body>): st
   const key = ref.replace(/^@+/, '')
   // An exact body id names exactly that one sibling.
   if (key in bodyStore) return [key]
+  // A topo-fallback element ref names the body it sits on. The render layer
+  // mints this form whenever the kernel produced no named query for a face,
+  // edge or vertex (utils/query/selectionId.ts topoFallbackQuery), so a face
+  // pick can reach any body field as `@body_ex1/face/0`; without this branch
+  // the leading segment fell through to the feature scan, missed, and the pick
+  // resolved to nothing. `?` is handled below and never has this shape.
+  const topo = TOPO_FALLBACK_REF.exec(ref)
+  if (topo) return resolveBodyIds(topo[1], bodyStore)
   // A `?` ancestry query is body-exact: it resolves through one picked face or
   // edge, so the `@body_*` ancestor it carries IS the answer and no feature
   // scan applies. First match only, like `resolveBody` -- a query can name more
