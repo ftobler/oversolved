@@ -6,7 +6,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
-import type { Repository } from '../query'
+import { AmbiguousQueryError, type Repository } from '../query'
 import { resolveBody, resolveBodyIds } from './shared'
 
 type Dict = Record<string, unknown>
@@ -35,16 +35,29 @@ function resolveBodyKeys(bodyQuery: string, globalRepo: Repository, bodyStore: R
   // The repo goes first because it is the precise answer: it resolves the picked
   // face itself and reads the body that owns it, which is what disambiguates a
   // boolean face descending from two inputs.
-  const resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
+  let resolved: Dict | null = null
+  try {
+    resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
+  } catch (e) {
+    // An ambiguous query is not an error for THIS question. A face with no
+    // construction UUID, no ancestor tokens and no classifier is named by its
+    // body alone (kernel/faceQuery.ts), so every such face of that body shares
+    // one query string -- routine on imported geometry, where picking one face
+    // of a 56-face part matched all 56 and failed the solve. Every candidate
+    // sits on the same body by construction, since they all had to carry the
+    // `@body_*` token the query matched on, so the body is unambiguous even
+    // though the face is not. Anything else the repo throws is a real failure.
+    if (!(e instanceof AmbiguousQueryError)) throw e
+  }
   // A resolved Body carries created_by + id; a geometry dict carries body_id.
   if (resolved !== null) {
     if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
     if (resolved.body_id) return [String(resolved.body_id)]
   }
-  // The face the user picked may no longer exist -- a later edit reshaped the
-  // body under it. The body still does, and it is the body this feature names,
-  // so fall back to the `@body_*` ancestor the query carries rather than
-  // failing the whole solve over an element nobody asked to keep.
+  // Also the path for a face the user picked that no longer exists -- a later
+  // edit reshaped the body under it. The body still does, and it is the body
+  // this feature names, so read the `@body_*` ancestor out of the query rather
+  // than failing the whole solve over an element nobody asked to keep.
   const ids = resolveBodyIds(bodyQuery, bodyStore)
   if (ids.length > 0) return ids
   throw new Error(`delete_body: query did not resolve to a body: ${JSON.stringify(bodyQuery)}`)

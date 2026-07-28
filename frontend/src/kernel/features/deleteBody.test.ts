@@ -187,6 +187,41 @@ describe('solveDeleteBody', () => {
     expect(Object.keys(bodyStore)).toEqual(['body_a'])
   })
 
+  it('deletes the body when the picked face query is ambiguous', () => {
+    // The real failure, from an imported part: "Query matched 56 elements".
+    // A face with no construction UUID, no ancestor tokens and no classifier is
+    // named by its body alone (kernel/faceQuery.ts), so every such face of the
+    // body mints the SAME query -- picking one matched all of them and the
+    // AmbiguousQueryError failed the whole solve. Ambiguity about WHICH FACE
+    // does not make the BODY ambiguous: every candidate carries the `@body_*`
+    // token the query matched on.
+    const repo = new Repository()
+    const faceQuery = makeAncestryQuery(['@imp1', '@body_imp1'], 'flatface')
+    for (let i = 0; i < 56; i++) {
+      repo.registerAncestor(['@imp1', '@body_imp1'], { type: 'flatface', body_id: 'body_imp1', face_index: i })
+    }
+    expect(() => repo.query(faceQuery, null, {})).toThrow(/matched 56 elements/)
+    const bodyStore: Record<string, Body> = { body_imp1: body('body_imp1'), body_other: body('body_other') }
+
+    const result = solveDeleteBody(
+      oc, scope, new HandleTable({ finalizerGuard: false }),
+      { id: 'd', delete_body: { bodies: [faceQuery] } }, repo, bodyStore,
+    )
+
+    expect(result.deleted_body_ids).toEqual(['body_imp1'])
+    expect(Object.keys(bodyStore)).toEqual(['body_other'])
+  })
+
+  it('still reports a repo failure that is not about ambiguity', () => {
+    // The ambiguity catch must not swallow everything the repo can throw.
+    const repo = new Repository()
+    repo.query = () => { throw new Error('repo exploded') }
+    expect(() =>
+      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }),
+        { id: 'd', delete_body: { bodies: ['?4;@body_a:face'] } }, repo, { body_a: body('body_a') }),
+    ).toThrow('repo exploded')
+  })
+
   it('an exact body id still deletes exactly that one sibling', () => {
     const bodyStore: Record<string, Body> = { body_ex1: body('body_ex1'), body_ex1_1: body('body_ex1_1') }
     bodyStore.body_ex1.created_by = 'ex1'
