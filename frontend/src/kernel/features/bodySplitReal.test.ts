@@ -29,9 +29,14 @@ import { registerSplitBodies, resplitBody, assertOneSolidPerBody, splitSolids } 
 import type { Body } from '../types3d'
 import type { OccShape } from '../occ/occTypes'
 
-// Non-null like the other *Real suites: these files are excluded from the run
-// when opencascade.js is not provisioned.
-const oc = (await loadOcc())!
+// Nothing excludes a *Real suite from the default run: the CI frontend job
+// installs no opencascade.js (only the parity job does), so an unguarded
+// non-null assertion here turned every case into a null-deref. Assert non-null
+// for the helpers below and gate every describe on `hasOcc`, as the other
+// *Real suites do.
+const loadedOcc = await loadOcc()
+const hasOcc = loadedOcc !== null
+const oc = loadedOcc!
 
 interface Rig {
   scope: DisposeScope
@@ -82,7 +87,7 @@ function expectOnePartEach(r: Rig, expected: number): void {
   expect(() => assertOneSolidPerBody(oc, r.scope, r.table, r.store)).not.toThrow()
 }
 
-describe('bodySplit: the shared helper', () => {
+describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
   it('registerSplitBodies makes one body per solid', () => {
     const r = rig()
     const shape = compoundOf(r.scope, [
@@ -306,7 +311,7 @@ describe('bodySplit: the shared helper', () => {
   })
 })
 
-describe('bodySplit: the leaves that used to leak', () => {
+describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
   it('boolean union of two DISJOINT bodies makes two parts, not one', () => {
     const r = rig()
     seedBox(r, 'body_a', [0, 0, 0], 10)
@@ -485,7 +490,7 @@ describe('bodySplit: the leaves that used to leak', () => {
   })
 })
 
-describe('bodySplit: a hole can sever a body too', () => {
+describe.skipIf(!hasOcc)('bodySplit: a hole can sever a body too', () => {
   /** A repo carrying one sketch plane at `origin` with a single point at its centre. */
   function holeRepo(origin: number[]): Repository {
     const repo = new Repository()
@@ -532,7 +537,7 @@ describe('bodySplit: a hole can sever a body too', () => {
   })
 })
 
-describe('bodySplit: the invariant holds across successive splits', () => {
+describe.skipIf(!hasOcc)('bodySplit: the invariant holds across successive splits', () => {
   it('cutting a body, then cutting its sibling, never collides on ids', () => {
     const r = rig()
     const bar = bareBody('body_bar', 'bar')
