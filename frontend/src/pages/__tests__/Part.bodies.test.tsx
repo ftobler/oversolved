@@ -124,9 +124,33 @@ describe('extrude feature name error state', () => {
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 
-  it('does not show error for non-extrude features', () => {
+  it('does not redden a sketch for its constraint status', () => {
+    // A sketch's status is its constraint level, never 'ok'. The row must stay
+    // neutral; an underconstrained sketch is the normal state of a new sketch.
     const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
-    renderSidebar([sketchFeature], { sk1: { status: 'ok' } }, {})
+    renderSidebar([sketchFeature], { sk1: { status: 'underconstrained' } }, {})
+    const name = document.querySelector('.feature-name')
+    expect(name?.classList.contains('feature-name-error')).toBe(false)
+  })
+
+  // The row used to consult the solve result only for a hardcoded list of
+  // kinds, so a kind outside it failed in complete silence: the geometry did
+  // not change and nothing said why.
+  it.each([
+    ['delete_body', { id: 'db1', kind: 'delete_body', delete_body: { bodies: ['@gone'] } }, 'body not found'],
+    ['import_step', { id: 'imp1', kind: 'import_step' }, 'STEP parse failed'],
+    ['mirror', { id: 'mir1', kind: 'mirror' }, 'no mirror plane'],
+    ['plane', { id: 'pl1', kind: 'plane' }, 'reference face gone'],
+    ['sketch', { id: 'sk1', kind: 'sketch' }, 'plane not found'],
+  ])('shows error name when a %s feature throws', (_kind, feature, message) => {
+    renderSidebar([feature as PartFeature], { [(feature as PartFeature).id]: { status: 'exception', exception: message } }, {})
+    expect(screen.getByTitle(message).classList.contains('feature-name-error')).toBe(true)
+  })
+
+  it('does not redden a suppressed feature', () => {
+    // 'suppressed' is the user switching the feature off, and the row already
+    // says so by striking the name through.
+    renderSidebar([extrudeFeature], { ex1: { status: 'suppressed' } }, {})
     const name = document.querySelector('.feature-name')
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })

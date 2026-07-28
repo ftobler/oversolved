@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isBodyFeatureResult } from '@/types/cad'
+import { featureFailure } from '@/utils/core/featureFailure'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
@@ -182,30 +182,18 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   className="feature-icon"
                 />
                 {(() => {
-                  const r = feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'sweep' || feature.kind === 'fillet' || feature.kind === 'chamfer' || feature.kind === 'boolean' || feature.kind === 'array' || feature.kind === 'circular_array' || feature.kind === 'hole' || feature.kind === 'transform' || feature.kind === 'variable' ? solveResults?.[feature.id] : undefined
-                  const bodyResult = r && isBodyFeatureResult(r) ? r : undefined
-                  // A feature owns every body it made, and any ONE of them
-                  // failing to tessellate has to redden the row: reading only
-                  // `body_id` left a split sibling rendering nothing with a
-                  // green feature and no tooltip (features/bodySplit.ts).
-                  const resultBodyIds = bodyResult
-                    ? (bodyResult.body_ids ?? (bodyResult.body_id ? [bodyResult.body_id] : []))
-                    : []
-                  const hasMeshError = resultBodyIds
-                    .map((bid) => bodies?.[bid]?.mesh_error)
-                    .find((m) => !!m)
-                  const isError = !!r && ((r as { status?: string }).status !== 'ok' || !!hasMeshError)
-                  const errMsg: string = bodyResult?.exception
-                    ?? (r as { exception?: string } | undefined)?.exception
-                    ?? hasMeshError
-                    ?? ''
+                  // No kind gate: the kernel reports a failure the same way for
+                  // every kind, so the tree asks the same question for every
+                  // kind (utils/core/featureFailure.ts).
+                  const { failed, message } = featureFailure(feature.id, solveResults, bodies)
                   // Variables surface their solved value inline: `width = 100`.
-                  const varValue = feature.kind === 'variable' && !isError
-                    ? (r as { value?: number } | undefined)?.value : undefined
+                  // The store holds results as `unknown`, hence the cast.
+                  const varValue = feature.kind === 'variable' && !failed
+                    ? (solveResults?.[feature.id] as { value?: number } | undefined)?.value : undefined
                   return (
                     <span
-                      className={`feature-name${isError ? ' feature-name-error' : ''}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
-                      title={errMsg}
+                      className={`feature-name${failed ? ' feature-name-error' : ''}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
+                      title={message}
                     >
                       {feature.label || feature.id}
                       {varValue !== undefined ? ` = ${varValue}` : ''}
