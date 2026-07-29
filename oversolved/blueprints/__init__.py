@@ -144,6 +144,48 @@ def require_doc_permission(
     return decorator
 
 
+def auth_required(
+    *,
+    admin: bool = False,
+    doc: Literal["view", "edit", "owner"] | None = None,
+    doc_url_var: str = "uuid",
+    json: bool = False,
+):
+    """Compose the gate stack every authenticated endpoint repeats.
+
+    `@require_auth` + `@require_csrf` sat on 31 of the 32 routes that use this,
+    usually followed by some subset of admin / document permission / JSON body.
+    Spelling the stack out per route made the ORDER of the checks a per-route
+    decision, and the order is what decides which failure a caller sees: a
+    request that is both unauthenticated and malformed must answer 401, not 400.
+
+    The wrapping below fixes that order once: session, CSRF, admin, document
+    permission, body content type. Decorators apply inner-to-outer, so this
+    reads bottom-up relative to the stack it replaces.
+
+    The 32nd route is `users.get_preferences`, which carried `@require_auth`
+    alone. Folding it in adds CSRF, which is a provable no-op there: the route is
+    GET-only and `require_csrf` exempts GET/HEAD/OPTIONS in its first branch,
+    before it looks at anything else.
+    """
+    if doc is None and doc_url_var != "uuid":
+        # A url_var with no level to enforce means the document check silently
+        # did not happen -- almost certainly a dropped `doc=` at the call site.
+        raise ValueError("doc_url_var is meaningless without doc=")
+
+    def decorator(f):  # type: ignore[misc]
+        if json:
+            f = require_json(f)
+        if doc is not None:
+            f = require_doc_permission(doc, url_var=doc_url_var)(f)
+        if admin:
+            f = require_admin(f)
+        f = require_csrf(f)
+        f = require_auth(f)
+        return f
+    return decorator
+
+
 def validate_password_strength(password: str) -> str | None:
     """Validate password meets minimum requirements. Returns error message or None."""
     if len(password) < 8:

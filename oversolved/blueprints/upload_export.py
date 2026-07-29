@@ -4,7 +4,7 @@ import os
 import uuid
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.utils import secure_filename
-from oversolved.blueprints import require_auth, require_csrf, api_error
+from oversolved.blueprints import auth_required, api_error
 
 upload_export_bp = Blueprint("upload_export", __name__)
 
@@ -25,8 +25,7 @@ def get_upload_dir():
 
 
 @upload_export_bp.route("/api/upload", methods=["POST"])
-@require_auth
-@require_csrf
+@auth_required()
 def upload_file():
     upload_dir = get_upload_dir()
     os.makedirs(upload_dir, exist_ok=True)

@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, DocumentStore, UserStore, PeriodicTaskStore
 from flask import g
-from oversolved.blueprints import require_auth, require_admin, require_csrf, require_json, get_db, validate_password_strength, api_error
+from oversolved.blueprints import auth_required, get_db, validate_password_strength, api_error
 
 logger = logging.getLogger(__name__)
 
@@ -37,19 +37,14 @@ def _format_history(history: list[dict]) -> str:
 
 
 @admin_bp.route("/api/admin/users", methods=["GET"])
-@require_auth
-@require_csrf
-@require_admin
+@auth_required(admin=True)
 def list_users() -> ResponseReturnValue:
     users = UserStore(get_db()).list_all()
     return jsonify({"users": users})
 
 
 @admin_bp.route("/api/admin/users", methods=["POST"])
-@require_auth
-@require_csrf
-@require_admin
-@require_json
+@auth_required(admin=True, json=True)
 def create_user_admin() -> ResponseReturnValue:
     data = request.get_json()
     username = (data.get("username") or "").strip()
@@ -82,10 +77,7 @@ def create_user_admin() -> ResponseReturnValue:
 
 
 @admin_bp.route("/api/admin/users/<int:user_id>", methods=["PUT"])
-@require_auth
-@require_csrf
-@require_admin
-@require_json
+@auth_required(admin=True, json=True)
 def admin_update_user(user_id: int) -> ResponseReturnValue:
     data = request.get_json()
 
@@ -118,9 +110,7 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
 
 
 @admin_bp.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
-@require_auth
-@require_csrf
-@require_admin
+@auth_required(admin=True)
 def admin_delete_user(user_id: int) -> ResponseReturnValue:
     if user_id == g.current_user["id"]:
         return api_error("Cannot delete yourself", "FORBIDDEN", 403)
@@ -134,10 +124,7 @@ def admin_delete_user(user_id: int) -> ResponseReturnValue:
 
 
 @admin_bp.route("/api/admin/users/<int:user_id>/reset", methods=["POST"])
-@require_auth
-@require_csrf
-@require_admin
-@require_json
+@auth_required(admin=True, json=True)
 def admin_reset_password(user_id: int) -> ResponseReturnValue:
     data = request.get_json()
     new_password = data.get("password") or ""
@@ -160,9 +147,7 @@ def admin_reset_password(user_id: int) -> ResponseReturnValue:
 
 
 @admin_bp.route("/api/admin/periodic-tasks", methods=["GET"])
-@require_auth
-@require_csrf
-@require_admin
+@auth_required(admin=True)
 def list_periodic_tasks() -> ResponseReturnValue:
     task_store = PeriodicTaskStore(get_db())
     tasks = task_store.find_all()
@@ -170,9 +155,7 @@ def list_periodic_tasks() -> ResponseReturnValue:
 
 
 @admin_bp.route("/api/admin/periodic-tasks/<task_key>/run", methods=["POST"])
-@require_auth
-@require_csrf
-@require_admin
+@auth_required(admin=True)
 def force_run_periodic_task(task_key: str) -> ResponseReturnValue:
     from oversolved.periodic_tasks import TaskScheduler, EmptyTrashTask
 
@@ -205,9 +188,7 @@ def _iter_documents_page(db: Database, page_size: int = 100) -> Iterator[Any]:
 
 
 @admin_bp.route("/api/admin/backup", methods=["GET"])
-@require_auth
-@require_csrf
-@require_admin
+@auth_required(admin=True)
 def backup_all_documents() -> ResponseReturnValue:
     db = get_db()
     user_store = UserStore(db)
@@ -276,9 +257,7 @@ def _check_zip_limits(stream: Any) -> ResponseReturnValue | None:
 
 
 @admin_bp.route("/api/admin/import-backup", methods=["POST"])
-@require_auth
-@require_csrf
-@require_admin
+@auth_required(admin=True)
 def import_backup() -> ResponseReturnValue:
     if "file" not in request.files:
         return api_error("No file provided", "BAD_REQUEST", 400)
@@ -373,10 +352,7 @@ def import_backup() -> ResponseReturnValue:
 
 
 @admin_bp.route("/api/bug-report", methods=["POST"])
-@require_auth
-@require_csrf
-@require_admin
-@require_json
+@auth_required(admin=True, json=True)
 def submit_bug_report() -> ResponseReturnValue:
     data = request.get_json()
     if not data:

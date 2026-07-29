@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import UserStore
-from oversolved.blueprints import get_db, require_auth, require_csrf, require_json, validate_password_strength, api_error
+from oversolved.blueprints import get_db, auth_required, validate_password_strength, api_error
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users/me")
 
@@ -11,9 +11,7 @@ _VALID_SORT_PREFS = {"alphabetical", "date_newest_first", "date_oldest_first"}
 
 
 @users_bp.route("", methods=["PUT"])
-@require_auth
-@require_csrf
-@require_json
+@auth_required(json=True)
 def update_profile():
     data = request.get_json()
     username = data.get("username")
@@ -56,7 +54,7 @@ def update_profile():
 
 
 @users_bp.route("/preferences", methods=["GET"])
-@require_auth
+@auth_required()
 def get_preferences():
     user_id = g.current_user["id"]
     user = UserStore(get_db()).find_by_id(user_id)
@@ -68,9 +66,7 @@ def get_preferences():
 
 
 @users_bp.route("/preferences", methods=["PUT"])
-@require_auth
-@require_csrf
-@require_json
+@auth_required(json=True)
 def update_preferences():
     data = request.get_json()
     document_sort = data.get("document_sort", "").strip()

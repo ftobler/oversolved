@@ -7,14 +7,13 @@ from flask import Blueprint, jsonify, request, Response
 from PIL import Image
 from oversolved.db import DocumentStore, UserStore, RebuildTimeStore, _now
 from flask import g
-from oversolved.blueprints import get_db, require_auth, require_csrf, require_doc_permission, require_json, api_error
+from oversolved.blueprints import get_db, auth_required, api_error
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
 
 @documents_bp.route("", methods=["GET"])
-@require_auth
-@require_csrf
+@auth_required()
 def list_documents():
     sort = request.args.get("sort", "name")
     search_query = request.args.get("search", "").strip()
@@ -34,9 +33,7 @@ def list_documents():
 
 
 @documents_bp.route("", methods=["POST"])
-@require_auth
-@require_csrf
-@require_json
+@auth_required(json=True)
 def create_document():
     data = request.get_json()
     name = (data.get("name") or "").strip()
@@ -49,9 +46,7 @@ def create_document():
 
 
 @documents_bp.route("/<uuid>", methods=["GET"])
-@require_auth
-@require_csrf
-@require_doc_permission("view")
+@auth_required(doc="view")
 def get_document(uuid):
     doc = g.document
     owner = UserStore(get_db()).find_by_id(doc["owner_id"])
@@ -72,10 +67,7 @@ def get_document(uuid):
 
 
 @documents_bp.route("/<uuid>", methods=["PUT"])
-@require_auth
-@require_csrf
-@require_doc_permission("edit")
-@require_json
+@auth_required(doc="edit", json=True)
 def update_document(uuid):
     data = request.get_json()
     if "content" not in data:
@@ -99,10 +91,7 @@ def update_document(uuid):
 
 
 @documents_bp.route("/<uuid>", methods=["PATCH"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
-@require_json
+@auth_required(doc="owner", json=True)
 def rename_document(uuid):
     data = request.get_json()
     name = (data.get("name") or "").strip()
@@ -113,9 +102,7 @@ def rename_document(uuid):
 
 
 @documents_bp.route("/<uuid>", methods=["DELETE"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
+@auth_required(doc="owner")
 def delete_document(uuid):
     deleted_at = _now()
     DocumentStore(get_db()).update(uuid, deleted_at=deleted_at)
@@ -128,17 +115,14 @@ def delete_document(uuid):
 
 
 @documents_bp.route("/trash", methods=["GET"])
-@require_auth
-@require_csrf
+@auth_required()
 def list_trash():
     docs = DocumentStore(get_db()).list_trash(g.current_user["id"])
     return jsonify({"documents": docs})
 
 
 @documents_bp.route("/<uuid>/recover", methods=["POST"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
+@auth_required(doc="owner")
 def recover_document(uuid):
     doc = g.document
 
@@ -156,9 +140,7 @@ def recover_document(uuid):
 
 
 @documents_bp.route("/<uuid>/trash", methods=["DELETE"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
+@auth_required(doc="owner")
 def permanently_delete_from_trash(uuid):
     if g.document["deleted_at"] is None:
         return api_error("Document is not in trash", "BAD_REQUEST", 400)
@@ -168,9 +150,7 @@ def permanently_delete_from_trash(uuid):
 
 
 @documents_bp.route("/<uuid>/duplicate", methods=["POST"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
+@auth_required(doc="owner")
 def duplicate_document(uuid):
     new_name = f"{g.document['name']} (Copy)"
     new_uuid = DocumentStore(get_db()).duplicate(uuid, new_name)
@@ -178,9 +158,7 @@ def duplicate_document(uuid):
 
 
 @documents_bp.route("/<uuid>/clone", methods=["POST"])
-@require_auth
-@require_csrf
-@require_doc_permission("view")
+@auth_required(doc="view")
 def clone_document(uuid):
     doc = g.document
     doc_store = DocumentStore(get_db())
@@ -205,10 +183,7 @@ def clone_document(uuid):
 
 
 @documents_bp.route("/<uuid>/share", methods=["POST"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
-@require_json
+@auth_required(doc="owner", json=True)
 def create_share(uuid):
     data = request.get_json()
     db = get_db()
@@ -231,9 +206,7 @@ def create_share(uuid):
 
 
 @documents_bp.route("/<uuid>/share", methods=["DELETE"])
-@require_auth
-@require_csrf
-@require_doc_permission("view")
+@auth_required(doc="view")
 def remove_share(uuid):
     # Self-unshare is allowed at "view" level; owner ops guarded per-branch below.
     data = request.get_json(silent=True) or {}
@@ -259,27 +232,21 @@ def remove_share(uuid):
 
 
 @documents_bp.route("/<uuid>/shares", methods=["GET"])
-@require_auth
-@require_csrf
-@require_doc_permission("owner")
+@auth_required(doc="owner")
 def list_shares(uuid):
     shares = DocumentStore(get_db()).get_shares(uuid)
     return jsonify({"shares": shares})
 
 
 @documents_bp.route("/<uuid>/export", methods=["GET"])
-@require_auth
-@require_csrf
-@require_doc_permission("view")
+@auth_required(doc="view")
 def export_document(uuid):
     doc = g.document
     return jsonify({"name": doc["name"], "content": doc["content"]})
 
 
 @documents_bp.route("/<uuid>/thumbnail", methods=["GET"])
-@require_auth
-@require_csrf
-@require_doc_permission("view")
+@auth_required(doc="view")
 def get_thumbnail(uuid):
     doc = g.document
     if not doc["preview_image"]:
@@ -288,18 +255,14 @@ def get_thumbnail(uuid):
 
 
 @documents_bp.route("/<doc_id>/rebuild-stats", methods=["GET"])
-@require_auth
-@require_csrf
-@require_doc_permission("view", url_var="doc_id")
+@auth_required(doc="view", doc_url_var="doc_id")
 def rebuild_stats(doc_id):
     stats = RebuildTimeStore(get_db()).compute_stats(doc_id)
     return jsonify(stats)
 
 
 @documents_bp.route("/import", methods=["POST"])
-@require_auth
-@require_csrf
-@require_json
+@auth_required(json=True)
 def import_document():
     data = request.get_json()
     name = (data.get("name") or "").strip()
