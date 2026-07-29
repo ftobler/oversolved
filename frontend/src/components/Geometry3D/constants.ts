@@ -2,6 +2,25 @@ import {
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
+  COLOR_BODY_DEFAULT,
+  COLOR_BODY_SELECTED,
+  COLOR_BODY_EDGE,
+  COLOR_BODY_EDGE_SEL,
+  COLOR_BODY_REMOVED,
+  BODY_REMOVED_TRANSPARENCY,
+  BODY_REMOVED_TRANSPARENCY_MAX,
+  DEFAULT_PART_ROUGHNESS,
+  COLOR_ERROR,
+  COLOR_SOLVED,
+  COLOR_FULLY_CONSTRAINED,
+  COLOR_INACTIVE,
+  COLOR_HOVER,
+  COLOR_SELECTED,
+  COLOR_CONSTRAINT_HOVER,
+  COLOR_PREVIEW,
+  COLOR_PREVIEW_EDGE,
+  COLOR_PROJECTED,
+  COLOR_SNAP,
 } from '@/utils/core/partColors'
 
 export {
@@ -10,6 +29,9 @@ export {
   COLOR_BODY_EDGE,
   COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE_SEL,
+  COLOR_BODY_REMOVED,
+  BODY_REMOVED_TRANSPARENCY,
+  BODY_REMOVED_TRANSPARENCY_MAX,
   DEFAULT_PART_ROUGHNESS,
   COLOR_SOLVED,
   COLOR_FULLY_CONSTRAINED,
@@ -57,6 +79,108 @@ export function entityRenderLayer(
   if (hovered) return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT }
   if (selected || isEditing) return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
   return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
+}
+
+// ─── body surface look ───
+// The one place that decides how a solid body is drawn. Three inputs can each
+// claim the surface, so the precedence has to be stated somewhere rather than
+// fall out of the order of a ternary chain:
+//
+//   selected > removedByEdit > the part's own colour
+//
+// Selection wins because it answers "what am I acting on", which is what the
+// user asked for most recently. The removal mark answers "what is this edit
+// about to take away" and outranks the part colour, which only carries
+// identity.
+//
+// It returns the WHOLE surface, not just the colour, because "one look for
+// every removal" is a claim about the rendered pixels: a doomed body still
+// wearing its own transmission=1 (glass) or metalness=1 reads as a completely
+// different material and washes the mark out. Deciding the colour here and
+// leaving the other four to the caller would make that claim false at exactly
+// the point it is supposed to hold.
+export interface BodySurfaceState {
+  selected?: boolean
+  removedByEdit?: boolean
+  color?: string
+  transparency?: number
+  metalness?: number
+  roughness?: number
+  transmission?: number
+}
+
+export interface BodySurfaceLook {
+  color: string
+  transparency: number
+  metalness: number
+  roughness: number
+  transmission: number
+}
+
+export function bodySurfaceLook({
+  selected = false,
+  removedByEdit = false,
+  color,
+  transparency = 0,
+  metalness = 0,
+  roughness = DEFAULT_PART_ROUGHNESS,
+  transmission = 0,
+}: BodySurfaceState): BodySurfaceLook {
+  if (removedByEdit) {
+    return {
+      // Selection still recolours a doomed body -- otherwise the "click again
+      // to un-pick" affordance the marking exists to restore is invisible.
+      color: selected ? COLOR_BODY_SELECTED : COLOR_BODY_REMOVED,
+      // Bounded, never a plain override: at least as see-through as the user
+      // styled it, but never so transparent that the mark itself disappears.
+      transparency: clamp(transparency, BODY_REMOVED_TRANSPARENCY, BODY_REMOVED_TRANSPARENCY_MAX),
+      metalness: 0,
+      roughness: DEFAULT_PART_ROUGHNESS,
+      transmission: 0,
+    }
+  }
+  return {
+    color: selected ? COLOR_BODY_SELECTED : (color || COLOR_BODY_DEFAULT),
+    transparency,
+    metalness,
+    roughness,
+    transmission,
+  }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(Math.max(v, lo), hi)
+}
+
+// Every other colour that can share the 3D scene with a doomed body. The
+// removal mark must not be mistakable for any of them -- COLOR_ERROR above all,
+// which paints sketch entities in the same viewport whenever the active sketch
+// is overconstrained.
+const SCENE_COLORS_AGAINST_REMOVED = [
+  COLOR_BODY_DEFAULT, COLOR_BODY_SELECTED, COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
+  COLOR_ERROR, COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_INACTIVE,
+  COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER,
+  COLOR_PREVIEW, COLOR_PREVIEW_EDGE, COLOR_PROJECTED, COLOR_SNAP,
+] as const
+
+export const REMOVED_COLOR_MIN_DISTANCE = 50
+
+function rgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+/** Smallest RGB distance from COLOR_BODY_REMOVED to any other scene colour. */
+export function bodyRemovedColorIsDistinct(): { nearest: string; distance: number } {
+  const [r, g, b] = rgb(COLOR_BODY_REMOVED)
+  let nearest = ''
+  let distance = Infinity
+  for (const other of SCENE_COLORS_AGAINST_REMOVED) {
+    const [r2, g2, b2] = rgb(other)
+    const d = Math.hypot(r - r2, g - g2, b - b2)
+    if (d < distance) { distance = d; nearest = other }
+  }
+  return { nearest, distance }
 }
 
 // Drag snap — vertex pull zone must be larger than entity body pull zone so that

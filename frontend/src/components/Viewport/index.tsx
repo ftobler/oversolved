@@ -452,10 +452,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to
   // pick faces/edges as references for the feature being edited. Bodies the edit
-  // removes drop out (see getGhostBodiesToRender).
+  // removes stay, marked doomed (see getGhostBodiesToRender).
   const pickBodyItems = useMemo(
-    () => getGhostBodiesToRender(pickBodies, bodies, features, visibleBodies),
-    [pickBodies, bodies, features, visibleBodies]
+    () => getGhostBodiesToRender(pickBodies, bodies, features, partStyle),
+    [pickBodies, bodies, features, partStyle]
   )
 
   const previewBodyItems = useMemo(() => {
@@ -534,6 +534,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS}
       metalness={partStyle?.[b.key]?.metalness ?? 0}
       transmission={partStyle?.[b.key]?.transmission ?? 0}
+      removedByEdit={b.removedByEdit}
     />
   )
 

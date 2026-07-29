@@ -24,8 +24,19 @@ vi.mock('../../Geometry3D', () => ({
 }))
 
 vi.mock('../../Geometry3D/Body3D', () => ({
-  default: ({ interactive, bodyId, visible }: { interactive?: boolean; bodyId?: string; visible?: boolean }) => (
-    <div data-testid="body-3d" data-interactive={interactive} data-body-id={bodyId} data-visible={String(visible)} />
+  default: ({ interactive, bodyId, visible, removedByEdit, color, transparency }: {
+    interactive?: boolean; bodyId?: string; visible?: boolean
+    removedByEdit?: boolean; color?: string; transparency?: number
+  }) => (
+    <div
+      data-testid="body-3d"
+      data-interactive={interactive}
+      data-body-id={bodyId}
+      data-visible={String(visible)}
+      data-removed={String(!!removedByEdit)}
+      data-color={String(color)}
+      data-transparency={String(transparency)}
+    />
   ),
   __esModule: true,
 }))
@@ -212,13 +223,13 @@ describe('Viewport delete_body ghost preview', () => {
   })
   const visibleOf = (bodies: Record<string, BodyResult>) => new Set(Object.keys(bodies))
 
-  const ghostVisibility = (container: HTMLElement) =>
+  const ghostAttr = (container: HTMLElement, attr: string) =>
     Object.fromEntries(
       [...container.querySelectorAll('[data-testid="body-3d"]')]
-        .map(el => [el.getAttribute('data-body-id'), el.getAttribute('data-visible')])
+        .map(el => [el.getAttribute('data-body-id'), el.getAttribute(attr)])
     )
 
-  it('hides the ghost of the body being deleted', () => {
+  const renderDeleteOfEx2 = () => {
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
       features: [sketch, extrude, ex2, del],
@@ -228,14 +239,55 @@ describe('Viewport delete_body ghost preview', () => {
       ghostMode: true,
       rollbackPosition: 4,
     })
-    const { container } = render(<Viewport />)
-    expect(ghostVisibility(container)).toEqual({ body_ex1: 'true', body_ex2: 'false' })
+    return render(<Viewport />).container
+  }
+
+  it('marks the ghost of the body being deleted instead of hiding it', () => {
+    const container = renderDeleteOfEx2()
+    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
+    expect(ghostAttr(container, 'data-visible')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
   })
 
-  it('hides both ghosts when the delete empties the body store', () => {
-    // Regression: the ghost layer used to fall back to "show everything" once
-    // the preview held no body at all, so deleting the last bodies redisplayed
-    // the untouched model and the preview looked like a no-op.
+  it('leaves the survivor its own partColors and partStyle', () => {
+    // The removal look must override exactly one body, never the whole layer.
+    const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
+    usePartEditorStore.setState({
+      features: [sketch, extrude, ex2, del],
+      bodies: preview,
+      pickBodies: twoBodies(),
+      visibleBodies: visibleOf(preview),
+      ghostMode: true,
+      rollbackPosition: 4,
+      partColors: { body_ex1: '#123456', body_ex2: '#654321' },
+      partStyle: { body_ex1: { transparency: 0.25 } },
+    })
+    const { container } = render(<Viewport />)
+    expect(ghostAttr(container, 'data-color')).toEqual({ body_ex1: '#123456', body_ex2: '#654321' })
+    expect(ghostAttr(container, 'data-transparency')).toEqual({ body_ex1: '0.25', body_ex2: '0' })
+    // Body3D itself, not the Viewport, turns the mark into the doomed look.
+    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
+  })
+
+  it('does not resurrect a doomed body the user hid', () => {
+    const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
+    usePartEditorStore.setState({
+      features: [sketch, extrude, ex2, del],
+      bodies: preview,
+      pickBodies: twoBodies(),
+      visibleBodies: visibleOf(preview),
+      ghostMode: true,
+      rollbackPosition: 4,
+      partStyle: { body_ex2: { visible: false } },
+    })
+    const { container } = render(<Viewport />)
+    expect(ghostAttr(container, 'data-visible')).toEqual({ body_ex1: 'true', body_ex2: 'false' })
+    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
+  })
+
+  it('marks both ghosts when the delete empties the body store', () => {
+    // Regression: the ghost layer falls back to "show everything" once the
+    // preview holds no body at all, so the removal cannot ride on visibleBodies
+    // and the mark has to carry it.
     usePartEditorStore.setState({
       features: [sketch, extrude, ex2, del],
       bodies: {},
@@ -245,6 +297,6 @@ describe('Viewport delete_body ghost preview', () => {
       rollbackPosition: 4,
     })
     const { container } = render(<Viewport />)
-    expect(ghostVisibility(container)).toEqual({ body_ex1: 'false', body_ex2: 'false' })
+    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
   })
 })

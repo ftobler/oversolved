@@ -6,6 +6,22 @@ export const COLOR_BODY_SELECTED = '#b5a16a'
 export const COLOR_BODY_EDGE_SEL = '#ffffff'
 export const DEFAULT_PART_ROUGHNESS = 0.7
 
+// A ghost body the edit in the editor is about to consume (delete_body, a
+// boolean that swallows its tool). One look for every removal -- no per-body
+// variants. Crimson: it has to stay clear of BOTH neighbours in this palette,
+// the violet COLOR_PREVIEW_EDGE (which means the OPPOSITE, "new geometry") and
+// COLOR_ERROR, which paints sketch entities in the same scene while an active
+// sketch is on screen. `bodyRemovedColorIsDistinct` pins that distance.
+export const COLOR_BODY_REMOVED = '#d81b60'
+
+// Floor and ceiling, not a fixed value: the floor keeps the doomed body from
+// hiding what survives behind it, the ceiling keeps the mark itself visible.
+// Without the ceiling a body the user had already styled at transparency 1
+// stayed fully invisible while still registered in the id buffer -- an
+// unclickable-through blocker with no mark, strictly worse than the old hide.
+export const BODY_REMOVED_TRANSPARENCY = 0.7
+export const BODY_REMOVED_TRANSPARENCY_MAX = 0.9
+
 // Geometry color palette
 export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained
 export const COLOR_FULLY_CONSTRAINED = '#ffffff'  // white for fully constrained

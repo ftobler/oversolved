@@ -49,6 +49,10 @@ export interface BodyRenderItem {
   vertices?: [number, number, number][]
   vertexQueries?: string[]
   visible: boolean
+  // Ghost layer only: the edit being previewed consumes this body. Orthogonal to
+  // `visible`, which is the user's own show/hide -- a doomed body the user hid
+  // stays hidden.
+  removedByEdit?: boolean
 }
 
 function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPos: number | undefined): boolean {
@@ -98,22 +102,34 @@ export function getBodiesToRender(
  * every prior body.
  *
  * A body the edited feature removes (delete_body, or a boolean that swallows its
- * tool) must vanish from the ghosts, otherwise the preview looks like the edit
- * did nothing. `visibleBodies` cannot carry that alone: it is derived from the
- * preview bodies and collapses to "show everything" as soon as the preview
- * leaves no body at all, which popped every deleted body back into view.
+ * tool) is marked `removedByEdit` rather than hidden. It used to be hidden, but
+ * that told the user nothing about WHICH body was leaving, and it dropped the
+ * body out of the id buffer (Body3D gates its registrations on `visible`), so
+ * the toggle in `add_delete_body_ref` could never fire a second time and the
+ * pick could not be undone from the viewport.
+ *
+ * Visibility here is read from `partStyle` and NOT from the `visibleBodies` set
+ * the solid layer uses. That set is derived from the PREVIEW bodies
+ * (computeEffectiveVisibleBodies in Part.tsx), so for the ghost layer it
+ * conflates the two axes: a body the edit removes is simply missing from it,
+ * exactly like a body the user hid, and it collapses to "show everything" as
+ * soon as the preview leaves no body at all. partStyle is the user's axis
+ * alone, which is the only one `visible` may express.
  */
 export function getGhostBodiesToRender(
   pickBodies: Record<string, BodyResult> | undefined,
   previewBodies: Record<string, BodyResult> | undefined,
   features: Feature[] | undefined,
-  visibleBodies: Set<string> | undefined,
+  partStyle: Record<string, PartStyleEntry> | undefined,
 ): BodyRenderItem[] {
-  const items = getBodiesToRender(pickBodies, features, undefined, visibleBodies)
-  if (!previewBodies) return items
-  return items.map(item =>
-    item.visible && !(item.bodyId in previewBodies) ? { ...item, visible: false } : item
-  )
+  const items = getBodiesToRender(pickBodies, features, undefined, undefined)
+  return items.map(item => {
+    const visible = partStyle?.[item.bodyId]?.visible !== false
+    if (previewBodies && !(item.bodyId in previewBodies)) {
+      return { ...item, visible, removedByEdit: true }
+    }
+    return { ...item, visible }
+  })
 }
 
 /** Returns bodies created by features at or after rollbackPosition (the "preview" bodies excluded by getBodiesToRender). */

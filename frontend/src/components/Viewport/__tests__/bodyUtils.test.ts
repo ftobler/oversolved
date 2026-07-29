@@ -138,30 +138,55 @@ describe('getGhostBodiesToRender', () => {
     body_ex1: ghostBody('body_ex1', 'ex1'),
     body_ex2: ghostBody('body_ex2', 'ex2'),
   }
-  const visibleOf = (bodies: Record<string, BodyResult>) => new Set(Object.keys(bodies))
+  const hidden = (...ids: string[]): Record<string, PartStyleEntry> =>
+    Object.fromEntries(ids.map(id => [id, { visible: false } as PartStyleEntry]))
 
-  it('hides the ghost of a body the edited feature deleted', () => {
+  it('marks the ghost of a body the edited feature deleted, without hiding it', () => {
+    // Still visible: hiding it dropped the body out of the id buffer, so the
+    // add_delete_body_ref toggle could never be fired a second time.
     const preview = { body_ex1: pickBodies.body_ex1 }
-    const items = getGhostBodiesToRender(pickBodies, preview, features, visibleOf(preview))
-    expect(items.map(i => [i.bodyId, i.visible])).toEqual([['body_ex1', true], ['body_ex2', false]])
+    const items = getGhostBodiesToRender(pickBodies, preview, features, {})
+    expect(items.map(i => [i.bodyId, i.visible, !!i.removedByEdit]))
+      .toEqual([['body_ex1', true, false], ['body_ex2', true, true]])
   })
 
-  it('hides every ghost when the edited feature deletes all bodies', () => {
-    // Regression: computeEffectiveVisibleBodies returns undefined ("show all")
-    // for an empty preview, so deleting the last bodies used to pop the whole
-    // model back into the ghost layer as if nothing was deleted.
-    const items = getGhostBodiesToRender(pickBodies, {}, features, computeEffectiveVisibleBodies({}, new Set(), {}))
-    expect(items.map(i => i.visible)).toEqual([false, false])
+  it('marks every ghost when the edited feature deletes all bodies', () => {
+    // Regression: the preview holds no body at all, so nothing derived from it
+    // can name what left -- the removal has to be its own flag.
+    const items = getGhostBodiesToRender(pickBodies, {}, features, {})
+    expect(items.map(i => [i.visible, !!i.removedByEdit])).toEqual([[true, true], [true, true]])
   })
 
-  it('keeps ghosts of bodies the edit leaves alone', () => {
-    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, visibleOf(pickBodies))
+  it('keeps ghosts of bodies the edit leaves alone unmarked', () => {
+    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, {})
     expect(items.map(i => i.visible)).toEqual([true, true])
+    expect(items.some(i => i.removedByEdit)).toBe(false)
   })
 
   it('keeps a user-hidden body hidden even though the edit keeps it', () => {
-    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, new Set(['body_ex1']))
+    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, hidden('body_ex2'))
     expect(items.map(i => i.visible)).toEqual([true, false])
+  })
+
+  it('does not resurrect a user-hidden body that the edit also removes', () => {
+    // visible and removedByEdit are orthogonal: the mark says what the edit
+    // does, the visibility says what the user asked for, and the user wins.
+    const preview = { body_ex1: pickBodies.body_ex1 }
+    const items = getGhostBodiesToRender(pickBodies, preview, features, hidden('body_ex1', 'body_ex2'))
+    expect(items.map(i => [i.bodyId, i.visible, !!i.removedByEdit]))
+      .toEqual([['body_ex1', false, false], ['body_ex2', false, true]])
+  })
+
+  it('reads visibility from partStyle, not from a set derived from the preview', () => {
+    // The regression this guards: visibleBodies is computed over the PREVIEW
+    // bodies, so a removed body is missing from it for the same reason a
+    // user-hidden body is. Feeding the ghost layer that set made every removal
+    // invisible again, which is the bug this feature exists to fix.
+    const preview = { body_ex1: pickBodies.body_ex1 }
+    const derived = computeEffectiveVisibleBodies(preview, new Set(), {})
+    expect(derived?.has('body_ex2')).toBe(false)  // the trap
+    const items = getGhostBodiesToRender(pickBodies, preview, features, {})
+    expect(items.find(i => i.bodyId === 'body_ex2')?.visible).toBe(true)
   })
 
   it('ignores rollbackPosition so every prior body stays pickable', () => {

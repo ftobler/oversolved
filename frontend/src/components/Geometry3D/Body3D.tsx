@@ -6,8 +6,8 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import {
   COLOR_BODY_DEFAULT,
-  COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
+  bodySurfaceLook,
   COLOR_SELECTED, COLOR_HOVER,
   blendWhite,
   POINT_HIT_PIXELS, POINT_VIS_PIXELS,
@@ -98,9 +98,10 @@ interface Body3DProps {
   roughness?: number     // 0-1 (0 = smooth, 1 = rough)
   transmission?: number  // 0-1 (0 = opaque, 1 = fully transmissive / glass-like)
   interactive?: boolean
+  removedByEdit?: boolean  // ghost of a body the previewed edit consumes: drawn "doomed", still pickable
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, removedByEdit = false }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -293,7 +294,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // Precompute segment counts for edge index mapping
   const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
 
-  const bodyColor = isBodySelected ? COLOR_BODY_SELECTED : (color || COLOR_BODY_DEFAULT)
+  // The whole surface is one decision (see bodySurfaceLook for the precedence).
+  const surface = bodySurfaceLook({
+    selected: isBodySelected, removedByEdit, color, transparency, metalness, roughness, transmission,
+  })
+  const bodyColor = surface.color
 
   const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
 
@@ -466,19 +471,19 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       >
         <meshPhysicalMaterial
           color="white"
-          roughness={roughness}
-          metalness={metalness}
-          transmission={transmission}
+          roughness={surface.roughness}
+          metalness={surface.metalness}
+          transmission={surface.transmission}
           envMapIntensity={ENV_MAP_INTENSITY}
           side={THREE.DoubleSide}
           vertexColors={true}
           polygonOffset={true}
           polygonOffsetFactor={1}
           polygonOffsetUnits={1}
-          transparent={transparency > 0 || transmission > 0}
-          depthWrite={transparency === 0 && transmission === 0}
-          opacity={1 - transparency}
-          blending={transparency > 0 || transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
+          transparent={surface.transparency > 0 || surface.transmission > 0}
+          depthWrite={surface.transparency === 0 && surface.transmission === 0}
+          opacity={1 - surface.transparency}
+          blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
           blendSrc={THREE.SrcAlphaFactor}
           blendDst={THREE.OneMinusSrcAlphaFactor}
         />
