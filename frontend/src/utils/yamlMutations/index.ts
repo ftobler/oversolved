@@ -63,6 +63,8 @@ export {
   applySetHoleField,
   applyAddTransform,
   applySetTransformField,
+  applyAddTransformBody,
+  applyRemoveTransformBody,
   applyMirrorEntities,
   applyAddMirror,
   applySetMirrorField,

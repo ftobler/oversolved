@@ -14,7 +14,7 @@
 
 import type { Body, BrepDiff, Frame3D } from '../types3d'
 import type { Repository } from '../query'
-import { parseAncestry } from '../query'
+import { AmbiguousQueryError, parseAncestry } from '../query'
 import { loopCentroid } from '../profileLoops'
 import { TOL_LOOP_CLOSURE } from '../solverConstants'
 
@@ -363,6 +363,86 @@ export function resolveBodyIds(ref: string, bodyStore: Record<string, Body>): st
   const prefixed = 'body_' + key
   if (prefixed in bodyStore) return [prefixed]
   return []
+}
+
+/**
+ * Resolve one PLURAL body ref to the store keys it names, throwing when it
+ * names none. The resolver behind every multi-select body field (delete_body's
+ * `bodies`, transform's `bodies`).
+ *
+ * A `?` query is body-exact -- it resolves through a specific face/edge, so it
+ * names the one sibling that owns it, and that is what the UI picker writes. A
+ * plain ref may instead name a FEATURE, and a feature owns every body it made
+ * (features/bodySplit.ts): `['@extrude1']` has to name `body_extrude1` AND its
+ * split siblings, not quietly leave the other halves behind. `resolveBody` is
+ * still the fallback for the viewport-prefix forms (`face:id:...`) it alone
+ * understands.
+ *
+ * `leaf` only names the caller in the error message, so a failed pick reads as
+ * the feature the user was editing.
+ */
+export function resolveBodyRefKeys(
+  bodyQuery: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  leaf: string,
+): string[] {
+  if (!bodyQuery.startsWith('?')) {
+    const ids = resolveBodyIds(bodyQuery, bodyStore)
+    return ids.length > 0 ? ids : [resolveBody(bodyQuery, bodyStore).id]
+  }
+  // The repo goes first because it is the precise answer: it resolves the picked
+  // face itself and reads the body that owns it, which is what disambiguates a
+  // boolean face descending from two inputs.
+  let resolved: Dict | null = null
+  try {
+    resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
+  } catch (e) {
+    // An ambiguous query is not an error for THIS question. A face with no
+    // construction UUID, no ancestor tokens and no classifier is named by its
+    // body alone (kernel/faceQuery.ts), so every such face of that body shares
+    // one query string -- routine on imported geometry, where picking one face
+    // of a 56-face part matched all 56 and failed the solve. Every candidate
+    // sits on the same body by construction, since they all had to carry the
+    // `@body_*` token the query matched on, so the body is unambiguous even
+    // though the face is not. Anything else the repo throws is a real failure.
+    if (!(e instanceof AmbiguousQueryError)) throw e
+  }
+  // A resolved Body carries created_by + id; a geometry dict carries body_id.
+  if (resolved !== null) {
+    if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
+    if (resolved.body_id) return [String(resolved.body_id)]
+  }
+  // Also the path for a face the user picked that no longer exists -- a later
+  // edit reshaped the body under it. The body still does, and it is the body
+  // this feature names, so read the `@body_*` ancestor out of the query rather
+  // than failing the whole solve over an element nobody asked to keep.
+  const ids = resolveBodyIds(bodyQuery, bodyStore)
+  if (ids.length > 0) return ids
+  throw new Error(`${leaf}: query did not resolve to a body: ${JSON.stringify(bodyQuery)}`)
+}
+
+/**
+ * Every store key a list of body refs names, in pick order, deduplicated.
+ *
+ * Resolution happens against the INTACT store before any caller acts on the
+ * result: two picks landing on the same body (different faces) must collapse
+ * into one entry rather than letting the second ref fail against a slot the
+ * first already consumed.
+ */
+export function resolveBodyRefList(
+  bodyQueries: string[],
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  leaf: string,
+): string[] {
+  const keys: string[] = []
+  for (const bodyQuery of bodyQueries) {
+    for (const key of resolveBodyRefKeys(bodyQuery, globalRepo, bodyStore, leaf)) {
+      if (!keys.includes(key)) keys.push(key)
+    }
+  }
+  return keys
 }
 
 /**

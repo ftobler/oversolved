@@ -75188,7 +75188,9 @@
           "id": "tr1",
           "kind": "transform",
           "transform": {
-            "body": "@ex1",
+            "bodies": [
+              "@ex1"
+            ],
             "operation": "new",
             "rotation_angle": 0,
             "scale": 1,
@@ -342016,7 +342018,9 @@
           "kind": "transform",
           "label": "transform 2",
           "transform": {
-            "body": "@body_6EbMgXvI6h-cG2SylOF4pRWq",
+            "bodies": [
+              "@body_6EbMgXvI6h-cG2SylOF4pRWq"
+            ],
             "operation": "new",
             "rotation_angle": 45,
             "rotation_axis": "@EOMJCK6CjXsMkYqtXDwkyXCZ/9z4wK0exhW0ANN1-",
@@ -508455,7 +508459,9 @@
           "kind": "transform",
           "label": "transform 2",
           "transform": {
-            "body": "?17,19,1e,2a;@gface_a8945c4ac5c8ee5e@ibq8DPuht3CcI706vgQX98WJ@body_ibq8DPuht3CcI706vgQX98WJ@27Ap4YadUnqTFwLOfDuqnopO/ORnj6qWeNNdEUfGw:flatface",
+            "bodies": [
+              "?17,19,1e,2a;@gface_a8945c4ac5c8ee5e@ibq8DPuht3CcI706vgQX98WJ@body_ibq8DPuht3CcI706vgQX98WJ@27Ap4YadUnqTFwLOfDuqnopO/ORnj6qWeNNdEUfGw:flatface"
+            ],
             "operation": "new",
             "rotation_angle": 0,
             "scale": 1,

@@ -68,6 +68,8 @@ export const ALL_MUTATION_TYPES = [
   'set_hole_field',
   'add_transform',
   'set_transform_field',
+  'add_transform_body',
+  'remove_transform_body',
   'rename_part',
   'set_part_color',
   'set_part_transparency',

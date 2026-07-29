@@ -118,7 +118,10 @@ export interface MirrorFeatureDef {
 }
 
 export interface TransformFeatureDef {
-  body: string
+  // One ref per body to move; picking is multi-select and the SAME transform is
+  // applied to every one of them. There is no singular `body` fallback -- a doc
+  // written before this field was plural does not load.
+  bodies: string[]
   operation?: 'new' | 'replace'
   translation?: [number, number, number]
   translation_from?: string
@@ -874,6 +877,8 @@ export type Mutation =
   | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
   | { type: 'add_transform'; featureId: string; label?: string }
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
+  | { type: 'add_transform_body'; featureId: string; bodyQuery: string }
+  | { type: 'remove_transform_body'; featureId: string; index: number }
   | { type: 'rename_part'; bodyId: string; name: string }
   | { type: 'set_part_color'; bodyId: string; color: string }
   | { type: 'set_part_transparency'; bodyId: string; transparency: number }

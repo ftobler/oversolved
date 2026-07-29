@@ -156,7 +156,9 @@
       "kind": "transform",
       "label": "transform 2",
       "transform": {
-        "body": "@body_e1tMr2u-m4rxTxhoZSw2z05E",
+        "bodies": [
+          "@body_e1tMr2u-m4rxTxhoZSw2z05E"
+        ],
         "operation": "replace",
         "rotation_angle": 0,
         "scale": 1,

@@ -482,7 +482,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
     const r = rig()
     seedBox(r, 'body_src', [0, 0, 0], 10)
     const res = solveTransform(oc, r.scope, r.table, {
-      id: 'tr1', transform: { body: '@body_src', operation: 'new', translation: [40, 0, 0] },
+      id: 'tr1', transform: { bodies: ['@body_src'], operation: 'new', translation: [40, 0, 0] },
     }, new Repository(), r.store)
     expect(res.body_ids).toEqual(['body_tr1'])
     expectOnePartEach(r, 2)

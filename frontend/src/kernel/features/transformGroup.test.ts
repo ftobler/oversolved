@@ -110,13 +110,13 @@ describe('array / circular_array guard paths', () => {
 describe('transform / mirror guard paths', () => {
   it('transform: body not found', () => {
     expect(() =>
-      solveTransform(oc, scope, table, { id: 't', transform: { body: 'nope' } }, repo, { body_s: nullBody('body_s') }),
+      solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['nope'] } }, repo, { body_s: nullBody('body_s') }),
     ).toThrow(/body not found/)
   })
 
   it('transform: rotation_angle without an axis', () => {
     expect(() =>
-      solveTransform(oc, scope, table, { id: 't', transform: { body: 'body_s', rotation_angle: 90 } }, repo, {
+      solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], rotation_angle: 90 } }, repo, {
         body_s: { ...nullBody('body_s'), shape: 1 as never },
       }),
     ).toThrow(/no rotation axis specified/)

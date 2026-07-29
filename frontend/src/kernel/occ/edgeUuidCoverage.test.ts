@@ -340,11 +340,35 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       rectSketch('sk1', 4, 4, { offsetX: 5, offsetY: -2 }),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
       {
-        id: 'tr1', kind: 'transform', body: '@body_ex1', operation: 'new',
+        id: 'tr1', kind: 'transform', bodies: ['@body_ex1'], operation: 'new',
         translation: [20, 0, 0],
       },
     ] })
     expectUniquePrimitiveQueries(h, r, 'body_tr1')
+  })
+
+  it('transform new over TWO picks: two separately selectable bodies come out', () => {
+    /** The pick is a list, so one transform emits one new body per pick. This
+     *  is the build-level lock that both survive as their own part with their
+     *  own queries; the sources here already carry distinct UUIDs, so the
+     *  per-source instancing itself is locked in transformGroupReal.test.ts
+     *  where the two sources are named identically. */
+    const r = h.run({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 5, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      rectSketch('sk2', 4, 4, { offsetX: 30, offsetY: -2 }),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'tr1', kind: 'transform', bodies: ['@body_ex1', '@body_ex2'], operation: 'new',
+        translation: [0, 0, 20],
+      },
+    ] })
+    expectUniquePrimitiveQueries(h, r, 'body_tr1')
+    expectUniquePrimitiveQueries(h, r, 'body_tr1_1')
+    const first = new Set([...faceQueriesOf(h, r, 'body_tr1'), ...edgeQueriesOf(h, r, 'body_tr1')])
+    const second = [...faceQueriesOf(h, r, 'body_tr1_1'), ...edgeQueriesOf(h, r, 'body_tr1_1')]
+    expect(second.length).toBeGreaterThan(0)
+    expect(second.filter(q => first.has(q))).toEqual([])
   })
 
   it('circular array new: no duplicate face or edge queries in any instance body', () => {

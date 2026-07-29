@@ -157,9 +157,16 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
 export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_transform',
   subKey: 'transform',
-  defaults: { body: '', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
+  defaults: { bodies: [], operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
   fields: [
-    { type: 'pick', key: 'body', label: 'Body' },
+    // Plural, and deliberately without a `transform:` coercion, for the same
+    // reason DELETE_BODY_SCHEMA's field has none: `@ex1` here means every body
+    // that feature made, split siblings included, and `resolveBodyPickRef`
+    // would narrow it to the first sibling.
+    { type: 'pick', key: 'bodies', label: 'Bodies', multi: true,
+      addMutationType: 'add_transform_body', addValueKey: 'bodyQuery',
+      removeMutationType: 'remove_transform_body',
+      emptyText: '(pick one or more bodies)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'new',
       options: [{ value: 'new', label: 'New' }, { value: 'replace', label: 'Replace' }] },
     { type: 'number', key: 'translation', label: 'X', arrayField: 'translation', arrayIndex: 0, default: 0 },

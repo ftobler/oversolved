@@ -203,7 +203,7 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
       arr = feature.boolean?.tools
       break
     case 'bodies':
-      arr = feature.delete_body?.bodies
+      arr = feature.delete_body?.bodies ?? feature.transform?.bodies
       break
     case 'sketch':
       if (feature.extrude?.sketch !== undefined) {

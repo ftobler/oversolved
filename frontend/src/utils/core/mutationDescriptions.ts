@@ -132,6 +132,10 @@ export function describeMutation(m: Mutation): string {
       return `add transform ${m.label ?? m.featureId}`
     case 'set_transform_field':
       return `set transform ${m.field} to ${m.value}`
+    case 'add_transform_body':
+      return `add transform body ${m.bodyQuery}`
+    case 'remove_transform_body':
+      return `remove transform body at index ${m.index}`
     case 'rename_part':
       return `rename ${m.bodyId} to ${m.name}`
     case 'set_part_color':

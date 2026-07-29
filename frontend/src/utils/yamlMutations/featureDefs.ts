@@ -452,13 +452,37 @@ export function applyAddTransform(doc: PartDoc, featureId: string, label?: strin
     kind: 'transform',
     label: label ?? 'Transform',
     transform: {
-      body: '',
+      bodies: [],
       operation: 'new',
       translation: [0, 0, 0],
       rotation_angle: 0,
       scale: 1,
     },
   })
+}
+
+/** Toggle a body ref in/out of the transform's pick list (re-picking removes). */
+export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery: string): void {
+  const sub = findFeature(doc, featureId)?.transform
+  if (!sub) {
+    warn(`applyAddTransformBody: feature ${featureId} has no transform`)
+    return
+  }
+  const idx = sub.bodies.indexOf(bodyQuery)
+  if (idx >= 0) {
+    sub.bodies.splice(idx, 1)
+  } else {
+    sub.bodies.push(bodyQuery)
+  }
+}
+
+export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index: number): void {
+  const sub = findFeature(doc, featureId)?.transform
+  if (!sub) {
+    warn(`applyRemoveTransformBody: feature ${featureId} has no transform`)
+    return
+  }
+  sub.bodies.splice(index, 1)
 }
 
 export function applySetTransformField(

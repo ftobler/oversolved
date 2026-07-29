@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applyAddTransform,
+  applyAddTransformBody,
+  applyRemoveTransformBody,
   applySetTransformField,
 } from '@/utils/yamlMutations'
 
@@ -20,7 +22,7 @@ describe('Transform mutations', () => {
         kind: 'transform',
         label: 'Transform',
         transform: {
-          body: '',
+          bodies: [],
           operation: 'new',
           translation: [0, 0, 0],
           rotation_angle: 0,
@@ -36,14 +38,42 @@ describe('Transform mutations', () => {
     })
   })
 
-  describe('applySetTransformField', () => {
-    it('updates body field', () => {
+  describe('applyAddTransformBody / applyRemoveTransformBody', () => {
+    it('appends picks in order', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
-      applySetTransformField(doc, 'xf1', 'body', 'extrude1')
-      expect(doc.features![0].transform!.body).toBe('extrude1')
+      applyAddTransformBody(doc, 'xf1', '@body_ex1')
+      applyAddTransformBody(doc, 'xf1', '@body_ex2')
+      expect(doc.features![0].transform!.bodies).toEqual(['@body_ex1', '@body_ex2'])
     })
 
+    it('re-picking the same body removes it', () => {
+      const doc = makeDoc()
+      applyAddTransform(doc, 'xf1')
+      applyAddTransformBody(doc, 'xf1', '@body_ex1')
+      applyAddTransformBody(doc, 'xf1', '@body_ex2')
+      applyAddTransformBody(doc, 'xf1', '@body_ex1')
+      expect(doc.features![0].transform!.bodies).toEqual(['@body_ex2'])
+    })
+
+    it('removes by index', () => {
+      const doc = makeDoc()
+      applyAddTransform(doc, 'xf1')
+      applyAddTransformBody(doc, 'xf1', '@body_ex1')
+      applyAddTransformBody(doc, 'xf1', '@body_ex2')
+      applyRemoveTransformBody(doc, 'xf1', 0)
+      expect(doc.features![0].transform!.bodies).toEqual(['@body_ex2'])
+    })
+
+    it('does nothing when the feature is missing', () => {
+      const doc = makeDoc()
+      applyAddTransformBody(doc, 'missing', '@body_ex1')
+      applyRemoveTransformBody(doc, 'missing', 0)
+      expect(doc.features).toHaveLength(0)
+    })
+  })
+
+  describe('applySetTransformField', () => {
     it('updates operation field', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
@@ -88,7 +118,7 @@ describe('Transform mutations', () => {
 
     it('does nothing when feature is missing', () => {
       const doc = makeDoc()
-      applySetTransformField(doc, 'missing', 'body', 'extrude1')
+      applySetTransformField(doc, 'missing', 'operation', 'replace')
       expect(doc.features).toHaveLength(0)
     })
   })

@@ -64,6 +64,8 @@ import {
   applySetHoleField,
   applyAddTransform,
   applySetTransformField,
+  applyAddTransformBody,
+  applyRemoveTransformBody,
   applyRenamePart,
   applySetPartColor,
   applySetPartTransparency,
@@ -224,6 +226,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddTransform(next, m.featureId, m.label),
   set_transform_field: (next, m) =>
     applySetTransformField(next, m.featureId, m.field, m.value),
+  add_transform_body: (next, m) =>
+    applyAddTransformBody(next, m.featureId, m.bodyQuery),
+  remove_transform_body: (next, m) =>
+    applyRemoveTransformBody(next, m.featureId, m.index),
   rename_part: (next, m) =>
     applyRenamePart(next, m.bodyId, m.name),
   set_part_color: (next, m) =>

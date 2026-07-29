@@ -1,7 +1,10 @@
 // The transform and mirror leaves. transform composes a scale/rotation/translation (with
-// query-driven translation, rotation axis, and scale center) and either replaces the source
-// body or spawns a new one. mirror reflects the source across a queried plane and either
-// replaces, merges (union), or spawns a new body.
+// query-driven translation, rotation axis, and scale center) and either replaces its source
+// bodies or spawns new ones. Its body pick is a LIST, and the one composed Trsf is applied
+// to every picked body equally -- the transform is a property of the feature, not of any
+// single body, so the axis, angle, scale centre and offset are resolved once. mirror
+// reflects the source across a queried plane and either replaces, merges (union), or spawns
+// a new body.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -9,7 +12,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared'
-import { resolveBody } from './shared'
+import { resolveBody, resolveBodyRefList } from './shared'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
@@ -61,11 +64,16 @@ export function solveTransform(
   const { transform: _t, ...rest } = feature
   const cfg: Dict = { ...sub, ...rest }
 
-  const bodyQuery = (cfg.body as string) ?? ''
-  const sourceBody = bodyQuery ? resolveBody(bodyQuery, bodyStore) : null
-  if (sourceBody === null || sourceBody.shape === null) {
-    throw new Error(`transform: body not found: ${JSON.stringify(bodyQuery)}`)
-  }
+  // Every source body is resolved up front, before any shape is touched: a ref
+  // that names nothing has to fail the feature outright rather than after half
+  // the picks were already moved.
+  const bodyQueries = (cfg.bodies as string[] | undefined) ?? []
+  if (bodyQueries.length === 0) throw new Error('transform: no bodies picked')
+  const sources = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'transform').map((key) => {
+    const body = bodyStore[key]
+    if (body.shape === null) throw new Error(`transform: body has no shape: ${JSON.stringify(key)}`)
+    return { body, shape: body.shape }
+  })
 
   let translation = (cfg.translation as number[] | undefined) ?? null
   const trFrom = cfg.translation_from as string | undefined
@@ -114,16 +122,11 @@ export function solveTransform(
     scaleCenter = getPoint3d(ptRef, globalRepo)
   }
 
-  const sourceShape = table.get<OccShape>(sourceBody.shape)
-  const sourceNames: NameMaps = {
-    faceNames: sourceBody.face_names ?? {},
-    faceAncestry: sourceBody.face_ancestry ?? {},
-    edgeNames: sourceBody.edge_names ?? {},
-    edgeAncestry: sourceBody.edge_ancestry ?? {},
-  }
-
   // Compose the same transform pipeline applyTransformShape uses so we can
-  // capture the builder's subshape mapping for name re-keying/remapping.
+  // capture the builder's subshape mapping for name re-keying/remapping. Built
+  // ONCE and reused for every picked body -- that is what "applied equally"
+  // means, and it also keeps a query-driven axis or scale centre from being
+  // re-resolved per body.
   const combined = scope.track(new oc.gp_Trsf_1())
   if (scale !== 1.0) {
     combined.Multiply(makeScaleTrsf(oc, scope, scaleCenter ?? [0, 0, 0], scale))
@@ -135,28 +138,47 @@ export function solveTransform(
   if (translation) {
     combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
   }
-  const { shape: newShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, combined)
 
   const operation = (cfg.operation as string) ?? 'new'
-  if (operation === 'replace') {
-    const names = rekeyNamesForTransformedBody(oc, scope, newShape, sourceShape, sourceNames, builder)
-    sourceBody.face_names = names.faceNames
-    sourceBody.face_ancestry = names.faceAncestry
-    sourceBody.edge_names = names.edgeNames
-    sourceBody.edge_ancestry = names.edgeAncestry
-    // A rigid transform cannot disconnect a body, but a non-uniform scale is in
-    // the same composed Trsf, so this goes through the one path anyway rather
-    // than resting on that argument.
-    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId)
-    sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
-    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'replace' }
-  }
-  const newBodyId = 'body_' + featureId
-  const names = rebuildNamesForTransformedCopy(oc, scope, newShape, sourceShape, sourceNames, featureId, 0, builder)
-  const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
-    id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...names,
+  const bodyIds: string[] = []
+  sources.forEach(({ body: sourceBody, shape: sourceHandle }, index) => {
+    const sourceShape = table.get<OccShape>(sourceHandle)
+    const sourceNames: NameMaps = {
+      faceNames: sourceBody.face_names ?? {},
+      faceAncestry: sourceBody.face_ancestry ?? {},
+      edgeNames: sourceBody.edge_names ?? {},
+      edgeAncestry: sourceBody.edge_ancestry ?? {},
+    }
+    const { shape: newShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, combined)
+
+    if (operation === 'replace') {
+      const names = rekeyNamesForTransformedBody(oc, scope, newShape, sourceShape, sourceNames, builder)
+      sourceBody.face_names = names.faceNames
+      sourceBody.face_ancestry = names.faceAncestry
+      sourceBody.edge_names = names.edgeNames
+      sourceBody.edge_ancestry = names.edgeAncestry
+      // A rigid transform cannot disconnect a body, but a non-uniform scale is in
+      // the same composed Trsf, so this goes through the one path anyway rather
+      // than resting on that argument.
+      bodyIds.push(...resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId))
+      sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
+      return
+    }
+    // `index` is the instance index the lineage remap mints fresh construction
+    // UUIDs from, so two picked bodies cannot end up sharing face/edge UUIDs.
+    // The new-body ids all share one base: `registerSplitBodies`' collision walk
+    // then composes them into one flat, gap-free `body_<feature>[_n]` run.
+    const names = rebuildNamesForTransformedCopy(oc, scope, newShape, sourceShape, sourceNames, featureId, index, builder)
+    bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
+      id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...names,
+    }))
   })
-  return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'new' }
+  return {
+    status: 'ok',
+    body_id: bodyIds[0],
+    body_ids: bodyIds,
+    operation: operation === 'replace' ? 'replace' : 'new',
+  }
 }
 
 /** Solve a mirror feature (mirrors `_solve_mirror`). */

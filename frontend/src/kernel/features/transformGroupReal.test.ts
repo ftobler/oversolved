@@ -26,8 +26,9 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBoxAt, type Vec3 } from '../occ/primitives'
+import { makeBoxAt, readSolidVertices, type Vec3 } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
+import { faceGh } from '../occ/lineageHash'
 import { Repository } from '../query'
 import { solveArray, solveCircularArray } from './array'
 import { solveTransform, solveMirror } from './transformMirror'
@@ -134,6 +135,208 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       profile_queries: [],
     }
   }
+
+  /** Axis-aligned bounding-box centre of a body's shape, for "did it move, and how far". */
+  function centreOf(scope: DisposeScope, table: HandleTable, body: Body): Vec3 {
+    const verts = readSolidVertices(occ, scope, table.get<OccShape>(body.shape!))
+    const lo = [Infinity, Infinity, Infinity]
+    const hi = [-Infinity, -Infinity, -Infinity]
+    for (const v of verts) {
+      for (let i = 0; i < 3; i++) {
+        if (v[i] < lo[i]) lo[i] = v[i]
+        if (v[i] > hi[i]) hi[i] = v[i]
+      }
+    }
+    return [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2]
+  }
+
+  function expectCentreClose(actual: Vec3, expected: Vec3) {
+    for (let i = 0; i < 3; i++) expect(actual[i]).toBeCloseTo(expected[i], 4)
+  }
+
+  /**
+   * Give a body construction names keyed by its faces' real geom hashes, with
+   * UUIDs numbered in explorer order. Two congruent bodies named this way get
+   * the SAME UUID strings, which is what makes instance disambiguation testable.
+   */
+  function nameFacesInOrder(scope: DisposeScope, table: HandleTable, body: Body) {
+    const E = occ.TopAbs_ShapeEnum
+    const shape = table.get<OccShape>(body.shape!)
+    const faceNames: Record<string, string> = {}
+    const faceAncestry: Record<string, string[]> = {}
+    const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    let i = 0
+    for (; exp.More(); exp.Next()) {
+      const gh = faceGh(occ, scope, scope.track(occ.TopoDS.Face_1(exp.Current())))
+      if (gh in faceNames) continue
+      const uuid = `u_face${i++}`
+      faceNames[gh] = uuid
+      faceAncestry[uuid] = ['@anc']
+    }
+    body.face_names = faceNames
+    body.face_ancestry = faceAncestry
+  }
+
+  describe('transform over a list of picks', () => {
+    // The pick is a LIST and the one composed Trsf is applied to every entry
+    // equally. These lock the three things that only show up with N > 1: the
+    // new-body id run, per-source name instancing, and the fact that ONE
+    // translation moves each source by exactly that translation (not by a
+    // per-source accumulation).
+
+    it('new: every picked body gets its own copy, moved by the same translation', () => {
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+          body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 6, 6, 6, 'body_b', 'ex_b'),
+        }
+        const centreA = centreOf(scope, table, bodyStore.body_a)
+        const centreB = centreOf(scope, table, bodyStore.body_b)
+        const result = solveTransform(occ, scope, table, {
+          id: 'tr1',
+          transform: { bodies: ['body_a', 'body_b'], operation: 'new', translation: [0, 0, 50] },
+        }, new Repository(), bodyStore)
+
+        expect(result.status).toBe('ok')
+        expect(result.operation).toBe('new')
+        // One flat, gap-free run off the single `body_<feature>` base.
+        expect(result.body_ids).toEqual(['body_tr1', 'body_tr1_1'])
+        expect(result.body_id).toBe('body_tr1')
+        expect(Object.keys(bodyStore).sort()).toEqual(['body_a', 'body_b', 'body_tr1', 'body_tr1_1'])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_tr1), [centreA[0], centreA[1], centreA[2] + 50])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_tr1_1), [centreB[0], centreB[1], centreB[2] + 50])
+        // Sources are untouched by a "new" transform, both in place and in history.
+        expectCentreClose(centreOf(scope, table, bodyStore.body_a), centreA)
+        expectCentreClose(centreOf(scope, table, bodyStore.body_b), centreB)
+        expect(bodyStore.body_a.modified_by).toEqual([])
+        expect(bodyStore.body_b.modified_by).toEqual([])
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_tr1.shape!))).toBeCloseTo(64, 2)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_tr1_1.shape!))).toBeCloseTo(216, 2)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('new: each picked body gets its OWN construction UUIDs', () => {
+      /** The per-source instance index is what keeps two copies of one shape
+       *  from minting the same face UUIDs and colliding in the pick resolver. */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+          body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
+        }
+        // Identical geometry AND identical source UUIDs: the worst case for
+        // reuse, since only the instance index can tell the two copies apart.
+        for (const bid of ['body_a', 'body_b']) nameFacesInOrder(scope, table, bodyStore[bid])
+        solveTransform(occ, scope, table, {
+          id: 'tr1',
+          transform: { bodies: ['body_a', 'body_b'], operation: 'new', translation: [0, 0, 50] },
+        }, new Repository(), bodyStore)
+
+        const uuidsA = new Set(Object.values(bodyStore.body_tr1.face_names ?? {}))
+        const uuidsB = new Set(Object.values(bodyStore.body_tr1_1.face_names ?? {}))
+        expect(uuidsA.size).toBeGreaterThan(0)
+        expect(uuidsB.size).toBeGreaterThan(0)
+        for (const u of uuidsB) expect(uuidsA.has(u)).toBe(false)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('replace: every picked body moves in place and records the feature', () => {
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+          body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
+        }
+        const centreA = centreOf(scope, table, bodyStore.body_a)
+        const centreB = centreOf(scope, table, bodyStore.body_b)
+        const result = solveTransform(occ, scope, table, {
+          id: 'tr1',
+          transform: { bodies: ['body_a', 'body_b'], operation: 'replace', translation: [0, 7, 0] },
+        }, new Repository(), bodyStore)
+
+        expect(result.operation).toBe('replace')
+        expect(result.body_ids).toEqual(['body_a', 'body_b'])
+        expect(Object.keys(bodyStore).sort()).toEqual(['body_a', 'body_b'])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_a), [centreA[0], centreA[1] + 7, centreA[2]])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_b), [centreB[0], centreB[1] + 7, centreB[2]])
+        expect(bodyStore.body_a.modified_by).toContain('tr1')
+        expect(bodyStore.body_b.modified_by).toContain('tr1')
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('one feature ref names every body that feature made', () => {
+      /** Plural on purpose, like delete_body: `@ex1` after a split must not
+       *  move one half and leave the other standing. */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_ex1: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_ex1', 'ex1'),
+          body_ex1_1: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_ex1_1', 'ex1'),
+        }
+        const centres = [centreOf(scope, table, bodyStore.body_ex1), centreOf(scope, table, bodyStore.body_ex1_1)]
+        const result = solveTransform(occ, scope, table, {
+          id: 'tr1', transform: { bodies: ['@ex1'], operation: 'replace', translation: [0, 0, 9] },
+        }, new Repository(), bodyStore)
+
+        expect(result.body_ids).toEqual(['body_ex1', 'body_ex1_1'])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_ex1), [centres[0][0], centres[0][1], centres[0][2] + 9])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_ex1_1), [centres[1][0], centres[1][1], centres[1][2] + 9])
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('two refs naming the same body move it once', () => {
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        }
+        const centreA = centreOf(scope, table, bodyStore.body_a)
+        const result = solveTransform(occ, scope, table, {
+          id: 'tr1',
+          transform: { bodies: ['body_a', '@body_a', '@ex_a'], operation: 'replace', translation: [10, 0, 0] },
+        }, new Repository(), bodyStore)
+
+        expect(result.body_ids).toEqual(['body_a'])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_a), [centreA[0] + 10, centreA[1], centreA[2]])
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('an unresolvable ref fails the feature without moving the resolvable ones', () => {
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        }
+        const centreA = centreOf(scope, table, bodyStore.body_a)
+        expect(() => solveTransform(occ, scope, table, {
+          id: 'tr1',
+          transform: { bodies: ['body_a', 'nope'], operation: 'replace', translation: [10, 0, 0] },
+        }, new Repository(), bodyStore)).toThrow(/body not found/)
+        expect(Object.keys(bodyStore)).toEqual(['body_a'])
+        expectCentreClose(centreOf(scope, table, bodyStore.body_a), centreA)
+        expect(bodyStore.body_a.modified_by).toEqual([])
+      } finally {
+        scope.dispose()
+      }
+    })
+  })
 
   describe('array inline cases', () => {
     // ── Rectangular array ──

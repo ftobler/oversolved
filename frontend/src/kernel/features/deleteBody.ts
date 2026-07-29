@@ -6,61 +6,14 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
-import { AmbiguousQueryError, type Repository } from '../query'
-import { resolveBody, resolveBodyIds } from './shared'
+import type { Repository } from '../query'
+import { resolveBodyRefList } from './shared'
 
 type Dict = Record<string, unknown>
 
 interface DeleteBodyResult {
   status: string
   deleted_body_ids: string[]
-}
-
-/**
- * Resolve one body ref to the store keys it names, throwing when it names none.
- *
- * A `?` query is body-exact -- it resolves through a specific face/edge, so it
- * names the one sibling that owns it, and that is what the UI picker writes. A
- * plain ref may instead name a FEATURE, and a feature owns every body it made
- * (features/bodySplit.ts): `delete_body: {bodies: ['@extrude1']}` has to remove
- * `body_extrude1` AND its split siblings, not quietly leave the other halves
- * standing. `resolveBody` is still the fallback for the viewport-prefix forms
- * (`face:id:...`) it alone understands.
- */
-function resolveBodyKeys(bodyQuery: string, globalRepo: Repository, bodyStore: Record<string, Body>): string[] {
-  if (!bodyQuery.startsWith('?')) {
-    const ids = resolveBodyIds(bodyQuery, bodyStore)
-    return ids.length > 0 ? ids : [resolveBody(bodyQuery, bodyStore).id]
-  }
-  // The repo goes first because it is the precise answer: it resolves the picked
-  // face itself and reads the body that owns it, which is what disambiguates a
-  // boolean face descending from two inputs.
-  let resolved: Dict | null = null
-  try {
-    resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
-  } catch (e) {
-    // An ambiguous query is not an error for THIS question. A face with no
-    // construction UUID, no ancestor tokens and no classifier is named by its
-    // body alone (kernel/faceQuery.ts), so every such face of that body shares
-    // one query string -- routine on imported geometry, where picking one face
-    // of a 56-face part matched all 56 and failed the solve. Every candidate
-    // sits on the same body by construction, since they all had to carry the
-    // `@body_*` token the query matched on, so the body is unambiguous even
-    // though the face is not. Anything else the repo throws is a real failure.
-    if (!(e instanceof AmbiguousQueryError)) throw e
-  }
-  // A resolved Body carries created_by + id; a geometry dict carries body_id.
-  if (resolved !== null) {
-    if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
-    if (resolved.body_id) return [String(resolved.body_id)]
-  }
-  // Also the path for a face the user picked that no longer exists -- a later
-  // edit reshaped the body under it. The body still does, and it is the body
-  // this feature names, so read the `@body_*` ancestor out of the query rather
-  // than failing the whole solve over an element nobody asked to keep.
-  const ids = resolveBodyIds(bodyQuery, bodyStore)
-  if (ids.length > 0) return ids
-  throw new Error(`delete_body: query did not resolve to a body: ${JSON.stringify(bodyQuery)}`)
 }
 
 /** Solve a delete_body feature (mirrors `_solve_delete_body`). */
@@ -75,15 +28,10 @@ export function solveDeleteBody(
   const sub = (feature.delete_body as Dict) ?? {}
   const bodyQueries = (sub.bodies as string[]) ?? []
 
-  // Resolve every ref against the intact store before removing anything: two
-  // picks landing on the same body (different faces) must collapse into one
-  // deletion instead of letting the second ref fail against an emptied slot.
-  const keys: string[] = []
-  for (const bodyQuery of bodyQueries) {
-    for (const key of resolveBodyKeys(bodyQuery, globalRepo, bodyStore)) {
-      if (!keys.includes(key)) keys.push(key)
-    }
-  }
+  // Resolves against the intact store before anything is removed, so two picks
+  // landing on the same body (different faces) collapse into one deletion
+  // instead of letting the second ref fail against an emptied slot.
+  const keys = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'delete_body')
 
   for (const bodyKey of keys) {
     const body = bodyStore[bodyKey]
