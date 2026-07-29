@@ -9,14 +9,11 @@
  * savedRollbackPosition so the condition was always false and the rollback
  * was never restored -- features after the edited one disappeared.
  */
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
+import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 
 vi.mock('@/kernel/solveLocally', () => ({
   solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -26,24 +23,6 @@ vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
   __esModule: true,
 }))
-
-function makeDoc(content: string) {
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-      } as Response)
-    }
-    if (url === '/api/documents/doc-1') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ uuid: 'doc-1', name: 'TestDoc', content, permission: 'owner' }),
-      } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
-  })
-}
 
 const TWO_FILLETS_DOC = `version: 1
 kind: part
@@ -67,23 +46,13 @@ features:
     radius: 2
 `
 
-const theme = createTheme()
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ToastProvider>{children}</ToastProvider>
-    </ThemeProvider>
-  )
-}
-
 describe('feature edit rollback restore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('rollback bar returns to end after exiting edit mode on non-last feature', async () => {
-    vi.stubGlobal('fetch', makeDoc(TWO_FILLETS_DOC))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: TWO_FILLETS_DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -127,7 +96,7 @@ describe('feature edit rollback restore', () => {
   })
 
   it('editing the last feature and exiting also restores correctly', async () => {
-    vi.stubGlobal('fetch', makeDoc(TWO_FILLETS_DOC))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: TWO_FILLETS_DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

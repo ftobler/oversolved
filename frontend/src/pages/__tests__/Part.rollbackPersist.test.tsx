@@ -1,12 +1,9 @@
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { ToastProvider } from '@/contexts/ToastContext'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Part from '@/pages/Part'
+import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 
 vi.mock('@/kernel/solveLocally', () => ({
   solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -41,29 +38,6 @@ ${rollbackLine}features:
 `
 }
 
-function mockFetch(rollbackLine: string) {
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-      } as Response)
-    }
-    if (url === '/api/documents/doc-1') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          uuid: 'doc-1',
-          name: 'TestDoc',
-          content: docContent(rollbackLine),
-          permission: 'owner',
-        }),
-      } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
-  })
-}
-
 // The rollback bar drags on pointer events, not HTML5 drag-and-drop.
 function grabRollback(bar: Element) {
   fireEvent(bar, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
@@ -85,16 +59,6 @@ function layoutFeatureRows() {
   })
 }
 
-const theme = createTheme()
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ToastProvider>{children}</ToastProvider>
-    </ThemeProvider>
-  )
-}
-
 function renderPart() {
   return render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -113,7 +77,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('reopens the document with the bar where it was saved', async () => {
-    vi.stubGlobal('fetch', mockFetch('rollback: 5\n'))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('rollback: 5\n') }))
     renderPart()
 
     await waitFor(() => {
@@ -129,7 +93,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('falls back to the end of the stack when the doc has no saved position', async () => {
-    vi.stubGlobal('fetch', mockFetch(''))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('') }))
     renderPart()
 
     await waitFor(() => {
@@ -143,7 +107,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('clamps a saved position that outlives the features it pointed past', async () => {
-    vi.stubGlobal('fetch', mockFetch('rollback: 99\n'))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('rollback: 99\n') }))
     renderPart()
 
     await waitFor(() => {
@@ -156,7 +120,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('writes the position into the doc when the user drags the bar', async () => {
-    vi.stubGlobal('fetch', mockFetch(''))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('') }))
     renderPart()
 
     await waitFor(() => {
@@ -175,7 +139,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('removes the position from the doc when the user drags the bar back to the end', async () => {
-    vi.stubGlobal('fetch', mockFetch('rollback: 5\n'))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('rollback: 5\n') }))
     renderPart()
 
     await waitFor(() => {

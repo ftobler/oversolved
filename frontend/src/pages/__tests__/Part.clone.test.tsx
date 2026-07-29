@@ -1,84 +1,23 @@
-import React from 'react'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { ToastProvider } from '@/contexts/ToastContext'
+import { type ReactNode } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import Part from '@/pages/Part'
+import { Wrapper } from '@/__tests__/test-utils'
 
-const mockCloneDoc = vi.fn(async () => ({ uuid: 'clone-uuid' }))
+// `vi.hoisted`, because the usePartDoc factory below is hoisted above this line
+// and reads the spy while building the module.
+const mockCloneDoc = vi.hoisted(() => vi.fn(async () => ({ uuid: 'clone-uuid' })))
 
-vi.mock('../../hooks/usePartDoc', () => {
-  const _builtinDefaults = [
-    { id: 'Origin', kind: 'origin' },
-    { id: 'Top', kind: 'plane' },
-    { id: 'Front', kind: 'plane' },
-    { id: 'Right', kind: 'plane' },
-  ]
-  return {
-    BUILTIN_FEATURE_DEFAULTS: _builtinDefaults,
-    BUILTIN_FEATURE_IDS: new Set(_builtinDefaults.map(f => f.id)),
-    usePartDoc: () => ({
-      doc: { version: 1, kind: 'part', features: [], part_style: {} },
-      setDoc: vi.fn(),
-      docRef: { current: { version: 1, kind: 'part', features: [], part_style: {} } },
-      loading: false,
-      error: null,
-      setError: vi.fn(),
-      solveResults: {},
-      bodies: {},
-      pickBodies: {},
-      solving: false,
-      solveTime: null,
-      solveError: null,
-      setSolveError: vi.fn(),
-      solveResult: '',
-      undoStack: [],
-      redoStack: [],
-      reSolve: vi.fn(),
-      handleMutation: vi.fn(),
-      handleUndo: vi.fn(),
-      handleRedo: vi.fn(),
-      saveDoc: vi.fn(),
-      renameDoc: vi.fn(),
-      cloneDoc: mockCloneDoc,
-      docName: 'Bracket',
-      ownerUsername: 'user',
-      permission: 'owner',
-      setPickBoundary: vi.fn(),
-      setRollbackPos: vi.fn(),
-      startPreviewMode: vi.fn(),
-      commitPreview: vi.fn(),
-      cancelPreview: vi.fn(),
-    }),
-  }
-})
+vi.mock('../../hooks/usePartDoc', async () =>
+  (await import('@/__tests__/test-utils')).partDocMockModule({ cloneDoc: mockCloneDoc, docName: 'Bracket' }))
 
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { is_admin: false },
-    isAuthenticated: true,
-    login: vi.fn(),
-    logout: vi.fn(),
-  }),
-}))
+vi.mock('../../contexts/AuthContext', async () =>
+  (await import('@/__tests__/test-utils')).authMockModule())
 
-vi.mock('../../components/Viewport', () => ({
-  default: forwardRef(function MockViewport(_props: Record<string, unknown>, ref) {
-    useImperativeHandle(ref, () => ({
-      autoZoomToFit: vi.fn(),
-      captureScreenshot: vi.fn(),
-      captureScreenshotForSaving: vi.fn(),
-      alignCameraToPlane: vi.fn(),
-      alignCameraToFace: vi.fn(),
-    }))
-    return null
-  }),
-  __esModule: true,
-}))
+vi.mock('../../components/Viewport', async () =>
+  (await import('@/__tests__/test-utils')).viewportMockModule())
 
 vi.mock('../../components/Toolbar/SketchToolbar', () => ({ default: () => null }))
 vi.mock('../../components/layout/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
@@ -87,16 +26,6 @@ vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null })
 vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
 vi.mock('../../components/layout/Sidebar', () => ({ Sidebar: () => null }))
-
-const theme = createTheme()
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ToastProvider>{children}</ToastProvider>
-    </ThemeProvider>
-  )
-}
 
 // Cloning used to fire straight off the toolbar with a server-picked name. It
 // now prompts, so these cover the whole path: button -> dialog -> clone call.

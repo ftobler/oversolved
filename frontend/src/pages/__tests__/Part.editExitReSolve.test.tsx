@@ -13,15 +13,12 @@
  *  - the full feature list (not a truncated slice) is sent
  *  - rollback_position reflects the restored end-of-stack
  */
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
 import { solveLocally } from '@/kernel/solveLocally'
+import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 
 vi.mock('@/kernel/solveLocally', () => ({
   solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -33,24 +30,6 @@ vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
   __esModule: true,
 }))
-
-function makeDoc(content: string) {
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-      } as Response)
-    }
-    if (url === '/api/documents/doc-1') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ uuid: 'doc-1', name: 'TestDoc', content, permission: 'owner' }),
-      } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
-  })
-}
 
 const FOUR_FEATURE_DOC = `version: 1
 kind: part
@@ -82,16 +61,6 @@ features:
     label: Sketch 1
 `
 
-const theme = createTheme()
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ToastProvider>{children}</ToastProvider>
-    </ThemeProvider>
-  )
-}
-
 function allSolvePayloads(): Array<Record<string, unknown>> {
   return solveMock.mock.calls.map(c => c[0] as Record<string, unknown>)
 }
@@ -103,7 +72,7 @@ describe('edit exit reSolve', () => {
   })
 
   it('exiting edit on middle feature sends full feature list and end-of-stack rollback', async () => {
-    vi.stubGlobal('fetch', makeDoc(FOUR_FEATURE_DOC))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: FOUR_FEATURE_DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -152,7 +121,7 @@ describe('edit exit reSolve', () => {
   })
 
   it('enter+exit on single-feature doc does not crash and does not truncate', async () => {
-    vi.stubGlobal('fetch', makeDoc(SINGLE_FEATURE_DOC))
+    vi.stubGlobal('fetch', partDocFetchMock({ content: SINGLE_FEATURE_DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

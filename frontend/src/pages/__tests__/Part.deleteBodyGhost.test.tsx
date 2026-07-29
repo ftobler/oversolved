@@ -5,14 +5,11 @@
  * in flight there is no "before" state, the overlay has nothing to subtract, and
  * the whole model flashes as violet wireframe.
  */
-import React, { forwardRef, useImperativeHandle } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
+import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 
@@ -21,19 +18,8 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   cancelSolver: vi.fn(),
 }))
 
-vi.mock('../../components/Viewport', () => ({
-  default: forwardRef(function MockViewport(_props: Record<string, unknown>, ref) {
-    useImperativeHandle(ref, () => ({
-      autoZoomToFit: vi.fn(),
-      captureScreenshot: vi.fn(),
-      captureScreenshotForSaving: vi.fn(),
-      alignCameraToPlane: vi.fn(),
-      alignCameraToFace: vi.fn(),
-    }))
-    return null
-  }),
-  __esModule: true,
-}))
+vi.mock('../../components/Viewport', async () =>
+  (await import('@/__tests__/test-utils')).viewportMockModule())
 
 const DOC = `version: 1
 kind: part
@@ -53,28 +39,6 @@ features:
 
 const BODIES = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: { vertices: [], faces: [] } } }
 
-function mockFetch() {
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }) } as Response)
-    }
-    if (url === '/api/documents/doc-1') {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ uuid: 'doc-1', name: 'TestDoc', content: DOC, permission: 'owner' }) } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
-  })
-}
-
-const theme = createTheme()
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ToastProvider>{children}</ToastProvider>
-    </ThemeProvider>
-  )
-}
-
 describe('delete_body ghost preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -93,7 +57,7 @@ describe('delete_body ghost preview', () => {
         ? editSolve
         : Promise.resolve({ result: {}, bodies: BODIES, _build_state: null }),
     )
-    vi.stubGlobal('fetch', mockFetch())
+    vi.stubGlobal('fetch', partDocFetchMock({ content: DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

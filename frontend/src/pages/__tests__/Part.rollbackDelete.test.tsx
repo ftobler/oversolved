@@ -1,11 +1,8 @@
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { ToastProvider } from '@/contexts/ToastContext'
 import Part from '@/pages/Part'
+import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 
 vi.mock('@/kernel/solveLocally', () => ({
   solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -16,8 +13,7 @@ vi.mock('../../components/Viewport', () => ({
   __esModule: true,
 }))
 
-function mockFetchWithFeatures() {
-  const content = `version: 1
+const THREE_FEATURE_DOC = `version: 1
 kind: part
 features:
   - id: sk1
@@ -30,37 +26,6 @@ features:
     kind: extrude
     extrude: { sketch: '$sk1', distance: 5, direction: 'normal' }
 `
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-      } as Response)
-    }
-    if (url === '/api/documents/doc-1') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          uuid: 'doc-1',
-          name: 'TestDoc',
-          content,
-          permission: 'owner',
-        }),
-      } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
-  })
-}
-
-const theme = createTheme()
-function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ToastProvider>{children}</ToastProvider>
-    </ThemeProvider>
-  )
-}
 
 describe('rollback position clamping on feature delete', () => {
   beforeEach(() => {
@@ -68,7 +33,7 @@ describe('rollback position clamping on feature delete', () => {
   })
 
   it('keeps rollback bar visible after deleting a feature', async () => {
-    vi.stubGlobal('fetch', mockFetchWithFeatures())
+    vi.stubGlobal('fetch', partDocFetchMock({ content: THREE_FEATURE_DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -115,7 +80,7 @@ describe('rollback position clamping on feature delete', () => {
   })
 
   it('clamps rollback position when multiple features are deleted', async () => {
-    vi.stubGlobal('fetch', mockFetchWithFeatures())
+    vi.stubGlobal('fetch', partDocFetchMock({ content: THREE_FEATURE_DOC }))
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
