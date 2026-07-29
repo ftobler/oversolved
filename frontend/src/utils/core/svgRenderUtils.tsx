@@ -15,6 +15,29 @@ function arrowhead(x1: number, y1: number, x2: number, y2: number, size = 6): st
   return `M ${x2} ${y2} L ${bx + px} ${by + py} L ${bx - px} ${by - py} Z`
 }
 
+const LABEL_FONT_SIZE = 9
+// Roboto Mono advances 0.6em per glyph, i.e. 5.4px here: 5 under-estimates on
+// purpose and the padding absorbs the rest, which holds up to 15 chars.
+const LABEL_CHAR_WIDTH = 5
+const LABEL_PADDING = 3
+const LABEL_HEIGHT = 12
+
+/**
+ * The dark backing plate plus centred monospace value text that every dimension
+ * kind stamps on its leader. One look for all three: dim_angle used to size its
+ * plate at 3px per char, which is narrower than the glyphs it backs, so a label
+ * past 5 chars hung out of its own background.
+ */
+function renderDimensionLabel(x: number, y: number, label: string, color: string): React.ReactNode {
+  const width = label.length * LABEL_CHAR_WIDTH + LABEL_PADDING * 2
+  return (
+    <>
+      <rect x={x - width / 2} y={y - LABEL_HEIGHT / 2} width={width} height={LABEL_HEIGHT} fill="#111" />
+      <text x={x} y={y} fill={color} fontSize={LABEL_FONT_SIZE} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+    </>
+  )
+}
+
 export function getEntityBounds(entity: Entity, px: (x: number, y: number) => [number, number]): { minX: number; maxX: number; minY: number; maxY: number } | null {
   const pts: Point[] = []
   if ('start' in entity && 'end' in entity && 'radius' in entity) {
@@ -343,7 +366,6 @@ export function renderConstraints(
         const mx = (d1x + d2x) / 2
         const my = (d1y + d2y) / 2
         const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
-        const textPadding = 3
         dimConstraints.push(
           <g key={id} opacity={0.85}>
             <line x1={x1} y1={y1} x2={d1x} y2={d1y} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
@@ -351,8 +373,7 @@ export function renderConstraints(
             <line x1={d1x} y1={d1y} x2={d2x} y2={d2y} stroke={color} strokeWidth={1} />
             <path d={arrowhead(d2x, d2y, d1x, d1y)} fill={color} />
             <path d={arrowhead(d1x, d1y, d2x, d2y)} fill={color} />
-            <rect x={mx - (label.length * 2.5 + textPadding)} y={my - 6} width={label.length * 5 + textPadding * 2} height={12} fill="#111" />
-            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            {renderDimensionLabel(mx, my, label, color)}
           </g>
         )
       } else if (r.kind === 'dim_radius') {
@@ -371,13 +392,11 @@ export function renderConstraints(
         const mx = (x1 + x2_rot) / 2
         const my = (y1 + y2_rot) / 2
         const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
-        const textPadding = 3
         dimConstraints.push(
           <g key={id} opacity={0.85}>
             <line x1={x1} y1={y1} x2={x2_rot} y2={y2_rot} stroke={color} strokeWidth={1} />
             <path d={arrowhead(x1, y1, x2_rot, y2_rot)} fill={color} />
-            <rect x={mx - (label.length * 2.5 + textPadding)} y={my - 6} width={label.length * 5 + textPadding * 2} height={12} fill="#111" />
-            <text x={mx} y={my} fill={color} fontSize={9} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            {renderDimensionLabel(mx, my, label, color)}
           </g>
         )
       } else if (r.kind === 'dim_angle') {
@@ -419,15 +438,12 @@ export function renderConstraints(
         const labelY = vy + labelRadius * Math.sin(midAngle)
         const label = `${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(1)}°`
         const arcPath = `M ${ax1} ${ay1} A ${arcRadius} ${arcRadius} 0 ${largeArc} 1 ${ax2} ${ay2}`
-        const textPadding = 4
-        const textWidth = (label.length * 3 + 4) + textPadding * 2
         dimConstraints.push(
           <g key={id} opacity={0.85}>
             <line x1={vx} y1={vy} x2={extAx} y2={extAy} stroke={color} strokeWidth={1} />
             <line x1={vx} y1={vy} x2={extBx} y2={extBy} stroke={color} strokeWidth={1} />
             <path d={arcPath} stroke={color} strokeWidth={1} fill="none" />
-            <rect x={labelX - textWidth / 2} y={labelY - 7} width={textWidth} height={14} fill="#111" />
-            <text x={labelX} y={labelY} fill={color} fontSize={9} fontFamily="Roboto Mono, monospace" textAnchor="middle" dominantBaseline="middle">{label}</text>
+            {renderDimensionLabel(labelX, labelY, label, color)}
           </g>
         )
       }
