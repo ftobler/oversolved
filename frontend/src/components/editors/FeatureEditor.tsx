@@ -54,7 +54,11 @@ export function FeatureEditor({
 
   return (
     <div className="plane-editor">
-      {schema.fields.map(field => {
+      {/* Keyed by `key:index`, not `key` alone: a schema may legitimately repeat
+          a field key across rows (transform's translation X/Y/Z all write
+          `translation`), and React then treated the three inputs as one. The
+          field list is a static schema array, so the index is stable. */}
+      {schema.fields.map((field, i) => {
         if (field.showWhen && !field.showWhen(data)) return null
 
         switch (field.type) {
@@ -64,7 +68,7 @@ export function FeatureEditor({
               ? data[nf.arrayField]?.[nf.arrayIndex]
               : data[field.key]
             return <NumberFieldWidget
-              key={field.key}
+              key={`${field.key}:${i}`}
               field={nf}
               value={rawVal as string | number | undefined}
               arrayData={nf.arrayField != null ? arrayFieldData[nf.arrayField] : undefined}
@@ -75,7 +79,7 @@ export function FeatureEditor({
           }
           case 'select':
             return <SelectFieldWidget
-              key={field.key}
+              key={`${field.key}:${i}`}
               field={field as SelectFieldDef}
               value={data[field.key] as string | undefined}
               fid={fid}
@@ -84,7 +88,7 @@ export function FeatureEditor({
             />
           case 'checkbox':
             return <CheckboxFieldWidget
-              key={field.key}
+              key={`${field.key}:${i}`}
               field={field as CheckboxFieldDef}
               data={data}
               fid={fid}
@@ -93,7 +97,7 @@ export function FeatureEditor({
             />
           case 'pick':
             return <PickFieldWidget
-              key={field.key}
+              key={`${field.key}:${i}`}
               field={field as PickFieldDef}
               data={data}
               fid={fid}
@@ -104,7 +108,7 @@ export function FeatureEditor({
             />
           case 'text':
             return <TextFieldWidget
-              key={field.key}
+              key={`${field.key}:${i}`}
               field={field as TextFieldDef}
               value={data[field.key] as string | undefined}
               fid={fid}
