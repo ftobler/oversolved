@@ -1,10 +1,79 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
+import type { PartDoc, PartEntityDef, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
-import { warn, round, findFeature, parseTarget, randomId, uniqueConstraintId } from './helpers'
+import {
+  warn, round, findFeature, parseTarget, uniqueConstraintId, freshEntityIds, mintEntityId,
+} from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
+
+// ─── Mutation preamble ───
+
+/** The three lazily-created containers of a sketch feature. A feature straight out
+ *  of YAML may be missing any of them, so every mutation that writes one has to
+ *  materialize it first. */
+type SketchLists = {
+  entities: PartEntityDef[]
+  initial: Record<string, number[]>
+  constraints: PartConstraint[]
+}
+
+/** Find a sketch feature and materialize exactly the containers named in `lists`,
+ *  returning it narrowed so the mutation body can index them without a `!` per
+ *  line. Which containers get created is per call rather than all three always:
+ *  an unrequested `constraints: []` would show up in the serialized document.
+ *
+ *  A missing feature yields undefined and every mutation below bails on it -- a
+ *  stale feature id from the UI is not an error, the feature was just deleted.
+ *
+ *  Pass string LITERALS. A union-typed argument (`which: 'entities' | 'initial'`)
+ *  infers K as the whole union, so the return type would claim both containers
+ *  while only one was created. Every caller today passes literals. */
+function resolveSketch<K extends keyof SketchLists>(
+  doc: PartDoc,
+  featureId: string,
+  ...lists: K[]
+): (PartFeature & Pick<SketchLists, K>) | undefined {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return undefined
+  for (const list of lists) {
+    if (list === 'entities') {
+      if (!feature.entities) feature.entities = []
+    } else if (list === 'initial') {
+      if (!feature.initial) feature.initial = {}
+    } else if (list === 'constraints') {
+      if (!feature.constraints) feature.constraints = []
+    } else {
+      // Exhaustive by construction: a container added to SketchLists without a
+      // branch here would be asserted present by the cast below and materialized
+      // by nobody. Fail at the type level rather than at the first index.
+      const unhandled: never = list
+      throw new Error(`resolveSketch: unhandled container ${String(unhandled)}`)
+    }
+  }
+  return feature as PartFeature & Pick<SketchLists, K>
+}
+
+/** Drag commit: adopt the last WASM drag frame for ALL entities, so the hard solve
+ *  seeds from the on-screen state instead of pre-drag geometry plus one teleported
+ *  element (which can land in a different solution basin). Only known entity ids
+ *  with matching param counts are written -- a stale or kind-mismatched entry must
+ *  not corrupt the doc. Returns whether a frame was adopted, which is what tells a
+ *  caller its own delta is already baked in.
+ */
+function adoptSolvedGeometry(
+  initial: Record<string, number[]>,
+  solvedGeometry?: Record<string, number[]>,
+): boolean {
+  if (!solvedGeometry) return false
+  for (const [eid, p] of Object.entries(solvedGeometry)) {
+    const cur = initial[eid]
+    if (!cur || cur.length !== p.length) continue
+    initial[eid] = p.map(round)
+  }
+  return true
+}
 
 // ─── Internals ───
 
@@ -107,7 +176,9 @@ function applyMidpointConstraint(
  *  Returns the 4 line IDs [lA, lB, lC, lD] for use in additional constraints.
  */
 function _applyRectLines(
-  feature: PartFeature,
+  // Only the two containers this body indexes. The corner constraints go through
+  // applyAddConstraint, which materializes `constraints` itself.
+  feature: PartFeature & Pick<SketchLists, 'entities' | 'initial'>,
   featureId: string,
   doc: PartDoc,
   x0: number,
@@ -115,19 +186,7 @@ function _applyRectLines(
   x1: number,
   y1: number,
 ): [string, string, string, string] {
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  if (!feature.constraints) feature.constraints = []
-
-  const existingIds = new Set(feature.entities.map(e => e.id))
-  const lineIds: string[] = []
-  for (let i = 0; i < 4; i++) {
-    let id = randomId(12)
-    while (existingIds.has(id)) id = randomId(12)
-    lineIds.push(id)
-    existingIds.add(id)
-  }
-  const [lA, lB, lC, lD] = lineIds
+  const [lA, lB, lC, lD] = freshEntityIds(feature.entities, 4)
   const fid = featureId
 
   const lines: [string, number[]][] = [
@@ -165,18 +224,9 @@ export function applyMoveVertex(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.initial) return
-  // Drag commit: adopt the last WASM drag frame for ALL entities first, so the
-  // hard solve seeds from the on-screen state instead of pre-drag geometry +
-  // one teleported vertex (which can land in a different solution basin).
-  // Only known entity ids with matching param counts are written -- a stale or
-  // kind-mismatched entry must not corrupt the doc.
-  if (solvedGeometry) {
-    for (const [eid, p] of Object.entries(solvedGeometry)) {
-      const cur = feature.initial[eid]
-      if (!cur || cur.length !== p.length) continue
-      feature.initial[eid] = p.map(round)
-    }
-  }
+  // The adopted frame already carries the other vertices; this one is then
+  // teleported onto the drop position below.
+  adoptSolvedGeometry(feature.initial, solvedGeometry)
   const params = feature.initial[entityId]
   if (!params) return
   const kind = feature.entities?.find(e => e.id === entityId)?.kind
@@ -224,19 +274,9 @@ export function applyMoveEntity(
   const feature = findFeature(doc, featureId)
   if (!feature?.initial) return
 
-  // Drag commit: adopt the last WASM drag frame for ALL entities first, so the
-  // hard solve seeds from the on-screen state instead of pre-drag geometry +
-  // a teleported entity (which can land in a different solution basin).
-  // The solved geometry already reflects the translated position, so when it
-  // is present the delta is not applied (avoiding double-translation).
-  if (solvedGeometry) {
-    for (const [eid, p] of Object.entries(solvedGeometry)) {
-      const cur = feature.initial[eid]
-      if (!cur || cur.length !== p.length) continue
-      feature.initial[eid] = p.map(round)
-    }
-    return
-  }
+  // The adopted frame already reflects the translated position, so `delta` must
+  // not be applied on top of it (that would translate twice).
+  if (adoptSolvedGeometry(feature.initial, solvedGeometry)) return
 
   if (dx === 0 && dy === 0) return
   const params = feature.initial[entityId]
@@ -260,9 +300,8 @@ export function applyAddConstraint(
   pos?: [number, number],
   sign?: number,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'constraints')
   if (!feature) return
-  if (!feature.constraints) feature.constraints = []
   // Materialize-on-reference: an inferred-point handle target (`dock:`/`isect:`)
   // promotes to a real point before the constraint is built, so the rest of this
   // function never sees one.
@@ -401,13 +440,9 @@ export function applyAddEntity(
   params: number[],
   entityId?: string,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  const existing = new Set(feature.entities.map(e => e.id))
-  let eid = entityId ?? randomId(12)
-  while (!entityId && existing.has(eid)) eid = randomId(12)
+  const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
 }
@@ -419,17 +454,9 @@ export function applyAddProjectedEntity(
   source: string,
   entityId?: string,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities')
   if (!feature) return
-  if (!feature.entities) feature.entities = []
-  const existing = new Set(feature.entities.map(e => e.id))
-  // A caller that must reference the projection right away (the dimension tool
-  // targets it with the pick it makes in the same click) supplies the id. It is
-  // taken as given: re-rolling it would orphan the reference the caller holds,
-  // so a supplied id must already be unique within the feature.
-  let eid = entityId ?? randomId(12)
-  while (!entityId && existing.has(eid)) eid = randomId(12)
-  feature.entities.push({ id: eid, kind, source })
+  feature.entities.push({ id: mintEntityId(feature.entities, entityId), kind, source })
 }
 
 export function applyAddEntityWithConstraint(
@@ -443,14 +470,9 @@ export function applyAddEntityWithConstraint(
   snapEntityRef?: string,
   entityId?: string,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  if (!feature.constraints) feature.constraints = []
-  const existing = new Set(feature.entities.map(e => e.id))
-  let eid = entityId ?? randomId(12)
-  while (!entityId && existing.has(eid)) eid = randomId(12)
+  const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
 
@@ -493,10 +515,8 @@ export function applyAddPointAtIntersection(
   at: [number, number],
   curveEntityIds: string[],
 ): string | null {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return null
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
 
   // Usable loci: distinct, existing, non-point curves. A point entity has no
   // locus to lie on; construction curves are allowed (a construction tangency is
@@ -511,9 +531,7 @@ export function applyAddPointAtIntersection(
     loci.push(cid)
   }
 
-  const existing = new Set(feature.entities.map(e => e.id))
-  let eid = randomId(12)
-  while (existing.has(eid)) eid = randomId(12)
+  const eid = mintEntityId(feature.entities)
   feature.entities.push({ id: eid, kind: 'point' })
   feature.initial[eid] = [round(at[0]), round(at[1])]
 
@@ -546,11 +564,8 @@ export function applyAddDock(
   at: [number, number],
   hostConstraintId: string,
 ): string | null {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return null
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  if (!feature.constraints) feature.constraints = []
 
   const host = feature.constraints.find(c => c.id === hostConstraintId)
   if (!host) return null  // nothing to dock to
@@ -559,9 +574,7 @@ export function applyAddDock(
   const existingDock = feature.constraints.find(c => c.kind === 'dock' && c.host === hostConstraintId)
   if (existingDock) return _dockPointId(existingDock, new Set(feature.entities.map(e => e.id)))
 
-  const existing = new Set(feature.entities.map(e => e.id))
-  let eid = randomId(12)
-  while (existing.has(eid)) eid = randomId(12)
+  const eid = mintEntityId(feature.entities)
   feature.entities.push({ id: eid, kind: 'point' })
   feature.initial[eid] = [round(at[0]), round(at[1])]
 
@@ -637,7 +650,7 @@ export function applyAddRect(
   p0: [number, number],
   p1: [number, number],
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
   const [x0, y0] = p0
@@ -651,11 +664,8 @@ export function applyAddCenterRect(
   center: [number, number],
   corner: [number, number],
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  if (!feature.constraints) feature.constraints = []
 
   const [cx, cy] = center
   const [x, y] = corner
@@ -669,9 +679,7 @@ export function applyAddCenterRect(
   const [lA, lB, lC, lD] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
 
   // Create point entity at center
-  const existingIds = new Set(feature.entities.map(e => e.id))
-  let pointId = randomId(12)
-  while (existingIds.has(pointId)) pointId = randomId(12)
+  const pointId = mintEntityId(feature.entities)
   feature.entities.push({ id: pointId, kind: 'point' })
   feature.initial[pointId] = [cx, cy].map(round)
 
@@ -702,11 +710,8 @@ export function applyAddNgon(
   corner: [number, number],
   sides: number,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  if (!feature.constraints) feature.constraints = []
 
   const n = Math.max(3, Math.floor(sides))
   const [cx, cy] = center
@@ -715,13 +720,9 @@ export function applyAddNgon(
   if (radius <= 0) return
   const angle0 = Math.atan2(vy - cy, vx - cx)
 
-  const existingIds = new Set(feature.entities.map(e => e.id))
-  const lineIds: string[] = []
+  const lineIds = freshEntityIds(feature.entities, n)
   for (let i = 0; i < n; i++) {
-    let id = randomId(12)
-    while (existingIds.has(id)) id = randomId(12)
-    existingIds.add(id)
-    lineIds.push(id)
+    const id = lineIds[i]
     const a1 = angle0 + (i / n) * 2 * Math.PI
     const a2 = angle0 + ((i + 1) / n) * 2 * Math.PI
     feature.entities.push({ id, kind: 'line' })
@@ -786,14 +787,11 @@ function offsetSeed(kind: string, p: number[], distance: number): number[] | nul
  *  the copy-at-source clone policy). */
 function reconnectOffsetCorners(
   doc: PartDoc,
-  feature: PartFeature,
+  feature: PartFeature & Pick<SketchLists, 'initial' | 'constraints'>,
   featureId: string,
   cloneOf: Map<string, string>,
   kindOf: Map<string, string>,
 ): void {
-  // The caller (applyAddOffset) ensures these exist; guard anyway so a direct
-  // call cannot crash on a half-built feature.
-  if (!feature.initial || !feature.constraints) return
   const initial = feature.initial
   const seedSnapshot = new Map<string, number[]>()
   for (const cloneId of cloneOf.values()) seedSnapshot.set(cloneId, [...initial[cloneId]])
@@ -858,15 +856,11 @@ export function applyAddOffset(
   sourceIds: string[],
   distance: number,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-  if (!feature.entities) feature.entities = []
-  if (!feature.initial) feature.initial = {}
-  if (!feature.constraints) feature.constraints = []
 
   const cloneOf = new Map<string, string>()  // source id -> clone id
   const kindOf = new Map<string, string>()   // source id -> entity kind
-  const existingIds = new Set(feature.entities.map(e => e.id))
 
   for (const srcId of sourceIds) {
     const src = feature.entities.find(e => e.id === srcId)
@@ -876,10 +870,9 @@ export function applyAddOffset(
     const seed = offsetSeed(src.kind, srcParams, distance)
     if (!seed) continue  // degenerate source: no offset direction
 
-    let dstId = randomId(12)
-    while (existingIds.has(dstId)) dstId = randomId(12)
-    existingIds.add(dstId)
-
+    // Each clone is pushed before the next id is drawn, so reading the live list
+    // is what keeps the run collision-free.
+    const dstId = mintEntityId(feature.entities)
     feature.entities.push({ id: dstId, kind: src.kind })
     feature.initial[dstId] = seed.map(round)
     cloneOf.set(srcId, dstId)

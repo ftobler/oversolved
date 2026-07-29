@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartConstraint, PartTarget } from '@/types/cad'
+import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget } from '@/types/cad'
 import { selectionToQuery, parseSelectionId } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 
@@ -39,6 +39,32 @@ export function uniqueConstraintId(constraints: PartConstraint[], kind: string):
   let id = `c_${kind}_${randomId(6)}`
   while (existing.has(id)) id = `c_${kind}_${randomId(6)}`
   return id
+}
+
+/** `count` fresh entity ids, colliding with neither an existing entity nor each
+ *  other. The sugar mutations mint their whole run up front because they need the
+ *  ids as an array before the push loop is written -- a rectangle names all four
+ *  lines while constraining them to one another. Callers that push each entity as
+ *  they go want `mintEntityId` against the live list instead. */
+export function freshEntityIds(entities: PartEntityDef[], count: number): string[] {
+  const existing = new Set(entities.map(e => e.id))
+  const ids: string[] = []
+  for (let i = 0; i < count; i++) {
+    let id = randomId(12)
+    while (existing.has(id)) id = randomId(12)
+    existing.add(id)
+    ids.push(id)
+  }
+  return ids
+}
+
+/** The id for one new entity. A supplied `given` is taken verbatim, NOT re-rolled:
+ *  a caller only supplies one when it must reference the entity right away (the
+ *  dimension tool targets the projection it makes in the same click), and a
+ *  re-roll would orphan the reference it already holds. So a supplied id must
+ *  already be unique within the feature. */
+export function mintEntityId(entities: PartEntityDef[], given?: string): string {
+  return given ?? freshEntityIds(entities, 1)[0]
 }
 
 // Coerce a feature ref field (single query, list, or empty) into a query list.
