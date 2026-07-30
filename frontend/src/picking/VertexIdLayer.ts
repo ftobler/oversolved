@@ -1,9 +1,7 @@
 import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
-import { idToRGBNormalized } from './idEncoding'
 import { VERTEX_LAYER_NAME } from './layerNames'
-import { primitivePickKey } from './pickKey'
 import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
 
 /**
@@ -183,6 +181,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
   readonly priority: number
   readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
+  protected readonly primitiveNounPlural = 'vertices'
 
   private readonly cubePixels: number | undefined
   private material: THREE.ShaderMaterial
@@ -212,19 +211,16 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
 
     const positions = new Float32Array(count * 3)
     const colors    = new Float32Array(count * 3)
-    const allocatedIds: number[] = []
+    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
 
     let written = 0
     for (let i = 0; i < count; i++) {
       const query = vertexQueries[i]
       if (query === undefined) continue
-      // Per-primitive pick key so two vertices sharing a query still get distinct
-      // ids; the query rides along as the record's entityKey (mirrors edges/faces).
-      const id = reg.perPrimitivePickKeys
-        ? this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, i, this.name))
-        : this.registry.allocate(this.name, query)
-      allocatedIds.push(id)
-      const [r, g, b] = idToRGBNormalized(id)
+      // Keyed on the vertex's own index i, not on `written`: the pick key has to
+      // match what Body3D recomputes from the registration's vertex list, which
+      // includes the query-less vertices this loop skips.
+      const [r, g, b] = ids.rgbFor(i, query)
       const v = vertices[i]
       const base = written * 3
       positions[base]     = v[0]
@@ -250,7 +246,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
       : new THREE.Mesh(geometry, this.material)
     mesh.frustumCulled = false
     this.scene.add(mesh)
-    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
+    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
   }
 
   dispose(): void {

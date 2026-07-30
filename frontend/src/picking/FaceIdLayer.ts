@@ -1,9 +1,7 @@
 import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
-import { idToRGBNormalized } from './idEncoding'
 import { FACE_LAYER_NAME } from './layerNames'
-import { primitivePickKey } from './pickKey'
 
 /**
  * Concrete ID layer for B-rep faces.
@@ -76,6 +74,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
   readonly priority: number
   readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
+  protected readonly primitiveNounPlural = 'faces'
 
   private material = buildFaceIdMaterial()
 
@@ -97,32 +96,16 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
     const numTris = positions.length / 9
 
     const colors = new Float32Array(numTris * 9)
-    const allocatedIds: number[] = []
-    const faceIdCache = new Map<number, [number, number, number]>()
+    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
 
     for (let tri = 0; tri < numTris; tri++) {
       const faceIdx = triangleToFace[tri] ?? 0
       const query = faceQueries[faceIdx]
       if (query === undefined) continue  // skip triangles without a stable face query
 
-      let rgb = faceIdCache.get(faceIdx)
-      if (!rgb) {
-        // B-rep faces: allocate by a per-primitive pickKey (bodyKey#layer#faceIdx), not
-        // the query, so two faces that share an ancestral query (no minted UUID /
-        // shared octant) still resolve to distinct IDs. The query rides along as
-        // the record's entityKey for downstream selection/resolution. Other layers
-        // keep the legacy query-keyed allocation (their keys are already unique).
-        let id: number
-        if (reg.perPrimitivePickKeys) {
-          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, faceIdx, this.name))
-        } else {
-          this.warnDuplicateQuery(query, faceIdCache.size > 0, reg.bodyKey, 'FaceIdLayer', 'face')
-          id = this.registry.allocate(this.name, query)
-        }
-        allocatedIds.push(id)
-        rgb = idToRGBNormalized(id)
-        faceIdCache.set(faceIdx, rgb)
-      }
+      // Every triangle of a face carries that face's ID, so the allocator is
+      // asked per triangle and answers from its memo after the first one.
+      const rgb = ids.rgbFor(faceIdx, query)
 
       const base = tri * 9
       for (let v = 0; v < 3; v++) {
@@ -140,7 +123,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
     mesh.frustumCulled = false
     this.scene.add(mesh)
 
-    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
+    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
   }
 
   dispose(): void {

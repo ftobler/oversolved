@@ -1,9 +1,7 @@
 import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
-import { idToRGBNormalized } from './idEncoding'
 import { EDGE_LAYER_NAME } from './layerNames'
-import { primitivePickKey } from './pickKey'
 
 /**
  * Concrete ID layer for B-rep edges.
@@ -96,6 +94,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
   readonly priority: number
   readonly zPolicy: LayerZPolicy
   inertWhen?: () => boolean
+  protected readonly primitiveNounPlural = 'edges'
 
   private material: THREE.ShaderMaterial
   private xrayMaterial: THREE.ShaderMaterial
@@ -138,8 +137,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     const positions = new Float32Array(numSegments * 2 * 3)
     const colors    = new Float32Array(numSegments * 2 * 3)
 
-    const allocatedIds: number[] = []
-    const edgeColorCache = new Map<number, [number, number, number]>()
+    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
 
     for (let seg = 0; seg < numSegments; seg++) {
       const baseSeg = seg * 6
@@ -154,24 +152,9 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
       const query = edgeQueries[edgeIdx]
       if (query === undefined) continue
 
-      let rgb = edgeColorCache.get(edgeIdx)
-      if (!rgb) {
-        // B-rep edges: allocate by a per-primitive pickKey (bodyKey#layer#edgeIdx), not
-        // the query, so two edges that share an ancestral query (or lack a minted
-        // UUID) still resolve to distinct IDs. The query rides along as the
-        // record's entityKey for downstream selection/resolution. Other layers
-        // keep the legacy query-keyed allocation (their keys are already unique).
-        let id: number
-        if (reg.perPrimitivePickKeys) {
-          id = this.registry.allocate(this.name, query, primitivePickKey(reg.bodyKey, edgeIdx, this.name))
-        } else {
-          this.warnDuplicateQuery(query, edgeColorCache.size > 0, reg.bodyKey, 'EdgeIdLayer', 'edge')
-          id = this.registry.allocate(this.name, query)
-        }
-        allocatedIds.push(id)
-        rgb = idToRGBNormalized(id)
-        edgeColorCache.set(edgeIdx, rgb)
-      }
+      // Every segment of a polyline-approximated edge carries that edge's ID, so
+      // the allocator is asked per segment and answers from its memo after the first.
+      const rgb = ids.rgbFor(edgeIdx, query)
 
       const base2 = seg * 6  // 2 vertices * 3 components
       positions[base2]     = sx; positions[base2 + 1] = sy; positions[base2 + 2] = sz
@@ -188,7 +171,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     const mesh = new THREE.LineSegments(geometry, mat)
     mesh.frustumCulled = false
     this.scene.add(mesh)
-    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds })
+    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
   }
 
   dispose(): void {
