@@ -284,6 +284,43 @@ describe('useIdBufferPointerDispatch', () => {
     expect(resolved).toEqual([10, 50])
   })
 
+  it('drops the queued hover when the tool stops accepting the consumed layers', async () => {
+    // A move that arrives with nothing allowed clears the hover. Anything queued
+    // behind it was captured under the OLD allowed set, so it must die with the
+    // clear -- otherwise it resolves a frame later and re-applies a hover the
+    // active tool no longer accepts, with no further event to take it back down.
+    const resolved: number[] = []
+    pipeline.resolveAsync = vi.fn().mockImplementation(async (_gl, cursor: { x: number; y: number }) => {
+      resolved.push(cursor.x)
+      return null
+    }) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      // 'select' allows every layer: the first move resolves, the second queues.
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 10, clientY: 50 }))
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 20, clientY: 50 }))
+      await Promise.resolve()
+    })
+    expect(resolved).toEqual([10])
+
+    await act(async () => {
+      // A sketch draw tool allows no B-rep layer, so the edge layer this
+      // dispatcher consumes intersects to nothing.
+      useSketchEditorStore.setState({ activeTool: 'line' })
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 30, clientY: 50 }))
+      await Promise.resolve()
+    })
+
+    await flushHoverFrame()
+
+    expect(resolved).toEqual([10])
+  })
+
   it('hover over sketchSurface layer sets hoveredSelectionId', async () => {
     pipeline.resolveAsync = vi.fn().mockResolvedValue({
       id: 1, layer: SKETCH_SURFACE_LAYER_NAME, entityKey: 'sk1/surf:face0', distancePx: 0,

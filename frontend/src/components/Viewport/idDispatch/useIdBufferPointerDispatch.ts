@@ -207,6 +207,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (!attached) return
       const allowed = computeAllowed()
       if (allowed.size === 0) {
+        // Drop anything already queued as well. The queued resolve carries the
+        // allowed set it was captured with, so leaving it armed lets a hover the
+        // active tool no longer accepts land one frame after this clear -- the
+        // hover would reappear with nothing left to un-set it.
+        queuedHover = null
         applyHoverHit(null, null)
         return
       }
