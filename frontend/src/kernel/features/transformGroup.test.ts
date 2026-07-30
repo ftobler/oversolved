@@ -114,6 +114,19 @@ describe('transform / mirror guard paths', () => {
     ).toThrow(/body not found/)
   })
 
+  it('transform: a query resolving to a body the store no longer holds', () => {
+    // The `?` branch of resolveBodyRefKeys reads the id off the REPO (a face
+    // record's `body_id`), which can name a body a later feature deleted. That
+    // key is not a live store key, and reading `.shape` off the missing entry
+    // used to throw a bare TypeError out of the middle of the solve.
+    const staleRepo = { query: () => ({ body_id: 'gone' }) } as unknown as Repository
+    expect(() =>
+      solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['?1;@ex1:flatface'] } }, staleRepo, {
+        body_s: nullBody('body_s'),
+      }),
+    ).toThrow(/body no longer exists: "gone"/)
+  })
+
   it('transform: rotation_angle without an axis', () => {
     expect(() =>
       solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], rotation_angle: 90 } }, repo, {

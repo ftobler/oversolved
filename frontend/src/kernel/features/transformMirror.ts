@@ -71,6 +71,11 @@ export function solveTransform(
   if (bodyQueries.length === 0) throw new Error('transform: no bodies picked')
   const sources = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'transform').map((key) => {
     const body = bodyStore[key]
+    // A resolved key is not automatically a live store key: the `?` branch of
+    // resolveBodyRefKeys reads the id off the REPO (`body_id` on a face record),
+    // which can name a body a later feature has since deleted. Diagnose it here
+    // rather than let `body.shape` throw a bare TypeError out of the solve.
+    if (body === undefined) throw new Error(`transform: body no longer exists: ${JSON.stringify(key)}`)
     if (body.shape === null) throw new Error(`transform: body has no shape: ${JSON.stringify(key)}`)
     return { body, shape: body.shape }
   })
