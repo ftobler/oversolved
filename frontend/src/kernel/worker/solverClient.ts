@@ -16,11 +16,17 @@
  * face merge on self-overlapping geometry, e.g. a circular_array whose axis runs
  * through the source body) can spin forever inside the WASM engine rather than
  * throw. That loop is synchronous and un-interruptible from JS, so the only way
- * to recover is to kill the Worker. A per-request watchdog terminates a Worker
- * that has not replied within `solveTimeoutMs` and rejects the in-flight
- * requests with a timeout error (same drop-and-respawn path as a crash), turning
- * an unrecoverable tab freeze into a reported "solver timed out" failure the user
- * can act on (e.g. suppress the offending feature).
+ * to recover is to kill the Worker -- and the ONLY thing that kills it is the
+ * user pressing cancel (`cancelSolver`, surfaced by the solver overlay after a
+ * few seconds of solving). There is deliberately no automatic ceiling: a legit
+ * heavy solve and a hung one are indistinguishable from here, and every fixed
+ * ceiling either kills the honest solve or waits so long it may as well not
+ * exist. The user can tell them apart, so the user decides.
+ *
+ * The watchdog machinery is kept intact behind `solveTimeoutMs` (Infinity in
+ * production, lowered by `setSolverTimeoutForTest`) so the drop-and-respawn path
+ * stays covered by tests and can be re-armed by setting a ceiling -- nothing
+ * else has to change to bring it back.
  */
 
 import type { BuildResponse } from '../builder'
@@ -55,11 +61,12 @@ interface Pending {
   timer: ReturnType<typeof setTimeout> | null
 }
 
-// Watchdog ceiling for a single Worker request. Set to Infinity to disable the
-// automated timeout (the UI provides a user-initiated cancel button instead).
-// Tests can lower via setSolverTimeoutForTest(). When Infinity, no timer is
-// created — `setTimeout(fn, Infinity)` is spec-equivalent to 0, which would kill
-// every request immediately.
+// Watchdog ceiling for a single Worker request. Infinity disables the automated
+// timeout, which is the production setting -- see the header on why cancelling is
+// the user's call. Tests lower it via setSolverTimeoutForTest(). The Infinity
+// case must skip the timer entirely rather than pass it through:
+// `setTimeout(fn, Infinity)` is spec-equivalent to `setTimeout(fn, 0)`, which
+// would kill every request immediately.
 let solveTimeoutMs = Infinity
 
 function defaultFactory(): SolverWorkerLike | null {
@@ -225,7 +232,9 @@ export function setSolverWorkerForTest(
   for (const p of pending.values()) if (p.timer) clearTimeout(p.timer)
   pending.clear()
   nextId = 1
-  solveTimeoutMs = 30000
+  // The production default, so a test that says nothing about the watchdog gets
+  // production behaviour. The timeout suite opts in explicitly.
+  solveTimeoutMs = Infinity
   workerFactory = factory ?? defaultFactory
 }
 

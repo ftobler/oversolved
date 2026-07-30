@@ -171,6 +171,18 @@ describe('solveViaWorker', () => {
   describe('hang watchdog', () => {
     afterEach(() => vi.useRealTimers())
 
+    it('is disabled by default: a solve that never replies is never killed', async () => {
+      vi.useFakeTimers()
+      // No setSolverTimeoutForTest: this is the production ceiling (Infinity).
+      const p = solveViaWorker({ id: 'd' })  // worker never replies
+      vi.advanceTimersByTime(10 * 60 * 1000)
+      expect(created[0].terminated).toBe(false)
+      // Still live: the request settles normally whenever the reply does arrive,
+      // and only cancelSolver() can end it early.
+      created[0].reply({ id: created[0].posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await expect(p).resolves.not.toBeNull()
+    })
+
     it('terminates a hung worker and rejects the in-flight request when the watchdog fires', async () => {
       vi.useFakeTimers()
       setSolverTimeoutForTest(1000)
