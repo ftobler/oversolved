@@ -159,6 +159,28 @@ describe('HighlightColorPainter', () => {
     // The buffer is still correct -- only the upload got coarser.
     expect(colors).toEqual(reference(scattered, colors.length / 3, null, flags(2, 0), PALETTE))
   })
+
+  it('reports every painted float when a later primitive lies earlier in the buffer', () => {
+    // Face 0 owns the LAST triangles and face 1 the first, so the second
+    // primitive the apply loop repaints starts before the first one. The ranges
+    // must still cover both: a range list that merged backwards would leave
+    // face 1's floats written on the CPU but never uploaded, and the primitive
+    // would keep its old colour on screen.
+    const reversed = faceRuns(2, (f) => (f === 0 ? [2, 3] : [0, 1]))
+    const colors = new Float32Array(4 * 9)
+    const painter = new HighlightColorPainter(colors, reversed)
+    painter.apply(null, null, PALETTE)  // first apply is `full`
+
+    const result = painter.apply(flags(2, 0, 1), null, PALETTE)
+
+    expect(result.full).toBe(false)
+    expect(result.repainted).toBe(2)
+    expect(paintedFloats(result)).toBe(colors.length)
+    // Every float actually written lands inside a reported range.
+    const covered = new Set<number>()
+    for (const r of result.ranges) for (let f = r.start; f < r.start + r.count; f++) covered.add(f)
+    for (let f = 0; f < colors.length; f++) expect(covered.has(f)).toBe(true)
+  })
 })
 
 describe('primitive layouts', () => {

@@ -205,11 +205,22 @@ export class HighlightColorPainter {
   }
 }
 
-/** Push a float range, extending the previous one when they touch. Keeps the
- *  ordinary case (one primitive, contiguous vertices) at a single range. */
+/**
+ * Push a float range, extending the previous one when they touch. Keeps the
+ * ordinary case (one primitive, contiguous vertices) at a single range.
+ *
+ * Merging is only valid FORWARD, and the guard says so rather than assuming it:
+ * `runs` hands out whatever layout its owner has, and `faceRuns` takes an
+ * arbitrary `trianglesOf` callback, so a run starting BEFORE the previous one is
+ * a layout away, not a language guarantee. Extending by `Math.max` on such a run
+ * would leave `last` unchanged and the earlier floats in no range at all --
+ * written on the CPU, never uploaded, so the primitive keeps its old colour on
+ * screen. Out-of-order runs simply get their own entry; coverage stays exact and
+ * the only cost is a range the `MAX_UPLOAD_RANGES` ceiling already accounts for.
+ */
 function addRange(ranges: PaintRange[], start: number, count: number): void {
   const last = ranges[ranges.length - 1]
-  if (last && start <= last.start + last.count) {
+  if (last && start >= last.start && start <= last.start + last.count) {
     last.count = Math.max(last.count, start + count - last.start)
     return
   }
