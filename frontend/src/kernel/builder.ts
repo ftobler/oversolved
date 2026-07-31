@@ -190,8 +190,10 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
   }
 }
 
-/** The persisted repo shape. Exported for the shape guard in `ancestryIndex.test.ts`:
- *  the derived indices must never leak in here, the parity gate hashes this. */
+/** The persisted repo shape. Exported for the shape guard in `ancestryIndex.test.ts`,
+ *  which freezes this THREE-KEY SET: the derived indices must never leak in here,
+ *  `repoFromSnapshot` rebuilds them. Nothing hashes the canonical key strings
+ *  themselves, so their byte format stays free to change. */
 export function snapshotRepo(repo: Repository): Record<string, unknown> {
   return {
     elements: Object.fromEntries(repo.elements),

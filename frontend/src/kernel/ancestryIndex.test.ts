@@ -197,7 +197,10 @@ describe("persisted repo shape", () => {
   it("keeps the derived indices out of the snapshot", () => {
     const repo = new Repository()
     registerFace(repo, "body_a", 0, "u_a0")
-    // Any extra key would change the checkpoint hash the parity gate freezes.
+    // A derived index that leaked in here would be stale by construction: restore
+    // goes through `repoFromSnapshot`, which reads exactly these three and then
+    // calls `rebuildIndices()`. Persisting one is dead weight a later restore path
+    // could start trusting instead of rebuilding.
     expect(Object.keys(snapshotRepo(repo)).sort()).toEqual(["ancestral", "byUuid", "elements"])
   })
 })

@@ -63,4 +63,30 @@ describe('code conventions', () => {
     }
     expect(violations).toEqual([])
   })
+
+  // A raw control byte makes `file` call the source `data` and makes plain grep
+  // print nothing for it, so a search for any symbol in that file comes back empty
+  // and reads as "the symbol does not exist". `query.ts` and `IdRegistry.ts` each
+  // carried a raw 0x00 separator and cost a review pass real time. The separator is
+  // fine, the byte in the source is not: write it as a unicode escape instead.
+  it('no raw C0 control bytes in source (write them as \\uXXXX escapes)', () => {
+    const allowed = new Set([0x09, 0x0a, 0x0d])  // tab, LF, CR
+    expect(tsFiles.length).toBeGreaterThan(100)  // a broken walk would pass vacuously
+    const violations: string[] = []
+    for (const file of tsFiles) {
+      const bytes = readFileSync(file)
+      const hits: string[] = []
+      let line = 1
+      for (let i = 0; i < bytes.length && hits.length < 3; i++) {
+        if (bytes[i] === 0x0a) line++
+        else if (bytes[i] < 0x20 && !allowed.has(bytes[i])) {
+          hits.push(`0x${bytes[i].toString(16).padStart(2, '0')} at line ${line}`)
+        }
+      }
+      if (hits.length > 0) {
+        violations.push(`${file.replace(SRC, 'src/')} (${hits.join(', ')})`)
+      }
+    }
+    expect(violations).toEqual([])
+  })
 })
