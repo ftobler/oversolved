@@ -8,6 +8,7 @@ import {
   capFacePath,
   filletFacePath,
   splitFacePath,
+  importedFacePath,
   mintFaceUuid,
   deriveEdgeUuid,
   deriveVertexUuid,
@@ -28,6 +29,7 @@ describe('construction path grammar', () => {
       capFacePath('extrude1', 'end'),
       filletFacePath('fillet2', 'e_abc123'),
       splitFacePath('u_deadbeef', 7),
+      importedFacePath('import1', 17),
     ]
     for (const p of paths) expect(p).not.toMatch(FLOAT_RE)
   })
@@ -37,6 +39,22 @@ describe('construction path grammar', () => {
     expect(capFacePath('extrude1', 'end')).toBe('extrude1|cap|end')
     expect(filletFacePath('fillet2', 'e_abc')).toBe('fillet2|fillet|e_abc')
     expect(splitFacePath('u_p', 2)).toBe('u_p|split|2')
+    expect(importedFacePath('import1', 17)).toBe('import1|step|17')
+  })
+})
+
+describe('imported face paths', () => {
+  it('separates two imports of the same file', () => {
+    expect(mintFaceUuid(importedFacePath('import1', 17)))
+      .not.toBe(mintFaceUuid(importedFacePath('import2', 17)))
+  })
+
+  it('separates two entities of one import, and never collides with a side face', () => {
+    const a = mintFaceUuid(importedFacePath('import1', 17))
+    const b = mintFaceUuid(importedFacePath('import1', 171))
+    // `1|7` vs `17` would collide if the separator were dropped from the path.
+    const c = mintFaceUuid(sideFacePath('import1', 'step'))
+    expect(new Set([a, b, c]).size).toBe(3)
   })
 })
 

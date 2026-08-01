@@ -327,6 +327,10 @@ export interface OccSubShape extends OccDisposable {
   IsSame(other: OccDisposable): boolean
   /** True when the two shapes share the same TShape (ignores orientation). */
   IsPartner(other: OccDisposable): boolean
+  /** The same shape carried under `loc`. Passing an identity `TopLoc_Location`
+   *  strips the placement, which is what makes `IsSame`/`HashCode` compare two
+   *  differently-placed instances of one TShape as equal. */
+  Located(loc: OccDisposable): OccShape
   /** TShape-derived hash in [1, upperBound], orientation-independent (matches
    *  `IsSame`). Bounded, so equal hashes still need an `IsSame` confirm. */
   HashCode(upperBound: number): number
@@ -681,6 +685,9 @@ export interface OccTransformBuilder extends OccDisposable {
   Build(): void
   Shape(): OccShape
   Modified(s: OccShape): OccListOfShape
+  /** The single transformed counterpart of `s`. `Modified()` returns a list
+   *  whose `Extent()` this build does not bind, so this is the usable form. */
+  ModifiedShape(s: OccShape): OccShape
   IsDeleted(s: OccShape): boolean
 }
 
@@ -688,11 +695,74 @@ export interface OccCopyBuilder extends OccDisposable {
   Shape(): OccShape
 }
 
+/**
+ * An OCC `Handle(...)` as embind hands it back: a smart-pointer wrapper whose
+ * `.get()` reaches the object. Not to be confused with `handleTable`'s
+ * `OccHandle`, which is our own integer shape slot.
+ */
+export interface OccTransientHandle<T> extends OccDisposable {
+  get(): T
+  IsNull(): boolean
+}
+
 /** STEPControl_Reader: read a STEP file from the emscripten FS into a shape. */
 export interface OccStepReader extends OccDisposable {
   ReadFile(path: string): OccEnumValue
   TransferRoots(): number
   OneShape(): OccShape
+  /** The work session, the way through to the transfer reader. */
+  WS(): OccTransientHandle<OccWorkSession>
+  /** The parsed STEP model, which owns the entity -> `#N` labels. */
+  Model(): OccTransientHandle<OccInterfaceModel>
+}
+
+/** XSControl_WorkSession: only the transfer reader is used here. */
+export interface OccWorkSession {
+  TransferReader(): OccTransientHandle<OccTransferReader>
+}
+
+/**
+ * XSControl_TransferReader: the file entity <-> result shape map built during
+ * `TransferRoots`. It knows ONLY the shapes the transfer itself produced -- a
+ * later `BRepBuilderAPI_Transform` copy is invisible to it.
+ *
+ * Its convenience `EntityFromShapeResult(shape, -1)` is deliberately NOT
+ * declared here: it answers by scanning the whole transfer map, so calling it
+ * per face is O(faces x map) and cost ~10 s on a 1200-face import. Walk
+ * `TransientProcess()` once instead.
+ */
+export interface OccTransferReader {
+  TransientProcess(): OccTransientHandle<OccTransientProcess>
+}
+
+/**
+ * Transfer_TransientProcess: the transfer map itself, as parallel 1-based
+ * arrays -- `Mapped(i)` is the source file entity, `MapItem(i)` the binder
+ * holding what it produced.
+ */
+export interface OccTransientProcess {
+  NbMapped(): number
+  Mapped(index: number): OccTransientHandle<unknown>
+  MapItem(index: number): OccTransientHandle<OccTransferBinder>
+}
+
+/**
+ * One entry of the transfer map. embind hands back the most-derived registered
+ * type, so a shape binder's `Result()` yields a `TopoDS_Shape` while other
+ * binder kinds yield something else -- narrow on the RESULT, not on the binder.
+ */
+export interface OccTransferBinder extends OccDisposable {
+  Result?: () => OccMaybeShape
+}
+
+/** Narrowing shim: only a shape carries `ShapeType`. */
+export interface OccMaybeShape extends OccDisposable {
+  ShapeType?: () => OccEnumValue
+}
+
+/** Interface_InterfaceModel: entity -> the `#N` id the file wrote it under. */
+export interface OccInterfaceModel {
+  IdentLabel(entity: OccTransientHandle<unknown>): number
 }
 
 /** STEPControl_Writer: serialise a shape to a STEP file on the emscripten FS. */

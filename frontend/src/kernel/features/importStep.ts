@@ -6,7 +6,8 @@ import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { base64ToBytes, stepBytesToShape } from '../occ/stepIo'
+import { base64ToBytes, stepBytesToShapeWithIdentity } from '../occ/stepIo'
+import { importedNameMaps } from '../occ/importLineage'
 import { registerSplitBodies } from './bodySplit'
 
 type Dict = Record<string, unknown>
@@ -35,7 +36,14 @@ export function solveImportStep(
 
   const bytes = base64ToBytes(fileDataB64)
   const bodyId = 'body_' + featureId
-  const shape = scope.track(stepBytesToShape(oc, scope, bytes, scale))
+  const { shape: read, faceStepIds } = stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
+  const shape = scope.track(read)
+
+  // Named from the STEP file's own entity ids. Without this every face of the
+  // import shares one query string (`@<feature>@<body>`) and none of them is
+  // individually selectable -- see occ/importLineage.ts. Computed on the whole
+  // shape; `registerSplitBodies` narrows the maps per sibling.
+  const names = importedNameMaps(oc, scope, shape, faceStepIds, featureId)
 
   // A STEP file holding several parts arrives as one compound, so the import is
   // exactly the "a shape becomes bodies" case bodySplit owns: one body per
@@ -45,6 +53,10 @@ export function solveImportStep(
     id: bodyId,
     createdBy: featureId,
     imported: true,
+    faceNames: names.faceNames,
+    edgeNames: names.edgeNames,
+    faceAncestry: names.faceAncestry,
+    edgeAncestry: names.edgeAncestry,
   })
   return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds }
 }

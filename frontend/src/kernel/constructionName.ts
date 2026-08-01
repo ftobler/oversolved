@@ -56,6 +56,17 @@ export function splitFacePath(parentUuid: string, index: number): string {
 }
 
 /**
+ * An imported face, named by the STEP entity id (`#17=ADVANCED_FACE(...)`) the
+ * file gave it. Imported geometry has no construction history in THIS system,
+ * but it has one in the file, and that id is symbolic: it survives a rebuild and
+ * a rescale, and is unique within one file. `createdBy` keeps two imports of the
+ * same file (two `import_step` features) in disjoint UUID namespaces.
+ */
+export function importedFacePath(createdBy: string, stepEntityId: number): string {
+  return `${createdBy}|step|${stepEntityId}`
+}
+
+/**
  * An instance of a source face produced by an array/transform copy operation.
  * The source face's UUID is the parent; the copy feature id and instance index
  * make the construction path unique across identical transformed copies, so
