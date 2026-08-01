@@ -134,15 +134,25 @@ function tessellateBodies(
         faceAncestry: body.face_ancestry ?? null,
         profileQueries: body.profile_queries ?? [],
       })
-      const edges = solidToEdges(occ, table, body.shape, {
+      const edgeResult = solidToEdges(occ, table, body.shape, {
         createdBy: body.created_by || '',
         bodyId: body.id,
         edgeNames: body.edge_names ?? null,
         edgeAncestry: body.edge_ancestry ?? null,
         profileQueries: body.profile_queries ?? [],
       })
-      const vertices = solidToVertices(occ, table, body.shape)
-      out[bodyId] = { mesh, edges, vertices }
+      const vertexResult = solidToVertices(occ, table, body.shape)
+      // Flattened the way the production extractors return it. This harness used to hand
+      // back the RESULT OBJECTS under `edges`/`vertices`, which have no `.length`, so
+      // every body in these tests silently lost its edge and vertex ancestry.
+      out[bodyId] = {
+        mesh,
+        edges: edgeResult.edges,
+        edge_queries: edgeResult.edge_queries,
+        vertices: vertexResult.vertices,
+        vertex_queries: vertexResult.vertex_queries,
+        vertex_uuids: vertexResult.vertex_uuids,
+      }
     } catch {
       // non-fatal
     }

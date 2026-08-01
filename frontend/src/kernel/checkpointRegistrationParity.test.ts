@@ -68,9 +68,10 @@ function refreshNames(body: Body): void {
 
 // ─── stub build deps ───
 
-// Shape handles must be a pure function of the document, never of a counter: a rebuild
-// has to reproduce the exact same handles or `bodyVersion` comparisons across builds
-// become meaningless.
+// Shape handles must be a pure function of the document, never of a counter: the fake
+// payloads encode the handle, so a rebuild has to reproduce the exact same handles or a
+// cold-build fingerprint could not be compared against a partial-rebuild one. (This is
+// not about `bodyVersion`, which is never compared across builds.)
 const SHAPE_SEED: Record<string, number> = { f1: 100, f2: 200, f6: 600, heavy: 900 }
 
 function shapeOf(n: number): Body['shape'] {
@@ -113,6 +114,11 @@ const solve = (
 interface HarnessOptions {
   /** Body ids whose mesh comes back flagged as a fallback (no real B-rep behind it). */
   fallbackBodies?: string[]
+  /** Body ids the METADATA extractor drops while tessellation still succeeds, mimicking
+   *  `extractBrepMetadata`'s per-body failure exit (it logs and omits the body). */
+  metaOmits?: string[]
+  /** Body ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`. */
+  queryless?: string[]
 }
 
 class Harness {
@@ -127,11 +133,22 @@ class Harness {
     this.options = options
   }
 
-  private meta = (bodyStore: Record<string, Body>): Record<string, Record<string, unknown>> =>
+  private meta = (
+    bodyStore: Record<string, Body>,
+    isMetadataPath: boolean,
+  ): Record<string, Record<string, unknown>> =>
     Object.fromEntries(
       Object.entries(bodyStore)
-        .filter(([, body]) => body.shape != null)
-        .map(([bid, body]) => [bid, fakeMeta(body, this.options.fallbackBodies?.includes(bid) ?? false)]),
+        .filter(([bid, body]) => body.shape != null
+          && !(isMetadataPath && (this.options.metaOmits?.includes(bid) ?? false)))
+        .map(([bid, body]) => {
+          const blob = fakeMeta(body, this.options.fallbackBodies?.includes(bid) ?? false)
+          if (this.options.queryless?.includes(bid)) {
+            delete blob.edge_queries
+            delete blob.vertex_queries
+          }
+          return [bid, blob]
+        }),
     )
 
   deps(): BuildDeps {
@@ -139,8 +156,8 @@ class Harness {
       trySolveFeature: solve,
       postRegister: () => {},
       initGlobalRepo: () => new Repository(),
-      tessellateBodies: (store) => this.meta(store),
-      extractBrepMetadata: (store) => this.meta(store),
+      tessellateBodies: (store) => this.meta(store, false),
+      extractBrepMetadata: (store) => this.meta(store, true),
       brepDiffNewFaceHashes: (body) => { this.faceRegistrations.push(body.id); return new Set() },
       brepDiffNewEdgeHashes: (body) => { this.edgeRegistrations.push(body.id); return new Set() },
       brepDiffNewVertexHashes: () => new Set(),
@@ -370,5 +387,42 @@ describe('fallback meshes', () => {
     // the fallback body still registers everything that does not come off the mesh.
     expect(faceElements(state, 'f2', 'body_f2').length).toBe(2)
     expect(checkpointFingerprints(state.checkpoints).f1).toContain('straightedge')
+  })
+})
+
+describe('a body the solve loop could not identify', () => {
+  /** Ids of the ancestry elements a checkpoint carries for one body, by payload field. */
+  function elementsOf(state: BuildState, fid: string, bodyId: string, field: string): string[] {
+    const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
+      .elements as Record<string, Record<string, unknown>>
+    return Object.keys(elements).filter(
+      (eid) => elements[eid]?.body_id === bodyId && elements[eid]?.[field] !== undefined,
+    )
+  }
+
+  // `extractBrepMetadata` fails per body and silently: it logs and omits that body from
+  // its output. `tessellateBodies` is a different producer and may still succeed, which
+  // is what makes the checkpoint pass a RECOVERY path rather than a duplicate of the
+  // loop. Recording such a body as registered would skip the only pass that can save it.
+  it('is still registered by the checkpoint pass, off the render mesh', () => {
+    const h = new Harness({ metaOmits: ['body_f1'] })
+    const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })
+    const state = r._build_state
+    // f2 is the final checkpoint, the one holding the render tessellation.
+    expect(elementsOf(state, 'f2', 'body_f1', 'face_index').length).toBe(2)
+    expect(elementsOf(state, 'f2', 'body_f1', 'edge_index').length).toBe(2)
+    // Control: the body the metadata path CAN read is unaffected.
+    expect(elementsOf(state, 'f2', 'body_f2', 'face_index').length).toBe(2)
+  })
+
+  // Both passes now share one registrar, so a blob with geometry but no query lists
+  // registers with length-matched placeholders instead of being suppressed. The lists are
+  // presence/length gates in the registrars; their content is never read.
+  it('registers edges and vertices from a blob carrying no query lists', () => {
+    const h = new Harness({ metaOmits: ['body_f1'], queryless: ['body_f1'] })
+    const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })
+    const state = r._build_state
+    expect(elementsOf(state, 'f2', 'body_f1', 'edge_index').length).toBe(2)
+    expect(elementsOf(state, 'f2', 'body_f1', 'vertex_index').length).toBe(2)
   })
 })

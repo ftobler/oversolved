@@ -621,6 +621,10 @@ function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sk
  * filled with length-matched placeholders rather than suppressing registration -- those
  * lists are presence/length gates in the registrars, their content is unused.
  */
+function arrayOr<T>(value: unknown, fallback: T[] = []): T[] {
+  return Array.isArray(value) ? (value as T[]) : fallback
+}
+
 export function registerBodyBrepFromMeta(
   repo: Repository,
   body: Body,
@@ -629,12 +633,16 @@ export function registerBodyBrepFromMeta(
 ): void {
   const mesh = meta['mesh'] as TessMesh | undefined
   if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(repo, body, mesh, deps)
-  const edges = (meta['edges'] as Array<Record<string, unknown>>) ?? []
-  const edgeQueries = (meta['edge_queries'] as string[]) ?? edges.map(() => '')
+  // Non-array geometry is treated as absent rather than trusted: the checkpoint pass has
+  // no exception guard (the solve loop's `_registerBodyFaces` does), so a deps wiring that
+  // hands back the wrong shape would abort the whole build instead of costing one body
+  // its ancestry. `arrayOr` keeps both callers on the loop's forgiving contract.
+  const edges = arrayOr<Record<string, unknown>>(meta['edges'])
+  const edgeQueries = arrayOr<string>(meta['edge_queries'], edges.map(() => ''))
   if (edges.length) _registerBrepEdgeAncestry(repo, body, edges, edgeQueries, deps)
-  const verts = (meta['vertices'] as number[][]) ?? []
-  const vertQueries = (meta['vertex_queries'] as string[]) ?? verts.map(() => '')
-  const vertUuids = (meta['vertex_uuids'] as Array<string | null>) ?? []
+  const verts = arrayOr<number[]>(meta['vertices'])
+  const vertQueries = arrayOr<string>(meta['vertex_queries'], verts.map(() => ''))
+  const vertUuids = arrayOr<string | null>(meta['vertex_uuids'])
   if (verts.length) _registerBrepVertexAncestry(repo, body, verts, vertQueries, vertUuids, deps)
 }
 
@@ -642,23 +650,32 @@ export function registerBodyBrepFromMeta(
 // builder.py `_register_body_faces`). Called per feature in the build loop so a later
 // feature's face/edge/vertex query resolves against an earlier body's geometry (e.g. a
 // circular_array axis edge query).
+//
+// Returns whether the ancestry actually landed. Both failure exits are silent by design
+// (a body that cannot be identified still solves, it just loses its ancestry), and the
+// caller MUST NOT record such a body as registered: the checkpoint pass would then skip
+// a body whose ancestry is in no snapshot at all. `extractBrepMetadata` fails exactly
+// this way, per body, while `tessellateBodies` may still succeed for the same body --
+// which is what gives the checkpoint pass something to recover from.
 function _registerBodyFaces(
   globalRepo: Repository,
   body: Body,
   deps: BuildDeps,
   extractCached?: MetaExtractor,
-): void {
-  if (body.shape == null) return
+): boolean {
+  if (body.shape == null) return false
   try {
     // Identify off the B-rep alone (no triangulation); fall back to the mesh
     // path when no metadata extractor is wired (pure non-OCC tests).
     const extract = extractCached ?? deps.extractBrepMetadata ?? deps.tessellateBodies
     const out = extract({ [body.id]: body }, globalRepo)[body.id]
-    if (!out) return
+    if (!out) return false
     registerBodyBrepFromMeta(globalRepo, body, out, deps)
+    return true
   } catch {
     // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
     // in Python (it logs a warning and continues).
+    return false
   }
 }
 
@@ -666,7 +683,16 @@ function _registerBodyFaces(
  *  registers a fresh shape handle and appends to `modified_by`, so this changes with
  *  it. Valid only within a build -- the clean-prefix restore mints new handles every
  *  solve -- which is all its two users (the metadata cache and the checkpoint
- *  registration skip) need. */
+ *  registration skip) need.
+ *
+ *  The blind spot, since both users are cache keys: a solver that rewrote a body's
+ *  `face_names` / `face_ancestry` / `edge_names` / `edge_ancestry` / `profile_queries`
+ *  WITHOUT minting a shape handle and WITHOUT appending to `modified_by` would produce
+ *  the same string for different ancestry. No solver does today -- every name-map write
+ *  in `features/` is paired with `resplitBody` (which always registers a fresh handle;
+ *  `HandleTable.register` never recycles ids) or a `modified_by` push -- but a name-map
+ *  write that lands and is then followed by a THROWN `resplitBody` reaches exactly that
+ *  state. The feature reports an exception in that case, so it is not silent. */
 export function bodyVersion(b: Body): string {
   return `${b.id}|${b.created_by}|${String(b.shape)}|${b.modified_by.length}`
 }
@@ -683,10 +709,12 @@ export function bodyVersion(b: Body): string {
  * element), while edges and vertices churn through `evictAncestryAndRegister` and mint
  * fresh eids for the same payloads.
  *
- * `registeredVersions` maps body id -> the version most recently registered into the
- * repo this checkpoint was snapshotted from. A body missing from it was never
- * registered this build (a null-shape body, or one whose registration threw), so it
- * still needs the pass.
+ * `registeredVersions` maps body id -> the version whose ancestry actually landed in the
+ * repo this checkpoint was snapshotted from. A body is missing from it when the loop
+ * never registered it (a null-shape body) or when its registration silently failed to
+ * land (`_registerBodyFaces` returned false), so it still needs the pass -- the
+ * checkpoint pass reads a different producer and may well succeed where the loop's did
+ * not.
  */
 export function bodiesNeedingCheckpointRegistration(
   bodyStoreSnapshot: Record<string, Body>,
@@ -935,8 +963,11 @@ export function build(
   // bodies count as registered without being touched this build: their ancestry arrived
   // with the restored snapshot above, which is exactly the state every checkpoint of this
   // build is snapshotted from.
+  // Keyed by body-store key, matching both the loop's writes and the consumer's reads.
+  // Identical to `body.id` for every body the kernel builds, but keying two sides of a
+  // lookup differently is the kind of thing that survives until it does not.
   const registeredVersions = new Map<string, string>()
-  for (const body of Object.values(bodyStore)) registeredVersions.set(body.id, bodyVersion(body))
+  for (const [bodyId, body] of Object.entries(bodyStore)) registeredVersions.set(bodyId, bodyVersion(body))
   // Per checkpoint, the map as it stood when that checkpoint was snapshotted. O(bodies)
   // per checkpoint, and build-local scaffolding only -- never part of the persisted
   // `FeatureCheckpoint`.
@@ -1004,15 +1035,24 @@ export function build(
 
     for (const [bodyId, body] of Object.entries(bodyStore)) {
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
-        _registerBodyFaces(globalRepo, body, deps, extractMetaCached)
+        // Only a registration that LANDED may be recorded: an identification failure is
+        // silent and per body, and the checkpoint pass reads a different producer, so
+        // recording a failure here would skip the one pass that could still recover it.
+        // Solid/extrusion ancestry is unconditional, so it survives either way.
+        const landed = _registerBodyFaces(globalRepo, body, deps, extractMetaCached)
         _registerSolidAncestry(globalRepo, body)
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
-        registeredVersions.set(bodyId, bodyVersion(body))
+        if (landed) registeredVersions.set(bodyId, bodyVersion(body))
       } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
-        // Body was modified; re-register faces so downstream features see updates.
-        _registerBodyFaces(globalRepo, body, deps, extractMetaCached)
-        registeredVersions.set(bodyId, bodyVersion(body))
+        // Body was modified; re-register faces so downstream features see updates. A
+        // failed re-registration must also drop the stale entry: the snapshot now holds
+        // the PREVIOUS version's ancestry, which is not what this checkpoint carries.
+        if (_registerBodyFaces(globalRepo, body, deps, extractMetaCached)) {
+          registeredVersions.set(bodyId, bodyVersion(body))
+        } else {
+          registeredVersions.delete(bodyId)
+        }
       }
     }
 
@@ -1064,9 +1104,12 @@ export function build(
   // that checkpoint's own repo snapshot. Usually that is no body at all -- the snapshot is
   // taken after the loop's registration pass, so it already carries the ancestry, and
   // re-registering it only churned eids and burned `_stableJson` per face per checkpoint.
-  // The remainder (a null-shape body, or one a solver mutated without appending to
-  // `modified_by`) still gets its pass here. Pure non-OCC tests wire no extractor, so the
-  // metadata read falls back to tessellateBodies.
+  // The remainder still gets its pass here: a null-shape body, a body whose shape handle
+  // moved (the `modified_by` check in the loop misses a body that changed without a push,
+  // `bodyVersion` does not), and a body whose loop-side identification failed -- that last
+  // one is why this pass is a recovery path and not just a fallback, since it reads a
+  // different producer. Pure non-OCC tests wire no extractor, so the metadata read falls
+  // back to tessellateBodies.
   for (const fid of Object.keys(newCheckpoints)) {
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]
