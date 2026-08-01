@@ -138,6 +138,12 @@ def _is_regex_start(text: str, i: int) -> bool:
     if j < 0:
         return True
     last = text[j]
+    if last in "+-":
+        k = j - 1
+        while k >= 0 and text[k] in " \t":
+            k -= 1
+        if k >= 0 and text[k] == last:
+            return False  # `++`/`--` are postfix, so `/` after them is division
     if last in _REGEX_OPENERS:
         return True
     if last.isalnum() or last == "_":
@@ -274,6 +280,10 @@ def scan_comments(text: str) -> list[Comment]:
                     j = n
                 block_end = j + 2
                 inner = text[start + 2:j]
+                k = start - 1
+                while k >= 0 and text[k] in " \t":
+                    k -= 1
+                jsx = k >= 0 and text[k] == "{"
                 comments.append(
                     Comment(
                         kind="block",
@@ -282,7 +292,7 @@ def scan_comments(text: str) -> list[Comment]:
                         text=inner,
                         trailing=bool(prefix.strip()),
                         gap=(len(prefix) - len(prefix.rstrip(" \t"))) if prefix.strip() else None,
-                        jsx=start > 0 and text[start - 1] == "{",
+                        jsx=jsx,
                         lines=inner.split("\n"),
                     )
                 )
@@ -307,11 +317,13 @@ def _dash_runs(text: str) -> list[int]:
     return runs
 
 
-def _banner_check(lines: list[str], start_line: int, errors: list[str], path: pathlib.Path) -> None:
+def _banner_check(lines: list[str], start_line: int, errors: list[str], path: pathlib.Path, kind: str) -> None:
     for idx, raw in enumerate(lines):
         body = raw.strip()
         if not body or len(body) < 3:
             continue
+        if kind == "block" and body.startswith("*"):
+            body = body[1:].strip()  # JSDoc-style ` * ----` continuation lines are still banners
         if all(ch in SEPARATORS for ch in body):
             errors.append(f"{path}:{start_line + idx}:1: banner - ASCII separator line, use a `---` box-drawing divider")
             continue
@@ -322,7 +334,7 @@ def _banner_check(lines: list[str], start_line: int, errors: list[str], path: pa
         while trailing < len(body) - leading and body[-1 - trailing] in SEPARATORS:
             trailing += 1
         middle = body[leading:len(body) - trailing]
-        if leading >= 2 and trailing >= 2 and middle.strip():
+        if leading >= 3 and trailing >= 3 and middle.strip():
             errors.append(f"{path}:{start_line + idx}:1: banner - ASCII divider, use a `---` box-drawing divider")
 
 
@@ -351,7 +363,7 @@ def _check_inline_spacing(path: pathlib.Path, text: str, comments: list[Comment]
 def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
-        _banner_check(c.lines, c.line, errors, path)
+        _banner_check(c.lines, c.line, errors, path, c.kind)
     return errors
 
 
@@ -359,8 +371,9 @@ def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> lis
 def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
-        if EM_DASH in c.text or EN_DASH in c.text:
-            errors.append(f"{path}:{c.line}:{c.col}: emdash - no em or en dashes in comments")
+        for idx, ln in enumerate(c.lines):
+            if EM_DASH in ln or EN_DASH in ln:
+                errors.append(f"{path}:{c.line + idx}:{c.col}: emdash - no em or en dashes in comments")
     return errors
 
 
@@ -378,6 +391,9 @@ def _check_flagpole(path: pathlib.Path, text: str, comments: list[Comment]) -> l
     errors: list[str] = []
     for c in comments:
         for idx, ln in enumerate(c.lines):
+            stripped = ln.strip()
+            if not stripped.startswith(BOX_DASH) or not stripped.endswith(BOX_DASH):
+                continue  # only divider-shaped lines are flagpoles
             bad = [r for r in _dash_runs(ln) if r != 3]
             if bad:
                 errors.append(f"{path}:{c.line + idx}:{c.col}: flagpole - flag-pole divider uses {bad} dashes, must be three per side")
@@ -398,6 +414,7 @@ def collect_files(folders: list[pathlib.Path], language: str, filters: list[str]
     includes = [f for f in filters if not f.startswith("!")]
     excludes = [f[1:] for f in filters if f.startswith("!")]
     files: list[pathlib.Path] = []
+    seen: set[str] = set()
     for folder in folders:
         if not folder.exists():
             raise SystemExit(f"error: {folder}: no such directory")
@@ -414,6 +431,9 @@ def collect_files(folders: list[pathlib.Path], language: str, filters: list[str]
                     continue
                 if any(fnmatch.fnmatch(rel, pat) for pat in excludes):
                     continue
+                if rel in seen:
+                    continue  # overlapping folder args would otherwise double-report
+                seen.add(rel)
                 files.append(path)
     return files
 
