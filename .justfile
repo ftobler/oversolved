@@ -47,6 +47,7 @@ frontend:
 [working-directory: "frontend"]
 frontend-lint:
     npm run lint
+    ../.venv/bin/python ../lint.py src
 
 [working-directory: "frontend"]
 frontend-test:
