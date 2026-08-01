@@ -67,7 +67,7 @@ describe.skipIf(!oc || !solveBytes)('brep ancestry build-level (real OCC + Rust 
   })
 
   it('cut body carries brep diff', () => {
-    /** After a cut, the affected body has brep_diff populated. */
+    // After a cut, the affected body has brep_diff populated.
     const r = h.run(cutFixture())
     expect(h.res(r, 'ex2').status).toBe('ok')
     const state = r._build_state!
@@ -78,7 +78,7 @@ describe.skipIf(!oc || !solveBytes)('brep ancestry build-level (real OCC + Rust 
   })
 
   it('new faces tagged with cutting feature in ancestry', () => {
-    /** Face ancestry: body_ex1 faces have created_by set to their creator. */
+    // Face ancestry: body_ex1 faces have created_by set to their creator.
     const r = h.run(cutFixture())
     expect(h.res(r, 'ex2').status).toBe('ok')
     const state = r._build_state!
@@ -100,7 +100,7 @@ describe.skipIf(!oc || !solveBytes)('brep ancestry build-level (real OCC + Rust 
   })
 
   it('cut body mesh has face_data reflecting new faces', () => {
-    /** After a cut, the mesh face_data has more entries than the base extrude. */
+    // After a cut, the mesh face_data has more entries than the base extrude.
     const rBase = h.run({ features: [rectSketch('sk1', 10, 10), extrudeSpec('sk1', 'ex1', { distance: 10 })] })
     const faceCountBase = (h.body(rBase, 'body_ex1').mesh as { face_data?: unknown[] } | undefined)?.face_data?.length ?? 0
 

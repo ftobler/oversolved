@@ -55,7 +55,7 @@ export interface TessMesh {
   face_data: FaceDatum[]
   triangle_to_face: number[]
   face_queries: string[]
-  /** Per-face boundary edge ancestry queries, aligned with `face_queries`. */
+  // Per-face boundary edge ancestry queries, aligned with `face_queries`.
   face_edge_queries?: string[][]
   is_fallback: boolean
 }
@@ -73,7 +73,7 @@ export interface RawFaceGeom {
   normal: Vec3
   surfaceType: SurfaceType
   surfaceFrame: SurfaceFrame | null
-  /** Cylinder axis direction; set for cylinderface only (circular-array axis picks). */
+  // Cylinder axis direction; set for cylinderface only (circular-array axis picks).
   axis?: Vec3
 }
 

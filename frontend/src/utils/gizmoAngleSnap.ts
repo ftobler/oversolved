@@ -18,10 +18,10 @@ const RAD_TO_DEG = 180 / Math.PI
 const QUARTER_TURN = Math.PI / 2
 
 export interface SwingSnap {
-  /** The swing to apply, in radians: the snapped step, or the input untouched. */
+  // The swing to apply, in radians: the snapped step, or the input untouched.
   angle: number
   snapped: boolean
-  /** Which multiple of SNAP_STEP_DEG was chosen. Meaningful only when snapped. */
+  // Which multiple of SNAP_STEP_DEG was chosen. Meaningful only when snapped.
   step: number
 }
 

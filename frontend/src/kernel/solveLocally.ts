@@ -308,11 +308,11 @@ export async function solveLocally(
 // ─── local STEP/STL export ───
 
 export interface LocalExportOptions {
-  /** Output format. */
+  // Output format.
   format: 'step' | 'stl'
-  /** Export this single body; omitted/null exports the whole assembly. */
+  // Export this single body; omitted/null exports the whole assembly.
   bodyId?: string | null
-  /** STL only: linear deflection knob from the export dialog. STEP ignores it. */
+  // STL only: linear deflection knob from the export dialog. STEP ignores it.
   tessellation?: number
 }
 

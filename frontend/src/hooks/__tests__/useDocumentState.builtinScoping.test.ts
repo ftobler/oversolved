@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-// ── Mock backend ──
+// ─── Mock backend ───
 const h = vi.hoisted(() => {
   const make = () => {
     let resolve!: (v: unknown) => void

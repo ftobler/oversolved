@@ -736,7 +736,7 @@ describe('solveAssembly', () => {
     expect(posed.point[2]).toBeCloseTo(3)  // the translation
     expect(posed.axis[0]).toBeCloseTo(0)
     expect(posed.axis[1]).toBeCloseTo(1)
-    expect(posed.axis[2]).toBeCloseTo(0)   // a direction takes no translation
+    expect(posed.axis[2]).toBeCloseTo(0)  // a direction takes no translation
     expect(posed.kind).toBe('plane')
     // The roll-capture frame: canonicalPerp of the LOCAL axis (x -> +z), then
     // rotated with the part. 90° about +Z leaves +z where it was.

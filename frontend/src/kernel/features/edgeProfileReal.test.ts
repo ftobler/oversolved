@@ -40,7 +40,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     }
   }
 
-  /** Ancestry queries for the four edges whose endpoints both lie at z == zPlane. */
+  // Ancestry queries for the four edges whose endpoints both lie at z == zPlane.
   function edgeLoopAtZ(
     table: HandleTable,
     body: Body,

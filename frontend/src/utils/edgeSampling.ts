@@ -98,9 +98,9 @@ export function sampleEdgeCurve(curve: EdgeCurve, resolution: number = DEFAULT_C
 }
 
 export interface IndexedCurveSegments {
-  /** Flat [x0,y0,z0, x1,y1,z1, ...] segment pairs for a THREE.LineSegments buffer. */
+  // Flat [x0,y0,z0, x1,y1,z1, ...] segment pairs for a THREE.LineSegments buffer.
   positions: Float32Array
-  /** Which curve each segment came from, so a pick on a segment names its edge. */
+  // Which curve each segment came from, so a pick on a segment names its edge.
   segmentToCurve: Uint32Array
 }
 

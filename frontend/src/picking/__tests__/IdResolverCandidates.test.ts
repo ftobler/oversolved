@@ -90,7 +90,7 @@ describe('resolvePixelWindowAll', () => {
 
   it('the singleton resolver is exactly the first candidate', () => {
     const buf = makeWindow(17, [
-      { x: 8, y: 8, id: faceA },   // nearest, but lowest-priority layer
+      { x: 8, y: 8, id: faceA },  // nearest, but lowest-priority layer
       { x: 12, y: 8, id: edgeA },
       { x: 14, y: 8, id: vertA },
     ])

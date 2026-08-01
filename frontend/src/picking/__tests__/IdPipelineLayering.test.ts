@@ -20,7 +20,7 @@ describe('IdPipeline layering', () => {
   it('declares the documented z-policy on each layer', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     const layers = p.getLayers()
-    expect(layers[0].zPolicy).toBe('clear-then-fresh')          // planeFace (behind)
+    expect(layers[0].zPolicy).toBe('clear-then-fresh')  // planeFace (behind)
     expect(layers[1].zPolicy).toBe('clear-then-fresh')         // face
     expect(layers[2].zPolicy).toBe('depth-test-against-prev')  // edge: reuse face depth
     expect(layers[3].zPolicy).toBe('depth-test-against-prev')   // vertex: preserves face depth for sketch surface

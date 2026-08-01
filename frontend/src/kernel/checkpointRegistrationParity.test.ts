@@ -112,12 +112,12 @@ const solve = (
 }
 
 interface HarnessOptions {
-  /** Body ids whose mesh comes back flagged as a fallback (no real B-rep behind it). */
+  // Body ids whose mesh comes back flagged as a fallback (no real B-rep behind it).
   fallbackBodies?: string[]
   /** Body ids the METADATA extractor drops while tessellation still succeeds, mimicking
    *  `extractBrepMetadata`'s per-body failure exit (it logs and omits the body). */
   metaOmits?: string[]
-  /** Body ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`. */
+  // Body ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`.
   queryless?: string[]
 }
 
@@ -365,7 +365,7 @@ describe('checkpoint registration cost', () => {
 })
 
 describe('fallback meshes', () => {
-  /** Ids of the face-ancestry elements a checkpoint carries for one body. */
+  // Ids of the face-ancestry elements a checkpoint carries for one body.
   function faceElements(state: BuildState, fid: string, bodyId: string): string[] {
     const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
       .elements as Record<string, Record<string, unknown>>
@@ -391,7 +391,7 @@ describe('fallback meshes', () => {
 })
 
 describe('a body the solve loop could not identify', () => {
-  /** Ids of the ancestry elements a checkpoint carries for one body, by payload field. */
+  // Ids of the ancestry elements a checkpoint carries for one body, by payload field.
   function elementsOf(state: BuildState, fid: string, bodyId: string, field: string): string[] {
     const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
       .elements as Record<string, Record<string, unknown>>

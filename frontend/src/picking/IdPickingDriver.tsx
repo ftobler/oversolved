@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
 import { setLivePipeline } from './IdPipelineContext'
 interface IdPickingDriverProps {
-  /** External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync. */
+  // External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync.
   onReady?: (pipeline: IdPipeline) => void
 }
 

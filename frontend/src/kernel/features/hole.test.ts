@@ -50,7 +50,7 @@ describe('solveHole guard paths', () => {
   })
 
   it('throws when sketch has no point entities', () => {
-    /** Hole referenced sketch with no point entities raises. */
+    // Hole referenced sketch with no point entities raises.
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     expect(() =>
@@ -64,7 +64,7 @@ describe('solveHole guard paths', () => {
   })
 
   it('throws when target body does not exist', () => {
-    /** Non-existent target body raises. */
+    // Non-existent target body raises.
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     expect(() =>

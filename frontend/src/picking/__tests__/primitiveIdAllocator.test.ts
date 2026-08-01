@@ -188,7 +188,7 @@ describe('id layers share one allocator', () => {
   })
   afterEach(() => { warn.mockRestore() })
 
-  /** Two triangles, face 0 and face 1, sharing whatever queries are passed. */
+  // Two triangles, face 0 and face 1, sharing whatever queries are passed.
   function registerTwoFaces(layer: FaceIdLayer, faceQueries: string[]): void {
     layer.registerBody({
       bodyKey: BODY,
@@ -201,7 +201,7 @@ describe('id layers share one allocator', () => {
     })
   }
 
-  /** One triangle, one face, under an explicit body key. */
+  // One triangle, one face, under an explicit body key.
   function registerOneFace(layer: FaceIdLayer, bodyKey: string, query: string): void {
     layer.registerBody({
       bodyKey,

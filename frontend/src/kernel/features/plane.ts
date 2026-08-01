@@ -20,7 +20,7 @@ interface PlaneResult {
   plane: Frame3D
 }
 
-// ── Vector helpers ───────────────────────────────────────────────────────
+// ─── Vector helpers ───
 
 function norm(v: number[]): number {
   return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
@@ -96,7 +96,7 @@ function planeAxes(plane: Dict): { normal: Vec3; origin: Vec3; xAxis: Vec3; yAxi
   }
 }
 
-// ── Mode functions ───────────────────────────────────────────────────────
+// ─── Mode functions ───
 
 function planeThreePoint(def: Dict, repo: Repository): Frame3D {
   const r1 = repo.query(def.p1 as string) as Dict | null
@@ -238,7 +238,7 @@ function planeOffset(def: Dict, repo: Repository): Frame3D {
   return frame(origin, xAxis, yAxis, normal)
 }
 
-// ── Dispatch ─────────────────────────────────────────────────────────────
+// ─── Dispatch ───
 
 /** Solve a plane feature (mirrors `_solve_plane`). */
 export function solvePlane(

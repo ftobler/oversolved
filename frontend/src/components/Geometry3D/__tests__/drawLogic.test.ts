@@ -161,8 +161,8 @@ describe('computeDrawClick - ellipse tool', () => {
       expect(m.kind).toBe('ellipse')
       expect(m.params[0]).toBeCloseTo(0)
       expect(m.params[1]).toBeCloseTo(0)
-      expect(m.params[2]).toBeCloseTo(5)            // a = hypot(3,4)
-      expect(m.params[3]).toBeCloseTo(5 * ELLIPSE_MINOR_RATIO)    // b = a * golden ratio
+      expect(m.params[2]).toBeCloseTo(5)  // a = hypot(3,4)
+      expect(m.params[3]).toBeCloseTo(5 * ELLIPSE_MINOR_RATIO)  // b = a * golden ratio
       expect(m.params[4]).toBeCloseTo(Math.atan2(4, 3) * (180 / Math.PI))  // theta deg
     }
     expect(result.clearTool).toBe(true)

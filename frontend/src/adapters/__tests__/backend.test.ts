@@ -13,7 +13,7 @@ describe('backend capability bundle', () => {
   it('HTTP build wires every server-facing capability + a cloud domain', () => {
     const bundle = createBackend('http', fakeLocal, fakeCloud, fakeLocalTrash)
 
-    expect(bundle.documents).toBe(fakeLocal)      // local IndexedDB home
+    expect(bundle.documents).toBe(fakeLocal)  // local IndexedDB home
     expect(bundle.cloudDocuments).toBe(fakeCloud)  // additive cloud domain
     expect(bundle.telemetry).not.toBeNull()  // POST sink
     expect(bundle.sharing).not.toBeNull()     // user-to-user handover
@@ -30,7 +30,7 @@ describe('backend capability bundle', () => {
     // No server -> these are structurally absent, not broken branches.
     expect(bundle.cloudDocuments).toBeNull()
     expect(bundle.sharing).toBeNull()
-    expect(bundle.trash).toBeNull()           // no server-side trash
+    expect(bundle.trash).toBeNull()  // no server-side trash
     // The local trash survives offline: it is the local soft delete's other half.
     expect(bundle.localTrash).toBe(fakeLocalTrash)
   })

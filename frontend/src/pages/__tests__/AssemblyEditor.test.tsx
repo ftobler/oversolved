@@ -360,7 +360,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     useAssemblyStore.getState().setSelectedMateId(null)
   })
 
-  /** Stand in for a solve that has published the bundle's entity → anchor join. */
+  // Stand in for a solve that has published the bundle's entity → anchor join.
   function publishPickLookup() {
     act(() => {
       useAssemblyStore.getState().setSolveResult({
@@ -444,7 +444,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
   })
 
-  /** Clicking the armed chip disarms it, leaving the editor open. */
+  // Clicking the armed chip disarms it, leaving the editor open.
   function disarm() {
     fireEvent.click(screen.getAllByText('Pick a reference')[0])
   }

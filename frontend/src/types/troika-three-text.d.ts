@@ -11,7 +11,7 @@ declare module 'troika-three-text' {
   export function preloadFont(options: PreloadFontOptions, callback: () => void): void
 
   export interface TextBuilderConfig {
-    /** Font used when a <Text> names none. Null hands resolution to a CDN. */
+    // Font used when a <Text> names none. Null hands resolution to a CDN.
     defaultFontURL?: string | null
   }
   export function configureTextBuilder(config: TextBuilderConfig): void

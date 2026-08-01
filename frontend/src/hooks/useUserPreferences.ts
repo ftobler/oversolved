@@ -21,7 +21,7 @@ export function useUserPreferences(signedIn = true) {
     if (!cloudLoad) return  // guest or synchronous store: defaults already stand
     prefs.load()
       .then(setPreferences)
-      .catch(() => { /* fall back to defaults */ })
+      .catch(() => {  /* fall back to defaults */ })
       .finally(() => setLoading(false))
   }, [prefs, cloudLoad])
 

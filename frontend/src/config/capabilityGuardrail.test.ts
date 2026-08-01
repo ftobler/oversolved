@@ -42,9 +42,9 @@ const ALLOWED_HOME_PREFIXES = [
 // the shrink-only baselines below, this list is permanent by design. Keep it
 // tight: a view that ALSO ships on static (Part, Documents) is debt, not a seam.
 const SANCTIONED_SEAMS = [
-  'App.tsx',                       // route wall / redirects (auth gatekeeping)
+  'App.tsx',  // route wall / redirects (auth gatekeeping)
   'components/layout/AppHeader.tsx',  // sign-in affordance vs username + logout
-  'contexts/AuthContext.tsx',      // the auth flow itself + /api/auth
+  'contexts/AuthContext.tsx',  // the auth flow itself + /api/auth
   'pages/AdminPeriodicTasks.tsx',
   'pages/AdminUsers.tsx',
   'pages/Backup.tsx',

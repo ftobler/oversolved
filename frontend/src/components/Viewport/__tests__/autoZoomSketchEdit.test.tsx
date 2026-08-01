@@ -200,7 +200,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
       ref.current?.autoZoomToFit()
     })
 
-    // Camera must NOT have zoomed — autoZoomToFit should check
+    // Camera must NOT have zoomed -- autoZoomToFit should check
     // activeSketchFeatureId internally.
     expect(testCamera.zoom).toBe(999)
   })

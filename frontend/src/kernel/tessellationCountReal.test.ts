@@ -109,7 +109,7 @@ class CountingHarness {
                 mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
                 vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
               }
-            } catch { /* non-fatal */ }
+            } catch {  /* non-fatal */ }
           }
           return out
         },

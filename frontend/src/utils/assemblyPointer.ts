@@ -35,16 +35,16 @@ import type { Vec3 } from '@/utils/transform3d'
 /** The subset of assemblyStore the adapter drives. */
 export interface AssemblyPointerStore {
   beginPartManipulation: (handle: string) => boolean
-  /** A body grab: begins a solver-driven session, capturing the grab point. */
+  // A body grab: begins a solver-driven session, capturing the grab point.
   beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
-  /** Where the grab point is being pulled to, in world space. */
+  // Where the grab point is being pulled to, in world space.
   setDragTarget: (target: Vec3) => void
   dragPartTranslate: (delta: Vec3) => void
   rotatePartGizmo: (axis: Vec3, angle: number, pivot?: Vec3) => void
   endPartManipulation: () => void
   cancelPartManipulation: () => void
   setSelectedPartHandle: (handle: string | null) => void
-  /** Ending a session clears this store-side; the adapter only ever sets it. */
+  // Ending a session clears this store-side; the adapter only ever sets it.
   setGizmoDrag: (drag: GizmoDragState | null) => void
 }
 
@@ -55,9 +55,9 @@ export type GestureSource = 'body' | 'gizmo'
 
 /** What the finished gesture was, for the caller to tell a click from a drag. */
 export interface GestureOutcome {
-  /** null when pointer-down opened no session at all. */
+  // null when pointer-down opened no session at all.
   source: GestureSource | null
-  /** The session actually moved the part, so a re-solve is owed. */
+  // The session actually moved the part, so a re-solve is owed.
   moved: boolean
 }
 
@@ -126,7 +126,7 @@ type Gesture =
     }
 
 export interface AssemblyPointerAdapter {
-  /** Selects the part; opens a drag session unless it is fixed. */
+  // Selects the part; opens a drag session unless it is fixed.
   onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3) => boolean
   /**
    * `axis` is the world slide/swing axis, or for `plane` the plane's normal.
@@ -152,7 +152,7 @@ export interface AssemblyPointerAdapter {
    * disarming a feature the user asked for.
    */
   onPointerMove: (ray: Ray, gizmoWorldScale?: number) => void
-  /** Commits the session (assemblyStore re-solves once) if one is open. */
+  // Commits the session (assemblyStore re-solves once) if one is open.
   onPointerUp: () => GestureOutcome
   cancel: () => void
   isActive: () => boolean

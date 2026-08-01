@@ -87,7 +87,7 @@ function runBuild(spec: Record<string, unknown>) {
               mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
               vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
             }
-          } catch { /* non-fatal */ }
+          } catch {  /* non-fatal */ }
         }
         return out
       },
@@ -192,7 +192,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face UUIDs are registered in repo byUuid after extrude', () => {
-    /** Face (u_ prefixed) UUIDs appear in byUuid in the repo snapshot. */
+    // Face (u_ prefixed) UUIDs appear in byUuid in the repo snapshot.
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -202,7 +202,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('edge UUIDs are registered in repo byUuid after extrude', () => {
-    /** Edge (e_ prefixed) UUIDs appear in byUuid. */
+    // Edge (e_ prefixed) UUIDs appear in byUuid.
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -212,7 +212,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('vertex queries are registered in the repo after extrude', () => {
-    /** Vertex elements exist in the repo and carry vertex_queries. */
+    // Vertex elements exist in the repo and carry vertex_queries.
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const bodyResult = (r.bodies as Record<string, { vertex_queries?: string[] }>)['body_ex1']
     const vertexQueries = bodyResult?.vertex_queries ?? []
@@ -220,7 +220,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face registrations have at least 3 structural tags', () => {
-    /** Each face registration key must have >=3 structural tags (index, feature, body). */
+    // Each face registration key must have >=3 structural tags (index, feature, body).
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
@@ -240,7 +240,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('old 3-tag query still resolves against repo', () => {
-    /** Legacy queries with just index-tag + feature + body still resolve. */
+    // Legacy queries with just index-tag + feature + body still resolve.
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const mesh = (r.bodies as Record<string, { mesh?: { face_queries?: string[] } }>)['body_ex1']?.mesh
     const faceQueries = mesh?.face_queries ?? []
@@ -263,7 +263,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face UUIDs are stable across identical builds', () => {
-    /** Same spec built twice produces identical face UUIDs in byUuid. */
+    // Same spec built twice produces identical face UUIDs in byUuid.
     const r1 = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const r2 = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp1 = lastCheckpoint(r1)
@@ -278,7 +278,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('some face UUIDs survive fillet unchanged', () => {
-    /** Fillet introduces new faces but unchanged ones keep their UUID. */
+    // Fillet introduces new faces but unchanged ones keep their UUID.
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)
@@ -344,7 +344,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   })
 
   it('face payload includes created_by field', () => {
-    /** Every face element in the repo must have created_by set. */
+    // Every face element in the repo must have created_by set.
     const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()

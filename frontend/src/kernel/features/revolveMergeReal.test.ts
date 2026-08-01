@@ -88,7 +88,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('add fail with island shape when merge_target set', () => {
-    /** Non-overlapping revolve with merge_target fails with island error. */
+    // Non-overlapping revolve with merge_target fails with island error.
     const doc = bodyA()
     doc.features.push(rectSketchAt('sk2', 2, 1, 20))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))

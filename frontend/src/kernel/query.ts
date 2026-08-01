@@ -362,7 +362,7 @@ export class Repository {
     this._dirtyUuids.clear()
   }
 
-  /** Prune only the uuid buckets touched since the last drain. */
+  // Prune only the uuid buckets touched since the last drain.
   prunePendingUuids(): void {
     for (const u of this._dirtyUuids) {
       const eids = this.byUuid.get(u)
@@ -686,7 +686,7 @@ export class Repository {
     return this.elements.get(candidateIds[0]) ?? null
   }
 
-  /** All elements whose ancestor set is a superset of the query's IDs. */
+  // All elements whose ancestor set is a superset of the query's IDs.
   queryAll(queryStr: string, currentFeatureId: string | null = null): unknown[] {
     if (!queryStr || queryStr[0] !== "?") return []
     const orderFilter = this.orderFilter(currentFeatureId)

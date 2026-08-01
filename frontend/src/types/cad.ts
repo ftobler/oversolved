@@ -145,7 +145,7 @@ export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
   area?: number
-  surface_type?: string     // eg 'flatface' / 'cylinderface' / 'coneface' / ...
+  surface_type?: string  // eg 'flatface' / 'cylinderface' / 'coneface' / ...
   // Additive (multi-part-assembly-postfix Stage A): a curved face's analytic
   // rotation axis + a point on it, distinct from `normal` (radial on a
   // cylinder/cone). Absent for a plane and for anything read before this
@@ -163,7 +163,7 @@ export interface Mesh3D {
   face_data?: FaceData[]
   triangle_to_face?: number[]
   face_queries?: string[]
-  /** Per-face boundary edge ancestry queries, aligned with `face_queries`. */
+  // Per-face boundary edge ancestry queries, aligned with `face_queries`.
   face_edge_queries?: string[][]
 }
 

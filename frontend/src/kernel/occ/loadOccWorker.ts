@@ -29,7 +29,7 @@ const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> =
     const blobUrl = URL.createObjectURL(blob)
     let factory: ((opts: unknown) => Promise<OccModule>) | undefined
     try {
-      const mod = (await import(/* @vite-ignore */ blobUrl)) as {
+      const mod = (await import(  /* @vite-ignore */ blobUrl)) as {
         default?: (opts: unknown) => Promise<OccModule>
       }
       factory = mod.default

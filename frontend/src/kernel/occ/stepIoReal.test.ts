@@ -305,7 +305,7 @@ describe.skipIf(!oc)('shapeToStlBytes (real OCC)', () => {
   })
 
   it('tessellation deflection affects triangle count', () => {
-    /** A finer deflection (smaller value) produces more triangles. */
+    // A finer deflection (smaller value) produces more triangles.
     const scope = new DisposeScope()
     try {
       const box = scope.track(makeBox(occ, scope, 10, 10, 10))

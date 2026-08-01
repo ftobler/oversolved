@@ -32,7 +32,7 @@ export interface Body {
   id: string
   created_by: string
   modified_by: string[]
-  /** OCC handle (opaque) or null for bodies without geometry. */
+  // OCC handle (opaque) or null for bodies without geometry.
   shape: OccHandle | null
   sketch_id: string
   brep_diff: BrepDiff | null

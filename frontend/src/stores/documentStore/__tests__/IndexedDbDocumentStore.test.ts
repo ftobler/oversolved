@@ -109,7 +109,7 @@ describe('IndexedDbDocumentStore', () => {
       const [s] = await store.list()
       expect(s.name).toBe('Renamed')
       expect(s.meta?.rev).toBe(2)
-      expect(s.meta?.dirty).toBe(true)          // a rename is a pushable change
+      expect(s.meta?.dirty).toBe(true)  // a rename is a pushable change
       expect(s.meta?.baseRev).toBe(1)
     })
   })

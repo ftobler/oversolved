@@ -11,7 +11,7 @@ import { BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjectio
 
 export interface DragMoveResult {
   snapTarget: SnapTarget | null
-  /** Effective position for this frame (snap > raw cursor). */
+  // Effective position for this frame (snap > raw cursor).
   effectivePosition: [number, number]
 }
 

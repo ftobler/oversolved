@@ -581,7 +581,7 @@ const makeTrackerDeps = () => makeDeps({
 
 describe('rollback transitions', () => {
   it('feature_order always contains the full feature list', () => {
-    /** BuildState.feature_order includes all features regardless of rollback_position. */
+    // BuildState.feature_order includes all features regardless of rollback_position.
     const features = [
       { id: 'sk1', kind: 'sketch' },
       { id: 'sk2', kind: 'sketch' },
@@ -594,7 +594,7 @@ describe('rollback transitions', () => {
   })
 
   it('only solves features up to rollback_position', () => {
-    /** rollback_position=2 on a 4-feature stack only solves the first two. */
+    // rollback_position=2 on a 4-feature stack only solves the first two.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -612,7 +612,7 @@ describe('rollback transitions', () => {
   })
 
   it('decreasing rollback reuses checkpoints for active features', () => {
-    /** Decreasing rollback from 3 to 2 reuses checkpoints for features before the cut. */
+    // Decreasing rollback from 3 to 2 reuses checkpoints for features before the cut.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -632,7 +632,7 @@ describe('rollback transitions', () => {
   })
 
   it('increasing rollback solves newly included features', () => {
-    /** Increasing rollback from 2 to 3 solves the newly included feature. */
+    // Increasing rollback from 2 to 3 solves the newly included feature.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -675,7 +675,7 @@ describe('rollback transitions', () => {
   })
 
   it('full build after partial rollback reuses all checkpoints', () => {
-    /** After a rollback=2 build, solving the full stack reuses checkpoints for sk1 and ex1. */
+    // After a rollback=2 build, solving the full stack reuses checkpoints for sk1 and ex1.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -697,7 +697,7 @@ describe('rollback transitions', () => {
   })
 
   it('same rollback position twice produces identical results', () => {
-    /** Solving at the same rollback position twice is stable. */
+    // Solving at the same rollback position twice is stable.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -712,7 +712,7 @@ describe('rollback transitions', () => {
   })
 
   it('undo/redo oscillation reuses checkpoints correctly each way', () => {
-    /** Simulate undo/redo: rollback 3->2->3 reuses checkpoints correctly each way. */
+    // Simulate undo/redo: rollback 3->2->3 reuses checkpoints correctly each way.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -759,7 +759,7 @@ describe('pickBoundary edge cases', () => {
 
 describe('repo serialization', () => {
   it('repoFromSnapshot deduplicates elements with identical payloads', () => {
-    /** Two elements with identical payloads under the same ancestral key get collapsed. */
+    // Two elements with identical payloads under the same ancestral key get collapsed.
     const payload = { type: 'flatface', body_id: 'b1' }
     const key = canonical(['@ex1face0', '@ex1'])
     const snapshot = {
@@ -776,7 +776,7 @@ describe('repo serialization', () => {
 
 describe('robustness', () => {
   it('features without id do not crash the build', () => {
-    /** Features missing the 'id' key must not crash with KeyError. */
+    // Features missing the 'id' key must not crash with KeyError.
     const r = build({ features: [{}] }, {}, makeDeps())
     expect(r.result).toBeDefined()
   })
@@ -796,7 +796,7 @@ describe('clean prefix reuse', () => {
   })
 
   it('unchanged feature list reuses all checkpoints', () => {
-    /** [sk1, sk2] -> [sk1, sk2] unchanged: all checkpoints are reused from cache. */
+    // [sk1, sk2] -> [sk1, sk2] unchanged: all checkpoints are reused from cache.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },
@@ -832,7 +832,7 @@ describe('edge cases', () => {
   })
 
   it('corrupted checkpoint missing body_id does not crash rebuild', () => {
-    /** Missing body_id in body_store_snapshot should not crash. */
+    // Missing body_id in body_store_snapshot should not crash.
     const deps = makeTrackerDeps()
     const features = [
       { id: 'sk1', kind: 'sketch' },

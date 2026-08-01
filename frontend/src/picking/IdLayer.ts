@@ -23,9 +23,9 @@ export interface IdLayer {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
-  /** Scene graph drawn by the pipeline into the ID render target. */
+  // Scene graph drawn by the pipeline into the ID render target.
   readonly scene: THREE.Scene
-  /** True when the active tool excludes this layer entirely. */
+  // True when the active tool excludes this layer entirely.
   inertWhen?: () => boolean
   /**
    * Optional pre-render hook. The pipeline calls this with the current
@@ -33,7 +33,7 @@ export interface IdLayer {
    * shader uniforms (screen-space fattening, depth bias).
    */
   onBeforeRender?(width: number, height: number): void
-  /** Dispose all GPU resources owned by the layer. */
+  // Dispose all GPU resources owned by the layer.
   dispose(): void
 }
 
@@ -68,10 +68,10 @@ const _warnedDuplicates = new Set<string>()
 export class PrimitiveIdAllocator {
   private readonly registry: IdRegistry
   private readonly layerName: string
-  /** Plural primitive name for the diagnostic, e.g. "faces". */
+  // Plural primitive name for the diagnostic, e.g. "faces".
   private readonly plural: string
   private readonly bodyKey: string
-  /** See the `perPrimitivePickKeys` doc on each layer's registration type. */
+  // See the `perPrimitivePickKeys` doc on each layer's registration type.
   private readonly perPrimitive: boolean | undefined
 
   private ids = new Set<number>()
@@ -183,7 +183,7 @@ export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> imp
 
   protected registry: IdRegistry
   protected bodies = new Map<string, IdLayerBodyRecord<M>>()
-  /** Plural name of the primitive this layer draws, used in dev diagnostics. */
+  // Plural name of the primitive this layer draws, used in dev diagnostics.
   protected abstract readonly primitiveNounPlural: string
   constructor(registry: IdRegistry) { this.registry = registry }
 
@@ -196,7 +196,7 @@ export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> imp
     this.bodies.delete(bodyKey)
   }
 
-  /** Test helper: number of registered bodies. */
+  // Test helper: number of registered bodies.
   bodyCount(): number { return this.bodies.size }
 
   /** Drop every registered body's GPU resources; call from a subclass `dispose`

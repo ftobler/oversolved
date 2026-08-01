@@ -20,7 +20,7 @@ import { createTrashAdapter, type TrashAdapter } from './trash'
 import { createPreferencesAdapter, type PreferencesAdapter } from './preferences'
 
 export interface BackendBundle {
-  documents: DocumentStore            // the LOCAL home library: IndexedDB on BOTH builds (doc-domain-move)
+  documents: DocumentStore  // the LOCAL home library: IndexedDB on BOTH builds (doc-domain-move)
   cloudDocuments: DocumentStore | null  // the additive CLOUD domain; null without a server
   telemetry: BugReportSink            // always present (POST with a server, file download without)
   preferences: PreferencesAdapter     // always present (per-user on the server, localStorage without)

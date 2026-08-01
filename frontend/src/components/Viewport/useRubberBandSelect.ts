@@ -12,14 +12,14 @@ interface RubberBandRect {
   y: number
   w: number
   h: number
-  /** Left-to-right drag: entity must be fully enclosed. Right-to-left: any pixel touch. */
+  // Left-to-right drag: entity must be fully enclosed. Right-to-left: any pixel touch.
   mode: 'window' | 'crossing'
 }
 
 export interface RubberBandState {
-  /** True when a box drag is in progress. */
+  // True when a box drag is in progress.
   dragging: boolean
-  /** The rectangle in viewport-relative pixels (e.g. left/top relative to the canvas). */
+  // The rectangle in viewport-relative pixels (e.g. left/top relative to the canvas).
   rect: RubberBandRect | null
   /** Ref-backed flag, true while a rubberband drag is active. Use in event handlers
    *  where React state may not yet be committed. */
@@ -37,11 +37,11 @@ export function useRubberBandSelect(
   glRef: React.RefObject<THREE.WebGLRenderer | null>,
 ): {
   state: RubberBandState
-  /** Call on the root container's onPointerDown. Returns true if the box drag consumed the event. */
+  // Call on the root container's onPointerDown. Returns true if the box drag consumed the event.
   onPointerDown: (e: React.PointerEvent, idBufferHitExists: boolean) => boolean
-  /** Call on the root container's onPointerMove. */
+  // Call on the root container's onPointerMove.
   onPointerMove: (e: React.PointerEvent) => void
-  /** Call on the root container's onPointerUp. Commits selection to the store. */
+  // Call on the root container's onPointerUp. Commits selection to the store.
   onPointerUp: () => void
 } {
   const [rect, setRect] = useState<RubberBandRect | null>(null)

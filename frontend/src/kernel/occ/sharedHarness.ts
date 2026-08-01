@@ -79,7 +79,7 @@ export class SharedHarness {
                 vertex_queries: vertexResult.vertex_queries,
                 vertex_uuids: vertexResult.vertex_uuids,
               }
-            } catch { /* non-fatal */ }
+            } catch {  /* non-fatal */ }
           }
           return out
         },

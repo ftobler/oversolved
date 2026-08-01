@@ -50,7 +50,7 @@ export function Wrapper({ children }: { children: ReactNode }) {
 const EMPTY_PART_YAML = 'version: 1\nkind: part\nfeatures: []\n'
 
 interface PartDocFetchOptions {
-  /** Raw YAML served as the document body. */
+  // Raw YAML served as the document body.
   content?: string
   permission?: string
   name?: string

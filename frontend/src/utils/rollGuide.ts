@@ -22,9 +22,9 @@ import type { Vec3 } from '@/utils/transform3d'
 
 export interface RollGuide {
   point: Vec3
-  /** World-space polyline from zero roll to `angleDeg`, inclusive of both ends. */
+  // World-space polyline from zero roll to `angleDeg`, inclusive of both ends.
   arc: Vec3[]
-  /** The arc's far end -- where a guide arrowhead would sit. */
+  // The arc's far end -- where a guide arrowhead would sit.
   tip: Vec3
 }
 

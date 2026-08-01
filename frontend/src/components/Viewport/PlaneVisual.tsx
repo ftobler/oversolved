@@ -90,8 +90,10 @@ const STATE_STYLES: Record<PlaneState, { fillColor: string; fillOpacity: number;
 interface PlaneSurfaceProps {
   size: number
   state?: PlaneState
-  /** @internal */ borderWidth?: never
-  /** @internal */ borderOpacity?: never
+  // @internal
+  borderWidth?: never
+  // @internal
+  borderOpacity?: never
   hideMesh?: boolean
   onPointerOver?: (e: ThreeEvent<PointerEvent>) => void
   onPointerOut?: () => void

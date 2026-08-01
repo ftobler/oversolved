@@ -35,7 +35,7 @@ import { solvePlane } from './features/plane'
 import { solveVariable } from './features/variable'
 import { evalFeatureParams, EXPR_FIELDS_BY_KIND } from './evalExpr'
 
-// ── Ported kind set ──────────────────────────────────────────────────────
+// ─── Ported kind set ───
 
 /** Feature kinds that have a TS/WASM solver. */
 export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
@@ -62,7 +62,7 @@ export const UNPORTED_KINDS = new Set([
   'origin',
 ])
 
-// ── Per-doc gate ─────────────────────────────────────────────────────────
+// ─── Per-doc gate ───
 
 /** Return true when every feature in `features` has a ported TS solver. */
 export function isDocFullyPorted(features: Array<{ kind?: unknown }>): boolean {
@@ -87,7 +87,7 @@ export function unportedKinds(features: Array<{ kind?: unknown }>): Set<string> 
   return missing
 }
 
-// ── Kind → solver dispatch ───────────────────────────────────────────────
+// ─── Kind → solver dispatch ───
 
 type LeafSolver = (
   oc: OccModule,
@@ -131,7 +131,7 @@ export function getSolver(kind: string): LeafSolver | null {
   return KIND_SOLVER[kind] ?? null
 }
 
-// ── Expression resolution ────────────────────────────────────────────────
+// ─── Expression resolution ───
 
 /**
  * Where each kind's expression-capable params live. Most kinds nest them under
@@ -192,7 +192,7 @@ export function resolveFeatureExpressions(
   return { feature: copy }
 }
 
-// ── Builder adapter ──────────────────────────────────────────────────────
+// ─── Builder adapter ───
 
 /**
  * Create a ``FeatureSolver`` adapter that dispatches per-feature-kind to

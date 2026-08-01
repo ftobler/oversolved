@@ -35,11 +35,11 @@ import { setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
 
 interface UseWasmDragSolveInput {
   featureId: string
-  /** Full feature definition; the drag context is lowered from it. */
+  // Full feature definition; the drag context is lowered from it.
   featureDef?: PartFeature
-  /** Active drag state; null means no drag in progress. */
+  // Active drag state; null means no drag in progress.
   drag: DragState | null
-  /** True when a drag is active on THIS feature. */
+  // True when a drag is active on THIS feature.
   isDraggingThis: boolean
   /** Document origin (0,0,0) in this sketch's local 2D frame, so a
    *  `@builtin_origin` coincident pins to the document origin during the drag
@@ -49,7 +49,7 @@ interface UseWasmDragSolveInput {
 }
 
 interface WasmDragSolveResult {
-  /** The WASM-solved preview, or null before the first frame lands. */
+  // The WASM-solved preview, or null before the first frame lands.
   sketch: Sketch | null
   /** True when the WASM path owns this drag (context built + solver loaded).
     *  The caller must NOT show a fallback preview then -- a one-frame stale preview that

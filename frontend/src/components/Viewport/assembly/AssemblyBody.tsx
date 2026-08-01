@@ -30,7 +30,7 @@ interface AssemblyBodyProps {
   item: BodyRenderItem
   curves: EdgeCurve[]
   selected: boolean
-  /** A mate reference slot is armed, so a click aims rather than grabs. */
+  // A mate reference slot is armed, so a click aims rather than grabs.
   aiming: boolean
   onGrab: (point: Vec3, event: ThreeEvent<PointerEvent>) => void
 }

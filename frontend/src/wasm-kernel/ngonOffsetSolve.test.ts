@@ -125,7 +125,7 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
     const solved = solveFeature(doc)
     const src = solved['src']
     const dst = solved[dstId]
-    expect(Math.abs(cross(src, dst))).toBeLessThan(1e-1)         // parallel
+    expect(Math.abs(cross(src, dst))).toBeLessThan(1e-1)  // parallel
     expect(perpDistance(src, [dst[0], dst[1]])).toBeCloseTo(5, 2)  // +5 on the +normal side
   })
 

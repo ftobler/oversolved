@@ -161,7 +161,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
                 profileQueries: body.profile_queries ?? [],
               })
               out[body.id] = { mesh, edges: [], edge_queries: [] }
-            } catch { /* non-fatal */ }
+            } catch {  /* non-fatal */ }
           }
           return out
         },
@@ -187,7 +187,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   }
 
   it('basic sweep produces a valid body with mesh', () => {
-    /** A rectangle profile swept along a straight path produces a valid body. */
+    // A rectangle profile swept along a straight path produces a valid body.
     const result = run({
       features: [
         rectSketch('prof', 2, 3, '@builtin_plane_front'),
@@ -231,7 +231,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   })
 
   it('polyline path sweeps without error', () => {
-    /** An L-shaped two-segment path sweeps without error. */
+    // An L-shaped two-segment path sweeps without error.
     const result = run({
       features: [
         rectSketch('prof', 1, 1, '@builtin_plane_front'),
@@ -312,7 +312,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   })
 
   it('cut sweep removes volume from existing body', () => {
-    /** A cut sweep subtracts material from an existing body. */
+    // A cut sweep subtracts material from an existing body.
     const result = run({
       features: [
         rectSketch('base', 6, 6, '@builtin_plane_front'),

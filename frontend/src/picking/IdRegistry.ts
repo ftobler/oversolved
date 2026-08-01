@@ -32,7 +32,7 @@ export class IdRegistry {
   // which two unrelated entities were handed it and cross-selected. Insertion order
   // is preserved, so recycling order is unchanged apart from the dropped repeats.
   private pendingFree = new Set<number>()
-  private freeList: number[] = []     // eligible for reuse now
+  private freeList: number[] = []  // eligible for reuse now
 
   private composeKey(layer: string, entityKey: string): string {
     return layer + '\u0000' + entityKey
@@ -78,7 +78,7 @@ export class IdRegistry {
     return this.byKey.get(this.composeKey(layer, entityKey))
   }
 
-  /** Promote pending frees into the reusable pool. Called once per ID-buffer render. */
+  // Promote pending frees into the reusable pool. Called once per ID-buffer render.
   bumpCycle(): void {
     if (this.pendingFree.size === 0) return
     for (const id of this.pendingFree) {
@@ -88,7 +88,7 @@ export class IdRegistry {
     this.pendingFree.clear()
   }
 
-  /** Number of live entries (entries pending free are not counted). */
+  // Number of live entries (entries pending free are not counted).
   size(): number {
     return this.byKey.size
   }

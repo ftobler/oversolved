@@ -12,7 +12,7 @@ export interface DrawSnapState {
   hoveredVertexId: string | null
   hoveredVertexPosition: [number, number] | null
   hoveredSnapKind: SnapKind | null
-  /** Composite ID: "entity:featureId:entityId" or null */
+  // Composite ID: "entity:featureId:entityId" or null
   hoveredSelectionId: string | null
   /** Curve kind of the hovered body edge ('line'|'circle'|'arc'|'spline'),
    *  used by the project tool to choose the projected entity kind. */
@@ -25,7 +25,7 @@ export interface DrawSnapState {
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: string | null
   alignmentSnapVertexId: string | null
-  /** Side count for the two-click n-gon tool. Defaults to 6 when absent. */
+  // Side count for the two-click n-gon tool. Defaults to 6 when absent.
   ngonSides?: number
 }
 
@@ -36,9 +36,9 @@ export interface DrawClickResult {
    * array -- replace draw points with this array (intermediate clicks, arc 2nd click)
    */
   nextDrawPoints: [number, number][] | null
-  /** null means leave draw snap unchanged; a string replaces the vertexId. */
+  // null means leave draw snap unchanged; a string replaces the vertexId.
   nextDrawSnap: { vertexId: string | null } | null
-  /** When true the adapter must call clearDraw() + setActiveTool(null). */
+  // When true the adapter must call clearDraw() + setActiveTool(null).
   clearTool: boolean
 }
 
@@ -67,7 +67,7 @@ export function computeDrawClick(
   snap: DrawSnapState,
   featureId: string,
   newEntityIdFn: () => string,
-  /** sketch and otherSketches are needed only for the 'project' tool. */
+  // sketch and otherSketches are needed only for the 'project' tool.
   sketch?: Record<string, Entity>,
   otherSketches?: Record<string, Record<string, Entity>>,
 ): DrawClickResult {

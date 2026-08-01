@@ -26,9 +26,9 @@ import {
 
 export interface ManipulationSession {
   handle: string
-  /** The instance transform at pointer-down; every delta composes against it. */
+  // The instance transform at pointer-down; every delta composes against it.
   seed: Transform3D
-  /** The live preview transform; written to the doc on commit. */
+  // The live preview transform; written to the doc on commit.
   current: Transform3D
   /**
    * Set for a body grab: the grab point (part-local) and the world point the
@@ -166,7 +166,7 @@ export function settledTransforms(
 
 export interface CommitResult {
   doc: AssemblyDoc
-  /** False when the pointer never left the seed pose: no dirty flag, no re-solve. */
+  // False when the pointer never left the seed pose: no dirty flag, no re-solve.
   changed: boolean
 }
 

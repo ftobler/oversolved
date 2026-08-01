@@ -49,7 +49,7 @@ function loadPackage<M>(stem: string, base: string): Promise<M | null> {
   if (hit) return hit as Promise<M | null>
   const pending = (async () => {
     try {
-      const mod = (await import(/* @vite-ignore */ `${base}${stem}.js`)) as M & {
+      const mod = (await import(  /* @vite-ignore */ `${base}${stem}.js`)) as M & {
         default: (input?: unknown) => Promise<unknown>
       }
       // The web build needs its init() called once (fetches the .wasm).

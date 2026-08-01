@@ -8,7 +8,7 @@ import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorSt
 import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
 
-try { toolRegistry.register(createDragTool()) } catch { /* already registered */ }
+try { toolRegistry.register(createDragTool()) } catch {  /* already registered */ }
 
 // REGRESSION TEST DOCUMENTATION: Dragging Coordinate and Collision Bugs
 //

@@ -34,9 +34,9 @@ export const DRAG_MATE_ID = '__drag_target__'
  *  so it rides the part through the solve. */
 export interface DragObjective {
   handle: string
-  /** The grabbed point in the part's local frame (captureGrabPoint output). */
+  // The grabbed point in the part's local frame (captureGrabPoint output).
   localGrab: Vec3
-  /** The world point the grab point is being pulled to (the live cursor). */
+  // The world point the grab point is being pulled to (the live cursor).
   target: Vec3
 }
 

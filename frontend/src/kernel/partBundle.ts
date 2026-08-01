@@ -99,7 +99,7 @@ export interface PartBundle {
  */
 export const BUNDLE_SCHEMA = 1
 
-// ── Conversion from BuildResponse output ──────────────────────────────────
+// ─── Conversion from BuildResponse output ───
 
 type Vec3 = [number, number, number]
 
@@ -291,7 +291,7 @@ export function toPartBundle(
   return { doc_id, doc_rev, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
 }
 
-// ── Anchor extraction ─────────────────────────────────────────────────────
+// ─── Anchor extraction ───
 
 function faceTypeToAnchorKind(st: string | null | undefined): AnchorKind | null {
   if (st === 'flatface') return 'plane'
@@ -360,7 +360,7 @@ function findDescriptorInQuery(query: string, prefix: string): string | null {
 
 export interface BodyAnchorExtraction {
   anchors: Record<string, Anchor>
-  /** Positional entity → anchor-id lists, the join a pick needs. */
+  // Positional entity → anchor-id lists, the join a pick needs.
   entityAnchors: EntityAnchorIndex
 }
 
@@ -445,7 +445,7 @@ export function extractBodyAnchors(
   return { anchors, entityAnchors }
 }
 
-// ── Anchor migration ──────────────────────────────────────────────────────
+// ─── Anchor migration ───
 
 function distSq(a: Vec3, b: Vec3): number {
   return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
@@ -483,7 +483,7 @@ export function anchorIdRemap(
     else newByGeomHash.set(gh, '')  // collision marker, skip tier 1
   }
 
-  // ── Tier 1: exact geom_hash match ────────────────────────────────────
+  // ─── Tier 1: exact geom_hash match ───
 
   for (const oldId of oldIds) {
     const oldA = oldAnchors[oldId]
@@ -495,7 +495,7 @@ export function anchorIdRemap(
     }
   }
 
-  // ── Tier 2: created_by + kind ────────────────────────────────────────
+  // ─── Tier 2: created_by + kind ───
 
   // Index remaining (unconsumed) new anchors by (created_by, kind).
   const newByCreatedByKind = new Map<string, string[]>()

@@ -4,7 +4,7 @@ import { toolRegistry } from '@/registry/toolRegistry'
 import { createDragTool } from '@/tools/DragTool'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
 
-try { toolRegistry.register(createDragTool()) } catch { /* already registered */ }
+try { toolRegistry.register(createDragTool()) } catch {  /* already registered */ }
 
 beforeEach(() => {
   useSketchEditorStore.setState({

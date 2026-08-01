@@ -32,7 +32,7 @@ interface ExtrudeResult {
   [key: string]: unknown
   status: string
   body_id: string
-  /** Every body the operation produced; `body_id` is just the first (features/bodySplit.ts). */
+  // Every body the operation produced; `body_id` is just the first (features/bodySplit.ts).
   body_ids?: string[]
 }
 

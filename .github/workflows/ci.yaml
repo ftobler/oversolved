@@ -134,6 +134,9 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      - name: Comment lint (lint.py)
+        run: python lint.py frontend/src
+
       # The wasm-kernel/*.test.ts and *Real.test.ts solver-boundary tests self-skip
       # when the Rust builds (pkg-node) are absent. Build BOTH crates here so
       # `vitest run` actually exercises them instead of silently skipping (matches

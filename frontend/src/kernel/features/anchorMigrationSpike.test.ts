@@ -35,7 +35,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-// ── Descriptor token extraction ────────────────────────────────────────────
+// ─── Descriptor token extraction ───
 
 function findDescriptorToken(ids: string[], prefix: string): string | null {
   return ids.find((id) => id.startsWith(prefix)) ?? null
@@ -86,7 +86,7 @@ function extractVertexTuples(result: BuildResponse): { descriptor: string; kind:
   return tuples
 }
 
-// ── Build helper ───────────────────────────────────────────────────────────
+// ─── Build helper ───
 
 function run(spec: Record<string, unknown>): BuildResponse {
   const scope = new DisposeScope()
@@ -130,7 +130,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
               vertices: vertexResult.vertices,
               vertex_queries: vertexResult.vertex_queries,
             }
-          } catch { /* non-fatal */ }
+          } catch {  /* non-fatal */ }
         }
         return out
       },
@@ -147,7 +147,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
   }
 }
 
-// ── Fixture specs ──────────────────────────────────────────────────────────
+// ─── Fixture specs ───
 
 function rectSketchSpec(sketchId: string, w: number, h: number) {
   return {
@@ -189,7 +189,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  // ── Descriptor emission ─────────────────────────────────────────────────
+  // ─── Descriptor emission ───
 
   it('face_queries emit @u| construction UUID tokens, not old geometry descriptors', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
@@ -220,7 +220,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     }
   })
 
-  // ── Tier 1: exact descriptor match on unchanged geometry ─────────────────
+  // ─── Tier 1: exact descriptor match on unchanged geometry ───
 
   it('Tier 1: same-dimension rebuild produces identical descriptors', () => {
     const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
@@ -251,7 +251,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     }
   })
 
-  // ── Tier 1 miss: moving a face changes its descriptor ────────────────────
+  // ─── Tier 1 miss: moving a face changes its descriptor ───
 
   // Stage 7: construction UUIDs (@u|) are stable across dimension edits because
   // they are derived from symbolic construction paths (feature ids, sketch entity
@@ -277,7 +277,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     for (const d of descs5) expect(descs8.has(d)).toBe(true)
   })
 
-  // ── Tier 2: moved face is uniquely re-findable by (created_by, kind) ─────
+  // ─── Tier 2: moved face is uniquely re-findable by (created_by, kind) ───
 
   // With construction UUIDs, Tier 1 (exact @u| match) already handles moved
   // faces unambiguously. Tier 2 (created_by + kind) is the fallback for entities
@@ -308,7 +308,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     expect(new Set(allCreatedBy).size).toBe(1)
   })
 
-  // ── Edge and vertex descriptors survive dimension edits ──────────────────
+  // ─── Edge and vertex descriptors survive dimension edits ───
 
   it('construction UUIDs for edges and vertices are stable across dimension edits', () => {
     const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
@@ -333,7 +333,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     for (const v of vv5) expect(descsV8.has(v.descriptor)).toBe(true)
   })
 
-  // ── Build-side vs ID-buffer: they emit the same descriptors ─────────────
+  // ─── Build-side vs ID-buffer: they emit the same descriptors ───
 
   it('build-side tuples match repo population (ID buffer sees the same @u| tokens)', () => {
     const r = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
@@ -361,7 +361,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     expect(extractVertexTuples(r).length).toBeGreaterThan(0)
   })
 
-  // ── Kind coverage: face surface_types present ────────────────────────────
+  // ─── Kind coverage: face surface_types present ───
 
   it('face surface_types are the expected Anchor.kind pre-images (flatface, cylinderface)', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
@@ -374,7 +374,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
     expect(kinds.size).toBe(1)
   })
 
-  // ── Performance: two-feature part produces distinct created_by scopes ────
+  // ─── Performance: two-feature part produces distinct created_by scopes ───
 
   it('different features produce different created_by scopes for Tier 2 isolation', () => {
     const r = run({

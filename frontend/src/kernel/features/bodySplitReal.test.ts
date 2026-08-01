@@ -491,7 +491,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
 })
 
 describe.skipIf(!hasOcc)('bodySplit: a hole can sever a body too', () => {
-  /** A repo carrying one sketch plane at `origin` with a single point at its centre. */
+  // A repo carrying one sketch plane at `origin` with a single point at its centre.
   function holeRepo(origin: number[]): Repository {
     const repo = new Repository()
     repo.elements.set('_pt_sk1', { origin, x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })

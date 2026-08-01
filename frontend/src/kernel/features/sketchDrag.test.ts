@@ -71,7 +71,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     resetSketchSolver()
   })
 
-  // ── Context construction ───────────────────────────────────────────────
+  // ─── Context construction ───
 
   it('builds the context from the feature definition alone (production topology)', () => {
     const ctx = prepareDragContext(rectSketchFeature('engage'), 'bottom', 'start')
@@ -275,7 +275,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(ctx.params0).toEqual(savedParams0)
   })
 
-  // ── Solve behaviour ──────────────────────────────────────────────────────
+  // ─── Solve behaviour ───
 
   it('cursor seed keeps anchor near cursor after solve (underconstrained sketch)', () => {
     const feature = {
@@ -425,7 +425,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(Math.hypot(a1.end[0] - 0, a1.end[1] - 3)).toBeLessThan(CURSOR_TOL)
   })
 
-  // ── Edge/entity drag: whole-entity translation ─────────────────────────
+  // ─── Edge/entity drag: whole-entity translation ───
 
   it('builds an edge drag context (vertexKey=null)', () => {
     const feature = rectSketchFeature('edgeCtx')
@@ -546,7 +546,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(solvedStartX - naiveStartX).toBeGreaterThan(2)
   })
 
-  // ── Commit: the solved frame seeds the hard solve (Part B) ─────────────
+  // ─── Commit: the solved frame seeds the hard solve (Part B) ───
 
   it('committing solvedGeometry keeps the hard solve in the drag basin (no snap on release)', () => {
     // The rect is fully constrained up to translation: dragging a corner

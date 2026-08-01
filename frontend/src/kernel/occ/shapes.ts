@@ -100,9 +100,9 @@ export function buildCylinder(oc: OccModule, table: HandleTable, spec: CylinderS
 }
 
 interface ExtrudeProfileSpec {
-  /** Closed polygon of world-space corners (not repeating the first point). */
+  // Closed polygon of world-space corners (not repeating the first point).
   loop: Vec3[]
-  /** Extrude direction (unit vector). */
+  // Extrude direction (unit vector).
   direction: Vec3
   distance: number
   owner?: string

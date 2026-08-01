@@ -16,7 +16,7 @@ describe('solverConstants', () => {
     TOL_TOPOLOGY_SPLIT,
   ]
 
-  /** All tolerance constants are importable, finite, and positive. */
+  // All tolerance constants are importable, finite, and positive.
   it('all tolerance constants are finite and positive', () => {
     for (const c of toleranceConstants) {
       expect(typeof c).toBe('number')
@@ -25,7 +25,7 @@ describe('solverConstants', () => {
     }
   })
 
-  /** TOL_TOPOLOGY_MERGE > TOL_TOPOLOGY_EPS (merge threshold must exceed coincidence threshold). */
+  // TOL_TOPOLOGY_MERGE > TOL_TOPOLOGY_EPS (merge threshold must exceed coincidence threshold).
   it('TOL_TOPOLOGY_MERGE exceeds TOL_TOPOLOGY_EPS', () => {
     expect(TOL_TOPOLOGY_MERGE).toBeGreaterThan(TOL_TOPOLOGY_EPS)
   })

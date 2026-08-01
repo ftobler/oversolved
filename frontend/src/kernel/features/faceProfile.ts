@@ -23,7 +23,7 @@ type EdgeDict = Record<string, unknown>
 interface FaceProfile {
   loops: EdgeDict[][]
   plane: PlaneLike
-  /** The OCC face when resolved from a body, else null (topo-surface paths). */
+  // The OCC face when resolved from a body, else null (topo-surface paths).
   face: OccShape | null
 }
 

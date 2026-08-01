@@ -220,12 +220,12 @@ export function solveSketch(
 
   const featureId = (feature.id as string) ?? ''
 
-  // ── Lower projected entities before partDocToSketches ──────────────────
+  // ─── Lower projected entities before partDocToSketches ───
   const plane = resolveSketchPlane((feature.plane as string | undefined) ?? null, globalRepo)
   const { loweredFeature, resolvedKinds, projectionErrors, pinnedIds } =
     lowerProjectedEntities(feature, plane, globalRepo)
 
-  // ── Lower the live PartDoc feature to SketchInput ──────────────────────
+  // ─── Lower the live PartDoc feature to SketchInput ───
   // Express the document origin (0,0,0) in this sketch's local 2D frame so a
   // `@builtin_origin` coincident pins to the actual document origin, not the
   // sketch plane's local (0,0) -- which differ for a sketch on an offset/
@@ -287,7 +287,7 @@ export function solveSketch(
   }
 }
 
-// ── Drag-solve infrastructure ──────────────────────────────────────────
+// ─── Drag-solve infrastructure ───
 
 /** True once the WASM solver is loaded in THIS JS context. The worker and the
  *  main thread each hold their own module instance; the drag path runs on the
@@ -311,11 +311,11 @@ export interface DragContext {
   /** Flat param indices the cursor position is written to each frame.
    *  For edge/entity drags this is the start of the entity's param block. */
   cursorIndices: [number, number]
-  /** True when this is an entity-level (whole-entity translation) drag. */
+  // True when this is an entity-level (whole-entity translation) drag.
   isEdgeDrag: boolean
-  /** Param offset of the dragged entity in the flat array. */
+  // Param offset of the dragged entity in the flat array.
   entityParamOffset: number
-  /** All [xIndex, yIndex] coordinate pair offsets within the entity's param block. */
+  // All [xIndex, yIndex] coordinate pair offsets within the entity's param block.
   entityCoordPairs: [number, number][]
   /** Set for an arc start/end drag. The endpoint is derived (center + radius at
    *  an angle), not a direct param pair, so the cursor XY must be mapped into
@@ -515,14 +515,14 @@ function paramsToPreview(
 }
 
 export interface DragSolveResult {
-  /** Reconstructed Sketch for Geometry3D preview rendering. */
+  // Reconstructed Sketch for Geometry3D preview rendering.
   sketch: Sketch
   /** Per-entity solved params; carried into the pointer-up commit so the hard
    *  solve seeds from the on-screen state (no basin jump on release). */
   geometry: Record<string, number[]>
-  /** Solved params (becomes the next frame's warm-start seed). */
+  // Solved params (becomes the next frame's warm-start seed).
   params: number[]
-  /** Solver status string. */
+  // Solver status string.
   status: string
 }
 

@@ -28,7 +28,7 @@ export type VertexList = ReadonlyArray<readonly [number, number, number]>
 export interface VertexPaint {
   target: InstanceTarget
   vertices: VertexList
-  /** Uniform world-space scale for one marker (screen pixels -> world). */
+  // Uniform world-space scale for one marker (screen pixels -> world).
   scale: number
   /**
    * Per-vertex highlight flags. Omit both for a plain pass that scales every
@@ -55,7 +55,7 @@ export class VertexInstancePainter {
   private selected: readonly boolean[] | null | undefined = undefined
   private hovered: readonly boolean[] | null | undefined = undefined
 
-  /** Write the instances if anything changed. Returns whether it painted. */
+  // Write the instances if anything changed. Returns whether it painted.
   sync(paint: VertexPaint): boolean {
     if (!this.changed(paint)) return false
     const { target, vertices, scale, selected, hovered } = paint

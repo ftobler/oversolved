@@ -33,7 +33,7 @@ export interface ApplyBodyOperationInput {
   sketchId: string
   opName?: string
   profileQueries?: string[]
-  /** The tool body's construction-name maps (query-naming-by-construction). */
+  // The tool body's construction-name maps (query-naming-by-construction).
   faceNames?: Record<string, string> | null
   edgeNames?: Record<string, string> | null
   faceAncestry?: Record<string, string[]> | null

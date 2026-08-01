@@ -209,7 +209,7 @@ describe('migrateBundle', () => {
     expect('old_t1' in result).toBe(true)  // tier 1 survive
     expect('old_t2' in result).toBe(true)  // tier 2 survive (unique FEATURE_A + plane)
     expect('old_die' in result).toBe(false)  // dies (FEATURE_B gone)
-    expect('n3' in result).toBe(true)       // fresh id kept
+    expect('n3' in result).toBe(true)  // fresh id kept
 
     expect(result['old_t1'].point).toEqual([0, 0, 0])
     expect(result['old_t2'].point).toEqual([5.1, 0, 0])

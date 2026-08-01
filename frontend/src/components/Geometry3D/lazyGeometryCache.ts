@@ -17,7 +17,7 @@ import * as THREE from 'three'
 export interface LazyGeometryCache {
   get(index: number): THREE.BufferGeometry | null
   dispose(): void
-  /** Test/diagnostic: how many entries have actually been built. */
+  // Test/diagnostic: how many entries have actually been built.
   size(): number
 }
 

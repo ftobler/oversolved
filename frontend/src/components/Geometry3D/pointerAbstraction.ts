@@ -11,9 +11,9 @@ export { CLICK_THRESHOLD_PX }
  *
  *  Produced by makeSanitizedEvent() or the adapter sanitizePointerEvent(). Null means off-plane. */
 export interface SanitizedPointerEvent {
-  /** Sketch-local 2D coordinates of the hit point. */
+  // Sketch-local 2D coordinates of the hit point.
   localPoint: [number, number]
-  /** Screen pixel coordinates at event time, used for click-vs-drag disambiguation. */
+  // Screen pixel coordinates at event time, used for click-vs-drag disambiguation.
   clientPoint: [number, number]
 }
 

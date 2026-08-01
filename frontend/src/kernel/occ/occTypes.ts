@@ -14,7 +14,7 @@
 
 export interface OccDisposable {
   delete(): void
-  /** opencascade.js embind proxies expose this guard. */
+  // opencascade.js embind proxies expose this guard.
   isDeleted?(): boolean
 }
 
@@ -36,19 +36,19 @@ export interface OccPolygonBuilder extends OccDisposable {
 
 export interface OccFaceBuilder extends OccDisposable {
   Face(): OccShape
-  /** False when the (wire, onlyPlane) face could not be built, e.g. non-coplanar. */
+  // False when the (wire, onlyPlane) face could not be built, e.g. non-coplanar.
   IsDone(): boolean
-  /** Add a hole wire to the face under construction (BRepBuilderAPI_MakeFace::Add). */
+  // Add a hole wire to the face under construction (BRepBuilderAPI_MakeFace::Add).
   Add(wire: OccShape): void
 }
 
 export interface OccPrismBuilder extends OccDisposable {
   Shape(): OccShape
-  /** Sub-shapes generated from a profile sub-shape: the lineage sharp edge. */
+  // Sub-shapes generated from a profile sub-shape: the lineage sharp edge.
   Generated(s: OccShape): OccListOfShape
-  /** The start (profile-side) generated shape; used to name the start cap. */
+  // The start (profile-side) generated shape; used to name the start cap.
   FirstShape?(): OccShape
-  /** The end (swept-to) generated shape; used to name the end cap. */
+  // The end (swept-to) generated shape; used to name the end cap.
   LastShape?(): OccShape
 }
 
@@ -146,9 +146,9 @@ export interface OccXYZ extends OccDisposable {
 
 /** gp_Pnt additionally transforms by a gp_Trsf (mesh node -> world). */
 export interface OccPntValue extends OccXYZ {
-  /** Allocates a new point; the caller owns it. Prefer `Transform` in hot loops. */
+  // Allocates a new point; the caller owns it. Prefer `Transform` in hot loops.
   Transformed(trsf: OccTrsf): OccPntValue
-  /** In-place transform -- no allocation. */
+  // In-place transform -- no allocation.
   Transform(trsf: OccTrsf): void
 }
 
@@ -158,7 +158,7 @@ export interface OccEnumValue {
 }
 
 export interface OccTriangle extends OccDisposable {
-  /** 1-based node index for corner i (i in 1..3). */
+  // 1-based node index for corner i (i in 1..3).
   Value(i: number): number
 }
 
@@ -170,9 +170,9 @@ export interface OccTriangulationBasic {
 /** Full node/triangle access, used by the tessellation port. */
 export interface OccTriangulation extends OccTriangulationBasic {
   NbNodes(): number
-  /** 1-based node, in the triangulation's local frame (apply location Trsf). */
+  // 1-based node, in the triangulation's local frame (apply location Trsf).
   Node(i: number): OccPntValue
-  /** 1-based triangle. */
+  // 1-based triangle.
   Triangle(i: number): OccTriangle
 }
 
@@ -197,17 +197,17 @@ export interface OccSurfaceAdaptor extends OccDisposable {
   LastUParameter(): number
   FirstVParameter(): number
   LastVParameter(): number
-  /** Only valid when GetType() is GeomAbs_Plane (used for face-profile planes). */
+  // Only valid when GetType() is GeomAbs_Plane (used for face-profile planes).
   Plane(): OccPln
-  /** Point + first derivatives at (u, v); p/du/dv are caller-allocated out-params. */
+  // Point + first derivatives at (u, v); p/du/dv are caller-allocated out-params.
   D1(u: number, v: number, p: OccXYZ, du: OccXYZ, dv: OccXYZ): void
-  /** Only valid when GetType() is GeomAbs_Cylinder. */
+  // Only valid when GetType() is GeomAbs_Cylinder.
   Cylinder(): OccAnalyticCylinder
-  /** Only valid when GetType() is GeomAbs_Cone. */
+  // Only valid when GetType() is GeomAbs_Cone.
   Cone(): OccAnalyticCone
-  /** Only valid when GetType() is GeomAbs_Sphere. */
+  // Only valid when GetType() is GeomAbs_Sphere.
   Sphere(): OccAnalyticSphere
-  /** Only valid when GetType() is GeomAbs_Torus. */
+  // Only valid when GetType() is GeomAbs_Torus.
   Torus(): OccAnalyticTorus
 }
 
@@ -297,7 +297,7 @@ export interface OccArcMaker extends OccDisposable {
 
 export interface OccWireBuilder extends OccDisposable {
   Add_1(edge: OccShape): void
-  /** False when the added edges do not chain into a single connected wire. */
+  // False when the added edges do not chain into a single connected wire.
   IsDone(): boolean
   Wire(): OccShape
 }
@@ -324,7 +324,7 @@ export interface OccLocation extends OccDisposable {
 /** A sub-shape (edge/vertex) we dedup by topological identity. */
 export interface OccSubShape extends OccDisposable {
   IsSame(other: OccDisposable): boolean
-  /** True when the two shapes share the same TShape (ignores orientation). */
+  // True when the two shapes share the same TShape (ignores orientation).
   IsPartner(other: OccDisposable): boolean
   /** The same shape carried under `loc`. Passing an identity `TopLoc_Location`
    *  strips the placement, which is what makes `IsSame`/`HashCode` compare two
@@ -442,7 +442,7 @@ export interface OccModule extends OccSpikeModule {
   // ─── shape construction ───
   gp_Dir_4: new (x: number, y: number, z: number) => OccXYZ
   gp_Ax2_3: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
-  /** gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle. */
+  // gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle.
   gp_Ax2_2: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
   gp_Circ_2: new (axis: OccDisposable, radius: number) => OccDisposable
   GC_MakeArcOfCircle_1: new (
@@ -451,7 +451,7 @@ export interface OccModule extends OccSpikeModule {
     alpha2: number,
     sense: boolean,
   ) => OccArcMaker
-  /** GC_MakeArcOfEllipse(elips, alpha1, alpha2, sense): a trimmed elliptical arc. */
+  // GC_MakeArcOfEllipse(elips, alpha1, alpha2, sense): a trimmed elliptical arc.
   GC_MakeArcOfEllipse_1: new (
     elips: OccDisposable,
     alpha1: number,
@@ -459,20 +459,20 @@ export interface OccModule extends OccSpikeModule {
     sense: boolean,
   ) => OccArcMaker
   Handle_Geom_Curve_2: new (curve: OccDisposable) => OccDisposable
-  /** TColgp_Array1OfPnt(lower, upper): 1-based point array (Bezier poles). */
+  // TColgp_Array1OfPnt(lower, upper): 1-based point array (Bezier poles).
   TColgp_Array1OfPnt_2: new (lower: number, upper: number) => OccPntArray
-  /** Geom_BezierCurve(poles): a Bezier curve through the pole array. */
+  // Geom_BezierCurve(poles): a Bezier curve through the pole array.
   Geom_BezierCurve_1: new (poles: OccPntArray) => OccDisposable
-  /** gp_Elips(axis, majorRadius, minorRadius): an ellipse in the axis frame. */
+  // gp_Elips(axis, majorRadius, minorRadius): an ellipse in the axis frame.
   gp_Elips_2: new (axis: OccDisposable, majorRadius: number, minorRadius: number) => OccDisposable
-  /** Geom_Ellipse(elips): the parametric ellipse curve. */
+  // Geom_Ellipse(elips): the parametric ellipse curve.
   Geom_Ellipse_1: new (elips: OccDisposable) => OccDisposable
   BRepBuilderAPI_MakeEdge_3: new (p1: OccPnt, p2: OccPnt) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_8: new (circle: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeWire_1: new () => OccWireBuilder
   BRepPrimAPI_MakeBox_1: new (dx: number, dy: number, dz: number) => OccPrismBuilder
-  /** BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner. */
+  // BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner.
   BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccPrismBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
@@ -487,7 +487,7 @@ export interface OccModule extends OccSpikeModule {
       skipShared: boolean,
       useTriangulation: boolean,
     ): void
-    /** Volume of a (closed) shape; mirrors cadquery Solid.Volume. */
+    // Volume of a (closed) shape; mirrors cadquery Solid.Volume.
     VolumeProperties_1(
       shape: OccShape,
       props: OccGProps,
@@ -544,10 +544,10 @@ export interface OccModule extends OccSpikeModule {
   // ─── canonical surface recognition (canonicalSurfaces.ts) ───
   gp_Pnt_1: new () => OccXYZ
   gp_Vec_1: new () => OccXYZ
-  /** gp_Ax3(location, N, Vx): a cylinder frame; Vx fixes where the U=0 seam sits. */
+  // gp_Ax3(location, N, Vx): a cylinder frame; Vx fixes where the U=0 seam sits.
   gp_Ax3_3: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
   gp_Cylinder_2: new (frame: OccDisposable, radius: number) => OccDisposable
-  /** BRepBuilderAPI_MakeFace(gp_Cylinder, wire, inside): a face on an analytic cylinder. */
+  // BRepBuilderAPI_MakeFace(gp_Cylinder, wire, inside): a face on an analytic cylinder.
   BRepBuilderAPI_MakeFace_17: new (
     cylinder: OccDisposable,
     wire: OccShape,
@@ -555,9 +555,9 @@ export interface OccModule extends OccSpikeModule {
   ) => OccFaceBuilder
   BRepTools_ReShape: new () => OccReShape
   ShapeFix_Shape_2: new (shape: OccShape) => OccShapeFixShape
-  /** Null progress indicator (ShapeFix_Shape.Perform requires the argument). */
+  // Null progress indicator (ShapeFix_Shape.Perform requires the argument).
   Handle_Message_ProgressIndicator_1: new () => OccDisposable
-  /** BRepCheck_Analyzer(shape, geomControls): plain (suffix-free) ctor in this build. */
+  // BRepCheck_Analyzer(shape, geomControls): plain (suffix-free) ctor in this build.
   BRepCheck_Analyzer: new (shape: OccShape, geomControls: boolean) => OccShapeAnalyzer
 
   // ─── assembly export: gather disjoint bodies into one compound shape ───
@@ -576,9 +576,9 @@ export interface OccModule extends OccSpikeModule {
   BRepAdaptor_Curve2d_2: new (edge: OccShape, face: OccShape) => OccCurve2dAdaptor
 
   // ─── revolve leaf ───
-  /** gp_Ax1(location, direction): the axis a revolve sweeps around. */
+  // gp_Ax1(location, direction): the axis a revolve sweeps around.
   gp_Ax1_2: new (origin: OccPnt, direction: OccXYZ) => OccDisposable
-  /** BRepPrimAPI_MakeRevol(profile, axis, angleRad, copy): the 4-arg form. */
+  // BRepPrimAPI_MakeRevol(profile, axis, angleRad, copy): the 4-arg form.
   BRepPrimAPI_MakeRevol_1: new (
     profile: OccShape,
     axis: OccDisposable,
@@ -587,7 +587,7 @@ export interface OccModule extends OccSpikeModule {
   ) => OccPrismBuilder
 
   // ─── sweep leaf ───
-  /** BRepOffsetAPI_MakePipeShell(spineWire): no overload suffix in this build. */
+  // BRepOffsetAPI_MakePipeShell(spineWire): no overload suffix in this build.
   BRepOffsetAPI_MakePipeShell: new (spine: OccShape) => OccPipeShellBuilder
   BRepBuilderAPI_TransitionMode: {
     BRepBuilderAPI_RightCorner: OccEnumValue
@@ -596,9 +596,9 @@ export interface OccModule extends OccSpikeModule {
   }
 
   // ─── fillet / chamfer leaf ───
-  /** BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational): the 2-arg form. */
+  // BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational): the 2-arg form.
   BRepFilletAPI_MakeFillet: new (shape: OccShape, fshape: OccEnumValue) => OccEdgeModifierMaker
-  /** BRepFilletAPI_MakeChamfer(shape): the 1-arg form. */
+  // BRepFilletAPI_MakeChamfer(shape): the 1-arg form.
   BRepFilletAPI_MakeChamfer: new (shape: OccShape) => OccEdgeModifierMaker
   ChFi3d_FilletShape: {
     ChFi3d_Rational: OccEnumValue
@@ -606,14 +606,14 @@ export interface OccModule extends OccSpikeModule {
 
   // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf
-  /** BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape. */
+  // BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape.
   BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
   /** BRepBuilderAPI_Copy(shape, copyGeom, copyMesh): independent deep copy of a
    *  shape (the defensive copy used to isolate checkpoint snapshots). */
   BRepBuilderAPI_Copy_2: new (shape: OccShape, copyGeom: boolean, copyMesh: boolean) => OccCopyBuilder
 
   // ─── import_step (STEP read + write) ───
-  /** Emscripten in-memory filesystem (write the STEP bytes here, then ReadFile). */
+  // Emscripten in-memory filesystem (write the STEP bytes here, then ReadFile).
   FS: {
     writeFile(path: string, data: Uint8Array | string): void
     unlink(path: string): void
@@ -621,12 +621,12 @@ export interface OccModule extends OccSpikeModule {
     readFile(path: string): Uint8Array
   }
   STEPControl_Reader_1: new () => OccStepReader
-  /** STEPControl_Writer: serialise a shape to the emscripten FS. */
+  // STEPControl_Writer: serialise a shape to the emscripten FS.
   STEPControl_Writer_1: new () => OccStepWriter
   STEPControl_StepModelType: {
     STEPControl_AsIs: OccEnumValue
   }
-  /** StlAPI_Writer: serialise a shape to an STL file on the emscripten FS. */
+  // StlAPI_Writer: serialise a shape to an STL file on the emscripten FS.
   StlAPI_Writer: new () => OccStlWriter
   IFSelect_ReturnStatus: {
     IFSelect_RetDone: OccEnumValue
@@ -709,9 +709,9 @@ export interface OccStepReader extends OccDisposable {
   ReadFile(path: string): OccEnumValue
   TransferRoots(): number
   OneShape(): OccShape
-  /** The work session, the way through to the transfer reader. */
+  // The work session, the way through to the transfer reader.
   WS(): OccTransientHandle<OccWorkSession>
-  /** The parsed STEP model, which owns the entity -> `#N` labels. */
+  // The parsed STEP model, which owns the entity -> `#N` labels.
   Model(): OccTransientHandle<OccInterfaceModel>
 }
 

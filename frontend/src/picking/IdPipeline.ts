@@ -38,7 +38,7 @@ export const VERTEX_PICK_CUBE_PIXELS = 3
 export interface IdPipelineOptions {
   width: number
   height: number
-  /** Pixel window size for hover/click resolves. Default 17. */
+  // Pixel window size for hover/click resolves. Default 17.
   windowSize?: number
   /**
    * When true, the pipeline re-renders the ID buffer every frame while
@@ -51,7 +51,7 @@ export interface IdPipelineOptions {
 interface PendingAsyncQuery {
   cursorPx: { x: number; y: number }
   opts: ResolveOptions | undefined
-  /** Every caller waiting for the result of this (or any superseding) read. */
+  // Every caller waiting for the result of this (or any superseding) read.
   subscribers: ((hit: ResolvedHit | null) => void)[]
 }
 
@@ -146,8 +146,8 @@ export class IdPipeline {
     this.addLayer(this.planeLayer)           // -10  behind everything
     this.addLayer(this.faceLayer)            //   0
     this.addLayer(this.edgeLayer)            //  10
-    this.addLayer(this.vertexLayer)            //  20
-    this.addLayer(this.sketchSurfaceLayer)    //  30
+    this.addLayer(this.vertexLayer)  //  20
+    this.addLayer(this.sketchSurfaceLayer)  //  30
     this.addLayer(this.sketchEntityLayer)    //  40
     this.addLayer(this.sketchVertexLayer)    //  50
     this.addLayer(this.originLayer)          //  60
@@ -186,12 +186,12 @@ export class IdPipeline {
     this.layers.sort((a, b) => a.priority - b.priority)
   }
 
-  /** Snapshot of mounted layers in render order. */
+  // Snapshot of mounted layers in render order.
   getLayers(): readonly IdLayer[] {
     return this.layers
   }
 
-  /** Layer name → priority mapping for the resolver. */
+  // Layer name → priority mapping for the resolver.
   getLayerPriority(): Readonly<Record<string, number>> {
     const map: Record<string, number> = {}
     for (const l of this.layers) map[l.name] = l.priority
@@ -203,12 +203,12 @@ export class IdPipeline {
     if (reason) this.lastDirtyReason = reason
   }
 
-  /** Test/debug accessor for the most recent reason passed to markDirty(). */
+  // Test/debug accessor for the most recent reason passed to markDirty().
   getLastDirtyReason(): string | null {
     return this.lastDirtyReason
   }
 
-  /** Test accessor: total number of times render() has executed. */
+  // Test accessor: total number of times render() has executed.
   getRenderCount(): number {
     return this.renderCount
   }
@@ -352,7 +352,7 @@ export class IdPipeline {
     return this.resolver.decodeAll(read.scratch, read.windowSize, { ...opts, layerPriority: this.getLayerPriority() })
   }
 
-  /** Blit the pixel window under the cursor into the resolver's scratch buffer. */
+  // Blit the pixel window under the cursor into the resolver's scratch buffer.
   private readWindow(
     renderer: THREE.WebGLRenderer,
     cursorPx: { x: number; y: number },

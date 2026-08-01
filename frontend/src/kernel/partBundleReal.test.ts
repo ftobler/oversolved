@@ -102,7 +102,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
               vertices: vertexResult.vertices,
               vertex_queries: vertexResult.vertex_queries,
             }
-          } catch { /* non-fatal */ }
+          } catch {  /* non-fatal */ }
         }
         return out
       },

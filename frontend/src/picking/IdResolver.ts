@@ -10,14 +10,14 @@ export interface ResolvedHit {
    *  pass no explicit pick key. Optional so hand-built hits (tests) can omit it;
    *  the real resolver always populates it. */
   pickKey?: string
-  /** Pixel distance from the cursor center. */
+  // Pixel distance from the cursor center.
   distancePx: number
 }
 
 export interface ResolveOptions {
-  /** Square window edge in pixels. Default 17 (8 px snap radius). */
+  // Square window edge in pixels. Default 17 (8 px snap radius).
   windowSize?: number
-  /** Optional filter: only return hits in these layers. */
+  // Optional filter: only return hits in these layers.
   allowedLayers?: ReadonlySet<string>
   /**
    * Layer name → priority mapping. When present the resolver picks the
@@ -127,7 +127,7 @@ export class IdResolver {
   private registry: IdRegistry
   constructor(registry: IdRegistry) { this.registry = registry }
 
-  /** Allocate (or reuse) the scratch buffer for a given window size. */
+  // Allocate (or reuse) the scratch buffer for a given window size.
   private ensureScratch(windowSize: number): Uint8Array {
     if (!this.scratch || this.scratchSize !== windowSize) {
       this.scratchSize = windowSize
@@ -148,7 +148,7 @@ export class IdResolver {
     return resolvePixelWindow(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
   }
 
-  /** Every entity the window covers, priority-then-distance ordered. */
+  // Every entity the window covers, priority-then-distance ordered.
   decodeAll(scratch: Uint8Array, windowSize: number, opts?: ResolveOptions): ResolvedHit[] {
     return resolvePixelWindowAll(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
   }

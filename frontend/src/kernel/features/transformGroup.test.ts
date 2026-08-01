@@ -65,7 +65,7 @@ describe('array / circular_array guard paths', () => {
   })
 
   it('circular_array: count=0 raises', () => {
-    /** count=0 should produce an error (division by zero in step_angle). */
+    // count=0 should produce an error (division by zero in step_angle).
     const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
     expect(() =>
       solveCircularArray(oc, scope, table, {
@@ -75,7 +75,7 @@ describe('array / circular_array guard paths', () => {
   })
 
   it('circular_array: missing source body with available IDs in message', () => {
-    /** Non-existent source_body reports available body IDs. */
+    // Non-existent source_body reports available body IDs.
     expect(() =>
       solveCircularArray(oc, scope, table, {
         id: 'c', circular_array: { source_body: 'nonexistent' },
@@ -91,7 +91,7 @@ describe('array / circular_array guard paths', () => {
   })
 
   it('array: missing source body with available IDs in message', () => {
-    /** Non-existent source_body reports available body IDs. */
+    // Non-existent source_body reports available body IDs.
     expect(() =>
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'nonexistent' },

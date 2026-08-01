@@ -118,7 +118,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     })
   }
 
-  /** Create a box body at the given origin and size. */
+  // Create a box body at the given origin and size.
   function makeBoxBody(
     oc: OccModule, scope: DisposeScope, table: HandleTable,
     origin: Vec3, w: number, h: number, d: number,
@@ -136,7 +136,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     }
   }
 
-  /** Axis-aligned bounding-box centre of a body's shape, for "did it move, and how far". */
+  // Axis-aligned bounding-box centre of a body's shape, for "did it move, and how far".
   function centreOf(scope: DisposeScope, table: HandleTable, body: Body): Vec3 {
     const verts = readSolidVertices(occ, scope, table.get<OccShape>(body.shape!))
     const lo = [Infinity, Infinity, Infinity]
@@ -339,7 +339,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   })
 
   describe('array inline cases', () => {
-    // ── Rectangular array ──
+    // ─── Rectangular array ───
 
     it('rectangular 2x2 array add keeps the disjoint instances as separate parts', () => {
       /**
@@ -383,10 +383,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ── Circular array: new operation (split bodies) ──
+    // ─── Circular array: new operation (split bodies) ───
 
     it('circular_array new operation creates split bodies', () => {
-      /** operation=new creates 4 split bodies (source + 3 copies). */
+      // operation=new creates 4 split bodies (source + 3 copies).
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -418,10 +418,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ── Circular array: no source ──
+    // ─── Circular array: no source ───
 
     it('circular_array include_source=false produces count copies', () => {
-      /** include_source=false should still produce count distinct copies. */
+      // include_source=false should still produce count distinct copies.
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -448,10 +448,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ── Circular array: explicit step_angle ──
+    // ─── Circular array: explicit step_angle ───
 
     it('circular_array with explicit step_angle', () => {
-      /** Explicit step_angle=45 with count=4 produces correct spacing. */
+      // Explicit step_angle=45 with count=4 produces correct spacing.
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -477,7 +477,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ── Circular array: 5 instances (even spacing bug reproduction) ──
+    // ─── Circular array: 5 instances (even spacing bug reproduction) ───
 
     it('circular_array 5 instances evenly spaced', () => {
       /**
@@ -508,10 +508,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ── Circular array: linear count=1 with source ──
+    // ─── Circular array: linear count=1 with source ───
 
     it('linear count=1 with include_source=true equals source shape', () => {
-      /** count=1 with include_source=true -- no crash, body unchanged. */
+      // count=1 with include_source=true -- no crash, body unchanged.
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -536,10 +536,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ── Linear count=1 no source ──
+    // ─── Linear count=1 no source ───
 
     it('linear count=1 with include_source=false produces 1 transformed copy', () => {
-      /** count=1 with include_source=false produces 1 copy at pitch offset. */
+      // count=1 with include_source=false produces 1 copy at pitch offset.
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {

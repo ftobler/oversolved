@@ -31,7 +31,7 @@ function squareBoundary(
 }
 
 describe("decorateTopology", () => {
-  /** Edges gain an ancestry query, drop the `edge_type` hint, and keep geometry. */
+  // Edges gain an ancestry query, drop the `edge_type` hint, and keep geometry.
   it("decorates edges and strips the edge_type hint", () => {
     const structural = {
       intersection_points: {},
@@ -53,7 +53,7 @@ describe("decorateTopology", () => {
     expect(out.edges[1].length).toBe(7)
   })
 
-  /** Surfaces gain a `flatface` query and drop the `face_entity_ids` hint. */
+  // Surfaces gain a `flatface` query and drop the `face_entity_ids` hint.
   it("decorates surfaces and strips the face_entity_ids hint", () => {
     const structural = {
       intersection_points: {},
@@ -71,7 +71,7 @@ describe("decorateTopology", () => {
     expect(s.normal).toEqual([0, 0, 1])  // other fields pass through
   })
 
-  /** intersection_points and vertices are carried over verbatim. */
+  // intersection_points and vertices are carried over verbatim.
   it("passes through intersection_points and vertices", () => {
     const structural = {
       intersection_points: { i0: { x: 1, y: 2 } },

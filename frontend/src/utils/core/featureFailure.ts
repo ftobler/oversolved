@@ -28,9 +28,9 @@ import { STATUS_NAME } from '@/wasm-kernel/codec'
 const NON_FAILURE_STATUSES: ReadonlySet<string> = new Set<string>([...STATUS_NAME, 'suppressed'])
 
 export interface FeatureFailure {
-  /** True when the feature should render as failed. */
+  // True when the feature should render as failed.
   failed: boolean
-  /** Human-readable cause, '' when the result carried none. */
+  // Human-readable cause, '' when the result carried none.
   message: string
 }
 

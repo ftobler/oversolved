@@ -9,11 +9,11 @@
 import { isPureClick } from '@/components/Geometry3D/pointerAbstraction'
 
 export interface ClickGestureState {
-  /** Which button opened the gesture; null when no pointer-down was seen. */
+  // Which button opened the gesture; null when no pointer-down was seen.
   readonly button: number | null
-  /** Screen position of the pointer-down, kept to measure the travel from. */
+  // Screen position of the pointer-down, kept to measure the travel from.
   readonly origin: readonly [number, number] | null
-  /** The pointer travelled past CLICK_THRESHOLD_PX at some point in the gesture. */
+  // The pointer travelled past CLICK_THRESHOLD_PX at some point in the gesture.
   readonly wasDrag: boolean
 }
 
@@ -68,7 +68,7 @@ export interface ClickGestureTracker {
   readonly state: ClickGestureState
   down(button: number, x: number, y: number): void
   move(x: number, y: number): void
-  /** Returns the closed gesture so the caller can branch on it immediately. */
+  // Returns the closed gesture so the caller can branch on it immediately.
   up(x: number, y: number): ClickGestureState
   reset(): void
 }

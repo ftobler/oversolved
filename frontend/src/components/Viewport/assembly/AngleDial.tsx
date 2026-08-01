@@ -48,9 +48,9 @@ const READOUT_SIZE = DIAL_READOUT_RADIUS * 0.2
 
 interface AngleDialProps {
   def: GizmoAxisDef
-  /** Bearing the sweep is read from, a quarter turn, measured from `def.u`. */
+  // Bearing the sweep is read from, a quarter turn, measured from `def.u`.
   datum: number
-  /** The snapped swing the part is receiving, unwrapped and unbounded. */
+  // The snapped swing the part is receiving, unwrapped and unbounded.
   swing: number
   snapped: boolean
   /**

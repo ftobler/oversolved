@@ -35,7 +35,7 @@ export interface AssemblyBuiltinItem {
   id: string
   kind: 'origin' | 'plane'
   label: string
-  /** Euler rotation of the plane quad; unused for the origin. */
+  // Euler rotation of the plane quad; unused for the origin.
   rotation: [number, number, number]
 }
 
@@ -89,11 +89,11 @@ export function getAssemblyBuiltinsToRender(doc: AssemblyDoc | null): AssemblyBu
 
 export interface AssemblyPartGroup {
   handle: string
-  /** Live drag offset over the already-baked solved pose; identity at rest. */
+  // Live drag offset over the already-baked solved pose; identity at rest.
   position: Vec3
   quaternion: Quat
   selected: boolean
-  /** True while this part is the one under the pointer. */
+  // True while this part is the one under the pointer.
   manipulating: boolean
   items: BodyRenderItem[]
 }

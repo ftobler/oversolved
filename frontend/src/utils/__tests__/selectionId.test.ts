@@ -117,7 +117,7 @@ describe('emitAbsoluteSelectionQuery', () => {
     expect(emitAbsoluteSelectionQuery('entity:S1:L1')).toBe('@S1L1')
   })
   it('entity always absolute even if host would match', () => {
-    // Host concept is absent — must never emit $ form.
+    // Host concept is absent -- must never emit $ form.
     expect(emitAbsoluteSelectionQuery('entity:sk1:L1')).toBe('@sk1L1')
   })
   it('vertex always absolute with sub', () => {

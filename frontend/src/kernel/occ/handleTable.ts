@@ -45,7 +45,7 @@ export interface HandleTableOptions {
    * deterministic), not the CI gate; `assertNoLeaks()` is the gate.
    */
   finalizerGuard?: boolean
-  /** Sink for guard-detected leaks. Defaults to `console.warn`. */
+  // Sink for guard-detected leaks. Defaults to `console.warn`.
   onLeak?: (info: LeakInfo) => void
 }
 
@@ -109,17 +109,17 @@ export class HandleTable {
     return s
   }
 
-  /** Return the live object behind `h`; throws if it was already finalized. */
+  // Return the live object behind `h`; throws if it was already finalized.
   get<T extends Disposable = Disposable>(h: OccHandle): T {
     return this.slot(h).obj as T
   }
 
-  /** True if `h` is still live. */
+  // True if `h` is still live.
   has(h: OccHandle): boolean {
     return this.slots.has(h)
   }
 
-  /** Add a reference (optionally crediting it to `owner`); returns `h`. */
+  // Add a reference (optionally crediting it to `owner`); returns `h`.
   retain(h: OccHandle, owner?: string): OccHandle {
     const s = this.slot(h)
     s.refcount++
@@ -127,7 +127,7 @@ export class HandleTable {
     return h
   }
 
-  /** Drop one reference; finalizes (`.delete()`) when the count reaches zero. */
+  // Drop one reference; finalizes (`.delete()`) when the count reaches zero.
   release(h: OccHandle): void {
     const s = this.slot(h)
     s.refcount--
@@ -158,12 +158,12 @@ export class HandleTable {
     }
   }
 
-  /** Number of live handles. */
+  // Number of live handles.
   liveCount(): number {
     return this.slots.size
   }
 
-  /** Snapshot of live handles, for diagnostics / leak reporting. */
+  // Snapshot of live handles, for diagnostics / leak reporting.
   liveHandles(): LeakInfo[] {
     return [...this.slots.entries()].map(([id, s]) => ({
       handle: id as OccHandle,
@@ -172,7 +172,7 @@ export class HandleTable {
     }))
   }
 
-  /** Throw if any handle is still live. The CI leak-gate assertion. */
+  // Throw if any handle is still live. The CI leak-gate assertion.
   assertNoLeaks(): void {
     if (this.slots.size === 0) return
     const detail = this.liveHandles()

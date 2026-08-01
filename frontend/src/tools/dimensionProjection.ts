@@ -41,25 +41,25 @@ export function findProjectionOf(sketch: Sketch | null, source: string): string 
 }
 
 export interface BrepDimensionPlan {
-  /** Empty when an existing projection of the same source is reused. */
+  // Empty when an existing projection of the same source is reused.
   mutations: Mutation[]
   pick: DimensionPick
 }
 
 export interface BrepDimensionPlanInput {
-  /** The B-rep ancestry query under the cursor (an edge or a vertex). */
+  // The B-rep ancestry query under the cursor (an edge or a vertex).
   query: string
   featureId: string
-  /** The active sketch as last solved, used to find an existing projection. */
+  // The active sketch as last solved, used to find an existing projection.
   sketch: Sketch | null
   /** Picks already made in this dimension gesture. A projection created by an
    *  earlier pick is not in `sketch` until its solve lands, so it is matched
    *  here instead -- otherwise clicking one body edge twice (the same-entity
    *  path to a length dim) would project it twice and read as two lines. */
   picks?: readonly DimensionPick[]
-  /** True when the query came from the B-rep vertex layer. */
+  // True when the query came from the B-rep vertex layer.
   isVertexPick: boolean
-  /** Curve kind of the picked edge, when the body reported one. */
+  // Curve kind of the picked edge, when the body reported one.
   sourceKind?: string | null
   newEntityId: () => string
 }

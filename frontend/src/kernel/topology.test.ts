@@ -94,7 +94,7 @@ const COORD_TOL = 1e-6
 
 describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   it("triangle → 1 surface, 0 intersections", () => {
-    /** Three lines forming a closed triangle → 1 surface. */
+    // Three lines forming a closed triangle → 1 surface.
     const r = detectTopology({
       a: lineGeom(0, 0, 2, 0),
       b: lineGeom(2, 0, 1, 2),
@@ -105,21 +105,21 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("rectangle → 1 surface, 0 intersections", () => {
-    /** Four lines forming a closed rectangle → 1 surface. */
+    // Four lines forming a closed rectangle → 1 surface.
     const r = detectTopology(rectGeom(0, 0, 2, 2))
     expect(ns(r)).toBe(1)
     expect(ni(r)).toBe(0)
   })
 
   it("standalone circle → 1 surface", () => {
-    /** A circle with no intersections → 1 surface. */
+    // A circle with no intersections → 1 surface.
     const r = detectTopology({ c: circleGeom(1, 1, 1) })
     expect(ns(r)).toBe(1)
     expect(ni(r)).toBe(0)
   })
 
   it("rectangle with diagonal → 2 surfaces", () => {
-    /** Rectangle + diagonal → 2 triangular surfaces. */
+    // Rectangle + diagonal → 2 triangular surfaces.
     const r = detectTopology({
       ...rectGeom(0, 0, 2, 2),
       diag: lineGeom(0, 0, 2, 2),
@@ -129,7 +129,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("rectangle with horizontal midline → 2 surfaces, 2 intersections", () => {
-    /** Rectangle + horizontal line through the middle (intersects edges, not corners) → 2 surfaces. */
+    // Rectangle + horizontal line through the middle (intersects edges, not corners) → 2 surfaces.
     const r = detectTopology({
       ...rectGeom(0, 0, 4, 4),
       mid: lineGeom(-1, 2, 5, 2),
@@ -139,7 +139,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("rectangle with vertical midline → 2 surfaces, 2 intersections", () => {
-    /** Rectangle + vertical line through the middle → 2 surfaces. */
+    // Rectangle + vertical line through the middle → 2 surfaces.
     const r = detectTopology({
       ...rectGeom(0, 0, 4, 4),
       mid: lineGeom(2, -1, 2, 5),
@@ -171,7 +171,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("circle cut by off-center chord → 2 surfaces, 2 intersections", () => {
-    /** Circle cut by a chord that does not pass through the center → 2 surfaces. */
+    // Circle cut by a chord that does not pass through the center → 2 surfaces.
     const r = detectTopology({
       c: circleGeom(0, 0, 1),
       chord: lineGeom(-1, 0.5, 1, 0.5),
@@ -181,7 +181,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("two overlapping circles → 3 surfaces, 2 intersections", () => {
-    /** Two overlapping circles → 3 surfaces: left lune, overlap, right lune. */
+    // Two overlapping circles → 3 surfaces: left lune, overlap, right lune.
     const r = detectTopology({
       c1: circleGeom(-0.5, 0, 1),
       c2: circleGeom(0.5, 0, 1),
@@ -206,7 +206,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("semicircle arc + diameter → 1 surface", () => {
-    /** Upper semicircle arc + diameter line → 1 surface (half-disk). */
+    // Upper semicircle arc + diameter line → 1 surface (half-disk).
     const r = detectTopology({
       semi: arcGeom(0, 0, 1, 0, 180),
       diam: lineGeom(-1, 0, 1, 0),
@@ -216,7 +216,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("3/4 arc + chord → 1 surface", () => {
-    /** 3/4 arc + chord closing off the short segment → 1 surface (half-disk-like region). */
+    // 3/4 arc + chord closing off the short segment → 1 surface (half-disk-like region).
     const r = detectTopology({
       a: arcGeom(0, 0, 1, 0, 270),
       ch: lineGeom(0, -1, 1, 0),
@@ -225,7 +225,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("single line → 0 surfaces", () => {
-    /** A single open line cannot enclose any area. */
+    // A single open line cannot enclose any area.
     const r = detectTopology({ l: lineGeom(0, 0, 1, 1) })
     expect(ns(r)).toBe(0)
   })
@@ -239,7 +239,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("two separate rectangles → 2 surfaces", () => {
-    /** Two separate closed rectangles → 2 surfaces each. */
+    // Two separate closed rectangles → 2 surfaces each.
     const r = detectTopology({
       b1: lineGeom(0, 0, 2, 0),
       r1: lineGeom(2, 0, 2, 2),
@@ -255,7 +255,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("rectangle with two parallel splits → 3 surfaces, 4 intersections", () => {
-    /** Rectangle split by two parallel lines → 3 surfaces. */
+    // Rectangle split by two parallel lines → 3 surfaces.
     const r = detectTopology({
       ...rectGeom(0, 0, 6, 4),
       s1: lineGeom(2, -1, 2, 5),
@@ -266,7 +266,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("rectangle with cross → 4 surfaces, 5 intersections", () => {
-    /** Rectangle split by a horizontal + vertical line crossing inside → 4 surfaces. */
+    // Rectangle split by a horizontal + vertical line crossing inside → 4 surfaces.
     const r = detectTopology({
       ...rectGeom(0, 0, 4, 4),
       h: lineGeom(-1, 2, 5, 2),
@@ -277,7 +277,7 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
   })
 
   it("CW arc face (180°→0°) → 1 surface", () => {
-    /** Half-disk using an arc from 180° to 0° (CW) + diameter line → 1 surface. */
+    // Half-disk using an arc from 180° to 0° (CW) + diameter line → 1 surface.
     const r = detectTopology({
       semi: arcGeom(0, 0, 1, 180, 0),
       chord: lineGeom(1, 0, -1, 0),
@@ -334,7 +334,7 @@ describe.skipIf(!topologyAvailable)("detectTopology query strings", () => {
 
 describe.skipIf(!topologyAvailable)("detectTopology construction lines", () => {
   it("construction lines are ignored", () => {
-    /** Construction lines are excluded from topology -- rectangle stays 1 surface. */
+    // Construction lines are excluded from topology -- rectangle stays 1 surface.
     const r = detectTopology({
       ...rectGeom(0, 0, 2, 2),
       diag: { ...lineGeom(0, 0, 2, 2), construction: true },
@@ -343,7 +343,7 @@ describe.skipIf(!topologyAvailable)("detectTopology construction lines", () => {
   })
 
   it("only construction lines → 0 surfaces", () => {
-    /** All construction lines cannot enclose a surface -- result is empty. */
+    // All construction lines cannot enclose a surface -- result is empty.
     const r = detectTopology({
       a: { ...lineGeom(0, 0, 2, 0), construction: true },
       b: { ...lineGeom(2, 0, 1, 2), construction: true },
@@ -353,7 +353,7 @@ describe.skipIf(!topologyAvailable)("detectTopology construction lines", () => {
   })
 
   it("construction line does not split surface", () => {
-    /** A construction line crossing a closed rectangle does not split the surface. */
+    // A construction line crossing a closed rectangle does not split the surface.
     const r = detectTopology({
       ...rectGeom(0, 0, 4, 4),
       h: { ...lineGeom(-1, 2, 5, 2), construction: true },
@@ -378,7 +378,7 @@ describe.skipIf(!topologyAvailable)("detectTopology wrapping arcs", () => {
   })
 
   it("wrapping arc three-quarter (270°→180° through 0°) → 1 surface", () => {
-    /** 3/4 arc from 270° to 180° (wrapping through 0°) + chord → 1 surface. */
+    // 3/4 arc from 270° to 180° (wrapping through 0°) + chord → 1 surface.
     const r = 1.0
     const rTopo = detectTopology({
       a: arcGeom(0, 0, r, 270, 180),

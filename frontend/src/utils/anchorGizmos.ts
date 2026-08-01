@@ -22,13 +22,13 @@ import type { Vec3 } from '@/utils/transform3d'
 export type AnchorTable = Record<string, Record<string, AnchorPose>>
 
 export interface AnchorGizmo {
-  /** Stable per-reference key; `${part}|${anchor}`. */
+  // Stable per-reference key; `${part}|${anchor}`.
   key: string
   ref: MateRef
   point: Vec3
-  /** Primary axis first, then the two derived display axes. */
+  // Primary axis first, then the two derived display axes.
   axes: [Vec3, Vec3, Vec3]
-  /** The reference a mate chip would commit right now. */
+  // The reference a mate chip would commit right now.
   aimed: boolean
 }
 

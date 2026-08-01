@@ -23,10 +23,10 @@ import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
 export interface AssemblySelectionGeometry {
-  /** Non-indexed triangle positions (9 floats per triangle). */
+  // Non-indexed triangle positions (9 floats per triangle).
   selectedFaces: Float32Array
   hoveredFaces: Float32Array
-  /** Line-segment positions (6 floats per segment). */
+  // Line-segment positions (6 floats per segment).
   selectedEdges: Float32Array
   hoveredEdges: Float32Array
   /** Face boundary-loop line segments (6 floats per segment), same precedence
@@ -139,7 +139,7 @@ class BodyIndex {
 
 interface PrimitiveSlot {
   body: BodyIndex
-  /** Face index or edge index within that body. */
+  // Face index or edge index within that body.
   index: number
 }
 

@@ -109,11 +109,11 @@ export type GizmoHandleKind = 'translate' | 'rotate' | 'plane'
 export type GizmoAxisName = 'x' | 'y' | 'z'
 
 export interface GizmoAxisDef {
-  /** Suffix in the handle's entity key. */
+  // Suffix in the handle's entity key.
   name: GizmoAxisName
-  /** The part-local axis this handle acts on. */
+  // The part-local axis this handle acts on.
   axis: Vec3
-  /** Right-handed companions: `u x v = axis`. */
+  // Right-handed companions: `u x v = axis`.
   u: Vec3
   v: Vec3
 }
@@ -163,7 +163,7 @@ export function parseGizmoHandleKey(key: string | null | undefined): GizmoHandle
 }
 
 export interface GizmoPickGeometry {
-  /** Non-indexed triangles, world space, length = tris * 9. */
+  // Non-indexed triangles, world space, length = tris * 9.
   positions: Float32Array
   triangleToFace: Uint32Array
   faceQueries: string[]

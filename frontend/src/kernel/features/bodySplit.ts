@@ -35,7 +35,7 @@ import { orderSplitChildren, type SplitChild } from '../constructionName'
 
 /** The per-body identity fields a split has to hand down to every sibling. */
 export interface BodyTemplate {
-  /** Base id: the first sibling takes it verbatim, the rest get `_1`, `_2`, ... */
+  // Base id: the first sibling takes it verbatim, the rest get `_1`, `_2`, ...
   id: string
   createdBy: string
   sketchId?: string

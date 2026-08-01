@@ -34,7 +34,7 @@ export interface BuilderOkResponse {
   id: number
   ok: true
   result: MeshResult
-  /** Live handles remaining after the command; the host asserts this is 0. */
+  // Live handles remaining after the command; the host asserts this is 0.
   liveHandles: number
 }
 

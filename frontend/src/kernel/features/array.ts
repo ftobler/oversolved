@@ -19,7 +19,7 @@ type Dict = Record<string, unknown>
 
 interface ArrayResult {
   status: string
-  /** The first body; `body_ids` carries the rest when instances or splits add more. */
+  // The first body; `body_ids` carries the rest when instances or splits add more.
   body_id: string
   body_ids: string[]
   operation: string

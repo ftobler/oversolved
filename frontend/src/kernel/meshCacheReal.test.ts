@@ -83,7 +83,7 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('fillet edit incremental rebuild produces valid output', () => {
-    /** Incremental rebuild after fillet radius edit must work. */
+    // Incremental rebuild after fillet radius edit must work.
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -105,7 +105,7 @@ describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () =>
   })
 
   it('pick_bodies served from checkpoint', () => {
-    /** pick_bodies must be present and populated from checkpoint snapshots. */
+    // pick_bodies must be present and populated from checkpoint snapshots.
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),

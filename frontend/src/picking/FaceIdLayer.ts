@@ -25,13 +25,13 @@ export interface FaceIdLayerConfig {
 }
 
 export interface FaceBodyRegistration {
-  /** Stable key for the registered body (e.g. `${featureId}/${bodyId}`). */
+  // Stable key for the registered body (e.g. `${featureId}/${bodyId}`).
   bodyKey: string
-  /** Non-indexed triangle positions, length = numTris * 9. */
+  // Non-indexed triangle positions, length = numTris * 9.
   positions: Float32Array
-  /** Per-triangle B-rep face index (length = numTris). */
+  // Per-triangle B-rep face index (length = numTris).
   triangleToFace: Uint32Array | number[]
-  /** Ancestral query per B-rep face (indexed by face index). */
+  // Ancestral query per B-rep face (indexed by face index).
   faceQueries: ReadonlyArray<string>
   /**
    * When true, allocate the ID by a per-primitive key (`bodyKey#layer#faceIdx`)

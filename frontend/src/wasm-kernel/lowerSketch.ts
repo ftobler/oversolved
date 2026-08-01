@@ -89,7 +89,7 @@ export interface EntityLayout {
 
 export interface LowerResult {
   input: FlatInput
-  /** Index-aligned entity layout, including the injected origin at the end. */
+  // Index-aligned entity layout, including the injected origin at the end.
   layout: EntityLayout[]
 }
 

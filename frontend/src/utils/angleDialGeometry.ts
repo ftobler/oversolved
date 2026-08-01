@@ -67,11 +67,11 @@ export function dialPoint(def: GizmoAxisDef, angle: number, radius: number): Vec
 
 export interface DialTick {
   angle: number
-  /** Quarter-turn ticks, drawn longer so the user can count quadrants at a glance. */
+  // Quarter-turn ticks, drawn longer so the user can count quadrants at a glance.
   major: boolean
-  /** Inner end, toward the hub. */
+  // Inner end, toward the hub.
   start: Vec3
-  /** Outer end, on the rim. */
+  // Outer end, on the rim.
   end: Vec3
 }
 

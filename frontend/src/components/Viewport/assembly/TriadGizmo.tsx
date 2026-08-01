@@ -81,9 +81,9 @@ const RING_POINTS: Vec3[][] = GIZMO_AXES.map(ringLinePoints)
 
 interface TriadGizmoProps {
   origin: Vec3
-  /** The part's world orientation; the triad is drawn in this frame. */
+  // The part's world orientation; the triad is drawn in this frame.
   orientation: Quat
-  /** Entity key of the handle under the cursor, straight from the ID buffer. */
+  // Entity key of the handle under the cursor, straight from the ID buffer.
   hovered: string | null
   /**
    * The gesture in progress, or null when idle. Non-null narrows the triad down

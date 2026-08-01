@@ -492,7 +492,7 @@ describe('extractBodyAnchors entity index', () => {
     return () => { n++; return `a${n}` }
   }
 
-  /** One flat face, one freeform face, one line edge, one ellipse edge, one vertex. */
+  // One flat face, one freeform face, one line edge, one ellipse edge, one vertex.
   function mixedBody(): BodyResult {
     return {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],

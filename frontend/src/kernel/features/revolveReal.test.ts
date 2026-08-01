@@ -84,7 +84,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
             try {
               const mesh = solidToMesh(oc!, table, body.shape)
               out[body.id] = { mesh, edges: [], edge_queries: [] }
-            } catch { /* non-fatal */ }
+            } catch {  /* non-fatal */ }
           }
           return out
         },
@@ -110,7 +110,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   }
 
   it('basic revolve produces a body with mesh', () => {
-    /** A rectangle [1,0]-[3,1] revolved 360° around Y-axis. */
+    // A rectangle [1,0]-[3,1] revolved 360° around Y-axis.
     const result = run({
       version: 1, kind: 'part',
       features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 })],
@@ -199,7 +199,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('reverse direction negates the revolve angle', () => {
-    /** direction=reverse negates the angle, producing a mirror shape. */
+    // direction=reverse negates the angle, producing a mirror shape.
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -212,7 +212,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('symmetric direction revolves half angle each way', () => {
-    /** direction=symmetric revolves half the angle each way and fuses the two halves. */
+    // direction=symmetric revolves half the angle each way and fuses the two halves.
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -225,7 +225,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve cylinder spans expected bbox dimensions', () => {
-    /** Rectangle [1,0]-[3,1] revolved 360° around Y axis spans x/z roughly [-3,3] and y [0,1]. */
+    // Rectangle [1,0]-[3,1] revolved 360° around Y axis spans x/z roughly [-3,3] and y [0,1].
     const result = run({
       version: 1, kind: 'part',
       features: [

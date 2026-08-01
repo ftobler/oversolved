@@ -69,22 +69,22 @@ export interface AssemblyEditorData {
   doc: AssemblyDoc | null
   instances: PartInstance[]
   mates: MateFeature[]
-  /** Per-mate solve outcome, keyed by feature id. `stale` drives the red rendering. */
+  // Per-mate solve outcome, keyed by feature id. `stale` drives the red rendering.
   mateResults: Record<string, MateResult>
   transforms: Record<string, Transform3D>
   bodies: Record<string, BodyResult>
-  /** Analytic edges of the solved bodies, keyed by the same body id. */
+  // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
-  /** Entity pick id -> the mate refs it offers. The Stage 7 pick lookup. */
+  // Entity pick id -> the mate refs it offers. The Stage 7 pick lookup.
   entityMateRefs: EntityMateRefs
-  /** Solved-pose anchor geometry, by part handle plus the assembly's own frame. */
+  // Solved-pose anchor geometry, by part handle plus the assembly's own frame.
   anchors: AnchorTable
-  /** ID-layer registration payloads for the solved scene. */
+  // ID-layer registration payloads for the solved scene.
   pickGeometry: AssemblyPickBody[]
   selectedPartHandle: string | null
-  /** The mate whose editor panel is open; null when no mate is being authored. */
+  // The mate whose editor panel is open; null when no mate is being authored.
   selectedMateId: string | null
-  /** The reference slot an aimed pick writes into. Null means picks only aim. */
+  // The reference slot an aimed pick writes into. Null means picks only aim.
   activeMateField: MateFieldTarget | null
   /**
    * A reference was written since the field was armed. Committing a pick does not
@@ -100,7 +100,7 @@ export interface AssemblyEditorData {
    */
   pickCandidates: MateRef[]
   pickIndex: number
-  /** Ctrl+hover entity scope: restricts picks to this one entity's anchors. */
+  // Ctrl+hover entity scope: restricts picks to this one entity's anchors.
   pickScopeEntity: string | null
   /**
    * The entities under the cursor right now. Empty is the resting state, and it
@@ -116,13 +116,13 @@ export interface AssemblyEditorData {
    * it (as it does hoverHits).
    */
   selection: Set<string>
-  /** The single entity under the cursor in B-rep selection mode; null when none. */
+  // The single entity under the cursor in B-rep selection mode; null when none.
   hoveredEntity: string | null
-  /** The ID-buffer debug renderpass overlay (mirrors the part editor's showDebugHit). */
+  // The ID-buffer debug renderpass overlay (mirrors the part editor's showDebugHit).
   showPickDebug: boolean
-  /** Live drag/gizmo state; null between manipulations. */
+  // Live drag/gizmo state; null between manipulations.
   manipulation: ManipulationSession | null
-  /** Which triad handle is being dragged right now; null when none is. */
+  // Which triad handle is being dragged right now; null when none is.
   gizmoDrag: GizmoDragState | null
   /**
    * Per-handle render offsets owed by a drag that is committed but not yet
@@ -241,11 +241,11 @@ export function setAssemblyCallbacks(cb: AssemblyCallbacks | null): void {
 interface AssemblyEditorState extends AssemblyEditorData {
   setSnapshot: (data: AssemblyEditorData) => void
   setSelectedPartHandle: (handle: string | null) => void
-  /** Open a mate's editor. Closing the previous one settles its owed solve. */
+  // Open a mate's editor. Closing the previous one settles its owed solve.
   setSelectedMateId: (featureId: string | null) => void
-  /** Arm a reference slot for the next pick; `null` disarms and re-solves if owed. */
+  // Arm a reference slot for the next pick; `null` disarms and re-solves if owed.
   setActiveMateField: (target: MateFieldTarget | null) => void
-  /** Push a mate edit to the solver, unless a chip is armed; then it is owed. */
+  // Push a mate edit to the solver, unless a chip is armed; then it is owed.
   requestSolveOrDefer: () => void
   setIsSolving: (solving: boolean) => void
   setSolveError: (error: string | null) => void
@@ -257,30 +257,30 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * caller drops so it keeps rendering from its drag offset.
    */
   setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'mateResults'>) => void
-  /** Resolve an ordered hit list into the candidate set, aiming its first entry. */
+  // Resolve an ordered hit list into the candidate set, aiming its first entry.
   setPickFromHits: (hits: readonly EntityHit[]) => void
-  /** A Ctrl+click: re-aim, or advance the cycle when it lands on the same set. */
+  // A Ctrl+click: re-aim, or advance the cycle when it lands on the same set.
   pickFromHitsOrCycle: (hits: readonly EntityHit[]) => void
-  /** Write the aimed reference into the armed mate slot. No-op when none is armed. */
+  // Write the aimed reference into the armed mate slot. No-op when none is armed.
   commitAimToMateField: () => void
-  /** Ctrl+click: aim the next candidate. No-op on an empty set. */
+  // Ctrl+click: aim the next candidate. No-op on an empty set.
   cyclePickCandidate: () => void
   clearPickCandidates: () => void
   setPickScopeEntity: (entityKey: string | null) => void
-  /** Pointer moved: reveal the hovered entities' anchors; Ctrl narrows the scope. */
+  // Pointer moved: reveal the hovered entities' anchors; Ctrl narrows the scope.
   setHoverHits: (hits: readonly EntityHit[], ctrlKey: boolean) => void
   clearHover: () => void
-  /** Add or remove one B-rep entity from the measurement selection. */
+  // Add or remove one B-rep entity from the measurement selection.
   toggleSelection: (entityKey: string) => void
   clearSelection: () => void
-  /** The lone entity highlighted under the cursor in B-rep selection mode. */
+  // The lone entity highlighted under the cursor in B-rep selection mode.
   setHoveredEntity: (entityKey: string | null) => void
   setShowPickDebug: (enabled: boolean) => void
-  /** The reference a mate pick chip would commit right now; the set is retained. */
+  // The reference a mate pick chip would commit right now; the set is retained.
   activePickCandidate: () => MateRef | null
-  /** Publish the triad gesture in progress, or null to retire it. */
+  // Publish the triad gesture in progress, or null to retire it.
   setGizmoDrag: (drag: GizmoDragState | null) => void
-  /** Pointer-down on a part body or its triad. No-op for a `fixed` instance. */
+  // Pointer-down on a part body or its triad. No-op for a `fixed` instance.
   beginPartManipulation: (handle: string) => boolean
   /**
    * Pointer-down on a part body: begin a solver-driven grab, capturing the model
@@ -288,15 +288,15 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * `fixed` instance.
    */
   beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
-  /** Move where the grabbed point is pulled to; re-solves so the part tracks it. */
+  // Move where the grabbed point is pulled to; re-solves so the part tracks it.
   setDragTarget: (target: Vec3) => void
   /** Fold the drag solve's grabbed-part pose into the session (what it draws and
    *  commits), so the part shows the SOLVED pose rather than the raw cursor. */
   setDragSolvedPose: (solvedGrab: Transform3D) => void
-  /** `delta` / `angle` are measured from pointer-down, not from the last frame. */
+  // `delta` / `angle` are measured from pointer-down, not from the last frame.
   dragPartTranslate: (delta: Vec3) => void
   rotatePartGizmo: (axis: Vec3, angle: number, pivot?: Vec3) => void
-  /** Pointer-up: write the seed transform, then re-solve once if it moved. */
+  // Pointer-up: write the seed transform, then re-solve once if it moved.
   endPartManipulation: () => void
   cancelPartManipulation: () => void
   /**

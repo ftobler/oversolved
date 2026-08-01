@@ -185,7 +185,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     setSketchSolver(solveBytes)
   })
 
-  /** Extrude produces face_queries in the mesh. */
+  // Extrude produces face_queries in the mesh.
   it('extrude has face_queries', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
@@ -251,7 +251,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     }
   })
 
-  /** Sketch on face -> extrude builds without exception (round-trip). */
+  // Sketch on face -> extrude builds without exception (round-trip).
   it('sketch on face round-trip second extrude', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })

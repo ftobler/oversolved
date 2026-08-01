@@ -262,13 +262,13 @@ describe('assembly pointer adapter (ring angular snapping)', () => {
     setAssemblyCallbacks(null)
   })
 
-  /** A pointer on the Z ring at `deg` around the gizmo, sighted down -Z. */
+  // A pointer on the Z ring at `deg` around the gizmo, sighted down -Z.
   const armAt = (deg: number): Ray => {
     const a = deg * Math.PI / 180
     return ray([Math.cos(a) * 5, Math.sin(a) * 5, 10], [0, 0, -1])
   }
 
-  /** The Z ring grabbed at +X, the frame `armAt(0)` puts the pointer in. */
+  // The Z ring grabbed at +X, the frame `armAt(0)` puts the pointer in.
   const grabZRing = (adapter: ReturnType<typeof mountHost>['adapter'], at = armAt(0)): boolean =>
     adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], at)
 
@@ -351,7 +351,7 @@ describe('assembly pointer adapter (radius-gated snapping)', () => {
   const INSIDE = RING_RADIUS * SCALE - 2.5
   const OUTSIDE = RING_RADIUS * SCALE + 4.5
 
-  /** A pointer on the Z ring at `deg` around the gizmo and `radius` out, sighted down -Z. */
+  // A pointer on the Z ring at `deg` around the gizmo and `radius` out, sighted down -Z.
   const armAt = (deg: number, radius: number): Ray => {
     const a = deg * Math.PI / 180
     return ray([Math.cos(a) * radius, Math.sin(a) * radius, 10], [0, 0, -1])
@@ -574,9 +574,9 @@ describe('assembly pointer adapter (triad plane handles)', () => {
     adapter.onPointerUp()
 
     const t = findInstance(host.doc, 'p1')!.transform
-    expect(t.tx).toBeCloseTo(9, 6)   // the ray reaches z = 0 at x = 4 + 6
+    expect(t.tx).toBeCloseTo(9, 6)  // the ray reaches z = 0 at x = 4 + 6
     expect(t.ty).toBeCloseTo(-3, 6)
-    expect(t.tz).toBeCloseTo(0, 6)   // the whole point: no motion out of plane
+    expect(t.tz).toBeCloseTo(0, 6)  // the whole point: no motion out of plane
     expect(requestSolve).toHaveBeenCalledTimes(2)  // live tick + commit
   })
 
@@ -730,7 +730,7 @@ describe('the angle dial as drawn through the drag pose', () => {
   const DEG = Math.PI / 180
   const deg = (rad: number): number => rad / DEG
 
-  /** A pointer on `def`'s ring at `bearing` degrees from `def.u`, sighted down the axis. */
+  // A pointer on `def`'s ring at `bearing` degrees from `def.u`, sighted down the axis.
   const armAt = (def: GizmoAxisDef, bearing: number): Ray => {
     const a = bearing * DEG
     const { u, v, axis } = def
@@ -759,7 +759,7 @@ describe('the angle dial as drawn through the drag pose', () => {
     return { drag, dialQuat }
   }
 
-  /** Where a point drawn in the dial's local frame ends up, as a world bearing. */
+  // Where a point drawn in the dial's local frame ends up, as a world bearing.
   const bearingOf = (def: GizmoAxisDef, dialQuat: Quat, local: Vec3): number =>
     deg(signedAngleAbout(def.axis, def.u, rotateVector(dialQuat, local)))
 

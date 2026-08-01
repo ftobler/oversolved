@@ -100,7 +100,7 @@ export function computeHighlight(
  * array lives; it holds no state that a pick can invalidate.
  */
 export class HighlightIndex {
-  /** The all-false answer, shared by reference so memos can skip on identity. */
+  // The all-false answer, shared by reference so memos can skip on identity.
   readonly none: readonly boolean[]
   private readonly bodyKey: string
   private readonly layer: string
@@ -120,7 +120,7 @@ export class HighlightIndex {
     return computeHighlight(this.bodyKey, this.layer, this.queries, active)
   }
 
-  /** Whether any primitive is flagged. O(1) for the shared all-false answer. */
+  // Whether any primitive is flagged. O(1) for the shared all-false answer.
   hasAny(flags: readonly boolean[] | null | undefined): boolean {
     if (!flags || flags === this.none) return false
     return flags.some(Boolean)

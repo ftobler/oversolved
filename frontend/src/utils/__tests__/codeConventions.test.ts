@@ -142,7 +142,7 @@ describe('declared dependencies', () => {
     return specifier.startsWith('@') ? path.slice(0, 2).join('/') : path[0]
   }
 
-  /** Bare specifiers only: relative paths, the `@/` alias and node builtins are not packages. */
+  // Bare specifiers only: relative paths, the `@/` alias and node builtins are not packages.
   function isBarePackage(specifier: string): boolean {
     if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('@/')) return false
     if (specifier.startsWith('node:')) return false

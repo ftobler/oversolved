@@ -14,14 +14,14 @@ import type { FaceOrigin } from '../occ/booleans'
 // ─── construction-name transfer (query-naming-by-construction) ───
 
 interface TransferNamesInput {
-  /** The body's shape AFTER the boolean (cleaned) -- the faceOrigin output space. */
+  // The body's shape AFTER the boolean (cleaned) -- the faceOrigin output space.
   bodyShape: OccShape
-  /** Per-output-face origin from booleanWithDiff. */
+  // Per-output-face origin from booleanWithDiff.
   faceOrigin: FaceOrigin[]
-  /** Target body's pre-boolean face names (face_gh -> uuid) + ancestry (uuid -> tokens). */
+  // Target body's pre-boolean face names (face_gh -> uuid) + ancestry (uuid -> tokens).
   targetFaceNames: Record<string, string>
   targetFaceAncestry: Record<string, string[]>
-  /** Tool body's face names + ancestry (or null for ops without a named tool). */
+  // Tool body's face names + ancestry (or null for ops without a named tool).
   toolFaceNames: Record<string, string> | null
   toolFaceAncestry: Record<string, string[]> | null
 }

@@ -252,7 +252,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
 
-  /** Create a 1x1 square face in the XY plane via makeFaceFromWire. */
+  // Create a 1x1 square face in the XY plane via makeFaceFromWire.
   function makeUnitSquareFace(occ2: OccModule, scope: DisposeScope): OccShape {
     const p00 = scope.track(new occ2.gp_Pnt_3(0, 0, 0))
     const p10 = scope.track(new occ2.gp_Pnt_3(1, 0, 0))

@@ -19,21 +19,21 @@ export interface MeshResult {
   solidFaces: number
   triangles: number
   profileEdges: number
-  /** Total sub-shapes returned across every profile edge's Generated() list. */
+  // Total sub-shapes returned across every profile edge's Generated() list.
   generatedSubshapes: number
 }
 
 export interface ExtrudeOptions {
   side?: number
   height?: number
-  /** Owner id the produced solid is registered under (checkpoint/feature id). */
+  // Owner id the produced solid is registered under (checkpoint/feature id).
   owner?: string
   linearDeflection?: number
 }
 
 interface ExtrudeOutput {
   result: MeshResult
-  /** Handle to the produced solid, owned by `table`. Release to evict. */
+  // Handle to the produced solid, owned by `table`. Release to evict.
   solid: OccHandle
 }
 

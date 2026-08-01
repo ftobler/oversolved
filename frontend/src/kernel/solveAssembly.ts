@@ -18,7 +18,7 @@ import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 export type { AnchorPose }
 
-// ─── Assembly built-in anchors ────────────────────────────────────────────
+// ─── Assembly built-in anchors ───
 // The assembly's own coordinate frame, referencable by a mate as ground via
 // MateRef.part === ASSEMBLY_HANDLE. The frame is pinned at the world origin and
 // is never solved, so geom_hash/created_by are unused here, the poses come
@@ -29,7 +29,7 @@ export const assemblyAnchors: Record<string, Anchor> = Object.fromEntries(
   ),
 )
 
-// ─── Types ────────────────────────────────────────────────────────────────
+// ─── Types ───
 
 export interface MateRefSpec {
   part: string
@@ -47,7 +47,7 @@ export interface MateSpec {
   ref_a: MateRefSpec
   ref_b: MateRefSpec
   flip?: boolean
-  /** Either authoring form; `mateOffsetVector` normalizes it at the wire. */
+  // Either authoring form; `mateOffsetVector` normalizes it at the wire.
   offset?: MateOffset
   ratio?: number
   radius?: number
@@ -84,7 +84,7 @@ export interface MeshPayload {
   entityAnchors?: EntityAnchorIndex
 }
 
-// ─── Anchor kind mapping (TS → Rust u8) ──────────────────────────────────
+// ─── Anchor kind mapping (TS → Rust u8) ───
 
 const ANCHOR_KIND_TO_U8: Record<string, number> = {
   plane: 0,
@@ -97,7 +97,7 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
   torus: 7,
 }
 
-// ─── Mate kind mapping (TS → Rust u8) ────────────────────────────────────
+// ─── Mate kind mapping (TS → Rust u8) ───
 
 const MATE_KIND_TO_U8: Record<string, number> = {
   fixed: 0,
@@ -115,7 +115,7 @@ const MATE_MAGIC = 0x5331_544D  // "MTS1"
 const MATE_MAGIC_OUT = 0x5231_544D  // "MTR1"
 const BPB = 7  // bytes per body (tx,ty,tz,qx,qy,qz,qw) = 7 f32s = 28 bytes
 
-// ─── Quaternion math for transform application ───────────────────────────
+// ─── Quaternion math for transform application ───
 //
 // Delegates to utils/transform3d.ts rather than carrying a private copy: that
 // module already gets this right (makeTransform normalizes, quatToAxisAngle
@@ -186,7 +186,7 @@ function transformEdgeCurve(e: EdgeCurve, t: Transform3D): EdgeCurve {
   }
 }
 
-// ─── Mate input byte encoding ────────────────────────────────────────────
+// ─── Mate input byte encoding ───
 
 export interface MateWireRecord {
   kindCode: number
@@ -199,7 +199,7 @@ export interface MateWireRecord {
   pointB: [number, number, number]
   axisB: [number, number, number]
   flip: boolean
-  /** Offset vector in body A's LOCAL frame; see mate.rs `Mate::offset`. */
+  // Offset vector in body A's LOCAL frame; see mate.rs `Mate::offset`.
   offset: Vec3
   ratio: number
   radius: number
@@ -214,8 +214,8 @@ function pinnedMaskBytes(nBodies: number): number {
 
 export function encodeMateInput(
   bodyCount: number,
-  params: Float32Array,       // 7 * bodyCount
-  fixedMask: Uint8Array,       // ceil(bodyCount/8) bytes
+  params: Float32Array,  // 7 * bodyCount
+  fixedMask: Uint8Array,  // ceil(bodyCount/8) bytes
   mates: MateWireRecord[],
 ): Uint8Array {
   const maskLen = pinnedMaskBytes(bodyCount)
@@ -325,7 +325,7 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   return { paramsSolved, overallStatus, residualNorm, rank, dof, iters, ms }
 }
 
-// ─── Main orchestration ───────────────────────────────────────────────────
+// ─── Main orchestration ───
 
 export async function solveAssembly(
   parts: { handle: string; doc_id: string; doc_rev: number; transform: Transform3D; fixed?: boolean }[],
@@ -396,7 +396,7 @@ export async function solveAssembly(
     handleIndex++
   }
 
-  // ── Resolve mate anchors & build mate records ────────────────────────
+  // ─── Resolve mate anchors & build mate records ───
 
   const mateResults: Record<string, MateResult> = {}
   const mateRecords: MateWireRecord[] = []
@@ -495,7 +495,7 @@ export async function solveAssembly(
     mateResults[mate.id] = { stale: false }
   }
 
-  // ── Call the Rust mate solver ─────────────────────────────────────────
+  // ─── Call the Rust mate solver ───
 
   const paramCount = bodyCount * BPB
   const paramsInitial = new Float32Array(paramCount)
@@ -601,7 +601,7 @@ export async function solveAssembly(
     }
   }
 
-  // ── Apply transforms to body meshes ───────────────────────────────────
+  // ─── Apply transforms to body meshes ───
 
   const transformedBodies: Record<string, MeshPayload[]> = {}
   const posedAnchors: Record<string, Record<string, AnchorPose>> = {}

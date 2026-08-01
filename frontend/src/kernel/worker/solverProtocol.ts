@@ -93,7 +93,7 @@ export interface WorkerErrResponse {
 export interface ExportOkResponse {
   id: number
   ok: true
-  /** `null` mirrors exportLocally returning null (OCC.js absent / no body). */
+  // `null` mirrors exportLocally returning null (OCC.js absent / no body).
   bytes: Uint8Array | null
 }
 
@@ -120,7 +120,7 @@ export interface SolvePayload {
 export interface SolveOkResponse {
   id: number
   ok: true
-  /** `null` mirrors solveLocally returning null (OCC.js unavailable). */
+  // `null` mirrors solveLocally returning null (OCC.js unavailable).
   payload: SolvePayload | null
 }
 
@@ -164,7 +164,7 @@ export interface AssemblySolveOkResponse {
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
     mateResults: Record<string, MateResult>
-    /** The mate solve trapped; transforms are the placed seeds. */
+    // The mate solve trapped; transforms are the placed seeds.
     solveError?: string
   }
 }

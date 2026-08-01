@@ -33,13 +33,13 @@ export interface EdgeIdLayerConfig {
 }
 
 export interface EdgeBodyRegistration {
-  /** Stable key, e.g. `${featureId}/${bodyId}`. */
+  // Stable key, e.g. `${featureId}/${bodyId}`.
   bodyKey: string
-  /** Flat segment positions (pairs of endpoints), length = 2 * numSegments * 3. */
+  // Flat segment positions (pairs of endpoints), length = 2 * numSegments * 3.
   segmentPositions: Float32Array
-  /** Per-segment edge index. */
+  // Per-segment edge index.
   segmentToEdge: Uint32Array | number[]
-  /** Ancestral query per edge (length = numEdges). */
+  // Ancestral query per edge (length = numEdges).
   edgeQueries: ReadonlyArray<string>
   /**
    * When true, allocate the ID by a per-primitive key (`bodyKey#layer#edgeIdx`)
@@ -113,7 +113,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     this.xrayMaterial = buildXrayMaterialFrom(this.material)
   }
 
-  /** Toggle x-ray mode: when true, edges hidden behind faces are still pickable. */
+  // Toggle x-ray mode: when true, edges hidden behind faces are still pickable.
   setXrayEdges(enabled: boolean): void {
     if (this.xrayEnabled === enabled) return
     this.xrayEnabled = enabled

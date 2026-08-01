@@ -90,14 +90,14 @@ class Harness {
     }
   }
 
-  /** The body as the final checkpoint holds it (retained shape, live handle). */
+  // The body as the final checkpoint holds it (retained shape, live handle).
   finalBody(r: BuildResponse, bodyId: string): Body {
     const order = r._build_state.feature_order
     const cp = r._build_state.checkpoints[order[order.length - 1]]
     return cp.body_store_snapshot[bodyId]
   }
 
-  /** Fingerprint of a repo holding only this body's B-rep ancestry, per producer. */
+  // Fingerprint of a repo holding only this body's B-rep ancestry, per producer.
   fingerprints(body: Body): { meta: string; render: string; faceCounts: [number, number] } {
     const scope = new DisposeScope()
     try {

@@ -14,7 +14,7 @@ type Dict = Record<string, unknown>
 
 interface ImportStepResult {
   status: string
-  /** The first body, kept for callers that want a single handle on the import. */
+  // The first body, kept for callers that want a single handle on the import.
   body_id: string
   body_ids: string[]
 }

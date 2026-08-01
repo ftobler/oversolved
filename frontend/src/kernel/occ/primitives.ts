@@ -339,9 +339,9 @@ function meshShape(
 }
 
 interface FaceTessellation {
-  /** Per-face vertices in world coordinates (location transform applied). */
+  // Per-face vertices in world coordinates (location transform applied).
   vertices: Vec3[]
-  /** Triangles as 0-based indices into `vertices`, winding fixed for orientation. */
+  // Triangles as 0-based indices into `vertices`, winding fixed for orientation.
   triangles: [number, number, number][]
 }
 
@@ -653,7 +653,7 @@ const SHAPE_HASH_UPPER = 2147483647  // 2^31 - 1
  */
 export class SubShapeDedup {
   private readonly buckets = new Map<number, OccSubShape[]>()
-  /** Register a shape; returns true the first time this identity is seen. */
+  // Register a shape; returns true the first time this identity is seen.
   add(shape: OccSubShape): boolean {
     const key = shape.HashCode(SHAPE_HASH_UPPER)
     const bucket = this.buckets.get(key)
@@ -676,7 +676,7 @@ export class SubShapeDedup {
  */
 export class SubShapeIndexMap {
   private readonly buckets = new Map<number, { shape: OccSubShape; index: number }[]>()
-  /** Record `shape -> index`; later duplicates of the same identity are kept but never win a lookup. */
+  // Record `shape -> index`; later duplicates of the same identity are kept but never win a lookup.
   set(shape: OccSubShape, index: number): void {
     const key = shape.HashCode(SHAPE_HASH_UPPER)
     const bucket = this.buckets.get(key)
@@ -687,7 +687,7 @@ export class SubShapeIndexMap {
     if (bucket.some((b) => b.shape.IsSame(shape))) return
     bucket.push({ shape, index })
   }
-  /** Index registered for this identity, or -1 if none. */
+  // Index registered for this identity, or -1 if none.
   get(shape: OccSubShape): number {
     const bucket = this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))
     if (bucket === undefined) return -1

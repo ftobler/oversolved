@@ -123,7 +123,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
                 mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
                 vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
               }
-            } catch { /* non-fatal */ }
+            } catch {  /* non-fatal */ }
           }
           return out
         },

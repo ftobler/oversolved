@@ -57,11 +57,11 @@ export interface PrimitiveRuns {
 export interface PaintRange { start: number; count: number }
 
 export interface PaintResult {
-  /** Ranges written. Meaningless when `full`; empty when nothing changed. */
+  // Ranges written. Meaningless when `full`; empty when nothing changed.
   ranges: PaintRange[]
-  /** The whole buffer must be uploaded (first paint, palette change, or too many ranges). */
+  // The whole buffer must be uploaded (first paint, palette change, or too many ranges).
   full: boolean
-  /** Primitives whose colour was rewritten. Zero means the buffer is untouched. */
+  // Primitives whose colour was rewritten. Zero means the buffer is untouched.
   repainted: number
 }
 
@@ -175,7 +175,7 @@ export class HighlightColorPainter {
     return overflow ? { ranges: [], full: true, repainted } : { ranges, full: false, repainted }
   }
 
-  /** Test/diagnostic accessor: the paint state of one primitive. */
+  // Test/diagnostic accessor: the paint state of one primitive.
   stateAt(index: number): 'unpainted' | 'base' | 'selected' | 'hovered' {
     const state = this.state[index]
     if (state === SELECTED) return 'selected'

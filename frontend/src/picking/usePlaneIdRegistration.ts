@@ -12,13 +12,13 @@ import { useRegisteredBody } from './idRegistrationUtils'
  * with the plane's selection ID as their face query.
  */
 export function usePlaneIdRegistration(params: {
-  /** Stable selection ID used as the entity query, e.g. `@builtin_plane_top` or `@feat1`. */
+  // Stable selection ID used as the entity query, e.g. `@builtin_plane_top` or `@feat1`.
   selectionId: string
-  /** Plane size in world units (square). */
+  // Plane size in world units (square).
   size: number
-  /** Euler XYZ rotation applied to the plane. Defaults to identity. */
+  // Euler XYZ rotation applied to the plane. Defaults to identity.
   rotation?: [number, number, number]
-  /** World-space origin of the plane center. Defaults to (0,0,0). */
+  // World-space origin of the plane center. Defaults to (0,0,0).
   origin?: [number, number, number]
   enabled?: boolean
 }): void {

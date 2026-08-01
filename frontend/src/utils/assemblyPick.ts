@@ -20,7 +20,7 @@ import { buildIndexedCurveSegments } from '@/utils/edgeSampling'
 import type { Vec3 } from '@/utils/transform3d'
 
 export interface AssemblyPickBody {
-  /** Registration key for all three layers; `assemblyBodyId` already scopes it by part. */
+  // Registration key for all three layers; `assemblyBodyId` already scopes it by part.
   bodyKey: string
   faces: { positions: Float32Array; triangleToFace: Uint32Array; faceQueries: string[] } | null
   edges: { segmentPositions: Float32Array; segmentToEdge: Uint32Array; edgeQueries: string[] } | null

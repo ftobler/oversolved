@@ -298,7 +298,7 @@ class UnplacedFaceIndex {
     this.positions.get(at)?.push(position)
   }
 
-  /** Every position sharing this face's identity, or empty when unknown. */
+  // Every position sharing this face's identity, or empty when unknown.
   at(face: OccSubShape): number[] {
     const canonical = this.canonical.get(face)
     return canonical < 0 ? [] : (this.positions.get(canonical) ?? [])

@@ -80,7 +80,7 @@ describe('solveSketch projection lowering', () => {
     expect(g).toBeDefined()
     // 5 params => the entity was lowered to an ellipse, not kept as a circle.
     expect(g!.length).toBe(5)
-    expect(g![2]).toBeCloseTo(5)              // a = R
+    expect(g![2]).toBeCloseTo(5)  // a = R
     expect(g![3]).toBeCloseTo(5 * Math.cos(phi))  // b = R cos(phi)
     // The kind change must be surfaced so the doc entity (declared 'circle')
     // adopts 'ellipse' -- otherwise a 'circle' entity gets 5-param geometry.

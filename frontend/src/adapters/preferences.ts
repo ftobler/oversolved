@@ -63,7 +63,7 @@ class LocalPreferences implements PreferencesAdapter {
   initial(): UserPreferences { return readLocalPrefs() }
   async load(): Promise<UserPreferences> { return readLocalPrefs() }
   async save(next: UserPreferences): Promise<void> {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(next)) } catch { /* quota / disabled */ }
+    try { localStorage.setItem(LS_KEY, JSON.stringify(next)) } catch {  /* quota / disabled */ }
   }
 }
 

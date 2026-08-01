@@ -110,7 +110,7 @@ describe('sampleEdgeCurve: circle', () => {
     const full = circle(0, 2 * Math.PI)
     const coarse = sampleEdgeCurve(full, 8)
     const fine = sampleEdgeCurve(full, 64)
-    expect(coarse).toHaveLength(9)   // segs + 1 points
+    expect(coarse).toHaveLength(9)  // segs + 1 points
     expect(fine).toHaveLength(65)
     expect(fine.length).toBeGreaterThan(coarse.length)
   })

@@ -10,12 +10,12 @@ import type { BodyResult, EdgeData } from '@/types/cad'
 // directly with BodyResult fixtures.
 
 const edges: EdgeData[] = [
-  { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },                                            // 0: +x
+  { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },  // 0: +x
   { kind: 'arc', center: [0, 0, 0], radius: 2, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI },  // 1
   { kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] },                                  // 2
   { kind: 'line', start: [0, 5, 0], end: [10, 5, 0] },                                            // 3: +x, parallel to 0, offset 5
   { kind: 'line', start: [0, 0, 0], end: [0, 10, 0] },                                            // 4: +y, perpendicular to 0
-  { kind: 'circle', center: [3, 4, 0], radius: 1, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI }, // 5
+  { kind: 'circle', center: [3, 4, 0], radius: 1, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI },  // 5
 ]
 
 function makeBody(): BodyResult {

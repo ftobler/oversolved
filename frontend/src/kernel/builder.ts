@@ -11,7 +11,7 @@ import { normalToFrame } from './types3d'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import type { TessMesh } from './occ/tessellation'
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ───
 
 export interface FeatureResult {
   [key: string]: unknown
@@ -28,18 +28,18 @@ export type FeatureSolver = (
 ) => FeatureResult
 
 export interface BuildDeps {
-  /** Solve a single feature. Called by the orchestration loop. */
+  // Solve a single feature. Called by the orchestration loop.
   trySolveFeature: FeatureSolver
-  /** Register solved geometry / topology into the repo after a feature solves. */
+  // Register solved geometry / topology into the repo after a feature solves.
   postRegister: (
     repo: Repository,
     featureId: string,
     feature: Record<string, unknown>,
     result: FeatureResult,
   ) => void
-  /** Create a fresh global repository. */
+  // Create a fresh global repository.
   initGlobalRepo: () => Repository
-  /** Tessellate all bodies in the store (triangles for rendering). */
+  // Tessellate all bodies in the store (triangles for rendering).
   tessellateBodies: (
     bodyStore: Record<string, Body>,
     repo: Repository | null,
@@ -54,7 +54,7 @@ export interface BuildDeps {
     bodyStore: Record<string, Body>,
     repo: Repository | null,
   ) => Record<string, Record<string, unknown>>
-  /** Optional: normalize legacy projected_* entity kinds. Defaults to identity. */
+  // Optional: normalize legacy projected_* entity kinds. Defaults to identity.
   normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
   /** Compute face geometry hashes for brep_diff.new_faces. Called per-body
    *  inside the feature loop / checkpoint assembly while OCC handles are live,
@@ -107,7 +107,7 @@ export interface RebuildValidation {
   diffs: Record<string, unknown>
 }
 
-// ── Feature key union for dirty detection ──────────────────────────────────
+// ─── Feature key union for dirty detection ───
 
 const VOLATILE_FEATURE_KEYS = new Set([
   'drag_anchor',
@@ -136,7 +136,7 @@ function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> 
   return out
 }
 
-// ── Dirty detection ────────────────────────────────────────────────────────
+// ─── Dirty detection ───
 
 export function findFirstDirty(
   features: Array<Record<string, unknown>>,
@@ -158,7 +158,7 @@ export function findFirstDirty(
   return features.length
 }
 
-// ── Shape / body snapshot helpers ───────────────────────────────────────────
+// ─── Shape / body snapshot helpers ───
 
 // ``mapShape``, when provided, transforms the body's shape handle for the
 // snapshot: retain-in-place at checkpoint time, defensive-copy at restore time.
@@ -260,7 +260,7 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
   return repo
 }
 
-// ── Hash / validation helpers ───────────────────────────────────────────────
+// ─── Hash / validation helpers ───
 
 function _stableJson(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => {
@@ -412,7 +412,7 @@ export function validateIncremental(
   return { level: 3, passed: true, diffs: {} }
 }
 
-// ── B-rep diff hash helpers ──────────────────────────────────────────────
+// ─── B-rep diff hash helpers ───
 
 function _brepDiffNewFaceHashes(body: Body, deps?: BuildDeps): Set<string> {
   if (deps?.brepDiffNewFaceHashes) return deps.brepDiffNewFaceHashes(body)
@@ -429,7 +429,7 @@ function _brepDiffNewVertexHashes(body: Body, deps?: BuildDeps): Set<string> {
   return new Set()
 }
 
-// ── Ancestry registration ─────────────────────────────────────────────────
+// ─── Ancestry registration ───
 
 function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: TessMesh, deps?: BuildDeps): void {
   if (!body.created_by || !mesh.face_data) return
@@ -851,7 +851,7 @@ function reusePickBodyMeshes(
   return out
 }
 
-// ── Build orchestration ──────────────────────────────────────────────────────
+// ─── Build orchestration ───
 
 export function build(
   spec: Record<string, unknown>,
@@ -1193,7 +1193,7 @@ export function build(
   return response
 }
 
-// ── TS kernel router ──────────────────────────────────────────────────────
+// ─── TS kernel router ───
 //
 // The solver registry provides the per-doc solvability gate: a kind-set
 // membership check that dispatches a doc to the TS/WASM leaf solvers when

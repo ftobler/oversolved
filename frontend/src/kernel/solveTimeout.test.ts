@@ -45,7 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
-  try { disposeWorker() } catch { /* ok */ }
+  try { disposeWorker() } catch {  /* ok */ }
   resetSolveChildForTest()
 })
 

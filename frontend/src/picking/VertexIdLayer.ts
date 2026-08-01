@@ -195,7 +195,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
     this.material = buildVertexIdMaterial(this.cubePixels, _config?.depthBias)
   }
 
-  /** Screen-space cube size in pixels, or undefined when drawing flat points. */
+  // Screen-space cube size in pixels, or undefined when drawing flat points.
   getCubePixels(): number | undefined { return this.cubePixels }
 
   onBeforeRender(_width: number, height: number): void {

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { evalExpr } from '@/kernel/evalExpr'
 
 interface ExpressionInputProps {
-  value: string | number          // raw stored value (number or expression string)
+  value: string | number  // raw stored value (number or expression string)
   onChange: (val: string | number) => void
   context?: Record<string, number>  // variable scope (named dimensions, params)
   validate?: (v: number) => boolean  // range check on the evaluated result

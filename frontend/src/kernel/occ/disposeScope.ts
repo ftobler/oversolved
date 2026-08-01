@@ -19,7 +19,7 @@ import type { OccShape, OccListOfShape } from './occTypes'
 /** Anything OCC.js (or a test double) hands back that owns native memory. */
 export interface Disposable {
   delete(): void
-  /** opencascade.js embind proxies expose this; test doubles may too. */
+  // opencascade.js embind proxies expose this; test doubles may too.
   isDeleted?(): boolean
 }
 
@@ -27,7 +27,7 @@ export class DisposeScope {
   private readonly tracked: Disposable[] = []
   private disposed = false
 
-  /** Register `obj` for deletion at `dispose()`; returns it for chaining. */
+  // Register `obj` for deletion at `dispose()`; returns it for chaining.
   track<T extends Disposable>(obj: T): T {
     if (this.disposed) {
       throw new Error('DisposeScope: track() after dispose()')
@@ -47,7 +47,7 @@ export class DisposeScope {
     return obj
   }
 
-  /** Number of objects still tracked (i.e. that dispose() would delete). */
+  // Number of objects still tracked (i.e. that dispose() would delete).
   size(): number {
     return this.tracked.length
   }

@@ -243,7 +243,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  /** Build the spec, then assert the body's face, edge and vertex queries are unique. */
+  // Build the spec, then assert the body's face, edge and vertex queries are unique.
   function expectUniqueQueries(spec: { features: Array<Record<string, unknown>> }, bodyId: string) {
     expectUniquePrimitiveQueries(h, h.run(spec), bodyId)
   }

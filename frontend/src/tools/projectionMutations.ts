@@ -12,11 +12,11 @@ import { projectedKindForEdge } from '@/tools/dimensionProjection'
  *  click path can answer from hover state and the selection path from the
  *  body/sketch registries. */
 export interface ProjectionResolvers {
-  /** Geometric kind of a sketch entity, or null when it cannot be resolved. */
+  // Geometric kind of a sketch entity, or null when it cannot be resolved.
   entityKind: (featureId: string, entityId: string) => string | null
-  /** Curve kind ('line'|'circle'|'arc'|'spline') of a body edge query. */
+  // Curve kind ('line'|'circle'|'arc'|'spline') of a body edge query.
   edgeKind: (query: string) => string | null
-  /** Projection sources of a body face query's boundary edges. */
+  // Projection sources of a body face query's boundary edges.
   faceEdges: (query: string) => { source: string; kind: string }[] | null
 }
 
@@ -67,7 +67,7 @@ export function projectionMutationsForId(
           isFace = true
         }
       }
-    } catch { /* parse failure: keep default point */ }
+    } catch {  /* parse failure: keep default point */ }
 
     // A face pick projects its whole boundary as a closed wire: one projected
     // entity per boundary edge. Without resolved boundary edges (older body or

@@ -333,7 +333,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies concave outer (L-shape) with hole inside', () => {
-    /** Concave outer (L-shape) with a hole inside is classified correctly. */
+    // Concave outer (L-shape) with a hole inside is classified correctly.
     const lShape: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [4, 0] },
       { kind: 'line', start: [4, 0], end: [4, 2] },
@@ -352,7 +352,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies arc-containing outer loop with inner hole', () => {
-    /** Loop containing an arc (bulging outward) should still classify as outer. */
+    // Loop containing an arc (bulging outward) should still classify as outer.
     const arcLoop: LoopEdge[] = [
       { kind: 'line', start: [0, 0], end: [4, 0] },
       { kind: 'line', start: [4, 0], end: [4, 4] },
@@ -368,7 +368,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('handles arc-only loop without start keys without crashing', () => {
-    /** classify_loops should work when the loop has no 'start' keys (OCC arcs). */
+    // classify_loops should work when the loop has no 'start' keys (OCC arcs).
     const arcOnly: LoopEdge[] = [
       { kind: 'arc', center: [0, 0], radius: 5.0, angle_start_deg: 0.0, angle_end_deg: 180.0, ccw: true },
     ]
@@ -399,7 +399,7 @@ describe('classifyLoops additional', () => {
   })
 
   it('classifies small-arc loop inside outer rect as a hole', () => {
-    /** Outer rect + inner small-arc loop: inner is classified as a hole. */
+    // Outer rect + inner small-arc loop: inner is classified as a hole.
     const outer = rect(-5, -5, 5, 5)
     const r = 0.5
     const arc = arcEdge(0.0, 0.0, r, 0.0, 3.0)
@@ -437,7 +437,7 @@ describe('loopSignedArea additional', () => {
   })
 
   it('does not crash on arc edge without start keys', () => {
-    /** OCC-sourced arc dicts without 'start'/'end' keys should not crash. */
+    // OCC-sourced arc dicts without 'start'/'end' keys should not crash.
     const e: LoopEdge = { kind: 'arc', center: [0, 0], radius: 1.0, angle_start_deg: 0.0, angle_end_deg: 90.0, ccw: true }
     // Only 1 point (the midpoint) -- too few for a real area, returns 0
     expect(loopSignedArea([e])).toBe(0.0)

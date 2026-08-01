@@ -269,7 +269,7 @@ describe("query coercion", () => {
     expect(result).toHaveProperty("type", "straightedge")
   })
 
-  /** Two candidates coercing to different solids is ambiguous -> fail loud. */
+  // Two candidates coercing to different solids is ambiguous -> fail loud.
   it("raises when coercion yields distinct solids (ambiguous)", () => {
     const repo = new Repository()
     const bodyStore: Record<string, unknown> = {
@@ -288,7 +288,7 @@ describe("query coercion", () => {
     expect(() => repo.query(q, null, bodyStore)).toThrow(AmbiguousQueryError)
   })
 
-  /** Several faces of one body coerce to the same solid -> resolve cleanly. */
+  // Several faces of one body coerce to the same solid -> resolve cleanly.
   it("resolves cleanly when several faces coerce to the same solid", () => {
     const repo = new Repository()
     const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
@@ -330,7 +330,7 @@ describe("query coercion", () => {
  * 2. Partial ancestral: registered_key <= query_set (reverse direction, unique only)
  * 3. Geometry hash fallback */
 describe("partial ancestral resolver (tier 2)", () => {
-  /** Query carries an extra ancestor not in registration; tier 2 resolves it. */
+  // Query carries an extra ancestor not in registration; tier 2 resolves it.
   it("resolves when unique, extra ancestor in query not in registration", () => {
     // Registered under {A, B} but the query has {A, B, extra}
     const repo = new Repository()
@@ -341,7 +341,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect((result as Record<string, unknown>).created_by).toBe("ex1")
   })
 
-  /** Two elements share no common registered superset but both match tier 2. */
+  // Two elements share no common registered superset but both match tier 2.
   it("ambiguous yields no match, two entries both match tier 2 but >1 candidate", () => {
     // Query has both @A and @B, tier 1 finds nothing (query not subset of any key),
     // tier 2 finds both (@A <= query_set and @B <= query_set), returns nothing
@@ -352,7 +352,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect(result).toBeNull()
   })
 
-  /** No subset relation either way, tier 2 finds nothing, falls to UUID. */
+  // No subset relation either way, tier 2 finds nothing, falls to UUID.
   it("falls to UUID when ancestors are disjoint -- no subset relation either way", () => {
     // Query with completely different ancestors -- @X, @Y have no subset relation
     // with @A, @B, @C. Tier 1+2 miss. UUID fallback resolves via @u|u_x.
@@ -367,7 +367,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect((result as Record<string, unknown>).created_by).toBe("ex1")
   })
 
-  /** Tier 1 exact-match candidate is returned without scanning tier 2. */
+  // Tier 1 exact-match candidate is returned without scanning tier 2.
   it("full match wins over partial, tier 1 exact superset returned without scanning tier 2", () => {
     // @A, @B is a subset that would match tier 2, but the full @A,@B,@C match wins
     const repo = new Repository()
@@ -378,7 +378,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect((result as Record<string, unknown>).created_by).toBe("full")
   })
 
-  /** Tier 2 respects type_restriction. */
+  // Tier 2 respects type_restriction.
   it("respects type restriction in tier 2", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -394,7 +394,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect(resultWrong).toBeNull()
   })
 
-  /** Verify that existing tier 1 behaviour (query <= key) is undisturbed. */
+  // Verify that existing tier 1 behaviour (query <= key) is undisturbed.
   it("tier 1 subset still resolves, query with fewer ancestors than registered key", () => {
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B", "@C"], { type: "face", body_id: "body1", created_by: "ex1" })
@@ -430,7 +430,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     expect(isGeomHashId("@body_ex1/face0")).toBe(false)
   })
 
-  /** Hash in byUuid does not affect pure-ancestry queries. */
+  // Hash in byUuid does not affect pure-ancestry queries.
   it("uuid in byUuid does not affect pure-ancestry queries", () => {
     const repo = new Repository()
     const payload = makeFacePayload("body1", "ex1", 0)
@@ -442,7 +442,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     expect(r["created_by"]).toBe("ex1")
   })
 
-  /** After registering with uuid, no frozenset in ancestral contains a geom_hash string. */
+  // After registering with uuid, no frozenset in ancestral contains a geom_hash string.
   it("no geom_hash tag in any ancestral key Set", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -463,7 +463,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     }
   })
 
-  /** registerAncestor with uuid populates byUuid. */
+  // registerAncestor with uuid populates byUuid.
   it("registerAncestor with uuid populates byUuid", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -476,7 +476,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     expect(repo.byUuid.get("gface_abc")!.length).toBe(1)
   })
 
-  /** When ancestral query finds nothing, byUuid is consulted as last resort. */
+  // When ancestral query finds nothing, byUuid is consulted as last resort.
   it("UUID fallback when ancestral query finds nothing", () => {
     const repo = new Repository()
     const payload = makeFacePayload("body1", "ex1", 0)
@@ -488,7 +488,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     expect(r["created_by"]).toBe("ex1")
   })
 
-  /** UUID fallback respects type_restriction. */
+  // UUID fallback respects type_restriction.
   it("UUID fallback respects type restriction", () => {
     const repo = new Repository()
     const facePayload = makeFacePayload("body1", "ex1", 0)
@@ -503,7 +503,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     expect(wrongType).toBeNull()
   })
 
-  /** Two faces share structural ancestry but differ by UUID; UUID narrows the result. */
+  // Two faces share structural ancestry but differ by UUID; UUID narrows the result.
   it("UUID disambiguates when shared structural ancestry is ambiguous", () => {
     const repo = new Repository()
     const payloadA = makeFacePayload("body1", "ex1", 0)
@@ -523,7 +523,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     expect((resultB as Payload)["face_index"]).toBe(1)
   })
 
-  /** Edge uuids populate byUuid, not ancestral keys. */
+  // Edge uuids populate byUuid, not ancestral keys.
   it("edge uuid populates byUuid not ancestral", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -542,7 +542,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
     }
   })
 
-  /** Vertex uuids populate byUuid, not ancestral keys. */
+  // Vertex uuids populate byUuid, not ancestral keys.
   it("vertex uuid populates byUuid not ancestral", () => {
     const repo = new Repository()
     repo.registerAncestor(
@@ -774,7 +774,7 @@ describe("ambiguous ancestry queries", () => {
     }
   })
 
-  /** Test that adding surface indices to ancestor IDs disambiguates queries. */
+  // Test that adding surface indices to ancestor IDs disambiguates queries.
   it("surface index disambiguates queries", () => {
     const ancestorIds = ["@sketch_1/circle", "@sketch_1/right_line"]
     const query1 = makeAncestryQuery(ancestorIds, "face")
@@ -790,7 +790,7 @@ describe("ambiguous ancestry queries", () => {
     expect(query1Indexed).not.toBe(query2Indexed)
   })
 
-  /** Test that indexed queries resolve to a single surface, not both. */
+  // Test that indexed queries resolve to a single surface, not both.
   it("indexed queries resolve to a single surface each", () => {
     const repo = new Repository()
 
@@ -838,7 +838,7 @@ describe("type coercion tier scope", () => {
     return repo
   }
 
-  /** Baseline: an exact-tier flatface coerces up to its solid. */
+  // Baseline: an exact-tier flatface coerces up to its solid.
   it("coercion happens in exact tier", () => {
     const repo = repoWithFlatface(["@A"])
     const q = makeAncestryQuery(["@A"], "solid")
@@ -855,7 +855,7 @@ describe("type coercion tier scope", () => {
     expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
   })
 
-  /** Contrast: the same partial match resolves fine when no type is demanded. */
+  // Contrast: the same partial match resolves fine when no type is demanded.
   it("partial tier resolves without type restriction", () => {
     const repo = repoWithFlatface(["@A"])
     const q = makeAncestryQuery(["@A", "@extra"])
@@ -864,7 +864,7 @@ describe("type coercion tier scope", () => {
     expect((result as Record<string, unknown>).type).toBe("flatface")
   })
 
-  /** A face reached only via the UUID tier does NOT coerce. */
+  // A face reached only via the UUID tier does NOT coerce.
   it("coercion skipped in UUID tier (no ancestry = strict type filter)", () => {
     const repo = repoWithFlatface(["@A"], "u_h")
     // @X shares no subset relation with @A (tiers 1+2 miss); only the UUID
@@ -873,7 +873,7 @@ describe("type coercion tier scope", () => {
     expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
   })
 
-  /** Contrast: the UUID fallback resolves the face when no type is demanded. */
+  // Contrast: the UUID fallback resolves the face when no type is demanded.
   it("UUID fallback resolves without type restriction", () => {
     const repo = repoWithFlatface(["@A"], "u_h")
     const q = makeAncestryQuery([constructionUuidToken("u_h"), "@X"])
@@ -1076,7 +1076,7 @@ describe("clearBySketchId", () => {
 /** The orchestration prunes ancestral + elements together, leaving no
  * dangling eid: every eid listed in any ancestral list still exists in elements. */
 describe("clearFeatureGeometryRegistrations", () => {
-  /** The orchestration prunes ancestral + elements together: no dangling eid. */
+  // The orchestration prunes ancestral + elements together: no dangling eid.
   it("leaves no dangling refs after cleanup", () => {
     const repo = new Repository()
     const topoEid = repo.registerAncestor(
@@ -1138,7 +1138,7 @@ function makeSnapshot(repo: Repository): Record<string, unknown> {
 
 /** Tests for repo snapshot shallow copy memory and correctness. */
 describe("repoFromSnapshot", () => {
-  /** _repo_from_snapshot with shallow copy produces same query results. */
+  // _repo_from_snapshot with shallow copy produces same query results.
   it("preserves correctness with payloads", () => {
     const original = buildRepoWithPayloads(100)
     const snapshot = makeSnapshot(original)
@@ -1177,7 +1177,7 @@ describe("repoFromSnapshot", () => {
     expect(repoEntry!.eids.length).toBe(origLen)
   })
 
-  /** Appending to an ancestral list in deserialized repo does not affect snapshot. */
+  // Appending to an ancestral list in deserialized repo does not affect snapshot.
   it("isolates ancestral lists from snapshot", () => {
     const repo = buildRepoWithPayloads(10)
     const snapshot = makeSnapshot(repo)
@@ -1194,14 +1194,14 @@ describe("repoFromSnapshot", () => {
     expect(snapshotAncestral[existingKey].eids.length).toBe(3)
   })
 
-  /** Empty snapshot produces empty repo. */
+  // Empty snapshot produces empty repo.
   it("handles empty snapshot", () => {
     const repo = repoFromSnapshot({ elements: {}, ancestral: {}, byUuid: {} })
     expect(repo.elements.size).toBe(0)
     expect(repo.ancestral.size).toBe(0)
   })
 
-  /** Old-format snapshot (no elements/ancestral keys) returns empty repo. */
+  // Old-format snapshot (no elements/ancestral keys) returns empty repo.
   it("returns empty repo for old-format snapshot (no elements/ancestral wrapper)", () => {
     const oldSnapshot = { e1: { id: "e1", kind: "point", params: [1.0, 2.0] } }
     const repo = repoFromSnapshot(oldSnapshot)
@@ -1324,7 +1324,7 @@ describe("ancestral registry lifecycle", () => {
     expect(result).not.toBeNull()
   })
 
-  /** Ancestry entry for removed feature is evicted by gc(active_fids=set()). */
+  // Ancestry entry for removed feature is evicted by gc(active_fids=set()).
   it("gc removes stale entry", () => {
     const repo = new Repository()
     repo.registerAncestor(["@f1", "surf1"], { type: "flatface" })
@@ -1336,7 +1336,7 @@ describe("ancestral registry lifecycle", () => {
     expect(repo.elements.size).toBe(0)
   })
 
-  /** Ancestry entry for active feature is kept by gc(active_fids={"f1"}). */
+  // Ancestry entry for active feature is kept by gc(active_fids={"f1"}).
   it("gc keeps active entry", () => {
     const repo = new Repository()
     const eid = repo.registerAncestor(["@f1", "surf1"], { type: "flatface" })
@@ -1348,7 +1348,7 @@ describe("ancestral registry lifecycle", () => {
     expect(repo.elements.get(eid)).not.toBeNull()
   })
 
-  /** Entries without @-prefixed tags (built-ins) are not evicted. */
+  // Entries without @-prefixed tags (built-ins) are not evicted.
   it("gc keeps builtin entries", () => {
     const repo = new Repository()
     repo.registerAncestor(["builtin_front", "builtin_plane"], { type: "plane" })
@@ -1358,7 +1358,7 @@ describe("ancestral registry lifecycle", () => {
     expect(repo.ancestral.size).toBe(1)
   })
 
-  /** Only stale entries are removed; active entries survive. */
+  // Only stale entries are removed; active entries survive.
   it("gc partial eviction", () => {
     const repo = new Repository()
     repo.registerAncestor(["@f1", "surf1"], { type: "flatface" })
@@ -1457,7 +1457,7 @@ describe("resolvePlaneEarly", () => {
 // ─── B-rep vertex / face integration (requires OCC build pipeline, skipped in this suite) ───
 
 describe("makeAncestryQuery construction details", () => {
-  /** Result starts with '?' and ends with ':face'. */
+  // Result starts with '?' and ends with ':face'.
   it("produces wire format with type restriction suffix", () => {
     const ids = ["@sketchA/lineX", "@sketchA/lineY"]
     const q = makeAncestryQuery(ids, "face")
@@ -1465,7 +1465,7 @@ describe("makeAncestryQuery construction details", () => {
     expect(q.endsWith(":face")).toBe(true)
   })
 
-  /** Caller is responsible for sort order - different order → different string. */
+  // Caller is responsible for sort order - different order → different string.
   it("preserves caller-determined sort order", () => {
     const q_ab = makeAncestryQuery(["@a", "@b"], "face")
     const q_ba = makeAncestryQuery(["@b", "@a"], "face")
@@ -1510,7 +1510,7 @@ describe("query ambiguity, partial resolve", () => {
     expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
   })
 
-  /** Partial resolve becomes unambiguous when type narrows it to one. */
+  // Partial resolve becomes unambiguous when type narrows it to one.
   it("ambiguous partial match disambiguated by type restriction", () => {
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B"], { type: "pt" })
@@ -1579,7 +1579,7 @@ describe("B-rep vertex and face integration", () => {
 // ─── HeuristicConfig / scoreOverlap / pickBest ───
 
 describe("HeuristicConfig defaults", () => {
-  /** DEFAULT_HEURISTIC_CONFIG has sensible defaults. */
+  // DEFAULT_HEURISTIC_CONFIG has sensible defaults.
   it("defaults are sensible", () => {
     const cfg = DEFAULT_HEURISTIC_CONFIG
     expect(cfg.overlapThreshold).toBe(0.5)
@@ -1592,7 +1592,7 @@ describe("HeuristicConfig defaults", () => {
 })
 
 describe("scoreOverlap", () => {
-  /** score_overlap handles empty sets and perfect matches. */
+  // score_overlap handles empty sets and perfect matches.
   it("edge cases and exact matches", () => {
     expect(scoreOverlap(new Set(), new Set())).toBe(0.0)
     expect(scoreOverlap(new Set(["a"]), new Set())).toBe(0.0)
@@ -1603,7 +1603,7 @@ describe("scoreOverlap", () => {
 })
 
 describe("pickBest", () => {
-  /** pick_best with one candidate returns RESOLVED. */
+  // pick_best with one candidate returns RESOLVED.
   it("single candidate returns RESOLVED", () => {
     const cfg = DEFAULT_HEURISTIC_CONFIG
     const [outcome, winner] = pickBest([["item", 0.8]], cfg)
@@ -1611,7 +1611,7 @@ describe("pickBest", () => {
     expect(winner).toBe("item")
   })
 
-  /** pick_best with one candidate beating another by > margin. */
+  // pick_best with one candidate beating another by > margin.
   it("clear winner beats runner-up by > margin", () => {
     const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.2 }
     const [outcome, winner] = pickBest(
@@ -1622,7 +1622,7 @@ describe("pickBest", () => {
     expect(winner).toBe("A")
   })
 
-  /** pick_best with scores within margin returns AMBIGUOUS. */
+  // pick_best with scores within margin returns AMBIGUOUS.
   it("ambiguous within margin", () => {
     const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.3 }
     const [outcome, winner] = pickBest(
@@ -1633,7 +1633,7 @@ describe("pickBest", () => {
     expect(winner).toBeNull()
   })
 
-  /** pick_best with no candidates returns UNRESOLVED. */
+  // pick_best with no candidates returns UNRESOLVED.
   it("empty returns UNRESOLVED", () => {
     const [outcome, winner] = pickBest([], DEFAULT_HEURISTIC_CONFIG)
     expect(outcome).toBe(Outcome.UNRESOLVED)
@@ -1644,20 +1644,20 @@ describe("pickBest", () => {
 describe("scoreGeometryLeaf", () => {
   const cfg = DEFAULT_HEURISTIC_CONFIG
 
-  /** A null hint on either side is treated as a non-penalty (perfect score). */
+  // A null hint on either side is treated as a non-penalty (perfect score).
   it("null hints incur no penalty", () => {
     expect(scoreGeometryLeaf(null, { x: 1 }, cfg)).toBe(1.0)
     expect(scoreGeometryLeaf({ x: 1 }, null, cfg)).toBe(1.0)
     expect(scoreGeometryLeaf(null, null, cfg)).toBe(1.0)
   })
 
-  /** With no keys shared between the hints there is nothing to agree on. */
+  // With no keys shared between the hints there is nothing to agree on.
   it("no shared keys scores zero", () => {
     expect(scoreGeometryLeaf({ x: 1 }, { y: 2 }, cfg)).toBe(0.0)
     expect(scoreGeometryLeaf({}, {}, cfg)).toBe(0.0)
   })
 
-  /** Numbers within the relative tolerance count as a match, beyond it do not. */
+  // Numbers within the relative tolerance count as a match, beyond it do not.
   it("numeric comparison honours the relative tolerance", () => {
     // 0.5 / 100 = 0.005 <= 0.01 default tolerance.
     expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, cfg)).toBe(1.0)
@@ -1665,32 +1665,32 @@ describe("scoreGeometryLeaf", () => {
     expect(scoreGeometryLeaf({ r: 100 }, { r: 102 }, cfg)).toBe(0.0)
   })
 
-  /** Two near-zero magnitudes are equal regardless of relative difference. */
+  // Two near-zero magnitudes are equal regardless of relative difference.
   it("treats both-near-zero values as matching", () => {
     expect(scoreGeometryLeaf({ x: 0 }, { x: 0 }, cfg)).toBe(1.0)
     expect(scoreGeometryLeaf({ x: 1e-13 }, { x: -1e-13 }, cfg)).toBe(1.0)
   })
 
-  /** Non-numeric values fall back to strict equality. */
+  // Non-numeric values fall back to strict equality.
   it("non-numeric values compare by equality", () => {
     expect(scoreGeometryLeaf({ kind: "arc" }, { kind: "arc" }, cfg)).toBe(1.0)
     expect(scoreGeometryLeaf({ kind: "arc" }, { kind: "line" }, cfg)).toBe(0.0)
   })
 
-  /** Null/undefined leaf values match only when both sides are absent. */
+  // Null/undefined leaf values match only when both sides are absent.
   it("null and undefined leaf values match only when both absent", () => {
     expect(scoreGeometryLeaf({ x: null }, { x: null }, cfg)).toBe(1.0)
     expect(scoreGeometryLeaf({ x: undefined }, { x: undefined }, cfg)).toBe(1.0)
     expect(scoreGeometryLeaf({ x: null }, { x: 5 }, cfg)).toBe(0.0)
   })
 
-  /** Score is the fraction of shared keys that agree; absent keys are ignored. */
+  // Score is the fraction of shared keys that agree; absent keys are ignored.
   it("scores the fraction of agreeing shared keys", () => {
     // x agrees (numeric), y disagrees, z is not shared and ignored.
     expect(scoreGeometryLeaf({ x: 1, y: 2, z: 9 }, { x: 1, y: 3 }, cfg)).toBe(0.5)
   })
 
-  /** A tighter tolerance from config rejects a difference a looser one accepts. */
+  // A tighter tolerance from config rejects a difference a looser one accepts.
   it("respects a custom geometryLeafTolerance", () => {
     const strict: HeuristicConfig = { ...cfg, geometryLeafTolerance: 0.001 }
     expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, strict)).toBe(0.0)
@@ -1754,7 +1754,7 @@ describe("queryAll", () => {
     expect(repo.queryAll(makeAncestryQuery(["@feat3"], "flatface"))).toEqual([])
   })
 
-  /** Existing exact queries must still resolve after the feature root is added. */
+  // Existing exact queries must still resolve after the feature root is added.
   it("resolves with extended ancestor set", () => {
     const repo = new Repository()
     repo.registerAncestor(["@feat1face0", "@feat1"], { type: "flatface", x: 1 })

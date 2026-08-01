@@ -103,9 +103,9 @@ describe.skipIf(!oc)('sweep spine shape + stability (real OCC)', () => {
     // sweeps through 225deg -> -z side. Volume identical, centroid mirrored.
     const plus = arcSweep(180, 90, false)
     const minus = arcSweep(180, 270, true)
-    expect(plus.vol).toBeCloseTo(minus.vol, 1)      // same length -> same volume
+    expect(plus.vol).toBeCloseTo(minus.vol, 1)  // same length -> same volume
     expect(plus.c[2]).toBeGreaterThan(0)
-    expect(minus.c[2]).toBeLessThan(0)              // genuinely the other side
+    expect(minus.c[2]).toBeLessThan(0)  // genuinely the other side
   })
 
   it('centroid is continuous under a tiny sketch perturbation (no flips)', () => {
