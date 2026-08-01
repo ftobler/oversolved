@@ -1,21 +1,12 @@
 // Standing policy: every runtime asset this app loads must be same-origin.
 // No CDN, no third-party host, on any code path a browser can reach.
 //
-// The rule was unwritten and was violated silently for months.
-// troika-three-text ships `defaultFontURL: null`, so drei's <Text> with no
-// `font` prop resolved one at runtime from cdn.jsdelivr.net (a codepoint-index
-// JSON, a font-meta JSON, then a Noto Sans .woff). Nothing in our source read
-// "jsdelivr" -- the host lived inside a dependency's default -- so grepping our
-// own code could never have caught it. That shapes this file: the src scan
-// catches hosts we introduce, and the config assertions catch the case where a
-// dependency would resolve one for us.
-//
-// On why dist/ is NOT grepped for CDN hosts: troika's bundled unicode-font
-// resolver contains the jsdelivr literal unconditionally, as does a WebGL
-// debug helper it never loads in production. Both are dead code once
-// defaultFontURL is set, so a grep would report a violation that cannot fire.
-// The reachability guarantee is asserted directly instead, against troika's
-// real config.
+// The src scan below catches hosts we introduce ourselves; the config
+// assertions catch a dependency (troika-three-text) resolving one for us
+// through its own default. dist/ is deliberately not grepped: troika ships a
+// CDN host literal in code paths that are dead once defaultFontURL is set, so
+// a dist grep would flag a violation that cannot fire. The config assertions
+// prove reachability directly instead.
 
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -65,8 +56,8 @@ describe('no external-origin runtime assets', () => {
   it('serves the 3D label font from our own origin', async () => {
     const { LABEL_FONT } = await import('@/components/Viewport/labelFont')
 
-    // `undefined` is the value that hands font resolution back to troika and
-    // therefore back to jsdelivr, so it is not a missing config, it is the bug.
+    // `undefined` is the value that hands font resolution back to troika's
+    // own default, so it is not a missing config, it is the bug.
     expect(LABEL_FONT).toBeDefined()
     expect(LABEL_FONT).not.toMatch(/^https?:/)
     expect(LABEL_FONT).toMatch(/^\//)
@@ -88,10 +79,9 @@ describe('no external-origin runtime assets', () => {
   })
 
   it('leaves troika no reason to resolve a font over the network', async () => {
-    // The actual reachability proof, and the one assertion that would have
-    // caught the original defect. troika only runs its CDN-backed unicode
-    // resolver when defaultFontURL is falsy; importing labelFont must have
-    // configured it to the vendored file.
+    // The actual reachability proof: troika only runs its network-backed
+    // unicode resolver when defaultFontURL is falsy; importing labelFont must
+    // have configured it to the vendored file.
     vi.resetModules()
     const configured: unknown[] = []
     vi.doMock('troika-three-text', () => ({

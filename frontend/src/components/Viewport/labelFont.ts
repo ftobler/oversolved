@@ -13,11 +13,7 @@ import { configureTextBuilder, preloadFont } from 'troika-three-text'
 // Every <Text> in the viewport must import LABEL_FONT from here, and a test
 // asserts that they do.
 //
-// Self-hosted on purpose. troika 0.52.4 ships `defaultFontURL: null`, so with
-// the font left unset it resolves one at runtime off cdn.jsdelivr.net (a
-// codepoint-index JSON, a font-meta JSON, then a Noto Sans .woff). Runtime
-// assets must be same-origin here, so we point it at a Roboto we serve
-// ourselves. It must stay a WOFF1/glyf file: troika parses fonts with Typr and
+// Self-hosted. Must stay a WOFF1/glyf file: troika parses fonts with Typr and
 // does not support .woff2.
 export const LABEL_FONT: string = '/fonts/roboto-latin-400-normal.woff'
 
@@ -47,15 +43,10 @@ export const LABEL_FONT_KEY = ['troika-text', LABEL_FONT, LABEL_CHARACTERS]
 // readout.
 const WARMUP_TEXT = 'TopFrontRight0123456789.-°'
 
-// Closes the hole rather than merely stepping around it.
-//
-// Naming LABEL_FONT at each <Text> stops the CDN fetch only for the sites that
-// remember to. troika reaches for the network whenever its own defaultFontURL
-// is null (TextBuilder.js: `if (defaultFontURL) fonts.push(...)`, else the
-// unicode resolver runs), so a future <Text> added without a font prop would
-// quietly reopen it -- which is exactly how this got shipped the first time.
-// Pointing troika's own default at the vendored file makes same-origin the
-// fallback behaviour, not the careful behaviour.
+// Sets troika's own default font, not just each <Text> prop: a future <Text>
+// added without a font prop would otherwise fall back to troika's unicode
+// resolver (TextBuilder.js: `if (defaultFontURL) fonts.push(...)`, else the
+// resolver runs).
 //
 // Module scope on purpose: configureTextBuilder is ignored once the first font
 // has been requested, and every <Text> in the app sits downstream of an import
