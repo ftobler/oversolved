@@ -191,6 +191,32 @@ describe('mateOffsetVector', () => {
     expect(mateOffsetVector({ x: 'w / 2', y: 1 }, Z)).toEqual([0, 1, 0])
     expect(mateOffsetVector(NaN, Z)).toEqual([0, 0, 0])
   })
+
+  // Why the write side must NOT collapse `{x:0, y:0, z:5}` back to a bare `5`,
+  // even though the two read identically for the anchor picked at the time.
+  //
+  // The two forms are not interchangeable: the vector is absolute in body A's
+  // local frame, while the bare number means "this far along whatever axis
+  // ref_a currently names". Re-pointing ref_a at a different anchor afterwards
+  // therefore MOVES the part if the offset was collapsed, and leaves it exactly
+  // where it was if it was not. Shortening the YAML would trade a stable form
+  // for a context-dependent one -- the same hazard the read side already
+  // refuses (MateEditor keeps a legacy scalar in its single box rather than
+  // decompose it, because decomposing needs an axis it would have to invent).
+  it('a bare-number offset is anchor-axis-relative, a vector is not', () => {
+    const alongZ: Vec3 = [0, 0, 1]
+    const alongX: Vec3 = [1, 0, 0]
+
+    // The vector form holds still: same local displacement under either anchor.
+    expect(mateOffsetVector({ x: 0, y: 0, z: 5 }, alongZ)).toEqual([0, 0, 5])
+    expect(mateOffsetVector({ x: 0, y: 0, z: 5 }, alongX)).toEqual([0, 0, 5])
+
+    // The "equivalent" scalar only agrees for the anchor it was collapsed
+    // against; against another it names a completely different displacement.
+    expect(mateOffsetVector(5, alongZ)).toEqual([0, 0, 5])
+    expect(mateOffsetVector(5, alongX)).toEqual([5, 0, 0])
+    expect(mateOffsetVector(5, alongX)).not.toEqual(mateOffsetVector({ x: 0, y: 0, z: 5 }, alongX))
+  })
 })
 
 describe('normalizeMateAngleDeg', () => {

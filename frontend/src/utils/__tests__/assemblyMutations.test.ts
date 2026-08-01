@@ -10,6 +10,7 @@ import {
   mateFeatures,
   mintFeatureId,
   mintInstanceHandle,
+  partInstances,
   moveInstance,
   moveMate,
   reorderFeature,
@@ -28,6 +29,7 @@ import {
   IDENTITY_TRANSFORM,
 } from '@/utils/assemblyMutations'
 import { ASSEMBLY_HANDLE, ASSEMBLY_BUILTIN_DEFAULTS, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
+import { EMPTY_MATE_REF } from '@/utils/mateKinds'
 
 const emptyDoc: AssemblyDoc = { kind: 'assembly', features: [] }
 
@@ -504,6 +506,46 @@ describe('mateFeatures / findMate', () => {
 
   it('treats an undefined features list as empty', () => {
     expect(mateFeatures({ kind: 'assembly' } as AssemblyDoc)).toEqual([])
+  })
+})
+
+// The one extraction the page and the doc hook both read through. Document
+// ORDER is the property that matters most and is the least obvious: the store's
+// `sameInstances` compares position by position, so a reordering extraction
+// would report every reorder as no change at all.
+describe('partInstances', () => {
+  const mixed: AssemblyDoc = {
+    kind: 'assembly',
+    features: [
+      { id: ASSEMBLY_TOP_ID, kind: 'plane' },
+      { id: 'f1', kind: 'part_instance', instance: { handle: 'h1', doc_id: 'd1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM } } },
+      { id: 'm1', kind: 'mate', mate: { kind: 'fixed', ref_a: EMPTY_MATE_REF, ref_b: EMPTY_MATE_REF } },
+      { id: 'f2', kind: 'part_instance', instance: { handle: 'h2', doc_id: 'd2', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM } } },
+    ],
+  }
+
+  it('keeps document order and skips every other feature kind', () => {
+    expect(partInstances(mixed).map(i => i.handle)).toEqual(['h1', 'h2'])
+  })
+
+  it('hands on the doc\'s own instance objects rather than copies', () => {
+    // What lets `sameInstances` take its identity fast path: an untouched
+    // feature survives a doc mutation by reference, so the instance inside it
+    // is the very same object on both sides of the comparison.
+    expect(partInstances(mixed)[0]).toBe(mixed.features![1].instance)
+  })
+
+  it('agrees with the extraction the rest of this file uses as its oracle', () => {
+    expect(partInstances(mixed)).toEqual(instances(mixed))
+  })
+
+  it('reads a null doc, an absent features list and a kind-only feature as no parts', () => {
+    expect(partInstances(null)).toEqual([])
+    expect(partInstances({ kind: 'assembly' } as AssemblyDoc)).toEqual([])
+    // A `part_instance` feature with no `instance` payload is malformed user
+    // YAML, not a part: it is dropped rather than yielding an undefined entry
+    // that every downstream reader would have to guard against.
+    expect(partInstances({ kind: 'assembly', features: [{ id: 'f1', kind: 'part_instance' }] })).toEqual([])
   })
 })
 

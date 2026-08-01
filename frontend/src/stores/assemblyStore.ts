@@ -81,7 +81,6 @@ export interface AssemblyEditorData {
   anchors: AnchorTable
   /** ID-layer registration payloads for the solved scene. */
   pickGeometry: AssemblyPickBody[]
-  activePartHandle: string | null
   selectedPartHandle: string | null
   /** The mate whose editor panel is open; null when no mate is being authored. */
   selectedMateId: string | null
@@ -148,7 +147,6 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   entityMateRefs: {},
   anchors: {},
   pickGeometry: [],
-  activePartHandle: null,
   selectedPartHandle: null,
   selectedMateId: null,
   activeMateField: null,
@@ -176,9 +174,48 @@ export type AssemblySolveResult = Pick<
   'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry' | 'mateResults'
 >
 
+/**
+ * Whether two instance lists describe the same parts in the same poses.
+ *
+ * Exists so `setSnapshot` can hand back the reference it already holds. The
+ * page rebuilds the whole snapshot from the document on every doc change, so a
+ * mutation that touches no part (flipping a built-in plane visible, editing a
+ * mate) still arrives with a freshly built array. Passing that on re-keys the
+ * viewport's `groups` memo (AssemblyViewport), which re-runs
+ * `getAssemblyPartGroups` and mints a new `items` array for every part, so
+ * every AssemblyBody sees new props for a scene that did not change.
+ *
+ * Compared field by field rather than with an epsilon: this decides object
+ * identity, and a pose that differs at all is a different pose. The element
+ * fast path is the common case -- instances are the very objects held by the
+ * doc's features, and an untouched feature is copied by reference.
+ */
+export function sameInstances(a: readonly PartInstance[], b: readonly PartInstance[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((inst, i) => {
+    const other = b[i]
+    if (inst === other) return true
+    return (
+      inst.handle === other.handle &&
+      inst.doc_id === other.doc_id &&
+      inst.doc_rev === other.doc_rev &&
+      inst.visible === other.visible &&
+      inst.fixed === other.fixed &&
+      inst.transform.tx === other.transform.tx &&
+      inst.transform.ty === other.transform.ty &&
+      inst.transform.tz === other.transform.tz &&
+      inst.transform.qx === other.transform.qx &&
+      inst.transform.qy === other.transform.qy &&
+      inst.transform.qz === other.transform.qz &&
+      inst.transform.qw === other.transform.qw
+    )
+  })
+}
+
 // Fields owned exclusively by the store (not overwritten by setSnapshot).
 const STORE_OWNED_FIELDS = [
-  'activePartHandle', 'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
+  'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
@@ -203,7 +240,6 @@ export function setAssemblyCallbacks(cb: AssemblyCallbacks | null): void {
 
 interface AssemblyEditorState extends AssemblyEditorData {
   setSnapshot: (data: AssemblyEditorData) => void
-  setActivePartHandle: (handle: string | null) => void
   setSelectedPartHandle: (handle: string | null) => void
   /** Open a mate's editor. Closing the previous one settles its owed solve. */
   setSelectedMateId: (featureId: string | null) => void
@@ -280,9 +316,13 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     for (const field of STORE_OWNED_FIELDS) {
       merged[field] = prevRec[field]
     }
+    // An unchanged part list keeps the reference it already had, so a doc edit
+    // that moved no part cannot churn everything downstream of `instances`.
+    // The updater stays pure: it reads `prev` and `data`, writes only the object
+    // it just built, and re-running it is a fixed point.
+    if (sameInstances(prev.instances, data.instances)) merged.instances = prev.instances
     return merged as unknown as AssemblyEditorData
   }),
-  setActivePartHandle: (handle) => set({ activePartHandle: handle }),
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
 
   setSelectedMateId: (featureId) => {

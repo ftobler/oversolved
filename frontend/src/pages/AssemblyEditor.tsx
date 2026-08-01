@@ -44,7 +44,7 @@ import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { MATE_KINDS, MATE_KIND_LABELS, EMPTY_MATE_REF } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
-import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance, AssemblyFeature } from '@/types/cad'
+import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import exportIcon from '@/assets/icons/icon-download.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
@@ -73,12 +73,6 @@ const MATE_KIND_ICONS: Record<MateKind, string> = {
   parallel_plane_distance: mateParallelPlaneDistanceIcon,
   tangential: mateTangentialIcon,
   copy_rotation: mateCopyRotationIcon,
-}
-
-function extractInstances(features: AssemblyFeature[] | undefined): PartInstance[] {
-  return (features ?? [])
-    .filter((f): f is AssemblyFeature & { instance: PartInstance } => f.kind === 'part_instance' && !!f.instance)
-    .map(f => f.instance!)
 }
 
 export default function AssemblyEditor({ uuid }: { uuid: string }) {
@@ -142,12 +136,19 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     return () => { cancelled = true }
   }, [cloudListAvailable])
 
+  // The hook's memo is what goes into the store, not a second extraction of the
+  // same features. This is a de-duplication and nothing more: the memo is keyed
+  // on `doc`, so it mints a fresh array on exactly the events the local helper
+  // did, and the two filtered and mapped identically. What it buys is that they
+  // can no longer drift apart while the effect names one in its deps and uses
+  // the other. Keeping the render tree stable across a doc edit that moved no
+  // part is a separate mechanism, and it lives in the store (`sameInstances`).
   useEffect(() => {
     if (doc) {
       useAssemblyStore.getState().setSnapshot({
         ...useAssemblyStore.getState(),
         doc,
-        instances: extractInstances(doc.features),
+        instances,
         mates,
       })
     }

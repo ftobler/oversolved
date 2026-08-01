@@ -275,6 +275,20 @@ export function replaceInstance(doc: AssemblyDoc, handle: string, inst: PartInst
   return updateInstance(doc, handle, () => ({ ...inst }))
 }
 
+/**
+ * The part instances of an assembly, in document order. The counterpart of
+ * `mateFeatures`, and the one extraction: the page and the doc hook each kept
+ * their own copy of this filter+map, and the page's store-sync effect named the
+ * hook's memo in its dependency array while calling its own copy in the body.
+ * Two spellings of one rule, with nothing holding them in step.
+ */
+export function partInstances(doc: AssemblyDoc | null): PartInstance[] {
+  if (!doc) return []
+  return features(doc)
+    .filter((f): f is AssemblyFeature & { instance: PartInstance } => f.kind === 'part_instance' && !!f.instance)
+    .map(f => f.instance)
+}
+
 export function findInstance(doc: AssemblyDoc, handle: string): PartInstance | undefined {
   for (const f of features(doc)) {
     if (f.kind === 'part_instance' && f.instance?.handle === handle) return f.instance

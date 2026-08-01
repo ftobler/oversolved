@@ -1,12 +1,12 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
-import type { AssemblyDoc, PartInstance } from '@/types/cad'
+import type { AssemblyDoc } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { mateFeatures } from '@/utils/assemblyMutations'
+import { mateFeatures, partInstances } from '@/utils/assemblyMutations'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 
 export function useAssemblyDoc(uuid: string | undefined) {
@@ -52,11 +52,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
     return () => { cancelled = true }
   }, [uuid])
 
-  const instances = useMemo(() => {
-    return (doc?.features ?? [])
-      .filter((f): f is typeof f & { instance: PartInstance } => f.kind === 'part_instance' && !!f.instance)
-      .map(f => f.instance!)
-  }, [doc])
+  const instances = useMemo(() => partInstances(doc), [doc])
 
   // Feature id included: `mateResults` is keyed by it, so the tree cannot mark a
   // stale mate red without knowing which feature each row came from.

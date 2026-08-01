@@ -92,7 +92,6 @@ describe('AssemblyEditor (Stage 6b)', () => {
     h.save.mockResolvedValue(undefined)
     h.captureScreenshotForSaving.mockResolvedValue('data:image/png;base64,QVNN')
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-    useAssemblyStore.getState().setActivePartHandle(null)
     useAssemblyStore.getState().setSelectedPartHandle(null)
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().setSelectedMateId(null)
@@ -295,7 +294,6 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     // A click selects, it does not navigate into the part.
     expect(useAssemblyStore.getState().selectedPartHandle).toBe(handle)
-    expect(useAssemblyStore.getState().activePartHandle).toBeNull()
     expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
   })
 

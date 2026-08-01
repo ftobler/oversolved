@@ -158,6 +158,41 @@ describe('getAssemblyPartGroups', () => {
     expect(groups[0].quaternion[2]).toBeCloseTo(Math.SQRT1_2, 6)
     expect(groups[0].quaternion[3]).toBeCloseTo(Math.SQRT1_2, 6)
   })
+
+  // What this function buys, and what it does not, spelled out so the next
+  // reader knows where the memo protecting it has to sit.
+  //
+  // It is a pure rebuild: called twice with the very same arguments it returns
+  // content-equal groups whose objects and `items` arrays are all NEW. Only the
+  // leaves it does not construct -- the BodyRenderItem objects out of
+  // getBodiesToRender, and the typed-array meshes inside them -- carry through.
+  //
+  // So the identity every AssemblyBody sees is decided entirely upstream, by
+  // whether AssemblyViewport's `groups` memo re-runs. That memo is keyed on
+  // `instances` among others, which is exactly why the store hands back the
+  // array it already holds when nothing about the parts changed
+  // (`sameInstances`, stores/assemblyStore.ts). Without that, a doc edit that
+  // moved no part still landed here and re-minted the whole render tree.
+  it('rebuilds every group and items array it returns, keeping only the leaves', () => {
+    const bodies = bodyDict('p1', 'p2')
+    const instances = [instance('p1'), instance('p2')]
+
+    const first = getAssemblyPartGroups(bodies, instances, null, null)
+    const second = getAssemblyPartGroups(bodies, instances, null, null)
+
+    expect(second).toEqual(first)  // content-equal, group for group
+    expect(second).not.toBe(first)
+    for (let i = 0; i < first.length; i++) {
+      expect(second[i]).not.toBe(first[i])
+      expect(second[i].items).not.toBe(first[i].items)
+      expect(second[i].items.map(it => it.key)).toEqual(first[i].items.map(it => it.key))
+      // The mesh is the expensive part and it is never rebuilt: the render item
+      // hands on the very Float32Array the solve produced.
+      for (let j = 0; j < first[i].items.length; j++) {
+        expect(second[i].items[j].mesh.vertices).toBe(first[i].items[j].mesh.vertices)
+      }
+    }
+  })
 })
 
 describe('gizmoOrigin', () => {
