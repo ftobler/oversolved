@@ -4,18 +4,9 @@
 Enforces the comment conventions documented in CLAUDE.md against a set of
 folders. Right now it understands TypeScript; the rule set is meant to grow.
 
-Rules:
-- inline-spacing: a trailing `//` must be exactly two spaces from the code, or
-  column-aligned with a comment on the line directly above or below.
-- banner: no ASCII-art divider lines (e.g. `// ====`, `// ----`). The approved
-  divider is one line using box-drawing dashes, e.g. `// --- Face label ---`.
-- emdash: no em or en dashes inside comments; write `--` or reword instead.
-- block-comment: an own-line `/* ... */` or `/** ... */` that is indented
-  inside a block must be a `//` comment instead. Block comments are reserved
-  for top-level doc comments (column 0).
-- flagpole: a flag-pole divider comment must use exactly three box-drawing
-  dashes on each side, e.g. `// --- Cube geometry ---`. Two-dash or
-  full-width runs are not the approved form.
+Each rule is a function registered with the @rule decorator. The registry is
+the single source of truth: it drives the --no-<rule> switches, the rule list
+in --help, and the enforcement loop in check_file().
 
 Usage:
     python lint.py [dir ...] [--filter GLOB] [--language ts] [--no-<rule>]
@@ -28,6 +19,7 @@ import fnmatch
 import pathlib
 import sys
 from dataclasses import dataclass, field
+from typing import Callable
 
 EM_DASH = "\u2014"
 EN_DASH = "\u2013"
@@ -92,6 +84,27 @@ class Config:
 
     def enabled(self, rule: str) -> bool:
         return rule in self.rules
+
+
+@dataclass
+class Rule:
+    name: str
+    description: str
+    check: Callable[[pathlib.Path, str, list[Comment]], list[str]]
+
+
+RULES: dict[str, Rule] = {}
+
+
+def rule(name: str, description: str) -> Callable[[Callable], Callable]:
+    """Register a rule under `name`; the registry drives the CLI and the
+    enforcement loop."""
+
+    def decorate(check: Callable) -> Callable:
+        RULES[name] = Rule(name=name, description=description, check=check)
+        return check
+
+    return decorate
 
 
 def _line_starts(text: str) -> list[int]:
@@ -313,45 +326,70 @@ def _banner_check(lines: list[str], start_line: int, errors: list[str], path: pa
             errors.append(f"{path}:{start_line + idx}:1: banner - ASCII divider, use a `---` box-drawing divider")
 
 
+@rule(
+    "inline-spacing",
+    "a trailing // must be two spaces from the code, or column-aligned with a neighbour",
+)
+def _check_inline_spacing(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    cols_by_line: dict[int, set[int]] = {}
+    for c in comments:
+        cols_by_line.setdefault(c.line, set()).add(c.col)
+    for c in comments:
+        if c.trailing and c.gap != 2:
+            if c.kind == "block" and c.jsx and path.suffix == ".tsx":
+                continue  # `{/* ... */}` is the one JSX comment form, spacing is not our call
+            aligned = c.col in cols_by_line.get(c.line - 1, set()) or c.col in cols_by_line.get(c.line + 1, set())
+            if not aligned:
+                errors.append(
+                    f"{path}:{c.line}:{c.col}: inline-spacing - inline comment must be two spaces from code or aligned with a neighbour"
+                )
+    return errors
+
+
+@rule("banner", "no ASCII-art divider lines; the approved divider uses box-drawing dashes")
+def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    for c in comments:
+        _banner_check(c.lines, c.line, errors, path)
+    return errors
+
+
+@rule("emdash", "no em or en dashes inside comments; write -- or reword instead")
+def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    for c in comments:
+        if EM_DASH in c.text or EN_DASH in c.text:
+            errors.append(f"{path}:{c.line}:{c.col}: emdash - no em or en dashes in comments")
+    return errors
+
+
+@rule("block-comment", "an own-line block comment indented inside a block must be a // comment")
+def _check_block_comment(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    for c in comments:
+        if c.kind == "block" and not c.trailing and c.col > 0 and len(c.lines) == 1:
+            errors.append(f"{path}:{c.line}:{c.col}: block-comment - own-line block comment inside a block, use // instead")
+    return errors
+
+
+@rule("flagpole", "a flag-pole divider must use exactly three box-drawing dashes per side")
+def _check_flagpole(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    for c in comments:
+        for idx, ln in enumerate(c.lines):
+            bad = [r for r in _dash_runs(ln) if r != 3]
+            if bad:
+                errors.append(f"{path}:{c.line + idx}:{c.col}: flagpole - flag-pole divider uses {bad} dashes, must be three per side")
+    return errors
+
+
 def check_file(path: pathlib.Path, text: str, config: Config) -> list[str]:
     errors: list[str] = []
     comments = scan_comments(text)
-
-    if config.enabled("inline-spacing"):
-        cols_by_line: dict[int, set[int]] = {}
-        for c in comments:
-            cols_by_line.setdefault(c.line, set()).add(c.col)
-        for c in comments:
-            if c.trailing and c.gap != 2:
-                if c.kind == "block" and c.jsx and path.suffix == ".tsx":
-                    continue  # `{/* ... */}` is the one JSX comment form, spacing is not our call
-                aligned = c.col in cols_by_line.get(c.line - 1, set()) or c.col in cols_by_line.get(c.line + 1, set())
-                if not aligned:
-                    errors.append(
-                        f"{path}:{c.line}:{c.col}: inline-spacing - inline comment must be two spaces from code or aligned with a neighbour"
-                    )
-
-    if config.enabled("banner"):
-        for c in comments:
-            _banner_check(c.lines, c.line, errors, path)
-
-    if config.enabled("emdash"):
-        for c in comments:
-            if EM_DASH in c.text or EN_DASH in c.text:
-                errors.append(f"{path}:{c.line}:{c.col}: emdash - no em or en dashes in comments")
-
-    if config.enabled("block-comment"):
-        for c in comments:
-            if c.kind == "block" and not c.trailing and c.col > 0 and len(c.lines) == 1:
-                errors.append(f"{path}:{c.line}:{c.col}: block-comment - own-line block comment inside a block, use // instead")
-
-    if config.enabled("flagpole"):
-        for c in comments:
-            for idx, ln in enumerate(c.lines):
-                bad = [r for r in _dash_runs(ln) if r != 3]
-                if bad:
-                    errors.append(f"{path}:{c.line + idx}:{c.col}: flagpole - flag-pole divider uses {bad} dashes, must be three per side")
-
+    for rule in RULES.values():
+        if config.enabled(rule.name):
+            errors.extend(rule.check(path, text, comments))
     return errors
 
 
@@ -381,18 +419,20 @@ def collect_files(folders: list[pathlib.Path], language: str, filters: list[str]
 
 
 def main(argv: list[str] | None = None) -> int:
+    rule_lines = "\n".join(f"  {name}: {r.description}" for name, r in RULES.items())
     parser = argparse.ArgumentParser(
         prog="lint.py",
-        description="Oversolved comment-style linter. Enforces the comment conventions from CLAUDE.md.",
+        description=f"Oversolved comment-style linter. Enforces the comment conventions from CLAUDE.md.\n\nRules:\n{rule_lines}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("folders", nargs="+", help="folders to scan")
     parser.add_argument("--filter", action="append", default=[], metavar="GLOB", help="only check paths matching GLOB (repeatable; prefix with ! to exclude)")
     parser.add_argument("--language", choices=sorted(EXTENSIONS), default="ts", help="comment dialect to enforce (default: ts)")
-    for rule in ("inline-spacing", "banner", "emdash", "block-comment", "flagpole"):
-        parser.add_argument(f"--no-{rule}", action="store_true", help=f"disable the {rule} rule")
+    for name in RULES:
+        parser.add_argument(f"--no-{name}", action="store_true", help=f"disable the {name} rule")
     args = parser.parse_args(argv)
 
-    enabled = {rule for rule in ("inline-spacing", "banner", "emdash", "block-comment", "flagpole") if not getattr(args, f"no_{rule}".replace("-", "_"))}
+    enabled = {name for name in RULES if not getattr(args, f"no_{name}".replace("-", "_"))}
     config = Config(rules=frozenset(enabled), language=args.language)
 
     files = collect_files([pathlib.Path(d) for d in args.folders], args.language, args.filter)
