@@ -206,6 +206,10 @@ export function snapshotRepo(repo: Repository): Record<string, unknown> {
   }
 }
 
+function _pickBodies(bodyStore: Record<string, Body>, ids: ReadonlySet<string>): Record<string, Body> {
+  return Object.fromEntries(Object.entries(bodyStore).filter(([bid]) => ids.has(bid)))
+}
+
 function _snapshotBodies(
   bodyStore: Record<string, Body>,
   mapShape?: ShapeMapper,
@@ -604,12 +608,40 @@ function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sk
   })
 }
 
-// Tessellate one body and register its B-rep face/edge/vertex ancestry into the
-// live repo (mirrors Python builder.py `_register_body_faces`). Called per
-// feature in the build loop so a later feature's face/edge/vertex query resolves
-// against an earlier body's geometry (e.g. a circular_array axis edge query).
-// `edge_queries`/`vertex_queries` are presence/length gates only in the registrar
-// (their content is unused), so length-matched placeholders suffice.
+/**
+ * Register one body's B-rep face/edge/vertex ancestry into `repo` from an
+ * already-extracted geometry blob -- mesh-free metadata or a full render mesh, which
+ * carry the same shape.
+ *
+ * The ONE registrar, shared by the in-loop pass and the post-loop checkpoint pass, so
+ * "the loop already registered this body version" is a claim about identical work.
+ * The two used to disagree on two points, both resolved here in favour of the loop:
+ * a fallback mesh identifies no faces (there is no real B-rep behind it, so the
+ * payloads would be fiction), and a missing `edge_queries`/`vertex_queries` list is
+ * filled with length-matched placeholders rather than suppressing registration -- those
+ * lists are presence/length gates in the registrars, their content is unused.
+ */
+export function registerBodyBrepFromMeta(
+  repo: Repository,
+  body: Body,
+  meta: Record<string, unknown>,
+  deps?: BuildDeps,
+): void {
+  const mesh = meta['mesh'] as TessMesh | undefined
+  if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(repo, body, mesh, deps)
+  const edges = (meta['edges'] as Array<Record<string, unknown>>) ?? []
+  const edgeQueries = (meta['edge_queries'] as string[]) ?? edges.map(() => '')
+  if (edges.length) _registerBrepEdgeAncestry(repo, body, edges, edgeQueries, deps)
+  const verts = (meta['vertices'] as number[][]) ?? []
+  const vertQueries = (meta['vertex_queries'] as string[]) ?? verts.map(() => '')
+  const vertUuids = (meta['vertex_uuids'] as Array<string | null>) ?? []
+  if (verts.length) _registerBrepVertexAncestry(repo, body, verts, vertQueries, vertUuids, deps)
+}
+
+// Read one body's B-rep and register its ancestry into the live repo (mirrors Python
+// builder.py `_register_body_faces`). Called per feature in the build loop so a later
+// feature's face/edge/vertex query resolves against an earlier body's geometry (e.g. a
+// circular_array axis edge query).
 function _registerBodyFaces(
   globalRepo: Repository,
   body: Body,
@@ -623,44 +655,66 @@ function _registerBodyFaces(
     const extract = extractCached ?? deps.extractBrepMetadata ?? deps.tessellateBodies
     const out = extract({ [body.id]: body }, globalRepo)[body.id]
     if (!out) return
-    const mesh = out.mesh as TessMesh | undefined
-    if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(globalRepo, body, mesh, deps)
-    const edges = (out.edges as Array<Record<string, unknown>>) ?? []
-    const edgeQueries = (out.edge_queries as string[]) ?? edges.map(() => '')
-    if (edges.length) _registerBrepEdgeAncestry(globalRepo, body, edges, edgeQueries, deps)
-    const verts = (out.vertices as number[][]) ?? []
-    const vertQueries = (out.vertex_queries as string[]) ?? verts.map(() => '')
-    const vertUuids = (out.vertex_uuids as Array<string | null>) ?? []
-    if (verts.length) _registerBrepVertexAncestry(globalRepo, body, verts, vertQueries, vertUuids, deps)
+    registerBodyBrepFromMeta(globalRepo, body, out, deps)
   } catch {
     // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
     // in Python (it logs a warning and continues).
   }
 }
 
+/** A body's identity for the duration of ONE build: a feature that changes a body
+ *  registers a fresh shape handle and appends to `modified_by`, so this changes with
+ *  it. Valid only within a build -- the clean-prefix restore mints new handles every
+ *  solve -- which is all its two users (the metadata cache and the checkpoint
+ *  registration skip) need. */
+export function bodyVersion(b: Body): string {
+  return `${b.id}|${b.created_by}|${String(b.shape)}|${b.modified_by.length}`
+}
+
+/**
+ * Which bodies of a checkpoint's body-store snapshot the post-loop registration pass
+ * still has to register.
+ *
+ * The feature loop registers a body's B-rep ancestry into the LIVE repo, and the
+ * checkpoint's `repo_snapshot` is taken after that -- so the snapshot the post-loop pass
+ * rehydrates already contains the ancestry for every body version the loop registered.
+ * Re-registering it is pure cost: identical face payloads hit the skip guard in
+ * `_registerBrepFaceAncestry` (after a `_stableJson` per candidate AND per existing
+ * element), while edges and vertices churn through `evictAncestryAndRegister` and mint
+ * fresh eids for the same payloads.
+ *
+ * `registeredVersions` maps body id -> the version most recently registered into the
+ * repo this checkpoint was snapshotted from. A body missing from it was never
+ * registered this build (a null-shape body, or one whose registration threw), so it
+ * still needs the pass.
+ */
+export function bodiesNeedingCheckpointRegistration(
+  bodyStoreSnapshot: Record<string, Body>,
+  registeredVersions: ReadonlyMap<string, string>,
+): Set<string> {
+  const out = new Set<string>()
+  for (const [bodyId, body] of Object.entries(bodyStoreSnapshot)) {
+    if (registeredVersions.get(bodyId) !== bodyVersion(body)) out.add(bodyId)
+  }
+  return out
+}
+
+// `needing` names the bodies whose ancestry the checkpoint's snapshot does NOT already
+// carry (see `bodiesNeedingCheckpointRegistration`); undefined means "register every
+// body", the pre-skip behaviour.
 function _snapshotWithBrepGeometry(
   checkpoint: FeatureCheckpoint,
   bodiesOut: Record<string, Record<string, unknown>>,
   deps?: BuildDeps,
+  needing?: ReadonlySet<string>,
 ): Record<string, unknown> {
   const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
   for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
-    const bodyOut = bodiesOut[bodyId] ?? {}
-    const mesh = bodyOut['mesh'] as TessMesh | undefined
-    if (mesh) {
-      _registerBrepFaceAncestry(repo, body, mesh, deps)
-    }
-    const edges = (bodyOut['edges'] as Array<Record<string, unknown>>) ?? []
-    const edgeQueries = (bodyOut['edge_queries'] as string[]) ?? []
-    if (edges.length && edgeQueries.length) {
-      _registerBrepEdgeAncestry(repo, body, edges, edgeQueries, deps)
-    }
-    const vertices = (bodyOut['vertices'] as Array<number[]>) ?? []
-    const vertexQueries = (bodyOut['vertex_queries'] as string[]) ?? []
-    const vertexUuids = (bodyOut['vertex_uuids'] as Array<string | null>) ?? []
-    if (vertices.length && vertexQueries.length) {
-      _registerBrepVertexAncestry(repo, body, vertices, vertexQueries, vertexUuids, deps)
-    }
+    // Skip what the feature loop already registered into the very snapshot being
+    // rehydrated here: `needing` is empty for a body whose version has not moved since
+    // the loop registered it, and its ancestry is therefore already in the snapshot.
+    if (needing && !needing.has(bodyId)) continue
+    registerBodyBrepFromMeta(repo, body, bodiesOut[bodyId] ?? {}, deps)
     if (body.created_by) {
       _registerSolidAncestry(repo, body)
       _registerExtrusionFeature(repo, body.created_by, body.sketch_id)
@@ -808,7 +862,9 @@ export function build(
   // again per dirty checkpoint, where every checkpoint snapshots the WHOLE body
   // store. An untouched body -- typically the heavy imported one -- was
   // therefore re-read once per feature behind it, so each edit cost more the
-  // longer the stack grew. One read per distinct body version is enough.
+  // longer the stack grew. One read per distinct body version is enough. (The
+  // checkpoint pass now also asks only for the bodies it still has to register,
+  // which is usually none; the cache remains the guard for the rest.)
   //
   // `bodyVersion` is the identity the builder already trusts elsewhere (see the
   // `modified_by.length` re-registration check in the solve loop): a feature
@@ -821,8 +877,6 @@ export function build(
   // B-rep, not the repo), so a hit is valid regardless of which call site filled
   // it; a miss still forwards the caller's repo through.
   const extractMeta = deps.extractBrepMetadata ?? deps.tessellateBodies
-  const bodyVersion = (b: Body): string =>
-    `${b.id}|${b.created_by}|${String(b.shape)}|${b.modified_by.length}`
   const metaCache = new Map<string, Record<string, unknown>>()
   const extractMetaCached: MetaExtractor = (snapshot, repo) => {
     const out: Record<string, Record<string, unknown>> = {}
@@ -876,6 +930,18 @@ export function build(
 
   const registeredBodyIds = new Set(Object.keys(bodyStore))
 
+  // Body version -> "its B-rep ancestry is in `globalRepo` right now", so the post-loop
+  // checkpoint pass can tell what a checkpoint's own snapshot already carries. Clean-prefix
+  // bodies count as registered without being touched this build: their ancestry arrived
+  // with the restored snapshot above, which is exactly the state every checkpoint of this
+  // build is snapshotted from.
+  const registeredVersions = new Map<string, string>()
+  for (const body of Object.values(bodyStore)) registeredVersions.set(body.id, bodyVersion(body))
+  // Per checkpoint, the map as it stood when that checkpoint was snapshotted. O(bodies)
+  // per checkpoint, and build-local scaffolding only -- never part of the persisted
+  // `FeatureCheckpoint`.
+  const registeredAtCheckpoint = new Map<string, Map<string, string>>()
+
   globalRepo.setFeatureOrder(allFeatures.map((f) => String(f.id ?? '')))
 
   const featuresById = Object.fromEntries(allFeatures.map((f) => [String(f.id ?? ''), f]))
@@ -911,6 +977,7 @@ export function build(
         body_store_snapshot: cpSnapshot,
         bodies_snapshot: {},
       }
+      registeredAtCheckpoint.set(fid, new Map(registeredVersions))
       result[fid] = { status: 'suppressed' }
       continue
     }
@@ -941,9 +1008,11 @@ export function build(
         _registerSolidAncestry(globalRepo, body)
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
+        registeredVersions.set(bodyId, bodyVersion(body))
       } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates.
         _registerBodyFaces(globalRepo, body, deps, extractMetaCached)
+        registeredVersions.set(bodyId, bodyVersion(body))
       }
     }
 
@@ -955,6 +1024,7 @@ export function build(
       body_store_snapshot: cpSnapshot,
       bodies_snapshot: {},
     }
+    registeredAtCheckpoint.set(fid, new Map(registeredVersions))
   }
 
   const activeFids = new Set(allFeatures.map((f) => String(f.id ?? '')))
@@ -989,20 +1059,33 @@ export function build(
       return { ...reused, ...deps.tessellateBodies(toTessellate, globalRepo) }
     })()
 
-  // Rebuild checkpoints for dirty features. Re-register B-rep ancestry into each
-  // checkpoint's persisted repo snapshot from cheap mesh-free metadata (no
-  // triangulation); store the render mesh only on the final checkpoint. Pure
-  // non-OCC tests wire no extractor, so fall back to tessellateBodies there.
+  // Rebuild checkpoints for dirty features: attach the render mesh to the final one, and
+  // register the B-rep ancestry of any body the solve loop did NOT already register into
+  // that checkpoint's own repo snapshot. Usually that is no body at all -- the snapshot is
+  // taken after the loop's registration pass, so it already carries the ancestry, and
+  // re-registering it only churned eids and burned `_stableJson` per face per checkpoint.
+  // The remainder (a null-shape body, or one a solver mutated without appending to
+  // `modified_by`) still gets its pass here. Pure non-OCC tests wire no extractor, so the
+  // metadata read falls back to tessellateBodies.
   for (const fid of Object.keys(newCheckpoints)) {
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]
     const isLast = fid === lastFid
+    const needing = bodiesNeedingCheckpointRegistration(
+      checkpoint.body_store_snapshot,
+      registeredAtCheckpoint.get(fid) ?? new Map(),
+    )
     // The final checkpoint reuses the render tessellation (bodiesOut) for BOTH
     // its display snapshot and its B-rep ancestry -- that mesh already carries
     // face_data/edges/queries, so re-extracting metadata for it would be wasted
-    // work. Earlier checkpoints identify off cheap mesh-free metadata (no
-    // triangulation) and stay lazy (empty snapshot).
-    const cpMeta = isLast ? bodiesOut : extractMetaCached(checkpoint.body_store_snapshot, null)
+    // work. It is safe to skip the same way the others do: registering off the render
+    // mesh and off the mesh-free metadata is proven to produce identical ancestry
+    // (`checkpointRegistrationReal.test.ts`), which is what makes the loop's
+    // metadata-based registration count for this checkpoint too. Earlier checkpoints
+    // identify off cheap mesh-free metadata and stay lazy (empty bodies snapshot).
+    const cpMeta = isLast
+      ? bodiesOut
+      : extractMetaCached(_pickBodies(checkpoint.body_store_snapshot, needing), null)
     const bodiesSnapshot = isLast
       ? Object.fromEntries(
           Object.keys(checkpoint.body_store_snapshot).map((bid) => [bid, bodiesOut[bid] ?? {}]),
@@ -1011,7 +1094,7 @@ export function build(
     newCheckpoints[fid] = {
       spec: checkpoint.spec,
       result: checkpoint.result,
-      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpMeta, deps),
+      repo_snapshot: _snapshotWithBrepGeometry(checkpoint, cpMeta, deps, needing),
       body_store_snapshot: checkpoint.body_store_snapshot,
       bodies_snapshot: bodiesSnapshot,
     }

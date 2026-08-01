@@ -87,7 +87,7 @@ async function ensureOcc(): Promise<OccModule | null> {
  * Tessellate every body in the store and return per-body mesh/edge/vertex
  * data. Used as ``BuildDeps.tessellateBodies``.
  */
-function tessellateBodies(
+export function tessellateBodies(
   oc: OccModule,
   table: HandleTable,
   bodyStore: Record<string, Body>,
