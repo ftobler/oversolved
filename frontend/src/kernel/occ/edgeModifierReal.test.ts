@@ -1,18 +1,16 @@
 // @vitest-environment node
 //
 // Gated real-OCC parity gate for edgeModifier.ts (the fillet/chamfer leaf's brep
-// producer). Rebuilds the same 10-cube as the now-removed gen_fillet_fixture.py,
+// producer). Rebuilds the same 10-cube as the frozen golden fillet fixture,
 // picks the same target edge by geom hash, applies the modifier, and asserts the
 // output volume and BrepDiff sub-shape counts match Python.
 //
-// Stage 7 removed the geom-hash lineage transfer this gate used to assert; the
+// The geom-hash lineage transfer this gate used to assert was removed; the
 // construction-name transfer that replaced it is covered end to end by
 // constructionNameBooleanReal.test.ts. What remains here is the geometric +
 // diff-classification parity, which is what the modifier still produces.
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
-// its generator (gen_fillet_fixture.py) was deleted with the Python kernel in
-// phase 4d.
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
 //
 // The new_edges/inherited_edges counts were corrected away from the original
 // Python snapshot (22/8 -> 8/22) when edgeModifier gained a geometry fallback
@@ -84,7 +82,7 @@ describe.skipIf(!oc)('applyFillet/ChamferWithLineage (real OCC)', () => {
       try {
         const box = makeBox(occ, scope, c.box[0], c.box[1], c.box[2])
         const edge = findEdgeByHash(occ, scope, box, c.target_edge_hash)
-        // Stage 7 removed the geom-hash lineage transfer; the construction-name
+        // The geom-hash lineage transfer was removed; the construction-name
         // transfer through a fillet/chamfer is covered by
         // constructionNameBooleanReal.test.ts. Here we keep the volume + diff
         // classification parity, which is what the modifier still produces.

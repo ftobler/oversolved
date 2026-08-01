@@ -1,9 +1,9 @@
 // Geometric descriptor tokens (@gdf|/@gde|/@gdv|). No producer emits these into a
-// persisted query anymore: faces/edges dropped them in Stage 6 and vertices in
-// Stage 7d (query-naming-by-construction), all replaced by @u| construction UUIDs
-// plus ancestral tokens. Two consumers keep this module alive:
+// persisted query anymore: they were replaced by @u| construction UUIDs plus
+// ancestral tokens (query-naming-by-construction). Two consumers keep this
+// module alive:
 //   - the resolver's legacy descriptor tier, resolving @gd*| tokens in queries
-//     saved before the switch (backward compat only; see revolveBugCorpus);
+//     saved before the switch (backward compat only);
 //   - `bestDescriptorMatch`, a transient solve-time face/edge picker in
 //     filletChamfer that builds a descriptor from live geometry (never persisted).
 //

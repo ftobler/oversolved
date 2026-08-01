@@ -173,9 +173,7 @@ function makeDeps(occ: OccModule, scope: DisposeScope, table: HandleTable): Buil
   }
 }
 
-// ════════════════════════════════════════════════════════════════════
-// Tests
-// ════════════════════════════════════════════════════════════════════
+// ─── Tests ───
 
 describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   let occ: OccModule

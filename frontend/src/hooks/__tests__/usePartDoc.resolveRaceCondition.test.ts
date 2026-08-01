@@ -44,7 +44,7 @@ describe('useSolver solve-race guards', () => {
     act(() => { pA = result.current.reSolve(makeDoc()) })
     act(() => { pB = result.current.reSolve(makeDoc()) })
 
-    // B resolves first (current requestId=2, B's requestId=2 — not stale)
+    // B resolves first (current requestId=2, B's requestId=2, not stale)
     await act(async () => {
       resolveB({
         solve_ms: 0,
@@ -55,7 +55,7 @@ describe('useSolver solve-race guards', () => {
       })
     })
 
-    // A resolves second (requestId=1, current=2 — stale)
+    // A resolves second (requestId=1, current=2, stale)
     await act(async () => {
       resolveA({
         solve_ms: 0,
@@ -105,7 +105,7 @@ describe('useSolver solve-race guards', () => {
 
     const solveResultsAfterB = { ...result.current.solveResults }
 
-    // Now A's response arrives — must be discarded
+    // Now A's response arrives, must be discarded
     await act(async () => {
       resolveA({
         solve_ms: 0,

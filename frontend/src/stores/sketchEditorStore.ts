@@ -167,13 +167,13 @@ export interface ActivePickField {
 
 interface SketchEditorState {
    // SELECTION SUBSYSTEM
-  // Hovered selection — always reflects what entity/face/plane is directly under cursor.
+  // Hovered selection, always reflects what entity/face/plane is directly under cursor.
   hoveredSelectionId: string | null
   // Per-primitive pick key of the hovered b-rep primitive (bodyKey#layer#index).
   // Set alongside hoveredSelectionId for edges so hover highlight can isolate the
   // single primitive under the cursor even when its query string is not unique.
   hoveredPickKey: string | null
-  // Normal selection — traditional selection, persists until explicitly changed.
+  // Normal selection, traditional selection, persists until explicitly changed.
   // Query-keyed: the durable/ancestral identity every consumer reads.
   normalSelection: Set<string>
   // Live per-primitive refinement of the b-rep selection: query -> the SET of
@@ -209,7 +209,7 @@ interface SketchEditorState {
   hoveredVertexId: string | null
   hoveredVertexPosition: [number, number] | null
   hoveredSnapKind: SnapKind | null
-  // Constraint tile hover — highlights related entities/vertices.
+  // Constraint tile hover, highlights related entities/vertices.
   hoveredConstraintEntityIds: Set<string>
   // Face geometry for the "Normal to" context menu entry.
   hoveredFaceNormal: [number, number, number] | null
@@ -245,7 +245,7 @@ interface SketchEditorState {
   isRotating: boolean
   setIsRotating: (rotating: boolean) => void
 
-  // MODE STACK — tracks nested editor modes; must be empty when returning to "main"
+  // MODE STACK, tracks nested editor modes; must be empty when returning to "main"
   modeStack: string[]
   pushMode: (kind: string) => void
   popMode: (expectedKind?: string) => void

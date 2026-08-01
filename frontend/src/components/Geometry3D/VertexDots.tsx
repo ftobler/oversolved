@@ -22,7 +22,7 @@ export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depth
 // Square highlight rendered at z=0.001 so it's always visible above lines.
 export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
   const groupRef = useScreenScale<THREE.Group>(px, { billboard: true })
-  const h = 1.4 // half-size of square in local units
+  const h = 1.4  // half-size of square in local units
   const pts: [number, number, number][] = [[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0], [-h, -h, 0]]
   return (
     <group ref={groupRef} position={[x, y, 0]}>
@@ -35,7 +35,7 @@ export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px:
  *  of the edge group so hover does not bubble up and highlight the whole entity.
  *
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
- *  is visual-only — no R3F event props. */
+ *  is visual-only, no R3F event props. */
 export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey, isEditing, suppressedVertexIds }: {
   x: number; y: number; px: number; baseColor: string
   featureId?: string; entityId?: string; vertexKey?: string
@@ -72,7 +72,7 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
  *  reads as a point of the sketch, only in the projected colour.
  *
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
- *  is visual-only — no R3F event props. */
+ *  is visual-only, no R3F event props. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = false }: { x: number; y: number; featureId: string; entityId: string; isEditing?: boolean }) {
   const entId = `entity:${featureId}:${entityId}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(entId))

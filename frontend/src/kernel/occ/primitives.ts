@@ -1,14 +1,14 @@
 /**
- * The thin OCC.js adapter. Per the migration plan this is the ONLY module that touches OCC.js
- * types directly; everything above it (shapes.ts, tessellation.ts) calls these.
+ * The thin OCC.js adapter: the shared build/read primitives the higher layers
+ * (shapes.ts, tessellation.ts) call.
  *
  * Every function takes a [[DisposeScope]] and tracks its transient OCC objects (points, dirs,
  * builders, adaptors) in it. Functions that produce a shape the caller keeps return it WITHOUT
  * tracking it, so the caller decides its lifetime (typically `HandleTable.register`); the scope
  * still owns the builder that made it. This mirrors the spike's proven ownership pattern.
  *
- * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCC 7.5); see the
- * migration notes. Out-parameter APIs (BRepTools.UVBounds, BRepGProp_Face.Normal) do not
+ * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCC 7.5).
+ * Out-parameter APIs (BRepTools.UVBounds, BRepGProp_Face.Normal) do not
  * marshal in emscripten, so UV bounds come from BRepAdaptor_Surface's First/Last parameter
  * accessors and the normal from BRepLProp_SLProps, both direct-return.
  */
@@ -22,7 +22,7 @@ export type Vec3 = [number, number, number]
 /** Heterogeneous edge sort key (type_order, kind, then rounded coords). */
 export type EdgeSortKey = (number | string)[]
 
-// --- primitive solids -----------------------------------------------------
+// ─── primitive solids ───
 
 export function makeBox(oc: OccModule, scope: DisposeScope, dx: number, dy: number, dz: number): OccShape {
   const builder = scope.track(new oc.BRepPrimAPI_MakeBox_1(dx, dy, dz))
@@ -63,7 +63,7 @@ export function makeCylinder(
   return builder.Shape()
 }
 
-// --- profile -> face -> prism ---------------------------------------------
+// ─── profile -> face -> prism ───
 
 /** A straight edge between two world points (cadquery Edge.makeLine). */
 export function makeLineEdge(oc: OccModule, scope: DisposeScope, start: Vec3, end: Vec3): OccShape {
@@ -308,22 +308,22 @@ export function makePrism(
   return builder.Shape()
 }
 
-// --- tessellation primitive ------------------------------------------------
+// ─── tessellation primitive ───
 
 /**
  * BRepMesh_IncrementalMesh on a shape, matching cadquery's `Shape.mesh`:
  * `BRepMesh_IncrementalMesh(shape, tol, True, angTol)` -- isRelative=True,
  * parallel defaulting False.
  *
- * Callers mesh face-by-face, and should keep doing so. Not for the reason this
- * comment used to give (isRelative was believed to scale deflection by the
- * meshed shape's size; it does not -- OCC derives it per sub-shape, so a
- * shape-level call triangulates identically, verified node-for-node on a
- * compound whose faces differ in size by three orders of magnitude). The real
- * reason is peak memory: one shape-level call builds a meshing context spanning
- * every face at once. On a 3468-face import that raised the emscripten heap
- * high-water mark from 77 to 191 MiB to buy ~5% wall time -- the wrong trade for
- * a kernel whose large-import failure mode is running out of heap.
+ * Callers mesh face-by-face, and should keep doing so. Not because isRelative
+ * scales the deflection with the meshed shape's size: it does not (OCC derives
+ * it per sub-shape, so a shape-level call triangulates identically, verified
+ * node-for-node on a compound whose faces differ in size by three orders of
+ * magnitude). The real reason is peak memory: one shape-level call builds a
+ * meshing context spanning every face at once. On a 3468-face import that
+ * raised the emscripten heap high-water mark from 77 to 191 MiB to buy ~5% wall
+ * time, the wrong trade for a kernel whose large-import failure mode is running
+ * out of heap.
  *
  * The mesher object is deleted immediately: it is needed only for its
  * constructor side effect (the triangulation is stored on the face's TShape and
@@ -399,7 +399,7 @@ export function tessellateFace(
   return { vertices, triangles }
 }
 
-// --- face geometry readers -------------------------------------------------
+// ─── face geometry readers ───
 
 export type SurfaceType = 'flatface' | 'cylinderface' | 'coneface' | 'sphereface' | 'torusface' | 'face'
 
@@ -550,7 +550,7 @@ export function faceSurfaceFrame(oc: OccModule, scope: DisposeScope, face: OccSh
   return null
 }
 
-// --- edge / vertex geometry readers ---------------------------------------
+// ─── edge / vertex geometry readers ───
 
 const TWO_PI = 2 * Math.PI
 const CIRCLE_TOL = 1e-4

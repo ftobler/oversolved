@@ -10,7 +10,7 @@ import type { SolveBytes } from './codec'
 
 let mateSolver: SolveBytes | null = null
 
-/** Load the mate solver WASM once. Safe to call multiple times — subsequent
+/** Load the mate solver WASM once. Safe to call multiple times, subsequent
  *  calls are no-ops when already loaded. Returns a Promise that resolves when
  *  loading completes (or fails). */
 export function initAnchorSolver(base?: string): Promise<void> {

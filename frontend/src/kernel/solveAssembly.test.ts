@@ -29,9 +29,6 @@ import { BUNDLE_SCHEMA, type AnchorKind, type PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 
-// The encode/decode functions are not exported, but solveAssembly calls them
-// internally. We test the wire format indirectly through solveAssembly.
-
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
   resetBundleDbConnection()
@@ -280,7 +277,7 @@ beforeEach(() => {
 })
 
 describe('solveAssembly', () => {
-  // ── mateless / cache-hit branch ──────────────────────────────────────
+  // ─── mateless / cache-hit branch ───
 
   it('echoes transforms for a mateless doc with cache hit', async () => {
     const { relay, partDocs } = makeRelay()
@@ -405,7 +402,7 @@ describe('solveAssembly', () => {
     expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, expect.any(Object))
   })
 
-  // ── mate solve branch ────────────────────────────────────────────────
+  // ─── mate solve branch ───
 
   it('solves a spherical mate between two parts', async () => {
     const { relay, partDocs } = makeRelay()
@@ -528,10 +525,9 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeTranslateSolver(10))
 
-    // The solver we used is 'echo' — it returns the input transforms
-    // which is identity. So vertices should be at identity too.
+    // With no mates the solver never runs; the part's own transform (identity)
+    // passes through unchanged, so vertices land at identity too.
     const body = result.bodies['p1'][0]
-    // With identity transform (echo solver), vertices unchanged
     expect(body.vertices[0]).toBeCloseTo(0)
     expect(body.vertices[3]).toBeCloseTo(10)
   })
@@ -573,7 +569,7 @@ describe('solveAssembly', () => {
     expect(dist1).toBeCloseTo(5, 5)
   })
 
-  // ── edge curves ──────────────────────────────────────────────────────
+  // ─── edge curves ───
 
   it('carries the bundle edge curves into the payload in the solved pose', async () => {
     const { relay, partDocs } = makeRelay()
@@ -622,7 +618,7 @@ describe('solveAssembly', () => {
     expect(lineCurve.axis![1]).toBeCloseTo(1)
     expect(lineCurve.axis![2]).toBeCloseTo(0)
 
-    // A rigid motion leaves radius and sweep alone — that is what keeps the
+    // A rigid motion leaves radius and sweep alone, that is what keeps the
     // curve analytic instead of forcing a re-fit.
     expect(circleCurve.radius).toBe(5)
     expect(circleCurve.angle_end).toBeCloseTo(2 * Math.PI)
@@ -715,7 +711,7 @@ describe('solveAssembly', () => {
     expect(result.bodies['p2'][0].edges[0].endpoints[0][0]).toBeCloseTo(-100)
   })
 
-  // ── posed anchors (Stage 7.5) ────────────────────────────────────────
+  // ─── posed anchors (Stage 7.5) ───
 
   it('carries the anchors into the solved pose, points moved and axes only rotated', async () => {
     const { relay, partDocs } = makeRelay()
@@ -775,7 +771,7 @@ describe('solveAssembly', () => {
     expect(result.anchors['p2'].a1.point[0]).toBeCloseTo(-100)
   })
 
-  // ── stale ref detection ──────────────────────────────────────────────
+  // ─── stale ref detection ───
 
   it('flags a mate as stale when anchor is missing from bundle', async () => {
     const { relay, partDocs } = makeRelay()
@@ -831,7 +827,7 @@ describe('solveAssembly', () => {
     expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
   })
 
-  // ── error handling ───────────────────────────────────────────────────
+  // ─── error handling ───
 
   it('returns seed transforms when solver is null', async () => {
     const { relay, partDocs } = makeRelay()
@@ -880,7 +876,7 @@ describe('solveAssembly', () => {
     expect(result.mateResults).toEqual({})
   })
 
-  // ── assembly built-ins as ground (Stage 6c) ──────────────────────────
+  // ─── assembly built-ins as ground (Stage 6c) ───
 
   it('resolves a fixed mate from a part to the assembly Top plane through assemblyAnchors', async () => {
     const { relay, partDocs } = makeRelay()
@@ -1052,7 +1048,7 @@ describe('solveAssembly', () => {
     expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
   })
 
-  // ── fixed instances (Stage 6d) ───────────────────────────────────────
+  // ─── fixed instances (Stage 6d) ───
 
   it('pins a fixed part instance in the LM state and leaves free parts unpinned', async () => {
     const { relay, partDocs } = makeRelay()

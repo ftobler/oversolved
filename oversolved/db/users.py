@@ -3,7 +3,7 @@
 from oversolved.db.migrations import Database
 
 # Columns returned by auth lookup methods (no provider_data, no created_at,
-# no document_sort_preference — password_hash is included for credential check).
+# no document_sort_preference; password_hash is included for credential check).
 _AUTH_COLUMNS = (
     "id", "username", "password_hash", "email", "external_id", "provider",
     "must_change_password", "is_admin", "is_active", "last_login_at", "updated_at",

@@ -3,13 +3,13 @@
 // Cross-solve mesh cache: clean prefix, cache hit/miss, pick bodies, fallback, parallel
 // determinism.
 //
-// Tests 1–6, 10 require full OCC-backed feature solvers (sketch, extrude, fillet, boolean) not
-// yet ported to TS, plus real solid_to_mesh for unittest.mock-style counting. They will be
-// ported when the leaf feature solvers land (phase 2e/2f).
+// This suite runs the two scenarios that need no feature solvers: test 7 (parallel
+// mesh determinism) and test 9 (lazy checkpoint meshing). The OCC-backed scenarios
+// of the original suite now live in meshCacheReal.test.ts.
 //
 // Test 3 (pick_bodies served from checkpoint) and test 8 (stale buildstate without
 // bodies_snapshot) are already covered by builder.test.ts: - "supports pick_boundary returning
-// pick_bodies" (L196) - "re-tessellates pick_bodies when bodies_snapshot is empty" (L295)
+// pick_bodies" (L208) - "re-tessellates pick_bodies when bodies_snapshot is empty" (L347)
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from './builder'
@@ -39,14 +39,14 @@ function makeBody(id: string, createdBy: string): Body {
     id,
     created_by: createdBy,
     modified_by: [],
-    shape: 1 as unknown as Body['shape'], // non-null to trigger B-rep registration
+    shape: 1 as unknown as Body['shape'],  // non-null to trigger B-rep registration
     sketch_id: '',
     brep_diff: null,
     profile_queries: [],
   }
 }
 
-// ─── Test 9: lazy checkpoint meshing contract — regression guard ───
+// ─── Test 9: lazy checkpoint meshing contract (regression guard) ───
 
 /**
  * Under lazy checkpoint meshing only the FINAL feature's checkpoint carries a

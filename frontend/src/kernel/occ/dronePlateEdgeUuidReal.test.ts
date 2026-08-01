@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // REGRESSION LOCK for the confirmed "fillet lands on the wrong edge" bug
-// (query-naming-by-construction.md, Stage 6.5 residual: "edges touching an
+// (query-naming-by-construction.md residual: "edges touching an
 // UNNAMED face -- perGroup multi-group extrude fallback").
 //
 // Reported symptom: a plate extruded from a multi-region profile, then filleted;
@@ -118,7 +118,7 @@ function duplicates(queries: string[]): string[] {
 }
 
 describe.skipIf(!oc)('plate edge UUID coverage: multi-group profile-union gap', () => {
-  // ── positive control: a single-group profile names everything ──
+  // ─── positive control: a single-group profile names everything ───
   it('single-group rounded plate: every side edge is unique and carries @u|', () => {
     const c = coverage([roundedRect(20, 12, 3)])
     expect(c.unnamedSideFaces).toBe(0)
@@ -128,7 +128,7 @@ describe.skipIf(!oc)('plate edge UUID coverage: multi-group profile-union gap', 
     expect(duplicates(c.edgeQueries)).toEqual([])
   })
 
-  // ── the bug: a multi-group (overlapping) profile leaves side faces unnamed ──
+  // ─── the bug: a multi-group (overlapping) profile leaves side faces unnamed ───
   //
   // Two overlapping rectangles (an offset "stair") fuse to one solid, so the
   // extrude takes the merged-profile re-prism path. Four side faces -- the ones

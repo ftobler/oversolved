@@ -42,7 +42,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
     // Compute face_names and edge_names so that solidToEdges and buildEdgeIndex
     // both emit @u| construction UUID tokens, enabling identity-based edge
-    // resolution in Stage 6.
+    // resolution.
     const E = occ.TopAbs_ShapeEnum
     const faceNames: Record<string, string> = {}
     const faceAncestry: Record<string, string[]> = {}
@@ -162,16 +162,10 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
   })
 
   /**
-   * Edges collected by resolveFilletEdges must not include duplicates.
-   *
-   * A 10x10x10 box has 12 unique edges. The IsSame-based dedup in
-   * buildEdgeIndex and resolveEdgesWithIndex must yield exactly 12.
-   */
-  /**
    * The edge selection contract: an `edge_query` produced by `solidToEdges`
    * (what a pick body ships and the viewport stores when the user clicks an
    * edge) must resolve back to exactly that edge through the fillet resolver.
-   * Stage 6: resolution goes through the @u| construction UUID tier.
+   * Resolution goes through the @u| construction UUID tier.
    */
   it('solidToEdges queries resolve back through resolveFilletEdges (pick round-trip)', () => {
     const scope = new DisposeScope()

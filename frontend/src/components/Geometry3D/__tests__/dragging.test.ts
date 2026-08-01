@@ -132,17 +132,17 @@ describe('Dragging Regressions - Documentation', () => {
       // CODE LOCATION: src/components/Geometry3D/EntityLines.tsx
       // REGRESSION PROTECTION: Prevents selection regression where clicking was
       //                        interpreted as drag start
-      // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
+      // See: src/components/Geometry3D/__tests__/dragging.test.ts (REGRESSION 2)
 
       // Before movement: still selectable
       const drag1 = { startWorld: [0, 0], currentWorld: [0, 0] }
       const isDragged1 = drag1.currentWorld[0] !== drag1.startWorld[0] || drag1.currentWorld[1] !== drag1.startWorld[1]
-      expect(isDragged1).toBe(false) // collision visible, click can register
+      expect(isDragged1).toBe(false)  // collision visible, click can register
 
       // After movement: collision hidden to prevent blocking
       const drag2 = { startWorld: [0, 0], currentWorld: [0.1, 0] }
       const isDragged2 = drag2.currentWorld[0] !== drag2.startWorld[0] || drag2.currentWorld[1] !== drag2.startWorld[1]
-      expect(isDragged2).toBe(true) // collision hidden, raycasts unblocked
+      expect(isDragged2).toBe(true)  // collision hidden, raycasts unblocked
     })
 
     it('documents isDragged condition in VertexDots.tsx - only hides after movement', () => {
@@ -160,7 +160,7 @@ describe('Dragging Regressions - Documentation', () => {
       // CODE LOCATION: src/components/Geometry3D/VertexDots.tsx
       // REGRESSION PROTECTION: Same as EntityLines - prevents selection being
       //                        misinterpreted as drag start
-      // See: src/components/__tests__/dragging.test.ts (REGRESSION 2)
+      // See: src/components/Geometry3D/__tests__/dragging.test.ts (REGRESSION 2)
 
       // No movement yet
       const drag1 = { startWorld: [0, 0], currentWorld: [0, 0] }
@@ -198,7 +198,7 @@ describe('Dragging Regressions - Documentation', () => {
       const isDragged1 = noMovement.currentWorld[0] !== noMovement.startWorld[0]
       const isDragged2 = hasMovement.currentWorld[0] !== hasMovement.startWorld[0]
 
-      expect(isDragged1).toBe(false) // collision visible for selection
+      expect(isDragged1).toBe(false)  // collision visible for selection
       expect(isDragged2).toBe(true)  // collision hidden for drag performance
     })
   })
@@ -213,7 +213,7 @@ describe('Dragging Regressions - Documentation', () => {
       // RENDERING: Collision mesh (line 51-62) must be wrapped in {!isDragging &&}
       // COMMENT REQUIREMENT: Must explain why planes hide during any drag
 
-      const isDragging = true // when ANY drag is in progress
+      const isDragging = true  // when ANY drag is in progress
       const shouldRenderPlane = !isDragging
       expect(shouldRenderPlane).toBe(false)
     })
@@ -227,7 +227,7 @@ describe('Dragging Regressions - Documentation', () => {
       //
       // VERIFY: ReferencePlane uses simple isDragging check, not feature comparison
 
-      const dragExists = true // some entity is being dragged in some sketch
+      const dragExists = true  // some entity is being dragged in some sketch
       const allPlanesHidden = dragExists
       expect(allPlanesHidden).toBe(true)
     })
@@ -265,7 +265,7 @@ describe('Dragging Regressions - Documentation', () => {
         pureClick.upClient[0] - pureClick.startClient[0],
         pureClick.upClient[1] - pureClick.startClient[1]
       )
-      expect(clickPixelDistance).toBeLessThan(4) // should suppress mutation
+      expect(clickPixelDistance).toBeLessThan(4)  // should suppress mutation
       expect(clickPixelDistance).toBeCloseTo(1.414, 2)
 
       // Real drag: cursor moves 14 pixels
@@ -277,7 +277,7 @@ describe('Dragging Regressions - Documentation', () => {
         realDrag.upClient[0] - realDrag.startClient[0],
         realDrag.upClient[1] - realDrag.startClient[1]
       )
-      expect(dragPixelDistance).toBeGreaterThanOrEqual(4) // should emit mutation
+      expect(dragPixelDistance).toBeGreaterThanOrEqual(4)  // should emit mutation
       expect(dragPixelDistance).toBeCloseTo(14.142, 2)
     })
   })

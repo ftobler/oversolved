@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Gated real-OCC test for the Stage 2 construction-name threading
+// Gated real-OCC test for the construction-name threading
 // (query-naming-by-construction.md): a face UUID is carried across a boolean and
 // across a fillet by OCC subshape identity (Modified/IsSame), NOT geometry.
 // Asserts that faces the op leaves untouched keep their exact minted UUID, and

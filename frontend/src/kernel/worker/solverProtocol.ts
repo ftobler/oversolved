@@ -126,7 +126,7 @@ export interface SolveOkResponse {
 
 export type SolveResponse = SolveOkResponse | WorkerErrResponse
 
-// ─── assembly protocol ──────────────────────────────────────────────────
+// ─── assembly protocol ───
 // Messages between the main thread and the Rust-only anchor solver worker.
 // The anchor solver sees no OCC, no solveLocally, no HandleTable; it solves
 // over anchors extracted from PartBundles. The main thread relays bundle

@@ -55,7 +55,7 @@ export {
 // ─── sketch entity render layering ───
 // Single source of truth for the z-ordering (Three.js renderOrder) and depth
 // behaviour of a sketch entity, given its interaction state. There are exactly
-// three layers, and the result is ALWAYS explicit — never undefined.
+// three layers, and the result is ALWAYS explicit, never undefined.
 //
 // Why explicit matters: a drei <Line> keeps one persistent LineMaterial/Line2
 // for its lifetime. Passing `undefined` for depthTest/renderOrder does not
@@ -183,7 +183,7 @@ export function bodyRemovedColorIsDistinct(): { nearest: string; distance: numbe
   return { nearest, distance }
 }
 
-// Drag snap — vertex pull zone must be larger than entity body pull zone so that
+// Drag snap: vertex pull zone must be larger than entity body pull zone so that
 // dragging near an endpoint always snaps to the vertex, not the entity body.
 // Mirrors POINT_HIT_PIXELS vs HIT_PIXELS in the hover/click system.
 export const DRAG_SNAP_VERTEX_RADIUS_PX = 20   // point-to-point coincident snap radius

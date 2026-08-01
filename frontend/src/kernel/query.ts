@@ -290,7 +290,7 @@ export function parseConstructionUuidId(idStr: string): string | null {
 
 let _currentFeatureId: string | null = null
 
-/** Set the solve-loop current feature (mirrors the Python contextvar). */
+/** Set the solve-loop current feature. */
 export function setCurrentFeatureId(fid: string | null): void {
   _currentFeatureId = fid
 }
@@ -463,7 +463,7 @@ export class Repository {
     for (const [key, entry] of [...this.ancestral]) {
       const refs = new Set<string>()
       for (const tag of entry.set) if (tag.startsWith("@")) refs.add(tag.slice(1))
-      if (refs.size === 0) continue // keep tagless entries (builtin planes)
+      if (refs.size === 0) continue  // keep tagless entries (builtin planes)
       let intersects = false
       for (const r of refs) if (activeFids.has(r)) { intersects = true; break }
       if (!intersects) {
@@ -628,10 +628,9 @@ export class Repository {
     }
 
     if (candidateIds.length > 1 && descriptorIds.length) {
-      // Legacy descriptor tier: resolves @gd*| tokens in queries saved before the
-      // producers stopped emitting them (faces/edges dropped in Stage 6, vertices
-      // in Stage 7d). Current code mints no descriptor tokens, so this only fires
-      // for old persisted queries (e.g. the revolveBugCorpus replay).
+      // Legacy descriptor tier: resolves @gd*| tokens in queries saved before
+      // the producers stopped emitting them. Current code mints no descriptor
+      // tokens, so this only fires for old persisted queries.
       for (const dTok of descriptorIds) {
         if (candidateIds.length <= 1) break
         const qd = parseGeomDescriptorId(dTok)
@@ -794,7 +793,7 @@ export function evictAncestryAndRegister(
   return repo.registerAncestor(ancestorIds, payload, uuid)
 }
 
-// ─── Plane/point helpers (port of solver_plane) ───
+// ─── Plane/point helpers ───
 
 interface PlaneLike {
   origin: number[]
@@ -803,7 +802,7 @@ interface PlaneLike {
   normal: number[]
 }
 
-/** Query-result -> 3D point (mirrors `_get_point_3d`). */
+/** Query-result -> 3D point. */
 export function getPoint3d(ref: Record<string, unknown>, globalRepo: Repository): number[] {
   if ("external_xy" in ref) {
     const xy = ref["external_xy"] as number[]

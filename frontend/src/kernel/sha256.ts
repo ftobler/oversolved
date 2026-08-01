@@ -1,7 +1,6 @@
 // Synchronous SHA-256 over UTF-8 text, vendored so the kernel needs no async
-// Web Crypto call in its hot resolution loop (Python uses hashlib.sha256, which
-// is sync; the geom_hash port must stay sync to match the call shape). Standard
-// FIPS-180-4 implementation; the dual-run fixture gates it against hashlib.
+// Web Crypto call in its hot resolution loop. Standard FIPS-180-4
+// implementation, gated against the FIPS-180-4 vectors in geomHash.test.ts.
 
 const K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,

@@ -13,7 +13,7 @@ import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { Repository } from './query'
 
-// ── Ported-kind set completeness ─────────────────────────────────────────
+// ─── Ported-kind set completeness ───
 
 describe('PORTED_FEATURE_KINDS', () => {
   it('contains all 16 leaf feature kinds (13 brep + sketch + plane + variable)', () => {
@@ -39,7 +39,7 @@ describe('PORTED_FEATURE_KINDS', () => {
   })
 })
 
-// ── isDocFullyPorted ─────────────────────────────────────────────────────
+// ─── isDocFullyPorted ───
 
 describe('isDocFullyPorted', () => {
   it('returns true for empty feature list', () => {
@@ -101,7 +101,7 @@ describe('isDocFullyPorted', () => {
   })
 })
 
-// ── unportedKinds ────────────────────────────────────────────────────────
+// ─── unportedKinds ───
 
 describe('unportedKinds', () => {
   it('returns empty set when all kinds are ported', () => {
@@ -135,7 +135,7 @@ describe('unportedKinds', () => {
   })
 })
 
-// ── getSolver ────────────────────────────────────────────────────────────
+// ─── getSolver ───
 
 describe('getSolver', () => {
   it('returns a function for every ported kind', () => {
@@ -158,7 +158,7 @@ describe('getSolver', () => {
   })
 })
 
-// ── createFeatureSolver adapter ──────────────────────────────────────────
+// ─── createFeatureSolver adapter ───
 
 describe('createFeatureSolver', () => {
   const fakeOc = {} as OccModule
@@ -218,7 +218,7 @@ describe('createFeatureSolver', () => {
   })
 })
 
-// ── Expression resolution ────────────────────────────────────────────────
+// ─── Expression resolution ───
 
 describe('resolveFeatureExpressions', () => {
   it('evaluates a sub-dict expression string to a number', () => {

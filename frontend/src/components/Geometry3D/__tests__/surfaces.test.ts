@@ -146,7 +146,7 @@ describe('buildSurfaceShapes', () => {
 })
 
 // 3f: surfaces are not draggable (checklist)
-// SurfaceMesh does not attach onPointerDown — verified by code review.
+// SurfaceMesh does not attach onPointerDown, verified by code review.
 
 // 3g: R3F mesh click suppression in editing mode (SurfaceMesh)
 // mode='editing' means the ID buffer owns entity/vertex/edge clicks; the R3F surface

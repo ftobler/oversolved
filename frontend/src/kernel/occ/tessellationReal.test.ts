@@ -1,9 +1,8 @@
 // @vitest-environment node
 //
-// Phase 2b exit criterion: dual-run mesh parity. Build the same solids the
-// Python kernel built (box, cylinder, extruded square; the frozen
-// meshFixtures.json snapshot, whose generator gen_mesh_fixture.py was removed in
-// phase 4d), tessellate with the OCC.js port, and assert the meshes match within
+// Dual-run mesh parity: build the same solids the Python kernel built (box,
+// cylinder, extruded square; the frozen meshFixtures.json snapshot), tessellate
+// with the OCC.js port, and assert the meshes match within
 // tessellation tolerance. Skips when opencascade.js is absent (npm run occ:install).
 
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -106,7 +105,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     return { ts: { mesh, edges, vertices }, fx }
   }
 
-  // --- edge / vertex geometry parity ---------------------------------------
+  // ─── edge / vertex geometry parity ───
 
   const sortPts = (pts: number[][]): number[][] =>
     [...pts].map((v) => [v[0], v[1], v[2]]).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
@@ -239,6 +238,6 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     // A 10x10x5 box has one face per side; every planar face gets a classifier.
     const allClassifiers = mesh.face_data.flatMap((fd) => fd.classifiers ?? [])
     expect(allClassifiers.length).toBe(6)
-    expect(new Set(allClassifiers).size).toBe(6) // each face has a unique side
+    expect(new Set(allClassifiers).size).toBe(6)  // each face has a unique side
   })
 })

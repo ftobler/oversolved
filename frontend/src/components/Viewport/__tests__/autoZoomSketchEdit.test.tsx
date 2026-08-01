@@ -130,7 +130,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
       usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
     })
 
-    // Camera zoom must not have been changed — auto-zoom is suppressed during sketch edit.
+    // Camera zoom must not have been changed: auto-zoom is suppressed during sketch edit.
     expect(testCamera.zoom).toBe(999)
   })
 
@@ -194,7 +194,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
       usePartEditorStore.setState({ activeSketchFeatureId: 'sk1', bodies: makeBodyWithVertices() })
     })
 
-    // The deferred onFirstSolve fires directly — zoomDoneRef is still false because
+    // The deferred onFirstSolve fires directly: zoomDoneRef is still false because
     // the effect skipped its autoZoomToFit call (activeFeatureId guard).
     act(() => {
       ref.current?.autoZoomToFit()

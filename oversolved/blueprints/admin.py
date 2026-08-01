@@ -33,7 +33,7 @@ def _format_history(history: list[dict]) -> str:
     return "\n".join(lines)
 
 
-# ── Admin Users ────────────────────────────────────────────────────────────
+# ─── Admin Users ───
 
 
 @admin_bp.route("/api/admin/users", methods=["GET"])
@@ -143,7 +143,7 @@ def admin_reset_password(user_id: int) -> ResponseReturnValue:
     return jsonify({"status": "reset"})
 
 
-# ── Admin Periodic Tasks ───────────────────────────────────────────────────
+# ─── Admin Periodic Tasks ───
 
 
 @admin_bp.route("/api/admin/periodic-tasks", methods=["GET"])
@@ -166,7 +166,7 @@ def force_run_periodic_task(task_key: str) -> ResponseReturnValue:
     return jsonify(result)
 
 
-# ── Admin Backup ───────────────────────────────────────────────────────────
+# ─── Admin Backup ───
 
 
 def _iter_documents_page(db: Database, page_size: int = 100) -> Iterator[Any]:
@@ -231,7 +231,7 @@ def backup_all_documents() -> ResponseReturnValue:
             os.unlink(tmp.name)
 
 
-# ── Import backup (restore) ─────────────────────────────────────────────────
+# ─── Import backup (restore) ───
 
 # Zip-bomb guardrails for the import path. The entry count caps pathological
 # archives; the decompressed-size cap stops a modest entry count of huge files.
@@ -348,7 +348,7 @@ def import_backup() -> ResponseReturnValue:
         return api_error(f"Import failed: {str(e)}", "INTERNAL_SERVER_ERROR", 500)
 
 
-# ── Bug Report ─────────────────────────────────────────────────────────────
+# ─── Bug Report ───
 
 
 @admin_bp.route("/api/bug-report", methods=["POST"])

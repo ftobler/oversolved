@@ -101,7 +101,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
         //   - last resort: the owning entity
         let highlightIds: string[]
         if (r.point != null) {
-          // Vertex-targeted (e.g. fixed on a specific endpoint) — use "entityId:vertexKey" format
+          // Vertex-targeted (e.g. fixed on a specific endpoint), use "entityId:vertexKey" format
           highlightIds = [`${eid}:${r.point}`]
         } else if (r.entities?.length) {
           highlightIds = r.entities

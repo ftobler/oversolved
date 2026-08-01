@@ -52,7 +52,7 @@ export interface ToolDragInit {
 }
 
 /**
- * Unified handlers interface — the single contract all tools must implement.
+ * Unified handlers interface, the single contract all tools must implement.
  *
  * Every tool (select, drag, dimension, drawing, constraint) provides these
  * handlers through the ToolRegistry. The view layer (DragPlane, DrawPlane,

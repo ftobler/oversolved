@@ -22,8 +22,8 @@ const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
 
 /**
  * Discriminated union over the dual-world invariant:
- * - `'full'` — normal mode, no pick bodies (compile-time absent from type)
- * - `'editing'` — feature edit mode, both worlds active
+ * - `'full'`: normal mode, no pick bodies (compile-time absent from type)
+ * - `'editing'`: feature edit mode, both worlds active
  *
  * The union guarantees that pickBodies can never be set or read outside the
  * `'editing'` variant. Any code that accesses `world.pickBodies` without first
@@ -90,7 +90,7 @@ export function useSolver(
   // Single state atom for the dual-world invariant: the body geometry in
   // normal mode vs. the pair (bodies + pickBodies) during feature editing.
   // The WorldState union enforces at compile time that pickBodies only exists
-  // inside the 'editing' variant — accessing it on 'full' is a type error.
+  // inside the 'editing' variant, accessing it on 'full' is a type error.
   const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {} })
   const bodies: Record<string, BodyResult> = world.bodies
   const pickBodies: Record<string, BodyResult> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
@@ -241,7 +241,7 @@ export function useSolver(
     // Stale-guard: if a newer reSolve has been issued, discard this response.
     if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return null
     const solveResult = applySolveResult(d, data, solveTimeMs)
-    // Single set — the world transitions atomically.
+    // Single set, the world transitions atomically.
     // If the solve was requested with a pick_boundary the response carries
     // pick_bodies (or {} when the checkpoint was unavailable), so the
     // world enters 'editing'. Otherwise it goes to 'full' and pickBodies

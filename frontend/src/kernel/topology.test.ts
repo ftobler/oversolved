@@ -525,7 +525,7 @@ describe.skipIf(!topologyAvailable)("line-division classifiers", () => {
 
   it("single region sketch has no classifiers (no churn)", () => {
     /** A sketch with one closed loop per ancestral group has no sibling surfaces
-     *  to disambiguate, so it stays untouched — zero classifier tokens emitted. */
+     *  to disambiguate, so it stays untouched, zero classifier tokens emitted. */
     const r = detectTopology({
       circ: { kind: "circle", center: [0, 0], radius: 5.0 },
     }, "sk1")

@@ -154,7 +154,7 @@ describe('applyMoveVertex', () => {
     expect(doc.features![0].initial!.line1[1]).toBe(9.876543)
   })
 
-  // ── solvedGeometry: the drag commit writes the whole solved frame ──────
+  // ─── solvedGeometry: the drag commit writes the whole solved frame ───
 
   it('writes solvedGeometry into initial for all entities, vertex on top', () => {
     const doc = makeSampleDoc()
@@ -343,7 +343,7 @@ describe('applyAddConstraint midpoint', () => {
   it('unrecognized target combo does not add constraint and calls console.warn in dev mode', () => {
     const doc = makeSampleDoc()
     const countBefore = doc.features![0].constraints!.length
-    // Two entity targets — not a recognized midpoint pattern
+    // Two entity targets, not a recognized midpoint pattern
     applyAddConstraint(doc, 'Sketch1', 'midpoint', [
       'entity:Sketch1:line1',
       'entity:Sketch1:circ1',
@@ -496,7 +496,7 @@ describe('applyDeleteElements', () => {
   })
 })
 
-// ── Step 6: face: selection ID handling ────
+// ─── Step 6: face: selection ID handling ───
 
 import { parseTarget, applySetFeatureVisibility, applyReorderFeatures } from '@/utils/yamlMutations'
 
@@ -566,7 +566,7 @@ describe('applyAddConstraint with face target', () => {
   })
 })
 
-// ── Feature visibility (applySetFeatureVisibility) ────
+// ─── Feature visibility (applySetFeatureVisibility) ───
 
 const docWithFeatures = (): PartDoc => ({
   version: 1, kind: 'part',
@@ -894,7 +894,7 @@ describe('applyAddEntityWithConstraint with @builtin_origin', () => {
   })
 })
 
-// ── Feature reordering ────
+// ─── Feature reordering ───
 
 const docWithBuiltInsAndUser = (): PartDoc => ({
   version: 1,

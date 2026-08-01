@@ -1,8 +1,8 @@
-// The fillet/chamfer leaf pair. Edge resolution uses three tiers: exact
-// ancestry-query match -> UUID match (@u| in the query + ancestryRepo.byUuid) ->
-// stable ancestry + classifier match -> face query (all edges of a face,
-// resolved by face UUID). Stage 6 removed geometry-based tiers (descriptor and
-// geom-hash).
+// The fillet/chamfer leaf pair. Edge resolution is construction-lineage based,
+// never geometry: exact ancestry-query match -> UUID match (@u| in the query +
+// ancestryRepo.byUuid) -> stable ancestry + classifier match -> face query (all
+// edges of a face, resolved by face UUID). Geometry-based tiers (descriptor and
+// geom-hash) were deliberately dropped so resolution survives geometry edits.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'

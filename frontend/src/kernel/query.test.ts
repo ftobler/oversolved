@@ -326,12 +326,12 @@ describe("query coercion", () => {
 /** Tests for tier-2 partial ancestral resolver.
  *
  * The resolver has three tiers:
- * 1. Full ancestral — query_set <= registered_key
- * 2. Partial ancestral — registered_key <= query_set (reverse direction, unique only)
+ * 1. Full ancestral: query_set <= registered_key
+ * 2. Partial ancestral: registered_key <= query_set (reverse direction, unique only)
  * 3. Geometry hash fallback */
 describe("partial ancestral resolver (tier 2)", () => {
   /** Query carries an extra ancestor not in registration; tier 2 resolves it. */
-  it("resolves when unique — extra ancestor in query not in registration", () => {
+  it("resolves when unique, extra ancestor in query not in registration", () => {
     // Registered under {A, B} but the query has {A, B, extra}
     const repo = new Repository()
     const payload = { type: "face", body_id: "body1", created_by: "ex1" }
@@ -342,9 +342,9 @@ describe("partial ancestral resolver (tier 2)", () => {
   })
 
   /** Two elements share no common registered superset but both match tier 2. */
-  it("ambiguous yields no match — two entries both match tier 2 but >1 candidate", () => {
-    // Query has both @A and @B — tier 1 finds nothing (query not subset of any key),
-    // tier 2 finds both (@A <= query_set and @B <= query_set) — returns nothing
+  it("ambiguous yields no match, two entries both match tier 2 but >1 candidate", () => {
+    // Query has both @A and @B, tier 1 finds nothing (query not subset of any key),
+    // tier 2 finds both (@A <= query_set and @B <= query_set), returns nothing
     const repo = new Repository()
     repo.registerAncestor(["@A"], { type: "face", body_id: "body1", created_by: "ex1" }, "gface_a")
     repo.registerAncestor(["@B"], { type: "face", body_id: "body2", created_by: "ex2" }, "gface_b")
@@ -352,7 +352,7 @@ describe("partial ancestral resolver (tier 2)", () => {
     expect(result).toBeNull()
   })
 
-  /** No subset relation either way — tier 2 finds nothing, falls to UUID. */
+  /** No subset relation either way, tier 2 finds nothing, falls to UUID. */
   it("falls to UUID when ancestors are disjoint -- no subset relation either way", () => {
     // Query with completely different ancestors -- @X, @Y have no subset relation
     // with @A, @B, @C. Tier 1+2 miss. UUID fallback resolves via @u|u_x.
@@ -368,7 +368,7 @@ describe("partial ancestral resolver (tier 2)", () => {
   })
 
   /** Tier 1 exact-match candidate is returned without scanning tier 2. */
-  it("full match wins over partial — tier 1 exact superset returned without scanning tier 2", () => {
+  it("full match wins over partial, tier 1 exact superset returned without scanning tier 2", () => {
     // @A, @B is a subset that would match tier 2, but the full @A,@B,@C match wins
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B", "@C"], { type: "face", body_id: "body1", created_by: "full" })
@@ -395,7 +395,7 @@ describe("partial ancestral resolver (tier 2)", () => {
   })
 
   /** Verify that existing tier 1 behaviour (query <= key) is undisturbed. */
-  it("tier 1 subset still resolves — query with fewer ancestors than registered key", () => {
+  it("tier 1 subset still resolves, query with fewer ancestors than registered key", () => {
     const repo = new Repository()
     repo.registerAncestor(["@A", "@B", "@C"], { type: "face", body_id: "body1", created_by: "ex1" })
     const result = repo.query(makeAncestryQuery(["@A"]))
@@ -584,7 +584,7 @@ describe("face registration structural tags", () => {
       makeFacePayload("body2", "ex2", 0),
     )
 
-    // Filter to face registrations — keys whose set contains a /face positional tag
+    // Filter to face registrations, keys whose set contains a /face positional tag
     let foundFace = false
     for (const entry of repo.ancestral.values()) {
       const hasFaceTag = [...entry.set].some(
@@ -1151,7 +1151,7 @@ describe("repoFromSnapshot", () => {
     expect(new Set(repo.ancestral.keys())).toEqual(new Set(original.ancestral.keys()))
   })
 
-  /** dict() copy uses less memory than deepcopy for the same payloads —
+  /** dict() copy uses less memory than deepcopy for the same payloads,
    *  shallow copies share value objects instead of duplicating them. */
   it("shallow copy isolates eids arrays from snapshot source", () => {
     const original = buildRepoWithPayloads(500)
@@ -1449,12 +1449,12 @@ describe("resolvePlaneEarly", () => {
     repo.register("v1", vertex)
     const result = resolvePlaneEarly("$v1", repo)
     expect(isPlaneType(result)).toBe(true)
-    // Should not return the vertex — falls back to FRONT_PLANE
+    // Should not return the vertex, falls back to FRONT_PLANE
     expect(result).not.toBe(vertex)
   })
 })
 
-// ─── B-rep vertex / face integration (requires OCC build pipeline — skipped in this suite) ───
+// ─── B-rep vertex / face integration (requires OCC build pipeline, skipped in this suite) ───
 
 describe("makeAncestryQuery construction details", () => {
   /** Result starts with '?' and ends with ':face'. */
@@ -1499,7 +1499,7 @@ describe("parseAncestry edge cases", () => {
  * {A, B} ⊆ {A, B, C}.
  *
  * If a query matches more than one element, it is ambiguous and must raise. */
-describe("query ambiguity — partial resolve", () => {
+describe("query ambiguity, partial resolve", () => {
   /** Two elements share ancestor A; query with {A, B} finds both via
    *  partial match (one exact, one subset of larger set) -> ambiguous. */
   it("partial match ambiguous when query matches multiple entries", () => {
@@ -1560,7 +1560,7 @@ describe("typed query object dispatch", () => {
 
 describe("B-rep vertex and face integration", () => {
   it.skip("vertex registered in repo after build", () => {
-    // Requires build() with OCC.js — covered by builder.test.ts
+    // Requires build() with OCC.js, covered by builder.test.ts
   })
 
   it.skip("three point plane from brep vertices", () => {

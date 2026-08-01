@@ -275,7 +275,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(ctx.params0).toEqual(savedParams0)
   })
 
-  // ── Solve behaviour (ported from the first implementation) ─────────────
+  // ── Solve behaviour ──────────────────────────────────────────────────────
 
   it('cursor seed keeps anchor near cursor after solve (underconstrained sketch)', () => {
     const feature = {

@@ -61,8 +61,6 @@ describe('solveHole guard paths', () => {
   })
 
   it('throws when all points have no XY data (ported to holeReal.test.ts)', () => {
-    /** All point entities missing XY data raises. Requires real OCC.
-     *  Ported to holeReal.test.ts (inline OCC case). */
   })
 
   it('throws when target body does not exist', () => {

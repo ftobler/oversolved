@@ -60,8 +60,8 @@ export function useUndoRedo(
       useUnsavedChangesStore.getState().setDirty(true)
       docRef.current = entry.doc
       setDoc(entry.doc)
-      // Undo/redo always exits any edit — there is no meaningful in-edit state
-      // to preserve — and restores the rollback the doc was saved with, which
+      // Undo/redo always exits any edit (there is no meaningful in-edit state
+      // to preserve) and restores the rollback the doc was saved with, which
       // is the end of the stack unless the user had parked the bar earlier.
       const store = usePartEditorStore.getState()
       store.setEditingFeatureId(null)

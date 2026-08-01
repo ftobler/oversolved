@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity tests for stable ancestry — UUID identity stability
-// across builds and edits. Verifies that
-// face/edge/vertex construction UUIDs are identical when the same shape is built twice,
-// and that a fillet operation introduces new UUIDs while inherited ones stay.
+// Gated real-OCC parity tests for stable ancestry, UUID identity stability
+// across builds and edits. Verifies that face/edge/vertex construction UUIDs
+// are identical when the same shape is built twice, and that a fillet
+// operation introduces new UUIDs while inherited ones stay.
 //
 // Skips when opencascade.js is absent.
 
@@ -299,11 +299,11 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('fillet introduces new face UUIDs', () => {
     /** Fillet adds new faces with new UUIDs.
-     *  Stage 6 note: new UUID counts depend on the geom-hash join between
-     *  extractNames (production) and face registration (tessellation). A 4dp
-     *  precision gap in centroid/normal can drop a face from byUuid, making
-     *  this assertion flaky. The UUID system is verified by the explicit
-     *  construction-name corpus tests. */
+     *  New UUID counts depend on the geom-hash join between extractNames
+     *  (production) and face registration (tessellation). A 4dp precision gap
+     *  in centroid/normal can drop a face from byUuid, making this assertion
+     *  flaky. The UUID system is verified by the explicit construction-name
+     *  corpus tests. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)
@@ -326,8 +326,8 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('fillet increases total face UUID count', () => {
     /** Fillet adds new faces, increasing the number of registered face UUIDs.
-     *  Stage 6 note: same precision caveat as 'fillet introduces new face
-     *  UUIDs'. Verify the fillet ran ok. */
+     *  Same precision caveat as 'fillet introduces new face UUIDs'. Verify the
+     *  fillet ran ok. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)

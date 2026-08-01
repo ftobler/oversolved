@@ -1,14 +1,12 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for faceLoops.ts (phase 2e): the face-profile loop
+// Gated real-OCC parity gate for faceLoops.ts: the face-profile loop
 // extraction (extrude/revolve from an existing planar face). Builds the same box
-// + cylinder as the now-removed gen_faceloops_fixture.py, extracts the loops
+// + cylinder as the frozen golden fixture, extracts the loops
 // + plane of the same sorted face indices, and asserts parity (coords within
 // 1e-6; the box gives 4-line loops, the cylinder cap a full-circle arc loop).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
-// its generator (gen_faceloops_fixture.py) was deleted with the Python kernel in
-// phase 4d.
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

@@ -486,7 +486,7 @@ describeReal('solveAssembly with the real mate solver', () => {
   // doc before a mate parameter edit.  If it did, the seed would
   // incorporate the previous solve's roll and the next solve would add the
   // new angle on top (30° + 60° = 90° instead of 60°).  This test
-  // re-solves from the SAME seed with a fresh angle — the clean-seed
+  // re-solves from the SAME seed with a fresh angle, the clean-seed
   // scenario that the JS no-bake discipline guarantees.
   it('a second solve from the same seed applies the angle absolutely, not incrementally', async () => {
     const parts = [
@@ -531,7 +531,7 @@ describeReal('solveAssembly with the real mate solver', () => {
     }], relay, solveMate!)
     const b30 = r30.transforms['pb']
 
-    // Seed is the 30° pose — exactly what the (now-removed) bake was doing.
+    // Seed is the 30° pose, exactly what the (now-removed) bake was doing.
     const parts2 = [
       { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
       { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: b30 },

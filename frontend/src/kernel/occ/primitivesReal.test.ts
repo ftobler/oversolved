@@ -277,7 +277,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       makePrism(occ, scope, face, [0, 0, 1], 2.0)
       const areaAfter = faceArea(occ, scope, face)
       expect(areaAfter).toBeCloseTo(areaBefore, 6)
-      expect(areaAfter).toBeCloseTo(1.0, 6) // 1x1 square
+      expect(areaAfter).toBeCloseTo(1.0, 6)  // 1x1 square
     } finally {
       scope.dispose()
     }
@@ -341,7 +341,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       try {
         wire = makeWire(occ, scope, [e1, e2, e3, e4])
       } catch {
-        return // gap correctly surfaced by wire builder
+        return  // gap correctly surfaced by wire builder
       }
 
       // Layer 2: face builder must not silently repair
@@ -352,7 +352,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
         // a degenerate face from a gapped wire has near-zero area.
         expect(area).toBeLessThan(0.001)
       } catch {
-        // face builder or area computation threw — gap correctly surfaced
+        // face builder or area computation threw, gap correctly surfaced
       }
     } finally {
       scope.dispose()

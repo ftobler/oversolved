@@ -80,8 +80,7 @@ export function pickBest<T>(
   cfg: HeuristicConfig,
 ): [Outcome, T | null] {
   if (scores.length === 0) return [Outcome.UNRESOLVED, null]
-  // stable sort by score descending (Array.sort is stable in modern engines,
-  // matching Python's stable sorted()).
+  // stable sort by score descending (Array.sort is stable in modern engines).
   const sorted = [...scores].sort((a, b) => b[1] - a[1])
   if (sorted.length === 1) return [Outcome.RESOLVED, sorted[0][0]]
   const topScore = sorted[0][1]

@@ -86,7 +86,7 @@ describe('usePickField — mutual exclusion', () => {
     })
     expect(spyA.isPicking).toBe(true)
 
-    // Activate a different field — the first must see isPicking=false
+    // Activate a different field, the first must see isPicking=false
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'sk2', field: 'edges' })
     })

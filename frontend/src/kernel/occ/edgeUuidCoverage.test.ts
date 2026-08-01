@@ -1,13 +1,13 @@
 // @vitest-environment node
 //
 // Edge/face construction-UUID coverage + the "no duplicate query" regression
-// lock (query-naming-by-construction.md, Stage 6.5).
+// lock (query-naming-by-construction.md).
 //
-// Stage 6 (f8074ea) dropped the per-edge/-face geom token on the premise that
-// every pickable element carries a construction UUID. It does not for every
-// class: single-face seam edges (a cylinder's lateral seam) got no UUID and fell
-// back to createdBy+classifiers -- non-unique, so they collided in both the id
-// buffer and the fillet/chamfer resolver. This file locks two things:
+// The per-edge/-face geom token was dropped on the premise that every pickable
+// element carries a construction UUID. It does not for every class: single-face
+// seam edges (a cylinder's lateral seam) got no UUID and fell back to
+// createdBy+classifiers -- non-unique, so they collided in both the id buffer
+// and the fillet/chamfer resolver. This file locks two things:
 //   1. every edge of a named-face solid gets a UUID (incl. the seam edge), and
 //   2. the full build pipeline emits NO duplicate edge_queries, face_queries or
 //      vertex_queries for the representative bodies (box, cylinder, filleted

@@ -4,7 +4,7 @@
  * Feature: cross-layer-selection-invariants.md
  *
  * These tests pin the invariants that gate revisiting dynamic-drag-selection.
- * They exercise the store layer only — no DOM, React, or Three.js required.
+ * They exercise the store layer only, no DOM, React, or Three.js required.
  *
  * Invariants (from solver_arch.agent.md):
  *   1. normalSelection is the single source of truth for highlight rendering.
@@ -80,7 +80,7 @@ describe('normalSelection is single source of truth', () => {
     useSketchEditorStore.getState().addToNormalSelection('entity:sk1:L1')
     useSketchEditorStore.getState().syncChipSelection(['@ex1/face/0'])
 
-    // Change chip selection — remove face/0, add face/1
+    // Change chip selection, remove face/0, add face/1
     useSketchEditorStore.getState().syncChipSelection(['@ex1/face/1'])
 
     const sel = useSketchEditorStore.getState().normalSelection

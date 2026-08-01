@@ -17,7 +17,7 @@ export function initializeTools(): void {
   }
 
   // Compound drawing tools (rect, center_rect) create multiple entities and constraints,
-  // not a single entity — they have no entry in ENTITIES. Register them separately.
+  // not a single entity; they have no entry in ENTITIES. Register them separately.
   toolRegistry.register(createDrawingTool({ entityKind: 'rect', paramCount: 0 }))
   toolRegistry.register(createDrawingTool({ entityKind: 'center_rect', paramCount: 0 }))
   toolRegistry.register(createDrawingTool({ entityKind: 'ngon', paramCount: 0 }))

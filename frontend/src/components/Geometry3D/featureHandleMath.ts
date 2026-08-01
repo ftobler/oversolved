@@ -36,9 +36,6 @@ export function closestAxisParam(
   // and a zero-length ray can't form a closest-point solve. Both must hold
   // their last value rather than produce NaN.
   const a = dot(axisDir, axisDir)
-  // Degenerate inputs: a zero-length axis has no direction to travel along,
-  // and a zero-length ray can't form a closest-point solve. Both must hold
-  // their last value rather than produce NaN.
   if (a < 1e-12) return null
   const c = dot(rayDir, rayDir)
   if (c < 1e-12) return null

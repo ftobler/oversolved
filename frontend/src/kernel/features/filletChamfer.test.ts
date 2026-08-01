@@ -83,7 +83,7 @@ describe('resolveFilletEdges guard', () => {
       id: 'b1',
       created_by: 'f1',
       modified_by: [],
-      shape: 1 as OccHandle, // non-null to exercise the edgeQueries.length === 0 branch
+      shape: 1 as OccHandle,  // non-null to exercise the edgeQueries.length === 0 branch
       sketch_id: 'sk',
       brep_diff: null,
       profile_queries: [],

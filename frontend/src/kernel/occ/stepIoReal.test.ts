@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Phase 3 gated test: STEP export (shape -> bytes) via STEPControl_Writer,
+// Gated test: STEP export (shape -> bytes) via STEPControl_Writer,
 // round-tripped back through stepBytesToShape and verified by volume parity.
 // opencascade.js must run under node (its emscripten FS path for STEP differs
 // from the browser Worker's --target web FS).
@@ -66,7 +66,7 @@ describe.skipIf(!oc)('stepShapeToBytes (real OCC)', () => {
       const reimported = scope.track(stepBytesToShape(occ, scope, bytes))
       const roundTripVolume = volumeOf(occ, scope, reimported)
 
-      expect(originalVolume).toBeCloseTo(60, 1) // 3*4*5
+      expect(originalVolume).toBeCloseTo(60, 1)  // 3*4*5
       expect(roundTripVolume).toBeCloseTo(originalVolume, 1)
     } finally {
       scope.dispose()
@@ -80,7 +80,7 @@ describe.skipIf(!oc)('stepShapeToBytes (real OCC)', () => {
       const bytes = stepShapeToBytes(occ, scope, box)
       const reimported = scope.track(stepBytesToShape(occ, scope, bytes, 2.0))
       const vol = volumeOf(occ, scope, reimported)
-      expect(vol).toBeCloseTo(8000, 1) // 20*20*20
+      expect(vol).toBeCloseTo(8000, 1)  // 20*20*20
     } finally {
       scope.dispose()
     }

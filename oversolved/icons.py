@@ -1296,7 +1296,7 @@ def feature_transform(ctx):
         ctx.line_to(ex, ey)
         stroke(ctx, stroke_width)
 
-    # thin lines conecting corners of the two boxes
+    # thin lines connecting corners of the two boxes
     # but only top-left and bottom-right corners to avoid clutter
     partial_line(box_left, box_top, box_left + 0.3, box_top - 0.25, 0.3, 0.7)
     partial_line(box_left + box_w, box_top + box_h, box_left + 0.3 + box_w, box_top - 0.25 + box_h, 0.3, 0.65)

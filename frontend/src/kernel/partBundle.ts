@@ -1,6 +1,6 @@
 // A PartBundle is a rev-keyed, derivable artifact built from a PartDoc by a
 // transient OCC worker (the bundle builder). It carries everything an assembly
-// solver needs — meshes, edge curves, and an anchor dict — so the assembly
+// solver needs (meshes, edge curves, and an anchor dict) so the assembly
 // worker never touches OCC or runs solveLocally. The bundle is cached in
 // IndexedDb keyed by (doc_id, doc_rev); a miss triggers a cold rebuild.
 
@@ -54,7 +54,7 @@ export interface EdgeCurve {
 }
 
 /**
- * Which anchors a picked entity offers as mate references (Stage 7). Indexed
+ * Which anchors a picked entity offers as mate references. Indexed
  * positionally: `faces[i]` for the B-rep face `faceIdsPerTriangle` names, and
  * `edges[i]` / `vertices[i]` for the i-th edge / vertex of the source body.
  *
@@ -76,8 +76,8 @@ export interface BodyMesh {
     faceIdsPerTriangle: Uint32Array
   }
   edges: EdgeCurve[]
-  // Optional so a bundle cached before Stage 7 still solves; it just offers no
-  // mate picks until its part is rebuilt at a new rev.
+  // Optional so a bundle cached before entityAnchors existed still solves; it
+  // just offers no mate picks until its part is rebuilt at a new rev.
   entityAnchors?: EntityAnchorIndex
 }
 
@@ -91,8 +91,8 @@ export interface PartBundle {
 
 /**
  * Bumped whenever a bundle field's MEANING changes in a way that would strand
- * a cached bundle with stale semantics (not just a new optional field). Stage
- * A's `surface_frame`-derived anchor axes is the first such change: a bundle
+ * a cached bundle with stale semantics (not just a new optional field). The
+ * `surface_frame`-derived anchor axes change is the first such case: a bundle
  * cached under an older schema keeps its wrong cylinder/cone/sphere/torus axes
  * forever unless the cache treats a schema mismatch as a miss. See
  * `bundleCache.bundleCacheGet`.
@@ -291,7 +291,7 @@ export function toPartBundle(
   return { doc_id, doc_rev, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
 }
 
-// ── Anchor extraction (Stage 2c) ─────────────────────────────────────────
+// ── Anchor extraction ─────────────────────────────────────────────────────
 
 function faceTypeToAnchorKind(st: string | null | undefined): AnchorKind | null {
   if (st === 'flatface') return 'plane'
@@ -322,7 +322,7 @@ function edgeAnchorPoint(ed: EdgeData): Vec3 {
 
 /**
  * A face anchor's point + axis. A plane's axis IS its normal (unchanged). A
- * curved face's axis comes ONLY from `surface_frame` (Stage A) -- never from
+ * curved face's axis comes ONLY from `surface_frame` -- never from
  * `normal`, which is radial on a cylinder/cone and would make a coaxial mate
  * align two radial vectors instead of two axes. No frame (a bundle built
  * before this field existed, or an unreadable surface class) means no anchor:
@@ -360,7 +360,7 @@ function findDescriptorInQuery(query: string, prefix: string): string | null {
 
 export interface BodyAnchorExtraction {
   anchors: Record<string, Anchor>
-  /** Positional entity → anchor-id lists, the join a pick needs (Stage 7). */
+  /** Positional entity → anchor-id lists, the join a pick needs. */
   entityAnchors: EntityAnchorIndex
 }
 
@@ -445,7 +445,7 @@ export function extractBodyAnchors(
   return { anchors, entityAnchors }
 }
 
-// ── Anchor migration (Stage 3) ─────────────────────────────────────────────
+// ── Anchor migration ──────────────────────────────────────────────────────
 
 function distSq(a: Vec3, b: Vec3): number {
   return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
@@ -480,7 +480,7 @@ export function anchorIdRemap(
   for (const id of newIds) {
     const gh = newAnchors[id].geom_hash
     if (!newByGeomHash.has(gh)) newByGeomHash.set(gh, id)
-    else newByGeomHash.set(gh, '') // collision marker → skip tier 1
+    else newByGeomHash.set(gh, '')  // collision marker, skip tier 1
   }
 
   // ── Tier 1: exact geom_hash match ────────────────────────────────────
@@ -518,14 +518,14 @@ export function anchorIdRemap(
     if (!candidates || candidates.length === 0) continue
 
     if (candidates.length === 1) {
-      // Unique candidate — direct match.
+      // Unique candidate, direct match.
       const newId = candidates[0]
       remap.set(newId, oldId)
       newIdConsumed.add(newId)
       oldIdMigrated.add(oldId)
       newByCreatedByKind.set(key, [])
     } else {
-      // Multiple candidates — pick nearest by position.
+      // Multiple candidates, pick nearest by position.
       let bestId = ''
       let bestDist = Infinity
       let secondBestDist = Infinity

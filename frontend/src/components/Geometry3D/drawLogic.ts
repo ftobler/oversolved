@@ -231,7 +231,7 @@ export function computeDrawClick(
         : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
-    // Second corner uses raw point — alignment snap would collapse the rectangle
+    // Second corner uses raw point, alignment snap would collapse the rectangle
     return {
       mutations: [{ type: 'add_rect', featureId, p0: pts[0], p1: [rawPoint[0], rawPoint[1]] }],
       nextDrawPoints: null,
@@ -247,7 +247,7 @@ export function computeDrawClick(
         : null
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
     }
-    // Second corner uses raw point — alignment snap would collapse the rectangle
+    // Second corner uses raw point, alignment snap would collapse the rectangle
     return {
       mutations: [{ type: 'add_center_rect', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]] }],
       nextDrawPoints: null,

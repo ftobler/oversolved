@@ -406,7 +406,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const handleUpdateMate = useCallback((featureId: string, patch: MateParamPatch) => {
     // A mate parameter edit (offset, angle, flip, ratio, radius) does not
-    // move any part on its own — the solve is the only thing that may move
+    // move any part on its own; the solve is the only thing that may move
     // them.  Baking the current solved transforms into the part seeds here
     // would incorporate the previous solve's roll into the new seed, and
     // the solver's seed-relative angle (mate_residuals.rs) would then add

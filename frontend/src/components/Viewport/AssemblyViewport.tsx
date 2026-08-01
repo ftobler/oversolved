@@ -1,5 +1,5 @@
 // The assembly editor's scene. Stage 6f: three earlier stages deferred their
-// render work here — 6c's assembly origin + planes, 6d's drag and triad-gizmo
+// render work here: 6c's assembly origin + planes, 6d's drag and triad-gizmo
 // pointer surface, and 6e's edge curves. Stage 7.5 added the ID-picking driver
 // and hover-gated anchor gizmos on top.
 //
@@ -9,7 +9,7 @@
 // CubeGizmoCanvas). What the shell computes is nothing: the render list comes
 // from utils/assemblyRender.ts, every gesture goes through
 // utils/assemblyPointer.ts, and the anchor set under the cursor comes from
-// utils/anchorGizmos.ts — all viewport-free and unit-tested.
+// utils/anchorGizmos.ts, all viewport-free and unit-tested.
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
@@ -419,7 +419,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
   // grazes the pane edge, and guarantees the release reaches us wherever it
-  // lands — otherwise a session would hang with the camera locked.
+  // lands, otherwise a session would hang with the camera locked.
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     // Record before the active-gesture early-out: the mesh handler has already
     // opened the grab by the time this bubbles up, so an early return here would

@@ -158,8 +158,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // look dead to the user.
       const changed = JSON.stringify(snapshot) !== JSON.stringify(docRef.current)
       if (changed) {
-        // The store still holds the edited feature here — commitEditSession runs
-        // before the caller's exit cleanup clears it — so the undo label can name
+        // The store still holds the edited feature here (commitEditSession runs
+        // before the caller's exit cleanup clears it), so the undo label can name
         // the feature instead of rendering an empty one.
         const featureId = usePartEditorStore.getState().editingFeatureId ?? ''
         pushUndo({ type: 'edit_session', featureId }, snapshot)
@@ -170,7 +170,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const cancelEditSession = useCallback(() => {
     if (editSnapshotRef.current === null) {
-      // No active session — silently skip.
+      // No active session, silently skip.
       return
     }
     suppressUndoRef.current = false

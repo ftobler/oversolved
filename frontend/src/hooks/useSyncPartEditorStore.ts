@@ -36,7 +36,7 @@ export function useSyncPartEditorStore(data: MirroredPartEditorData): void {
   useEffect(() => {
     return () => {
       usePartEditorStore.getState().setSnapshot(DEFAULT_PART_EDITOR_DATA)
-      // Reset owned fields on unmount too — setSnapshot preserves them, so
+      // Reset owned fields on unmount too, setSnapshot preserves them, so
       // call their setters explicitly.
       usePartEditorStore.getState().setRollbackPosition(null)
       usePartEditorStore.getState().setPickBoundary(null)

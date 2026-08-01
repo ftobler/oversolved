@@ -88,8 +88,9 @@ function circleSketch(sketchId: string, r: number, plane = '@builtin_plane_right
 }
 
 // The real corpus path (sketch 1): line -> tangent arc -> line on builtin_plane_top.
-// `segs` chooses how many path entities to include (2 = line+arc works in the app,
-// 3 = line+arc+line fails). Geometry copied from the user's failing model.
+// `segs` chooses how many path entities to include (2 = line+arc, 3 = line+arc+line).
+// The 3-segment spine is the case that used to fail; collectPathEdges' joint-snap is
+// what makes it assemble. Geometry reproduces a real user's failing model.
 const CORPUS_LN0 = [0, 0, -10, 0]                      // [x0,y0,x1,y1]
 const CORPUS_ARC = [-10, -5, 5, 90, -211.456]          // [cx,cy,r,a0deg,a1deg]
 const CORPUS_LN1 = [-14.265, -2.391, -19.484, -10.921]

@@ -34,7 +34,7 @@ describe('collectEntitiesFromPixels', () => {
     const idB = registry.allocate('edge', '@feat1/edge/1')
 
     // Encode: A takes top-left quad, B takes bottom-right.
-    // RGB = idToRGB(id), 12-bit each color component (0-255).
+    // RGB = idToRGB(id), 8-bit each color component (0-255).
     const vA = [(idA >> 16) & 0xFF, (idA >> 8) & 0xFF, idA & 0xFF]
     const vB = [(idB >> 16) & 0xFF, (idB >> 8) & 0xFF, idB & 0xFF]
 

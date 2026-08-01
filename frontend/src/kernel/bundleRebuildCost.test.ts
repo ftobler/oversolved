@@ -48,7 +48,7 @@ function bundleReq(spec: Record<string, unknown>, rev: number): BundleRequest {
   return { id: rev, kind: 'buildBundle', spec, doc_id: spec.id as string, doc_rev: rev }
 }
 
-// ─── the assembly side: which parts get rebuilt at all ─────────────────────
+// ─── the assembly side: which parts get rebuilt at all ───
 
 function identity(): Transform3D {
   return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
@@ -116,7 +116,7 @@ describe('assembly bundle invalidation scope', () => {
   })
 })
 
-// ─── what that actually buys, at the engine ────────────────────────────────
+// ─── what that actually buys, at the engine ───
 
 function rectSketch(sketchId: string, w: number, h: number) {
   return {

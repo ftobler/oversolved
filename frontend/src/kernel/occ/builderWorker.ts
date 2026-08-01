@@ -2,7 +2,7 @@
  * The builder Worker entry: the single dedicated Worker that will host OCC.js
  * and the handle table off the main thread, so a solve never blocks the UI.
  *
- * Phase 2a proves only the smallest slice: it can extrude a square and
+ * The worker currently proves the smallest slice: it can extrude a square and
  * tessellate it, holding every shape through the [[HandleTable]] and reporting
  * the live-handle count so the host can assert no leaks across a loop. The
  * message-handling substance is [[runBuilderCommand]], a pure async function
@@ -10,7 +10,7 @@
  * with the fake module; the `self` bootstrap at the bottom is the only part
  * that needs a real Worker.
  *
- * Crash recovery (see migration notes): on a hard WASM trap the host discards
+ * Crash recovery: on a hard WASM trap the host discards
  * this Worker and respawns it, replaying the AST. Nothing here persists state
  * the host cannot rebuild.
  */
@@ -75,7 +75,7 @@ export async function runBuilderCommand(
   }
 }
 
-// --- Worker bootstrap (skipped on the main thread / in tests) -------------
+// ─── Worker bootstrap (skipped on the main thread / in tests) ───
 
 interface WorkerCtx {
   postMessage(message: BuilderResponse): void

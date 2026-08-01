@@ -253,7 +253,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       }
       // Single click outcome for every selectable layer: toggle into normal
       // selection. The only exceptions are active sketch TOOLS (dimension /
-      // entity / vertex drawing), which are not a parallel pick path — they
+      // entity / vertex drawing), which are not a parallel pick path, they
       // are the current tool acting. Pick chips are a consumer layer that
       // observes normalSelection downstream; they never branch the click.
       if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {

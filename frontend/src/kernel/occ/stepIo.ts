@@ -1,4 +1,4 @@
-// STEP read/write adapter for the import_step leaf (phase 2f/3). Import writes
+// STEP read/write adapter for the import_step leaf. Import writes
 // the STEP bytes to the emscripten in-memory FS, reads them with
 // STEPControl_Reader, and applies an optional uniform scale. Export writes a
 // shape to the FS with STEPControl_Writer and reads the resulting bytes back.

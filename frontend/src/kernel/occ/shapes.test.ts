@@ -32,7 +32,7 @@ describe('faceSortKey / compareFaceSortKeys', () => {
   it('orders flat faces before curved regardless of geometry', () => {
     const a = faceSortKey(curved([0, 0, -1], [0, 0, 0]))
     const b = faceSortKey(flat([1, 0, 0], [100, 100, 100]))
-    expect(compareFaceSortKeys(b, a)).toBe(-1) // flat sorts first
+    expect(compareFaceSortKeys(b, a)).toBe(-1)  // flat sorts first
   })
 
   it('within a group, orders by normal then centroid', () => {

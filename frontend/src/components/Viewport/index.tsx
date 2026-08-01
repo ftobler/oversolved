@@ -162,13 +162,13 @@ function calculatePlaneSize(
 
   if (!planeDefinition || !bodies) return FALLBACK_SIZE
 
-  // Case 1: Plane defined on a face (on_face mode)
+  // Plane defined on a face (on_face mode)
   if (planeDefinition.mode === 'on_face' && planeDefinition.face) {
     const faceExtent = getFaceExtent(planeDefinition.face, bodies)
     if (faceExtent > 0) return faceExtent * EXPANSION_FACTOR
   }
 
-  // Case 4: Fallback - use model bounding box
+  // Fallback: use model bounding box
   const modelExtent = getModelBoundingBoxExtent(bodies)
   if (modelExtent > 0) return modelExtent * EXPANSION_FACTOR
 
@@ -414,7 +414,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         // Only start rubber-band for non-drawing tools (null, select, drag, dimension).
         if (!currentTool || currentTool === 'select' || currentTool === 'drag' || currentTool === 'dimension') {
           const started = rubberBand.onPointerDown(e, false)
-          // If started (no hit), don't prevent default — let pointer-up determine click vs drag.
+          // If started (no hit), don't prevent default, let pointer-up determine click vs drag.
           void started
         }
       }

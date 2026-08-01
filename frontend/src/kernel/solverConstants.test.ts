@@ -32,5 +32,5 @@ describe('solverConstants', () => {
 
   // Python tests test_loop_closure_used_in_profile_loops and
   // test_topology_uses_constants use `inspect.getsource` to verify
-  // imports — Python code hygiene, n/a for TS.
+  // imports, Python code hygiene, n/a for TS.
 })

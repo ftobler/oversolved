@@ -1,12 +1,11 @@
 /**
  * The slice of the opencascade.js (Donalffons fork, OCC 7.5) embind surface
- * that the phase-2a spike actually touches. Member names mirror the real
+ * that the spike actually touches. Member names mirror the real
  * module exactly, so the live module satisfies this interface with a single
  * structural cast and the [[FakeOcc]] test double implements the same names.
  *
  * Overload suffixes (`_1`, `_2`, ...) and exact arities are not cosmetic: they
- * were pinned against the real 1.1.1 build (see the gated spike test and the
- * migration notes). Examples that bit during the spike:
+ * were pinned against the real 1.1.1 build (see the gated spike test). Examples that bit during the spike:
  *   - `BRepPrimAPI_MakeBox_2` wants 4 args; the 3-arg box is `_1`.
  *   - `BRep_Tool.Triangulation` is 2 args in this build (no datatype arg).
  *   - There is no `TopTools_ListIteratorOfListOfShape`; drain a list with
@@ -163,12 +162,12 @@ export interface OccTriangle extends OccDisposable {
   Value(i: number): number
 }
 
-/** Triangle-count only: all the 2a spike (FakeOcc leak gate) needs. */
+/** Triangle-count only: all the spike (FakeOcc leak gate) needs. */
 export interface OccTriangulationBasic {
   NbTriangles(): number
 }
 
-/** Full node/triangle access, used by the 2b tessellation port. */
+/** Full node/triangle access, used by the tessellation port. */
 export interface OccTriangulation extends OccTriangulationBasic {
   NbNodes(): number
   /** 1-based node, in the triangulation's local frame (apply location Trsf). */
@@ -368,8 +367,8 @@ export interface OccCurveAdaptor extends OccDisposable {
 export type OccShapeEnumValue = object
 
 /**
- * The 2a spike slice: what `extrudeSquareAndTessellate` and the FakeOcc leak
- * gate need. The 2b construction surface lives on [[OccModule]], which extends
+ * The spike slice: what `extrudeSquareAndTessellate` and the FakeOcc leak
+ * gate need. The full construction surface lives on [[OccModule]], which extends
  * this. Keeping the spike slice separate means the in-memory FakeOcc double
  * does not have to fake the whole construction kernel.
  */
@@ -440,7 +439,7 @@ export interface OccModule extends OccSpikeModule {
     GeomAbs_Ellipse: OccEnumValue
   }
 
-  // --- 2b: shape construction --------------------------------------------
+  // ─── shape construction ───
   gp_Dir_4: new (x: number, y: number, z: number) => OccXYZ
   gp_Ax2_3: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
   /** gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle. */
@@ -479,7 +478,7 @@ export interface OccModule extends OccSpikeModule {
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
   ShapeFix_Wire_1: new () => OccShapeFixWire
 
-  // --- 2b: geometry readers ----------------------------------------------
+  // ─── geometry readers ───
   GProp_GProps_1: new () => OccGProps
   BRepGProp: {
     SurfaceProperties_1(
@@ -522,7 +521,7 @@ export interface OccModule extends OccSpikeModule {
     TopAbs_REVERSED: OccEnumValue
   }
 
-  // --- 2d: bounding box (classifier frame) --------------------------------
+  // ─── bounding box (classifier frame) ───
   Bnd_Box: new () => OccDisposable & {
     Get(): [number, number, number, number, number, number]
   }
@@ -530,7 +529,7 @@ export interface OccModule extends OccSpikeModule {
     Add_s(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
   }
 
-  // --- 2e: boolean ops + history + clean ----------------------------------
+  // ─── boolean ops + history + clean ───
   BRepAlgoAPI_Cut_1: new () => OccBooleanOp
   BRepAlgoAPI_Fuse_1: new () => OccBooleanOp
   BRepAlgoAPI_Common_1: new () => OccBooleanOp
@@ -542,7 +541,7 @@ export interface OccModule extends OccSpikeModule {
     concatBSplines: boolean,
   ) => OccUnify
 
-  // --- 2e: canonical surface recognition (canonicalSurfaces.ts) ------------
+  // ─── canonical surface recognition (canonicalSurfaces.ts) ───
   gp_Pnt_1: new () => OccXYZ
   gp_Vec_1: new () => OccXYZ
   /** gp_Ax3(location, N, Vx): a cylinder frame; Vx fixes where the U=0 seam sits. */
@@ -561,7 +560,7 @@ export interface OccModule extends OccSpikeModule {
   /** BRepCheck_Analyzer(shape, geomControls): plain (suffix-free) ctor in this build. */
   BRepCheck_Analyzer: new (shape: OccShape, geomControls: boolean) => OccShapeAnalyzer
 
-  // --- assembly export: gather disjoint bodies into one compound shape -----
+  // ─── assembly export: gather disjoint bodies into one compound shape ───
   // STEP/STL export of a whole assembly writes a single TopoDS_Compound built
   // from every body's solid. Unlike a boolean fuse this never fails on disjoint
   // parts, so an assembly of separate solids exports cleanly. In this OCC build
@@ -569,14 +568,14 @@ export interface OccModule extends OccSpikeModule {
   BRep_Builder: new () => OccBRepBuilder
   TopoDS_Compound: new () => OccShape
 
-  // --- 2e: face-profile loop extraction (extrude/revolve from a face) ------
+  // ─── face-profile loop extraction (extrude/revolve from a face) ───
   BRepTools: {
     OuterWire(face: OccShape): OccShape
   }
   BRepTools_WireExplorer_3: new (wire: OccShape, face: OccShape) => OccWireExplorer
   BRepAdaptor_Curve2d_2: new (edge: OccShape, face: OccShape) => OccCurve2dAdaptor
 
-  // --- 2f: revolve leaf ---------------------------------------------------
+  // ─── revolve leaf ───
   /** gp_Ax1(location, direction): the axis a revolve sweeps around. */
   gp_Ax1_2: new (origin: OccPnt, direction: OccXYZ) => OccDisposable
   /** BRepPrimAPI_MakeRevol(profile, axis, angleRad, copy): the 4-arg form. */
@@ -587,7 +586,7 @@ export interface OccModule extends OccSpikeModule {
     copy: boolean,
   ) => OccPrismBuilder
 
-  // --- 2f: sweep leaf -----------------------------------------------------
+  // ─── sweep leaf ───
   /** BRepOffsetAPI_MakePipeShell(spineWire): no overload suffix in this build. */
   BRepOffsetAPI_MakePipeShell: new (spine: OccShape) => OccPipeShellBuilder
   BRepBuilderAPI_TransitionMode: {
@@ -596,7 +595,7 @@ export interface OccModule extends OccSpikeModule {
     BRepBuilderAPI_RoundCorner: OccEnumValue
   }
 
-  // --- 2f: fillet / chamfer leaf ------------------------------------------
+  // ─── fillet / chamfer leaf ───
   /** BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational): the 2-arg form. */
   BRepFilletAPI_MakeFillet: new (shape: OccShape, fshape: OccEnumValue) => OccEdgeModifierMaker
   /** BRepFilletAPI_MakeChamfer(shape): the 1-arg form. */
@@ -605,7 +604,7 @@ export interface OccModule extends OccSpikeModule {
     ChFi3d_Rational: OccEnumValue
   }
 
-  // --- 2f: transform / mirror / array group -------------------------------
+  // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf
   /** BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape. */
   BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
@@ -613,7 +612,7 @@ export interface OccModule extends OccSpikeModule {
    *  shape (the defensive copy used to isolate checkpoint snapshots). */
   BRepBuilderAPI_Copy_2: new (shape: OccShape, copyGeom: boolean, copyMesh: boolean) => OccCopyBuilder
 
-  // --- 2f: import_step (STEP read + write) --------------------------------
+  // ─── import_step (STEP read + write) ───
   /** Emscripten in-memory filesystem (write the STEP bytes here, then ReadFile). */
   FS: {
     writeFile(path: string, data: Uint8Array | string): void

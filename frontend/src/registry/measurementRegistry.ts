@@ -5,7 +5,7 @@ import type { LineSegment, Arc, Circle, PointEntity, BodyResult, EdgeDataCircleA
 import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
 
 /**
- * Measurement Registry — defines measurement rules in order of specificity.
+ * Measurement Registry, defines measurement rules in order of specificity.
  * First matching rule wins. More specific measurements are listed first.
  */
 

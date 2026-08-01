@@ -255,7 +255,7 @@ describe('toPartBundle', () => {
   })
 })
 
-// ── Anchor extraction (Stage 2c) ─────────────────────────────────────────
+// ─── Anchor extraction (Stage 2c) ───
 
 /** Build a query string in the ancestry format that `findDescriptorInQuery` can parse. */
 function makeQuery(ids: string[], typeRestriction: string | null): string {
@@ -446,7 +446,7 @@ describe('extractBodyAnchors', () => {
       mesh: {
         vertices: [], faces: [],
         face_queries: [
-          // @u| token present alongside @gdf| — prefers @u|
+          // @u| token present alongside @gdf|, prefers @u|
           makeQuery(['@u|aaa1112223334445', '@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface'),
         ],
         face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
@@ -484,7 +484,7 @@ describe('extractBodyAnchors', () => {
   })
 })
 
-// ── Stage 7: the entity -> anchor join a pick resolves through ──────────────
+// ─── Stage 7: the entity -> anchor join a pick resolves through ───
 
 describe('extractBodyAnchors entity index', () => {
   function mintFactory(): () => string {

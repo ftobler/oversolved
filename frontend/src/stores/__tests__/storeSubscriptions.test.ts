@@ -4,7 +4,6 @@
  */
 import { describe, it, expect } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-// ── test_no_functions_in_store ────
 
 describe('test_no_functions_in_store', () => {
   it('sketchEditorStore state does not contain onMutation, onRebuild, or onExitSketch', () => {

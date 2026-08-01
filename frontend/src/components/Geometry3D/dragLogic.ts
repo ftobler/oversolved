@@ -172,7 +172,7 @@ export function computeDragMove(
  *  `lastDragSolve` is the last WASM drag-frame solve (from dragSolveRegistry,
  *  passed in to keep this module pure). When it belongs to this drag's
  *  feature, the per-entity solved params ride along on the vertex mutation so
- *  the commit hard solve seeds from the on-screen state — without it, the
+ *  the commit hard solve seeds from the on-screen state, without it the
  *  solve seeds from pre-drag geometry + one teleported vertex and can land in
  *  a different solution basin (visible snap on release). */
 export function computeDragMutation(

@@ -15,8 +15,8 @@
  * decrements every handle it held and `.delete()`s the ones that hit zero.
  *
  * The handle-leak fixture test built on this is the entire memory-safety
- * story for phase 2, per the migration plan: a green leak gate in CI, not a
- * code review, is what proves we did not strand a handle.
+ * story: a green leak gate in CI, not a code review, is what proves we did
+ * not strand a handle.
  */
 
 import type { Disposable } from './disposeScope'

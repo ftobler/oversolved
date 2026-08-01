@@ -1,8 +1,6 @@
 // @vitest-environment node
 //
 // Build-level brep ancestry tests using the OCC.js + Rust WASM build pipeline.
-// Ports the cut-body and face-ancestry scenarios from
-// test_brep_ancestry_history.py.
 //
 // Skips when OCC.js or the Rust solver is absent.
 

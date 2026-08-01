@@ -13,8 +13,8 @@
  * builder's try/catch returns a clean exception (the browser kernel is the only
  * solver; there is no backend fallback).
  *
- * Projected entities and center_rect sugar are not yet lowered; sketches
- * containing them throw a descriptive error.
+ * center_rect sugar is not yet expanded; sketches containing it throw a
+ * descriptive error.
  */
 
 import type { PartFeature, Sketch, Entity } from '@/types/cad'
@@ -533,7 +533,7 @@ export interface DragSolveResult {
  *
  * For vertex drags, `cursorWorld` pins the dragged vertex.
  * For edge/entity drags, `edgeDelta` (cursor delta from drag start) translates
- * every coordinate pair of the dragged entity before solving — each frame
+ * every coordinate pair of the dragged entity before solving, each frame
  * seeds from the original params0 plus the delta.
  *
  * Returns null when the solver is not loaded in this context or the solve

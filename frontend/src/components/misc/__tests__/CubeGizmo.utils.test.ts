@@ -142,7 +142,7 @@ describe('drawCubeGizmo', () => {
   })
 })
 
-// ── Face label font ────
+// ─── Face label font ───
 
 describe('gizmoLabelFont', () => {
   it('asks for Roboto and keeps a generic fallback in the stack', () => {

@@ -5,7 +5,7 @@
 // (faceIdsPerTriangle), edge-curve extraction (line edges for box, circle
 // edges for holes), and anchor enumeration (faces, edges, vertices).
 //
-// Does NOT assert byte-identity across rebuilds — OCC tessellation is not
+// Does NOT assert byte-identity across rebuilds, OCC tessellation is not
 // guaranteed byte-deterministic across worker restarts or OCC.js versions.
 
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -130,7 +130,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     const bundle = toPartBundle('doc1', 1, result.bodies as Record<string, BodyResult>)
     expect(bundle.doc_id).toBe('doc1')
     expect(bundle.doc_rev).toBe(1)
-    // Stage 2c: anchors are now populated
+    // Anchors are populated from the real build.
     expect(typeof bundle.anchors).toBe('object')
     expect(Object.keys(bundle.anchors).length).toBeGreaterThan(0)
     expect(bundle.bodies.length).toBeGreaterThan(0)
@@ -217,7 +217,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     }
   })
 
-  // ── Stage 2c: anchors ─────────────────────────────────────────────────
+  // ─── Stage 2c: anchors ───
 
   it('rect extrude anchors: 6 plane faces, 12 line edges, 8 point vertices', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
@@ -236,7 +236,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     // A box has 8 corner vertices
     expect(vertexAnchors.length).toBe(8)
 
-    // Every face anchor has a @gdf descriptor, normal, and centroid
+    // Every face anchor carries a @u| construction UUID, a point, and a normal.
     for (const a of planeAnchors) {
       expect(a.geom_hash.startsWith('@u|')).toBe(true)
       expect(a.point.length).toBe(3)
@@ -280,7 +280,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
     const ids1 = new Set(Object.keys(b1.anchors))
     const ids2 = new Set(Object.keys(b2.anchors))
-    // Freshly minted ids per build — they should all differ.
+    // Freshly minted ids per build, they should all differ.
     for (const id of ids1) expect(ids2.has(id)).toBe(false)
   })
 

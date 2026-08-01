@@ -4,7 +4,7 @@
 import { parseSelectionId } from '@/utils/query/selectionId'
 import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 
-// ─── Constraint Registry — single source of truth for all sketch constraints. ───
+// ─── Constraint Registry, single source of truth for all sketch constraints ───
 //
 // Every constraint recognised by the solver is listed here exactly once.
 // Toolbar buttons, keyboard shortcuts, icon mapping, dimension-tool detection,
@@ -19,7 +19,7 @@ import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 // ─── Constraint definition ───
 
 export interface ConstraintDef {
-  // Solver kind string — the canonical name used in the AST and solver.
+  // Solver kind string, the canonical name used in the AST and solver.
   kind: string
 
   // Human-readable label shown in the toolbar tooltip and docs.
@@ -107,7 +107,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Constrains a line segment to be horizontal, or two points to share the same Y coordinate.',
     category: 'geometric',
     hasValue: false,
-    refPattern: 'target',  // single line (target) or two points (a/b) — overloaded
+    refPattern: 'target',  // single line (target) or two points (a/b), overloaded
     renderKind: 'symbol_h',
     symbolIcon: 'constraint-horizontal',
     toolbarIcon: 'constraint-horizontal',
@@ -120,7 +120,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     description: 'Constrains a line segment to be vertical, or two points to share the same X coordinate.',
     category: 'geometric',
     hasValue: false,
-    refPattern: 'target',  // single line (target) or two points (a/b) — overloaded
+    refPattern: 'target',  // single line (target) or two points (a/b), overloaded
     renderKind: 'symbol_v',
     symbolIcon: 'constraint-vertical',
     toolbarIcon: 'constraint-vertical',
@@ -247,7 +247,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     showInToolbar: false,
   },
 
-  // ── Dimensional constraints ────
+  // ─── Dimensional constraints ───
   // These are normally applied via the "Dimension" tool, which auto-detects
   // the correct kind based on the clicked entity type(s).
 

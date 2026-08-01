@@ -6,7 +6,7 @@
 //
 // A `Ray` direction need not be unit length; every formula here normalizes what
 // it needs. Degenerate configurations (ray parallel to the plane, ray parallel
-// to the axis, a zero-length swing vector) return null / 0 rather than NaN — a
+// to the axis, a zero-length swing vector) return null / 0 rather than NaN: a
 // pointer gesture that cannot be interpreted must leave the part where it is.
 
 import type { Vec3 } from '@/utils/transform3d'

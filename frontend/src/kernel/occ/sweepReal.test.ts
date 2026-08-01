@@ -1,20 +1,17 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for sweepProfileWithLineage (phase 2f, the sweep
-// leaf's brep producer). Rebuilds the same spine edges (line/arc) as
-// the now-removed gen_sweep_fixture.py via the TS adapters, sweeps the same
-// square profile, and asserts the produced solid volume + profile-entity token
-// attribution.
+// Gated real-OCC parity gate for sweepProfileWithLineage (the sweep leaf's brep
+// producer). Rebuilds the same spine edges (line/arc) as the frozen golden sweep
+// fixture via the TS adapters, sweeps the same square profile, and asserts the
+// produced solid volume + profile-entity token attribution.
 //
-// Same conversion as the extrude gate (see prismLineageReal.test.ts): Stage 7
-// removed the geom-hash face_lineage/edge_lineage output, so we build with a
+// Same conversion as the extrude gate (see prismLineageReal.test.ts): the
+// geom-hash face_lineage/edge_lineage output was removed, so we build with a
 // createdBy and compare the token attribution on the surviving construction-name
 // ancestry maps. faceAncestry matches the golden face_lineage multiset; edgeAncestry
 // is a SUBSET (seam edges of curved lateral faces get no edge UUID).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
-// its generator (gen_sweep_fixture.py) was deleted with the Python kernel in
-// phase 4d.
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

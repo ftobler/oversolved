@@ -1,5 +1,5 @@
 /**
- * The phase-2a exit-criterion workload, written once against the [[OccModule]]
+ * The spike workload, written once against the [[OccModule]]
  * interface so it runs identically on the real opencascade.js module (gated
  * spike test) and on the [[FakeOcc]] double (always-on leak gate).
  *
@@ -79,7 +79,7 @@ export function extrudeSquareAndTessellate(
         const sub = gen.First_1()
         generatedSubshapes++
         gen.RemoveFirst()
-        sub.delete() // proven-safe ordering against the real build (delete after RemoveFirst)
+        sub.delete()  // proven-safe ordering against the real build (delete after RemoveFirst)
       }
     }
 

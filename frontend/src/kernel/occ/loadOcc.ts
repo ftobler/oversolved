@@ -12,7 +12,7 @@
  * When it is not installed this resolves to `null` and the spike test skips
  * (see `occReal.test.ts`), mirroring `loadSolver.ts`.
  *
- * Loading quirks pinned during the phase-2a spike (see migration notes):
+ * Loading quirks pinned against the real build:
  *   - The dist file (`opencascade.wasm.js`) mixes CommonJS `require()` with an
  *     ESM `export default`, so Node's ESM loader rejects it with
  *     ERR_AMBIGUOUS_MODULE_SYNTAX. We read it, rewrite the export to

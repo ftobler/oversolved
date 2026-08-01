@@ -194,7 +194,7 @@ describe('computeDragMutation', () => {
     }
   })
 
-  // ── solvedGeometry pass-through (commit the WASM drag frame) ───────────
+  // ─── solvedGeometry pass-through (commit the WASM drag frame) ───
 
   it('attaches solvedGeometry when the last drag solve belongs to this feature', () => {
     const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 5] })

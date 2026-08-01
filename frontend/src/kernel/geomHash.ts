@@ -1,7 +1,7 @@
 // Stable face/edge/vertex identity from geometry attributes rounded to 4 decimals.
-// Cross-language byte-exact hash parity with Python is the phase 2c gate: the dual-run fixture
-// diffs these outputs against hashlib, so the float formatting below must reproduce CPython's
-// str(round(v, 4)) exactly. See geomHash.test.ts.
+// The float formatting below must reproduce CPython's str(round(v, 4)) exactly:
+// geomHash.test.ts pins it against a frozen golden snapshot of the Python kernel's
+// digests.
 
 import { sha256Hex } from "./sha256"
 
@@ -15,10 +15,10 @@ import { sha256Hex } from "./sha256"
  * round-half-up never diverge). We then strip trailing zeros to match Python's
  * shortest-repr, keeping one fractional digit.
  *
- * Negative zero is normalized to "0.0" (mirrors Python `_r4str`): a geometry hash
+ * Negative zero is normalized to "0.0": a geometry hash
  * must not distinguish +0 from -0, since OCC builds disagree on the sign of a
- * mathematically-zero coordinate (OCC.js emits a -0.0 arc x_axis component where
- * OCP emits +0.0), which would otherwise flip the 4dp hash across kernels.
+ * mathematically-zero coordinate (OCC.js emits a -0.0 arc x_axis component),
+ * which would otherwise flip the 4dp hash.
  *
  * Exponential form (|v| >= 1e21 in JS, >= 1e16 in Python) is out of range for
  * CAD millimetre coordinates and intentionally not reconciled here.
@@ -30,7 +30,7 @@ export function pyRound4Str(v: number): string {
   s = s.replace(/(\.\d*?)0+$/, "$1")
   if (s.endsWith(".")) s += "0"
   if (!s.includes(".")) s += ".0"
-  if (s === "-0.0") s = "0.0"  // normalize negative zero (matches Python _r4str)
+  if (s === "-0.0") s = "0.0"  // normalize negative zero
   return s
 }
 
@@ -69,9 +69,7 @@ function curveDataItems(curveData: Record<string, unknown>): string[] {
       // Scalar numbers are formatted as floats. The one integer-typed scalar in
       // real NURBS curve_data is `degree`, which Python renders without a
       // decimal (str(round(3, 4)) == "3"); JS cannot tell an int from a
-      // float-valued number, so that field is a known parity gap to close when
-      // the spline geometry reader is ported (phase 2e/2f), where the hash
-      // input is defined alongside the producer.
+      // float-valued number, so that field is a known parity gap.
       items.push(pyRound4Str(val))
     } else if (typeof val === "boolean") {
       // In Python bool is an int subclass, so str(round(True, 4)) == "1".

@@ -11,7 +11,7 @@ import type { Entity } from '@/types/cad'
 // so drag initiation can be blocked upstream.
 
 function isEntityDraggable(entity: Entity): boolean {
-  // Mirrors the filter in EntityLines.tsx — entities with projected=true
+  // Mirrors the filter in EntityLines.tsx: entities with projected=true
   // are excluded from the interactive list and therefore not draggable.
   return !isProjectedEntity(entity)
 }

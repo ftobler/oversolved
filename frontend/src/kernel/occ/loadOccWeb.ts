@@ -2,7 +2,7 @@
  * Browser loader for opencascade.js via dynamic script injection.
  *
  * The Emscripten build is an IIFE that sets a global but ends with
- * ``export default opencascade;`` — a syntax error in a classic ``<script>``
+ * ``export default opencascade;``, a syntax error in a classic ``<script>``
  * tag. We fetch the text, strip the export, create a blob URL, and inject
  * that instead. After loading, ``window.opencascade`` is the factory.
  *

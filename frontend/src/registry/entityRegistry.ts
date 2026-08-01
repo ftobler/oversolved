@@ -1,7 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-// ─── Entity Registry — single source of truth for sketch entity types. ───
+// ─── Entity Registry, single source of truth for sketch entity types ───
 //
 // Every entity kind recognised by the solver is listed here exactly once.
 // Toolbar buttons, vertex definitions, parameter layouts, and documentation
@@ -26,7 +26,7 @@ export interface VertexDef {
 }
 
 export interface EntityDef {
-  // Solver kind string — the canonical name used in the AST and solver.
+  // Solver kind string, the canonical name used in the AST and solver.
   kind: string
 
   // Human-readable label shown in toolbar and docs.

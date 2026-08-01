@@ -1,6 +1,6 @@
 // Orchestrates the feature-stack solve loop with dirty detection, checkpoint cache, and
-// incremental rebuild. Feature solvers are injected via a registry so this module is testable
-// with mock solvers before the real leaf features are ported (2e/2f).
+// incremental rebuild. Feature solvers are injected via a registry, so this module stays
+// testable with mock solvers.
 
 import { sha256Hex } from './sha256'
 import { extractErrorMessage } from './errors'
@@ -77,8 +77,8 @@ export interface BuildDeps {
   /** Defensive copy of a (pristine, prev-build) checkpoint shape into a fresh
    *  handle, used only when restoring the clean prefix: the rebuilt tail may
    *  consume/free it, so it must be independent of the retained checkpoint copy
-   *  that future rebuilds restore from again. Mirrors builder.py `_copy_shape`.
-   *  When omitted (pure non-OCC tests) the handle is aliased. */
+   *  that future rebuilds restore from again. When omitted (pure non-OCC tests)
+   *  the handle is aliased. */
   copyBodyShape?: (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
   /** Evict every shape held by a checkpoint, by owner tag (``releaseOwner``).
    *  Called for prev-state checkpoints that a new build discards. */
@@ -429,7 +429,7 @@ function _brepDiffNewVertexHashes(body: Body, deps?: BuildDeps): Set<string> {
   return new Set()
 }
 
-// ── Ancestry registration (mirrors Python builder.py) ──────────────────────
+// ── Ancestry registration ─────────────────────────────────────────────────
 
 function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: TessMesh, deps?: BuildDeps): void {
   if (!body.created_by || !mesh.face_data) return
@@ -646,10 +646,10 @@ export function registerBodyBrepFromMeta(
   if (verts.length) _registerBrepVertexAncestry(repo, body, verts, vertQueries, vertUuids, deps)
 }
 
-// Read one body's B-rep and register its ancestry into the live repo (mirrors Python
-// builder.py `_register_body_faces`). Called per feature in the build loop so a later
-// feature's face/edge/vertex query resolves against an earlier body's geometry (e.g. a
-// circular_array axis edge query).
+// Read one body's B-rep and register its ancestry into the live repo. Called
+// per feature in the build loop so a later feature's face/edge/vertex query
+// resolves against an earlier body's geometry (e.g. a circular_array axis edge
+// query).
 //
 // Returns whether the ancestry actually landed. Both failure exits are silent by design
 // (a body that cannot be identified still solves, it just loses its ancestry), and the
@@ -673,8 +673,8 @@ function _registerBodyFaces(
     registerBodyBrepFromMeta(globalRepo, body, out, deps)
     return true
   } catch {
-    // Non-fatal: a body that fails to tessellate just lacks B-rep ancestry, as
-    // in Python (it logs a warning and continues).
+    // Non-fatal: a body that fails to identify just lacks B-rep ancestry, and
+    // the build continues.
     return false
   }
 }
@@ -926,7 +926,7 @@ export function build(
   }
 
   // Preserve previous topology on full rebuild so area re-ID can fire after
-  // entity deletions.  Mirrors Python's _topo_ preservation block.
+  // entity deletions.
   if (options.prevState && firstDirty === 0) {
     for (const feature of features) {
       const fid = String(feature.id ?? '')
@@ -1193,12 +1193,12 @@ export function build(
   return response
 }
 
-// ── TS kernel router (phase 2g) ──────────────────────────────────────────
+// ── TS kernel router ──────────────────────────────────────────────────────
 //
-// The solver registry provides the per-doc fallback router: a kind-set
-// membership gate that dispatches a doc to the TS/WASM leaf solvers when
-// every feature kind is ported, else signals the caller to fall back to
-// Python.  Re-exported here so `builder.ts` is the canonical integration
+// The solver registry provides the per-doc solvability gate: a kind-set
+// membership check that dispatches a doc to the TS/WASM leaf solvers when
+// every feature kind is ported, else the doc cannot be solved at all.
+// Re-exported here so `builder.ts` is the canonical integration
 // point for wiring the TS kernel into `BuildDeps.trySolveFeature`.
 export {
   PORTED_FEATURE_KINDS,

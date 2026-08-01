@@ -1,5 +1,5 @@
-// Arc sampling, polygon point list, area-weighted centroid. Only the slice topology needs is
-// ported here.
+// Arc sampling, polygon point list, area-weighted centroid. Only what the slice
+// topology needs lives here.
 
 import { TOL_NEAR_ZERO_AREA } from "./solverConstants"
 
@@ -131,7 +131,7 @@ export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
   return pts
 }
 
-/** Signed 2D area via the shoelace formula. Positive = CCW (mirrors `_loop_signed_area`). */
+/** Signed 2D area via the shoelace formula. Positive = CCW. */
 export function loopSignedArea(loop: LoopEdge[]): number {
   const pts = loopPts(loop)
   const n = pts.length
@@ -144,7 +144,7 @@ export function loopSignedArea(loop: LoopEdge[]): number {
   return acc / 2.0
 }
 
-/** Ray-casting point-in-polygon test against a 2D loop (mirrors `_point_in_loop`). */
+/** Ray-casting point-in-polygon test against a 2D loop. */
 export function pointInLoop(pt: number[], loop: LoopEdge[]): boolean {
   const x = pt[0]
   const y = pt[1]

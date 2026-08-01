@@ -3,8 +3,8 @@
 // Revolve axis-from-query resolution tests (real OCC + Rust solver). An edge
 // query emitted by the build is fed back as a revolve `axis`, and the resolved
 // axis direction is verified via the editing-handle tangent (perpendicular to
-// the true axis). Stage 6 removed @gde|/@gdf| descriptors from queries; edge
-// queries carry @u| construction UUIDs for stable identity.
+// the true axis). Edge queries carry @u| construction UUIDs for stable identity
+// rather than @gde|/@gdf| geometry descriptors.
 //
 // Skips when OCC.js or the Rust solver is absent.
 

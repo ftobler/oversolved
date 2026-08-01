@@ -10,7 +10,7 @@ import { buildCommandEntries } from '@/pages/commandEntries'
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
 
-// ── Config array structure ────
+// ─── Config array structure ───
 
 describe('command config array structure', () => {
   const config = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
@@ -34,7 +34,7 @@ describe('command config array structure', () => {
   })
 })
 
-// ── Registration lifecycle ────
+// ─── Registration lifecycle ───
 
 describe('command registration lifecycle', () => {
   it('register → execute → unregister: spies are called only while registered', () => {
@@ -48,14 +48,14 @@ describe('command registration lifecycle', () => {
     // Register all
     for (const { name, fn } of commands) registerCommand(name, fn)
 
-    // Execute — both spies must be called
+    // Execute, both spies must be called
     executeCommand('__lifecycle_a__')
     executeCommand('__lifecycle_b__')
     expect(fnA).toHaveBeenCalledOnce()
     expect(fnB).toHaveBeenCalledOnce()
 
     // beforeEach will clear all handlers before the next test
-    // Execute again in a fresh test — spies must NOT be called
+    // Execute again in a fresh test, spies must NOT be called
   })
 
   it('multiple commands can be registered independently', () => {
@@ -74,7 +74,7 @@ describe('command registration lifecycle', () => {
   })
 })
 
-// ── Handler execution with store methods ────
+// ─── Handler execution with store methods ───
 
 describe('handler execution with store methods', () => {
   it('delete_selected handler calls store.deleteSelected without throwing', () => {

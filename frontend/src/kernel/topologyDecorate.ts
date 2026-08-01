@@ -1,9 +1,8 @@
 // Decorate the structural topology emitted by the Rust/WASM area builder
 // (`detect_topology_bytes`) with the ancestry query strings and line-division
-// classifiers that stay on the TypeScript side of the split (see
-// `feature/topology-to-rust.md`). Rust owns the geometry; `query.ts` and the
-// classifiers stay here because 21 other modules depend on the exact query
-// strings byte-for-byte.
+// classifiers that stay on the TypeScript side of the split. Rust owns the
+// geometry; `query.ts` and the classifiers stay here because 21 other modules
+// depend on the exact query strings byte-for-byte.
 //
 // The Rust output carries two decoration hints this module consumes and strips:
 //   - per edge:    `edge_type` ("straightedge" | "edge")
@@ -37,7 +36,7 @@ interface StructuralTopology {
   surfaces: Record<string, unknown>[]
 }
 
-// ─── line-division classifiers (ported verbatim from topology.ts; TS-side) ───
+// ─── line-division classifiers (TS-side) ───
 
 function lineSideTokens(surface: Record<string, unknown>): string[] {
   const boundary = (surface["boundary"] as Record<string, unknown>[]) ?? []
@@ -122,7 +121,7 @@ export function decorateTopology(structural: StructuralTopology, featureId: stri
     return out
   })
 
-  // Line-side classifiers run after the base queries, exactly as in topology.ts.
+  // Line-side classifiers run after the base queries.
   attachLineDivisionClassifiers(surfaces)
 
   return {
@@ -134,7 +133,7 @@ export function decorateTopology(structural: StructuralTopology, featureId: stri
 }
 
 /**
- * Identity unification for lazy inferred materialization (slice 4). The area
+ * Identity unification for lazy inferred materialization. The area
  * builder classifies only curves -- point entities are dropped (`classify` in
  * `dcel.rs`) -- so it rederives a curve-curve crossing every solve with no idea a
  * real `point` now owns that contact. Once a point is materialized there, the

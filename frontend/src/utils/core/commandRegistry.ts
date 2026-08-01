@@ -6,7 +6,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 const handlers = new Map<string, () => void>()
 
-// ── Keymap ────
+// ─── Keymap ───
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
 // then the lowercase key name. E.g. Ctrl+Z → "ctrl+z", D → "d".
 
@@ -61,7 +61,7 @@ export const SKETCH_KEYMAP: Record<string, string> = {
   'p': 'toggle_plane_visibility',
 }
 
-// ── Registration ────
+// ─── Registration ───
 
 export function registerCommand(name: string, fn: () => void): void {
   if (import.meta.env.DEV && handlers.has(name)) {
@@ -76,7 +76,7 @@ export function unregisterCommand(name: string): void {
 
 /**
  * Removes every registered handler.
- * Intended for test teardown only — do not call in production code.
+ * Intended for test teardown only, do not call in production code.
  */
 export function clearAllHandlers(): void {
   handlers.clear()
@@ -86,7 +86,7 @@ export function executeCommand(name: string): void {
   handlers.get(name)?.()
 }
 
-// ── Key dispatch ────
+// ─── Key dispatch ───
 
 // Build a canonical key string from a KeyboardEvent, e.g. "ctrl+shift+z" or "delete".
 export function buildKeyString(e: KeyboardEvent): string {

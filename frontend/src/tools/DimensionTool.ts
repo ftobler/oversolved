@@ -15,7 +15,7 @@ export interface DimensionTool extends Tool {
 const isPoint = (t: string) => t.startsWith('vertex:') || t.startsWith('@builtin_')
 
 /**
- * Dimension tool — sticky placement.
+ * Dimension tool, sticky placement.
  *
  * Each entity / vertex click is appended to `dimensionPicks` in the store. The
  * resolver derives the current kind on the fly. An empty-space click is NOT

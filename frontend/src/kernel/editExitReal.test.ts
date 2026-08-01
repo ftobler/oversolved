@@ -47,7 +47,7 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  it('edit exit rebuild — downstream features re-solved after param edit', () => {
+  it('edit exit rebuild, downstream features re-solved after param edit', () => {
     /**
      * sk1 → ex1 → fillet: mutate ex1 distance, rebuild full, downstream fillet must be
      * re-solved and still produce valid output.

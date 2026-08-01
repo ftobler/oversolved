@@ -1,5 +1,5 @@
 /**
- * The CI memory-safety gate. Runs the phase-2a extrude+tessellate workload
+ * The CI memory-safety gate. Runs the extrude+tessellate workload
  * against the FakeOcc double (no 66 MB binary required, so it runs everywhere)
  * and asserts that, once the produced solid's handle is released, both the
  * HandleTable and the fake's object ledger are empty. A stranded transient or
@@ -34,9 +34,9 @@ describe('extrudeSquareAndTessellate (fake OCC leak gate)', () => {
     // The solid is still held by the table (a checkpoint owns it); everything
     // else has been disposed.
     expect(table.liveCount()).toBe(1)
-    expect(oc.ledger.live).toBe(1) // just the solid
+    expect(oc.ledger.live).toBe(1)  // just the solid
 
-    table.release(solid) // checkpoint eviction
+    table.release(solid)  // checkpoint eviction
     expect(table.liveCount()).toBe(0)
     expect(oc.ledger.live).toBe(0)
     expect(oc.ledger.doubleDeletes).toBe(0)
@@ -53,7 +53,7 @@ describe('extrudeSquareAndTessellate (fake OCC leak gate)', () => {
     expect(table.liveCount()).toBe(0)
     expect(oc.ledger.live).toBe(0)
     expect(oc.ledger.doubleDeletes).toBe(0)
-    expect(oc.ledger.created).toBeGreaterThan(100) // the loop actually did work
+    expect(oc.ledger.created).toBeGreaterThan(100)  // the loop actually did work
     table.assertNoLeaks()
   })
 

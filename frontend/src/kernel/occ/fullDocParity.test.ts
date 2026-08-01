@@ -5,12 +5,11 @@
 // the output against the frozen baseline.
 //
 // The baseline (regression-baseline.json) is a golden snapshot of the now-deleted
-// Python kernel's output, captured before phase 4d removed it. The Python kernel
-// and its extractor are gone, so the baseline cannot be regenerated -- this is
-// now a regression gate (live TS/WASM kernel == frozen golden file), not a live
-// old-vs-new comparison. Gated: skips entirely when OCC.js or the Rust solver is
-// absent, so the default CI run stays green (the dedicated parity job installs
-// OCC.js so it does run there).
+// Python kernel's output. The Python kernel and its extractor are gone, so the
+// baseline cannot be regenerated -- this is now a regression gate (live TS/WASM
+// kernel == frozen golden file), not a live old-vs-new comparison. Gated: skips
+// entirely when OCC.js or the Rust solver is absent, so the default CI run stays
+// green (the dedicated parity job installs OCC.js so it does run there).
 //
 // Provision OCC.js:
 //   cd frontend && npm run occ:install
@@ -24,13 +23,13 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { solveWithTimeout } from '../solveTimeout'
 import baseline from '@/wasm-kernel/regression-baseline.json'
 
-// ── Pre-load OCC.js and the Rust solver ─────────────────────────────────
+// ─── Pre-load OCC.js and the Rust solver ───
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
 
-// ── Baseline types ──────────────────────────────────────────────────────
+// ─── Baseline types ───
 
 interface BaselineEntry {
   label: string
@@ -40,7 +39,7 @@ interface BaselineEntry {
   input_sketches?: unknown[]
   result: Record<string, unknown>
   bodies: Record<string, BaselineBody>
-  // Real-doc anchors (4b.5) are a best-effort signal: warn on divergence, never
+  // Real-doc anchors are a best-effort signal: warn on divergence, never
   // hard-fail. They surface remaining TS-kernel gaps without blocking the gate.
   soft?: boolean
 }
@@ -59,7 +58,7 @@ interface BaselineBody {
 
 const entries = baseline as unknown as BaselineEntry[]
 
-// ── Diff helpers ─────────────────────────────────────────────────────────
+// ─── Diff helpers ───
 
 function sortHashes(arr: string[]): string[] {
   return [...arr].sort()
@@ -240,7 +239,7 @@ function diffBodies(
   return issues
 }
 
-// ── Post-process body data (worker returns raw mesh, not hashes) ────────
+// ─── Post-process body data (worker returns raw mesh, not hashes) ───
 
 function enrichBodyHashes(
   bid: string,
@@ -267,7 +266,7 @@ function enrichBodyHashes(
   }
 }
 
-// ── Test suite ───────────────────────────────────────────────────────────
+// ─── Test suite ───
 
 describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs frozen baseline)', () => {
   for (const entry of entries) {
@@ -311,7 +310,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
 
       if (allIssues.length > 0) {
         // Hard-fail by default: this is the enforced parity gate. A per-entry
-        // `soft` flag (real-doc anchors, 4b.5) or PARITY_SOFT=1 downgrades to a
+        // `soft` flag (real-doc anchors) or PARITY_SOFT=1 downgrades to a
         // warn-only inventory -- a best-effort signal that never blocks the gate.
         const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
         const soft = import.meta.env.PARITY_SOFT === '1' || entry.soft === true

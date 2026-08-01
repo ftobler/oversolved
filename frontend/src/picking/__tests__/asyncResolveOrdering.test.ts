@@ -56,7 +56,7 @@ describe('IdPipeline.resolveAsync ordering', () => {
 
     const before = p.getRenderCount()
     for (let i = 0; i < 50; i++) {
-      // Don't await — fire-and-forget like a hover stream.
+      // Don't await, fire-and-forget like a hover stream.
       void p.resolveAsync(renderer, { x: i, y: i })
     }
     // Drain microtasks.

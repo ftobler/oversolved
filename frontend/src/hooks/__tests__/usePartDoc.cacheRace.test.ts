@@ -59,7 +59,7 @@ describe('useSolver requestId race guard', () => {
     }
     await act(async () => { resolveV1(v1Response) })
 
-    // V1 was stale — result must not appear
+    // V1 was stale, result must not appear
     expect(result.current.solveResults).not.toHaveProperty('stale_feature')
 
     // V2 (fresh) resolves
@@ -121,7 +121,7 @@ describe('useSolver requestId race guard', () => {
       await Promise.all([p1, p2])
     })
 
-    // V2 should have called setDoc — V1's result was dropped
+    // V2 should have called setDoc, V1's result was dropped
     expect(setDoc.mock.calls.length).toBeGreaterThan(setDocCallsAfterV1)
   })
 })

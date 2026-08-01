@@ -147,7 +147,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             profile_queries: [],
           },
         }
-        // No `target` field — should default to body_first.
+        // No `target` field, should default to body_first.
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5 },

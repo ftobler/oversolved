@@ -1,6 +1,6 @@
 // Sampling bundle EdgeCurves into polylines: the "B-rep feeling tier 1" edge
-// overlay is nothing more than a polyline through these points. Pure geometry —
-// no three.js, no camera, no store — so it unit-tests without a viewport.
+// overlay is nothing more than a polyline through these points. Pure geometry,
+// no three.js, no camera, no store, so it unit-tests without a viewport.
 //
 // A curve missing its parametric fields degrades to the straight chord between
 // its endpoints instead of throwing. Such a curve can only come from a bundle

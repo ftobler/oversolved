@@ -22,7 +22,7 @@ import {
   type Vec3,
 } from './primitives'
 
-// --- pure helpers ----------------------------------------------------------
+// ─── pure helpers ───
 
 /** Area of a triangle from three 3D points (mirrors `_triangle_area`). */
 export function triangleArea(p0: Vec3, p1: Vec3, p2: Vec3): number {
@@ -62,7 +62,7 @@ export function compareFaceSortKeys(a: number[], b: number[]): number {
   return 0
 }
 
-// --- body building ---------------------------------------------------------
+// ─── body building ───
 
 interface BoxSpec {
   dx: number

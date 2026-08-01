@@ -24,7 +24,7 @@ const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> =
     const text = await resp.text()
 
     // The artifact is already an ES module (`export default opencascade`),
-    // so import it straight off a blob URL — no DOM, no export-stripping.
+    // so import it straight off a blob URL, no DOM, no export-stripping.
     const blob = new Blob([text], { type: 'text/javascript' })
     const blobUrl = URL.createObjectURL(blob)
     let factory: ((opts: unknown) => Promise<OccModule>) | undefined

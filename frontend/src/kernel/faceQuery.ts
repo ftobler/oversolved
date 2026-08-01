@@ -1,7 +1,6 @@
 // Construction-name identity: face query string builder (query-naming-by-construction).
-// The construction UUID (@u|) is the sole geometry-independent identity token.
-// Stage 6 removed face/edge descriptors and geom-hash digests; only the UUID +
-// ancestral tokens + classifiers remain in a persisted face query.
+// The construction UUID (@u|) is the sole geometry-independent identity token; only the
+// UUID + ancestral tokens + classifiers remain in a persisted face query.
 
 import { ref, makeAncestryQuery, constructionUuidToken } from "./query"
 

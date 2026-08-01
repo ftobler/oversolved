@@ -2,10 +2,10 @@
 //
 // Gated real-OCC parity gate for prismLineage.ts (the extrude leaf's brep
 // producer): extrudeProfileWithLineage. Feeds the same profile loops as the
-// now-removed gen_extrude_fixture.py through the TS port and asserts the
+// frozen golden extrude fixture through the TS port and asserts the
 // produced solid volume + the profile-entity token attribution match Python.
 //
-// Stage 7 removed the geom-hash face_lineage/edge_lineage output; the same
+// The geom-hash face_lineage/edge_lineage output was removed; the same
 // profile-entity tokens now survive on the construction-name ancestry maps
 // (uuid -> tokens). We build with a createdBy so those maps populate, then
 // compare token attribution key-independently (the sorted multiset of non-empty
@@ -13,9 +13,7 @@
 // is a SUBSET (a cylinder seam edge, whose adjacent faces share one UUID, gets no
 // edge UUID, so its token is dropped).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
-// its generator (gen_extrude_fixture.py) was deleted with the Python kernel in
-// phase 4d.
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
@@ -46,7 +44,7 @@ const fx = fixture as unknown as { cases: Case[] }
 
 /**
  * Sorted multiset of the NON-EMPTY sorted token-lists (key-independent view).
- * The geom-hash face_lineage/edge_lineage producer was removed in Stage 7; the
+ * The geom-hash face_lineage/edge_lineage producer was removed; the
  * same profile-entity tokens now survive on the construction-name ancestry maps
  * (uuid -> tokens), so we compare token attribution key-independently. Empty
  * lists are dropped: caps carry no token, and ancestry only holds entries for

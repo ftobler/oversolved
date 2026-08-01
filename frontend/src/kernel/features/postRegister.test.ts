@@ -105,9 +105,8 @@ describe('postRegister parity vs Python _post_register', () => {
 
       it('re-solve with identical geometry keeps the ancestral entry count stable', () => {
         // postRegister clears the feature's prior entries then re-registers, so
-        // element ids churn (Python does too); the entry COUNT must stay fixed --
-        // no accumulation under repeated solves (the registry invariant at
-        // solver_registry.py:19-26).
+        // element ids churn; the entry COUNT must stay fixed, with no
+        // accumulation under repeated solves.
         const countBefore = repo.ancestral.size
         postRegister(repo, fid, c.feature, c.feature_result)
         expect(repo.ancestral.size).toBe(countBefore)

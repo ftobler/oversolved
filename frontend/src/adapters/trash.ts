@@ -1,9 +1,9 @@
-// Trash (soft-delete) capability: listing, recovering and permanently deleting
-// trashed documents is a server-side lifecycle that only the PDM backend tracks.
-// The static build has no trash -- `remove()` on the local IndexedDB store is a
-// hard delete -- so the capability is ABSENT (`backendBundle.trash` is null and
-// the Trash view does not exist). Soft-delete lifecycle requires a server, so the
-// capability is absent on the static build (scope / lifecycle split).
+// Trash (soft-delete) capability for the CLOUD domain: listing, recovering and
+// permanently deleting documents removed from the server is a lifecycle only
+// the PDM backend tracks. Without a server this capability (`backendBundle.trash`)
+// is ABSENT -- there is no cloud trash to manage. The LOCAL home library has its
+// own always-present trash (IndexedDbTrashAdapter in documentStore/); this module
+// covers the cloud side only.
 import { http } from '@/utils/core/httpClient'
 import { type Backend } from '@/config/capabilities'
 

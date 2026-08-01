@@ -3,15 +3,15 @@
 // opencascade.js must run under the node environment, not the repo-default
 // jsdom: jsdom defines `window`, so emscripten takes its ENVIRONMENT_IS_WEB
 // code path and STEP's FS-backed file reads fail (the geometry tessellation
-// path still works under jsdom, but STEP I/O does not). Pinning node here is
-// itself a phase-2a finding: the builder Worker is a Web Worker, so STEP I/O in
-// the browser needs verification against a real Worker, separately. See notes.
+// path still works under jsdom, but STEP I/O does not). Pinning node here; the
+// builder Worker is a Web Worker, so STEP I/O in the browser needs verification
+// against a real Worker separately.
 /**
- * The phase-2a exit criterion against the REAL opencascade.js module:
+ * The spike against the REAL opencascade.js module:
  *   - a build that extrudes a square and tessellates it,
  *   - leak detection passing on a 100-iteration loop,
- *   - plus the two sharp-edge verifications the migration plan demands:
- *     Generated()/TopTools_ListOfShape iteration, and STEP I/O round-trip.
+ *   - plus two sharp-edge verifications: Generated()/TopTools_ListOfShape
+ *     iteration, and STEP I/O round-trip.
  *
  * Skips entirely (not fails) when opencascade.js is not installed, so CI and a
  * fresh `just frontend` stay green and fast. Install it to run this:
@@ -71,7 +71,7 @@ describe.skipIf(!oc)('opencascade.js spike (real OCC)', () => {
   // emscripten in-memory FS path read fails (errno 44 / RetError) and OneShape
   // comes back empty. The browser Worker uses the `--target web` build with a
   // different FS, so STEP read needs its own Worker-side verification; that is
-  // a phase-3 (STEP I/O decision) item regardless. This test therefore gates on
+  // a separate STEP I/O decision item regardless. This test therefore gates on
   // the write side only -- a solid serialising to a valid ISO-10303-21 file.
   it('serialises a solid to a valid STEP file', () => {
     interface StepOc {
@@ -95,10 +95,10 @@ describe.skipIf(!oc)('opencascade.js spike (real OCC)', () => {
     const wrote = writer.Write('/rt.step')
     const text = s.FS.readFile('/rt.step', { encoding: 'utf8' })
 
-    expect(wStatus.value).toBe(1) // IFSelect_RetDone
+    expect(wStatus.value).toBe(1)  // IFSelect_RetDone
     expect(wrote.value).toBe(1)
-    expect(text).toContain('ISO-10303-21') // STEP header magic
-    expect(text).toContain('MANIFOLD_SOLID_BREP') // the box actually got in there
+    expect(text).toContain('ISO-10303-21')  // STEP header magic
+    expect(text).toContain('MANIFOLD_SOLID_BREP')  // the box actually got in there
     expect(text).toContain('END-ISO-10303-21')
 
     writer.delete()

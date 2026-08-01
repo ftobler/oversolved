@@ -15,7 +15,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-/** The query's construction UUID token (@u|<uuid>), the Stage 6 identity. */
+/** The query's construction UUID token (@u|<uuid>), the stable construction identity. */
 const geomTokenOf = (q: string): string | undefined =>
   parseAncestry(q)[0].find((i) => i.startsWith('@u|'))
 
@@ -188,7 +188,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(h.body(r, 'body_ex1').mesh).toBeDefined()
   })
 
-  it('fillet respects edge list — single edge < all edges vertex count', () => {
+  it('fillet respects edge list, single edge < all edges vertex count', () => {
     /** Single-edge fillet produces fewer vertices than an all-12-edge fillet. */
     const r1 = h.run(fullRectExtrudeSpec(10, 10, 5))
     const eq = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
@@ -227,7 +227,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   })
 
   it('fillet stale body token follows geometry', () => {
-    /** A stale @body token must not misroute the fillet — geometry wins. */
+    /** A stale @body token must not misroute the fillet, geometry wins. */
     // Two disjoint boxes
     const spec = { features: [
       { ...rectSketch('skA', 10, 10, '@builtin_plane_top'), initial: { bottom: [0, 0, 10, 0], right: [10, 0, 10, 10], top: [10, 10, 0, 10], left: [0, 10, 0, 0] }, constraints: rectSketch('skA', 10, 10, '@builtin_plane_top').constraints },
@@ -246,7 +246,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_exB'])
   })
 
-  it('fillet asymmetry delete — unrelated body delete keeps fillet ok', () => {
+  it('fillet asymmetry delete, unrelated body delete keeps fillet ok', () => {
     /** Deleting an unrelated body must not break a fillet. */
     // Build two independent boxes, then add fillet on second
     const skB = { ...rectSketch('skB', 10, 10, '@builtin_plane_top'), initial: { bottom: [30, 0, 40, 0], right: [40, 0, 40, 10], top: [40, 10, 30, 10], left: [30, 10, 30, 0] }, constraints: rectSketch('skB', 10, 10, '@builtin_plane_top').constraints }

@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// Gated real-OCC tests for brep ancestry history — tessellation after boolean
-// operations. After a boolean cut,
-// the tessellated mesh must have face_data with the expected face count and
-// edge/vertex queries that reflect the combined geometry.
+// Gated real-OCC tests for brep ancestry history, tessellation after boolean
+// operations. After a boolean cut, the tessellated mesh must have face_data
+// with the expected face count and edge/vertex queries that reflect the
+// combined geometry.
 //
 // Skips when opencascade.js is absent.
 
@@ -54,7 +54,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
       const handle = table.register(scope.detach(shape), 'featCutter')
       const vol = volumeOf(occ, scope, table.get(handle))
-      expect(vol).toBeLessThan(1000) // less than 10*10*10
+      expect(vol).toBeLessThan(1000)  // less than 10*10*10
       expect(vol).toBeGreaterThan(0)
     } finally {
       scope.dispose()

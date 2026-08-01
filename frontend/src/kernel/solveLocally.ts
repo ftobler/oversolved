@@ -1,5 +1,5 @@
 /**
- * Live TS kernel solve pipeline (phase 4a).
+ * Live TS kernel solve pipeline.
  *
  * ``solveLocally`` loads OCC.js lazily, wires the builder deps (feature solver
  * adapter, tessellation, repository), calls ``build()``, and returns a
@@ -219,8 +219,7 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): Buil
     // separately after tessellation.
     postRegister,
     // Seed builtin planes/origin so queries like `@builtin_plane_right`
-    // (mirror plane resolution) resolve as repo elements, mirroring Python's
-    // _init_global_repo.
+    // (mirror plane resolution) resolve as repo elements.
     initGlobalRepo,
     tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
     extractBrepMetadata: (bodyStore, _repo) => extractBrepMetadata(oc, table, bodyStore),
@@ -257,7 +256,7 @@ export async function solveLocally(
   // before build() runs. initSketchSolver MUST be awaited: build() solves
   // sketches synchronously, so a fire-and-forget load races the first solve and
   // every sketch throws "Rust solver not initialised". A null result (wasm
-  // absent) is fine — sketch features then throw and the builder catches them.
+  // absent) is fine, sketch features then throw and the builder catches them.
   const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) {
     console.log('[solveLocally] OCC.js not available, returning null')
@@ -277,7 +276,7 @@ export async function solveLocally(
   const table = (persistentTable ??= new HandleTable({ finalizerGuard: false }))
   // Caller override (tests) wins; otherwise feed the prior solve's state so the
   // builder restores the clean prefix and rebuilds only the dirty tail.
-  // When bypassCache is set the previous cache is ignored — the solve builds
+  // When bypassCache is set the previous cache is ignored, the solve builds
   // every feature from scratch (used by the explicit re-solve button).
   const prevState = options.bypassCache
     ? null
@@ -320,9 +319,8 @@ export interface LocalExportOptions {
 /**
  * Resolve the TopoDS shape to export from a completed build. With a ``bodyId``
  * it returns that body's solid; otherwise it returns the lone body's solid, or
- * a compound of every body's solid for a multi-body assembly. Mirrors the body
- * selection of the retired server-side export endpoints, but assembles a compound
- * (not a boolean fuse) so disjoint parts export cleanly.
+ * a compound of every body's solid for a multi-body assembly. A compound,
+ * not a boolean fuse, so disjoint parts export cleanly.
  */
 function resolveExportShape(
   oc: OccModule,

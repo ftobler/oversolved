@@ -7,7 +7,7 @@ import {
 } from '@/registry/snapRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 
-// ── Snap registry consistency ────
+// ─── Snap registry consistency ───
 
 describe('snapRegistry', () => {
   describe('SNAP_KINDS', () => {

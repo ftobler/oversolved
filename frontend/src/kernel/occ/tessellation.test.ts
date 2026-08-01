@@ -96,7 +96,7 @@ describe('assembleMesh', () => {
         [0, 2, 0],
       ]),
     ])
-    expect(mesh.face_data[0].area).toBeCloseTo(4, 12) // 2x2 quad
+    expect(mesh.face_data[0].area).toBeCloseTo(4, 12)  // 2x2 quad
   })
 
   it('drops a face with no triangles from face_data', () => {

@@ -188,7 +188,7 @@ describe('sketchEditorStore', () => {
 
     it('does nothing with no mutation handler', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
-      // no handler set — should not throw
+      // no handler set, should not throw
       expect(() => useSketchEditorStore.getState().deleteSelected()).not.toThrow()
     })
   })

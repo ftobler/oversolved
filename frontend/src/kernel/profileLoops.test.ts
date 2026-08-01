@@ -1,5 +1,5 @@
-// Always-on unit tests for the pure loop-classification helpers added for the
-// extrude leaf (phase 2f): loopSignedArea, pointInLoop, classifyLoops. No OCC.
+// Always-on unit tests for the pure loop-classification helpers behind the
+// extrude leaf: loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
 import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, arcSamplePoints, ellipseArcSamplePoints, loopPts, type LoopEdge } from './profileLoops'
@@ -44,7 +44,7 @@ function arcEdge(cx: number, cy: number, r: number, aStartDeg: number, aEndDeg: 
 
 describe('loopSignedArea', () => {
   it('is positive (CCW) and equals the area for a square', () => {
-    // 2x2 CCW square: area should be +4
+    // 10x10 CCW square: area should be +100
     expect(loopSignedArea(square(10))).toBeCloseTo(100, 9)
   })
   it('flips sign for a reversed (CW) loop', () => {

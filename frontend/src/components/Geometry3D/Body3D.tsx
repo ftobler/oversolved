@@ -502,7 +502,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
             args={[undefined, undefined, vertices.length]}
             frustumCulled={false}
           >
-            {/* Radius 1 — scaled to POINT_HIT_PIXELS screen px by useFrame */}
+            {/* Radius 1, scaled to POINT_HIT_PIXELS screen px by useFrame */}
             <sphereGeometry args={[1, 8, 8]} />
             <meshBasicMaterial
               transparent

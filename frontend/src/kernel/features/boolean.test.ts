@@ -52,8 +52,6 @@ describe('solveBoolean guard paths', () => {
   })
 
   it('throws when tool body does not exist', () => {
-    /** Tool body that does not exist should raise.
-     *  Ported to booleanSolveReal.test.ts (real OCC required). */
   })
 
   it('throws when target body does not exist', () => {

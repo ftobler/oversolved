@@ -72,7 +72,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(h.res(r1, 'ex1').status).toBe('ok')
     expect(r1.bodies).toHaveProperty('body_ex1')
 
-    // Add a second sketch on the first body's face — triggers partial rebuild.
+    // Add a second sketch on the first body's face, triggers partial rebuild.
     const faceQueries = (h.body(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     expect(faceQueries.length).toBeGreaterThan(0)
 

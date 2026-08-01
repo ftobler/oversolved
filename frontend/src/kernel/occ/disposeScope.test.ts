@@ -54,12 +54,12 @@ describe('DisposeScope', () => {
   it('skips objects already deleted', () => {
     const order: string[] = []
     const obj = new FakeObj('y', order)
-    obj.delete() // pre-deleted out of band
+    obj.delete()  // pre-deleted out of band
     order.length = 0
     const scope = new DisposeScope()
     scope.track(obj)
     scope.dispose()
-    expect(order).toEqual([]) // isDeleted() short-circuits the second delete
+    expect(order).toEqual([])  // isDeleted() short-circuits the second delete
   })
 
   it('continues disposing after one delete throws', () => {

@@ -478,7 +478,7 @@ describe('checkpoint isolation', () => {
     const origSk1 = r1.result.sk1
     const state = r1._build_state
 
-    // Mutate the returned result — must not propagate into the checkpoint.
+    // Mutate the returned result, must not propagate into the checkpoint.
     ;(r1.result as Record<string, unknown>).sk1 = { ...origSk1 as Record<string, unknown>, _mutated: 'taint' }
 
     const spec2 = { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'sk2', kind: 'sketch' }] }

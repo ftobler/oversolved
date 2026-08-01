@@ -204,7 +204,7 @@ describe('useWasmDragSolve', () => {
     expect(getLastDragSolve()).toBeNull()
   })
 
-  // ── Edge/entity drag tests ──────────────────────────────────────────
+  // ─── Edge/entity drag tests ───
 
   it('engages for edge drags too', () => {
     mockPrepare.mockReturnValue(fakeEdgeCtx)

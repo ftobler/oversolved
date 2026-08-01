@@ -10,7 +10,7 @@
  * HandleTable, last BuildState, cross-solve checkpoint cache) and lives here in
  * the Worker. Only the BuildResponse *minus* `_build_state` crosses back.
  *
- * Crash recovery (see migration notes): on a hard WASM trap the host discards
+ * Crash recovery: on a hard WASM trap the host discards
  * this Worker and respawns it, replaying the AST. Nothing here persists state
  * the host cannot rebuild from the main-thread AST.
  */
@@ -100,10 +100,9 @@ export async function handleExportAssemblyRequest(
   }
 }
 
-// ─── bundle builder ──────────────────────────────────────────────────────
+// ─── bundle builder ───
 // Builds a PartBundle from a PartDoc spec by running solveLocally and
-// extracting per-body meshes + edge curves. The anchors dict is empty in
-// Stage 2b (filled by Stage 2c).
+// extracting per-body meshes + edge curves and the per-body anchor dicts.
 
 export async function handleBundleRequest(
   req: BundleRequest,
@@ -215,7 +214,7 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
   ]
 }
 
-// ─── Actor pattern: serializes solve + export requests ──────────────────
+// ─── Actor pattern: serializes solve + export requests ───
 // The engine (solveLocally) owns mutable cross-solve state (HandleTable +
 // last BuildState), and both solve and export touch the single-threaded OCC
 // module. Concurrent requests would race on these shared resources. The Actor
@@ -308,7 +307,7 @@ function oneShot<T>(job: () => Promise<T>, respond: (res: T) => void): ActorJob 
   return { supersedable: false, run: async () => { respond(await job()) } }
 }
 
-// --- Worker bootstrap (skipped on the main thread / in tests) -------------
+// ─── Worker bootstrap (skipped on the main thread / in tests) ───
 
 interface WorkerCtx {
   postMessage(message: SolveResponse | ExportResponse | BundleResponse, transfer: Transferable[]): void

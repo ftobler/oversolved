@@ -15,7 +15,7 @@
 //          moved.
 //        - Tier 2 (created_by + kind): within a feature's output, the moved
 //          face is uniquely re-findable by surface_type or edge kind.
-//   3. Diffs build-side tuples against the repo (ID-buffer) population — the
+//   3. Diffs build-side tuples against the repo (ID-buffer) population: the
 //      descriptor tokens the build emits must be the same ones the ID buffer
 //      registers for picks.
 
@@ -257,7 +257,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // they are derived from symbolic construction paths (feature ids, sketch entity
   // ids), not from geometry. A height change keeps every face's @u| unchanged.
 
-  it('Tier 1: construction UUIDs survive dimension edits — same set after height change', () => {
+  it('Tier 1: construction UUIDs survive dimension edits (same set after height change)', () => {
     const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
@@ -281,7 +281,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
 
   // With construction UUIDs, Tier 1 (exact @u| match) already handles moved
   // faces unambiguously. Tier 2 (created_by + kind) is the fallback for entities
-  // that did not earn a @u| token — typically post-boolean faces/edges that
+  // that did not earn a @u| token, typically post-boolean faces/edges that
   // cannot inherit a stable construction path. Verify the Tier 2 grouping is
   // sound: after a geometry edit the (created_by, kind) scope is populated and
   // internally consistent.

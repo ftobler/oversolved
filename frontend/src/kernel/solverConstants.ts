@@ -1,4 +1,4 @@
-// Kept narrow on purpose; grows as further phases need more constants.
+// Kept narrow on purpose.
 
 export const TOL_LOOP_CLOSURE = 1e-6
 export const TOL_NEAR_ZERO_AREA = 1e-12
@@ -16,8 +16,8 @@ export const TOL_TOPOLOGY_EPS = 1e-9
 export const TOL_TOPOLOGY_MERGE = 1e-5
 export const TOL_TOPOLOGY_SPLIT = 1e-7
 
-// Arc tessellation density (mirrors solver_constants._ARC_SEGMENTS): the number
-// of straight segments a full 360deg arc is sampled into for profile loops.
+// Arc tessellation density: the number of straight segments a full 360deg arc
+// is sampled into for profile loops.
 export const ARC_SEGMENTS = 32
 
 export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {

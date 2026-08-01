@@ -1,7 +1,7 @@
 
 import type { OccHandle } from './occ/handleTable'
 
-/** History from an OCP boolean operation, classifying output sub-shapes. */
+/** History from an OCC boolean operation, classifying output sub-shapes. */
 export interface BrepDiff {
   new_faces: unknown[]
   inherited_faces: unknown[]
@@ -42,9 +42,7 @@ export interface Body {
    * `edge_names` map the in-build copy-stable geom-hash key to a construction
    * UUID; `face_ancestry`/`edge_ancestry` map each UUID to its ancestral fallback
    * tokens. The geom-hash key is a transient in-build join only; it never enters
-   * a persisted query. Stage 6 removed `face_lineage`/`edge_lineage` (geom-hash
-   * identity), replaced by the ancestry maps above; Stage 7d dropped the last
-   * producers of those fields entirely.
+   * a persisted query.
    */
   face_names?: Record<string, string>
   edge_names?: Record<string, string>

@@ -74,7 +74,7 @@ export function useWasmDragSolve(
     void initSketchSolver()
   }, [])
 
-  // ── Build the drag context at pointer-down ───────────────────────────
+  // ─── Build the drag context at pointer-down ───
   // A useMemo, not an effect: the engagement decision must be synchronous
   // with the render that first sees the drag, or the caller would show a
   // stale fallback for one frame. prepareDragContext is pure. The memo key
@@ -101,8 +101,8 @@ export function useWasmDragSolve(
     return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY])
   }, [featureDef, dragEntityId, dragVertexKey, originX, originY])
 
-  // ── Track the latest cursor and edge-drag startWorld; mark dirty only
-  //     when the cursor actually moved ──────────────────────────────────
+  // ─── Track the latest cursor and edge-drag startWorld ───
+  // Mark dirty only when the cursor actually moved.
   useEffect(() => {
     if (!isDragHere || !drag) return
     const c = drag.currentWorld
@@ -117,7 +117,7 @@ export function useWasmDragSolve(
     }
   })
 
-  // ── Per-drag rAF solve loop ──────────────────────────────────────────
+  // ─── Per-drag rAF solve loop ───
   useEffect(() => {
     if (!ctx || !isDragHere) {
       // Drag ended (or never engaged): drop all per-drag state. The pointer-up

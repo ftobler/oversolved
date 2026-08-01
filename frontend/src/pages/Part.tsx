@@ -210,7 +210,7 @@ export default function Part() {
     setIsRebuilding(true)
     try {
       // Re-solve always flushes the incremental cache (bypassCache) so every
-      // feature rebuilds from scratch — no stale handles from prior solves.
+      // feature rebuilds from scratch, with no stale handles from prior solves.
       // Validation (a second, full, cache-less rebuild to diff incremental-vs-full
       // for the badge) doubles the solve, so it is opt-in via the dev-settings flag.
       const validate = useDevSettingsStore.getState().validateOnRebuild
@@ -370,7 +370,7 @@ export default function Part() {
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
     // enterEditFeature would bail because React hasn't re-rendered with the
     // new feature yet (features.findIndex(f => f.id === fid) returns -1).
-    // Enter edit mode eagerly without starting a session — commit/cancel
+    // Enter edit mode eagerly without starting a session; commit/cancel
     // handle the no-session case gracefully.
     store.setEditingFeatureId(fid)
     const firstPick = FIRST_PICK_FIELD[kind]
@@ -549,7 +549,7 @@ export default function Part() {
     const store = usePartEditorStore.getState()
     store.setRollbackPosition(pos)
     if (store.editingFeatureId && doc) {
-      // An edit is active — keep pickBoundary in sync so the invariant
+      // An edit is active; keep pickBoundary in sync so the invariant
       // in reSolve (assertEditingInvariant) doesn't fire.
       const fts = extractFeatures(doc)
       const nonBuiltIns = fts.filter(f => !BUILT_IN_IDS.has(f.id))

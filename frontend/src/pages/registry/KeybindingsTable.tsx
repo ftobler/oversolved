@@ -11,7 +11,7 @@ function buildKeybindingRows(): KeybindingRow[] {
     rows.push({ key: b.key, command: b.command, label: b.label, description: b.description })
   }
 
-  // Constraint shortcuts — derive label/description from constraint registry
+  // Constraint shortcuts: derive label/description from constraint registry
   for (const [key, command] of CONSTRAINT_SHORTCUTS) {
     const kind = command.replace(/^apply_/, '')
     const def = CONSTRAINT_BY_KIND.get(kind)
@@ -23,7 +23,7 @@ function buildKeybindingRows(): KeybindingRow[] {
     })
   }
 
-  // Entity shortcuts — derive label/description from entity registry
+  // Entity shortcuts: derive label/description from entity registry
   for (const [key, command] of ENTITY_SHORTCUTS) {
     const activeTool = command.replace(/^set_tool_/, '')
     const def = ENTITY_BY_ACTIVE_TOOL.get(activeTool)

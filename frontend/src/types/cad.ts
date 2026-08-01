@@ -1,4 +1,4 @@
-// ── Base Types ────
+// ─── Base Types ───
 
 export type Point = [number, number]
 
@@ -243,7 +243,7 @@ export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
   return typeof r === 'object' && r !== null && ('body_id' in r || 'body_ids' in r)
 }
 
-// ── Document AST Types ────
+// ─── Document AST Types ───
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
 // See docs/query.md for the full query syntax.
@@ -283,7 +283,7 @@ export interface PartConstraint {
   // side-agnostic (absolute) behavior. Authored from the drawn geometry at
   // creation and swapped after the fact via the dimension dialog's Flip side button.
   sign?: number
-  // Dimension label position — 2D offset in sketch space relative to the
+  // Dimension label position, 2D offset in sketch space relative to the
   // constraint's anchor point (midpoint of measured points for linear dims,
   // center for radius/diameter, vertex for angle).  When absent the renderer
   // uses a default offset derived from sketch extent.
@@ -365,7 +365,7 @@ export interface PartDoc {
   part_style?: Record<string, PartStyleEntry>
 }
 
-// ── Assembly Types ────
+// ─── Assembly Types ───
 
 export interface Transform3D {
   tx: number
@@ -460,7 +460,7 @@ export interface AssemblyDoc {
   part_style?: Record<string, PartStyleEntry>
 }
 
-// ── UI / Rendering Types ────
+// ─── UI / Rendering Types ───
 
 export interface LineSegment {
   start: Point
@@ -507,7 +507,7 @@ export interface Spline {
   construction?: boolean
 }
 
-// Projected entity variants — read-only reference geometry from another sketch
+// Projected entity variants, read-only reference geometry from another sketch
 export interface ProjectedLineSegment extends LineSegment {
   projected: true
   source: string
@@ -809,7 +809,7 @@ export interface SketchData {
 
 export type EntityStatus = Record<string, ConstraintStatus>
 
-// ── Mutation Types ────
+// ─── Mutation Types ───
 
 export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }

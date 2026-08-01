@@ -4,7 +4,7 @@
 // solved transforms, applies them to the body meshes, and returns the result.
 //
 // This module runs inside the anchor solver worker (Rust-only, no OCC).
-// It is a pure async function over typed-array inputs — no React, no DOM.
+// It is a pure async function over typed-array inputs, no React, no DOM.
 
 import { bundleCacheGet, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
 import { migrateBundle } from './partBundle'
@@ -18,10 +18,10 @@ import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 export type { AnchorPose }
 
-// ─── Assembly built-in anchors (Stage 6c) ────────────────────────────────
+// ─── Assembly built-in anchors ────────────────────────────────────────────
 // The assembly's own coordinate frame, referencable by a mate as ground via
 // MateRef.part === ASSEMBLY_HANDLE. The frame is pinned at the world origin and
-// is never solved, so geom_hash/created_by are unused here — the poses come
+// is never solved, so geom_hash/created_by are unused here, the poses come
 // from the same constant the viewport draws its built-in gizmos from.
 export const assemblyAnchors: Record<string, Anchor> = Object.fromEntries(
   Object.entries(ASSEMBLY_BUILTIN_ANCHORS).map(
@@ -78,9 +78,9 @@ export interface MeshPayload {
   indices: Uint32Array
   faceIdsPerTriangle: Uint32Array
   edges: EdgeCurve[]  // solved-pose analytic curves; the viewport renders them crisp
-  // Anchor ids per picked entity (Stage 7). Ids, not geometry, so the solved
+  // Anchor ids per picked entity. Ids, not geometry, so the solved
   // transform leaves them untouched: the same entity names the same anchor at
-  // every pose. Absent for a bundle cached before Stage 7.
+  // every pose. Absent for a bundle cached before entityAnchors existed.
   entityAnchors?: EntityAnchorIndex
 }
 
@@ -111,8 +111,8 @@ const MATE_KIND_TO_U8: Record<string, number> = {
   parallel_plane_distance: 8,
 }
 
-const MATE_MAGIC = 0x5331_544D // "MTS1"
-const MATE_MAGIC_OUT = 0x5231_544D // "MTR1"
+const MATE_MAGIC = 0x5331_544D  // "MTS1"
+const MATE_MAGIC_OUT = 0x5231_544D  // "MTR1"
 const BPB = 7  // bytes per body (tx,ty,tz,qx,qy,qz,qw) = 7 f32s = 28 bytes
 
 // ─── Quaternion math for transform application ───────────────────────────
@@ -172,7 +172,7 @@ function applyTransform(vertices: Float32Array, t: Transform3D): Float32Array {
 
 /**
  * Carry a curve into the part's solved pose. Radii and sweep angles are
- * rigid-motion invariant, so only points move and only directions rotate —
+ * rigid-motion invariant, so only points move and only directions rotate,
  * which is exactly why the curves stay analytic instead of being re-fitted.
  */
 function transformEdgeCurve(e: EdgeCurve, t: Transform3D): EdgeCurve {
@@ -345,7 +345,7 @@ export async function solveAssembly(
 
     // Path 1: cache hit
     let bundle = await bundleCacheGet(part.doc_id, currentRev)
-    // A bundle cached before entityAnchors was introduced (Stage 7) carries
+    // A bundle cached before entityAnchors was introduced carries
     // no per-body entity anchor index; its vertices, edges and face mate refs
     // are all invisible to the assembly pick pass. Treat it as a miss so the
     // rebuild populates entityAnchors. A bundle is a derivable artifact, so
@@ -358,7 +358,7 @@ export async function solveAssembly(
       continue
     }
 
-    // Path 2: cache miss — request part doc, build bundle, migrate, cache
+    // Path 2: cache miss, request part doc, build bundle, migrate, cache
     const partDoc = await relay.requestPartDoc(part.doc_id)
     const buildResult = await relay.requestBuildBundle(part.doc_id, currentRev, partDoc)
     bundle = buildResult as PartBundle
@@ -367,9 +367,9 @@ export async function solveAssembly(
     }
 
     // Migrate anchors against the newest prior cached bundle of the same doc.
-    // `bundleCacheLatestRev` is the Stage F index lookup (one IndexedDB get);
-    // it replaces a downward scan that used to issue up to `currentRev - 1`
-    // separate `bundleCacheGet` transactions.
+    // `bundleCacheLatestRev` is the latest-rev index lookup (one IndexedDB
+    // get); it replaces a downward scan that used to issue up to
+    // `currentRev - 1` separate `bundleCacheGet` transactions.
     let prevBundle: { anchors: Record<string, Anchor> } | undefined
     const latestCachedRev = await bundleCacheLatestRev(part.doc_id)
     if (latestCachedRev !== undefined && latestCachedRev < currentRev) {

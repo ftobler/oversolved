@@ -1,15 +1,13 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for booleans.ts (phase 2e shard 2): the boolean +
+// Gated real-OCC parity gate for booleans.ts: the boolean +
 // history + clean + compose pipeline. Builds the same overlapping boxes as
-// the now-removed gen_boolean_fixture.py via the OCC adapter, runs the ported
+// the frozen golden fixture (booleanDiff.json), runs the ported
 // pipeline, and asserts geometry parity (volume + face/edge/solid counts) plus
 // the BrepDiff classification (new/inherited partition + Python's exact counts).
 //
 // Skips (not fails) when opencascade.js is absent, like the other real-OCC
-// tests. Install with: cd frontend && npm run occ:install. The fixture is a
-// frozen golden snapshot; its generator (gen_boolean_fixture.py) was deleted
-// with the Python kernel in phase 4d.
+// tests. Install with: cd frontend && npm run occ:install.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

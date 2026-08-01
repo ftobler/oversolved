@@ -1214,7 +1214,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
       const en = e.end ?? [0, 0, 0]
       const vertical = Math.abs(s[0] - en[0]) < 1e-3 && Math.abs(s[1] - en[1]) < 1e-3 && Math.abs(s[2] - en[2]) > 1
       const onLensLine = Math.abs((s[0] + en[0]) / 2) < 0.2  // x ~= 0 (the line `ln`)
-      const spansBody = Math.min(s[2], en[2]) < 1e-2 && Math.max(s[2], en[2]) > 10 - 1e-2 // z 0..10
+      const spansBody = Math.min(s[2], en[2]) < 1e-2 && Math.max(s[2], en[2]) > 10 - 1e-2  // z 0..10
       if (vertical && onLensLine && spansBody) vertEdgeIndex.push(i)
     }
     // The fillet must actually run -- if the edges cannot be located the test

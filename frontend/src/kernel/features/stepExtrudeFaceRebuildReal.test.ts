@@ -47,8 +47,8 @@ describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () =
       id: 'vDZ56mKQ6XEfDjgym9aqUg3c', kind: 'extrude',
       extrude: { direction: 'normal', distance: 10, sketch: [faceQuery] },
     }
-    // Stage 7e: PARTIAL rebuild (prevState). The imported body is the clean
-    // prefix restored from its checkpoint; the extrude's profile face query must
+    // Partial rebuild (prevState). The imported body is the clean prefix
+    // restored from its checkpoint; the extrude's profile face query must
     // resolve against that checkpoint-restored repo. Imports carry no `@u|`
     // construction UUID, so this rides the ancestral tier: the face's ancestral
     // entry (`@<import>@body@cls_zp:flatface`) is persisted in the checkpoint's

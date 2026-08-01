@@ -163,7 +163,7 @@ describe('useUndoRedo', () => {
       result.current.pushUndo({ type: 'add_extrude' } as Mutation, docRef.current!)
     })
 
-    expect(result.current.undoStack).toHaveLength(2) // pushUndo still pushes, suppressUndoRef is not checked inside pushUndo
+    expect(result.current.undoStack).toHaveLength(2)  // pushUndo still pushes, suppressUndoRef is not checked inside pushUndo
   })
 
   it('handleUndo on empty stack is no-op', () => {

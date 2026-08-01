@@ -1,19 +1,17 @@
 // @vitest-environment node
 //
 // Gated real-OCC parity gate for revolveProfileWithLineage (the revolve leaf's
-// brep producer). Feeds the same profile loops + axis + angle as the now-removed
-// gen_revolve_fixture.py through the TS port and asserts the produced solid
+// brep producer). Feeds the same profile loops + axis + angle as the frozen
+// golden revolve fixture through the TS port and asserts the produced solid
 // volume + the profile-entity token attribution match Python.
 //
-// Same conversion as the extrude gate (see prismLineageReal.test.ts): Stage 7
-// removed the geom-hash face_lineage/edge_lineage output, so we build with a
+// Same conversion as the extrude gate (see prismLineageReal.test.ts): the
+// geom-hash face_lineage/edge_lineage output was removed, so we build with a
 // createdBy and compare the token attribution that survives on the construction-
 // name ancestry maps. faceAncestry matches the golden face_lineage exactly;
 // edgeAncestry is a SUBSET (curved-face seam edges get no edge UUID).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
-// its generator (gen_revolve_fixture.py) was deleted with the Python kernel in
-// phase 4d.
+// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'

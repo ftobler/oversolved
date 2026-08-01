@@ -1,7 +1,8 @@
 /**
  * Main-thread client for the anchor solver Worker. Drop-in entry point for
- * `solveAssembly` (Stage 5a: trivial, echo transforms). The Worker is
- * Rust-only — no OCC, no `solveLocally`, no `HandleTable`.
+ * `solveAssembly`: it sends mates and assemblyId, the worker runs the real
+ * orchestration. The Worker is Rust-only, no OCC, no `solveLocally`,
+ * no `HandleTable`.
  *
  * Cross-worker relay: the anchor solver worker cannot access the document
  * store (main-thread-only) or talk to the OCC bundle-builder worker directly.
@@ -127,7 +128,7 @@ function ensureWorker(): AnchorSolverWorkerLike | null {
 }
 
 /**
- * Solve an assembly on the anchor solver worker. Stage 5b: sends mates and
+ * Solve an assembly on the anchor solver worker. Sends mates and
  * assemblyId alongside the parts; the worker runs the real orchestration
  * (bundle building, anchor resolution, mate solve, transform application).
  * Returns `null` when no worker can be created (caller surfaces "local solver

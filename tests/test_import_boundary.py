@@ -9,7 +9,7 @@ def test_webapp_no_cadquery_at_module_level():
 
     The CAD solver now runs entirely in the browser (WASM kernel); the Python
     kernel/daemon was removed in phase 4d. Nothing in the Flask package may
-    import OCP or cadquery at module scope — and in practice nothing should
+    import OCP or cadquery at module scope, and in practice nothing should
     import them at all, since the backend no longer does CAD work.
     """
     root = pathlib.Path(__file__).parent.parent / "oversolved"

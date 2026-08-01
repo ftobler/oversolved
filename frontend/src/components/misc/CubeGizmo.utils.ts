@@ -11,17 +11,17 @@ export const GIZMO_STYLE: React.CSSProperties = {
   cursor: 'default',
 }
 
-// ── Cube geometry ────
+// ─── Cube geometry ───
 
 const CV = [
-  new THREE.Vector3(-1, -1, -1), // 0
-  new THREE.Vector3( 1, -1, -1), // 1
-  new THREE.Vector3( 1,  1, -1), // 2
-  new THREE.Vector3(-1,  1, -1), // 3
-  new THREE.Vector3(-1, -1,  1), // 4
-  new THREE.Vector3( 1, -1,  1), // 5
-  new THREE.Vector3( 1,  1,  1), // 6
-  new THREE.Vector3(-1,  1,  1), // 7
+  new THREE.Vector3(-1, -1, -1),  // 0
+  new THREE.Vector3( 1, -1, -1),  // 1
+  new THREE.Vector3( 1,  1, -1),  // 2
+  new THREE.Vector3(-1,  1, -1),  // 3
+  new THREE.Vector3(-1, -1,  1),  // 4
+  new THREE.Vector3( 1, -1,  1),  // 5
+  new THREE.Vector3( 1,  1,  1),  // 6
+  new THREE.Vector3(-1,  1,  1),  // 7
 ]
 
 const COLOR_FACE = 'rgba(255,255,255,0.15)'
@@ -38,12 +38,12 @@ const CUBE_FACES = [
 ]
 
 const FACE_AXES = [
-  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  1,  0) }, // Front
-  { x: new THREE.Vector3(-1,  0,  0), y: new THREE.Vector3( 0,  1,  0) }, // Back
-  { x: new THREE.Vector3( 0,  0, -1), y: new THREE.Vector3( 0,  1,  0) }, // Right
-  { x: new THREE.Vector3( 0,  0,  1), y: new THREE.Vector3( 0,  1,  0) }, // Left
-  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  0, -1) }, // Top
-  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  0,  1) }, // Bottom
+  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  1,  0) },  // Front
+  { x: new THREE.Vector3(-1,  0,  0), y: new THREE.Vector3( 0,  1,  0) },  // Back
+  { x: new THREE.Vector3( 0,  0, -1), y: new THREE.Vector3( 0,  1,  0) },  // Right
+  { x: new THREE.Vector3( 0,  0,  1), y: new THREE.Vector3( 0,  1,  0) },  // Left
+  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  0, -1) },  // Top
+  { x: new THREE.Vector3( 1,  0,  0), y: new THREE.Vector3( 0,  0,  1) },  // Bottom
 ]
 
 const CUBE_EDGES: [number, number][] = [
@@ -61,7 +61,7 @@ const CHAMFER = 0.15
 // drift if the bevel is retuned.
 const FACE_HALF_EXTENT = (1 - BEVEL_INSET) * (1 - EXTRA_INSET)
 
-// ── Face label font ────
+// ─── Face label font ───
 
 // Roboto, to match the 3D scene text. Deliberately NOT sharing anything with
 // Viewport/labelFont.ts: that module exports a WOFF *URL* for troika, which
@@ -159,7 +159,7 @@ export function fitLabelFontSize(measuredWidth: number, usableWidth: number): nu
   return LABEL_FONT_SIZE * (usableWidth / measuredWidth)
 }
 
-// ── Types ────
+// ─── Types ───
 
 export type Pv = { sx: number; sy: number; z: number }
 export type Hit = { type: 'vertex' | 'edge' | 'face'; index: number; snapDir: THREE.Vector3 }
@@ -169,14 +169,14 @@ type GizmoPoly = {
   index: number
   pts: Pv[]
   cz: number
-  nz: number // Normal Z for back-face culling/sorting
+  nz: number  // Normal Z for back-face culling/sorting
   snapDir: THREE.Vector3
   fill: string
   label?: string
   axes?: { x: THREE.Vector3; y: THREE.Vector3 }
 }
 
-// ── Helpers ────
+// ─── Helpers ───
 
 function pointInPoly(px: number, py: number, poly: Pv[]): boolean {
   let inside = false
@@ -207,7 +207,7 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
 
   const polys: GizmoPoly[] = []
 
-  // Faces (chamfered — each corner cut to form an octagon)
+  // Faces (chamfered, each corner cut to form an octagon)
   CUBE_FACES.forEach((f, fi) => {
     const center = f.normal.clone()
     const raw = faceInsetPoints[fi].map(p => {
@@ -326,7 +326,7 @@ export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE
   // Check from front to back
   for (let i = polys.length - 1; i >= 0; i--) {
     const poly = polys[i]
-    if (poly.nz < -0.1) continue // Back-face cull roughly
+    if (poly.nz < -0.1) continue  // Back-face cull roughly
     if (pointInPoly(mx, my, poly.pts)) {
       return { type: poly.type, index: poly.index, snapDir: poly.snapDir }
     }
@@ -366,7 +366,7 @@ export function drawCubeGizmo(
   const polys = getPolys(q, W, H)
 
   for (const poly of polys) {
-    if (poly.nz < 0) continue // Back-face cull
+    if (poly.nz < 0) continue  // Back-face cull
 
     const isHover = hover?.type === poly.type && hover.index === poly.index
 
@@ -397,7 +397,7 @@ export function drawCubeGizmo(
 
       ctx.save()
       ctx.translate(fcx, fcy)
-      const fs = W * 0.00030 // Adjusted for better text size
+      const fs = W * 0.00030  // Adjusted for better text size
       ctx.transform(
         ux.x * s * fs,
         -ux.y * s * fs,

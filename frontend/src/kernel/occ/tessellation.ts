@@ -3,11 +3,6 @@
  * computes per-face centroid/normal/area/surface type, sorts faces flat-before-curved by
  * (normal, centroid) so a later curved feature can never shift a flat face's index, and
  * assembles the flat vertex/triangle arrays plus `triangle_to_face`.
- *
- * SCOPE: this is the geometry half. The ancestry `face_queries` and the spatial `classifiers`
- * that `_build_face_query` attaches depend on geom_hash / the query system (phase 2c) and are
- * deliberately NOT emitted here; `face_data` carries the geometry only. The mesh geometry is
- * the phase-2b dual-run gate.
  */
 
 import { DisposeScope } from './disposeScope'
@@ -44,7 +39,7 @@ export interface FaceDatum {
   area: number
   surface_type: SurfaceType
   classifiers?: string[]
-  // Additive (multi-part-assembly-postfix Stage A): the curved-surface rotation
+  // Additive: the curved-surface rotation
   // axis, distinct from `normal` (which is radial on a cylinder/cone). Absent
   // for a plane (normal already IS the axis) and for a bundle built before this
   // field existed -- the anchor extractor falls back to no-anchor, never to
@@ -223,7 +218,7 @@ interface SolidMeshOptions extends TessellateOptions {
  * Tessellate a solid (held in `table` under `handle`) to a mesh. Mirrors
  * `solid_to_mesh`: per-face tessellation, flat-before-curved face ordering,
  * `triangle_to_face` mapping, per-face geometry in `face_data`, plus the
- * ancestry `face_queries` and spatial `classifiers` wired here in 2d.
+ * ancestry `face_queries` and spatial `classifiers` wired here.
  */
 export function solidToMesh(
   oc: OccModule,
@@ -659,12 +654,11 @@ export function solidToVertices(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
-      // op-independent). Stage 7d dropped the @gdv| geometry descriptor: a vertex
-      // query now carries only its @u| UUID (whenever it touches at least one
-      // named face) plus the ancestral tokens. A vertex with no named neighbour
-      // at all falls back to the ancestral net; that net is shared with its
-      // siblings, so such a vertex is not individually selectable -- the
-      // fail-safe outcome of having nothing symbolic to name it by.
+      // op-independent). A vertex query carries only its @u| UUID (whenever it
+      // touches at least one named face) plus the ancestral tokens. A vertex with
+      // no named neighbour at all falls back to the ancestral net; that net is
+      // shared with its siblings, so such a vertex is not individually selectable
+      // -- the fail-safe outcome of having nothing symbolic to name it by.
       const uuidByGh = opts.faceNames ? vertexUuidsFromFaces(oc, scope, solid, opts.faceNames) : {}
       for (let idx = 0; idx < vertices.length; idx++) {
         const v = vertices[idx]

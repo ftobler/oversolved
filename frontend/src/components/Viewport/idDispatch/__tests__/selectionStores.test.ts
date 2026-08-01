@@ -42,8 +42,8 @@ describe('hover/normal never diverge', () => {
     const promoted = new Set(useSketchEditorStore.getState().normalSelection)
 
     // resample: toggle off then toggle the freshly-derived key
-    useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top') // off
-    useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(h)) // on
+    useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')  // off
+    useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(h))  // on
     const resampled = useSketchEditorStore.getState().normalSelection
 
     expect([...resampled]).toEqual([...promoted])

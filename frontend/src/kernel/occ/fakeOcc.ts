@@ -116,7 +116,7 @@ export function makeFakeOcc(): FakeOccModule {
       return owned()
     }
     Generated(): OccListOfShape {
-      return new ListOfShape(1) // one side wall per profile edge
+      return new ListOfShape(1)  // one side wall per profile edge
     }
     delete(): void {
       this.d.delete()
@@ -188,7 +188,7 @@ export function makeFakeOcc(): FakeOccModule {
       return false
     }
     get() {
-      return { NbTriangles: () => 2 } // 2 triangles per quad face
+      return { NbTriangles: () => 2 }  // 2 triangles per quad face
     }
     delete(): void {
       this.d.delete()

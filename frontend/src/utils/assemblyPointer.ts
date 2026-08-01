@@ -1,6 +1,6 @@
 // The pointer surface Stage 6d left open: it turns viewport rays into the
 // manipulation-session calls assemblyStore already exposes. Everything here is
-// framework-free — the viewport supplies a hit handle, a world point and a ray
+// framework-free: the viewport supplies a hit handle, a world point and a ray
 // per pointer event; nothing three.js reaches this module.
 //
 // Three gestures, one session each:

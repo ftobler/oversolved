@@ -6,8 +6,8 @@
  * requests to the OCC bundle-builder worker and fetches PartDoc content from
  * the document store (main-thread-only).
  *
- * Stage 5b: real orchestration via `solveAssembly` — bundle get/miss/build/
- * migrate chain, anchor resolve + stale flagging, solve_mate call, transform
+ * Hosts the real `solveAssembly` orchestration: bundle get/miss/build/migrate
+ * chain, anchor resolve + stale flagging, solve_mate call, transform
  * application.
  */
 
@@ -25,7 +25,7 @@ import type {
   AssemblyWorkerResponse,
 } from './solverProtocol'
 
-// ─── RelayService ────────────────────────────────────────────────────────
+// ─── RelayService ───
 // The worker cannot touch the document store (main-thread-only) or talk to
 // the OCC bundle-builder worker. Requests are brokered via postMessage to
 // the main thread, which handles them and posts back.
@@ -93,9 +93,9 @@ export function createRelayService(
   }
 }
 
-// ─── solveAssembly handler ───────────────────────────────────────────────
-// Stage 5b: real orchestration — bundle get/miss/build/migrate, anchor
-// resolve, mate solve via WASM, transform application.
+// ─── solveAssembly handler ───
+// Real orchestration: bundle get/miss/build/migrate, anchor resolve, mate
+// solve via WASM, transform application.
 
 export async function handleSolveAssembly(
   req: SolveAssemblyRequest,
@@ -130,7 +130,7 @@ export async function handleSolveAssembly(
   }
 }
 
-// ─── Actor pattern ───────────────────────────────────────────────────────
+// ─── Actor pattern ───
 // Serializes solveAssembly requests onto one chained promise so two solves
 // never race each other inside the same Worker.
 
@@ -151,7 +151,7 @@ export class WorkerActor {
   }
 }
 
-// ─── Worker bootstrap (skipped on the main thread / in tests) ────────────
+// ─── Worker bootstrap (skipped on the main thread / in tests) ───
 
 interface WorkerCtx {
   postMessage(message: AssemblyWorkerResponse): void
@@ -169,7 +169,7 @@ if (inWorker()) {
   ctx.onmessage = (e) => {
     const msg = e.data
     if (msg.kind === 'asr_relayRes') {
-      // Relay responses resolve promises outside the actor queue — they
+      // Relay responses resolve promises outside the actor queue, they
       // just complete a pending relayRequest whose caller sits inside
       // an actor-serialized task.
       handleRelayResponse(msg)

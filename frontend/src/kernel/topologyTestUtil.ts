@@ -1,7 +1,6 @@
 // Test-only shim giving the old `detectTopology(richGeom, featureId)` signature,
-// backed by the Rust/WASM area builder + TS decoration. The TS `topology.ts`
-// implementation was deleted after the migration (feature/topology-to-rust.md);
-// the behavioral suites that drove it now drive Rust through this helper.
+// backed by the Rust/WASM area builder + TS decoration. The behavioral suites
+// that drove the old `topology.ts` now drive Rust through this helper.
 //
 // `topologyAvailable` is false on a fresh checkout (no `just wasm`); guard suites
 // with `describe.skipIf(!topologyAvailable)`.

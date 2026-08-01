@@ -37,7 +37,7 @@ function fakeKey(
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
 
-// ── buildKeyString ────
+// ─── buildKeyString ───
 
 describe('buildKeyString', () => {
   it('plain key with no modifiers', () => {
@@ -65,7 +65,7 @@ describe('buildKeyString', () => {
   })
 })
 
-// ── KEYMAP completeness ────
+// ─── KEYMAP completeness ───
 
 describe('KEYMAP', () => {
   it('every value is a non-empty command name string', () => {
@@ -111,7 +111,7 @@ describe('KEYMAP', () => {
   })
 })
 
-// ── CORE_KEYBINDINGS ────
+// ─── CORE_KEYBINDINGS ───
 
 describe('CORE_KEYBINDINGS', () => {
   it('every entry has a non-empty label string', () => {
@@ -155,7 +155,7 @@ describe('CORE_KEYBINDINGS', () => {
   })
 })
 
-// ── registerCommand / executeCommand / unregisterCommand ────
+// ─── registerCommand / executeCommand / unregisterCommand ───
 
 describe('registerCommand / executeCommand / unregisterCommand', () => {
   it('registered handler is called by executeCommand', () => {
@@ -198,7 +198,7 @@ describe('registerCommand / executeCommand / unregisterCommand', () => {
   })
 })
 
-// ── dispatchKey ────
+// ─── dispatchKey ───
 
 describe('dispatchKey', () => {
   it('returns false and does not call handler when target is INPUT', () => {
@@ -251,7 +251,7 @@ describe('dispatchKey', () => {
   })
 })
 
-// ── Tool commands via store (no React) ────
+// ─── Tool commands via store (no React) ───
 
 describe('tool commands via store', () => {
   beforeEach(() => {
@@ -346,7 +346,7 @@ describe('tool commands via store', () => {
   })
 })
 
-// ── registerCommand collision warning ────
+// ─── registerCommand collision warning ───
 
 describe('registerCommand collision warning', () => {
   it('warns in dev mode when overwriting an existing handler', () => {
@@ -366,7 +366,7 @@ describe('registerCommand collision warning', () => {
   })
 })
 
-// ── clearAllHandlers ────
+// ─── clearAllHandlers ───
 
 describe('clearAllHandlers', () => {
   it('removes all registered handlers', () => {

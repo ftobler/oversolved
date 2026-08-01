@@ -32,13 +32,13 @@ describe('circumcircle', () => {
 describe('arcAnglesFromRadiusPoint', () => {
   // Start at 0deg, end at 90deg about the origin; CCW span is the first quadrant.
   it('keeps [start, end] when the radius point lies inside the CCW span', () => {
-    const [a, b] = arcAnglesFromRadiusPoint(0, 0, [1, 0], [0, 1], [1, 1]) // 45deg, inside
+    const [a, b] = arcAnglesFromRadiusPoint(0, 0, [1, 0], [0, 1], [1, 1])  // 45deg, inside
     expect(a).toBeCloseTo(0)
     expect(b).toBeCloseTo(90)
   })
 
   it('swaps to [end, start] when the radius point lies outside the CCW span', () => {
-    const [a, b] = arcAnglesFromRadiusPoint(0, 0, [1, 0], [0, 1], [1, -1]) // -45deg, outside
+    const [a, b] = arcAnglesFromRadiusPoint(0, 0, [1, 0], [0, 1], [1, -1])  // -45deg, outside
     expect(a).toBeCloseTo(90)
     expect(b).toBeCloseTo(0)
   })

@@ -1,7 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-// ─── Snap Registry — declarative configuration for snapping and constraint inference. ───
+// ─── Snap Registry, declarative configuration for snapping and constraint inference ───
 //
 // Core concepts:
 //   - Active element: the element being dragged (broad categories: vertex or entity)

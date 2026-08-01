@@ -68,9 +68,9 @@ describe('HandleTable', () => {
     const t = table()
     const s = new FakeShape('shared-by-lineage')
     const h = t.register(s, 'feat1')
-    t.retain(h, 'feat2') // feat2 inherits the same shape via lineage
+    t.retain(h, 'feat2')  // feat2 inherits the same shape via lineage
     t.releaseOwner('feat1')
-    expect(s.deleted).toBe(0) // feat2 still holds it
+    expect(s.deleted).toBe(0)  // feat2 still holds it
     expect(t.has(h)).toBe(true)
     t.releaseOwner('feat2')
     expect(s.deleted).toBe(1)
@@ -126,9 +126,9 @@ describe('HandleTable', () => {
     const t = table()
     const s = new FakeShape('already')
     const h = t.register(s)
-    s.delete() // some OCC op deleted it underneath us
+    s.delete()  // some OCC op deleted it underneath us
     t.release(h)
-    expect(s.deleted).toBe(1) // isDeleted() guard prevents the second delete
+    expect(s.deleted).toBe(1)  // isDeleted() guard prevents the second delete
   })
 
   it('stays leak-free across a 100-iteration register/release loop', () => {

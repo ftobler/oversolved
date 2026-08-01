@@ -1,4 +1,4 @@
-// Construction-by-name identity (query-naming-by-construction.md).
+// Construction-by-name identity (query-naming-by-construction).
 //
 // Every produced face/edge/vertex gets a stable UUID derived from HOW it was
 // constructed (feature ids, sketch entity ids, cap roles, parent UUIDs, split

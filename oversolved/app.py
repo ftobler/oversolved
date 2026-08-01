@@ -130,7 +130,7 @@ def create_app(config: dict | None = None) -> Flask:
     oversolved_cfg = OversolvedConfig.from_env(instance_path=app.instance_path)
     app.config["OVERSOLVED"] = oversolved_cfg
 
-    # ── JSON error handlers ────────────────────────────────────────────────────
+    # ─── JSON error handlers ───
 
     def _json_error(status: int, message: str, code: str = "") -> tuple:
         code_map = {
@@ -178,7 +178,7 @@ def create_app(config: dict | None = None) -> Flask:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
 
-    # ── Frontend static serving ───────────────────────────────────────────────
+    # ─── Frontend static serving ───
 
     _dist_default = Path(__file__).parent.parent / "frontend" / "dist"
     frontend_dist = Path(config.get("FRONTEND_DIST", _dist_default)) if config else _dist_default

@@ -23,7 +23,7 @@ export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
     return emitWire(selectionToQuery(parseSelectionId(t), hostFeatureId))
   }
   if (t.startsWith('face:')) return t.split(':').slice(2).join(':')
-  if (t.startsWith('@')) return t  // builtin/absolute query — pass through as-is
+  if (t.startsWith('@')) return t  // builtin/absolute query, pass through as-is
   return '$' + t
 }
 

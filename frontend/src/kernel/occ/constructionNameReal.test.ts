@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Gated real-OCC test for the Stage 1 construction-name minting in
+// Gated real-OCC test for the construction-name minting in
 // prismLineage.ts (query-naming-by-construction.md). Extrudes a controlled unit
 // square and asserts the produced face/edge construction UUIDs are exactly the
 // symbolic values `constructionName.ts` mints, are collision-free, and recompute

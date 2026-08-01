@@ -24,7 +24,7 @@ type DrawingToolKind = 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ell
 
 export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse', 'spline', 'point', 'ngon', 'project'])
 
-// ── Selection State Invariants ────
+// ─── Selection State Invariants ───
 
 export interface SelectionInvariantState {
   normalSelection: Set<string>

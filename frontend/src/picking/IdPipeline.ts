@@ -427,7 +427,7 @@ export class IdPipeline {
   ): Promise<ResolvedHit | null> {
     return new Promise<ResolvedHit | null>((resolve) => {
       // If a read is currently in flight, the caller will receive whatever
-      // the NEXT scheduled read returns — i.e. the latest cursor wins.
+      // the NEXT scheduled read returns, i.e. the latest cursor wins.
       // Multiple synchronous calls before any microtask runs all coalesce
       // into a single queued read at the latest cursor.
       if (this.inFlightAsync) {
