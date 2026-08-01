@@ -258,6 +258,13 @@ describe('handleBundleRequest', () => {
         _build_state: DUMMY_STATE,
       }
     })
+    // The empty options object is load-bearing, not a placeholder. solveLocally
+    // reads `options.prevState !== undefined ? options.prevState : lastBuildState`,
+    // so an ABSENT key is what lets a bundle build reuse the engine's checkpoint
+    // cache. Setting `prevState: null` here for symmetry with the other call
+    // sites would cost a full stack rebuild on every part edit; measured at
+    // ~52 ms per feature (see knowledgebase, "bundle-rev invalidation cost",
+    // and kernel/bundleRebuildCost.test.ts).
     expect(seen).toEqual([{ id: 'z' }, {}])
   })
 })

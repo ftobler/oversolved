@@ -6,8 +6,10 @@
 //
 // Log-only on purpose. `bundleRebuildCost.test.ts` next door owns the
 // structural assertions; a wall-clock threshold in the suite would flake on a
-// contended box. This file asserts nothing about duration, and it is skipped
-// unless BUNDLE_BENCH is set, so `just frontend` never pays for it:
+// contended box. This file asserts nothing about duration and runs nothing
+// unless BUNDLE_BENCH is set. Collection still imports the kernel module graph
+// like any test in here (~1.2 s), but not the OCC compile, which is the part
+// that would actually hurt `just frontend`:
 //
 //   cd frontend && BUNDLE_BENCH=1 npx vitest run src/kernel/bundleRebuildCostBench.test.ts
 //
@@ -23,9 +25,12 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { handleBundleRequest } from './worker/solverWorker'
 import type { BundleRequest } from './worker/solverProtocol'
 
-const oc = await loadOcc()
-const solveBytes = loadSolver()
+// The gate is read FIRST and everything expensive hangs off it. Module scope
+// runs at collection whether or not the describe is skipped, so an unguarded
+// `await loadOcc()` here would put a WASM compile into every `just frontend`.
 const enabled = !!process.env.BUNDLE_BENCH
+const oc = enabled ? await loadOcc() : null
+const solveBytes = enabled ? loadSolver() : null
 
 function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
   return {
@@ -64,13 +69,15 @@ function nativePart(id: string, n: number, lastDistance = 4): Record<string, unk
       sketch: '$sk1',
       distance: i === n - 1 ? lastDistance : 3 + i * 0.5,
       direction: 'normal',
-      operation: i === 0 ? 'add' : 'add',
+      operation: 'add',
     })
   }
   return { id, features }
 }
 
-const STEP_B64 = readFileSync(join(__dirname, 'occ/__fixtures__/double_with_hole.step')).toString('base64')
+const STEP_B64 = enabled
+  ? readFileSync(join(__dirname, 'occ/__fixtures__/double_with_hole.step')).toString('base64')
+  : ''
 
 /**
  * An imported part: the STEP fixture plus a small native tail to edit. Imported
@@ -157,11 +164,11 @@ describe.skipIf(!oc || !solveBytes || !enabled)('bundle rebuild cost (real OCC +
 
   it('native part, by feature count', async () => {
     for (const n of [5, 10, 20, 40]) {
-      await sweep(`native${n}`, (id, edit) => ({ ...nativePart(id, n, edit), id }))
+      await sweep(`native${n}`, (id, edit) => nativePart(id, n, edit))
     }
   }, 900_000)
 
   it('imported STEP part', async () => {
-    await sweep('imported', (id, edit) => ({ ...importedPart(id, edit), id }))
+    await sweep('imported', (id, edit) => importedPart(id, edit))
   }, 900_000)
 })

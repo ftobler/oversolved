@@ -22,10 +22,12 @@ function collectFiles(dir: string, exts: string[]): string[] {
 }
 
 const tsFiles = collectFiles(SRC, ['.ts', '.tsx'])
-// "Source" means what Vite bundles. Most tests live in a `__tests__` directory,
-// but the kernel's real-OCC harnesses sit beside the module they drive, so the
-// directory alone is not the test predicate -- a `*.test.ts` anywhere is a test
-// and is exempt from rules (`process.env`) that only bite in a browser bundle.
+// "Source" means what Vite bundles, and the two rules below (no `process.env`,
+// no underscore-prefixed exports) are both about that: one breaks at runtime in
+// a browser, the other is an API-surface rule. Most tests live in a `__tests__`
+// directory, but the kernel's real-OCC harnesses sit beside the module they
+// drive, so the directory alone is not the test predicate -- a `*.test.ts`
+// anywhere is a test and ships in nothing.
 const srcOnlyFiles = tsFiles.filter(
   f => !f.includes('__tests__') && !/\.test\.tsx?$/.test(f),
 )

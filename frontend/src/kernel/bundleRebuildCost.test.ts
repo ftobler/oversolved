@@ -18,6 +18,11 @@
 // guard that only the part whose rev moved is rebuilt -- that is what keeps a
 // realistic assembly on the warm side of the one-slot cache.
 //
+// That `{}` argument is pinned where it is written, in
+// `worker/solverWorker.test.ts` ("passes spec and options to the engine"),
+// which asserts the whole options object; this file starts from its
+// consequences instead.
+//
 // Timings are next door in `bundleRebuildCostBench.test.ts` (log-only); the
 // numbers are recorded in `feature/knowledgebase.agent.md`.
 
@@ -28,7 +33,7 @@ import { loadOcc } from './occ/loadOcc'
 import { solveLocally, setSolveLocalsForTest } from './solveLocally'
 import { setSketchSolver, resetSketchSolver } from './features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { handleBundleRequest } from './worker/solverWorker'
+import { handleBundleRequest, handleSolveRequest } from './worker/solverWorker'
 import { solveAssembly } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
@@ -42,24 +47,6 @@ const solveBytes = loadSolver()
 function bundleReq(spec: Record<string, unknown>, rev: number): BundleRequest {
   return { id: rev, kind: 'buildBundle', spec, doc_id: spec.id as string, doc_rev: rev }
 }
-
-// ─── the options object handleBundleRequest hands the engine ───────────────
-
-describe('handleBundleRequest solve options', () => {
-  it('passes an options object that leaves prevState to the engine', async () => {
-    const solve = vi.fn().mockResolvedValue({ bodies: {}, result: {}, solve_ms: 0, _build_state: {} })
-    await handleBundleRequest(bundleReq({ id: 'doc-a', features: [] }, 4), solve)
-
-    const options = solve.mock.calls[0][1] as Record<string, unknown>
-    // `prevState` absent (not null) is what makes solveLocally fall back to its
-    // own lastBuildState. Setting it to null here would be the cold rebuild the
-    // original plan assumed was already happening, and would cost a full stack
-    // rebuild on every part edit.
-    expect('prevState' in options).toBe(false)
-    // bypassCache would force the same thing by the other door.
-    expect(options.bypassCache).toBeUndefined()
-  })
-})
 
 // ─── the assembly side: which parts get rebuilt at all ─────────────────────
 
@@ -220,8 +207,25 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
     const third = checkpoints[2]
     // The engine caches one document at a time (`resetLocalSolveCache` on a
     // spec.id change), so doc-x's second build rebuilds every feature. This is
-    // the entire measured cost of the bundle path, and it is paid only when an
-    // assembly misses on two documents in the same solve.
+    // the entire measured cost of the bundle path.
+    expect(third.sk1).not.toBe(first.sk1)
+    expect(third.ex0).not.toBe(first.ex0)
+    expect(third.ex1).not.toBe(first.ex1)
+  })
+
+  it('a bundle build of another part evicts the part editor cache', async () => {
+    // `worker/solverClient.ts` holds ONE module-level worker, and both
+    // `solveViaWorker` (part editor) and `buildBundleViaWorker` (assembly)
+    // route through it, so the one cache slot is shared across the two pages
+    // of the SPA -- an assembly bundle build for doc-q makes the next part
+    // editor solve of doc-p cold. That is a wider blast radius than "two parts
+    // missed in the same assembly solve", which is why it gets its own case.
+    const { engine, checkpoints } = recordingEngine()
+    await handleSolveRequest({ id: 1, spec: part('doc-p', 5), options: {} }, engine)
+    await handleBundleRequest(bundleReq(part('doc-q', 5), 1), engine)
+    await handleSolveRequest({ id: 2, spec: part('doc-p', 9), options: {} }, engine)
+
+    const [first, , third] = checkpoints
     expect(third.sk1).not.toBe(first.sk1)
     expect(third.ex0).not.toBe(first.ex0)
     expect(third.ex1).not.toBe(first.ex1)
