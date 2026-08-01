@@ -91,6 +91,30 @@ def test_top_level_block_comment_is_clean(tmp_path):
     assert_clean(run_lint(tmp_path, source))
 
 
+def test_block_comment_followed_by_code_is_dangerous(tmp_path):
+    source = "interface PlaneSurfaceProps {\n  /** @internal */ borderWidth?: never\n}\n"
+    assert_violation(run_lint(tmp_path, source), "block-code-after")
+
+
+def test_block_comment_followed_by_code_is_not_block_commented(tmp_path):
+    source = "interface PlaneSurfaceProps {\n  /** @internal */ borderWidth?: never\n}\n"
+    proc = run_lint(tmp_path, source)
+    assert_violation(proc, "block-code-after")
+    assert "block-comment" not in proc.stdout
+
+
+def test_block_comment_alone_on_line_is_not_dangerous(tmp_path):
+    source = "interface PlaneSurfaceProps {\n  /** Internal prop. */\n  borderWidth?: never\n}\n"
+    proc = run_lint(tmp_path, source)
+    assert_violation(proc, "block-comment")
+    assert "block-code-after" not in proc.stdout
+
+
+def test_line_comment_followed_by_code_is_not_dangerous(tmp_path):
+    source = "interface PlaneSurfaceProps {\n  // @internal borderWidth?: never\n}\n"
+    assert_clean(run_lint(tmp_path, source))
+
+
 def test_jsx_comment_is_clean(tmp_path):
     target = tmp_path / "sample.tsx"
     target.write_text("const view = <div>{/* indented jsx */}</div>\n")

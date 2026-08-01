@@ -74,6 +74,7 @@ class Comment:
     trailing: bool = False
     gap: int | None = None  # spaces between code and the marker, when trailing
     jsx: bool = False  # a JSX `{/* ... */}` comment, i.e. the marker directly follows `{`
+    trailing_code: bool = False  # non-whitespace follows the closing `*/` on the same line
     lines: list[str] = field(default_factory=list)
 
 
@@ -284,6 +285,10 @@ def scan_comments(text: str) -> list[Comment]:
                 while k >= 0 and text[k] in " \t":
                     k -= 1
                 jsx = k >= 0 and text[k] == "{"
+                line_end = text.find("\n", block_end, n)
+                if line_end == -1:
+                    line_end = n
+                trailing_code = bool(text[block_end:line_end].strip())
                 comments.append(
                     Comment(
                         kind="block",
@@ -293,6 +298,7 @@ def scan_comments(text: str) -> list[Comment]:
                         trailing=bool(prefix.strip()),
                         gap=(len(prefix) - len(prefix.rstrip(" \t"))) if prefix.strip() else None,
                         jsx=jsx,
+                        trailing_code=trailing_code,
                         lines=inner.split("\n"),
                     )
                 )
@@ -381,8 +387,17 @@ def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> lis
 def _check_block_comment(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
-        if c.kind == "block" and not c.trailing and c.col > 0 and len(c.lines) == 1:
+        if c.kind == "block" and not c.trailing and not c.trailing_code and c.col > 0 and len(c.lines) == 1:
             errors.append(f"{path}:{c.line}:{c.col}: block-comment - own-line block comment inside a block, use // instead")
+    return errors
+
+
+@rule("block-code-after", "a block comment followed by code on the same line is dangerous; move the code or use //")
+def _check_block_code_after(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    for c in comments:
+        if c.kind == "block" and not c.trailing and c.trailing_code:
+            errors.append(f"{path}:{c.line}:{c.col}: block-code-after - block comment followed by code on the same line, split the code onto its own line")
     return errors
 
 
