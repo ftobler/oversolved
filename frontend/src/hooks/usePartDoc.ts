@@ -343,7 +343,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       && previewOriginalDoc.current !== null
       && !PREVIEW_SCOPE.has(m.type)) {
       const original = previewOriginalDoc.current
-      commitPreview(previewMutationFor(original, docRef.current) ?? m)
+      commitPreview(previewMutationFor(original, current) ?? m)
       escapedPreview = true
     }
     if (suppressUndoRef.current && !escapedPreview) {
@@ -512,7 +512,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       && ms.every(m => PREVIEW_SCOPE.has(m.type))
     if (!sessionActive && previewActive && !groupInPreviewScope) {
       const original = previewOriginalDoc.current!
-      commitPreview(previewMutationFor(original, docRef.current) ?? ms[0])
+      commitPreview(previewMutationFor(original, current) ?? ms[0])
     } else if (groupInPreviewScope) {
       previewTouchedRef.current = true
     }
