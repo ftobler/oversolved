@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { executeCommand } from '@/utils/core/commandRegistry'
+import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import AppHeader from '@/components/layout/AppHeader'
 
 interface AssemblyToolbarProps {
@@ -11,8 +13,8 @@ interface AssemblyToolbarProps {
 
 // Assembly counterpart to PartToolbar: the same AppHeader shell (logo, burger,
 // account) with the save / clone / rename controls, so the assembly editor wears
-// the same titlebar as the part editor. Assemblies have no undo stack yet, so
-// the undo/redo group is intentionally absent.
+// the same titlebar as the part editor. The undo/redo group mirrors the part
+// toolbar, gated on the assembly store's stacks.
 export default function AssemblyToolbar({
   readOnly,
   docName,
@@ -20,6 +22,10 @@ export default function AssemblyToolbar({
   handleSave,
   handleClone,
 }: AssemblyToolbarProps) {
+  const undoStack = useAssemblyStore(s => s.undoStack) as AssemblyUndoEntry[]
+  const redoStack = useAssemblyStore(s => s.redoStack) as AssemblyUndoEntry[]
+  const [undoHover, setUndoHover] = useState(false)
+  const [redoHover, setRedoHover] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docName ?? '')
   const [saveState, setSaveState] = useState<'idle' | 'success'>('idle')
@@ -46,6 +52,44 @@ export default function AssemblyToolbar({
 
   return (
     <AppHeader>
+      <div className="undo-redo-btn-group">
+        <button
+          className="toolbar-btn"
+          aria-label="Undo"
+          onClick={() => executeCommand('undo')}
+          disabled={undoStack.length === 0}
+          onMouseEnter={() => setUndoHover(true)}
+          onMouseLeave={() => setUndoHover(false)}
+        >
+          <span className="material-icons-outlined">undo</span>
+        </button>
+        {undoHover && undoStack.length > 0 && (
+          <div className="undo-redo-tooltip undo-tooltip">{/* dialog */}
+            <div className="undo-redo-tooltip-header">Undo ({undoStack.length}) Ctrl+Z</div>
+            {undoStack.slice(-5).reverse().map((entry, i) => (
+              <div key={i} className="undo-redo-tooltip-item">{entry.label}</div>
+            ))}
+          </div>
+        )}
+        <button
+          className="toolbar-btn"
+          aria-label="Redo"
+          onClick={() => executeCommand('redo')}
+          disabled={redoStack.length === 0}
+          onMouseEnter={() => setRedoHover(true)}
+          onMouseLeave={() => setRedoHover(false)}
+        >
+          <span className="material-icons-outlined">redo</span>
+        </button>
+        {redoHover && redoStack.length > 0 && (
+          <div className="undo-redo-tooltip redo-tooltip">{/* dialog */}
+            <div className="undo-redo-tooltip-header">Redo ({redoStack.length}) Ctrl+Shift+Z</div>
+            {redoStack.slice(-5).reverse().map((entry, i) => (
+              <div key={i} className="undo-redo-tooltip-item">{entry.label}</div>
+            ))}
+          </div>
+        )}
+      </div>
       <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick} disabled={readOnly}>
         <span className="material-icons-outlined">{saveState === 'success' ? 'check' : 'save'}</span>
       </button>

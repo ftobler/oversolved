@@ -63,7 +63,11 @@ import {
   type ManipulationSession,
 } from '@/utils/partManipulation'
 
-type UndoEntry = { doc: unknown; mutation: unknown }
+/** One undo step: the pre-mutation document plus a short label for the toolbar tooltip. */
+export interface AssemblyUndoEntry {
+  doc: AssemblyDoc
+  label: string
+}
 
 export interface AssemblyEditorData {
   doc: AssemblyDoc | null
@@ -132,8 +136,8 @@ export interface AssemblyEditorData {
   settlingOffsets: Record<string, Transform3D>
   isSolving: boolean
   solveError: string | null
-  undoStack: UndoEntry[]
-  redoStack: UndoEntry[]
+  undoStack: AssemblyUndoEntry[]
+  redoStack: AssemblyUndoEntry[]
 }
 
 export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
@@ -213,12 +217,16 @@ export function sameInstances(a: readonly PartInstance[], b: readonly PartInstan
   })
 }
 
-// Fields owned exclusively by the store (not overwritten by setSnapshot).
+// Fields owned exclusively by the store (not overwritten by setSnapshot). The
+// undo stacks are mutable store state too: the page spreads the current store
+// into every setSnapshot, so they would survive anyway, but naming them here
+// keeps setSnapshot's "React-mirrored state only" contract intact.
 const STORE_OWNED_FIELDS = [
   'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
+  'undoStack', 'redoStack',
 ] as const
 
 /**
@@ -228,7 +236,10 @@ const STORE_OWNED_FIELDS = [
  * and asks for exactly one re-solve.
  */
 export interface AssemblyCallbacks {
-  mutateDoc: (fn: (doc: AssemblyDoc) => AssemblyDoc) => void
+  // One-shot mutations push an undo step immediately.
+  mutateDoc: (label: string, fn: (doc: AssemblyDoc) => AssemblyDoc) => void
+  // A ref pick mid-authoring folds into the open edit session's coalesced step.
+  mutateDocSession: (label: string, fn: (doc: AssemblyDoc) => AssemblyDoc) => void
   requestSolve: () => void
 }
 
@@ -240,6 +251,8 @@ export function setAssemblyCallbacks(cb: AssemblyCallbacks | null): void {
 
 interface AssemblyEditorState extends AssemblyEditorData {
   setSnapshot: (data: AssemblyEditorData) => void
+  // A fresh document must not inherit a previous one's undo history; see useAssemblyDoc.
+  clearAssemblyHistory: () => void
   setSelectedPartHandle: (handle: string | null) => void
   // Open a mate's editor. Closing the previous one settles its owed solve.
   setSelectedMateId: (featureId: string | null) => void
@@ -324,6 +337,8 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return merged as unknown as AssemblyEditorData
   }),
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
+
+  clearAssemblyHistory: () => set({ undoStack: [], redoStack: [] }),
 
   setSelectedMateId: (featureId) => {
     get().setActiveMateField(null)  // leaving a mate settles the solve its picks owe
@@ -423,7 +438,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const refA = activeMateField.field === 'ref_a' ? ref : mate?.ref_a
     const refB = activeMateField.field === 'ref_b' ? ref : mate?.ref_b
     const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors) : null
-    callbacks.mutateDoc(d => {
+    callbacks.mutateDocSession('Pick mate reference', d => {
       const withRef = setMateRef(d, activeMateField.featureId, activeMateField.field, ref)
       return patch ? updateMate(withRef, activeMateField.featureId, patch) : withRef
     })
@@ -573,7 +588,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // relax the whole assembly off the pose the drag just previewed. Baking
     // first (commitManipulation then overwrites the grabbed part) keeps the
     // seeds in step with the screen, the same discipline the fix toggle uses.
-    callbacks.mutateDoc(d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
+    callbacks.mutateDoc('Move part', d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },
 
@@ -599,13 +614,13 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const { doc, selectedMateId, selectedPartHandle, transforms } = get()
     if (!doc || !callbacks) return
     if (selectedMateId) {
-      callbacks.mutateDoc(d => removeMate(bakeSolvedTransforms(d, transforms), selectedMateId))
+      callbacks.mutateDoc('Delete mate', d => removeMate(bakeSolvedTransforms(d, transforms), selectedMateId))
       set({ selectedMateId: null })
       callbacks.requestSolve()
       return
     }
     if (selectedPartHandle) {
-      callbacks.mutateDoc(d => removeInstance(bakeSolvedTransforms(d, transforms), selectedPartHandle))
+      callbacks.mutateDoc('Delete part', d => removeInstance(bakeSolvedTransforms(d, transforms), selectedPartHandle))
       set({ selectedPartHandle: null })
       callbacks.requestSolve()
     }

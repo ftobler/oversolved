@@ -765,3 +765,439 @@ describe('AssemblyEditor export (Stage 9)', () => {
     expect(h.exportAssemblyViaWorker).not.toHaveBeenCalled()
   })
 })
+
+// Stage 10: assembly undo/redo. Every mutation funnels through the page's
+// `mutate`, so these drive the real UI and assert the stack the store holds.
+describe('AssemblyEditor undo/redo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    h.loadContent = 'kind: assembly\nfeatures: []'
+    h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 5 } }]
+    h.solveAssemblyViaWorker.mockResolvedValue({
+      payload: { transforms: {}, bodies: {}, mateResults: {} },
+    })
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    // The stacks are store-owned, so setSnapshot does not clear them.
+    useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+    useAssemblyStore.getState().setActiveMateField(null)
+    useAssemblyStore.getState().setSelectedMateId(null)
+  })
+
+  const undoStack = () => useAssemblyStore.getState().undoStack
+  const redoStack = () => useAssemblyStore.getState().redoStack
+
+  const pickerItem = (name: string) =>
+    screen.getAllByText(name).find(el => el.closest('.doc-browser-tile'))
+
+  async function insertPart(name: string) {
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pickerItem(name)).toBeTruthy())
+    fireEvent.click(pickerItem(name)!)
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
+    await tick()
+  }
+
+  it('add instance, undo -> instance gone; redo -> back; a fresh edit clears the redo branch', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+    const handle = useAssemblyStore.getState().instances[0].handle
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
+    expect(undoStack()).toHaveLength(0)
+    expect(redoStack()).toHaveLength(1)
+
+    act(() => { executeCommand('redo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances).toHaveLength(1)
+    expect(useAssemblyStore.getState().instances[0].handle).toBe(handle)
+    expect(undoStack()).toHaveLength(1)
+    expect(redoStack()).toHaveLength(0)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(redoStack()).toHaveLength(1)
+    await insertPart('Bracket')
+    // A fresh edit after an undo discards the redo branch.
+    expect(redoStack()).toHaveLength(0)
+    expect(undoStack()).toHaveLength(1)
+  })
+
+  it('Ctrl+Z in the assembly dispatches undo instead of being eaten', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
+    })
+    await tick()
+    await tick()
+
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
+    expect(undoStack()).toHaveLength(0)
+  })
+
+  it('a fix toggle from the options menu records one undo step and undo reverts it', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Fix'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
+  })
+
+  it('a visibility toggle records one undo step and undo restores it', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByLabelText('Hide part'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].visible).toBe(false)
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].visible).toBe(true)
+  })
+
+  it('a duplicate records one undo step and undo removes the copy', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByLabelText('Part options'))
+    fireEvent.click(screen.getByText('Duplicate'))
+    await tick()
+    expect(useAssemblyStore.getState().instances).toHaveLength(2)
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances).toHaveLength(1)
+  })
+
+  it('a mate rename records one undo step and undo reverts the label', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)  // the Add mate step
+
+    // The row's tridot opens the rename dialog; it must not fold into the open
+    // authoring session as a per-keystroke edit.
+    fireEvent.click(screen.getByLabelText('Mate options'))
+    fireEvent.click(screen.getByText('Rename'))
+    const input = screen.getByLabelText('Name') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'top clamp' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    await tick()
+
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('top clamp')
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBeUndefined()
+  })
+
+  it('a mate delete records one undo step and undo restores the mate', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByLabelText('Mate options'))
+    fireEvent.click(screen.getByText('Delete'))
+    await tick()
+    expect(useAssemblyStore.getState().mates).toHaveLength(0)
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().mates).toHaveLength(1)
+  })
+
+  it('typing a mate offset is ONE undo entry per field close, not per keystroke', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    // A fresh mate opens straight into its editor, which is the coalescing
+    // session; the insert itself already recorded its own step.
+    expect(undoStack()).toHaveLength(1)
+
+    // Each keystroke fires a mutate; all must fold into the open session.
+    const offset = screen.getByLabelText('Offset X')
+    fireEvent.change(offset, { target: { value: '5' } })
+    await tick()
+    fireEvent.change(offset, { target: { value: '50' } })
+    await tick()
+    fireEvent.change(offset, { target: { value: '500' } })
+    await tick()
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 500 })
+    expect(undoStack()).toHaveLength(1)
+
+    // Closing the field (OK) commits exactly one coalesced step.
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await tick()
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toBeUndefined()
+  })
+
+  it('undo while authoring a mate disarms the field and drops its candidates', async () => {
+    const VERT = assemblyEntityKey('hA', 0, 'vertex', 0)
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(useAssemblyStore.getState().activeMateField).toEqual({ featureId: id, field: 'ref_a' })
+
+    // The armed field has a candidate aimed; the undo restores a doc without the
+    // mate, so nothing may keep aiming into it.
+    act(() => {
+      useAssemblyStore.getState().setSolveResult({
+        transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
+        entityMateRefs: { [VERT]: [{ part: 'hA', anchor: 'a_v' }] }, mateResults: {},
+      })
+      useAssemblyStore.getState().setPickFromHits([{ entityKey: VERT }])
+    })
+    expect(useAssemblyStore.getState().pickCandidates).toHaveLength(1)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+
+    expect(useAssemblyStore.getState().activeMateField).toBeNull()
+    expect(useAssemblyStore.getState().pickCandidates).toEqual([])
+    expect(useAssemblyStore.getState().mates).toHaveLength(0)
+  })
+
+  it('a fresh document load clears the previous document history', async () => {
+    const first = renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+
+    // Unmounting and reloading the same route re-runs useAssemblyDoc's load,
+    // which must not let the previous document's undo steps leak into the new
+    // document (Ctrl+Z would otherwise restore A's content under B's uuid).
+    first.unmount()
+    renderEditor()
+    await tick()
+    await tick()
+
+    expect(undoStack()).toHaveLength(0)
+  })
+
+  it('a reorder of instances records one undo step and undo restores the order', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    await insertPart('Bracket')
+    const before = useAssemblyStore.getState().instances.map(i => i.handle)
+    expect(undoStack()).toHaveLength(2)
+
+    const rows = screen.getAllByText('Bracket').map(n => n.closest('li')!)
+    fireEvent.dragStart(rows[1], { dataTransfer: { effectAllowed: 'move' } })
+    fireEvent.dragOver(rows[0], { dataTransfer: { effectAllowed: 'move' } })
+    fireEvent.drop(rows[0], { dataTransfer: { effectAllowed: 'move' } })
+    await tick()
+
+    const after = useAssemblyStore.getState().instances.map(i => i.handle)
+    expect(after[0]).toBe(before[1])
+    expect(undoStack()).toHaveLength(3)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances.map(i => i.handle)).toEqual(before)
+  })
+
+  it('a reorder of mates records one undo step and undo restores the order', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))  // close mate 1's editor
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))  // close mate 2's editor
+    await tick()
+    expect(undoStack()).toHaveLength(2)
+    const before = useAssemblyStore.getState().mates.map(m => m.id)
+
+    const rows = screen.getAllByText(/^Fixed \d+$/).map(n => n.closest('li')!)
+    fireEvent.dragStart(rows[1], { dataTransfer: { effectAllowed: 'move' } })
+    fireEvent.dragOver(rows[0], { dataTransfer: { effectAllowed: 'move' } })
+    fireEvent.drop(rows[0], { dataTransfer: { effectAllowed: 'move' } })
+    await tick()
+
+    expect(useAssemblyStore.getState().mates.map(m => m.id)[0]).toBe(before[1])
+    expect(undoStack()).toHaveLength(3)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().mates.map(m => m.id)).toEqual(before)
+  })
+
+  // The coalescing linchpin under interleaving: a structural op mid-session must
+  // not fold into (or duplicate) the session's pinned pre-doc. The session
+  // closes before the one-shot, so the stack's pre-docs are distinct and in
+  // order, and undoing the one-shot does not drag the session's edits along.
+  it('a structural op between mate keystrokes keeps each undo step distinct', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add mate'])
+
+    // Session A: type an offset (coalesced).
+    const offset = screen.getByLabelText('Offset X')
+    fireEvent.change(offset, { target: { value: '5' } })
+    await tick()
+
+    // Structural op mid-session: a visibility toggle must close session A and
+    // push its own step with the post-offset doc as its pre-doc.
+    fireEvent.click(screen.getByLabelText('Hide part'))
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add mate', 'Edit mate', 'Toggle visibility'])
+
+    // Session B: keep typing, then accept.
+    fireEvent.change(offset, { target: { value: '50' } })
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual([
+      'Add part', 'Add mate', 'Edit mate', 'Toggle visibility', 'Edit mate',
+    ])
+
+    // No duplicate pre-docs: every entry captured a distinct doc.
+    const docs = undoStack().map(e => e.doc)
+    expect(new Set(docs).size).toBe(docs.length)
+
+    // Undo 1 reverts only the second offset batch; the visibility stays off.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+    expect(useAssemblyStore.getState().instances[0].visible).toBe(false)
+
+    // Undo 2 reverts only the visibility toggle; the offset stays at 5.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].visible).toBe(true)
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+  })
+
+  // SHOULD FIX 3: inserting a mate while another editor is open pushes its own
+  // step, so cancelling the new editor cannot lose the insert.
+  it('an insert while another editor is open stays undoable even if the new editor is cancelled', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)
+
+    // A second insert lands while mate 1's editor is open.
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(2)
+
+    // Cancel the new mate's editor: the empty mate stays and keeps its step.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().mates).toHaveLength(2)
+    expect(undoStack()).toHaveLength(2)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().mates).toHaveLength(1)
+  })
+
+  // Editor switches commit the open session so each edited mate's changes land
+  // in their own step rather than merging under the first mate's pre-doc.
+  it('switching between mate editors commits each session separately', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))  // close mate 1
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    const second = useAssemblyStore.getState().mates[1].id
+
+    // Type an offset into mate 2's editor, then pencil-edit mate 1.
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '7' } })
+    await tick()
+    expect(undoStack()).toHaveLength(2)  // the keystrokes stay coalesced
+
+    fireEvent.click(screen.getAllByLabelText('Edit mate')[0])
+    await tick()
+    // The switch commits mate 2's session as its own step.
+    expect(undoStack()).toHaveLength(3)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    // The undone step is mate 2's edit, not a merge of both.
+    expect(findMate(useAssemblyStore.getState().doc!, second)!.offset).toBeUndefined()
+    const first = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, first)!.offset).toBeUndefined()
+  })
+})
+

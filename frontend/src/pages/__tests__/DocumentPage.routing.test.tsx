@@ -4,10 +4,22 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 
 // The real editors mount workers, three.js and a canvas. Routing is all that is
 // under test here, so stub both sides and assert which one was chosen. The Part
-// stub records mount/unmount so the keyed-remount test can assert the instance
-// actually changes when the uuid does.
+// and AssemblyEditor stubs record mount/unmount so the keyed-remount tests can
+// assert the instances actually change when the uuid does.
 const partLifecycle = vi.hoisted(() => vi.fn())
-vi.mock('@/pages/AssemblyEditor', () => ({ default: () => <div>ASSEMBLY EDITOR</div> }))
+const assemblyLifecycle = vi.hoisted(() => vi.fn())
+vi.mock('@/pages/AssemblyEditor', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: function AssemblyEditorMock() {
+      useEffect(() => {
+        assemblyLifecycle('mount')
+        return () => assemblyLifecycle('unmount')
+      }, [])
+      return <div>ASSEMBLY EDITOR</div>
+    },
+  }
+})
 vi.mock('@/pages/Part', async () => {
   const { useEffect } = await import('react')
   return {
@@ -34,6 +46,7 @@ import DocumentPage from '@/pages/DocumentPage'
 beforeEach(() => {
   load.mockReset()
   partLifecycle.mockClear()
+  assemblyLifecycle.mockClear()
 })
 
 function wrap() {
@@ -115,6 +128,41 @@ describe('DocumentPage kind routing', () => {
     // The old instance is torn down before the new one mounts. An in-place update
     // (no keying) would leave the mount count at 1.
     const sequence = partLifecycle.mock.calls.map(c => c[0])
+    expect(sequence.indexOf('unmount')).toBeGreaterThan(-1)
+    expect(sequence.indexOf('unmount')).toBeLessThan(sequence.lastIndexOf('mount'))
+  })
+
+  // The undo-document-reset contract applied to the assembly editor: a uuid
+  // change must NOT reuse the previous AssemblyEditor instance, because the
+  // hook-local pendingSession / mateSnapshot / instanceSnapshot refs survive an
+  // in-place update and would push the old document's pre-doc into the new one's
+  // undo stack. DocumentPage keys the editor by uuid so the swap is a fresh
+  // instance by construction.
+  it('remounts the assembly editor when the uuid changes', async () => {
+    load.mockImplementation(async () => ({ content: 'kind: assembly\nfeatures: []\n' }))
+
+    function GoToB() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate('/documents/B')}>to B</button>
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/documents/A']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<DocumentPage />} />
+        </Routes>
+        <GoToB />
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument())
+    expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'to B' }))
+
+    await waitFor(() => {
+      expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(2)
+    })
+    const sequence = assemblyLifecycle.mock.calls.map(c => c[0])
     expect(sequence.indexOf('unmount')).toBeGreaterThan(-1)
     expect(sequence.indexOf('unmount')).toBeLessThan(sequence.lastIndexOf('mount'))
   })

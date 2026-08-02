@@ -6,6 +6,7 @@ import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useAssemblyStore } from '@/stores/assemblyStore'
 import { mateFeatures, partInstances } from '@/utils/assemblyMutations'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 
@@ -42,6 +43,10 @@ export function useAssemblyDoc(uuid: string | undefined) {
         setOwnerUsername(data.owner_username || '')
         setPermission(data.permission || 'owner')
         useUnsavedChangesStore.getState().setDirty(false)
+        // A fresh document must not inherit the previous document's undo
+        // history: Ctrl+Z in the new doc would otherwise restore the old one
+        // into it, and a later save could write A's content under B's uuid.
+        useAssemblyStore.getState().clearAssemblyHistory()
         setLoading(false)
       })
       .catch(e => {

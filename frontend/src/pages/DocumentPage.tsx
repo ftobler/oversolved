@@ -42,7 +42,13 @@ export default function DocumentPage() {
     return <div className="document-viewer"><p>Loading...</p></div>
   }
   if (kind === 'assembly') {
-    return <AssemblyEditor uuid={uuid!} />
+    // Keying by uuid forces a full AssemblyEditor remount per document, the same
+    // contract the part editor keeps below: a route change (/documents/A ->
+    // /documents/B, including clone) must not leak the previous document's undo
+    // history, open edit sessions, or stale refs into the new one. The remount
+    // resets the hook-local session refs; the module store's undo stacks are
+    // cleared by useAssemblyDoc's load.
+    return <AssemblyEditor key={uuid!} uuid={uuid!} />
   }
   // Keying by uuid forces a full Part remount per document, so a route change
   // (/documents/A -> /documents/B, including clone) cannot leak the previous

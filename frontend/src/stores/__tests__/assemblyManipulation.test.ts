@@ -56,12 +56,22 @@ function drawnPose(handle: string, baked: Transform3D): Transform3D {
 function mountHost(initial: AssemblyDoc) {
   const requestSolve = vi.fn()
   const host = { doc: initial }
+  // Every committed mutation is a potential undo step; the page's mutate pushes
+  // the pre-doc, so the harness records it the same way for drag-undo tests.
+  const pushes: Array<{ doc: AssemblyDoc; label: string }> = []
   setAssemblyCallbacks({
-    mutateDoc: (fn) => { host.doc = fn(host.doc) },
+    mutateDoc: (label, fn) => {
+      pushes.push({ doc: host.doc, label })
+      host.doc = fn(host.doc)
+    },
+    mutateDocSession: (label, fn) => {
+      pushes.push({ doc: host.doc, label })
+      host.doc = fn(host.doc)
+    },
     requestSolve,
   })
   useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
-  return { host, requestSolve }
+  return { host, requestSolve, pushes }
 }
 
 describe('assemblyStore part manipulation', () => {
@@ -243,6 +253,24 @@ describe('assemblyStore part manipulation', () => {
 
     expect(host.doc).toBe(initial)
     expect(requestSolve).not.toHaveBeenCalled()
+  })
+
+  // The gizmo-drag undo step: the commit hands the page one pre-drag doc with a
+  // descriptive label, so a store-level drag feeds the page's undo funnel just
+  // like any other mutation (assemblyManipulation keeps pointer drags here).
+  it('a committed drag pushes one undo step holding the pre-drag doc', () => {
+    const initial = docWith(instance('p1'), instance('p2'))
+    const { host, pushes } = mountHost(initial)
+    const s = useAssemblyStore.getState()
+
+    s.beginPartManipulation('p1')
+    s.dragPartTranslate([3, 4, 0])
+    useAssemblyStore.getState().endPartManipulation()
+
+    expect(pushes).toHaveLength(1)
+    expect(pushes[0].label).toBe('Move part')
+    expect(pushes[0].doc).toBe(initial)  // the pre-drag doc, by reference
+    expect(findInstance(host.doc, 'p1')!.transform).toMatchObject({ tx: 3, ty: 4, tz: 0 })
   })
 
   it('cancelling a moved manipulation restores via a solve but never touches the doc', () => {

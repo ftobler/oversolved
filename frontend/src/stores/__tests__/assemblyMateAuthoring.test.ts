@@ -42,7 +42,7 @@ const { getState } = useAssemblyStore
 const requestSolve = vi.fn()
 
 /** Stands in for the AssemblyEditor: applies the mutation and re-syncs the store. */
-function mutateDoc(fn: (doc: AssemblyDoc) => AssemblyDoc): void {
+function mutateDoc(_label: string, fn: (doc: AssemblyDoc) => AssemblyDoc): void {
   const next = fn(getState().doc!)
   getState().setSnapshot({ ...getState(), doc: next })
 }
@@ -59,7 +59,7 @@ beforeEach(() => {
   getState().clearPickCandidates()
   getState().setPickScopeEntity(null)
   getState().setSolveResult(SOLVE_RESULT)
-  setAssemblyCallbacks({ mutateDoc, requestSolve })
+  setAssemblyCallbacks({ mutateDoc, mutateDocSession: mutateDoc, requestSolve })
   const doc = appendMate({ kind: 'assembly', features: [] }, 'fixed', 'm1')
   getState().setSnapshot({ ...getState(), doc })
   vi.clearAllMocks()

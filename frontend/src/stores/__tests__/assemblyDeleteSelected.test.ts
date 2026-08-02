@@ -46,7 +46,8 @@ function mountHost(initial: AssemblyDoc) {
   const requestSolve = vi.fn()
   const host = { doc: initial }
   setAssemblyCallbacks({
-    mutateDoc: (fn) => { host.doc = fn(host.doc) },
+    mutateDoc: (_label, fn) => { host.doc = fn(host.doc) },
+    mutateDocSession: (_label, fn) => { host.doc = fn(host.doc) },
     requestSolve,
   })
   useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
