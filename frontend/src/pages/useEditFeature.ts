@@ -19,6 +19,7 @@ interface UseEditFeatureInput {
 export interface UseEditFeatureReturn {
   editingFeatureId: string | null
   editForcedVisible: Set<string>
+  resetEditState: () => void
   enterEditFeature: (featureId: string, suppressUndo?: boolean) => void
   commitEditFeature: () => void
   cancelEditFeature: () => void
@@ -71,7 +72,10 @@ export function useEditFeature({
     if (docRef.current) reSolve(docRef.current)
   }, [features, builtInIds, startEditSession, docRef, reSolve])
 
-  const _exitEditCleanup = useCallback(() => {
+  // Everything an edit owns in the UI, dropped without touching the doc. Split
+  // out of the exit path because undo/redo needs the same reset but brings its
+  // own doc and its own single re-solve.
+  const resetEditState = useCallback(() => {
     if (clearPlaneSelection) clearPlaneSelection()
     const store = usePartEditorStore.getState()
     setEditForcedVisible(new Set())
@@ -80,18 +84,25 @@ export function useEditFeature({
     // Entering an edit pins the bar just after the edited feature; leaving it
     // returns the bar to where the user parked it (null = end of stack).
     store.setRollbackPosition(docRef.current?.rollback ?? null)
+  }, [docRef, clearPlaneSelection])
+
+  const _exitEditCleanup = useCallback(() => {
+    resetEditState()
     if (docRef.current) reSolve(docRef.current)
-  }, [docRef, reSolve, clearPlaneSelection])
+  }, [resetEditState, docRef, reSolve])
 
   const commitEditFeature = useCallback(() => {
     commitEditSession()
     _exitEditCleanup()
   }, [commitEditSession, _exitEditCleanup])
 
+  // Reset before cancelling: cancelEditSession re-solves the snapshot it
+  // restores, and the edit-mode rollback/pick_boundary would truncate that
+  // payload to the edited feature.
   const cancelEditFeature = useCallback(() => {
+    resetEditState()
     cancelEditSession()
-    _exitEditCleanup()
-  }, [cancelEditSession, _exitEditCleanup])
+  }, [cancelEditSession, resetEditState])
 
   const exitEditFeature = useCallback(() => {
     commitEditFeature()
@@ -113,6 +124,7 @@ export function useEditFeature({
   return {
     editingFeatureId,
     editForcedVisible,
+    resetEditState,
     enterEditFeature,
     commitEditFeature,
     cancelEditFeature,

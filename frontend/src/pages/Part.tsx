@@ -142,6 +142,7 @@ export default function Part() {
     startEditSession,
     commitEditSession,
     cancelEditSession,
+    registerUndoTeardown,
   } = usePartDoc(uuid, mode, setCodeText, { onFirstSolve: handleFirstSolve })
 
   const readOnly = permission === 'view'
@@ -232,6 +233,7 @@ export default function Part() {
   const {
     editingFeatureId,
     editForcedVisible,
+    resetEditState,
     enterEditFeature,
     commitEditFeature,
     cancelEditFeature,
@@ -249,6 +251,37 @@ export default function Part() {
     setMode,
     clearPlaneSelection,
   })
+
+  // Undo/redo hand the app a document no open session knows anything about, so
+  // every piece of transient editor state is dropped before the doc swaps. This
+  // is composed here rather than in usePartDoc because half of it (forced
+  // visibility, the panel mode, the color popover) only exists on this page.
+  const tearDownEditorState = useCallback(() => {
+    const editing = usePartEditorStore.getState().editingFeatureId
+    const wasSketchEdit = features.some(f => f.id === editing && f.kind === 'sketch')
+    resetEditState()
+    const sketchStore = useSketchEditorStore.getState()
+    // Unconditional on purpose, even for an undo that could not have invalidated
+    // anything. Deciding per entry would mean re-resolving every selected query
+    // against the restored doc on every undo, and a selection that survives one
+    // undo but silently dies on the next is worse than one that always clears.
+    sketchStore.clearNormalSelection()
+    sketchStore.setActivePickField(null)  // also pops the matching 'pick' mode entry
+    sketchStore.closeDialog()
+    sketchStore.closeContextMenu()
+    setContextMenu(null)
+    // The color preview is discarded rather than applied: undo brings its own
+    // doc, and a popover left open would only be able to commit or revert
+    // against a world that no longer exists.
+    setPartColorPopover(null)
+    // The sketch toolbar has nothing left to act on once the sketch edit is gone.
+    if (wasSketchEdit) setModeRaw('feature')
+  }, [features, resetEditState])
+
+  useEffect(() => {
+    registerUndoTeardown(tearDownEditorState)
+    return () => registerUndoTeardown(null)
+  }, [registerUndoTeardown, tearDownEditorState])
 
   const visibleFeaturesWithEdit = useMemo(
     () => new Set([

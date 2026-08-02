@@ -174,6 +174,7 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       startPreviewMode: vi.fn(),
       commitPreview: vi.fn(),
       cancelPreview: vi.fn(),
+      registerUndoTeardown: vi.fn(),
       ...overrides,
     }),
   }

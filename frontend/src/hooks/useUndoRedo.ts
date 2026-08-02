@@ -11,6 +11,10 @@ export function useUndoRedo(
   docRef: React.MutableRefObject<PartDoc | null>,
   setDoc: React.Dispatch<React.SetStateAction<PartDoc | null>>,
   reSolve: (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>,
+  // Abandons every half-open edit/preview session. Must only null out transient
+  // state, never write the doc back, because the doc it would write is the one
+  // undo is about to replace.
+  tearDownEditorState?: () => void,
 ) {
   // The refs are the source of truth; the state mirrors them purely so the UI
   // re-renders. Stack transitions must never run inside a setState updater:
@@ -43,6 +47,14 @@ export function useUndoRedo(
       const to = direction === 'undo' ? redoRef.current : undoRef.current
       if (from.length === 0) return
 
+      // Exit every open session before the doc swaps. A session that survives
+      // would later commit a spurious entry keyed to the pre-undo doc, or cancel
+      // straight back to it and silently revert the undo. An empty stack is a
+      // no-op, so nothing is torn down for a keystroke that does nothing.
+      suppressUndoRef.current = false
+      stackSnapshotRef.current = null
+      tearDownEditorState?.()
+
       const entry = from[from.length - 1]
       const nextFrom = from.slice(0, -1)
       // The doc we are leaving becomes the counterpart entry, so the same
@@ -68,7 +80,7 @@ export function useUndoRedo(
       store.setPickBoundary(null)
       store.setRollbackPosition(entry.doc.rollback ?? entry.doc.features?.length ?? 0)
       reSolve(entry.doc)
-    }, [docRef, setDoc, reSolve, commitStacks])
+    }, [docRef, setDoc, reSolve, commitStacks, tearDownEditorState])
 
   const handleUndo = useCallback(() => { applyUndoRedo('undo') }, [applyUndoRedo])
 

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
@@ -11,6 +11,9 @@ import { Wrapper } from '@/__tests__/test-utils'
 const mockStartPreviewMode = vi.hoisted(() => vi.fn())
 const mockCommitPreview = vi.hoisted(() => vi.fn())
 const mockCancelPreview = vi.hoisted(() => vi.fn())
+// Holds the undo teardown the page registers, so a test can fire it without
+// needing a real undo stack behind the mocked usePartDoc.
+const undoTeardown = vi.hoisted(() => ({ current: null as (() => void) | null }))
 
 const STYLED_DOC = vi.hoisted(() => ({
   version: 1,
@@ -29,6 +32,7 @@ vi.mock('../../hooks/usePartDoc', async () =>
     startPreviewMode: mockStartPreviewMode,
     commitPreview: mockCommitPreview,
     cancelPreview: mockCancelPreview,
+    registerUndoTeardown: (fn: (() => void) | null) => { undoTeardown.current = fn },
   }))
 
 vi.mock('../../contexts/AuthContext', async () =>
@@ -138,6 +142,23 @@ describe('Part Color Preview', () => {
 
     expect(screen.getByText('Apply').className).toBe('btn btn-primary')
     expect(screen.getByText('Cancel').className).toBe('btn btn-secondary')
+  })
+
+  // An undo restores a whole document, so the previewed color is dropped
+  // rather than applied or reverted. Leaving the popover on screen would leave
+  // Apply/Cancel pointing at a session that no longer exists.
+  it('dismisses the popover when undo tears the editor state down', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+    expect(screen.getByText('Apply')).toBeInTheDocument()
+
+    act(() => { undoTeardown.current?.() })
+
+    expect(screen.queryByText('Apply')).toBeNull()
+    expect(mockCancelPreview).not.toHaveBeenCalled()
+    expect(mockCommitPreview).not.toHaveBeenCalled()
   })
 
   it('renders a header icon', async () => {

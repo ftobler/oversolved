@@ -34,10 +34,29 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
 
+  const previewOriginalDoc = useRef<PartDoc | null>(null)
+  const editSnapshotRef = useRef<PartDoc | null>(null)
+  // Set by the page: the transient editor state that does not live in this hook
+  // (forced visibility, sketch-editor selection/pick, popovers, panel mode).
+  const undoTeardownRef = useRef<(() => void) | null>(null)
+
+  const registerUndoTeardown = useCallback((fn: (() => void) | null) => {
+    undoTeardownRef.current = fn
+  }, [])
+
+  // Dropping the session refs is what makes a nested session unreachable after
+  // an undo: without it the next commit/cancel would still hold the pre-undo
+  // world and write it back.
+  const tearDownEditorState = useCallback(() => {
+    editSnapshotRef.current = null
+    previewOriginalDoc.current = null
+    undoTeardownRef.current?.()
+  }, [])
+
   const {
     undoStack, redoStack, suppressUndoRef, pushUndo, handleUndo, handleRedo,
     saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
-  } = useUndoRedo(docRef, setDoc, reSolve)
+  } = useUndoRedo(docRef, setDoc, reSolve, tearDownEditorState)
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
@@ -98,8 +117,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     reSolve(next, { bypassCache: dragAnchor !== undefined, dragAnchor, _suppressFirstSolve: true })
   }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
 
-  const previewOriginalDoc = useRef<PartDoc | null>(null)
-
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
     if (previewOriginalDoc.current !== null) {
       failLoud('[usePartDoc] startPreviewMode called while a preview is already active (nested preview not supported)')
@@ -128,8 +145,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     previewOriginalDoc.current = null
     return original
   }, [suppressUndoRef])
-
-  const editSnapshotRef = useRef<PartDoc | null>(null)
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
@@ -169,19 +184,22 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef])
 
   const cancelEditSession = useCallback(() => {
-    if (editSnapshotRef.current === null) {
-      // No active session, silently skip.
-      return
-    }
-    suppressUndoRef.current = false
     const snapshot = editSnapshotRef.current
-    editSnapshotRef.current = null
-    if (snapshot) {
+    // No snapshot means no session was ever started (add-and-enter only sets
+    // editingFeatureId), so there is nothing to rewind -- but the exit still
+    // needs the re-solve below.
+    if (snapshot !== null) {
+      editSnapshotRef.current = null
+      suppressUndoRef.current = false
       docRef.current = snapshot
       setDoc(snapshot)
+      restoreUndoStackSnapshot()
     }
-    restoreUndoStackSnapshot()
-  }, [suppressUndoRef, docRef, setDoc, restoreUndoStackSnapshot])
+    // Rewinding the doc is this function's own doing, so it owns the re-solve
+    // too. Leaving it to the caller's exit cleanup meant any other route into
+    // cancel left the viewport on the discarded edit.
+    if (docRef.current) reSolve(docRef.current)
+  }, [suppressUndoRef, docRef, setDoc, reSolve, restoreUndoStackSnapshot])
 
   return {
     doc,
@@ -220,5 +238,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     startEditSession,
     commitEditSession,
     cancelEditSession,
+    registerUndoTeardown,
   }
 }

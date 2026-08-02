@@ -177,6 +177,8 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation(renameTo('a')) })
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     usePartEditorStore.getState().setPickBoundary(1)
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
     useUnsavedChangesStore.getState().setDirty(false)
 
     act(() => { result.current.handleUndo() })
@@ -184,6 +186,93 @@ describe('usePartDoc undo/redo integration', () => {
     expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
     expect(usePartEditorStore.getState().pickBoundary).toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+
+    // The session suppressed undo pushes; if the undo left that suppression
+    // standing, every later edit would silently drop out of the stack with no
+    // way for the user to notice or recover.
+    act(() => { result.current.handleMutation(renameTo('after')) })
+    expect(result.current.undoStack).toHaveLength(1)
+  })
+
+  it('a mutation after undoing mid-preview is still one undo step', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation(renameTo('previewed')) })
+
+    act(() => { result.current.handleUndo() })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.handleMutation(renameTo('after')) })
+
+    // Exactly one entry: the abandoned preview must not leave a dead step of
+    // its own behind, and the new edit must not be swallowed.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect((result.current.undoStack[0].doc.features?.[0] as { label?: string }).label).toBe('first')
+  })
+
+  it('committing an edit session orphaned by an undo pushes nothing', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+
+    // The OK button of the edit the undo already closed. The session is gone,
+    // so this must be inert instead of pushing a step keyed to the pre-undo doc.
+    act(() => { result.current.commitEditSession() })
+
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(labelOf()).toBe('first')
+  })
+
+  // Redo shares applyUndoRedo with undo, so this exists to keep the teardown out
+  // of an undo-only branch if that function is ever split.
+  it('committing an edit session orphaned by a redo pushes nothing', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+
+    act(() => { result.current.handleRedo() })
+    expect(labelOf()).toBe('a')
+
+    act(() => { result.current.commitEditSession() })
+
+    // Only the counterpart entry the redo itself left behind.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(0)
+    expect(labelOf()).toBe('a')
+  })
+
+  it('cancelling an edit session orphaned by an undo does not revert the undo', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+
+    act(() => { result.current.cancelEditSession() })
+
+    // Restoring the session snapshot here would jump the doc back to 'a' and
+    // re-commit the pre-undo stacks, silently undoing the undo.
+    expect(labelOf()).toBe('first')
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(1)
   })
 
   it('undo restores the rollback position the doc was saved with', () => {
