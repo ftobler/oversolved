@@ -163,6 +163,8 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       handleMutation: vi.fn(),
       handleUndo: vi.fn(),
       handleRedo: vi.fn(),
+      discardHistoryAndSessions: vi.fn(),
+      discardSessions: vi.fn(),
       saveDoc: vi.fn(),
       renameDoc: vi.fn(),
       cloneDoc: vi.fn(),

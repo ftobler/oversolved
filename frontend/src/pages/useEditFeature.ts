@@ -12,7 +12,10 @@ interface UseEditFeatureInput {
   cancelEditSession: () => void
   docRef: React.MutableRefObject<PartDoc | null>
   reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>
-  setMode: (mode: 'sketch' | 'feature' | 'code') => void
+  // Returns false when the page refuses to leave the mode it is in (the code tab
+  // holds text that is not a document). A refusal aborts whatever the caller was
+  // arranging around the switch.
+  setMode: (mode: 'sketch' | 'feature' | 'code') => boolean
   clearPlaneSelection?: () => void
 }
 
@@ -108,9 +111,14 @@ export function useEditFeature({
     commitEditFeature()
   }, [commitEditFeature])
 
+  // The mode switch goes FIRST because it can be refused: starting the session
+  // and then failing to leave the code tab strands a half-open edit behind the
+  // textarea, with no sketch toolbar and the viewport hidden. Asking first also
+  // means the session snapshots the document the code tab just applied, rather
+  // than the one it replaced.
   const enterEditSketch = useCallback((featureId: string) => {
+    if (!setMode('sketch')) return
     enterEditFeature(featureId, false)  // sketch: don't suppress undo
-    setMode('sketch')
   }, [enterEditFeature, setMode])
 
   const exitEditSketch = useCallback(() => {

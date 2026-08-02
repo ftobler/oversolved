@@ -54,9 +54,31 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [])
 
   const {
-    undoStack, redoStack, suppressUndoRef, pushUndo, handleUndo, handleRedo,
+    undoStack, redoStack, suppressUndoRef, pushUndo, clearStacks, handleUndo, handleRedo,
     saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
   } = useUndoRedo(docRef, setDoc, reSolve, tearDownEditorState)
+
+  // Abandons open edit/preview sessions and re-enables undo pushes, WITHOUT
+  // touching the stacks. The code tab's own exit path runs the full
+  // discardHistoryAndSessions (a doc swap clears the history), but a plain
+  // exit with no typed text still has to drop a session a preview started in
+  // code mode, or its suppressUndoRef keeps swallowing every later edit.
+  const discardSessions = useCallback(() => {
+    suppressUndoRef.current = false
+    tearDownEditorState()
+  }, [suppressUndoRef, tearDownEditorState])
+
+  // What the code tab calls before it swaps the document in from text. The swap
+  // leaves every open session describing a world the document no longer has --
+  // the same staleness an undo creates -- so it gets the same teardown, and the
+  // history goes with it because no entry can be paired with the swap.
+  // Without the teardown a cancel taken afterwards would rewind the doc to a
+  // pre-code-tab snapshot, and restoreUndoStackSnapshot would silently do
+  // nothing because the snapshot it wants was dropped here.
+  const discardHistoryAndSessions = useCallback(() => {
+    discardSessions()
+    clearStacks()
+  }, [discardSessions, clearStacks])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
@@ -227,6 +249,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     handleMutation,
     handleUndo,
     handleRedo,
+    discardHistoryAndSessions,
+    discardSessions,
     saveDoc,
     renameDoc,
     cloneDoc,

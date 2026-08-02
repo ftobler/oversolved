@@ -56,6 +56,23 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
 
+// yaml.parse only throws on malformed syntax. Well-formed text that is not a
+// mapping comes back happily -- '' as null, '42' as a number, '- a' as an array
+// -- and taking one of those as the document empties the feature list for good,
+// because the code tab drops the undo history as it applies.
+function parsePartDoc(text: string): { doc: PartDoc } | { error: string } {
+  let parsed: unknown
+  try {
+    parsed = parseYaml(text)
+  } catch (e) {
+    return { error: `Parse error: ${e}` }
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { error: 'Parse error: the document must be a YAML mapping' }
+  }
+  return { doc: parsed as PartDoc }
+}
+
 const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   plane: { field: 'plane' },
   extrude: { field: 'sketch', multi: true },
@@ -75,6 +92,10 @@ export default function Part() {
   const { uuid } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
   const [codeText, setCodeText] = useState('')
+  // Whether the user has typed into the code textarea since the tab was opened.
+  // The solver writes codeText back too, so the text alone cannot say whether it
+  // carries user intent or is just a serialization of the current document.
+  const codeTyped = useRef(false)
   const [mode, setModeRaw] = useState<'sketch' | 'feature' | 'code'>('sketch')
   // rollbackPosition is owned by partEditorStore (single source of truth).
   // Read here for memos / props; mutate via store setters.
@@ -126,6 +147,8 @@ export default function Part() {
     handleMutation,
     handleUndo,
     handleRedo,
+    discardHistoryAndSessions,
+    discardSessions,
     saveDoc,
     renameDoc,
     cloneDoc,
@@ -183,21 +206,70 @@ export default function Part() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features.length])
 
-  const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code') => {
-    setModeRaw(prev => {
-      if (prev === 'code' && newMode !== 'code') {
-        try {
-          const parsed = parseYaml(codeText) as PartDoc
-          docRef.current = parsed
-          setDoc(parsed)
-        } catch { /* ignore parse errors */ }
+  // The parse and the doc swap deliberately sit OUTSIDE the setModeRaw updater:
+  // React replays updaters under StrictMode, so a side effect in there runs
+  // twice per switch.
+  //
+  // Returns false when the switch was REFUSED, which today happens only when the
+  // code tab holds text that is not a document. Callers that arrange something
+  // around the switch have to honour that; see enterEditSketch.
+  const setMode = useCallback((newMode: 'sketch' | 'feature' | 'code'): boolean => {
+    // Re-entering the tab you are already on must not re-serialize codeText,
+    // which would throw away text the user typed but has not run yet.
+    if (mode === newMode) return true
+    // Only text the user actually typed is written back. codeText is otherwise
+    // a stale serialization -- nothing refreshes it but a landing solve -- and
+    // applying it would silently revert edits made in the feature tree, which
+    // stays live while the code tab is open.
+    let replacedDoc = false
+    if (mode === 'code' && codeTyped.current) {
+      const parsed = parsePartDoc(codeText)
+      if ('error' in parsed) {
+        // Leaving with unusable text used to drop it silently and switch anyway,
+        // so the typed YAML was unrecoverable. Hold the user on the code tab
+        // with their text intact and report it the way Run does.
+        setSolveError(parsed.error)
+        return false
       }
-      if (newMode === 'code' && docRef.current) {
-        setCodeText(stringifyYaml(docRef.current))
+      const current = docRef.current
+      // Typing something and typing it back is not an edit: an equal doc must
+      // not cost the user their history or trigger a rebuild.
+      if (current && JSON.stringify(parsed.doc) !== JSON.stringify(current)) {
+        replacedDoc = true
+        docRef.current = parsed.doc
+        setDoc(parsed.doc)
+        discardHistoryAndSessions()
+        reSolve(parsed.doc, { bypassCache: true })
       }
-      return newMode
-    })
-  }, [codeText, docRef, setDoc, setCodeText])
+      codeTyped.current = false
+    }
+    if (newMode === 'code') {
+      discardHistoryAndSessions()
+      codeTyped.current = false
+      if (docRef.current) setCodeText(stringifyYaml(docRef.current))
+    } else if (mode === 'code' && !replacedDoc) {
+      // Leaving the tab WITHOUT replacing the doc still has to abandon anything
+      // the code mode could start: the tree stays live there, so a color preview
+      // can be opened mid-tab, and its suppressUndoRef must not leak past the
+      // switch to swallow the tree edits that follow. The stacks survive -- no
+      // doc was replaced.
+      discardSessions()
+    }
+    setModeRaw(newMode)
+    return true
+  }, [mode, codeText, docRef, setDoc, setCodeText, setSolveError, reSolve, discardHistoryAndSessions, discardSessions])
+
+  // The tree stays live while the code tab is open, so a tree edit lands in
+  // codeTyped's blind spot: handleMutation swaps the doc underneath the textarea
+  // without ever touching codeText, leaving the flag claiming "user typed"
+  // when the text no longer describes the document. Writing it back on exit
+  // would then revert that tree edit and, with the history dropped, leave
+  // nothing to recover. Same for a landing solve: it rewrites codeText from the
+  // doc, so the typed text is gone regardless. Any doc change while in code
+  // mode invalidates the marker.
+  useEffect(() => {
+    if (mode === 'code') codeTyped.current = false
+  }, [doc, mode])
 
   const handleRebuild = useCallback(() => {
     if (docRef.current) reSolve(docRef.current)
@@ -563,16 +635,47 @@ export default function Part() {
     }
   }
 
-  const handleRun = async () => {
-    try {
-      const parsed = parseYaml(codeText) as PartDoc
-      docRef.current = parsed
-      setDoc(parsed)
-      useUnsavedChangesStore.getState().setDirty(true)  // code tab edit replaces the doc
-      reSolve(parsed, { bypassCache: true })
-    } catch (e) {
-      setSolveError(`Parse error: ${e}`)
+  // Typing in the code tab IS the edit. Flagging it here rather than on the way
+  // out of the tab is what makes a save or a navigation taken WHILE the tab is
+  // open safe: saveDoc serializes the document, never this text, so text that
+  // was never applied would otherwise be dropped with no warning.
+  const handleCodeTextChange = useCallback((text: string) => {
+    codeTyped.current = true
+    setCodeText(text)
+    useUnsavedChangesStore.getState().setDirty(true)
+  }, [])
+
+  const handleRun = () => {
+    // Run applies what the user typed. Untyped text is a serialization of the
+    // document -- possibly stale after a live tree edit -- so there is nothing
+    // to apply: running it would revert that edit and, with the history wiped,
+    // leave nothing to recover. Same gate the exit path uses.
+    if (!codeTyped.current) {
+      setSolveError(null)
+      return
     }
+    const parsed = parsePartDoc(codeText)
+    if ('error' in parsed) {
+      setSolveError(parsed.error)
+      return
+    }
+    setSolveError(null)  // a successful parse retires the previous error banner
+    const current = docRef.current
+    // Running the doc back onto itself is a no-op: marking it dirty and
+    // dropping the history for nothing would wipe the tree edits the user
+    // actually made while the tab was open.
+    if (current && JSON.stringify(parsed.doc) !== JSON.stringify(current)) {
+      docRef.current = parsed.doc
+      setDoc(parsed.doc)
+      useUnsavedChangesStore.getState().setDirty(true)  // code tab edit replaces the doc
+      // A Run is a whole-document replacement with no undo entry behind it, so
+      // any history left from the feature tree would rewind past it.
+      discardHistoryAndSessions()
+      reSolve(parsed.doc, { bypassCache: true })
+    }
+    // The text now says exactly what the document says, so leaving the tab has
+    // nothing left to write back.
+    codeTyped.current = false
   }
 
   // User-initiated rollback drag: update the store, then persist the position
@@ -822,7 +925,7 @@ export default function Part() {
         mode={mode}
         setMode={setMode}
         codeText={codeText}
-        setCodeText={setCodeText}
+        setCodeText={handleCodeTextChange}
         solving={solving}
         solveResult={solveResult}
         handleRun={handleRun}

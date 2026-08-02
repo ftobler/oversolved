@@ -41,6 +41,22 @@ export function useUndoRedo(
     commitStacks(undo, [])  // a fresh edit invalidates any redo branch
   }, [commitStacks])
 
+  // The code tab replaces the whole document from text, outside the mutation
+  // funnel that owns the stacks, so there is nothing to pair an undo entry with.
+  // The history is dropped rather than left standing: a surviving entry holds a
+  // doc from before the YAML edit, and popping it would revert that edit
+  // together with the last real one, under the wrong label.
+  //
+  // Stacks only. The open edit/preview sessions are just as stale after such a
+  // replacement, but they belong to usePartDoc; it composes the teardown around
+  // this call the same way applyUndoRedo does above.
+  const clearStacks = useCallback(() => {
+    commitStacks([], [])
+    // A parked edit-session snapshot is the same history by another name;
+    // restoring it later would resurrect exactly the entries just dropped.
+    stackSnapshotRef.current = null
+  }, [commitStacks])
+
   const applyUndoRedo = useCallback(
     (direction: 'undo' | 'redo') => {
       const from = direction === 'undo' ? undoRef.current : redoRef.current
@@ -111,6 +127,7 @@ export function useUndoRedo(
     redoStack,
     suppressUndoRef,
     pushUndo,
+    clearStacks,
     handleUndo,
     handleRedo,
     saveUndoStackSnapshot,

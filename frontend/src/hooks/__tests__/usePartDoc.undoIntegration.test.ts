@@ -286,4 +286,26 @@ describe('usePartDoc undo/redo integration', () => {
     // The restored doc parks the bar at the end of its own feature list.
     expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
   })
+
+  it('discardSessions re-enables undo pushes without clearing the stacks', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('kept')) })
+    expect(result.current.undoStack).toHaveLength(1)
+
+    // A preview started while the code tab is open sets suppressUndoRef, which
+    // the code-tab exit must clear or every later tree edit is silently lost.
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation(renameTo('suppressed')) })
+    expect(result.current.undoStack).toHaveLength(1)
+
+    act(() => { result.current.discardSessions() })
+
+    act(() => { result.current.handleMutation(renameTo('after')) })
+    // The pre-existing entry survives (stacks untouched) and the new edit is
+    // undoable again (suppression cleared). The pushed entry stores the doc
+    // before the edit, which is the suppressed preview frame.
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(labelOf()).toBe('after')
+  })
 })
