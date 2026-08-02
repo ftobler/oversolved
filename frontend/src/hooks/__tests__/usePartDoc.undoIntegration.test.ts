@@ -148,45 +148,63 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a committed preview is one undo step back to the pre-preview doc', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
     const before = structuredClone(docRef.current)
 
     act(() => { result.current.startPreviewMode(before) })
     act(() => {
-      result.current.handleMutation(renameTo('drag-1'))
-      result.current.handleMutation(renameTo('drag-2'))
+      result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' })
+      result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#0000ff' })
     })
     // Suppressed while previewing: intermediate frames are not undo steps.
     expect(result.current.undoStack).toHaveLength(0)
 
-    act(() => { result.current.commitPreview(renameTo('drag-2')) })
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#0000ff' }) })
     expect(result.current.undoStack).toHaveLength(1)
+    expect((result.current.undoStack[0].doc.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
 
     act(() => { result.current.handleUndo() })
-    expect(labelOf()).toBe('first')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
   })
 
   it('a cancelled preview leaves no undo step and re-enables pushing', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.handleMutation(renameTo('drag-1')) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     act(() => { result.current.cancelPreview() })
     expect(result.current.undoStack).toHaveLength(0)
 
     // suppressUndoRef must have been cleared, or every later edit is lost.
-    act(() => { result.current.handleMutation(renameTo('after')) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#0000ff' }) })
     expect(result.current.undoStack).toHaveLength(1)
   })
 
   it('cancelPreview returns the exact pre-preview doc the caller restores from', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
 
-    act(() => { result.current.handleMutation(renameTo('a')) })
     const prePreview = structuredClone(docRef.current)
     act(() => { result.current.startPreviewMode(prePreview) })
-    act(() => { result.current.handleMutation(renameTo('previewed')) })
-    expect(labelOf()).toBe('previewed')
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
 
     let returned: PartDoc | null = null
     act(() => { returned = result.current.cancelPreview() })
@@ -233,11 +251,17 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a mutation after undoing mid-preview is still one undo step', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.handleMutation(renameTo('previewed')) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
 
     act(() => { result.current.handleUndo() })
     expect(result.current.undoStack).toHaveLength(0)
@@ -251,19 +275,25 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a redo after undoing mid-preview returns to the doc the preview had mutated', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.handleMutation(renameTo('previewed')) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
 
     act(() => { result.current.handleUndo() })
-    expect(labelOf()).toBe('first')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
 
     // The teardown dropped the preview, so redo must land on the doc the
     // preview had mutated, not on a stale snapshot the session re-applied.
     act(() => { result.current.handleRedo() })
-    expect(labelOf()).toBe('previewed')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
     expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.redoStack).toHaveLength(0)
   })
@@ -352,7 +382,7 @@ describe('usePartDoc undo/redo integration', () => {
     // A preview started while the code tab is open sets suppressUndoRef, which
     // the code-tab exit must clear or every later tree edit is silently lost.
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.handleMutation(renameTo('suppressed')) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     expect(result.current.undoStack).toHaveLength(1)
 
     act(() => { result.current.discardSessions() })
@@ -521,6 +551,170 @@ describe('usePartDoc undo/redo integration', () => {
     expect(label).toContain('transparency')
     expect(label).toContain('metalness')
     expect(label).not.toContain('color')
+  })
+
+  it('a sketch edit mid-preview escapes: color folds into preview_commit, the edit keeps its own entry, and cancel does not rewind', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'sk1', kind: 'sketch' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    // A line drawn while the popover is open is not a preview-scope mutation,
+    // so it escapes: the pending color folds into a preview_commit entry and
+    // the line pushes its own entry after it.
+    act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 5, 5], entityId: 'l1' } as Mutation) })
+
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect(result.current.undoStack[1].mutation.type).toBe('add_entity')
+    expect(sketchEntitiesOf().some(e => e.id === 'l1')).toBe(true)
+
+    // The preview already committed via the escape, so Cancel has nothing to
+    // rewind: the line must survive.
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toBeNull()
+    expect(sketchEntitiesOf().some(e => e.id === 'l1')).toBe(true)
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
+  })
+
+  it('a pure preview swallows slider moves, Apply pushes one preview_commit, and Cancel rewinds', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000', transparency: 0 } },
+      features: [],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const prePreview = structuredClone(docRef.current)
+
+    // Apply path: slider moves are swallowed, exactly one preview_commit.
+    act(() => { result.current.startPreviewMode(prePreview) })
+    act(() => {
+      result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.5 })
+      result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.7 })
+    })
+    expect(result.current.undoStack).toHaveLength(0)
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }) })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect((result.current.undoStack[0].doc.part_style?.b1 as { transparency?: number }).transparency).toBe(0)
+    expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0.7)
+
+    // Cancel path: the preview is rewound to the pre-preview doc, no new entry.
+    act(() => { result.current.startPreviewMode(prePreview) })
+    act(() => { result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.9 }) })
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toEqual(prePreview)
+    expect(result.current.undoStack).toHaveLength(1)
+  })
+
+  it('a preview inside a suppressed feature session keeps suppression on and commits beside the aggregate', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('session-edit')) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    // A color preview opened and applied mid-session.
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+
+    // Apply must NOT have reset suppression: the session is still the undo
+    // owner, so a later session edit stays swallowed.
+    act(() => { result.current.handleMutation(renameTo('still-swallowed')) })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+
+    act(() => { result.current.commitEditSession() })
+    // The session aggregate lands on top of the preview_commit: two real
+    // steps, and the session's own edits were never double-recorded.
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.undoStack[1].mutation.type).toBe('edit_session')
+  })
+
+  it('a nested startPreviewMode fails loud and leaves the first preview baseline intact', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const baseline = structuredClone(docRef.current)
+
+    act(() => { result.current.startPreviewMode(baseline) })
+    expect(() => {
+      act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    }).toThrow(/nested preview/)
+
+    // The nested call returned before touching the baseline: a slider move
+    // still swallows and the commit restores the FIRST preview's pre-preview
+    // doc, proving the baseline was not overwritten.
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect((result.current.undoStack[0].doc.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+  })
+
+  it('a solve-fabricated part_style entry does not manufacture a phantom preview_commit', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    // No slider was touched. A solve reconciles part_style and fabricates an
+    // entry for a body that had none; nothing else changed.
+    docRef.current.part_style = { ...(docRef.current.part_style ?? {}), b2: { name: 'part 2', color: '#00ff00' } }
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }) })
+
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  it('an end-snapped line mid-preview escapes: color folds into preview_commit and the group keeps its own entry', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'sk1', kind: 'sketch' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    // A snapped line routes through commitMutationGroup while the popover is
+    // open; it is not a preview-scope mutation, so it escapes the same way a
+    // single sketch edit does.
+    act(() => {
+      result.current.commitMutationGroup([
+        { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 5, 5], entityId: 'l2' },
+        { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:l2:start', 'entity:sk1:l1'] },
+      ] as Mutation[])
+    })
+
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect(result.current.undoStack[1].mutation.type).toBe('add_entity')
+    expect(sketchEntitiesOf().some(e => e.id === 'l2')).toBe(true)
+    expect(sketchConstraintsOf()).toHaveLength(1)
   })
 
   it('an end-snapped line committed as a group is one undo step restoring both', () => {

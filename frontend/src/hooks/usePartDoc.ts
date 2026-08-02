@@ -49,6 +49,19 @@ const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
   'set_constraint_sign',
 ])
 
+// The mutation types the color preview can produce. Suppression is scoped to
+// these: while a preview is open any OTHER mutation is an escape (see
+// handleMutation) that auto-commits the preview and then pushes normally, so a
+// sketch edit mid-preview is never swallowed and destroyed by a later cancel.
+// A suppressed feature edit session keeps its 'all' scope on top of this.
+const PREVIEW_SCOPE = new Set<Mutation['type']>([
+  'set_part_color',
+  'set_part_transparency',
+  'set_part_metalness',
+  'set_part_roughness',
+  'set_part_transmission',
+])
+
 // Whole-doc change test for the edit-session commit. part_style is excluded
 // because reconcilePartStyle fabricates entries there during a solve, which
 // would manufacture an edit out of nothing; rollback is excluded because it is
@@ -138,6 +151,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   useEffect(() => { solveResultsRef.current = solveResults }, [solveResults])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
+  // Whether the active preview has swallowed a PREVIEW_SCOPE mutation. The
+  // commit gate needs this to tell a user's color change from a part_style
+  // entry the solve fabricates: both are part_style diffs, only one earned an
+  // entry.
+  const previewTouchedRef = useRef(false)
   const editSnapshotRef = useRef<PartDoc | null>(null)
   // Whether the active edit session suppresses per-action undo entries. A
   // suppressed (feature) session commits one aggregate; a sketch session keeps
@@ -165,6 +183,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     editSessionSuppressedRef.current = false
     brepWithholdRef.current = { armed: false, doc: null }
     previewOriginalDoc.current = null
+    previewTouchedRef.current = false
     undoTeardownRef.current?.()
   }, [])
 
@@ -194,6 +213,64 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     discardSessions()
     clearStacks()
   }, [discardSessions, clearStacks])
+
+  const startPreviewMode = useCallback((originalDoc: PartDoc) => {
+    if (previewOriginalDoc.current !== null) {
+      failLoud('[usePartDoc] startPreviewMode called while a preview is already active (nested preview not supported)')
+      // A nested preview must not overwrite the live baseline.
+      return
+    }
+    previewOriginalDoc.current = structuredClone(originalDoc)
+    previewTouchedRef.current = false
+    suppressUndoRef.current = true
+  }, [suppressUndoRef])
+
+  const commitPreview = useCallback((mutation: Mutation) => {
+    if (!previewOriginalDoc.current) {
+      failLoud('[usePartDoc] commitPreview called with no active preview')
+      return
+    }
+    // Same-value apply (e.g. a preview that never changed the color) restores
+    // the pre-preview doc on undo, so it must not leave a dead step behind.
+    // The change gate excludes solve-fabricated part_style entries the way the
+    // edit-session diff does: only a real non-part_style change, or a preview
+    // that actually swallowed a scope mutation, earns an entry.
+    const original = previewOriginalDoc.current
+    const current = docRef.current
+    const styleChanged = previewTouchedRef.current
+      && current !== null
+      && previewMutationFor(original, current) !== null
+    if (current && (docDiffersForSession(original, current) || styleChanged)) {
+      // The popover applies set_part_color no matter what was edited, so the
+      // label is composed from the actual part_style diff; a preview whose
+      // change was elsewhere keeps the mutation it was handed.
+      pushUndo(previewMutationFor(original, current) ?? mutation, original)
+    }
+    previewTouchedRef.current = false
+    previewOriginalDoc.current = null
+    // A suppressed feature session is the undo owner of this preview: keep
+    // suppression on so the session's commit stays the single aggregate and
+    // the preview_commit sits beside it, instead of every later session edit
+    // pushing its own entry.
+    if (!editSessionSuppressedRef.current) {
+      suppressUndoRef.current = false
+    }
+  }, [suppressUndoRef, pushUndo, docRef, editSessionSuppressedRef])
+
+  const cancelPreview = useCallback(() => {
+    if (!previewOriginalDoc.current) {
+      // No live preview: it already committed (an escape), so there is nothing
+      // to rewind. null tells the caller to just close the popover.
+      return null
+    }
+    previewTouchedRef.current = false
+    const original = previewOriginalDoc.current
+    previewOriginalDoc.current = null
+    if (!editSessionSuppressedRef.current) {
+      suppressUndoRef.current = false
+    }
+    return original
+  }, [suppressUndoRef, editSessionSuppressedRef])
 
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
@@ -255,8 +332,26 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
 
     const brep = brepWithholdRef.current
-    if (suppressUndoRef.current) {
-      // A suppressed session or preview: no entry for this mutation.
+    // A mutation the color preview cannot produce while a preview is open is an
+    // escape: the popover is non-modal, so a sketch edit mid-preview folds the
+    // pending color into its own entry (commitPreview) and then pushes normally
+    // below, instead of being swallowed and destroyed by a later cancel. A
+    // suppressed feature session keeps its 'all' scope and swallows everything.
+    let escapedPreview = false
+    if (suppressUndoRef.current
+      && !editSessionSuppressedRef.current
+      && previewOriginalDoc.current !== null
+      && !PREVIEW_SCOPE.has(m.type)) {
+      const original = previewOriginalDoc.current
+      commitPreview(previewMutationFor(original, docRef.current) ?? m)
+      escapedPreview = true
+    }
+    if (suppressUndoRef.current && !escapedPreview) {
+      // A suppressed session swallows every mutation; a live preview swallows
+      // only the part_style mutations it produces.
+      if (previewOriginalDoc.current !== null && PREVIEW_SCOPE.has(m.type)) {
+        previewTouchedRef.current = true
+      }
     } else if (brep.armed) {
       // The brep dimension projection, or the compensating delete of a
       // cancelled one: apply without an entry and remember the pre-gesture doc
@@ -296,44 +391,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef])
-
-  const startPreviewMode = useCallback((originalDoc: PartDoc) => {
-    if (previewOriginalDoc.current !== null) {
-      failLoud('[usePartDoc] startPreviewMode called while a preview is already active (nested preview not supported)')
-    }
-    previewOriginalDoc.current = structuredClone(originalDoc)
-    suppressUndoRef.current = true
-  }, [suppressUndoRef])
-
-  const commitPreview = useCallback((mutation: Mutation) => {
-    if (!previewOriginalDoc.current) {
-      failLoud('[usePartDoc] commitPreview called with no active preview')
-      return
-    }
-    // Same-value apply (e.g. a preview that never changed the color) restores
-    // the pre-preview doc on undo, so it must not leave a dead step behind.
-    const original = previewOriginalDoc.current
-    if (docRef.current && JSON.stringify(docRef.current) !== JSON.stringify(original)) {
-      // The popover applies set_part_color no matter what was edited, so the
-      // label is composed from the actual part_style diff; a preview whose
-      // change was elsewhere keeps the mutation it was handed.
-      pushUndo(previewMutationFor(original, docRef.current) ?? mutation, original)
-    }
-    suppressUndoRef.current = false
-    previewOriginalDoc.current = null
-  }, [suppressUndoRef, pushUndo, docRef])
-
-  const cancelPreview = useCallback(() => {
-    if (!previewOriginalDoc.current) {
-      failLoud('[usePartDoc] cancelPreview called with no active preview')
-      return null
-    }
-    suppressUndoRef.current = false
-    const original = previewOriginalDoc.current
-    previewOriginalDoc.current = null
-    return original
-  }, [suppressUndoRef])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef, commitPreview])
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
@@ -442,6 +500,22 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     useUnsavedChangesStore.getState().setDirty(true)
     if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
+    // A group lands during a preview the same way a single mutation does: a
+    // snapped line drawn mid-preview is not a preview-scope mutation, so it
+    // escapes (commit the pending color first, then push the group normally).
+    // A group made entirely of preview-scope mutations is a preview frame and
+    // stays swallowed. A suppressed session swallows every group as today.
+    const sessionActive = editSessionSuppressedRef.current
+    const previewActive = previewOriginalDoc.current !== null
+    const groupInPreviewScope = !sessionActive
+      && previewActive
+      && ms.every(m => PREVIEW_SCOPE.has(m.type))
+    if (!sessionActive && previewActive && !groupInPreviewScope) {
+      const original = previewOriginalDoc.current!
+      commitPreview(previewMutationFor(original, docRef.current) ?? ms[0])
+    } else if (groupInPreviewScope) {
+      previewTouchedRef.current = true
+    }
     if (!suppressUndoRef.current) {
       // The first mutation names the entry so the undo tooltip has a label;
       // redo round-trips it, so only the doc matters, never the list itself.
@@ -453,7 +527,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef, commitPreview])
 
   // Arms the brep dimension pick/commit pair: the next mutation (the
   // projection) is applied without an undo entry and the one after it (the

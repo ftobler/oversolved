@@ -11,6 +11,8 @@ import { Wrapper } from '@/__tests__/test-utils'
 const mockStartPreviewMode = vi.hoisted(() => vi.fn())
 const mockCommitPreview = vi.hoisted(() => vi.fn())
 const mockCancelPreview = vi.hoisted(() => vi.fn())
+const mockSetDoc = vi.hoisted(() => vi.fn())
+const mockReSolve = vi.hoisted(() => vi.fn())
 // Holds the undo teardown the page registers, so a test can fire it without
 // needing a real undo stack behind the mocked usePartDoc.
 const undoTeardown = vi.hoisted(() => ({ current: null as (() => void) | null }))
@@ -32,6 +34,8 @@ vi.mock('../../hooks/usePartDoc', async () =>
     startPreviewMode: mockStartPreviewMode,
     commitPreview: mockCommitPreview,
     cancelPreview: mockCancelPreview,
+    setDoc: mockSetDoc,
+    reSolve: mockReSolve,
     registerUndoTeardown: (fn: (() => void) | null) => { undoTeardown.current = fn },
   }))
 
@@ -130,6 +134,23 @@ describe('Part Color Preview', () => {
     fireEvent.click(applyBtn)
 
     expect(mockCommitPreview).toHaveBeenCalled()
+  })
+
+  // A preview that already auto-committed (an escape) reports nothing to
+  // cancel. The doc then holds edits the preview no longer owns, so Cancel
+  // must close the popover without rewinding it.
+  it('cancel after a committed escape does not rewind the doc', async () => {
+    mockCancelPreview.mockReturnValue(null)
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+
+    fireEvent.click(screen.getByText('Cancel'))
+
+    expect(mockCancelPreview).toHaveBeenCalledTimes(1)
+    expect(mockSetDoc).not.toHaveBeenCalled()
+    expect(mockReSolve).not.toHaveBeenCalled()
   })
 
   // The popover once carried its own button copy, which drifted out of step with
