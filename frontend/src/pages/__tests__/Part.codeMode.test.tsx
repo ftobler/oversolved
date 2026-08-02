@@ -178,6 +178,80 @@ describe('Part - code tab and undo history', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
+  it('marks the applied YAML dirty after a Save-then-leave sequence', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: TYPED_DOC } })
+    // A Save serializes the UNAPPLIED document and clears the flag. Without a
+    // re-flag on the exit swap the applied YAML would read as clean and be
+    // dropped on the next navigation with no warning.
+    useUnsavedChangesStore.getState().setDirty(false)
+    await act(async () => { fireEvent.click(screen.getByTitle('Feature mode')) })
+
+    expect(featureIds()).toEqual(['typed1'])
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('typing the doc back to its original and leaving does not mark it dirty', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    const originalText = area.value
+    fireEvent.change(area, { target: { value: TYPED_DOC } })
+    fireEvent.change(area, { target: { value: originalText } })
+    useUnsavedChangesStore.getState().setDirty(false)
+    await act(async () => { fireEvent.click(screen.getByTitle('Feature mode')) })
+
+    // The equal-doc fast path skips the swap entirely, so it must not re-arm
+    // the warning for text that changed nothing.
+    expect(featureIds()).toEqual(['sk1'])
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('Run on typed YAML marks the document dirty', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: TYPED_DOC } })
+    useUnsavedChangesStore.getState().setDirty(false)
+    await act(async () => { fireEvent.click(screen.getByTitle('Run')) })
+
+    expect(featureIds()).toEqual(['typed1'])
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('Save after leaving the tab serializes the applied YAML', async () => {
+    const fetchMock = partDocFetchMock({ content: BASE_DOC })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: TYPED_DOC } })
+    await act(async () => { fireEvent.click(screen.getByTitle('Feature mode')) })
+    expect(featureIds()).toEqual(['typed1'])
+
+    await act(async () => { fireEvent.click(screen.getByTitle('Save')) })
+
+    // The save body must be the APPLIED document, not the base doc that was
+    // on screen when the tab was opened.
+    const calls = fetchMock.mock.calls as [string, RequestInit?][]
+    const put = calls.find(([url, init]) => url === '/api/documents/doc-1' && init?.method === 'PUT')
+    expect(put).toBeDefined()
+    const body = JSON.parse(put![1]!.body as string) as { content: string }
+    expect(parseYaml(body.content)).toEqual({
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'typed1', kind: 'sketch', label: 'Typed Sketch' }],
+    })
+    // The save succeeded end to end, so the applied YAML is now saved.
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
   it('leaving the tab with untouched text is not an edit', async () => {
     renderPart()
     await screen.findByTitle('Feature mode')

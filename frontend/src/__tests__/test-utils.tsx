@@ -73,12 +73,14 @@ export function partDocFetchMock({
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
+        text: () => Promise.resolve('{}'),
       } as Response)
     }
     if (url === '/api/documents/doc-1') {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ uuid: 'doc-1', name, content, permission }),
+        text: () => Promise.resolve('{}'),
       } as Response)
     }
     return Promise.resolve({ ok: false, status: 404 } as Response)

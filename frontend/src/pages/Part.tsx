@@ -249,6 +249,7 @@ export default function Part() {
         replacedDoc = true
         docRef.current = parsed.doc
         setDoc(parsed.doc)
+        useUnsavedChangesStore.getState().setDirty(true)  // code tab edit replaces the doc
         discardHistoryAndSessions()
         reSolve(parsed.doc, { bypassCache: true })
       }
