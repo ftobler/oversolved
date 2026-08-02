@@ -24,10 +24,6 @@ export function describeMutation(m: Mutation): string {
       return `add ${m.kind} with ${m.constraintKind} constraint in ${m.featureId}`
     case 'add_projected_entity':
       return `add ${m.kind} from ${m.source} in ${m.featureId}`
-    case 'add_point_at_intersection':
-      return `add point at intersection in ${m.featureId}`
-    case 'add_dock':
-      return `materialize docked point in ${m.featureId}`
     case 'add_rect':
       return `add rect in ${m.featureId}`
     case 'add_center_rect':
@@ -152,8 +148,6 @@ export function describeMutation(m: Mutation): string {
       return `add mirror ${m.label ?? m.featureId}`
     case 'set_mirror_field':
       return `set mirror ${m.field} to ${m.value}`
-    case 'mirror_entities':
-      return `mirror ${m.entityIds.length} entities in ${m.featureId}`
     case 'add_variable':
       return `add variable ${m.label ?? m.featureId}`
     case 'set_variable_field':
@@ -174,6 +168,10 @@ export function describeMutation(m: Mutation): string {
       // One entry collapses a whole edit session, so it names the feature that
       // was edited rather than reading as an on/off toggle.
       return m.featureId ? `edit ${m.featureId}` : 'edit feature'
+    case 'preview_commit':
+      // The label is pre-composed from the doc diff at commit time, so there is
+      // no per-type formatting left to do here.
+      return m.description ?? 'apply preview'
     default:
       return 'unknown mutation'
   }

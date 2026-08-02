@@ -281,7 +281,6 @@ const ROUND_TRIPS: RoundTripCase[] = [
   // mirror
   { name: 'mirror add_mirror', makeDoc: emptyDoc, mutation: { type: 'add_mirror', featureId: 'm1', label: 'Mirror' } as Mutation },
   { name: 'mirror set_mirror_field', makeDoc: mirrorDoc, mutation: { type: 'set_mirror_field', featureId: 'm1', field: 'plane', value: '@top' } as Mutation },
-  { name: 'mirror mirror_entities', makeDoc: sketchDoc, mutation: { type: 'mirror_entities', featureId: 'sk1', entityIds: ['l1'], mirrorLineId: 'l2' } as Mutation },
 
   // variable
   { name: 'variable add_variable', makeDoc: emptyDoc, mutation: { type: 'add_variable', featureId: 'v1', label: 'v1' } as Mutation },

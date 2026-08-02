@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 describe('useUndoRedo', () => {
@@ -48,8 +49,11 @@ describe('useUndoRedo', () => {
     expect(reSolve).toHaveBeenCalledWith(docA)
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(1)
-    expect(result.current.redoStack[0].doc).toBe(docB)
-    expect(docRef.current).toBe(docA)
+    // The counterpart holds a snapshot of the departing doc, not a reference,
+    // so a later in-place mutation of docB cannot corrupt the redo entry.
+    expect(result.current.redoStack[0].doc).toEqual(docB)
+    expect(result.current.redoStack[0].doc).not.toBe(docB)
+    expect(docRef.current).toEqual(docA)
   })
 
   it('handleRedo restores next doc state', () => {
@@ -229,7 +233,7 @@ describe('useUndoRedo', () => {
     expect(result.current.undoStack).toHaveLength(2)
   })
 
-  it('undo with a null docRef still restores but drops the un-pairable counterpart', () => {
+  it('undo with a null docRef is a no-op that keeps the stacks paired', () => {
     const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
     const docRef = { current: null as PartDoc | null }
     const setDoc = vi.fn()
@@ -238,10 +242,11 @@ describe('useUndoRedo', () => {
     act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
     act(() => { result.current.handleUndo() })
 
-    expect(setDoc).toHaveBeenCalledWith(docA)
-    expect(result.current.undoStack).toHaveLength(0)
-    // There is no doc being left behind to pair a redo with, so the redo branch
-    // stays empty rather than holding an entry that could never round-trip.
+    // A history with no current doc cannot be popped: moving the entry would
+    // orphan its counterpart and permanently desync the paired stacks, so the
+    // undo does nothing rather than dropping the entry.
+    expect(setDoc).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.redoStack).toHaveLength(0)
   })
 
@@ -372,5 +377,52 @@ describe('useUndoRedo', () => {
     expect(setDoc).toHaveBeenLastCalledWith(docA)
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(2)
+  })
+
+  it('pushUndo stores a clone, so mutating the source doc later cannot corrupt the entry', () => {
+    const sourceDoc = { version: 1, kind: 'part', features: [{ id: 'f1', label: 'before' }] } as PartDoc
+    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'rename_feature' } as Mutation, sourceDoc) })
+    // A future path that mutates the current doc in place must not rewrite
+    // history: the entry holds an independent snapshot.
+    sourceDoc.features![0].label = 'corrupted'
+    expect((result.current.undoStack[0].doc.features![0] as { label: string }).label).toBe('before')
+  })
+
+  it('undo pairs a clone of the departing doc onto the redo stack', () => {
+    const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+    const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
+    const docRef = { current: docB }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
+    act(() => { result.current.handleUndo() })
+
+    // The counterpart captured the departing doc by value; later mutation of
+    // docB must not alter what redo would restore.
+    expect(result.current.redoStack[0].doc).not.toBe(docB)
+    docB.features![0].id = 'corrupted'
+    expect((result.current.redoStack[0].doc.features![0] as { id: string }).id).toBe('f2')
+  })
+
+  it('undo always sets the doc dirty, even when it restores the exact saved content', () => {
+    // The saved content this session started from; the undo restores it
+    // verbatim, so a smart flag would clear. The conservative rule keeps the
+    // doc unsaved instead, because nothing retains the saved content to diff
+    // against, and the pin acknowledges that trade-off.
+    const saved = { version: 1, kind: 'part', features: [{ id: 'f1', kind: 'sketch' }] } as PartDoc
+    const edited = { version: 1, kind: 'part', features: [{ id: 'f1', kind: 'sketch', label: 'edited' }] } as PartDoc
+    const docRef = { current: edited }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'rename_feature' } as Mutation, saved) })
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    act(() => { result.current.handleUndo() })
+
+    expect(docRef.current).toEqual(saved)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 })

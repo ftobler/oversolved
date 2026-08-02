@@ -5,6 +5,7 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { describeMutation } from '@/utils/core/mutationDescriptions'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 // Exercises usePartDoc against the REAL useUndoRedo and the REAL mutation
@@ -476,6 +477,50 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }) })
 
     expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  it('a no-change color Apply pushes nothing and does not set dirty', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    // Opening the popover and applying without touching anything commits a doc
+    // identical to the pre-preview doc: no step, and the doc is not dirtied.
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }) })
+
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('a preview that changed multiple material fields commits with a composite label', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => {
+      result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.5 })
+      result.current.handleMutation({ type: 'set_part_metalness', bodyId: 'b1', metalness: 0.8 })
+    })
+    // The popover applies set_part_color no matter what was actually edited, so
+    // the committed label must come from the doc diff, not that mutation.
+    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }) })
+
+    expect(result.current.undoStack).toHaveLength(1)
+    const label = describeMutation(result.current.undoStack[0].mutation)
+    expect(label).toContain('transparency')
+    expect(label).toContain('metalness')
+    expect(label).not.toContain('color')
   })
 
   it('an end-snapped line committed as a group is one undo step restoring both', () => {

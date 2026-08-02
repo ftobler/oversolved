@@ -137,4 +137,44 @@ describe('doc.rollback mirrors the rollback bar', () => {
 
     expect(docRef.current!.rollback).toBe(2)
   })
+
+  it('a programmatic set_rollback without a pre-synced store fails loud', () => {
+    setDoc(makeDoc())
+    // The store keeps its default position while the payload claims 2: the only
+    // writer of doc.rollback is the mirror, so the mutation would silently no-op
+    // while still pushing an entry. The guard trips instead of swallowing it.
+    usePartEditorStore.getState().setRollbackPosition(null)
+    const { result } = renderPartDoc()
+
+    expect(() => {
+      act(() => { result.current.handleMutation({ type: 'set_rollback', position: 2 }) })
+    }).toThrow('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
+  })
+
+  it('a reorder leaves a parked rollback index pointing at the raw position', () => {
+    // Rollback is a plain index into the feature list, deliberately not a
+    // pointer that follows the reordered feature: the mirror rewrites
+    // doc.rollback from the store's raw position, so after the reorder the bar
+    // silently names a different feature. This pins the current semantics.
+    setDoc({
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'Origin', kind: 'origin' },
+        { id: 'Top', kind: 'plane' },
+        { id: 'Front', kind: 'plane' },
+        { id: 'Right', kind: 'plane' },
+        { id: 'A', kind: 'sketch' },
+        { id: 'B', kind: 'extrude' },
+        { id: 'C', kind: 'extrude' },
+      ],
+    } as PartDoc)
+    usePartEditorStore.getState().setRollbackPosition(5)
+    const { result } = renderPartDoc()
+
+    act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'C', toIndex: 4 }) })
+
+    expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['Origin', 'Top', 'Front', 'Right', 'C', 'A', 'B'])
+    expect(docRef.current!.rollback).toBe(5)
+  })
 })

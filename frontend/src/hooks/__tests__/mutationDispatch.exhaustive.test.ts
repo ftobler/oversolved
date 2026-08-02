@@ -13,8 +13,6 @@ export const ALL_MUTATION_TYPES = [
   'add_entity',
   'add_entity_with_constraint',
   'add_projected_entity',
-  'add_point_at_intersection',
-  'add_dock',
   'add_rect',
   'add_center_rect',
   'add_ngon',
@@ -76,7 +74,6 @@ export const ALL_MUTATION_TYPES = [
   'set_part_metalness',
   'set_part_roughness',
   'set_part_transmission',
-  'mirror_entities',
   'add_mirror',
   'set_mirror_field',
   'add_variable',
@@ -86,6 +83,7 @@ export const ALL_MUTATION_TYPES = [
   'set_feature_suppression',
   'set_rollback',
   'edit_session',
+  'preview_commit',
   'remove_dangling_content',
 ]
 

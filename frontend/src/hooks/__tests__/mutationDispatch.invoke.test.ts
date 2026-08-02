@@ -123,22 +123,6 @@ describe('mutationHandlers forward sketch mutations', () => {
     expect(feature(doc, 'S1')!.entities!.some(e => e.source === '@ex1/edge/1')).toBe(true)
   })
 
-  it('add_point_at_intersection adds a point entity', () => {
-    const doc = sketchDoc()
-    const before = feature(doc, 'S1')!.entities!.filter(e => e.kind === 'point').length
-    mutationHandlers.add_point_at_intersection(doc, {
-      type: 'add_point_at_intersection', featureId: 'S1', at: [4, 0], curveEntityIds: ['l1', 'c1'],
-    })
-    expect(feature(doc, 'S1')!.entities!.filter(e => e.kind === 'point').length).toBe(before + 1)
-  })
-
-  it('add_dock is dispatched (no-op without a tangent host)', () => {
-    const doc = sketchDoc()
-    expect(() => mutationHandlers.add_dock(doc, {
-      type: 'add_dock', featureId: 'S1', at: [4, 4], hostConstraintId: 'missing',
-    })).not.toThrow()
-  })
-
   it('add_rect / add_center_rect / add_ngon add geometry', () => {
     const doc = sketchDoc()
     const n0 = feature(doc, 'S1')!.entities!.length
@@ -159,15 +143,6 @@ describe('mutationHandlers forward sketch mutations', () => {
     const doc = sketchDoc()
     mutationHandlers.toggle_construction(doc, { type: 'toggle_construction', targets: ['entity:S1:l1'] })
     expect(feature(doc, 'S1')!.entities!.find(e => e.id === 'l1')!.construction).toBe(true)
-  })
-
-  it('mirror_entities adds mirrored copies', () => {
-    const doc = sketchDoc()
-    const n0 = feature(doc, 'S1')!.entities!.length
-    mutationHandlers.mirror_entities(doc, {
-      type: 'mirror_entities', featureId: 'S1', entityIds: ['l1'], mirrorLineId: 'ml',
-    })
-    expect(feature(doc, 'S1')!.entities!.length).toBeGreaterThan(n0)
   })
 
   it('set_feature_plane updates the sketch plane', () => {

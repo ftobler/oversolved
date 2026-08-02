@@ -65,7 +65,6 @@ export {
   applySetTransformField,
   applyAddTransformBody,
   applyRemoveTransformBody,
-  applyMirrorEntities,
   applyAddMirror,
   applySetMirrorField,
   applyAddVariable,

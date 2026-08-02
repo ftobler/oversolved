@@ -29,7 +29,8 @@ describe('useUndoRedo integration', () => {
     // Undo once: goes to docB, redo has docC
     act(() => { result.current.handleUndo() })
     expect(result.current.redoStack).toHaveLength(1)
-    expect(result.current.redoStack[0].doc).toBe(docC)
+    // The counterpart is a snapshot of the departing doc, not a shared reference.
+    expect(result.current.redoStack[0].doc).toEqual(docC)
 
     // Redo: goes back to docC, undo restored
     act(() => { result.current.handleRedo() })

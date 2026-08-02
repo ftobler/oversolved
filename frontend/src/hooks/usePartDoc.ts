@@ -65,6 +65,27 @@ function docDiffersForSession(a: PartDoc, b: PartDoc): boolean {
   return JSON.stringify(strip(a)) !== JSON.stringify(strip(b))
 }
 
+// The commit label for a preview apply. The color popover is the only preview
+// producer and it edits per-body material fields, so the diff is against the
+// pre-preview doc's part_style; the popover always applies `set_part_color` on
+// Apply even when only a slider moved, so naming what actually changed is more
+// honest than reusing that mutation. Returns null when nothing in part_style
+// changed, letting the caller fall back to the mutation it was handed.
+function previewMutationFor(original: PartDoc, current: PartDoc): Mutation | null {
+  const before = original.part_style ?? {}
+  const after = current.part_style ?? {}
+  const bodyIds = new Set([...Object.keys(before), ...Object.keys(after)])
+  const changed: string[] = []
+  for (const bodyId of bodyIds) {
+    const a = (before[bodyId] ?? {}) as Record<string, unknown>
+    const b = (after[bodyId] ?? {}) as Record<string, unknown>
+    const fields = Object.keys({ ...a, ...b }).filter(f => a[f] !== b[f])
+    if (fields.length > 0) changed.push(`edit ${bodyId}: ${fields.join(', ')}`)
+  }
+  if (changed.length === 0) return null
+  return { type: 'preview_commit', description: changed.join('; ') }
+}
+
 // A serializable key of only the parts of `doc` an idempotent mutation can
 // change, so the no-op guard compares O(touched) instead of O(doc). The
 // rollback mirror writes doc.rollback outside a session, so that is always
@@ -196,6 +217,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // feature moves the bar to the end, and that must reach the doc too).
     const editorStore = usePartEditorStore.getState()
     if (editorStore.editingFeatureId === null) {
+      // The set_rollback payload is advisory: the store owns the position and
+      // the mirror writes it into the doc, so a payload that disagrees here
+      // means the mutation was dispatched without pre-syncing the store, which
+      // would silently no-op while still pushing an entry. During an edit the
+      // store legitimately diverges (the bar is pinned transiently), so the
+      // guard only runs outside one.
+      if (m.type === 'set_rollback' && editorStore.rollbackPosition !== m.position) {
+        failLoud('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
+      }
       applySetRollback(next, editorStore.rollbackPosition)
     }
 
@@ -285,7 +315,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // the pre-preview doc on undo, so it must not leave a dead step behind.
     const original = previewOriginalDoc.current
     if (docRef.current && JSON.stringify(docRef.current) !== JSON.stringify(original)) {
-      pushUndo(mutation, original)
+      // The popover applies set_part_color no matter what was edited, so the
+      // label is composed from the actual part_style diff; a preview whose
+      // change was elsewhere keeps the mutation it was handed.
+      pushUndo(previewMutationFor(original, docRef.current) ?? mutation, original)
     }
     suppressUndoRef.current = false
     previewOriginalDoc.current = null

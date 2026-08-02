@@ -826,8 +826,6 @@ export type Mutation =
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string }
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string }
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
-  | { type: 'add_point_at_intersection'; featureId: string; at: Point; curveEntityIds: string[] }
-  | { type: 'add_dock'; featureId: string; at: Point; hostConstraintId: string }
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number }
@@ -888,7 +886,6 @@ export type Mutation =
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
   | { type: 'set_part_roughness'; bodyId: string; roughness: number }
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
-  | { type: 'mirror_entities'; featureId: string; entityIds: string[]; mirrorLineId: string }
   | { type: 'add_mirror'; featureId: string; label?: string }
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | { type: 'add_variable'; featureId: string; label?: string }
@@ -899,6 +896,9 @@ export type Mutation =
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
   | { type: 'set_rollback'; position: number | null }
   | { type: 'edit_session'; featureId: string; description?: string }
+  // Undo-only label carrier: the preview apply's entry doc is what undo
+  // restores, and this type only names the composite change the label shows.
+  | { type: 'preview_commit'; description: string }
   // User-invoked cleanup: removes dangling projected entities and superfluous
   // constraints flagged by the last solve. The payload is a per-feature plan
   // derived from solveResults at command time, so the handler stays pure.

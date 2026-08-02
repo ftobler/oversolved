@@ -2,10 +2,9 @@ import { useState, useCallback, useRef } from 'react'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
-
-const MAX_UNDO_DEPTH = 50
 
 export function useUndoRedo(
   docRef: React.MutableRefObject<PartDoc | null>,
@@ -36,7 +35,10 @@ export function useUndoRedo(
   }, [])
 
   const pushUndo = useCallback((mutation: Mutation, currentDoc: PartDoc) => {
-    const undo = [...undoRef.current, { doc: currentDoc, mutation }]
+    // The entry holds a snapshot, never a reference: handleMutation clones
+    // before pushing today, but any path that mutates the current doc in place
+    // would silently rewrite history if the stored object were shared.
+    const undo = [...undoRef.current, { doc: structuredClone(currentDoc), mutation }]
     if (undo.length > MAX_UNDO_DEPTH) undo.shift()
     commitStacks(undo, [])  // a fresh edit invalidates any redo branch
   }, [commitStacks])
@@ -63,6 +65,12 @@ export function useUndoRedo(
       const to = direction === 'undo' ? redoRef.current : undoRef.current
       if (from.length === 0) return
 
+      // A non-empty stack with no current doc means the history describes a doc
+      // that does not exist. Popping would orphan the counterpart entry and
+      // permanently desync the paired stacks, so the whole undo is a no-op.
+      if (!docRef.current) return
+      const preDoc = docRef.current
+
       // Exit every open session before the doc swaps. A session that survives
       // would later commit a spurious entry keyed to the pre-undo doc, or cancel
       // straight back to it and silently revert the undo. An empty stack is a
@@ -74,9 +82,10 @@ export function useUndoRedo(
       const entry = from[from.length - 1]
       const nextFrom = from.slice(0, -1)
       // The doc we are leaving becomes the counterpart entry, so the same
-      // mutation label round-trips in both directions.
-      const preDoc = docRef.current
-      const nextTo = preDoc ? [...to, { doc: preDoc, mutation: entry.mutation }] : to
+      // mutation label round-trips in both directions. The clone mirrors
+      // pushUndo: the departing doc must not be shared with the entry.
+      const nextTo = [...to, { doc: structuredClone(preDoc), mutation: entry.mutation }]
+      if (nextTo.length > MAX_UNDO_DEPTH) nextTo.shift()
 
       commitStacks(
         direction === 'undo' ? nextFrom : nextTo,

@@ -7,8 +7,6 @@ import {
   applyAddEntity,
   applyAddEntityWithConstraint,
   applyAddProjectedEntity,
-  applyAddPointAtIntersection,
-  applyAddDock,
   applyAddRect,
   applyAddCenterRect,
   applyAddNgon,
@@ -74,7 +72,6 @@ import {
   applySetPartTransmission,
   applyReorderFeatures,
   applyReorderPickField,
-  applyMirrorEntities,
   applyAddMirror,
   applySetMirrorField,
   applyAddVariable,
@@ -117,10 +114,6 @@ export const mutationHandlers: MutationHandlers = {
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId),
   add_projected_entity: (next, m) =>
     applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
-  add_point_at_intersection: (next, m) =>
-    applyAddPointAtIntersection(next, m.featureId, m.at, m.curveEntityIds),
-  add_dock: (next, m) =>
-    applyAddDock(next, m.featureId, m.at, m.hostConstraintId),
   add_rect: (next, m) =>
     applyAddRect(next, m.featureId, m.p0, m.p1),
   add_center_rect: (next, m) =>
@@ -243,8 +236,6 @@ export const mutationHandlers: MutationHandlers = {
     applySetPartRoughness(next, m.bodyId, m.roughness),
   set_part_transmission: (next, m) =>
     applySetPartTransmission(next, m.bodyId, m.transmission),
-  mirror_entities: (next, m) =>
-    applyMirrorEntities(next, m.featureId, m.entityIds, m.mirrorLineId),
   add_mirror: (next, m) =>
     applyAddMirror(next, m.featureId, m.label),
   set_mirror_field: (next, m) =>
@@ -263,7 +254,10 @@ export const mutationHandlers: MutationHandlers = {
     applyRemoveDanglingContent(next, m.features),
   // doc.rollback is written by the rollback mirror in handleMutation, which is
   // the single writer for it; this mutation exists to carry the undo entry and
-  // trigger the re-solve.
+  // trigger the re-solve. The position payload is advisory: the store owns the
+  // position and the mirror copies the store into the doc, so a dispatch must
+  // pre-sync the store first (handleUserRollbackChange in Part.tsx does).
   set_rollback: () => {},
   edit_session: () => {},  // undo-only marker; no doc mutation needed
+  preview_commit: () => {},  // undo-only label carrier; the entry doc is what matters
 }
