@@ -98,14 +98,30 @@ export function buildKeyString(e: KeyboardEvent): string {
   return parts.join('+')
 }
 
+// Focusable controls that own their keystrokes: typing in these must never
+// trigger document-level commands (undo, tools, constraints).
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
+
+/**
+ * True when a keydown should not trigger document-level commands: the event
+ * targets an interactive/editable control, or it is an IME composition event
+ * whose key is not yet a final character. Central place to extend the guard
+ * for any future interactive control.
+ */
+export function isEditableTarget(e: KeyboardEvent): boolean {
+  if (e.isComposing) return true
+  if (e.key === 'Unidentified') return true
+  const tag = (e.target as HTMLElement)?.tagName
+  return tag != null && EDITABLE_TAGS.has(tag)
+}
+
 /**
  * Attempt to dispatch a keyboard event through the keymap.
  * Returns true if the event was handled (caller should call e.preventDefault()).
- * Skips events that originate from input/textarea elements.
+ * Skips events that originate from input/textarea/select elements.
  */
 export function dispatchKey(e: KeyboardEvent): boolean {
-  const tag = (e.target as HTMLElement)?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return false
+  if (isEditableTarget(e)) return false
   const key = buildKeyString(e)
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
   const cmd = (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]

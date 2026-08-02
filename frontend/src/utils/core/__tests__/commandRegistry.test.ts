@@ -9,6 +9,7 @@ import {
   clearAllHandlers,
   buildKeyString,
   dispatchKey,
+  isEditableTarget,
 } from '@/utils/core/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -19,7 +20,7 @@ beforeEach(() => { clearAllHandlers() })
 // Helper: build a minimal fake KeyboardEvent
 function fakeKey(
   key: string,
-  modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>> = {},
+  modifiers: Partial<Pick<KeyboardEvent, 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey' | 'isComposing'>> = {},
   target: Partial<HTMLElement> = {}
 ): KeyboardEvent {
   return {
@@ -28,6 +29,7 @@ function fakeKey(
     shiftKey: false,
     altKey: false,
     metaKey: false,
+    isComposing: false,
     ...modifiers,
     target,
     preventDefault: vi.fn(),
@@ -155,6 +157,34 @@ describe('CORE_KEYBINDINGS', () => {
   })
 })
 
+// ─── isEditableTarget ───
+
+describe('isEditableTarget', () => {
+  it('returns true for INPUT', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'INPUT' }))).toBe(true)
+  })
+
+  it('returns true for TEXTAREA', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'TEXTAREA' }))).toBe(true)
+  })
+
+  it('returns true for SELECT', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'SELECT' }))).toBe(true)
+  })
+
+  it('returns false for a plain DIV', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'DIV' }))).toBe(false)
+  })
+
+  it('returns true during IME composition', () => {
+    expect(isEditableTarget(fakeKey('a', { isComposing: true }))).toBe(true)
+  })
+
+  it('returns true when the key is Unidentified', () => {
+    expect(isEditableTarget(fakeKey('Unidentified'))).toBe(true)
+  })
+})
+
 // ─── registerCommand / executeCommand / unregisterCommand ───
 
 describe('registerCommand / executeCommand / unregisterCommand', () => {
@@ -213,6 +243,47 @@ describe('dispatchKey', () => {
     const fn = vi.fn()
     registerCommand('__test__', fn)
     const e = fakeKey('a', {}, { tagName: 'TEXTAREA' })
+    expect(dispatchKey(e)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('returns false and does not invoke undo handler when target is SELECT with ctrl+z', () => {
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    const e = fakeKey('z', { ctrlKey: true }, { tagName: 'SELECT' })
+    expect(dispatchKey(e)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+    expect(e.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('returns false and does not invoke tool/constraint commands when target is SELECT', () => {
+    const togglePlane = vi.fn()
+    const addExtrude = vi.fn()
+    const applyHorizontal = vi.fn()
+    registerCommand('toggle_plane_visibility', togglePlane)
+    registerCommand('add_extrude', addExtrude)
+    registerCommand('apply_horizontal', applyHorizontal)
+    for (const key of ['p', 'e', 'h']) {
+      const e = fakeKey(key, {}, { tagName: 'SELECT' })
+      expect(dispatchKey(e)).toBe(false)
+    }
+    expect(togglePlane).not.toHaveBeenCalled()
+    expect(addExtrude).not.toHaveBeenCalled()
+    expect(applyHorizontal).not.toHaveBeenCalled()
+  })
+
+  it('dispatches ctrl+z when target is a plain DIV', () => {
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    const e = fakeKey('z', { ctrlKey: true }, { tagName: 'DIV' })
+    expect(dispatchKey(e)).toBe(true)
+    expect(fn).toHaveBeenCalledOnce()
+  })
+
+  it('does not dispatch when a keydown is composing on a DIV', () => {
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    const e = fakeKey('z', { ctrlKey: true, isComposing: true }, { tagName: 'DIV' })
     expect(dispatchKey(e)).toBe(false)
     expect(fn).not.toHaveBeenCalled()
   })
