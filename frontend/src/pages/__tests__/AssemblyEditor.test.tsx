@@ -1199,5 +1199,68 @@ describe('AssemblyEditor undo/redo', () => {
     const first = useAssemblyStore.getState().mates[0].id
     expect(findMate(useAssemblyStore.getState().doc!, first)!.offset).toBeUndefined()
   })
+
+  // Session hygiene: a toolbar mate insert while the instance editor is open
+  // must close and commit the instance session FIRST, so no two editors share
+  // the coalescing buffer and cancelling the mate cannot drop the instance's
+  // already-applied edits.
+  it('a toolbar mate insert closes an open instance editor and commits its session first', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+
+    // Instance editor open; type a position so a coalesced session pins.
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+    expect(undoStack()).toHaveLength(1)  // the Add part step; the position edit stays coalesced
+
+    fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
+    await tick()
+    // The instance editor is closed, the mate editor took its place.
+    expect(screen.queryByLabelText('Position X')).toBeNull()
+    expect(screen.getByLabelText('Offset X')).toBeTruthy()
+    // The switch committed the instance session as its own step, and the insert
+    // pushed its own: three distinct pre-docs, nothing shared.
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position', 'Add mate'])
+
+    // Cancel the mate drops only its own session.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position', 'Add mate'])
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+  })
+
+  it('after an instance edit, a mate insert then cancel, undo still reverts the instance edit', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+
+    // Undo 1 removes the inserted mate; undo 2 reverts the committed instance edit.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().mates).toHaveLength(0)
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(0)
+  })
 })
 

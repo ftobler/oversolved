@@ -53,10 +53,12 @@ export function useAssemblyUndoRedo(
   const applyUndoRedo = useCallback((direction: 'undo' | 'redo') => {
     const store = useAssemblyStore.getState()
     const from = direction === 'undo' ? store.undoStack : store.redoStack
-    if (from.length === 0) return
     // An undo mid-edit abandons the uncommitted session: its coalesced doc
-    // describes a state the restore is about to replace.
+    // describes a state the restore is about to replace. The drop runs even for
+    // an empty-stack undo, or a later commit would pin the coalesced edits to a
+    // pre-doc that no longer corresponds to the doc they were made on.
     pendingSession.current = null
+    if (from.length === 0) return
     const entry = from[from.length - 1]
     const nextFrom = from.slice(0, -1)
     // The doc we are leaving becomes the counterpart entry, so the same label

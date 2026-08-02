@@ -252,15 +252,33 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     [renameDoc, uuid],
   )
 
+  // At most one editor is open at a time. Opening a new one (a mate insert, a
+  // pencil click) first closes any open editor, committing its coalesced session
+  // so each subject's edits land in their own step and no two editors ever share
+  // the one pending buffer.
+  const closeOpenEditor = useCallback(() => {
+    if (editingMateId) {
+      setEditingMateId(null)
+      mateSnapshot.current = null
+    }
+    if (editingInstanceHandle) {
+      setEditingInstanceHandle(null)
+      instanceSnapshot.current = null
+    }
+    commitSession()
+  }, [editingMateId, editingInstanceHandle, commitSession])
+
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. No solve yet:
   // an unreferenced mate has nothing to constrain. The snapshot is the empty
   // mate, so Cancel restores it to that pre-edit state.
   const handleInsertMate = useCallback((kind: MateKind) => {
     // The append is a structural op: mutateOneShot pushes its own step even when
-    // another mate's editor is open (and about to be replaced), so cancelling
-    // the new editor can never lose the insert.
+    // another editor is open (and about to be replaced), so cancelling the new
+    // editor can never lose the insert. The open editor is closed first so the
+    // fresh mate never folds into the previous editor's coalescing session.
     const id = mintFeatureId()
+    closeOpenEditor()
     mateSnapshot.current = {
       id,
       def: { kind, ref_a: { ...EMPTY_MATE_REF }, ref_b: { ...EMPTY_MATE_REF } },
@@ -270,7 +288,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     store.setSelectedMateId(id)
     setEditingMateId(id)  // a fresh mate opens straight into its editor to pick refs
     store.setActiveMateField({ featureId: id, field: 'ref_a' })
-  }, [mutateOneShot])
+  }, [mutateOneShot, closeOpenEditor])
 
   // The [Delete] key maps to `delete_selected` (CORE_KEYBINDINGS); the store
   // decides whether that is the selected mate or the selected part. The delete
@@ -404,12 +422,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // gizmo to the part being edited. Switching editors commits any open session
   // so each edited subject's changes land in their own step.
   const handleEditInstance = useCallback((handle: string) => {
-    if (editingMateId || editingInstanceHandle) commitSession()
+    closeOpenEditor()
     const inst = doc ? findInstance(doc, handle) : undefined
     instanceSnapshot.current = inst ? { handle, inst: { ...inst } } : null
     setEditingInstanceHandle(handle)
     useAssemblyStore.getState().setSelectedPartHandle(handle)
-  }, [doc, editingMateId, editingInstanceHandle, commitSession])
+  }, [doc, closeOpenEditor])
 
   const handleCommitInstance = useCallback(() => {
     instanceSnapshot.current = null
@@ -472,14 +490,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // Switching editors commits any open session so each mate's edits land in
   // their own step instead of merging under the earlier session's pre-doc.
   const handleEditMate = useCallback((featureId: string) => {
-    if (editingMateId || editingInstanceHandle) commitSession()
+    closeOpenEditor()
     if (mateSnapshot.current?.id !== featureId) {
       const def = doc ? findMate(doc, featureId) : undefined
       mateSnapshot.current = def ? { id: featureId, def: { ...def } } : null
     }
     useAssemblyStore.getState().setSelectedMateId(featureId)
     setEditingMateId(featureId)
-  }, [doc, editingMateId, editingInstanceHandle, commitSession])
+  }, [doc, closeOpenEditor])
 
   // Accept: leaving the mate disarms its field, which settles the owed solve,
   // and the coalesced session commits as one undo step.

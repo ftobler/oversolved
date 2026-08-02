@@ -217,6 +217,67 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.undoStack).toHaveLength(0)
   })
 
+  it('undo on an empty stack still drops a pinned coalescing session', () => {
+    const docRef = { current: docWith(['a']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    // An editor on a fresh document pins a session on its first edit even
+    // though the undo stack is empty.
+    act(() => { result.current.recordSessionEdit(docRef.current!, 'Edit mate') })
+    act(() => { result.current.handleUndo() })
+
+    // The empty-stack undo must not leave the session pinned: a later OK would
+    // otherwise push a stale pre-session doc with a label that matches nothing.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  it('cancelSession drops the pinned session and pushes nothing', () => {
+    const docRef = { current: docWith(['a']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.recordSessionEdit(docRef.current!, 'Edit mate') })
+    act(() => { result.current.cancelSession() })
+    // Cancel already reverted the edits via its snapshot, so closing the editor
+    // must not charge an entry to the dropped session.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  it('committing one editor then cancelling a later editor keeps both steps separate', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docA }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    // Page flow for "instance editor open, then insert mate": session A is the
+    // instance editor (closed and committed by the insert), session B is the
+    // mate editor (dropped by its Cancel).
+    act(() => { result.current.recordSessionEdit(docA, 'Edit instance') })
+    docRef.current = docB  // the instance edit applied
+    act(() => {
+      result.current.commitSession()  // the insert closes session A
+      result.current.pushUndo(docRef.current!, 'Add mate')  // the insert's own step
+      result.current.recordSessionEdit(docRef.current!, 'Edit mate')  // session B pins
+    })
+    act(() => { result.current.cancelSession() })  // Cancel drops only session B
+
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Edit instance', 'Add mate'])
+
+    // A later OK on the cancelled editor must not push a stale entry.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Edit instance', 'Add mate'])
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   // The stale-scene regression: undoing a drag restores the pre-drag seed doc
   // while the store still holds the post-drag solved scene, so the viewport
   // renders the dragged pose until a solve runs. Undo MUST ask for that solve.
