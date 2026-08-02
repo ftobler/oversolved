@@ -86,6 +86,7 @@ export const ALL_MUTATION_TYPES = [
   'set_feature_suppression',
   'set_rollback',
   'edit_session',
+  'remove_dangling_content',
 ]
 
 describe('mutationDispatch', () => {

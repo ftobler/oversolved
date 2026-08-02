@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { PartDoc, Mutation } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -11,7 +12,7 @@ import { applySetRollback } from '@/utils/yamlMutations'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
-type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _isCleanupReSolve?: boolean }) => Promise<void> | void
+type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _restoreSolveResults?: Record<string, SketchData> }) => Promise<void> | void
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const modeRef = useRef(mode)
@@ -33,6 +34,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve }, docRef, setDoc)
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
+
+  // Mirror of the solver's solveResults so handleMutation can compute the
+  // optimistic prune (and what it removed) synchronously in an event handler.
+  const solveResultsRef = useRef<Record<string, SketchData>>({})
+  useEffect(() => { solveResultsRef.current = solveResults }, [solveResults])
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
   const editSnapshotRef = useRef<PartDoc | null>(null)
@@ -90,17 +96,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // document as having changes not yet saved to its store.
     useUnsavedChangesStore.getState().setDirty(true)
 
-    setSolveResults(prev => {
-      if (m.type === 'delete_feature') {
-        const next = { ...prev }
-        delete next[m.featureId]
-        return next
-      }
-      if (m.type === 'delete') {
-        return {}
-      }
-      return prev
-    })
+    // Content-removing edits invalidate the affected features' last solve;
+    // prune it so stale geometry cannot linger while the re-solve is in flight.
+    // Only whole-feature removals carry a restorable snapshot (a partial
+    // delete's snapshot would redraw deleted entities after a failing solve);
+    // partial deletes stay pruned and the doc-driven fallback renders them.
+    const { next: nextSolveResults, restorable } = pruneSolveResults(m, solveResultsRef.current)
+    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
 
     const next: PartDoc = structuredClone(current)
     if (!suppressUndoRef.current) {
@@ -136,8 +138,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // sees -- and bypassing there rebuilt the whole stack per edit, so deleting
     // one part out of a large STEP import cost a full re-import (28.5s vs 0.5s
     // on a measured 200-part file).
-    reSolve(next, { bypassCache: dragAnchor !== undefined, dragAnchor, _suppressFirstSolve: true })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo])
+    reSolve(next, {
+      bypassCache: dragAnchor !== undefined,
+      dragAnchor,
+      _suppressFirstSolve: true,
+      ...(restorable ? { _restoreSolveResults: restorable } : {}),
+    })
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef])
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
     if (previewOriginalDoc.current !== null) {

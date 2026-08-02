@@ -166,6 +166,8 @@ export function describeMutation(m: Mutation): string {
       return `reorder pick field ${m.field} in ${m.featureId}`
     case 'set_feature_suppression':
       return `${m.suppressed ? 'suppress' : 'unsuppress'} ${m.featureId}`
+    case 'remove_dangling_content':
+      return 'remove dangling projections / superfluous constraints'
     case 'set_rollback':
       return m.position === null ? 'move rollback to end' : `move rollback to ${m.position}`
     case 'edit_session':

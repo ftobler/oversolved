@@ -32,49 +32,62 @@ function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boole
   return false
 }
 
+// Solved geometry adoption is the ONLY write-back the generic solve owns. The
+// superfluous/projection_error flags and resolved kinds are solve-time facts and
+// live in solveResults, so undo never fights an invisible re-delete.
 export function applyGeometryToFeature(
   doc: PartDoc,
   featureId: string,
   geometry: Record<string, number[]>,
-  superfluousConstraintIds: Set<string>,
-  resolvedKinds?: Record<string, string>,
-  projectionErrors?: string[],
-): boolean {
+): void {
   const featureDef = (doc.features ?? []).find(f => f.id === featureId)
-  if (!featureDef) return false
-  // Projection can resolve an entity to a different kind than was declared at
-  // pick time (a tilted circle -> ellipse, a partial ellipse -> spline). Adopt
-  // the resolved kind so the stored geometry's param count matches the entity
-  // and the renderer draws the right primitive. Applied before `initial` so the
-  // kind and its params are written consistently.
-  if (resolvedKinds && featureDef.entities) {
-    for (const ent of featureDef.entities) {
-      const rk = resolvedKinds[ent.id]
-      if (rk && ent.kind !== rk) ent.kind = rk
+  if (!featureDef) return
+  featureDef.initial = geometry
+}
+
+// The explicit cleanup command's handler: removes the projected entities and
+// superfluous constraints the last solve flagged, then drops any constraint that
+// references a removed entity so no dangling refs linger in the doc. Only
+// source-carrying entities are eligible for removal (a flagged entity without a
+// source is a plain sketch entity and is kept). Undo restores the whole doc.
+export function applyRemoveDanglingContent(
+  doc: PartDoc,
+  perFeature: Record<string, { entities: string[]; constraints: string[] }>,
+): void {
+  for (const [featureId, { entities, constraints }] of Object.entries(perFeature)) {
+    const feature = (doc.features ?? []).find(f => f.id === featureId)
+    if (!feature) continue
+    const flagged = new Set(entities)
+    const toRemove = new Set(
+      (feature.entities ?? [])
+        .filter(e => e.source != null && flagged.has(e.id))
+        .map(e => e.id),
+    )
+    if (feature.entities && toRemove.size > 0) {
+      feature.entities = feature.entities.filter(e => !toRemove.has(e.id))
+    }
+    if (feature.constraints) {
+      const superfluous = new Set(constraints)
+      feature.constraints = feature.constraints.filter(
+        c => !superfluous.has(c.id) && !constraintReferencesAny(c, toRemove),
+      )
     }
   }
-  featureDef.initial = geometry
-  if (superfluousConstraintIds.size > 0 && featureDef.constraints) {
-    featureDef.constraints = featureDef.constraints.filter(c => !superfluousConstraintIds.has(c.id))
+}
+
+// Whether a cleanup plan would actually remove anything from the doc. The
+// command is derived from the last solve's flags; the doc may have changed
+// since, and an all-absent plan must not push a dead undo entry. Mirrors the
+// handler's eligibility rules (source-carrying entities, listed constraints).
+export function hasDanglingContentInDoc(
+  doc: PartDoc,
+  perFeature: Record<string, { entities: string[]; constraints: string[] }>,
+): boolean {
+  for (const [featureId, { entities, constraints }] of Object.entries(perFeature)) {
+    const feature = (doc.features ?? []).find(f => f.id === featureId)
+    if (!feature) continue
+    if (entities.some(eid => (feature.entities ?? []).some(e => e.id === eid && e.source != null))) return true
+    if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid))) return true
   }
-
-  if (!projectionErrors || projectionErrors.length === 0) return false
-
-  // Remove projected entities whose source failed to resolve: entities with a
-  // `source` field that appear in projectionErrors. Then drop any constraint
-  // that references a removed entity so no dangling refs linger in the doc.
-  const toRemove = new Set(
-    (featureDef.entities ?? [])
-      .filter(e => e.source != null && projectionErrors.includes(e.id))
-      .map(e => e.id),
-  )
-  if (toRemove.size === 0) return false
-
-  featureDef.entities = (featureDef.entities ?? []).filter(e => !toRemove.has(e.id))
-  if (featureDef.constraints) {
-    featureDef.constraints = featureDef.constraints.filter(
-      c => !constraintReferencesAny(c, toRemove),
-    )
-  }
-  return true
+  return false
 }

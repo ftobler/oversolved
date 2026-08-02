@@ -337,6 +337,22 @@ describe('mutationHandlers forward doc-level + part-style mutations', () => {
     expect(feature(doc, 'S1')).toBeUndefined()
   })
 
+  it('remove_dangling_content removes the flagged entities and constraints', () => {
+    const doc = sketchDoc()
+    // Only source-carrying (projected) entities are eligible for removal.
+    feature(doc, 'S1')!.entities!.push({ id: 'proj', kind: 'line', source: '?edge;x' })
+    mutationHandlers.remove_dangling_content(doc, {
+      type: 'remove_dangling_content',
+      features: {
+        S1: { entities: ['proj'], constraints: ['k1'] },
+      },
+    })
+    const f = feature(doc, 'S1')!
+    expect(f.entities!.some(e => e.id === 'proj')).toBe(false)
+    expect(f.entities!.some(e => e.id === 'l1')).toBe(true)
+    expect(f.constraints!.some(c => c.id === 'k1')).toBe(false)
+  })
+
   it('edit_session is a no-op marker', () => {
     const doc = sketchDoc()
     const before = JSON.stringify(doc)

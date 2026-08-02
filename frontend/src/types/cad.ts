@@ -799,6 +799,9 @@ export interface SketchData {
   features?: EntityStatus
   originLocal?: [number, number]
   plane_transform?: PlaneTransform
+  // Projected entities the solve could not resolve. Kept in the solve result
+  // (never written into the doc) so the cleanup command knows what to remove.
+  projection_errors?: string[]
   plane?: { origin: [number, number, number]; x_axis: [number, number, number]; y_axis: [number, number, number]; normal: [number, number, number] }
   body_id?: string
   body_ids?: string[]  // every body the feature made; body_id is only the first
@@ -896,3 +899,7 @@ export type Mutation =
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
   | { type: 'set_rollback'; position: number | null }
   | { type: 'edit_session'; featureId: string; description?: string }
+  // User-invoked cleanup: removes dangling projected entities and superfluous
+  // constraints flagged by the last solve. The payload is a per-feature plan
+  // derived from solveResults at command time, so the handler stays pure.
+  | { type: 'remove_dangling_content'; features: Record<string, { entities: string[]; constraints: string[] }> }

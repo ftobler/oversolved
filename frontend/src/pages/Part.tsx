@@ -45,6 +45,7 @@ import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
 import { builtinPlaneTransform, planeTransformNormal } from '@/components/Geometry3D/bodySnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
+import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
@@ -275,6 +276,40 @@ export default function Part() {
     if (docRef.current) reSolve(docRef.current)
     setContextMenu(null)
   }, [docRef, reSolve])
+
+  // Whether the last solve flagged anything the cleanup command would remove.
+  // Drives the context-menu item so an empty cleanup gesture is never offered.
+  const hasDanglingContent = useMemo(() => {
+    for (const data of Object.values(solveResults)) {
+      if (data.projection_errors?.length) return true
+      if (data.constraints && Object.values(data.constraints).some(c => c.superfluous)) return true
+    }
+    return false
+  }, [solveResults])
+
+  // The one write-back that is undoable by construction: it is a plain
+  // handleMutation, so undo restores the removed entities and the re-solve does
+  // not re-delete them (the generic solve path is pure). No-op when the last
+  // solve flagged nothing, so it never pushes a dead undo entry.
+  const handleRemoveDanglingContent = useCallback(() => {
+    if (!docRef.current) return
+    const perFeature: Record<string, { entities: string[]; constraints: string[] }> = {}
+    for (const [featureId, data] of Object.entries(solveResults)) {
+      const entities = data.projection_errors ?? []
+      const constraints = Object.entries(data.constraints ?? {})
+        .filter(([, c]) => c.superfluous)
+        .map(([cid]) => cid)
+      if (entities.length > 0 || constraints.length > 0) {
+        perFeature[featureId] = { entities, constraints }
+      }
+    }
+    if (Object.keys(perFeature).length === 0) return
+    // The plan derives from the last solve; the doc may have changed since.
+    // Skip the mutation (and its undo entry) when nothing it targets exists.
+    if (!hasDanglingContentInDoc(docRef.current, perFeature)) return
+    handleMutation({ type: 'remove_dangling_content', features: perFeature })
+    setContextMenu(null)
+  }, [docRef, solveResults, handleMutation])
 
   const [isRebuilding, setIsRebuilding] = useState(false)
 
@@ -837,9 +872,11 @@ export default function Part() {
       showConstraintTiles: useSketchEditorStore.getState().showConstraintTiles,
       partLabels,
       builtInIds: BUILT_IN_IDS,
+      hasDanglingContent,
     }
     const callbacks: BuildContextMenuCallbacks = {
       onRebuild: handleRebuild,
+      onRemoveDanglingContent: handleRemoveDanglingContent,
       onToggleVisibility: toggleVisibility,
       onToggleSuppression: toggleSuppression,
       onEnterEditSketch: enterEditSketch,
@@ -868,9 +905,9 @@ export default function Part() {
     }
     const { items } = buildContextMenu(input, callbacks)
     setContextMenu({ position: pos, targetId, items })
-  }, [handleRebuild, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
+  }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
-    features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels,
+    features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent,
     viewportRef, docRef, startPreviewMode])
 
   useEffect(() => {

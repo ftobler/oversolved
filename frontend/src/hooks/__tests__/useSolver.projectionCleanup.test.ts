@@ -1,11 +1,11 @@
 /**
- * Regression tests for the dangling-projection cleanup in useSolver.
+ * Regression tests for the solver write-back purity.
  *
- * When a sketch solve returns projection_errors, applyGeometryToFeature
- * removes the stale entities + dependent constraints, and reSolve triggers
- * one follow-up solve with the cleaned doc so the solver never re-sees those
- * entities. The cleanup re-solve does NOT recursively trigger again
- * (_isCleanupReSolve guard).
+ * The generic solve path is pure wrt the undoable doc: it adopts solved
+ * geometry into feature.initial but never deletes flagged content or promotes
+ * entity kinds. The superfluous/projection_error flags are solve-time facts and
+ * live in solveResults; removing them is the explicit cleanup command's job, so
+ * undo restores them and the re-solve does not re-delete.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
@@ -19,6 +19,7 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc } from '@/types/cad'
 
 function makeDocWithProjection(): PartDoc {
@@ -34,7 +35,7 @@ function makeDocWithProjection(): PartDoc {
       ],
       constraints: [
         { id: 'c_keep', kind: 'horizontal', target: '$line1' },
-        { id: 'c_drop', kind: 'coincident', a: '$line1end', b: '$proj1start' },
+        { id: 'c_super', kind: 'coincident', a: '$line1end', b: '$proj1start' },
       ],
       initial: {},
     }],
@@ -48,6 +49,10 @@ function buildResponse(projectionErrors?: string[]) {
       sk1: {
         status: 'ok',
         geometry: { line1: [0, 0, 1, 0] },
+        constraints: {
+          c_keep: { residual: 0, render: { kind: 'symbol_h', at: [0, 0], entity: 'line1' }, superfluous: false },
+          c_super: { residual: 0, render: { kind: 'symbol_coincident', at: [0, 0], entity: 'line1' }, superfluous: true },
+        },
         ...(projectionErrors ? { projection_errors: projectionErrors } : {}),
       },
     },
@@ -73,47 +78,66 @@ function setupHook() {
   return { result, unmount, docRef, setDoc }
 }
 
-describe('useSolver projection cleanup', () => {
+describe('useSolver solve-path purity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useUnsavedChangesStore.getState().setDirty(false)
   })
 
-  it('triggers a cleanup re-solve when projection_errors are present', async () => {
+  it('solves exactly once when projection_errors are present (no cleanup re-solve)', async () => {
     const { result } = setupHook()
 
-    // First solve: returns projection_errors -> cleanup + re-solve
-    // Second solve (cleanup re-solve): no errors
-    mockSolveViaWorker
-      .mockResolvedValueOnce(buildResponse(['proj1']))
-      .mockResolvedValueOnce(buildResponse())
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj1']))
 
     await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
 
-    // Exactly two solves: the original + one cleanup re-solve
-    expect(mockSolveViaWorker).toHaveBeenCalledTimes(2)
+    expect(mockSolveViaWorker).toHaveBeenCalledTimes(1)
     expect(result.current.solveError).toBeNull()
   })
 
-  it('does not re-solve again after a cleanup re-solve (_isCleanupReSolve guard)', async () => {
-    const { result } = setupHook()
+  it('keeps the flagged projection errors in solveResults, not deleted from the doc', async () => {
+    const { result, setDoc } = setupHook()
 
-    // Even if the cleanup re-solve also returns errors, no third solve fires
-    mockSolveViaWorker
-      .mockResolvedValueOnce(buildResponse(['proj1']))
-      .mockResolvedValueOnce(buildResponse(['proj1']))
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj1']))
 
     await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
 
-    expect(mockSolveViaWorker).toHaveBeenCalledTimes(2)
+    expect(result.current.solveResults.sk1.projection_errors).toEqual(['proj1'])
+    const savedDoc = setDoc.mock.calls[0][0] as PartDoc
+    const feat = savedDoc.features![0]
+    expect(feat.entities!.map(e => e.id)).toEqual(['line1', 'proj1'])
   })
 
-  it('does not trigger a re-solve when there are no projection_errors', async () => {
+  it('keeps superfluous constraints in the doc and flags them in solveResults', async () => {
+    const { result, setDoc } = setupHook()
+
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse())
+
+    await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
+
+    expect(result.current.solveResults.sk1.constraints!.c_super.superfluous).toBe(true)
+    const savedDoc = setDoc.mock.calls[0][0] as PartDoc
+    const feat = savedDoc.features![0]
+    expect(feat.constraints!.map(c => c.id)).toEqual(['c_keep', 'c_super'])
+  })
+
+  it('does not carry projection_errors when the response has none', async () => {
     const { result } = setupHook()
 
     mockSolveViaWorker.mockResolvedValueOnce(buildResponse())
 
     await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
 
-    expect(mockSolveViaWorker).toHaveBeenCalledTimes(1)
+    expect(result.current.solveResults.sk1.projection_errors).toBeUndefined()
+  })
+
+  it('does not set the dirty flag (a clean doc saved after a rebuild stays clean)', async () => {
+    const { result } = setupHook()
+
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj1']))
+
+    await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
+
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })

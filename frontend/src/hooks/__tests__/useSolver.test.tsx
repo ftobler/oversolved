@@ -72,11 +72,13 @@ describe('reconcilePartStyle', () => {
     expect(doc.part_style?.b?.name).toBe('part 1')
   })
 
-  it('accepts 6-digit hex colors and converts to uppercase', () => {
+  it('does not normalize existing entry colors (solve path is pure)', () => {
+    // Normalizing would rewrite an authored color on every solve, invisible to
+    // undo. The reconcile only adds entries for bodies it has never seen.
     const doc = makeDoc({ part_style: { a: { name: 'part 1', color: '#abcabc' } } })
     const bodies = { a: makeBody('a') }
     reconcilePartStyle(doc, bodies)
-    expect(doc.part_style?.a?.color).toBe('#ABCABC')
+    expect(doc.part_style?.a?.color).toBe('#abcabc')
   })
 
   it('leaves invalid hex colors as-is', () => {

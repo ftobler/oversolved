@@ -82,6 +82,7 @@ import {
   applySetBodyVisibility,
   applySetFeatureSuppression,
 } from '@/utils/yamlMutations'
+import { applyRemoveDanglingContent } from '@/utils/yamlMutations/solveResult'
 
 type MutationHandlers = {
   [K in Mutation['type']]: (doc: PartDoc, m: Extract<Mutation, { type: K }>) => void
@@ -258,6 +259,8 @@ export const mutationHandlers: MutationHandlers = {
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
   set_feature_suppression: (next, m) =>
     applySetFeatureSuppression(next, m.featureId, m.suppressed),
+  remove_dangling_content: (next, m) =>
+    applyRemoveDanglingContent(next, m.features),
   // doc.rollback is written by the rollback mirror in handleMutation, which is
   // the single writer for it; this mutation exists to carry the undo entry and
   // trigger the re-solve.

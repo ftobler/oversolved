@@ -21,6 +21,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     showConstraintTiles: true,
     partLabels: {},
     builtInIds: new Set(),
+    hasDanglingContent: false,
     ...overrides,
   }
 }
@@ -28,6 +29,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
 function defaultCallbacks(): BuildContextMenuCallbacks {
   return {
     onRebuild: () => {},
+    onRemoveDanglingContent: () => {},
     onToggleVisibility: () => {},
     onToggleSuppression: () => {},
     onEnterEditSketch: () => {},
@@ -54,6 +56,23 @@ describe('buildContextMenu', () => {
     const result = buildContextMenu(defaultInput(), defaultCallbacks())
     expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
     expect(result.items).toHaveLength(1)
+  })
+
+  it('offers the dangling-content cleanup only when the last solve flagged it', () => {
+    const label = 'Remove dangling projections / superfluous constraints'
+    const clean = buildContextMenu(defaultInput({ hasDanglingContent: true }), defaultCallbacks())
+    expect(findLabel(clean.items, label)).toBeTruthy()
+    const dirty = buildContextMenu(defaultInput({ hasDanglingContent: false }), defaultCallbacks())
+    expect(findLabel(dirty.items, label)).toBeFalsy()
+  })
+
+  it('withholds the cleanup command during an active sketch edit', () => {
+    const label = 'Remove dangling projections / superfluous constraints'
+    const result = buildContextMenu(
+      defaultInput({ hasDanglingContent: true, activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(result.items, label)).toBeFalsy()
   })
 
   it('contains Rebuild, Edit, Hide, Rename, Delete for a non-built-in sketch', () => {

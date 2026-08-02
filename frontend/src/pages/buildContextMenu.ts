@@ -59,10 +59,14 @@ export interface BuildContextMenuInput {
   showConstraintTiles: boolean
   partLabels: Record<string, string>
   builtInIds: Set<string>
+  // Whether the last solve flagged any dangling projections or superfluous
+  // constraints; gates the cleanup item so an empty command is never offered.
+  hasDanglingContent: boolean
 }
 
 export interface BuildContextMenuCallbacks {
   onRebuild: () => void
+  onRemoveDanglingContent: () => void
   onToggleVisibility: (featureId: string) => void
   onToggleSuppression: (featureId: string, suppressed: boolean) => void
   onEnterEditSketch: (featureId: string) => void
@@ -99,6 +103,7 @@ export function buildContextMenu(
     showConstraintTiles,
     partLabels,
     builtInIds,
+    hasDanglingContent,
   } = input
 
   // Creating a sketch enters its edit session, which cannot nest inside the
@@ -175,6 +180,17 @@ export function buildContextMenu(
       onClick: callbacks.onRebuild,
     },
   ]
+  // Cleanup is explicit and undoable: the solve path no longer writes the
+  // flagged content out of the doc, so this command is the only way to remove
+  // it, and undo restores it without a re-solve re-deleting. Only offered
+  // outside a sketch edit, where the solve cannot remove what is being edited.
+  if (hasDanglingContent && !activeSketchFeatureId) {
+    items.push({
+      label: 'Remove dangling projections / superfluous constraints',
+      icon: contextRebuildIcon,
+      onClick: callbacks.onRemoveDanglingContent,
+    })
+  }
 
   if (activeSketchFeatureId) {
     const target = features.find(f => f.id === activeSketchFeatureId)

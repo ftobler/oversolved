@@ -6,7 +6,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 
-import { PART_COLOR_PALETTE, normalizeHexColor } from '@/utils/core/partColors'
+import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
@@ -57,15 +57,7 @@ export function reconcilePartStyle(doc: PartDoc, bodies: Record<string, BodyResu
   }
 
   for (const bodyId of bodyIds) {
-    const current = nextStyle[bodyId]
-    if (current) {
-      const normalizedColor = normalizeHexColor(current.color)
-      nextStyle[bodyId] = {
-        ...current,
-        ...(normalizedColor ? { color: normalizedColor } : {}),
-      }
-      continue
-    }
+    if (nextStyle[bodyId]) continue
     const partNumber = nextFreePartNumber()
     const createdBy = bodies?.[bodyId]?.created_by
     nextStyle[bodyId] = {
@@ -109,7 +101,7 @@ export function useSolver(
   const requestIdRef = useRef(0)
   const cancelledRef = useRef(false)
 
-  const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number): { cloned: PartDoc; hadCleanup: boolean } => {
+  const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number): PartDoc => {
     const result = data.result as Record<string, {
       geometry?: Record<string, number[]>
       resolved_kinds?: Record<string, string>
@@ -130,31 +122,33 @@ export function useSolver(
     }>
 
     const cloned: PartDoc = structuredClone(d)
-    let hadCleanup = false
     const results: Record<string, SketchData> = {}
     for (const [id, feature] of Object.entries(result)) {
       const featureDef = (cloned.features ?? []).find(f => f.id === id)
       if (feature.geometry) {
-        const superfluousIds = feature.constraints
-          ? new Set(Object.entries(feature.constraints).filter(([, c]) => c.superfluous).map(([cid]) => cid))
-          : new Set<string>()
-        const cleaned = applyGeometryToFeature(cloned, id, feature.geometry, superfluousIds, feature.resolved_kinds, feature.projection_errors)
-        if (cleaned) hadCleanup = true
-        const solved = unflattenGeometry(feature.geometry, featureDef?.entities)
+        applyGeometryToFeature(cloned, id, feature.geometry)
+        // A projection can resolve to a different kind than was declared at pick
+        // time (a tilted circle -> ellipse, a partial ellipse -> spline). The
+        // resolved kind shapes the rendered sketch here without rewriting the
+        // authored entity kind in the doc on every solve.
+        const resolvedEntities = feature.resolved_kinds
+          ? (featureDef?.entities ?? []).map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
+          : featureDef?.entities
+        const solved = unflattenGeometry(feature.geometry, resolvedEntities)
         const astPosById = new Map(
           (featureDef?.constraints ?? [])
             .filter(c => c.pos)
             .map(c => [c.id, c.pos!])
         )
+        // Superfluous constraints stay visible and flagged instead of being
+        // written out of the doc; the flag is what the cleanup command reads.
         const constraints: import('@/types/cad').Constraints | undefined = feature.constraints
           ? Object.fromEntries(
-              Object.entries(feature.constraints)
-                .filter(([, c]) => !c.superfluous)
-                .map(([cid, c]) => {
-                  const pos = astPosById.get(cid)
-                  const render = pos ? { ...c.render, pos } : c.render
-                  return [cid, { render, residual: c.residual }]
-                })
+              Object.entries(feature.constraints).map(([cid, c]) => {
+                const pos = astPosById.get(cid)
+                const render = pos ? { ...c.render, pos } : c.render
+                return [cid, { render, residual: c.residual, ...(c.superfluous ? { superfluous: true } : {}) }]
+              })
             )
           : undefined
         const entityStatus = feature.features
@@ -170,6 +164,7 @@ export function useSolver(
           ...(entityStatus && { features: entityStatus }),
           ...(feature.originLocal && { originLocal: feature.originLocal }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
+          ...(feature.projection_errors?.length && { projection_errors: feature.projection_errors }),
         }
       } else if (feature.plane) {
         const planeRaw = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }
@@ -234,13 +229,13 @@ export function useSolver(
     if (solveTimeMs !== undefined) {
       setSolveTime(solveTimeMs)
     }
-    return { cloned, hadCleanup }
+    return cloned
   }, [setCodeText, modeRef, docRef, setDoc])
 
-  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number): { cloned: PartDoc; hadCleanup: boolean } | null => {
+  const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number): PartDoc | null => {
     // Stale-guard: if a newer reSolve has been issued, discard this response.
     if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return null
-    const solveResult = applySolveResult(d, data, solveTimeMs)
+    const cloned = applySolveResult(d, data, solveTimeMs)
     // Single set, the world transitions atomically.
     // If the solve was requested with a pick_boundary the response carries
     // pick_bodies (or {} when the checkpoint was unavailable), so the
@@ -253,12 +248,12 @@ export function useSolver(
     } else {
       setWorld({ status: 'full', bodies: data.bodies ?? {} })
     }
-    return solveResult
+    return cloned
   }, [applySolveResult])
 
   const reSolve = useCallback(async (
     d: PartDoc,
-    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _isCleanupReSolve?: boolean },
+    opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _restoreSolveResults?: Record<string, SketchData> },
   ) => {
     setSolving(true)
     setSolveTime(null)
@@ -267,6 +262,16 @@ export function useSolver(
     const currentRequestId = ++requestIdRef.current
     const isStale = () => currentRequestId !== requestIdRef.current
     const isCurrent = () => currentRequestId === requestIdRef.current && !cancelledRef.current
+    // handleMutation prunes solveResults optimistically for content-removing
+    // edits; on a failing solve that prune would leave the affected features as
+    // ghosts. Restore the pruned entries so the last known geometry stays
+    // visible. A stale failure skips this because a newer solve owns the record.
+    const restorePrunedResults = () => {
+      const restored = opts?._restoreSolveResults
+      if (restored && isCurrent()) {
+        setSolveResults(prev => ({ ...prev, ...restored }))
+      }
+    }
     try {
       const allFeatures = d.features ?? []
 
@@ -331,6 +336,7 @@ export function useSolver(
         const msg = `Cannot solve: unported feature kinds: ${missing}`
         setSolveError(msg)
         setSolveRawResult(msg)
+        restorePrunedResults()
         if (!cancelledRef.current) setSolving(false)
         return
       }
@@ -349,6 +355,7 @@ export function useSolver(
         const msg = 'Local solver unavailable (OCC.js failed to load)'
         setSolveError(msg)
         setSolveRawResult(msg)
+        restorePrunedResults()
         if (!cancelledRef.current) setSolving(false)
         return
       }
@@ -360,22 +367,17 @@ export function useSolver(
       // pick_boundary was requested, pick_bodies (the "before" state). The TS
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
-      const buildResult = applyBuildResponse(d, local as BuildResponse, solveTimeMs, currentRequestId)
+      applyBuildResponse(d, local as BuildResponse, solveTimeMs, currentRequestId)
       if (!firstSolveDone.current && !opts?._suppressFirstSolve && onFirstSolve) {
         firstSolveDone.current = true
         setTimeout(onFirstSolve, 0)
       }
-      // One-shot re-solve after dangling-projection cleanup: projection_errors
-      // caused stale entities to be removed from the doc; re-solve with the
-      // cleaned doc so the solver sees the reduced entity set. Not triggered on
-      // the cleanup re-solve itself to prevent infinite recursion.
-      if (buildResult?.hadCleanup && !opts?._isCleanupReSolve) {
-        await reSolve(buildResult.cloned, { ...opts, _isCleanupReSolve: true })
-        return  // inner call handles setSolving(false) via finally
-      }
       if (!cancelledRef.current) setSolving(false)
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e)
+      // Every failure restores the pruned entries (guarded against a stale
+      // failure); the error banner stays suppressed for the benign kinds.
+      restorePrunedResults()
       if (!BENIGN_SOLVE_FAILURES.has(reason)) {
         setSolveError(String(e))
         setSolveRawResult(String(e))
