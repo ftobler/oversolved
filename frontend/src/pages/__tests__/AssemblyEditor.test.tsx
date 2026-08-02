@@ -830,6 +830,39 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)
   })
 
+  it('undo with a stale selectedPartHandle does not crash the delete-selected render', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+    const handle = useAssemblyStore.getState().instances[0].handle
+    act(() => { useAssemblyStore.getState().setSelectedPartHandle(handle) })
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+
+    // The undo restored a doc without the selected instance. The viewport triad
+    // lookup and the Delete key both no-op on a vanished handle, but the
+    // dangling value is exactly the class the undo reset exists to prevent.
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
+    expect(useAssemblyStore.getState().selectedPartHandle).toBeNull()
+  })
+
+  // The safety effect, not the undo reset: a live doc change (a reload, or a
+  // tree edit that removes the selected instance without routing through the
+  // tree delete's own clear) must retire a handle the loaded doc cannot resolve.
+  it('a live doc change removing the selected instance clears the handle on the next render', async () => {
+    act(() => { useAssemblyStore.getState().setSelectedPartHandle('ghost') })
+
+    renderEditor()
+    await tick()
+    await tick()
+
+    expect(useAssemblyStore.getState().selectedPartHandle).toBeNull()
+  })
+
   it('Ctrl+Z in the assembly dispatches undo instead of being eaten', async () => {
     renderEditor()
     await tick()

@@ -4,6 +4,7 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { AssemblyDoc } from '@/types/cad'
 
@@ -194,6 +195,78 @@ describe('useAssemblyUndoRedo', () => {
     expect(useAssemblyStore.getState().pickCandidates).toEqual([])
     expect(useAssemblyStore.getState().pickIndex).toBe(-1)
     expect(useAssemblyStore.getState().selectedMateId).toBeNull()
+  })
+
+  // The selection fields live outside the doc, so an undo that removes the
+  // selected part must not leave them naming entities the restored doc lacks.
+  it('undo of an insert clears the B-rep selection, hover and selected part handle', () => {
+    const docA = docWith(['a'])
+    const docRef = { current: docWith(['a', 'b']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => {
+      useAssemblyStore.setState({
+        selection: new Set([assemblyEntityKey('b', 0, 'face', 0)]),
+        hoveredEntity: assemblyEntityKey('b', 0, 'face', 0),
+        selectedPartHandle: 'b',
+      })
+      result.current.pushUndo(docA, 'Add part')
+    })
+    act(() => { result.current.handleUndo() })
+
+    const after = useAssemblyStore.getState()
+    // The restored doc has no part b, so nothing may keep selecting or hovering it.
+    expect(after.selection.size).toBe(0)
+    expect(after.hoveredEntity).toBeNull()
+    expect(after.selectedPartHandle).toBeNull()
+  })
+
+  // The deleted instance's handle and its B-rep selection must not survive the
+  // undo that brings the pre-delete doc back: the selection keys are positional
+  // and would re-resolve to whatever geometry now occupies the renumbered slots.
+  it('undo of a delete leaves the deleted instance unselected and no selection key names a vanished body', () => {
+    const initial = docWith(['a', 'b'])
+    const requestSolve = vi.fn()
+    const docRef = { current: initial }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, requestSolve,
+    ))
+    const { pushUndo } = result.current
+
+    // Stands in for the page's mutate: captures the pre-doc, then applies.
+    const pageMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+      const cur = docRef.current!
+      pushUndo(cur, label)
+      docRef.current = fn(cur)
+      setDoc(docRef.current)
+      useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: docRef.current })
+    }
+    setAssemblyCallbacks({ mutateDoc: pageMutate, mutateDocSession: pageMutate, requestSolve })
+    useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
+
+    const bFace = assemblyEntityKey('b', 0, 'face', 0)
+    act(() => {
+      useAssemblyStore.getState().setSelectedPartHandle('b')
+      useAssemblyStore.setState({
+        selection: new Set([bFace]),
+        hoveredEntity: bFace,
+      })
+      useAssemblyStore.getState().deleteSelected()
+    })
+    expect((docRef.current!.features ?? []).some(f => f.kind === 'part_instance' && f.instance?.handle === 'b'))
+      .toBe(false)
+
+    act(() => { result.current.handleUndo() })
+    const after = useAssemblyStore.getState()
+    // The restored doc has part b again, but the selection must not aim into it.
+    expect((docRef.current!.features ?? []).some(f => f.kind === 'part_instance' && f.instance?.handle === 'b'))
+      .toBe(true)
+    expect(after.selectedPartHandle).toBeNull()
+    expect(after.selection.size).toBe(0)
+    expect(after.hoveredEntity).toBeNull()
   })
 
   it('undo discards a pending coalesced session so a later commit pushes nothing stale', () => {

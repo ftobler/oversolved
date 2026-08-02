@@ -74,12 +74,15 @@ export function useAssemblyUndoRedo(
     // Restoring an earlier doc moves it away from the saved content, so it
     // counts as unsaved until the user saves again.
     useUnsavedChangesStore.getState().setDirty(true)
-    // A restored doc may no longer contain the mate being authored; the armed
-    // field, its owed solve and its candidates must not aim into a vanished
-    // feature. The page's safety effect clears selectedMateId for the same reason.
+    // A restored doc may no longer contain the mate being authored, the B-rep
+    // entities being selected or the instance the tree has selected; the armed
+    // field, its owed solve, its candidates and the selection state must not
+    // aim into a vanished feature. The page's safety effects clear
+    // selectedMateId and selectedPartHandle for the same reason.
     useAssemblyStore.setState({
       activeMateField: null, mateFieldDirty: false,
       pickCandidates: [], pickIndex: -1, selectedMateId: null,
+      selection: new Set(), hoveredEntity: null, selectedPartHandle: null,
       // A mid-drag undo must not leave the session behind: pointer-up would
       // otherwise commit the drag onto the restored doc. The offsets, hover
       // scope and hits all describe the pre-undo scene too.

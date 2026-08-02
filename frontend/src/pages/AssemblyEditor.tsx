@@ -614,6 +614,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     }
   }, [doc, selectedMateId, selectedMate])
 
+  // The selected part handle can name an instance the doc no longer has: an
+  // undo, a reload, or a live edit that removed it without routing through the
+  // tree's delete (which clears the selection itself). Consumers no-op on a
+  // missing instance, but the dangling handle is exactly the class the mate-id
+  // effect above was built for, so it clears for the same reason.
+  useEffect(() => {
+    if (doc && selectedPartHandle && !findInstance(doc, selectedPartHandle)) {
+      useAssemblyStore.getState().setSelectedPartHandle(null)
+    }
+  }, [doc, selectedPartHandle])
+
   const renderInstanceEditor = useCallback((inst: PartInstance) => (
     <PartInstanceEditor
       instance={inst}
