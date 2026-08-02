@@ -69,9 +69,12 @@ describe('useAssemblyUndoRedo', () => {
     expect(docRef.current).toBe(docA)
     expect(requestSolve).toHaveBeenCalledTimes(1)  // the restore must re-solve
     expect(result.current.undoStack).toHaveLength(0)
-    // The doc being left behind becomes the redo counterpart.
+    // The doc being left behind becomes the redo counterpart. The counterpart
+    // holds a snapshot, not a reference, so a later in-place mutation of docB
+    // cannot corrupt the entry redo would restore.
     expect(result.current.redoStack).toHaveLength(1)
-    expect(result.current.redoStack[0].doc).toBe(docB)
+    expect(result.current.redoStack[0].doc).toEqual(docB)
+    expect(result.current.redoStack[0].doc).not.toBe(docB)
   })
 
   it('handleRedo restores the next doc', () => {

@@ -4,8 +4,9 @@ import { renderHook, act } from '@testing-library/react'
 const h = vi.hoisted(() => {
   const make = () => {
     let resolve!: (v: unknown) => void
-    const promise = new Promise((res) => { resolve = res })
-    return { promise, resolve }
+    let reject!: (e: unknown) => void
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+    return { promise, resolve, reject }
   }
   return {
     make,
@@ -22,6 +23,7 @@ vi.mock('@/adapters/backend', () => ({
 }))
 
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
+import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
@@ -29,6 +31,8 @@ describe('useAssemblyDoc', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     h.loads = {}
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.setState({ undoStack: [], redoStack: [] })
   })
 
   it('loads an assembly document with kind preserved', async () => {
@@ -73,5 +77,25 @@ describe('useAssemblyDoc', () => {
     await tick()
     expect(result.current.doc).toBeNull()
     expect(result.current.loading).toBe(true)
+  })
+
+  // A failed load must not leave a previous document's history in the module
+  // store: Ctrl+Z after the error would otherwise restore the old document's
+  // content into the one that failed to load.
+  it('a failed load clears any previous document history from the store', async () => {
+    useAssemblyStore.setState({
+      undoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'stale' }],
+      redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'stale redo' }],
+    })
+
+    const { result } = renderHook(() => useAssemblyDoc('D'))
+    await tick()
+    await act(async () => { h.loads.D.reject(new Error('boom')) })
+    await tick()
+
+    expect(result.current.error).toBeTruthy()
+    expect(result.current.loading).toBe(false)
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
+    expect(useAssemblyStore.getState().redoStack).toHaveLength(0)
   })
 })

@@ -20,6 +20,7 @@ import { useCloudAvailable } from '@/hooks/useCloudAvailable'
 import {
   appendMate,
   appendPartInstance,
+  assemblyDocEquals,
   bakeSolvedTransforms,
   duplicateInstance,
   findInstance,
@@ -173,7 +174,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     const current = docRef.current
     if (!current) return
     const next = fn(current)
-    if (next === current) return  // a no-op mutation leaves no undo step behind
+    // A value no-op (a visibility set to what it already is, a rename to the
+    // same label) still mints a fresh doc, so the reference fast path alone
+    // misses it; the structural compare catches that class like the part
+    // editor's idempotence guard does. No step, no dirty, no redo clear.
+    if (next === current || assemblyDocEquals(current, next)) return
     // A mate or instance editor is a coalescing session: every keystroke and
     // pick folds into one entry, pushed when the editor closes (commitSession).
     // Anything else pushes immediately, so each operation is its own undo step.
@@ -199,7 +204,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     const current = docRef.current
     if (!current) return
     const next = fn(current)
-    if (next === current) return
+    // Same content-level no-op guard as mutate: a one-shot that writes back the
+    // value already held leaves no step behind.
+    if (next === current || assemblyDocEquals(current, next)) return
     pushUndo(current, label)
     docRef.current = next
     setDoc(next)

@@ -26,6 +26,16 @@ export function emptyAssemblyDoc(): AssemblyDoc {
   return { kind: 'assembly', features: [] }
 }
 
+// Whole-doc equality for the undo funnel's no-op guard. Every assembly mutation
+// is pure but mints a fresh doc even for a value no-op (setInstanceVisible with
+// the already-current value), so the funnel's reference fast path alone misses
+// that class. A structural compare is cheap here: an AssemblyDoc holds only
+// authored features, no solve results or base64. The funnel keeps `next ===
+// current` in front of this so a real edit never pays the O(doc) stringify.
+export function assemblyDocEquals(a: AssemblyDoc, b: AssemblyDoc): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 function features(doc: AssemblyDoc): AssemblyFeature[] {
   return doc.features ?? []
 }

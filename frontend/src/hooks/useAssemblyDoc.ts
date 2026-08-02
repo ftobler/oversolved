@@ -52,6 +52,11 @@ export function useAssemblyDoc(uuid: string | undefined) {
       .catch(e => {
         if (cancelled) return
         setError(parseHttpError(e, 'Failed to load document'))
+        // A failed load must not leave a previous document's history in the
+        // module store: Ctrl+Z after the error would otherwise restore the old
+        // document's content into the one that failed to load. Clearing on a
+        // first mount with no prior doc is a harmless empty write.
+        useAssemblyStore.getState().clearAssemblyHistory()
         setLoading(false)
       })
     return () => { cancelled = true }

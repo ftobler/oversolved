@@ -6,6 +6,7 @@ import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assembl
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', () => ({
@@ -961,6 +962,48 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     await tick()
     expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBeUndefined()
+  })
+
+  // The funnel's content-level no-op guard: a rename that writes back the label
+  // already held mints a fresh doc but changes nothing, so it must not push a
+  // dead entry, mark the doc dirty or clear the redo branch.
+  it('renaming a mate to its current label pushes nothing, stays clean and keeps redo', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)
+
+    const renameTo = async (name: string) => {
+      fireEvent.click(screen.getByLabelText('Mate options'))
+      fireEvent.click(screen.getByText('Rename'))
+      const input = screen.getByLabelText('Name') as HTMLInputElement
+      fireEvent.change(input, { target: { value: name } })
+      fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+      await tick()
+    }
+    await renameTo('top clamp')
+    expect(undoStack()).toHaveLength(2)
+    await renameTo('other')
+    expect(undoStack()).toHaveLength(3)
+
+    // Undo back to 'top clamp', filling the redo branch.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(undoStack()).toHaveLength(2)
+    expect(redoStack()).toHaveLength(1)
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('top clamp')
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    // Renaming to the label already held is a value no-op: no step, no dirty,
+    // and the redo branch survives because nothing new was recorded.
+    await renameTo('top clamp')
+    expect(undoStack()).toHaveLength(2)
+    expect(redoStack()).toHaveLength(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
   it('a mate delete records one undo step and undo restores the mate', async () => {

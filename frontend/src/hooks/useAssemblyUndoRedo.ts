@@ -12,8 +12,8 @@ import { useCallback, useRef } from 'react'
 import type { AssemblyDoc } from '@/types/cad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-
-const MAX_UNDO_DEPTH = 50
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
+import { assemblyDocEquals } from '@/utils/assemblyMutations'
 
 export function useAssemblyUndoRedo(
   docRef: React.MutableRefObject<AssemblyDoc | null>,
@@ -43,8 +43,15 @@ export function useAssemblyUndoRedo(
   const commitSession = useCallback(() => {
     const pending = pendingSession.current
     pendingSession.current = null
-    if (pending) pushUndo(pending.doc, pending.label)
-  }, [pushUndo])
+    if (!pending) return
+    const current = docRef.current
+    // A session that left the doc exactly as it found it (typed back to its
+    // start value) must not charge an entry: the pre-session doc and the
+    // current doc are structurally equal, so undoing it would restore an
+    // identical document. Mirrors docDiffersForSession's whole-doc guard.
+    if (current && assemblyDocEquals(pending.doc, current)) return
+    pushUndo(pending.doc, pending.label)
+  }, [pushUndo, docRef])
 
   const cancelSession = useCallback(() => {
     pendingSession.current = null
@@ -59,13 +66,19 @@ export function useAssemblyUndoRedo(
     // pre-doc that no longer corresponds to the doc they were made on.
     pendingSession.current = null
     if (from.length === 0) return
+    // A non-empty stack with no current doc means the history describes a doc
+    // that does not exist. Popping would orphan the counterpart entry and
+    // permanently desync the paired stacks, so the whole undo is a no-op.
+    if (!docRef.current) return
     const entry = from[from.length - 1]
     const nextFrom = from.slice(0, -1)
-    // The doc we are leaving becomes the counterpart entry, so the same label
-    // round-trips in both directions.
     const to = direction === 'undo' ? store.redoStack : store.undoStack
+    // The doc we are leaving becomes the counterpart entry, so the same label
+    // round-trips in both directions. The clone mirrors pushUndo's snapshot
+    // discipline: the departing doc must not be shared with the entry.
     const preDoc = docRef.current
-    const nextTo = preDoc ? [...to, { doc: preDoc, label: entry.label }] : to
+    const nextTo = [...to, { doc: structuredClone(preDoc), label: entry.label }]
+    if (nextTo.length > MAX_UNDO_DEPTH) nextTo.shift()
     useAssemblyStore.setState(
       direction === 'undo'
         ? { undoStack: nextFrom, redoStack: nextTo }
@@ -100,10 +113,6 @@ export function useAssemblyUndoRedo(
 
   const handleRedo = useCallback(() => { applyUndoRedo('redo') }, [applyUndoRedo])
 
-  const clearStacks = useCallback(() => {
-    useAssemblyStore.setState({ undoStack: [], redoStack: [] })
-  }, [])
-
   return {
     undoStack,
     redoStack,
@@ -113,6 +122,5 @@ export function useAssemblyUndoRedo(
     cancelSession,
     handleUndo,
     handleRedo,
-    clearStacks,
   }
 }
