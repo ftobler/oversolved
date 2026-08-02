@@ -1,50 +1,106 @@
-import { describe, it, expect } from 'vitest'
+// The undo/redo buttons and tooltips against the PRODUCTION PartToolbar. The
+// old suite tested a local copy of the slice(-5).reverse() item selection, so a
+// regression in PartToolbar's real stacking logic could pass every test. The
+// stacks are seeded straight into partEditorStore (the mirror that populates
+// it is covered separately in useSyncPartEditorStore.test.ts).
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, fireEvent, screen } from '@testing-library/react'
+import PartToolbar from '@/pages/PartToolbar'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Mutation } from '@/types/cad'
 
-interface TooltipEntry {
-  mutation: Mutation
+const mockExecuteCommand = vi.hoisted(() => vi.fn())
+
+vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: mockExecuteCommand }))
+vi.mock('@/components/layout/AppHeader', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+vi.mock('@/adapters/backend', () => ({ backendBundle: { sharing: null } }))
+
+function renderToolbar() {
+  return render(
+    <PartToolbar
+      readOnly={false}
+      permission="owner"
+      docName="TestDoc"
+      isCloudDoc={false}
+      onRename={vi.fn()}
+      handleSave={vi.fn()}
+      handleClone={vi.fn()}
+      onShare={vi.fn()}
+    />,
+  )
 }
 
-function tooltipItems(stack: TooltipEntry[], maxItems: number): string[] {
-  return stack.slice(-maxItems).reverse().map(e => e.mutation.type)
+function entry(label: string): { doc: unknown; mutation: Mutation } {
+  return { doc: { version: 1, kind: 'part' }, mutation: { type: 'rename_feature', featureId: 'f1', label } as Mutation }
 }
 
-describe('undo/redo tooltip item selection', () => {
-  it('shows up to 5 most recent actions', () => {
-    const stack: TooltipEntry[] = []
-    for (let i = 1; i <= 10; i++) {
-      stack.push({ mutation: { type: `action_${i}` } as unknown as Mutation })
-    }
-    const items = tooltipItems(stack, 5)
-    expect(items).toHaveLength(5)
-    expect(items[0]).toBe('action_10')
-    expect(items[4]).toBe('action_6')
+const undoButton = () => screen.getByRole('button', { name: 'Undo' })
+const redoButton = () => screen.getByRole('button', { name: 'Redo' })
+
+describe('PartToolbar undo/redo', () => {
+  beforeEach(() => {
+    mockExecuteCommand.mockClear()
+    usePartEditorStore.setState({ undoStack: [], redoStack: [] })
   })
 
-  it('shows all when stack has fewer than 5', () => {
-    const stack: TooltipEntry[] = [
-      { mutation: { type: 'add_sketch' } as Mutation },
-      { mutation: { type: 'add_extrude' } as Mutation },
-    ]
-    const items = tooltipItems(stack, 5)
-    expect(items).toHaveLength(2)
-    expect(items[0]).toBe('add_extrude')
-    expect(items[1]).toBe('add_sketch')
+  it('disables undo and redo when both stacks are empty', () => {
+    renderToolbar()
+    expect((undoButton() as HTMLButtonElement).disabled).toBe(true)
+    expect((redoButton() as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('returns empty when stack is empty', () => {
-    const stack: TooltipEntry[] = []
-    const items = tooltipItems(stack, 5)
-    expect(items).toHaveLength(0)
+  it('enables undo when the undo stack has entries and redo when the redo stack has entries', () => {
+    usePartEditorStore.setState({ undoStack: [entry('a')], redoStack: [entry('b')] })
+    renderToolbar()
+    expect((undoButton() as HTMLButtonElement).disabled).toBe(false)
+    expect((redoButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('reverses order so most recent appears first', () => {
-    const stack: TooltipEntry[] = [
-      { mutation: { type: 'first' } as unknown as Mutation },
-      { mutation: { type: 'second' } as unknown as Mutation },
-      { mutation: { type: 'third' } as unknown as Mutation },
-    ]
-    const items = tooltipItems(stack, 5)
-    expect(items).toEqual(['third', 'second', 'first'])
+  it('clicking the buttons dispatches the undo and redo commands', () => {
+    usePartEditorStore.setState({ undoStack: [entry('a')], redoStack: [entry('b')] })
+    renderToolbar()
+    fireEvent.click(undoButton())
+    fireEvent.click(redoButton())
+    expect(mockExecuteCommand).toHaveBeenCalledWith('undo')
+    expect(mockExecuteCommand).toHaveBeenCalledWith('redo')
+  })
+
+  it('the undo tooltip shows the up-to-five most recent actions, most recent first', () => {
+    const stacks = Array.from({ length: 10 }, (_, i) => entry(`sk${i}`))
+    usePartEditorStore.setState({ undoStack: stacks, redoStack: [] })
+    renderToolbar()
+
+    fireEvent.mouseEnter(undoButton())
+
+    expect(screen.getByText('Undo (10) Ctrl+Z')).toBeTruthy()
+    // Production logic: undoStack.slice(-5).reverse() -> sk9 first, sk5 last.
+    expect(screen.getByText('rename f1 to sk9')).toBeTruthy()
+    expect(screen.getByText('rename f1 to sk8')).toBeTruthy()
+    expect(screen.getByText('rename f1 to sk7')).toBeTruthy()
+    expect(screen.getByText('rename f1 to sk6')).toBeTruthy()
+    expect(screen.getByText('rename f1 to sk5')).toBeTruthy()
+    expect(screen.queryByText('rename f1 to sk4')).toBeNull()
+  })
+
+  it('the redo tooltip shows the redo stack and the undo one does not leak into it', () => {
+    usePartEditorStore.setState({
+      undoStack: [entry('undone')],
+      redoStack: [entry('redone')],
+    })
+    renderToolbar()
+
+    fireEvent.mouseEnter(redoButton())
+
+    expect(screen.getByText('Redo (1) Ctrl+Shift+Z')).toBeTruthy()
+    expect(screen.getByText('rename f1 to redone')).toBeTruthy()
+    expect(screen.queryByText('rename f1 to undone')).toBeNull()
+  })
+
+  it('an empty stack shows no tooltip on hover', () => {
+    renderToolbar()
+    fireEvent.mouseEnter(undoButton())
+    expect(screen.queryByText(/Ctrl\+Z/)).toBeNull()
   })
 })

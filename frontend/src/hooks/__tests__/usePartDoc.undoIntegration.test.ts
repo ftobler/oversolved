@@ -178,6 +178,24 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack).toHaveLength(1)
   })
 
+  it('cancelPreview returns the exact pre-preview doc the caller restores from', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    const prePreview = structuredClone(docRef.current)
+    act(() => { result.current.startPreviewMode(prePreview) })
+    act(() => { result.current.handleMutation(renameTo('previewed')) })
+    expect(labelOf()).toBe('previewed')
+
+    let returned: PartDoc | null = null
+    act(() => { returned = result.current.cancelPreview() })
+
+    // The caller restores the doc from the return value, so it must be the
+    // pre-preview snapshot, never the preview-mutated doc.
+    expect(returned).toEqual(prePreview)
+    expect(JSON.stringify(returned)).not.toBe(JSON.stringify(docRef.current))
+  })
+
   it('a new mutation after an undo discards the redo branch', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
 
@@ -229,6 +247,24 @@ describe('usePartDoc undo/redo integration', () => {
     // its own behind, and the new edit must not be swallowed.
     expect(result.current.undoStack).toHaveLength(1)
     expect((result.current.undoStack[0].doc.features?.[0] as { label?: string }).label).toBe('first')
+  })
+
+  it('a redo after undoing mid-preview returns to the doc the preview had mutated', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation(renameTo('previewed')) })
+
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+
+    // The teardown dropped the preview, so redo must land on the doc the
+    // preview had mutated, not on a stale snapshot the session re-applied.
+    act(() => { result.current.handleRedo() })
+    expect(labelOf()).toBe('previewed')
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(0)
   })
 
   it('committing an edit session orphaned by an undo pushes nothing', () => {

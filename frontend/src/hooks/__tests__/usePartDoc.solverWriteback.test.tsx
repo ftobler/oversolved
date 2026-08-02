@@ -54,6 +54,7 @@ function makeSuperfluousDoc(): PartDoc {
     features: [{
       id: 'sk1',
       kind: 'sketch',
+      label: 'first',
       entities: [
         { id: 'l1', kind: 'line' },
         { id: 'l2', kind: 'line' },
@@ -320,6 +321,74 @@ describe('solver write-back undo round-trip', () => {
 
     expect(result.current.solveError).toContain('Local solver unavailable')
     expect(result.current.solveResults.sk2).toBeDefined()
+    expect(result.current.solveResults.sk1).toBeUndefined()
+  })
+
+  it('undo + redo through the real solver return to the forward doc, write-back included', async () => {
+    // The generic solve path is pure: the only doc edit it owns is adopting the
+    // solved geometry. The superfluous flag lives in solveResults, so the undo's
+    // re-solve must NOT delete the constraint again (the undo-solver-writeback
+    // regression). The redo leg proves the whole round-trip lands on the forward
+    // doc byte-for-byte, geometry write-back included.
+    docRef.current = makeSuperfluousDoc()
+    mockSolveViaWorker.mockResolvedValue(superfluousResponse())
+
+    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('edited')) })
+    await flush()
+    const forward = structuredClone(docRef.current)
+    expect((forward.features![0] as { initial: Record<string, number[]> }).initial.l1).toEqual([0, 0, 10, 0])
+    expect(result.current.solveResults.sk1?.constraints?.c_super?.superfluous).toBe(true)
+
+    act(() => { result.current.handleUndo() })
+    await flush()
+    expect((docRef.current!.features![0] as { label?: string }).label).toBe('first')
+    // The re-solve after undo flagged the constraint again but did not delete it.
+    expect(constraintsOf(docRef.current).map(c => c.id)).toEqual(['c_keep', 'c_super'])
+    expect(result.current.solveResults.sk1?.constraints?.c_super?.superfluous).toBe(true)
+
+    act(() => { result.current.handleRedo() })
+    await flush()
+    expect(structuredClone(docRef.current)).toEqual(forward)
+    expect(constraintsOf(docRef.current).map(c => c.id)).toEqual(['c_keep', 'c_super'])
+  })
+
+  it('delete_feature repopulates solveResults to match the restored doc through undo', async () => {
+    // The worker reflects reality: it reports geometry only for the sketch
+    // features actually present in the payload, so a deleted feature has no
+    // record after the delete's re-solve and is repopulated by the undo's.
+    docRef.current = makeTwoSketchDoc()
+    mockSolveViaWorker.mockImplementation((payload: Record<string, unknown>) => {
+      const features = (payload.features as { id: string; kind: string }[]) ?? []
+      const result: Record<string, unknown> = {}
+      for (const f of features) {
+        if (f.kind === 'sketch') result[f.id] = { status: 'ok', geometry: { l1: [0, 0, 1, 0] } }
+      }
+      return Promise.resolve({ solve_ms: 0, result, bodies: {}, _build_state: null })
+    })
+
+    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('edited')) })
+    await flush()
+    expect(result.current.solveResults.sk1).toBeDefined()
+
+    act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'sk1' } as Mutation) })
+    await flush()
+    expect(docRef.current!.features!.some(f => f.id === 'sk1')).toBe(false)
+    expect(result.current.solveResults.sk1).toBeUndefined()
+
+    act(() => { result.current.handleUndo() })
+    await flush()
+    // The undo restored the feature and the re-solve repopulated its record.
+    expect(docRef.current!.features!.some(f => f.id === 'sk1')).toBe(true)
+    expect(result.current.solveResults.sk1).toBeDefined()
+    expect(result.current.solveResults.sk1?.status).toBe('ok')
+
+    act(() => { result.current.handleRedo() })
+    await flush()
+    expect(docRef.current!.features!.some(f => f.id === 'sk1')).toBe(false)
     expect(result.current.solveResults.sk1).toBeUndefined()
   })
 })

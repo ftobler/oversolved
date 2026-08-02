@@ -211,6 +211,40 @@ describe('useUndoRedo', () => {
     expect(setDoc).not.toHaveBeenCalled()
   })
 
+  it('clearUndoStackSnapshot makes the parked restore a no-op', () => {
+    const docA = { version: 1, kind: 'part' } as PartDoc
+    const docRef = { current: docA }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
+    act(() => { result.current.saveUndoStackSnapshot() })
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
+    expect(result.current.undoStack).toHaveLength(2)
+
+    // The code tab invalidated the parked session snapshot; a later cancel must
+    // not rewind the stack to the one-entry pre-session content.
+    act(() => { result.current.clearUndoStackSnapshot() })
+    act(() => { result.current.restoreUndoStackSnapshot() })
+
+    expect(result.current.undoStack).toHaveLength(2)
+  })
+
+  it('undo with a null docRef still restores but drops the un-pairable counterpart', () => {
+    const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+    const docRef = { current: null as PartDoc | null }
+    const setDoc = vi.fn()
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
+    act(() => { result.current.handleUndo() })
+
+    expect(setDoc).toHaveBeenCalledWith(docA)
+    expect(result.current.undoStack).toHaveLength(0)
+    // There is no doc being left behind to pair a redo with, so the redo branch
+    // stays empty rather than holding an entry that could never round-trip.
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   it('handleRedo on empty stack is no-op', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
