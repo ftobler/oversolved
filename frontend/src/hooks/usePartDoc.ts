@@ -15,8 +15,14 @@ export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocume
 // Mutations that write a value which may already equal the current one. Only
 // these pay for the deep-compare in handleMutation; every other mutation adds
 // or removes content and can never be a no-op, so comparing would waste O(doc)
-// work on every sketch drag. add_*_edge is deliberately absent: re-applying it
-// on an already-listed edge is a toggle that removes the edge, a real change.
+// work on every sketch drag. The add_* toggle family (add_*_edge, add_*_tool,
+// add_delete_body_ref, add_transform_body, add_*_profile, add_sweep_path) is
+// deliberately absent: re-applying an already-listed entry toggles it back out,
+// a real change, so a guard would swallow it. set_rollback is the bar being
+// dragged to where it already is (or the end, when the key is absent);
+// toggle_*_plane_visibility and a delete_feature on a builtin or absent feature
+// can also no-op, but the UI derives both from the current doc so they are
+// effectively unreachable, and neither narrows to a single feature.
 const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
   'rename_feature',
   'rename_part',
@@ -47,6 +53,20 @@ const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
   'set_constraint_value',
   'set_constraint_pos',
   'set_constraint_sign',
+  'set_rollback',
+  // Index/predicate-driven removals can target an entry that is already gone:
+  // a splice past the end and a filter that matches nothing both leave the
+  // feature identical. noOpSliceFor already slices the whole touched feature,
+  // so the compare is O(feature) and covers each of these for free.
+  'remove_extrude_profile',
+  'remove_revolve_profile',
+  'remove_sweep_profile',
+  'remove_sweep_path',
+  'remove_fillet_edge',
+  'remove_chamfer_edge',
+  'remove_boolean_tool',
+  'remove_delete_body_ref',
+  'remove_transform_body',
 ])
 
 // The mutation types the color preview can produce. Suppression is scoped to
