@@ -12,6 +12,82 @@ import { applySetRollback } from '@/utils/yamlMutations'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
+// Mutations that write a value which may already equal the current one. Only
+// these pay for the deep-compare in handleMutation; every other mutation adds
+// or removes content and can never be a no-op, so comparing would waste O(doc)
+// work on every sketch drag. add_*_edge is deliberately absent: re-applying it
+// on an already-listed edge is a toggle that removes the edge, a real change.
+const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
+  'rename_feature',
+  'rename_part',
+  'reorder_features',
+  'reorder_pick_field',
+  'set_part_color',
+  'set_part_transparency',
+  'set_part_metalness',
+  'set_part_roughness',
+  'set_part_transmission',
+  'set_body_visibility',
+  'set_feature_visibility',
+  'set_feature_suppression',
+  'set_feature_plane',
+  'set_plane_definition_field',
+  'set_extrude_field',
+  'set_revolve_field',
+  'set_sweep_field',
+  'set_fillet_field',
+  'set_chamfer_field',
+  'set_boolean_field',
+  'set_array_field',
+  'set_circular_array_field',
+  'set_hole_field',
+  'set_transform_field',
+  'set_mirror_field',
+  'set_variable_field',
+  'set_constraint_value',
+  'set_constraint_pos',
+  'set_constraint_sign',
+])
+
+// Whole-doc change test for the edit-session commit. part_style is excluded
+// because reconcilePartStyle fabricates entries there during a solve, which
+// would manufacture an edit out of nothing; rollback is excluded because it is
+// pinned during an edit (the mirror only runs when editingFeatureId is null),
+// so it can never be a user change inside a session. The docs are throwaway
+// clones, so stripping in place is safe.
+function docDiffersForSession(a: PartDoc, b: PartDoc): boolean {
+  const strip = (d: PartDoc): PartDoc => {
+    const clone = structuredClone(d)
+    delete clone.part_style
+    delete clone.rollback
+    return clone
+  }
+  return JSON.stringify(strip(a)) !== JSON.stringify(strip(b))
+}
+
+// A serializable key of only the parts of `doc` an idempotent mutation can
+// change, so the no-op guard compares O(touched) instead of O(doc). The
+// rollback mirror writes doc.rollback outside a session, so that is always
+// included; a feature mutation narrows to its feature (a reorder to the order
+// alone, since it never touches content); a body-style mutation to its single
+// part_style entry. Every idempotent handler stays within these, so a change
+// the handlers made can never be invisible to the slice.
+function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
+  const featureId = (m as { featureId?: string }).featureId
+  const bodyId = (m as { bodyId?: string }).bodyId
+  const slice: Record<string, unknown> = {}
+  if (doc.rollback !== undefined) slice.rollback = doc.rollback
+  if (m.type === 'reorder_features') {
+    slice.features = (doc.features ?? []).map(f => f.id)
+  } else if (featureId !== undefined) {
+    slice.features = [(doc.features ?? []).find(f => f.id === featureId)]
+  }
+  if (bodyId !== undefined) {
+    slice.part_style = { [bodyId]: doc.part_style?.[bodyId] }
+  }
+  return slice
+}
+
 type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _restoreSolveResults?: Record<string, SketchData> }) => Promise<void> | void
 
 export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
@@ -42,6 +118,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const previewOriginalDoc = useRef<PartDoc | null>(null)
   const editSnapshotRef = useRef<PartDoc | null>(null)
+  // Whether the active edit session suppresses per-action undo entries. A
+  // suppressed (feature) session commits one aggregate; a sketch session keeps
+  // each action as its own entry and must not be folded on commit.
+  const editSessionSuppressedRef = useRef(false)
+  // The brep dimension pick commits its projection with no undo entry, so pick
+  // and the dimension that follows it read as one step for the user. `armed`
+  // means the next mutation (the projection, or a compensating delete on
+  // cancel) applies without an entry; `doc` is the pre-gesture doc the commit
+  // mutation must restore.
+  const brepWithholdRef = useRef<{ armed: boolean; doc: PartDoc | null }>({ armed: false, doc: null })
   // Set by the page: the transient editor state that does not live in this hook
   // (forced visibility, sketch-editor selection/pick, popovers, panel mode).
   const undoTeardownRef = useRef<(() => void) | null>(null)
@@ -55,6 +141,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   // world and write it back.
   const tearDownEditorState = useCallback(() => {
     editSnapshotRef.current = null
+    editSessionSuppressedRef.current = false
+    brepWithholdRef.current = { armed: false, doc: null }
     previewOriginalDoc.current = null
     undoTeardownRef.current?.()
   }, [])
@@ -91,23 +179,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const current = docRef.current
     if (!current) return
 
-    // Every doc edit funnels through here (direct mutations, drags, and preview
-    // commits all call handleMutation), so this is the one place that flags the
-    // document as having changes not yet saved to its store.
-    useUnsavedChangesStore.getState().setDirty(true)
-
-    // Content-removing edits invalidate the affected features' last solve;
-    // prune it so stale geometry cannot linger while the re-solve is in flight.
-    // Only whole-feature removals carry a restorable snapshot (a partial
-    // delete's snapshot would redraw deleted entities after a failing solve);
-    // partial deletes stay pruned and the doc-driven fallback renders them.
-    const { next: nextSolveResults, restorable } = pruneSolveResults(m, solveResultsRef.current)
-    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
-
+    // The handler runs on the clone first so the no-op guard below can compare
+    // the result against the pre-mutation doc before anything is committed.
     const next: PartDoc = structuredClone(current)
-    if (!suppressUndoRef.current) {
-      pushUndo(m, current)
-    }
     type AnyHandler = (doc: PartDoc, m: Mutation) => void
     const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
     if (import.meta.env.DEV && !handler) {
@@ -123,6 +197,54 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const editorStore = usePartEditorStore.getState()
     if (editorStore.editingFeatureId === null) {
       applySetRollback(next, editorStore.rollbackPosition)
+    }
+
+    // A value mutation that leaves the doc byte-identical is a dead undo step,
+    // and re-solving for it wastes a build: skip the push, the dirty flag and
+    // the solve together. The rollback write above is part of the compare, so
+    // a mirror-visible rollback change still counts as a real edit. The slice
+    // limits the stringify to the touched feature/part_style entry instead of
+    // the whole doc (per-keystroke field edits must not cost O(doc) on a large
+    // STEP-imported document).
+    if (IDEMPOTENT_MUTATION_TYPES.has(m.type)
+      && JSON.stringify(noOpSliceFor(m, current)) === JSON.stringify(noOpSliceFor(m, next))) {
+      return
+    }
+
+    // Every doc edit funnels through here (direct mutations, drags, and preview
+    // commits all call handleMutation), so this is the one place that flags the
+    // document as having changes not yet saved to its store.
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    // Content-removing edits invalidate the affected features' last solve;
+    // prune it so stale geometry cannot linger while the re-solve is in flight.
+    // Only whole-feature removals carry a restorable snapshot (a partial
+    // delete's snapshot would redraw deleted entities after a failing solve);
+    // partial deletes stay pruned and the doc-driven fallback renders them.
+    const { next: nextSolveResults, restorable } = pruneSolveResults(m, solveResultsRef.current)
+    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
+
+    const brep = brepWithholdRef.current
+    if (suppressUndoRef.current) {
+      // A suppressed session or preview: no entry for this mutation.
+    } else if (brep.armed) {
+      // The brep dimension projection, or the compensating delete of a
+      // cancelled one: apply without an entry and remember the pre-gesture doc
+      // so the commit that follows can restore past it. A later pick in the
+      // same gesture keeps the EARLIEST captured doc, or the first pick's
+      // projection would be orphaned by the commit's undo.
+      brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
+    } else if (brep.doc && m.type === 'add_constraint') {
+      // The brep dimension commit: one entry restoring the pre-projection doc,
+      // so undo removes the dimension and its projection in a single step. The
+      // type gate keeps an unrelated mid-gesture mutation (a rename, a delete)
+      // from stealing the withhold and pushing an entry keyed to the pre-pick
+      // doc, which would silently unpair the projection.
+      const preDoc = brep.doc
+      brepWithholdRef.current = { armed: false, doc: null }
+      pushUndo(m, preDoc)
+    } else {
+      pushUndo(m, current)
     }
 
     docRef.current = next
@@ -159,10 +281,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       failLoud('[usePartDoc] commitPreview called with no active preview')
       return
     }
-    pushUndo(mutation, previewOriginalDoc.current)
+    // Same-value apply (e.g. a preview that never changed the color) restores
+    // the pre-preview doc on undo, so it must not leave a dead step behind.
+    const original = previewOriginalDoc.current
+    if (docRef.current && JSON.stringify(docRef.current) !== JSON.stringify(original)) {
+      pushUndo(mutation, original)
+    }
     suppressUndoRef.current = false
     previewOriginalDoc.current = null
-  }, [suppressUndoRef, pushUndo])
+  }, [suppressUndoRef, pushUndo, docRef])
 
   const cancelPreview = useCallback(() => {
     if (!previewOriginalDoc.current) {
@@ -181,6 +308,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       failLoud('[usePartDoc] startEditSession called while an edit session is already active (nested edit session not supported)')
     }
     editSnapshotRef.current = structuredClone(docRef.current)
+    // Which kind of session this is decides what commitEditSession does: a
+    // suppressed (feature) session folds into one aggregate entry, a sketch
+    // session keeps its per-action entries and pushes nothing extra.
+    editSessionSuppressedRef.current = suppressUndo
     saveUndoStackSnapshot()
     if (suppressUndo) {
       suppressUndoRef.current = true
@@ -194,13 +325,20 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       return
     }
     const snapshot = editSnapshotRef.current
+    const suppressed = editSessionSuppressedRef.current
     editSnapshotRef.current = null
+    editSessionSuppressedRef.current = false
     suppressUndoRef.current = false
-    if (snapshot && docRef.current) {
+    // A sketch session already left one undo entry per action; an aggregate
+    // on top would double-record the same work. Only a suppressed (feature)
+    // session needs the collapse into one step.
+    if (suppressed && snapshot && docRef.current) {
       // Entering an edit and leaving it without touching anything must not leave
       // an undo step behind: it would restore an identical doc, so undo would
-      // look dead to the user.
-      const changed = JSON.stringify(snapshot) !== JSON.stringify(docRef.current)
+      // look dead to the user. The whole-doc diff excludes part_style (the
+      // solver fabricates entries there during a solve) and rollback (the
+      // mirror is gated on editingFeatureId === null, so it cannot drift here).
+      const changed = docDiffersForSession(snapshot, docRef.current)
       if (changed) {
         // The store still holds the edited feature here (commitEditSession runs
         // before the caller's exit cleanup clears it), so the undo label can name
@@ -219,6 +357,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // needs the re-solve below.
     if (snapshot !== null) {
       editSnapshotRef.current = null
+      editSessionSuppressedRef.current = false
       suppressUndoRef.current = false
       docRef.current = snapshot
       setDoc(snapshot)
@@ -229,6 +368,78 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // cancel left the viewport on the discarded edit.
     if (docRef.current) reSolve(docRef.current)
   }, [suppressUndoRef, docRef, setDoc, reSolve, restoreUndoStackSnapshot])
+
+  // Applies a set of mutations a single gesture produced (an end-snapped line,
+  // a multi-face projection, a multi-feature delete) as ONE undo entry and one
+  // re-solve. The handlers run in order on one clone; the entry restores the
+  // pre-gesture doc, so undo undoes the whole gesture at once.
+  const commitMutationGroup = useCallback((ms: Mutation[]) => {
+    setSolveError(null)
+    const current = docRef.current
+    if (!current || ms.length === 0) return
+
+    const next: PartDoc = structuredClone(current)
+    type AnyHandler = (doc: PartDoc, m: Mutation) => void
+    let restorable: Record<string, SketchData> | null = null
+    let nextSolveResults = solveResultsRef.current
+    for (const m of ms) {
+      const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
+      if (import.meta.env.DEV && !handler) {
+        console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
+      }
+      handler?.(next, m)
+      const pruned = pruneSolveResults(m, nextSolveResults)
+      if (pruned.next !== nextSolveResults) {
+        nextSolveResults = pruned.next
+        if (pruned.restorable) restorable = { ...(restorable ?? {}), ...pruned.restorable }
+      }
+    }
+
+    const editorStore = usePartEditorStore.getState()
+    if (editorStore.editingFeatureId === null) {
+      applySetRollback(next, editorStore.rollbackPosition)
+    }
+
+    // A group whose handlers all no-opped (e.g. a re-drop of a selection) must
+    // not leave a dead entry or waste a solve, mirroring the single-mutation
+    // guard in handleMutation.
+    if (JSON.stringify(current) === JSON.stringify(next)) {
+      return
+    }
+
+    useUnsavedChangesStore.getState().setDirty(true)
+    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
+    if (!suppressUndoRef.current) {
+      // The first mutation names the entry so the undo tooltip has a label;
+      // redo round-trips it, so only the doc matters, never the list itself.
+      pushUndo(ms[0], current)
+    }
+    docRef.current = next
+    setDoc(next)
+    reSolve(next, {
+      _suppressFirstSolve: true,
+      ...(restorable ? { _restoreSolveResults: restorable } : {}),
+    })
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef])
+
+  // Arms the brep dimension pick/commit pair: the next mutation (the
+  // projection) is applied without an undo entry and the one after it (the
+  // dimension) restores the pre-gesture doc, so pick and commit read as one
+  // step. The same arm-and-apply shape covers the compensating delete of a
+  // cancelled pick, which must also leave no entry. The doc already captured by
+  // an earlier pick in this gesture is preserved: re-arming for a second pick
+  // must not forget the doc from before the first one.
+  const beginBrepProjection = useCallback(() => {
+    brepWithholdRef.current = { armed: true, doc: brepWithholdRef.current.doc }
+  }, [])
+
+  // Drops the armed/pending pair without a commit: the projection it covered
+  // stays out of the undo history, and later mutations push normally again.
+  // Called after a cancelled gesture has run its compensating delete, or by
+  // the undo teardown where the doc is already being replaced.
+  const cancelBrepProjection = useCallback(() => {
+    brepWithholdRef.current = { armed: false, doc: null }
+  }, [])
 
   return {
     doc,
@@ -254,6 +465,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     reSolve,
     validation,
     handleMutation,
+    commitMutationGroup,
+    beginBrepProjection,
+    cancelBrepProjection,
     handleUndo,
     handleRedo,
     discardHistoryAndSessions,

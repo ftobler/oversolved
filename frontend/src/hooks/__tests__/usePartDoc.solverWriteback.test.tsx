@@ -306,7 +306,10 @@ describe('solver write-back undo round-trip', () => {
       bodies: {},
       _build_state: null,
     })
-    act(() => { result.current.handleMutation(renameTo('again')) })
+    // Renaming the surviving sketch is a real edit, so it starts a newer solve
+    // while the delete's solve is still hanging. (A no-op rename would be
+    // skipped by the handleMutation no-op guard, so it could not supersede.)
+    act(() => { result.current.handleMutation({ type: 'rename_feature', featureId: 'sk2', label: 'again' } as Mutation) })
     await flush()
 
     // Release the stale failing delete solve; its restore is skipped.

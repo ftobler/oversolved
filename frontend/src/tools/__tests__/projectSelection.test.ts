@@ -85,10 +85,10 @@ describe('projectionMutationsForSelection', () => {
 })
 
 describe('projectSelection', () => {
-  let mutations: Mutation[]
+  let batches: Mutation[][]
 
   beforeEach(() => {
-    mutations = []
+    batches = []
     useSketchEditorStore.setState({
       normalSelection: new Set(),
       chipOwnedSelection: new Set(),
@@ -96,32 +96,33 @@ describe('projectSelection', () => {
       activeFeatureId: FEATURE,
       activeTool: null,
     })
-    setSketchCallback('onMutation', (m: Mutation) => { mutations.push(m) })
+    setSketchCallback('onMutationBatch', (ms: Mutation[]) => { batches.push(ms) })
   })
 
-  it('projects the whole selection and consumes it', () => {
+  it('projects the whole selection as one batch and consumes it', () => {
     useSketchEditorStore.setState({ normalSelection: new Set([STRAIGHT_Q, VERTEX_Q]), selectionDomain: 'body_3d' })
     expect(projectSelection(noResolvers)).toBe(true)
-    expect(mutations).toHaveLength(2)
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toHaveLength(2)
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })
 
   it('leaves the selection alone and reports failure when nothing is projectable', () => {
     useSketchEditorStore.setState({ normalSelection: new Set([`entity:${FEATURE}:L1`]) })
     expect(projectSelection(noResolvers)).toBe(false)
-    expect(mutations).toHaveLength(0)
+    expect(batches).toHaveLength(0)
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(1)
   })
 
   it('reports failure on an empty selection so the caller enters the pick tool', () => {
     expect(projectSelection(noResolvers)).toBe(false)
-    expect(mutations).toHaveLength(0)
+    expect(batches).toHaveLength(0)
   })
 
   it('reports failure when no sketch is being edited', () => {
     useSketchEditorStore.setState({ activeFeatureId: null, normalSelection: new Set([STRAIGHT_Q]), selectionDomain: 'body_3d' })
     expect(projectSelection(noResolvers)).toBe(false)
-    expect(mutations).toHaveLength(0)
+    expect(batches).toHaveLength(0)
   })
 
   it('resolves kinds through the injected resolvers', () => {
@@ -129,6 +130,6 @@ describe('projectSelection', () => {
     useSketchEditorStore.setState({ normalSelection: new Set([EDGE_Q]), selectionDomain: 'body_3d' })
     expect(projectSelection(resolvers({ edgeKind }))).toBe(true)
     expect(edgeKind).toHaveBeenCalledWith(EDGE_Q)
-    expect(mutations[0]).toMatchObject({ type: 'add_projected_entity', kind: 'circle', source: EDGE_Q })
+    expect(batches[0][0]).toMatchObject({ type: 'add_projected_entity', kind: 'circle', source: EDGE_Q })
   })
 })

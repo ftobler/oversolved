@@ -22,13 +22,14 @@ export const liveProjectionResolvers: ProjectionResolvers = {
  */
 export function projectSelection(resolvers: ProjectionResolvers = liveProjectionResolvers): boolean {
   const { normalSelection, activeFeatureId } = useSketchEditorStore.getState()
-  const onMutation = getSketchCallback('onMutation')
-  if (!onMutation || !activeFeatureId || normalSelection.size === 0) return false
+  const onMutationBatch = getSketchCallback('onMutationBatch')
+  if (!onMutationBatch || !activeFeatureId || normalSelection.size === 0) return false
 
   const mutations = projectionMutationsForSelection(normalSelection, activeFeatureId, resolvers)
   if (mutations.length === 0) return false
 
-  for (const m of mutations) onMutation(m)
+  // One batch call, so projecting N faces lands as a single undo step.
+  onMutationBatch(mutations)
   // The selection was the tool's input; consuming it is what lets the action
   // complete on the click that started it, with no follow-up pick.
   useSketchEditorStore.getState().clearNormalSelection()

@@ -196,4 +196,48 @@ describe('DrawingTool', () => {
       })
     })
   })
+
+  describe('gesture batching', () => {
+    it('routes an end-snapped line through onMutationBatch as one undo step', () => {
+      const onMutation = vi.fn()
+      const onMutationBatch = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        onMutationBatch,
+        drawPoints: [[0, 0]],
+        hoveredVertexId: 'vertex:S1:l1:end',
+        hoveredSnapKind: 'vertex',
+        activeFeatureId: 'S1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 0], context)
+
+      // The line and its end constraint are one gesture: one batch call, no
+      // per-mutation dispatches.
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(onMutationBatch).toHaveBeenCalledTimes(1)
+      const ms = onMutationBatch.mock.calls[0][0] as { type: string }[]
+      expect(ms).toHaveLength(2)
+      expect(ms[0].type).toBe('add_entity')
+      expect(ms[1].type).toBe('add_constraint')
+    })
+
+    it('routes a plain (unsnapped) line through onMutation', () => {
+      const onMutation = vi.fn()
+      const onMutationBatch = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        onMutationBatch,
+        drawPoints: [[0, 0]],
+        activeFeatureId: 'S1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 0], context)
+
+      expect(onMutation).toHaveBeenCalledTimes(1)
+      expect(onMutationBatch).not.toHaveBeenCalled()
+    })
+  })
 })

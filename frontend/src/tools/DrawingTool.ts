@@ -69,8 +69,13 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         context.otherSketches as Record<string, Record<string, Entity>> | undefined,
       )
 
-      for (const m of result.mutations) {
-        context.onMutation?.(m)
+      // A gesture that emits several mutations (an end-snapped line adds the
+      // entity and the constraint; a face project adds one per boundary edge)
+      // must undo as a single step, so it goes through the batch seam.
+      if (result.mutations.length > 1) {
+        context.onMutationBatch?.(result.mutations)
+      } else if (result.mutations.length === 1) {
+        context.onMutation?.(result.mutations[0])
       }
 
       if (result.nextDrawSnap !== null) {

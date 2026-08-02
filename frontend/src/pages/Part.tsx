@@ -146,6 +146,9 @@ export default function Part() {
     reSolve,
     validation,
     handleMutation,
+    commitMutationGroup,
+    beginBrepProjection,
+    cancelBrepProjection,
     handleUndo,
     handleRedo,
     discardHistoryAndSessions,
@@ -383,6 +386,10 @@ export default function Part() {
     sketchStore.setActivePickField(null)  // also pops the matching 'pick' mode entry
     sketchStore.closeDialog()
     sketchStore.closeContextMenu()
+    // An undone doc has no place for a pending dimension gesture's projections;
+    // drop the bookkeeping without a compensating delete (the doc is already
+    // being replaced by the undo's own restore).
+    sketchStore.clearBrepProjectionState()
     setContextMenu(null)
     // The color preview is discarded rather than applied: undo brings its own
     // doc, and a popover left open would only be able to commit or revert
@@ -495,11 +502,12 @@ export default function Part() {
       .filter(id => id.startsWith('@') && !id.startsWith('@builtin_'))
       .map(id => id.slice(1))
       .filter(id => !BUILT_IN_IDS.has(id))
-    for (const featureId of featureIds) {
-      handleMutation({ type: 'delete_feature', featureId })
+    // One Delete action on N features is one undo step, not N.
+    if (featureIds.length > 0) {
+      commitMutationGroup(featureIds.map(featureId => ({ type: 'delete_feature', featureId })))
+      useSketchEditorStore.getState().clearNormalSelection()
     }
-    if (featureIds.length > 0) useSketchEditorStore.getState().clearNormalSelection()
-  }, [handleMutation])
+  }, [commitMutationGroup])
 
   const handleAddFeature = useCallback((kind: string, extra?: Record<string, unknown>) => {
     if (!doc) return
@@ -609,6 +617,9 @@ export default function Part() {
 
   useEffect(() => {
     setSketchCallback('onMutation', handleMutation)
+    setSketchCallback('onMutationBatch', commitMutationGroup)
+    setSketchCallback('beginBrepProjection', beginBrepProjection)
+    setSketchCallback('cancelBrepProjection', cancelBrepProjection)
     setSketchCallback('onRebuild', handleRebuild)
     setSketchCallback('onExitSketch', handleExitSketch)
     // Used by finalizeDimensionPlacement to pre-fill the value-edit dialog
@@ -618,11 +629,14 @@ export default function Part() {
     })
     return () => {
       setSketchCallback('onMutation', null)
+      setSketchCallback('onMutationBatch', null)
+      setSketchCallback('beginBrepProjection', null)
+      setSketchCallback('cancelBrepProjection', null)
       setSketchCallback('onRebuild', null)
       setSketchCallback('onExitSketch', null)
       setSketchCallback('getSketch', null)
     }
-  }, [handleMutation, handleRebuild, handleExitSketch, solveResults])
+  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, solveResults])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (DocumentPage keys it by document) would otherwise inherit the

@@ -36,6 +36,9 @@ export interface ToolContext {
   hoveredVertexPosition: Point | null
   hoveredSnapKind: string | null
   onMutation: ((m: Mutation) => void) | null
+  // One undo entry for a whole gesture's mutations (an end-snapped line, a
+  // multi-face projection). Tools call this instead of onMutation per sub-mutation.
+  onMutationBatch?: ((ms: Mutation[]) => void) | null
   pushMode: (kind: string) => void
   popMode: (expectedKind?: string) => void
 }

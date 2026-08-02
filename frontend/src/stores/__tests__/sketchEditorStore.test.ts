@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
+import type { Mutation } from '@/types/cad'
 
 // Lazy-init the tool registry once so tool lifecycle tests can verify activate/deactivate wiring.
 let toolsInitialized = false
@@ -25,6 +26,7 @@ function reset() {
     activeTool: null,
     activeFeatureId: null,
     dimensionPicks: [],
+    pendingBrepProjectionIds: [],
     pendingDialog: null,
     activePickField: null,
     hoveredVertexId: null,
@@ -35,6 +37,9 @@ function reset() {
     entityKindMap: {},
   })
   setSketchCallback('onMutation', null)
+  setSketchCallback('onMutationBatch', null)
+  setSketchCallback('beginBrepProjection', null)
+  setSketchCallback('cancelBrepProjection', null)
 }
 
 describe('sketchEditorStore', () => {
@@ -1240,6 +1245,7 @@ describe('sketchEditorStore', () => {
         activeTool: 'dimension',
         activeFeatureId: 'S1',
         dimensionPicks: [],
+        pendingBrepProjectionIds: [],
         pendingDialog: null,
         normalSelection: new Set(),
       })
@@ -1324,6 +1330,95 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false })
       expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+    })
+
+    it('replacing the second brep pick deletes the orphaned projection', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))
+      const store = useSketchEditorStore.getState()
+      store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' })
+      const id1 = handler.mock.calls[0][0].entityId
+      store.addBrepDimensionPick('?b1/edge:2', { isVertexPick: false, sourceKind: 'line' })
+      const id2 = handler.mock.calls[1][0].entityId
+      handler.mockClear()
+
+      // A third edge replaces the second pick; the second's projection must go.
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+
+      const calls = handler.mock.calls.map(c => c[0])
+      const deleteCall = calls.find((m: Mutation) => m.type === 'delete') as { targets: string[] } | undefined
+      expect(deleteCall).toBeDefined()
+      expect(deleteCall!.targets).toEqual([`entity:S1:${id2}`])
+      // The orphaned projection is no longer pending cleanup; the replaced and
+      // new ones still are.
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).not.toContain(id2)
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([id1, expect.any(String)])
+      setSketchCallback('getSketch', null)
+    })
+
+    it('replacing a pick that reused a prior gesture\'s projection does not delete it', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      // The sketch already carries a projection for edge2, committed by a prior
+      // gesture, so picking it reuses instead of projecting.
+      setSketchCallback('getSketch', () => ({
+        E2: { start: [0, 0], end: [1, 0], projected: true, source: '?b1/edge:2' },
+      } as never))
+      const store = useSketchEditorStore.getState()
+      store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' })
+      const id1 = handler.mock.calls[0][0].entityId
+      handler.mockClear()
+      store.addBrepDimensionPick('?b1/edge:2', { isVertexPick: false, sourceKind: 'line' })
+      expect(handler).not.toHaveBeenCalled()  // reuse emits no projection
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([id1])
+
+      handler.mockClear()
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      // Pick 2 (the reused edge2 projection) is replaced, but it is not owned
+      // by this gesture, so no compensating delete may run or the committed
+      // dimension that owns it would dangle.
+      const deletes = handler.mock.calls.filter(c => (c[0] as Mutation).type === 'delete')
+      expect(deletes).toHaveLength(0)
+      const pending = useSketchEditorStore.getState().pendingBrepProjectionIds
+      expect(pending).toHaveLength(2)  // edge1 and edge3 only
+      expect(pending).toContain(id1)
+      setSketchCallback('getSketch', null)
+    })
+
+    it('cancelling the value dialog deletes the pending projection', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      const eid = handler.mock.calls[0][0].entityId
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      handler.mockClear()
+
+      dialog.onCancel!()
+
+      expect(handler).toHaveBeenCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      setSketchCallback('getSketch', null)
+    })
+
+    it('committing the dimension clears the pending projections', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      handler.mockClear()
+
+      dialog.onConfirm('10')
+
+      // The projection is now part of the committed dimension, so nothing is
+      // pending cleanup any more.
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'add_constraint' }))
+      setSketchCallback('getSketch', null)
     })
 
     it('a projected body edge dimensions as a length once solved', () => {

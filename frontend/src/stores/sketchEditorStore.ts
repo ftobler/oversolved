@@ -18,17 +18,31 @@ import { randomId } from '@/utils/yamlMutations/helpers'
 // Callbacks dispatched from pure-layer store actions back into React state.
 // Registered by Part.tsx on mount via setSketchCallback(); torn down on unmount.
 // Stored outside Zustand so function references don't pollute serializable snapshots.
-// Invariant: all three slots must be non-null while a sketch editing session is active.
+// Invariant: onMutation/onRebuild/onExitSketch must be non-null while a sketch
+// editing session is active; the remaining slots are optional hooks.
 const _sketchCbs: {
   onMutation: ((m: Mutation) => void) | null
+  onMutationBatch: ((ms: Mutation[]) => void) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   getSketch: ((featureId: string) => Sketch | null) | null
-} = { onMutation: null, onRebuild: null, onExitSketch: null, getSketch: null }
+  beginBrepProjection: (() => void) | null
+  cancelBrepProjection: (() => void) | null
+} = {
+  onMutation: null,
+  onMutationBatch: null,
+  onRebuild: null,
+  onExitSketch: null,
+  getSketch: null,
+  beginBrepProjection: null,
+  cancelBrepProjection: null,
+}
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
+export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
+export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
 export function setSketchCallback(key: keyof typeof _sketchCbs, cb: unknown): void {
   (_sketchCbs as Record<string, unknown>)[key] = cb
 }
@@ -52,6 +66,31 @@ function requireMutation(name: string): ((m: Mutation) => void) | null {
     if (devOnly) console.warn(`[sketchEditorStore] onMutation: callback not registered — ${name} will be a no-op.`)
   }
   return onMutation
+}
+
+// Deletes the given sketch entities with no undo entry. Used when a dimension
+// gesture is aborted or a pick replaced: the projection was scratch work, so
+// neither it nor the delete that removes it may appear in the history. The
+// delete rides the brep withhold so it applies without pushing. No trailing
+// cancelBrepProjection here: the replace path needs the withhold's captured doc
+// to survive for the gesture's eventual commit, and the abort path nulls it
+// explicitly after this returns.
+function dispatchWithheldDelete(targets: string[]): void {
+  const onMutation = _sketchCbs.onMutation
+  if (!onMutation || targets.length === 0) return
+  _sketchCbs.beginBrepProjection?.()
+  onMutation({ type: 'delete', targets })
+}
+
+// Entity id of the projection a brep pick targets, from its wire target
+// ('entity:<fid>:<eid>' or 'vertex:<fid>:<eid>:xy'). Only a brep pick carries
+// the source query, which is what distinguishes it from a plain sketch pick.
+function pickProjectionEntityId(pick: DimensionPick, featureId: string): string | null {
+  if (!pick.source) return null
+  const parts = pick.target.split(':')
+  if (parts[1] !== featureId) return null
+  if (parts[0] !== 'entity' && parts[0] !== 'vertex') return null
+  return parts[2] ?? null
 }
 
 function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<SketchEditorState>) => void): void {
@@ -269,6 +308,17 @@ interface SketchEditorState {
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
   // or after the placement dialog closes.
   dimensionPicks: DimensionPick[]
+  // Entity ids of projections this dimension gesture created on the active
+  // sketch, so an aborted gesture or a replaced pick can delete them without
+  // leaving orphans in the doc or the undo history.
+  pendingBrepProjectionIds: string[]
+  // Abandons the brep dimension gesture: deletes every projection it created
+  // (withheld, so no undo entries) and drops the pick/commit pair. Used when
+  // the gesture ends without a commit (dialog cancel, tool switch, sketch exit).
+  cancelBrepProjectionGesture: () => void
+  // Drops the brep gesture bookkeeping without touching the doc. Used where the
+  // doc is already being replaced (undo), so no compensating delete is wanted.
+  clearBrepProjectionState: () => void
   // Latest cursor position in sketch-local world coords during dim placement.
   // Written by the R3F-side pointermove projection (see Drawing.tsx); read by
   // finalizeDimensionPlacement to fill `pos` on the new constraint so the
@@ -317,6 +367,7 @@ function buildToolContext(get: () => SketchEditorState): ToolContext {
     hoveredVertexPosition: s.hoveredVertexPosition,
     hoveredSnapKind: s.hoveredSnapKind,
     onMutation: _sketchCbs.onMutation,
+    onMutationBatch: _sketchCbs.onMutationBatch,
     pushMode: (kind: string) => get().pushMode(kind),
     popMode: (expectedKind?: string) => get().popMode(expectedKind),
   }
@@ -365,6 +416,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   drawHover: null,
   drawSnapVertexId: null,
   dimensionPicks: [],
+  pendingBrepProjectionIds: [],
   dimensionCursorWorld: null,
   pendingDialog: null,
   pendingProjectTarget: null,
@@ -436,6 +488,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     drawHover: null,
     drawSnapVertexId: null,
     dimensionPicks: [],
+    pendingBrepProjectionIds: [],
     dimensionCursorWorld: null,
     pendingDialog: null,
     pendingProjectTarget: null,
@@ -523,6 +576,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // Deactivate previous tool (lifecycle hook)
     deactivateTool(get, prevTool)
 
+    // Switching tools abandons any in-flight brep dimension gesture: the
+    // projections it materialised were scratch work for that gesture.
+    if (get().pendingBrepProjectionIds.length > 0) {
+      get().cancelBrepProjectionGesture()
+    }
+
     set(state => {
       const updates: Record<string, unknown> = {
         activeTool: tool,
@@ -570,21 +629,31 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
   },
 
-  setActiveFeatureId: (id) => set(state => {
-    // Entering/exiting a sketch is never a continuation of a drag gesture (the
-    // active feature does not change mid-drag), so any leftover drag/dragPending
-    // here is stuck state from a lost gesture -- e.g. a load race that remounts
-    // the DragPlane mid-press and loses its pointerup cleanup. Orbit is derived
-    // as `!drag && !dragPending` (SceneController), so clearing it on every real
-    // edit transition guarantees the camera re-enables the instant you press Edit.
-    const dragReset = state.activeFeatureId !== id
-      ? { drag: null, dragPending: null, dragStartClient: null, dragSnap: null, isPointerDown: false }
-      : {}
-    if (state.activeFeatureId !== null && id === null) {
-      return { ...dragReset, activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
+  setActiveFeatureId: (id) => {
+    const state = get()
+    // Leaving the sketch abandons any in-flight brep dimension gesture, same
+    // as a tool switch. Runs outside the set updater below because it
+    // dispatches a delete mutation (a side effect, and StrictMode must not
+    // replay it).
+    if (state.activeFeatureId !== null && id === null && state.pendingBrepProjectionIds.length > 0) {
+      state.cancelBrepProjectionGesture()
     }
-    return { ...dragReset, activeFeatureId: id }
-  }),
+    set(state => {
+      // Entering/exiting a sketch is never a continuation of a drag gesture (the
+      // active feature does not change mid-drag), so any leftover drag/dragPending
+      // here is stuck state from a lost gesture -- e.g. a load race that remounts
+      // the DragPlane mid-press and loses its pointerup cleanup. Orbit is derived
+      // as `!drag && !dragPending` (SceneController), so clearing it on every real
+      // edit transition guarantees the camera re-enables the instant you press Edit.
+      const dragReset = state.activeFeatureId !== id
+        ? { drag: null, dragPending: null, dragStartClient: null, dragSnap: null, isPointerDown: false }
+        : {}
+      if (state.activeFeatureId !== null && id === null) {
+        return { ...dragReset, activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
+      }
+      return { ...dragReset, activeFeatureId: id }
+    })
+  },
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
 
@@ -720,12 +789,28 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   closeContextMenu: () => set({ contextMenu: null }),
 
   addDimensionPick: (pick: DimensionPick) => {
-    const { dimensionPicks } = get()
+    const { dimensionPicks, activeFeatureId, pendingBrepProjectionIds } = get()
     // Cap at 2 picks: a third entity click replaces the second (lets the user
     // swap their second pick without restarting the gesture).
     const next = dimensionPicks.length >= 2
       ? [dimensionPicks[0], pick]
       : [...dimensionPicks, pick]
+
+    // Replacing the second pick orphans the projection that pick materialised
+    // on the sketch: delete it with no undo entry so neither the projection
+    // nor its cleanup survives in the history. Only a projection THIS gesture
+    // created is eligible -- a pick that reused a projection a committed
+    // dimension already owns (the reuse path emits no mutation, so it never
+    // joined pendingBrepProjectionIds) must not be deleted, or the committed
+    // constraint dangles.
+    if (dimensionPicks.length >= 2 && activeFeatureId) {
+      const replaced = dimensionPicks[1]
+      const eid = pickProjectionEntityId(replaced, activeFeatureId)
+      if (eid && pendingBrepProjectionIds.includes(eid)) {
+        dispatchWithheldDelete([`entity:${activeFeatureId}:${eid}`])
+        set({ pendingBrepProjectionIds: pendingBrepProjectionIds.filter(id => id !== eid) })
+      }
+    }
     set({ dimensionPicks: next })
   },
 
@@ -747,11 +832,45 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       sourceKind,
       newEntityId: () => randomId(12),
     })
-    for (const m of mutations) onMutation(m)
+    if (mutations.length > 0) {
+      // A new projection: its undo entry waits for the dimension commit (or a
+      // compensating delete on cancel), so pick and commit read as one step.
+      _sketchCbs.beginBrepProjection?.()
+      for (const m of mutations) onMutation(m)
+      const newIds: string[] = []
+      for (const m of mutations) {
+        if (m.type === 'add_projected_entity' && m.entityId) newIds.push(m.entityId)
+      }
+      if (newIds.length > 0) {
+        set({ pendingBrepProjectionIds: [...get().pendingBrepProjectionIds, ...newIds] })
+      }
+    }
     get().addDimensionPick(pick)
   },
 
   clearDimensionPicks: () => set({ dimensionPicks: [] }),
+
+  cancelBrepProjectionGesture: () => {
+    const { pendingBrepProjectionIds, activeFeatureId } = get()
+    const targets = activeFeatureId
+      ? pendingBrepProjectionIds.map(id => `entity:${activeFeatureId}:${id}`)
+      : []
+    // The delete is withheld so the aborted gesture leaves neither the
+    // projections nor the cleanup in the undo history.
+    dispatchWithheldDelete(targets)
+    // The gesture is over for real: null the withhold's captured doc too, or a
+    // dimension committed later would restore a stale pre-gesture world.
+    _sketchCbs.cancelBrepProjection?.()
+    set({ pendingBrepProjectionIds: [] })
+  },
+
+  // Drops the brep gesture bookkeeping without touching the doc: used where the
+  // doc is already being replaced (undo), so a compensating delete would only
+  // chase entities that are already gone.
+  clearBrepProjectionState: () => {
+    _sketchCbs.cancelBrepProjection?.()
+    set({ pendingBrepProjectionIds: [] })
+  },
 
   setDimensionCursorWorld: (p) => set({ dimensionCursorWorld: p }),
 
@@ -833,6 +952,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       position: clientPos,
       label: 'Dimension value',
       defaultValue,
+      // Cancelling the value dialog abandons the gesture: the projections it
+      // materialised were scratch work and are removed with no undo entries.
+      onCancel: () => get().cancelBrepProjectionGesture(),
       validate: (input) => {
         const val = parseFloat(input)
         if (isNaN(val)) return 'Enter a number'
@@ -869,6 +991,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           ...(pos && { pos }),
           ...(sign !== null && { sign }),
         })
+        // The projections are now part of the committed dimension, so nothing
+        // is pending cleanup any more; the withhold was consumed by the
+        // constraint's undo push.
+        get().clearBrepProjectionState()
         // The dimension tool stays armed so the user can place several dims
         // without re-pressing 'd'. They exit explicitly (Escape / different
         // tool / tool button), matching standard CAD behaviour.
