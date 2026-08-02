@@ -199,6 +199,14 @@ interface SketchEditorState {
   setHoveredPickKey: (key: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
+  // Reset every transient interaction field to its create() default, leaving
+  // user preferences (showDebugHit, showConstraintTiles, ngonSides,
+  // entityKindMap) intact. Called from Part's unmount cleanup: the store is
+  // module-level and survives a remount, so a new document would otherwise
+  // inherit the previous one's picks, drags, and modes. Deliberately a plain
+  // set, not the validation-running actions: it tears down a half-open state,
+  // and validating that state would failLoud on the inconsistency being cleared.
+  resetTransientState: () => void
   // `pickKey` refines the b-rep highlight to a single primitive; omit it for
   // selections with no per-primitive identity (sketch entities, planes).
   toggleNormalSelection: (id: string, pickKey?: string) => void
@@ -400,6 +408,42 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
   clearNormalSelection: () => set({ normalSelection: new Set(), selectedPicks: new Map(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
+
+  resetTransientState: () => set({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    selectionDomain: 'sketch_2d',
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+    isPointerDown: false,
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+    alignmentSnapVertexId: null,
+    drag: null,
+    dragStartClient: null,
+    dragPending: null,
+    dragSnap: null,
+    isRotating: false,
+    hoveredConstraintEntityIds: new Set(),
+    hoveredVertexId: null,
+    hoveredFaceNormal: null,
+    hoveredFaceCenter: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
+    activeTool: null,
+    activeFeatureId: null,
+    drawPoints: [],
+    drawHover: null,
+    drawSnapVertexId: null,
+    dimensionPicks: [],
+    dimensionCursorWorld: null,
+    pendingDialog: null,
+    pendingProjectTarget: null,
+    contextMenu: null,
+    modeStack: [],
+    activePickField: null,
+    chipOwnedSelection: new Set(),
+  }),
 
   // The unit of selection is one PRIMITIVE, not one query. When the click
   // carries a pickKey the (query, pickKey) pair is what toggles, so two distinct

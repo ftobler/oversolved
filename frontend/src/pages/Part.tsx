@@ -201,7 +201,14 @@ export default function Part() {
   }, [doc])
 
   useEffect(() => {
-    if (rollbackPosition !== null && rollbackPosition > features.length) {
+    // A parked rollback beyond the current feature list is stale (features were
+    // deleted or the doc was swapped), so it falls back to the end. Guarded on
+    // `doc`: on a keyed remount the first render has features=[] because the new
+    // document has not loaded yet, and without the guard the closure's rollback
+    // from the PREVIOUS document would clamp it to 0 here, silently skipping the
+    // new document's first solve (reSolve then reads rollback 0 and solves
+    // nothing).
+    if (doc && rollbackPosition !== null && rollbackPosition > features.length) {
       usePartEditorStore.getState().setRollbackPosition(features.length)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -616,6 +623,23 @@ export default function Part() {
       setSketchCallback('getSketch', null)
     }
   }, [handleMutation, handleRebuild, handleExitSketch, solveResults])
+
+  // The sketch editor store is module-level and survives a Part unmount, so a
+  // remounted Part (DocumentPage keys it by document) would otherwise inherit the
+  // previous document's picks, drags and modes. A stale pick field alone can
+  // re-enter edit mode off the next document (the planeSelectionFeatureId
+  // effect), and a stale dimension gesture trips validateWithRepair on B's first
+  // pick, so the whole transient set is reset here. This is a separate
+  // unmount-only effect, not part of the callback effect above: that one re-runs
+  // on every solve (solveResults is a dep), and resetting the store there would
+  // wipe the user's session mid-edit. resetTransientState uses a plain set, not
+  // the validation-running actions, because it tears down a half-open state that
+  // would itself failLoud under validation.
+  useEffect(() => {
+    return () => {
+      useSketchEditorStore.getState().resetTransientState()
+    }
+  }, [])
 
   useEffect(() => {
     useSketchEditorStore.getState().setActiveFeatureId(activeSketchFeatureId ?? null)

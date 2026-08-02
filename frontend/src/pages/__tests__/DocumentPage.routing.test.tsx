@@ -1,11 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 
 // The real editors mount workers, three.js and a canvas. Routing is all that is
-// under test here, so stub both sides and assert which one was chosen.
+// under test here, so stub both sides and assert which one was chosen. The Part
+// stub records mount/unmount so the keyed-remount test can assert the instance
+// actually changes when the uuid does.
+const partLifecycle = vi.hoisted(() => vi.fn())
 vi.mock('@/pages/AssemblyEditor', () => ({ default: () => <div>ASSEMBLY EDITOR</div> }))
-vi.mock('@/pages/Part', () => ({ default: () => <div>PART EDITOR</div> }))
+vi.mock('@/pages/Part', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: function PartMock() {
+      useEffect(() => {
+        partLifecycle('mount')
+        return () => partLifecycle('unmount')
+      }, [])
+      return <div>PART EDITOR</div>
+    },
+  }
+})
 
 const load = vi.fn()
 vi.mock('@/adapters/backend', () => ({
@@ -19,6 +33,7 @@ import DocumentPage from '@/pages/DocumentPage'
 
 beforeEach(() => {
   load.mockReset()
+  partLifecycle.mockClear()
 })
 
 function wrap() {
@@ -67,5 +82,40 @@ describe('DocumentPage kind routing', () => {
     await waitFor(() => expect(screen.getByText(/boom/)).toBeInTheDocument())
     expect(screen.queryByText('ASSEMBLY EDITOR')).not.toBeInTheDocument()
     expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
+  })
+
+  // The undo-document-reset contract: a uuid change (clone, browser back/forward)
+  // must NOT keep the old Part instance, because the old instance carries the
+  // previous document's undo stacks and edit-session refs. DocumentPage keys Part
+  // by uuid so the swap is a fresh instance by construction.
+  it('remounts the part editor when the uuid changes', async () => {
+    load.mockImplementation(async () => ({ content: 'kind: part\nfeatures: []\n' }))
+
+    function GoToB() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate('/documents/B')}>to B</button>
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/documents/A']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<DocumentPage />} />
+        </Routes>
+        <GoToB />
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
+    expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'to B' }))
+
+    await waitFor(() => {
+      expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(2)
+    })
+    // The old instance is torn down before the new one mounts. An in-place update
+    // (no keying) would leave the mount count at 1.
+    const sequence = partLifecycle.mock.calls.map(c => c[0])
+    expect(sequence.indexOf('unmount')).toBeGreaterThan(-1)
+    expect(sequence.indexOf('unmount')).toBeLessThan(sequence.lastIndexOf('mount'))
   })
 })

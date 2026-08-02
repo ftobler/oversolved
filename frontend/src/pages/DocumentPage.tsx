@@ -44,5 +44,17 @@ export default function DocumentPage() {
   if (kind === 'assembly') {
     return <AssemblyEditor uuid={uuid!} />
   }
-  return <Part />
+  // Keying by uuid forces a full Part remount per document, so a route change
+  // (/documents/A -> /documents/B, including clone) cannot leak the previous
+  // document's undo stacks, edit sessions, or stale refs into the new one. The
+  // remount resets the store-owned fields (rollbackPosition, pickBoundary,
+  // editingFeatureId) via useSyncPartEditorStore's unmount cleanup, which runs
+  // when the keyed instance tears down.
+  //
+  // Deliberate behavior changes this introduces, not bugs: the camera auto-fits
+  // the fresh instance (firstSolveDone is per-instance), mode/codeText/color
+  // popover reset to per-doc defaults, and the Viewport (three.js scene) is
+  // rebuilt. The solver Worker checkpoint cache is per doc-id, so B's
+  // incremental solve is preserved.
+  return <Part key={uuid} />
 }
