@@ -78,6 +78,11 @@ export function useAssemblyUndoRedo(
     useAssemblyStore.setState({
       activeMateField: null, mateFieldDirty: false,
       pickCandidates: [], pickIndex: -1, selectedMateId: null,
+      // A mid-drag undo must not leave the session behind: pointer-up would
+      // otherwise commit the drag onto the restored doc. The offsets, hover
+      // scope and hits all describe the pre-undo scene too.
+      manipulation: null, gizmoDrag: null, settlingOffsets: {},
+      pickScopeEntity: null, hoverHits: [],
     })
     docRef.current = entry.doc
     setDoc(entry.doc)

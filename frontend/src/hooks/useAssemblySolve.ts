@@ -88,6 +88,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   docRef.current = doc
   const inFlight = useRef(false)
   const queued = useRef(false)
+  // Staleness token, the assembly counterpart of useSolver's requestIdRef: a
+  // solve captures the version when it starts and drops its result if a newer
+  // request bumped it meanwhile. The assembly worker protocol carries no token,
+  // so the guard lives here on the main thread against a local counter.
+  const solveVersion = useRef(0)
   // Cached for one coalesced burst (see the effect below) so a trailing
   // queued solve reuses the rev map instead of re-issuing `documents.list()`.
   // Cleared once the burst drains, so the next burst reads fresh revs.
@@ -116,6 +121,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   }, [])
 
   const runSolve = useCallback(async () => {
+    const version = solveVersion.current
     const current = docRef.current
     if (!current) return
     const store = useAssemblyStore.getState()
@@ -159,6 +165,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       }
       const res = await solveAssemblyViaWorker(uuid, parts, revs, mates)
       if (!res) throw new Error('assembly solver unavailable')
+      // Stale-guard: a request that landed while this solve was in flight (undo/
+      // redo restoring a doc is the classic case) owns the record. Writing a
+      // pre-undo pose here would paint doc A's scene over restored doc B; the
+      // queued re-solve makes the right scene, so this result is dropped.
+      if (version !== solveVersion.current) return
 
       if (live) {
         // Drop the grabbed part: it is drawn from its pre-drag mesh under the
@@ -172,6 +183,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // session so the render offset draws it there and the commit writes it,
         // BEFORE dropping it from the re-baked set (it renders via that offset).
         if (dragObjective && transforms[grab]) {
+          if (version !== solveVersion.current) return
           useAssemblyStore.getState().setDragSolvedPose(transforms[grab])
         }
         delete transforms[grab]
@@ -179,6 +191,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         delete payloadBodies[grab]
         const bodies = toBodyResults(payloadBodies)
         const edgeCurves = toEdgeCurves(payloadBodies)
+        if (version !== solveVersion.current) return
         useAssemblyStore.getState().setDragSolveResult({
           transforms,
           bodies,
@@ -189,6 +202,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       }
 
       const anchors = buildAnchorTable(res.payload.anchors)
+      if (version !== solveVersion.current) return
       useAssemblyStore.getState().setSolveResult({
         transforms: res.payload.transforms,
         bodies: toBodyResults(res.payload.bodies),
@@ -214,7 +228,12 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     }
   }, [uuid])
 
-  const requestSolve = useCallback(() => setSolveToken(t => t + 1), [])
+  const requestSolve = useCallback(() => {
+    // Bump the staleness token first: any in-flight solve that captured an
+    // older version discards its result rather than painting a stale scene.
+    solveVersion.current += 1
+    setSolveToken(t => t + 1)
+  }, [])
 
   useEffect(() => {
     if (solveToken === 0) return  // no solve on mount; the caller asks for the first one
