@@ -175,6 +175,24 @@ describe('useAssemblyUndoRedo', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
+  it('redo also sets the dirty flag', () => {
+    const docA = docWith(['a'])
+    const docRef = { current: docWith(['a', 'b']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.pushUndo(docA, 'Add part') })
+    act(() => { result.current.handleUndo() })
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    act(() => { result.current.handleRedo() })
+
+    // Redo restores the post-edit doc, moving it away from the saved content
+    // exactly like undo does, so it must warn too.
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
   it('undo disarms the mate-authoring state so no pick aims into a vanished feature', () => {
     const docA = docWith(['a'])
     const docRef = { current: docWith(['a', 'b']) }

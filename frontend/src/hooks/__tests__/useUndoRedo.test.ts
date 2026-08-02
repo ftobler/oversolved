@@ -151,7 +151,7 @@ describe('useUndoRedo', () => {
     expect(result.current.undoStack[49].doc.features?.[0].id).toBe('f54')
   })
 
-  it('suppressUndoRef prevents pushUndo from adding undo entries', () => {
+  it('suppressUndoRef does not gate pushUndo (gating happens in the mutation funnel)', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
     const reSolve = vi.fn()
@@ -425,6 +425,46 @@ describe('useUndoRedo', () => {
 
     expect(docRef.current).toEqual(saved)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('redo also sets the doc dirty', () => {
+    const saved = { version: 1, kind: 'part', features: [{ id: 'f1', kind: 'sketch' }] } as PartDoc
+    const edited = { version: 1, kind: 'part', features: [{ id: 'f1', kind: 'sketch', label: 'edited' }] } as PartDoc
+    const docRef = { current: edited }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'rename_feature' } as Mutation, saved) })
+    act(() => { result.current.handleUndo() })
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    act(() => { result.current.handleRedo() })
+
+    // Redo restores the post-edit doc, moving it away from the saved content
+    // exactly like undo does, so it must warn too.
+    expect(docRef.current).toEqual(edited)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('undo invalidates a parked stack snapshot so a later restore is inert', () => {
+    const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+    const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
+    const docRef = { current: docB }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
+    act(() => { result.current.saveUndoStackSnapshot() })
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docB) })
+    expect(result.current.undoStack).toHaveLength(2)
+
+    act(() => { result.current.handleUndo() })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(1)
+
+    // The undo exited the open session, so the parked snapshot is dead;
+    // restoring it must not rewind the stacks to their pre-session contents.
+    act(() => { result.current.restoreUndoStackSnapshot() })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(1)
   })
 
   it('undo clamps a stale restored rollback to the restored feature count', () => {

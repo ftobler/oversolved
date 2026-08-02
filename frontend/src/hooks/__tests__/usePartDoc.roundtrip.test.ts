@@ -206,6 +206,41 @@ const deleteBodyDoc = (): PartDoc => ({
   ],
 } as unknown as PartDoc)
 
+// The remove-by-index handlers need a non-empty list to splice, while the
+// plain sweepDoc/chamferDoc start empty; these feed the remove round-trips.
+const sweepPopulatedDoc = (): PartDoc => ({
+  oversolved: 1,
+  kind: 'part',
+  features: [{
+    id: 'sw1', kind: 'sweep', label: 'Sweep',
+    sweep: { sketch: ['@sk1'], path: ['@path1'] },
+  }],
+} as unknown as PartDoc)
+
+const chamferPopulatedDoc = (): PartDoc => ({
+  oversolved: 1,
+  kind: 'part',
+  features: [{
+    id: 'ch1', kind: 'chamfer', label: 'Chamfer',
+    chamfer: { edges: ['?e1'], distance: 1, kind: 'distance', angle: 45 },
+  }],
+} as unknown as PartDoc)
+
+// A projected entity (source-carrying) and a superfluous constraint, the two
+// things remove_dangling_content is eligible to clean up.
+const danglingDoc = (): PartDoc => ({
+  oversolved: 1,
+  kind: 'part',
+  features: [{
+    id: 'sk1', kind: 'sketch',
+    entities: [
+      { id: 'l1', kind: 'line' },
+      { id: 'proj1', kind: 'line', source: '?edge;x' },
+    ],
+    constraints: [{ id: 'c_super', kind: 'horizontal', target: '$l1' }],
+  }],
+} as unknown as PartDoc)
+
 // ─── Round-trip table ───
 
 interface RoundTripCase {
@@ -242,10 +277,16 @@ const ROUND_TRIPS: RoundTripCase[] = [
   // revolve
   { name: 'revolve add_revolve', makeDoc: emptyDoc, mutation: { type: 'add_revolve', featureId: 'rv1', label: 'Rev', sketchQuery: '@sk1', angle: 180 } as Mutation },
   { name: 'revolve set_revolve_field', makeDoc: revolveDoc, mutation: { type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: 120 } as Mutation },
+  { name: 'revolve add_revolve_profile', makeDoc: revolveDoc, mutation: { type: 'add_revolve_profile', featureId: 'rv1', sketchQuery: '@sk2' } as Mutation },
+  { name: 'revolve remove_revolve_profile', makeDoc: revolveDoc, mutation: { type: 'remove_revolve_profile', featureId: 'rv1', index: 0 } as Mutation },
 
   // sweep
   { name: 'sweep add_sweep', makeDoc: emptyDoc, mutation: { type: 'add_sweep', featureId: 'sw1', label: 'Sweep', sketchQuery: '@sk1', pathQuery: '@path1' } as Mutation },
   { name: 'sweep set_sweep_field', makeDoc: sweepDoc, mutation: { type: 'set_sweep_field', featureId: 'sw1', field: 'sketch', value: '@sk1' } as Mutation },
+  { name: 'sweep add_sweep_profile', makeDoc: sweepPopulatedDoc, mutation: { type: 'add_sweep_profile', featureId: 'sw1', sketchQuery: '@sk2' } as Mutation },
+  { name: 'sweep remove_sweep_profile', makeDoc: sweepPopulatedDoc, mutation: { type: 'remove_sweep_profile', featureId: 'sw1', index: 0 } as Mutation },
+  { name: 'sweep add_sweep_path', makeDoc: sweepPopulatedDoc, mutation: { type: 'add_sweep_path', featureId: 'sw1', pathQuery: '@path2' } as Mutation },
+  { name: 'sweep remove_sweep_path', makeDoc: sweepPopulatedDoc, mutation: { type: 'remove_sweep_path', featureId: 'sw1', index: 0 } as Mutation },
 
   // fillet
   { name: 'fillet add_fillet', makeDoc: emptyDoc, mutation: { type: 'add_fillet', featureId: 'f1', label: 'Fillet' } as Mutation },
@@ -256,11 +297,14 @@ const ROUND_TRIPS: RoundTripCase[] = [
   // chamfer
   { name: 'chamfer add_chamfer', makeDoc: emptyDoc, mutation: { type: 'add_chamfer', featureId: 'ch1', label: 'Chamfer' } as Mutation },
   { name: 'chamfer set_chamfer_field', makeDoc: chamferDoc, mutation: { type: 'set_chamfer_field', featureId: 'ch1', field: 'distance', value: 5 } as Mutation },
+  { name: 'chamfer add_chamfer_edge', makeDoc: chamferDoc, mutation: { type: 'add_chamfer_edge', featureId: 'ch1', edgeQuery: '?e1' } as Mutation },
+  { name: 'chamfer remove_chamfer_edge', makeDoc: chamferPopulatedDoc, mutation: { type: 'remove_chamfer_edge', featureId: 'ch1', index: 0 } as Mutation },
 
   // boolean
   { name: 'boolean add_boolean', makeDoc: emptyDoc, mutation: { type: 'add_boolean', featureId: 'b1', label: 'Boolean' } as Mutation },
   { name: 'boolean set_boolean_field', makeDoc: booleanDoc, mutation: { type: 'set_boolean_field', featureId: 'b1', field: 'operation', value: 'subtract' } as Mutation },
   { name: 'boolean add_boolean_tool', makeDoc: booleanDoc, mutation: { type: 'add_boolean_tool', featureId: 'b1', tool: '@t2' } as Mutation },
+  { name: 'boolean remove_boolean_tool', makeDoc: booleanDoc, mutation: { type: 'remove_boolean_tool', featureId: 'b1', tool: '@t1' } as Mutation },
 
   // array
   { name: 'array add_array', makeDoc: emptyDoc, mutation: { type: 'add_array', featureId: 'a1', label: 'Array' } as Mutation },
@@ -289,6 +333,9 @@ const ROUND_TRIPS: RoundTripCase[] = [
   // part style
   { name: 'part-style set_part_color', makeDoc: partStyleDoc, mutation: { type: 'set_part_color', bodyId: 'b1', color: '#00ff00' } as Mutation },
   { name: 'part-style set_part_transparency', makeDoc: partStyleDoc, mutation: { type: 'set_part_transparency', bodyId: 'b1', transparency: 0.5 } as Mutation },
+  { name: 'part-style set_part_metalness', makeDoc: partStyleDoc, mutation: { type: 'set_part_metalness', bodyId: 'b1', metalness: 0.5 } as Mutation },
+  { name: 'part-style set_part_roughness', makeDoc: partStyleDoc, mutation: { type: 'set_part_roughness', bodyId: 'b1', roughness: 0.3 } as Mutation },
+  { name: 'part-style set_part_transmission', makeDoc: partStyleDoc, mutation: { type: 'set_part_transmission', bodyId: 'b1', transmission: 0.2 } as Mutation },
   { name: 'part-style rename_part', makeDoc: partStyleDoc, mutation: { type: 'rename_part', bodyId: 'b1', name: 'renamed' } as Mutation },
   { name: 'part-style set_body_visibility', makeDoc: partStyleDoc, mutation: { type: 'set_body_visibility', bodyId: 'b1', visible: false } as Mutation },
 
@@ -303,13 +350,18 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'tree reorder_features', makeDoc: treeDoc, mutation: { type: 'reorder_features', featureId: 'f2', toIndex: 4 } as Mutation },
   { name: 'tree reorder_pick_field', makeDoc: filletDoc, mutation: { type: 'reorder_pick_field', featureId: 'f1', field: 'edges', fromIndex: 0, toIndex: 1 } as Mutation },
   { name: 'tree toggle_sketch_plane_visibility', makeDoc: sketchDoc, mutation: { type: 'toggle_sketch_plane_visibility' } as Mutation },
+  { name: 'tree toggle_plane_visibility', makeDoc: planeDoc, mutation: { type: 'toggle_plane_visibility' } as Mutation },
 
   // delete body
   { name: 'delete-body add_delete_body', makeDoc: emptyDoc, mutation: { type: 'add_delete_body', featureId: 'db1', bodies: ['@b1'], label: 'Delete Body' } as Mutation },
   { name: 'delete-body add_delete_body_ref', makeDoc: deleteBodyDoc, mutation: { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '@b3' } as Mutation },
+  { name: 'delete-body remove_delete_body_ref', makeDoc: deleteBodyDoc, mutation: { type: 'remove_delete_body_ref', featureId: 'db1', index: 0 } as Mutation },
 
   // import
   { name: 'import add_import_step', makeDoc: emptyDoc, mutation: { type: 'add_import_step', featureId: 'imp1', label: 'part' } as Mutation },
+
+  // dangling content cleanup: removes the projected entity and its constraint
+  { name: 'cleanup remove_dangling_content', makeDoc: danglingDoc, mutation: { type: 'remove_dangling_content', features: { sk1: { entities: ['proj1'], constraints: ['c_super'] } } } as Mutation },
 ]
 
 describe.each(ROUND_TRIPS)('round-trip: $name', ({ makeDoc, mutation }) => {
@@ -386,6 +438,30 @@ describe('round-trip side effects', () => {
     act(() => { result.current.handleRedo() })
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['ex1'])
     expect(result.current.solveResults.sk1).toBeUndefined()
+  })
+
+  it('a restorable mutation forwards _restoreSolveResults to the re-solve', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }] },
+      ],
+    } as unknown as PartDoc
+    // The solveResultsRef must already hold the entry for the deleted feature
+    // before the mutation, or pruneSolveResults has nothing to restore.
+    solveResults = { sk1: { status: 'ok', solved: {} } }
+    reSolve.mockClear()
+    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'sk1' } as Mutation) })
+
+    // handleMutation prunes the entry optimistically and hands the snapshot to
+    // the re-solve so a failing solve can repopulate it (the stale-scene guard).
+    expect(reSolve).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ _restoreSolveResults: { sk1: { status: 'ok', solved: {} } } }),
+    )
   })
 
   it('move_vertex adopts the drag frame and undo restores the pre-drag spec', () => {
