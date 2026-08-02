@@ -3,6 +3,7 @@ import type { PartDoc, Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
+import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 
@@ -37,8 +38,9 @@ export function useUndoRedo(
   const pushUndo = useCallback((mutation: Mutation, currentDoc: PartDoc) => {
     // The entry holds a snapshot, never a reference: handleMutation clones
     // before pushing today, but any path that mutates the current doc in place
-    // would silently rewrite history if the stored object were shared.
-    const undo = [...undoRef.current, { doc: structuredClone(currentDoc), mutation }]
+    // would silently rewrite history if the stored object were shared. The
+    // snapshot shares only the immutable import payloads (cloneDocForUndo).
+    const undo = [...undoRef.current, { doc: cloneDocForUndo(currentDoc), mutation }]
     if (undo.length > MAX_UNDO_DEPTH) undo.shift()
     commitStacks(undo, [])  // a fresh edit invalidates any redo branch
   }, [commitStacks])
@@ -83,8 +85,9 @@ export function useUndoRedo(
       const nextFrom = from.slice(0, -1)
       // The doc we are leaving becomes the counterpart entry, so the same
       // mutation label round-trips in both directions. The clone mirrors
-      // pushUndo: the departing doc must not be shared with the entry.
-      const nextTo = [...to, { doc: structuredClone(preDoc), mutation: entry.mutation }]
+      // pushUndo: the departing doc must not be shared with the entry, and the
+      // immutable import payloads stay shared (cloneDocForUndo).
+      const nextTo = [...to, { doc: cloneDocForUndo(preDoc), mutation: entry.mutation }]
       if (nextTo.length > MAX_UNDO_DEPTH) nextTo.shift()
 
       commitStacks(

@@ -5,6 +5,7 @@ import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
+import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -240,7 +241,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // A nested preview must not overwrite the live baseline.
       return
     }
-    previewOriginalDoc.current = structuredClone(originalDoc)
+    previewOriginalDoc.current = cloneDocForUndo(originalDoc)
     previewTouchedRef.current = false
     suppressUndoRef.current = true
   }, [suppressUndoRef])
@@ -326,8 +327,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     if (!current) return
 
     // The handler runs on the clone first so the no-op guard below can compare
-    // the result against the pre-mutation doc before anything is committed.
-    const next: PartDoc = structuredClone(current)
+    // the result against the pre-mutation doc before anything is committed. The
+    // clone shares the immutable import payloads so per-keystroke edits do not
+    // pay O(payload) on a large STEP-imported document.
+    const next: PartDoc = cloneDocForUndo(current)
     type AnyHandler = (doc: PartDoc, m: Mutation) => void
     const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
     if (import.meta.env.DEV && !handler) {
@@ -438,7 +441,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     if (editSnapshotRef.current !== null) {
       failLoud('[usePartDoc] startEditSession called while an edit session is already active (nested edit session not supported)')
     }
-    editSnapshotRef.current = structuredClone(docRef.current)
+    editSnapshotRef.current = cloneDocForUndo(docRef.current)
     // Which kind of session this is decides what commitEditSession does: a
     // suppressed (feature) session folds into one aggregate entry, a sketch
     // session keeps its per-action entries and pushes nothing extra.
@@ -514,7 +517,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const current = docRef.current
     if (!current || ms.length === 0) return
 
-    const next: PartDoc = structuredClone(current)
+    const next: PartDoc = cloneDocForUndo(current)
     type AnyHandler = (doc: PartDoc, m: Mutation) => void
     let restorable: Record<string, SketchData> | null = null
     let nextSolveResults = solveResultsRef.current
