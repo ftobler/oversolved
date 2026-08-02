@@ -3,6 +3,7 @@ import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 describe('useUndoRedo', () => {
@@ -424,5 +425,73 @@ describe('useUndoRedo', () => {
 
     expect(docRef.current).toEqual(saved)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('undo clamps a stale restored rollback to the restored feature count', () => {
+    // A hand-edited doc can carry rollback past the feature list (Part.tsx
+    // clamps the STORE on load, but the DOC is loaded verbatim). Restoring it
+    // must clamp the bar to the end, never overshoot into empty space.
+    const staleDoc = {
+      version: 1, kind: 'part', rollback: 5,
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+        { id: 'f3', kind: 'fillet' },
+      ],
+    } as PartDoc
+    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, staleDoc) })
+    usePartEditorStore.getState().setRollbackPosition(99)
+
+    act(() => { result.current.handleUndo() })
+
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(3)
+  })
+
+  it('undo without a stored rollback parks the bar at the end of the restored features', () => {
+    const plainDoc = {
+      version: 1, kind: 'part',
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+      ],
+    } as PartDoc
+    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, plainDoc) })
+    act(() => { result.current.handleUndo() })
+
+    // Absent rollback means "at the end of the stack", so the restore lands on
+    // the restored doc's own feature count, not on a stale store position.
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
+  it('restoreUndoStackSnapshot only re-pairs the stacks; the caller must rewind the doc first', () => {
+    // PAIRING CONTRACT: the stacks only describe the pre-session doc again once
+    // the live doc IS that doc. This restore commits the stacks and nothing
+    // else, so a caller that restores without first rewinding docRef leaves the
+    // top entry naming a doc the live doc is not. cancelEditSession composes
+    // doc rewind + stack restore into one unit; any future caller must too.
+    const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+    const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
+    const docRef = { current: docB }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
+    act(() => { result.current.saveUndoStackSnapshot() })
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docB) })
+    expect(result.current.undoStack).toHaveLength(2)
+
+    act(() => { result.current.restoreUndoStackSnapshot() })
+
+    // The pre-session stack is back, whose top entry is docA, but the live doc
+    // is still docB: restore does not touch the doc. The undo that follows
+    // would pop to docA, so the rewind must precede the restore.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].doc).toEqual(docA)
+    expect(docRef.current).toEqual(docB)
   })
 })

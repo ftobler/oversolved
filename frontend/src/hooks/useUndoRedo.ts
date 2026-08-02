@@ -103,7 +103,14 @@ export function useUndoRedo(
       const store = usePartEditorStore.getState()
       store.setEditingFeatureId(null)
       store.setPickBoundary(null)
-      store.setRollbackPosition(entry.doc.rollback ?? entry.doc.features?.length ?? 0)
+      // Clamp the restored position to the restored feature list, the same
+      // guard Part.tsx applies when a doc loads: a stale/hand-edited doc
+      // (rollback: 5 in a 3-feature list) must not set the bar past the end.
+      // The entry stays immutable; the mirror re-fixes the doc on the next
+      // mutation, exactly as Part.tsx's clamp effect does today.
+      const features = entry.doc.features?.length ?? 0
+      const rollback = Math.min(Math.max(entry.doc.rollback ?? features, 0), features)
+      store.setRollbackPosition(rollback)
       reSolve(entry.doc)
     }, [docRef, setDoc, reSolve, commitStacks, tearDownEditorState])
 
@@ -120,6 +127,12 @@ export function useUndoRedo(
     }
   }, [])
 
+  // PAIRING CONTRACT: the stacks only describe the pre-session doc again once
+  // the live doc IS that doc. This restore commits the stacks and nothing
+  // else; the caller must have rewound docRef/setDoc to the pre-session
+  // snapshot BEFORE calling (cancelEditSession composes doc rewind + stack
+  // restore into one unit). Restoring alone would leave the top entry naming a
+  // doc the live doc no longer is, desyncing history from the document.
   const restoreUndoStackSnapshot = useCallback(() => {
     const snap = stackSnapshotRef.current
     if (!snap) return

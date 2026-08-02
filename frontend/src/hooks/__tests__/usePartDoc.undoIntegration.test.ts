@@ -990,4 +990,66 @@ describe('usePartDoc undo/redo integration', () => {
       useSketchEditorStore.getState().resetTransientState()
     }
   })
+
+  it('a projection group run while a brep withhold is pending restores the pre-pick doc in one entry', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    // A pick armed the withhold; the N-face projection lands through the
+    // gesture-group seam instead of the single-mutation funnel. The group must
+    // honor the withhold the same way handleMutation does.
+    act(() => { result.current.beginBrepProjection() })
+    act(() => {
+      result.current.commitMutationGroup([
+        { type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?a:1', entityId: 'p1' },
+        { type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?a:2', entityId: 'p2' },
+        { type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?a:3', entityId: 'p3' },
+      ] as Mutation[])
+    })
+
+    // The group consumed the arm: no entry yet, the projections wait for the
+    // dimension commit like any withheld projection.
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(sketchEntitiesOf()).toHaveLength(3)
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'add_constraint', featureId: 'sk1', kind: 'length',
+        targets: ['entity:sk1:p1'], value: 10,
+      } as Mutation)
+    })
+
+    // One entry keyed to the pre-pick doc: undo removes the dimension and all
+    // three projections together, nothing is orphaned.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect((result.current.undoStack[0].doc.features?.[0] as { entities?: unknown[] }).entities ?? []).toHaveLength(0)
+
+    act(() => { result.current.handleUndo() })
+    expect(sketchEntitiesOf()).toHaveLength(0)
+    expect(sketchConstraintsOf()).toHaveLength(0)
+  })
+
+  it('a brep arm made while suppression is on does not leak past the suppression boundary', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    usePartEditorStore.getState().setEditingFeatureId('sk1')
+
+    // A suppressed feature session is the undo owner; a brep pick armed inside
+    // it has its projection swallowed without an entry.
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.beginBrepProjection() })
+    act(() => {
+      result.current.handleMutation({ type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?a:1', entityId: 'p1' } as Mutation)
+    })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.commitEditSession() })
+    // The session folds into one aggregate and suppression turns off.
+    expect(result.current.undoStack).toHaveLength(1)
+
+    // Without the swallow consuming the arm, this unrelated edit would still
+    // be swallowed as "the projection" and never earn an entry.
+    act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })
+    expect(result.current.undoStack).toHaveLength(2)
+  })
 })

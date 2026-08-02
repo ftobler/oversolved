@@ -292,6 +292,34 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     return original
   }, [suppressUndoRef, editSessionSuppressedRef])
 
+  // Shared "does this mutation earn an undo entry?" branch for the
+  // single-mutation funnel and the gesture-group funnel, so a withheld brep
+  // projection and its dimension commit cannot be split differently by the
+  // two paths. `preDoc` is the doc the entry restores to when no withhold is
+  // pending; the withhold, when armed, overrides it with the pre-gesture doc.
+  const applyWithholdOrPush = useCallback((mutation: Mutation, preDoc: PartDoc) => {
+    const brep = brepWithholdRef.current
+    if (brep.armed) {
+      // The brep dimension projection, or the compensating delete of a
+      // cancelled one: apply without an entry and remember the pre-gesture doc
+      // so the commit that follows can restore past it. A later pick in the
+      // same gesture keeps the EARLIEST captured doc, or the first pick's
+      // projection would be orphaned by the commit's undo.
+      brepWithholdRef.current = { armed: false, doc: brep.doc ?? preDoc }
+    } else if (brep.doc && mutation.type === 'add_constraint') {
+      // The brep dimension commit: one entry restoring the pre-projection doc,
+      // so undo removes the dimension and its projection in a single step. The
+      // type gate keeps an unrelated mid-gesture mutation (a rename, a delete)
+      // from stealing the withhold and pushing an entry keyed to the pre-pick
+      // doc, which would silently unpair the projection.
+      const withheldDoc = brep.doc
+      brepWithholdRef.current = { armed: false, doc: null }
+      pushUndo(mutation, withheldDoc)
+    } else {
+      pushUndo(mutation, preDoc)
+    }
+  }, [pushUndo])
+
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
     const current = docRef.current
@@ -372,24 +400,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (previewOriginalDoc.current !== null && PREVIEW_SCOPE.has(m.type)) {
         previewTouchedRef.current = true
       }
-    } else if (brep.armed) {
-      // The brep dimension projection, or the compensating delete of a
-      // cancelled one: apply without an entry and remember the pre-gesture doc
-      // so the commit that follows can restore past it. A later pick in the
-      // same gesture keeps the EARLIEST captured doc, or the first pick's
-      // projection would be orphaned by the commit's undo.
-      brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
-    } else if (brep.doc && m.type === 'add_constraint') {
-      // The brep dimension commit: one entry restoring the pre-projection doc,
-      // so undo removes the dimension and its projection in a single step. The
-      // type gate keeps an unrelated mid-gesture mutation (a rename, a delete)
-      // from stealing the withhold and pushing an entry keyed to the pre-pick
-      // doc, which would silently unpair the projection.
-      const preDoc = brep.doc
-      brepWithholdRef.current = { armed: false, doc: null }
-      pushUndo(m, preDoc)
+      // A swallow still fulfils the withhold's "next mutation" contract: the
+      // mutation applies without an entry, so consume the arm exactly like the
+      // projection branch does. Leaving it armed would leak past the
+      // suppression boundary and swallow the next unrelated mutation as
+      // "the projection".
+      if (brep.armed) {
+        brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
+      }
     } else {
-      pushUndo(m, current)
+      applyWithholdOrPush(m, current)
     }
 
     docRef.current = next
@@ -411,7 +431,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef, commitPreview])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush])
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
@@ -470,6 +490,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       editSnapshotRef.current = null
       editSessionSuppressedRef.current = false
       suppressUndoRef.current = false
+      // Doc rewind and stack restore are ONE unit (see useUndoRedo's snapshot
+      // pairing contract): the stacks only describe the pre-session doc again
+      // once the live doc has been rewound to it. Restoring in the other
+      // order, or without the rewind, would leave the stack top naming a doc
+      // the live doc is not.
       docRef.current = snapshot
       setDoc(snapshot)
       restoreUndoStackSnapshot()
@@ -530,16 +555,30 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     const groupInPreviewScope = !sessionActive
       && previewActive
       && ms.every(m => PREVIEW_SCOPE.has(m.type))
+    const brep = brepWithholdRef.current
+    let escapedPreview = false
     if (!sessionActive && previewActive && !groupInPreviewScope) {
       const original = previewOriginalDoc.current!
       commitPreview(previewMutationFor(original, current) ?? ms[0])
+      escapedPreview = true
     } else if (groupInPreviewScope) {
       previewTouchedRef.current = true
     }
-    if (!suppressUndoRef.current) {
+    if (suppressUndoRef.current && !escapedPreview) {
+      // A group made entirely of preview-scope mutations is a preview frame
+      // and a suppressed session swallows every group. The swallow must also
+      // consume a pending brep withhold (exactly like handleMutation), or the
+      // arm leaks past the suppression boundary and the next unrelated
+      // mutation is swallowed as "the projection".
+      if (brep.armed) {
+        brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
+      }
+    } else {
       // The first mutation names the entry so the undo tooltip has a label;
       // redo round-trips it, so only the doc matters, never the list itself.
-      pushUndo(ms[0], current)
+      // A pending brep withhold is honored: the group is the projection, so it
+      // applies without an entry and the pre-gesture doc waits for the commit.
+      applyWithholdOrPush(ms[0], current)
     }
     docRef.current = next
     setDoc(next)
@@ -547,7 +586,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, pushUndo, solveResultsRef, commitPreview])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush])
 
   // Arms the brep dimension pick/commit pair: the next mutation (the
   // projection) is applied without an undo entry and the one after it (the
