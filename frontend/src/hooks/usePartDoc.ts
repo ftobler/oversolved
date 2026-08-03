@@ -142,6 +142,25 @@ function previewMutationFor(original: PartDoc, current: PartDoc): Mutation | nul
   return { type: 'preview_commit', description: changed.join('; ') }
 }
 
+// The body-style mutations whose no-op slice keys on a single part_style
+// entry. A missing bodyId writes part_style[undefined] - a real doc change the
+// slice cannot represent - so these are the ones the guard must never swallow.
+const BODY_STYLE_MUTATION_TYPES = new Set<Mutation['type']>([
+  'rename_part',
+  'set_body_visibility',
+  'set_part_color',
+  'set_part_transparency',
+  'set_part_metalness',
+  'set_part_roughness',
+  'set_part_transmission',
+])
+
+// The slice value meaning "do not no-op guard this mutation". A body-style
+// mutation without a bodyId is a programming error (failLoud flags it, like
+// the set_rollback pre-sync guard) but the doc change is still real, so in
+// prod the mutation must always push; the bypass skips the stringify compare.
+const GUARD_BYPASS = Symbol('noOpSliceFor.guardBypass')
+
 // A serializable key of only the parts of `doc` an idempotent mutation can
 // change, so the no-op guard compares O(touched) instead of O(doc). The
 // rollback mirror writes doc.rollback outside a session, so that is always
@@ -152,6 +171,10 @@ function previewMutationFor(original: PartDoc, current: PartDoc): Mutation | nul
 function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
   const featureId = (m as { featureId?: string }).featureId
   const bodyId = (m as { bodyId?: string }).bodyId
+  if (bodyId === undefined && BODY_STYLE_MUTATION_TYPES.has(m.type)) {
+    failLoud('[usePartDoc] body-style mutation dispatched without a bodyId')
+    return GUARD_BYPASS
+  }
   const slice: Record<string, unknown> = {}
   if (doc.rollback !== undefined) slice.rollback = doc.rollback
   if (m.type === 'reorder_features') {
@@ -463,9 +486,16 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // limits the stringify to the touched feature/part_style entry instead of
     // the whole doc (per-keystroke field edits must not cost O(doc) on a large
     // STEP-imported document).
-    if (IDEMPOTENT_MUTATION_TYPES.has(m.type)
-      && JSON.stringify(noOpSliceFor(m, current)) === JSON.stringify(noOpSliceFor(m, next))) {
-      return
+    if (IDEMPOTENT_MUTATION_TYPES.has(m.type)) {
+      const slice = noOpSliceFor(m, current)
+      // GUARD_BYPASS means the slice cannot represent the change (a body-style
+      // mutation missing its bodyId), so the compare is skipped entirely and
+      // the mutation always lands: the guard is never the reason a doc
+      // mutation goes unrecorded.
+      if (slice !== GUARD_BYPASS
+        && JSON.stringify(slice) === JSON.stringify(noOpSliceFor(m, next))) {
+        return
+      }
     }
 
     // Every doc edit funnels through here (direct mutations, drags, and preview
