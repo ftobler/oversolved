@@ -53,6 +53,18 @@ features:
     label: Sketch 1
 `
 
+const SKETCH_AND_FILLET_DOC = `version: 1
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    label: Sketch 1
+  - id: fil1
+    kind: fillet
+    label: Fillet 1
+    fillet: { edges: [], radius: 1 }
+`
+
 function renderPart() {
   return render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -138,6 +150,42 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     expect(within(fil1Item).queryByTitle('OK')).toBeNull()
     expect(radiusOf('fil1')).toBe(9)
 
+    await act(async () => { executeCommand('undo') })
+    await waitFor(() => expect(radiusOf('fil1')).toBe(1))
+  })
+
+  // The reverse direction: the OPEN session is a sketch (per-action, not
+  // suppressed), so commitEditSession has no aggregate to push -- closing it
+  // must still reset the UI state cleanly and must not manufacture a spurious
+  // undo entry. Confirmed by there being exactly one real entry afterward
+  // (the fillet edit), not two.
+  it('opening a fillet while an untouched sketch session is open closes it with no phantom entry', async () => {
+    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_AND_FILLET_DOC }))
+    renderPart()
+    await screen.findByTitle('Feature mode')
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTitle('Edit sketch'))
+    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('sk1'))
+
+    fireEvent.click(screen.getByTitle('Edit fillet'))
+
+    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('fil1'))
+    const sk1Item = screen.getByText('Sketch 1').closest('.feature-item') as HTMLElement
+    expect(within(sk1Item).queryByTitle('OK')).toBeNull()
+
+    const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
+    fireEvent.change(radiusInput, { target: { value: '7' } })
+    fireEvent.blur(radiusInput)
+    await waitFor(() => expect(radiusOf('fil1')).toBe(7))
+
+    // Commit fil1's own (suppressed) session so its aggregate lands as a real
+    // entry, then undo. One undo must land all the way back on the untouched
+    // radius: the sketch's empty session left no phantom entry of its own
+    // behind for this undo to pop through first.
+    fireEvent.click(screen.getByTitle('OK'))
     await act(async () => { executeCommand('undo') })
     await waitFor(() => expect(radiusOf('fil1')).toBe(1))
   })
