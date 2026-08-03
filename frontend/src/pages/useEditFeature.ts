@@ -19,12 +19,20 @@ interface UseEditFeatureInput {
   clearPlaneSelection?: () => void
 }
 
+interface ExitOpts {
+  // Set when a caller is about to open a different feature's session right
+  // after this one closes (plane-on-face's exit-before-enter): the pending
+  // plane pick for that NEXT feature lives in the same activePickField slot
+  // clearPlaneSelection would otherwise null out from under it.
+  keepPlaneSelection?: boolean
+}
+
 export interface UseEditFeatureReturn {
   editingFeatureId: string | null
   editForcedVisible: Set<string>
-  resetEditState: () => void
+  resetEditState: (opts?: ExitOpts) => void
   enterEditFeature: (featureId: string, suppressUndo?: boolean) => void
-  commitEditFeature: () => void
+  commitEditFeature: (opts?: ExitOpts) => void
   cancelEditFeature: () => void
   exitEditFeature: () => void
   enterEditSketch: (featureId: string) => void
@@ -62,6 +70,14 @@ export function useEditFeature({
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
     const feature = features[idx]
+    const activeEditingId = usePartEditorStore.getState().editingFeatureId
+    if (activeEditingId !== null && activeEditingId !== featureId) {
+      // Nesting is structurally impossible, not just loud: a caller must
+      // close (commit or cancel) whatever session is open before opening
+      // another feature's. Plane-on-face (Part.tsx) does exactly that,
+      // committing the outer session itself before requesting this one.
+      return
+    }
     startEditSession(suppressUndo)
     const store = usePartEditorStore.getState()
     const pickBoundary = computePickBoundary(features, featureId, builtInIds)
@@ -78,8 +94,8 @@ export function useEditFeature({
   // Everything an edit owns in the UI, dropped without touching the doc. Split
   // out of the exit path because undo/redo needs the same reset but brings its
   // own doc and its own single re-solve.
-  const resetEditState = useCallback(() => {
-    if (clearPlaneSelection) clearPlaneSelection()
+  const resetEditState = useCallback((opts?: ExitOpts) => {
+    if (clearPlaneSelection && !opts?.keepPlaneSelection) clearPlaneSelection()
     const store = usePartEditorStore.getState()
     setEditForcedVisible(new Set())
     store.setEditingFeatureId(null)
@@ -89,14 +105,14 @@ export function useEditFeature({
     store.setRollbackPosition(docRef.current?.rollback ?? null)
   }, [docRef, clearPlaneSelection])
 
-  const _exitEditCleanup = useCallback(() => {
-    resetEditState()
+  const _exitEditCleanup = useCallback((opts?: ExitOpts) => {
+    resetEditState(opts)
     if (docRef.current) reSolve(docRef.current)
   }, [resetEditState, docRef, reSolve])
 
-  const commitEditFeature = useCallback(() => {
+  const commitEditFeature = useCallback((opts?: ExitOpts) => {
     commitEditSession()
-    _exitEditCleanup()
+    _exitEditCleanup(opts)
   }, [commitEditSession, _exitEditCleanup])
 
   // Reset before cancelling: cancelEditSession re-solves the snapshot it

@@ -874,7 +874,19 @@ export default function Part() {
       if (editingFeatureId !== planeSelectionFeatureId) {
         const feature = features.find(f => f.id === planeSelectionFeatureId)
         if (feature?.kind === 'sketch') {
-          enterEditFeature(planeSelectionFeatureId)
+          // A plane pick for a fresh sketch can fire while another feature's
+          // session is still open (e.g. picking a plane for a new sketch while
+          // an extrude edit is mid-gesture). Close that session first so the
+          // sketch opens onto a clean doc instead of tripping
+          // enterEditFeature's nested-session refusal; keepPlaneSelection
+          // preserves the pending pick request just recorded above, which
+          // lives in the same activePickField slot clearPlaneSelection would
+          // otherwise null out.
+          if (editingFeatureId) commitEditFeature({ keepPlaneSelection: true })
+          // A sketch entered via plane-on-face goes through enterEditSketch
+          // (per-action undo), not enterEditFeature (which would suppress
+          // every draw into one aggregate step).
+          enterEditSketch(planeSelectionFeatureId)
         }
       }
     } else if (pendingSketchOnFaceId.current) {
@@ -882,10 +894,18 @@ export default function Part() {
       pendingSketchOnFaceId.current = null
       const feature = features.find(f => f.id === fid)
       if (feature?.kind === 'sketch') {
-        setMode('sketch')
+        if (feature.plane) {
+          setMode('sketch')
+        } else if (editingFeatureId === fid) {
+          // The pick was abandoned (Escape/cancel_pick, or the chip toggled
+          // off) before a plane landed. Nothing else resolves this session,
+          // so close it here rather than stranding editingFeatureId with only
+          // the feature tree's own OK/Cancel left to escape it.
+          cancelEditFeature()
+        }
       }
     }
-  }, [planeSelectionFeatureId, editingFeatureId, features, enterEditFeature, setMode])
+  }, [planeSelectionFeatureId, editingFeatureId, features, enterEditSketch, commitEditFeature, cancelEditFeature, setMode])
 
   // A sketch created with its plane already bound needs no pick step, so it
   // drops straight into sketch edit once the new feature reaches `features`.

@@ -451,6 +451,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     if (!docRef.current) return
     if (editSnapshotRef.current !== null) {
       failLoud('[usePartDoc] startEditSession called while an edit session is already active (nested edit session not supported)')
+      // In prod failLoud only warns, so without this return the call below
+      // would overwrite editSnapshotRef with the CURRENT (already-edited) doc,
+      // moving the outer session's restore point past its own edits and
+      // making them permanently non-undoable. Refuse instead: the caller is
+      // responsible for closing the active session before opening another.
+      return
     }
     editSnapshotRef.current = cloneDocForUndo(docRef.current)
     // Which kind of session this is decides what commitEditSession does: a
