@@ -321,6 +321,20 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     }
   }, [pushUndo])
 
+  // The single predicate deciding whether a live preview is open OUTSIDE a
+  // suppressed feature session, i.e. whether an incompatible mutation escapes
+  // it (auto-commits the pending color, then pushes normally) rather than
+  // being swallowed whole by the session's own 'all' scope. Shared by the
+  // single-mutation and gesture-group funnels so they cannot disagree about
+  // what escapes: they used to gate on different refs (suppressUndoRef vs.
+  // editSessionSuppressedRef alone), which is exactly the half-open state a
+  // preview left open across a session boundary used to expose.
+  const previewOpenOutsideSession = useCallback(() =>
+    suppressUndoRef.current
+    && !editSessionSuppressedRef.current
+    && previewOriginalDoc.current !== null,
+  [suppressUndoRef])
+
   const handleMutation = useCallback((m: Mutation) => {
     setSolveError(null)
     const current = docRef.current
@@ -389,11 +403,8 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // below, instead of being swallowed and destroyed by a later cancel. A
     // suppressed feature session keeps its 'all' scope and swallows everything.
     let escapedPreview = false
-    if (suppressUndoRef.current
-      && !editSessionSuppressedRef.current
-      && previewOriginalDoc.current !== null
-      && !PREVIEW_SCOPE.has(m.type)) {
-      const original = previewOriginalDoc.current
+    if (previewOpenOutsideSession() && !PREVIEW_SCOPE.has(m.type)) {
+      const original = previewOriginalDoc.current!
       commitPreview(previewMutationFor(original, current) ?? m)
       escapedPreview = true
     }
@@ -434,7 +445,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession])
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
@@ -457,6 +468,18 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // No active session (e.g. add+enter pattern where only editingFeatureId
       // was set without starting a session). Silently skip.
       return
+    }
+    // Invariant: previewOriginalDoc may not survive a session boundary. A
+    // preview left open when the session commits (the popover's own Apply was
+    // never clicked) has no other resolver -- commitPreview/cancelPreview only
+    // run from the popover's own buttons -- so it is folded in here first,
+    // while editSessionSuppressedRef is still true, so commitPreview's own
+    // suppress gate sees the session still active and leaves suppression on
+    // for the aggregate push below. This lands the stack in order
+    // [preview_commit, edit_session]: undo pops the aggregate first (reverts
+    // the whole gesture), then the preview.
+    if (editSessionSuppressedRef.current && previewOriginalDoc.current !== null) {
+      commitPreview({ type: 'preview_commit', description: 'preview resolved at session commit' })
     }
     const snapshot = editSnapshotRef.current
     const suppressed = editSessionSuppressedRef.current
@@ -482,7 +505,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       }
     }
     clearUndoStackSnapshot()
-  }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef])
+  }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef, commitPreview])
 
   const cancelEditSession = useCallback(() => {
     const snapshot = editSnapshotRef.current
@@ -490,6 +513,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // editingFeatureId), so there is nothing to rewind -- but the exit still
     // needs the re-solve below.
     if (snapshot !== null) {
+      // Invariant: previewOriginalDoc may not survive a session boundary. The
+      // session snapshot predates the preview, so the rewind below already
+      // discards any preview work; dropping the refs WITHOUT pushing (rather
+      // than routing through cancelPreview, which would push nothing anyway
+      // but reads as if there were something to resolve) leaves cancelPreview
+      // finding no active preview afterward, so the popover's own Cancel
+      // becomes a null no-op instead of a second, stale rewind.
+      previewOriginalDoc.current = null
+      previewTouchedRef.current = false
       editSnapshotRef.current = null
       editSessionSuppressedRef.current = false
       suppressUndoRef.current = false
@@ -553,14 +585,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // escapes (commit the pending color first, then push the group normally).
     // A group made entirely of preview-scope mutations is a preview frame and
     // stays swallowed. A suppressed session swallows every group as today.
-    const sessionActive = editSessionSuppressedRef.current
-    const previewActive = previewOriginalDoc.current !== null
-    const groupInPreviewScope = !sessionActive
-      && previewActive
+    const groupInPreviewScope = previewOpenOutsideSession()
       && ms.every(m => PREVIEW_SCOPE.has(m.type))
     const brep = brepWithholdRef.current
     let escapedPreview = false
-    if (!sessionActive && previewActive && !groupInPreviewScope) {
+    if (previewOpenOutsideSession() && !groupInPreviewScope) {
       const original = previewOriginalDoc.current!
       commitPreview(previewMutationFor(original, current) ?? ms[0])
       escapedPreview = true
@@ -589,7 +618,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession])
 
   // Arms the brep dimension pick/commit pair: the next mutation (the
   // projection) is applied without an undo entry and the one after it (the

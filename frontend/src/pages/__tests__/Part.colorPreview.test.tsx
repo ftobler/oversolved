@@ -182,6 +182,45 @@ describe('Part Color Preview', () => {
     expect(mockCommitPreview).not.toHaveBeenCalled()
   })
 
+  // usePartDoc.commitEditSession now resolves a preview left open at a session
+  // boundary itself (before this component ever sees it), so a second
+  // Apply/Cancel gesture on a freshly reopened popover must still work.
+  it('OK-then-Cancel inside an edit keeps the popover tree working', async () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+    fireEvent.click(screen.getByText('Apply'))
+    expect(mockCommitPreview).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+    fireEvent.click(screen.getByText('Cancel'))
+
+    expect(mockCancelPreview).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Apply')).toBeNull()
+  })
+
+  // A session commit resolves a still-open preview at the hook boundary
+  // (usePartDoc.commitEditSession), so by the time Cancel fires here
+  // cancelPreview has nothing left to rewind -- same null-no-op contract as
+  // an escaped preview, reached from the other direction (a session exit).
+  it('cancel after a session exit resolved the preview does not rewind, and the popover still closes', async () => {
+    mockCancelPreview.mockReturnValue(null)
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('context-btn-body-1'))
+    fireEvent.click(screen.getByText('Color'))
+    expect(screen.getByText('Apply')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Cancel'))
+
+    expect(mockCancelPreview).toHaveBeenCalledTimes(1)
+    expect(mockSetDoc).not.toHaveBeenCalled()
+    expect(mockReSolve).not.toHaveBeenCalled()
+    expect(screen.queryByText('Apply')).toBeNull()
+  })
+
   it('renders a header icon', async () => {
     renderPart()
 

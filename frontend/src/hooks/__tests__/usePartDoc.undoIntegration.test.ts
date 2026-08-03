@@ -647,6 +647,156 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack[1].mutation.type).toBe('edit_session')
   })
 
+  // The only ordering the tests above cover is Apply-before-commit (the
+  // popover resolves itself, then the session closes). The other ordering --
+  // the session commits FIRST, with the popover still open and never Applied
+  // -- used to leave previewOriginalDoc pointing at a doc the session had
+  // already moved past, so a later Cancel rewound to it and desynced the live
+  // doc from the undo stack (undo-preview-session-exit.md repro).
+  it('a preview left open when the session commits is resolved at the boundary, not orphaned', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000', transparency: 0 } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    // A real, non-style session edit lands while the popover is open. It is
+    // not a preview-scope mutation, but the session's own 'all' scope still
+    // swallows it whole (the escape gate requires the session itself to not
+    // be active), so it earns no entry of its own here either.
+    act(() => { result.current.handleMutation(renameTo('mid-session')) })
+    act(() => { result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.5 }) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    // OK on the feature edit fires with the color popover still open (no
+    // Apply was ever clicked): the session boundary must resolve the preview
+    // itself, landing preview_commit under the session's own aggregate.
+    act(() => { result.current.commitEditSession() })
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect(result.current.undoStack[1].mutation.type).toBe('edit_session')
+    const afterCommit = structuredClone(docRef.current)
+
+    // The popover is still visually open; dragging it again is now a plain
+    // live edit (no preview is tracking it anymore), pushed as its own entry.
+    act(() => { result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.9 }) })
+    expect(result.current.undoStack).toHaveLength(3)
+
+    // Cancel finds no active preview -- it was already resolved at the
+    // session boundary -- so it must not silently rewind to some other, stale
+    // doc. That desync (live doc pointing past what the stack's top entry
+    // expects) is exactly what let a cancelled colour resurrect on undo.
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toBeNull()
+    expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0.9)
+
+    // Undo walks back cleanly through all three real entries; the swallowed
+    // 0.5 frame never resurfaces as an out-of-band state.
+    act(() => { result.current.handleUndo() })
+    expect(docRef.current).toEqual(afterCommit)
+    act(() => { result.current.handleUndo() })
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+    expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0)
+  })
+
+  it('a preview left open when the session commits collapses to the single preview_commit when nothing else in the session changed', () => {
+    // Closes the previously-documented gap at the "part_style-only" test
+    // below (undoIntegration.test.ts:790-808 pre-fix): that test never opens
+    // a preview, so a bare set_part_color mutation is swallowed with no
+    // resolver at all. Here a preview WAS opened, so the session boundary
+    // must resolve it into exactly one preview_commit, not an empty
+    // edit_session (part_style is excluded from the aggregate's own diff).
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.commitEditSession() })
+
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
+
+    // The popover's own Cancel afterward finds nothing left to resolve.
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toBeNull()
+  })
+
+  it('a preview opened but never touched leaves nothing behind when the session commits', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.commitEditSession() })
+
+    expect(result.current.undoStack).toHaveLength(0)
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toBeNull()
+  })
+
+  it('a non-preview edit swallowed while the popover stays open is discarded cleanly by session cancel', () => {
+    // The cancel-leg repro: a feature-field edit landing inside a suppressed
+    // session while the popover is open used to be swallowed with no entry
+    // (the escape gate required the session itself to not be active), and a
+    // later Cancel rewinding past the session snapshot dropped it silently.
+    // Confirms it is discarded together with the whole session, no dead entry
+    // left behind either way.
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+
+    act(() => { result.current.handleMutation(renameTo('mid-popover')) })
+    expect(labelOf()).toBe('mid-popover')
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect(labelOf()).toBe('first')
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(0)
+
+    // previewOriginalDoc was dropped WITH the session rather than rewound
+    // through, so the popover's own Cancel afterward is an inert no-op instead
+    // of a second, stale rewind.
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toBeNull()
+  })
+
   it('a nested startPreviewMode fails loud and leaves the first preview baseline intact', () => {
     docRef.current = {
       oversolved: 1,
