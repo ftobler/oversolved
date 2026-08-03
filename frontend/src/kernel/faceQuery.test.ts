@@ -26,8 +26,6 @@ describe("buildFaceQuery wire-format pin", () => {
         a.created_by,
         a.body_id,
         a.face_idx,
-        a.centroid,
-        a.normal,
         a.surface_type,
         a.profile_queries,
         a.ancestor_tokens,
@@ -44,7 +42,7 @@ describe("buildFaceQuery wire-format pin", () => {
 describe("buildFaceQuery emits the @u| construction token", () => {
   const uuid = "u_deadbeefcafe0001"
   it("prepends @u| as the first id when a uuid is given, with no geometry token", () => {
-    const q = buildFaceQuery("f1", "body_0", 0, [1, 2, 3], [0, 0, 1], "plane", null, null, null, uuid)
+    const q = buildFaceQuery("f1", "body_0", 0, "plane", null, null, null, uuid)
     expect(q).not.toBeNull()
     const [ids] = parseAncestry(q as string)
     expect(ids[0]).toBe(constructionUuidToken(uuid))
@@ -53,7 +51,7 @@ describe("buildFaceQuery emits the @u| construction token", () => {
     expect(ids.some((i) => i.startsWith("@gface_"))).toBe(false)
   })
   it("omits @u| when no uuid is given (unchanged legacy shape)", () => {
-    const q = buildFaceQuery("f1", "body_0", 0, [1, 2, 3], [0, 0, 1], "plane")
+    const q = buildFaceQuery("f1", "body_0", 0, "plane")
     expect(q).not.toBeNull()
     const [ids] = parseAncestry(q as string)
     expect(ids.some((i) => i.startsWith("@u|"))).toBe(false)

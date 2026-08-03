@@ -17,6 +17,7 @@ import { repoFromSnapshot } from './builder'
 import type { BuildResponse } from './builder'
 import type { BuildState, FeatureCheckpoint } from './types3d'
 import { mintFaceUuid, capFacePath, filletFacePath, splitFacePath, sideFacePath } from './constructionName'
+import { parseAncestry } from './query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 
 const oc = await loadOcc()
@@ -147,6 +148,43 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     expect(el, 'the captured query must still resolve after the edit').not.toBeNull()
     expect(el?.uuid, 'it must resolve to the same construction slot').toBe(capturedUuid)
     expect(repo._lastTier, 'a stable-UUID face resolves on the primary UUID tier').toBe('uuid')
+  })
+
+  it('prism cap (empty ancestry list): emitted cap query carries the profile tokens exactly as the builder registers them', () => {
+    // A prism cap face carries an EMPTY ancestry token list (prismLineage.ts:
+    // faceLineage[gh] = [] for a cap). classifyFace must treat that as "no
+    // ancestry" so the emitted query falls back to the profile tokens -- the
+    // SAME tokens the builder's registered key carries. Without them a stale
+    // cap UUID resolves against the bare createdBy+bodyId net shared by every
+    // face of the body (ambiguous or silently-wrong).
+    const s1 = { features: [rectSketch('sk1', 10, 10), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' }] }
+    const r1 = h.run(s1)
+    const capUuid = mintFaceUuid(capFacePath('ex1', 'start'))
+    const q = faceQueryWithUuid(r1, 'body_ex1', capUuid)
+    expect(q, 'the start cap should carry its minted UUID').toBeDefined()
+
+    const [ids] = parseAncestry(q!)
+    const profileTokens = ids.filter((i) => i.startsWith('@sk1/'))
+    expect(profileTokens.length, 'the emitted cap query must carry the profile tokens (empty ancestry list = fallback)').toBeGreaterThan(0)
+
+    const repo = repoOf(r1)
+    const el = repo.query(q!) as ResolvedEl
+    expect(el, 'the cap query must resolve in the repo').not.toBeNull()
+
+    // The registered ancestral key covering the cap query's non-uuid,
+    // non-classifier ids must contain the profile tokens: the emitted query and
+    // the builder's key are one string, so a stale UUID can recover here.
+    const queryAncestors = new Set(ids.filter((i) => !i.startsWith('@u|') && !i.startsWith('@cls_')))
+    const covering = [...repo.ancestral.values()].filter((entry) => {
+      for (const id of queryAncestors) if (!entry.set.has(id)) return false
+      return true
+    })
+    expect(covering.length, 'some registered ancestral set must cover the cap query ids').toBeGreaterThan(0)
+    for (const entry of covering) {
+      for (const t of profileTokens) {
+        expect(entry.set.has(t), 'the registered ancestral set must contain the profile tokens').toBe(true)
+      }
+    }
   })
 
   it('box vertices: every vertex query carries a unique @u| UUID', () => {

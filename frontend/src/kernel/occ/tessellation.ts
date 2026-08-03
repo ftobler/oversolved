@@ -272,14 +272,19 @@ function classifyFace(
 ): { classifiers: string[]; query: string | null } {
   const classifiers = geometryClassifiers(centroid, center, half)
   const uuid = opts.faceNames ? (opts.faceNames[faceGeometryHash(centroid, normal)] ?? null) : null
-  const ancestorTokens = (uuid && opts.faceAncestry) ? (opts.faceAncestry[uuid] ?? null) : null
+  // An EMPTY ancestry token list (a prism cap face) is "no ancestry": read
+  // `[]` as absent so the profile-token fallback fires, matching buildFaceQuery
+  // and the builder's registered key. A bare createdBy+bodyId net would leave a
+  // stale cap UUID with no ancestral recovery.
+  const ancestorTokens =
+    (uuid && opts.faceAncestry && opts.faceAncestry[uuid] && opts.faceAncestry[uuid].length)
+      ? opts.faceAncestry[uuid]
+      : null
   const fallbackPq = ancestorTokens ? null : opts.profileQueries
   const query = buildFaceQuery(
     opts.createdBy,
     opts.bodyId,
     faceIdx,
-    centroid,
-    normal,
     surfaceType,
     fallbackPq,
     ancestorTokens,
@@ -537,7 +542,13 @@ export function solidToEdges(
         const uuid = opts.edgeNames
           ? (opts.edgeNames[edgeGeometryHash(ed as unknown as Record<string, unknown>)] ?? null)
           : null
-        const ancestorTokens = (uuid && opts.edgeAncestry) ? (opts.edgeAncestry[uuid] ?? null) : null
+        // An EMPTY edge ancestry token list is "no ancestry": read `[]` as
+        // absent so the profile-token fallback fires, matching the builder's
+        // registered key (same truthiness trap as classifyFace).
+        const ancestorTokens =
+          (uuid && opts.edgeAncestry && opts.edgeAncestry[uuid] && opts.edgeAncestry[uuid].length)
+            ? opts.edgeAncestry[uuid]
+            : null
         const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
         if (bodyId) {

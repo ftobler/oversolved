@@ -9,8 +9,6 @@ export function buildFaceQuery(
   createdBy: string | null | undefined,
   bodyId: string | null | undefined,
   faceIdx: number,
-  _centroid: number[],
-  _normal: number[],
   surfaceType: string,
   profileQueries: string[] | null = null,
   ancestorTokens: string[] | null = null,

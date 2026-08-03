@@ -10,6 +10,8 @@ import { loadOcc } from './loadOcc'
 import { HandleTable } from './handleTable'
 import { buildBox, buildCylinder, buildExtrudedProfile, buildProfileExtrude, type EdgeSpec } from './shapes'
 import { solidToMesh, solidToEdges, solidToVertices, type TessMesh, type FaceDatum } from './tessellation'
+import { parseAncestry } from '../query'
+import { edgeGeometryHash } from '../geomHash'
 import type { OccModule } from './occTypes'
 import type { OccHandle } from './handleTable'
 import type { Vec3 } from './primitives'
@@ -239,5 +241,71 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     const allClassifiers = mesh.face_data.flatMap((fd) => fd.classifiers ?? [])
     expect(allClassifiers.length).toBe(6)
     expect(new Set(allClassifiers).size).toBe(6)  // each face has a unique side
+  })
+
+  // An edge whose ancestry token list is an EMPTY array (a prism side edge is
+  // attributed from its adjacent faces, so a cap-only edge carries `[]`) must be
+  // treated as having no ancestry: the emitted edge query falls back to the
+  // profile tokens, matching the builder's registered key. Same truthiness trap
+  // as classifyFace: `[]` used to null the profile fallback.
+  it('treats an empty edgeAncestry list as absent and falls back to the profile tokens', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    try {
+      const base = solidToEdges(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1' })
+      const edgeNames: Record<string, string> = {}
+      const edgeAncestry: Record<string, string[]> = {}
+      base.edges.forEach((ed, idx) => {
+        const gh = edgeGeometryHash(ed as unknown as Record<string, unknown>)
+        const uuid = idx === 0 ? 'u_empty' : 'u_' + idx
+        edgeNames[gh] = uuid
+        edgeAncestry[uuid] = idx === 0 ? [] : ['@sk1/bottom']
+      })
+      const out = solidToEdges(occ, table, h, {
+        createdBy: 'ex1',
+        bodyId: 'body_ex1',
+        edgeNames,
+        edgeAncestry,
+        profileQueries: ['@sk1/bottom', '@sk1/top'],
+      })
+      const [emptyIds] = parseAncestry(out.edge_queries[0])
+      expect(emptyIds, 'empty edge ancestry list must fall back to the profile tokens').toEqual(
+        expect.arrayContaining(['@ex1', '@body_ex1', '@sk1/bottom', '@sk1/top']),
+      )
+      const [tokenIds] = parseAncestry(out.edge_queries[1])
+      expect(tokenIds, 'real edge ancestry tokens must win over the profile tokens').toEqual(
+        expect.arrayContaining(['@ex1', '@body_ex1', '@sk1/bottom']),
+      )
+      expect(tokenIds).not.toEqual(expect.arrayContaining(['@sk1/top']))
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  // A vertex with no named-face neighbour earns no construction UUID; its query
+  // then falls back to the ancestral net and must still carry the profile
+  // tokens (the net shared with its siblings). Pins the vertex fallback.
+  it('vertex no-neighbour fallback: a uuid-less vertex query still carries the profile tokens', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    try {
+      const out = solidToVertices(occ, table, h, {
+        createdBy: 'ex1',
+        bodyId: 'body_ex1',
+        profileQueries: ['@sk1/bottom', '@sk1/top'],
+      })
+      expect(out.vertex_queries.length).toBe(8)
+      for (const q of out.vertex_queries) {
+        const [ids] = parseAncestry(q)
+        expect(ids.some((i) => i.startsWith('@u|')), 'no faceNames -> no vertex earns a UUID').toBe(false)
+        expect(ids, 'the no-neighbour vertex must carry the profile tokens').toEqual(
+          expect.arrayContaining(['@ex1', '@body_ex1', '@sk1/bottom', '@sk1/top']),
+        )
+      }
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
   })
 })

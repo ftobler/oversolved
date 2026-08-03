@@ -98,6 +98,31 @@
    "expected": "?7,7,a;@feat_a@body_x?7;@feat_a:flatface"
   },
   {
+   "name": "body_empty_ancestor_tokens_use_profile",
+   "args": {
+    "created_by": "feat_a",
+    "body_id": "body_x",
+    "face_idx": 5,
+    "centroid": [
+     0.0,
+     0.0,
+     9.0
+    ],
+    "normal": [
+     0.0,
+     0.0,
+     -1.0
+    ],
+    "surface_type": "flatface",
+    "profile_queries": [
+     "?7;@feat_a"
+    ],
+    "ancestor_tokens": [],
+    "classifiers": null
+   },
+   "expected": "?7,7,a;@feat_a@body_x?7;@feat_a:flatface"
+  },
+  {
    "name": "body_face_tokens_win_over_profile",
    "args": {
     "created_by": "feat_a",

@@ -16,6 +16,8 @@ import { buildBox, buildCylinder, buildExtrudedProfile } from './shapes'
 import { solidToMesh, readShapeFaceMetadata } from './tessellation'
 import { makeBox } from './primitives'
 import { applyFilletWithDiff } from './edgeModifier'
+import { faceGeometryHash } from '../geomHash'
+import { parseAncestry } from '../query'
 import type { OccModule, OccShape } from './occTypes'
 import type { OccHandle } from './handleTable'
 import type { Vec3 } from './primitives'
@@ -194,6 +196,54 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
       } finally {
         scope.dispose()
       }
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  // spec 5: a face whose ancestry token list is an EMPTY array (a prism cap
+  // face) must be treated as having no ancestry, so the emitted query falls
+  // back to the profile tokens exactly as the builder's registered key does.
+  // classifyFace used to read `[]` as truthy, nulling the profile fallback and
+  // emitting a bare createdBy+bodyId net -- a stale cap UUID then had no
+  // ancestral recovery.
+  it('treats an empty faceAncestry list as absent and falls back to the profile tokens', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    try {
+      const mesh = solidToMesh(occ, table, h)
+      const capIdx = mesh.face_data.findIndex((fd) => fd.normal[2] > 0.9)
+      const sideIdx = mesh.face_data.findIndex((fd) => Math.abs(fd.normal[2]) < 0.1 && fd.normal[0] > 0.9)
+      expect(capIdx).toBeGreaterThanOrEqual(0)
+      expect(sideIdx).toBeGreaterThanOrEqual(0)
+      const cap = mesh.face_data[capIdx]
+      const side = mesh.face_data[sideIdx]
+      const capUuid = 'u_cap'
+      const sideUuid = 'u_side'
+      const opts = {
+        createdBy: 'ex1',
+        bodyId: 'body_ex1',
+        profileQueries: ['@sk1/bottom', '@sk1/top'],
+        faceNames: {
+          [faceGeometryHash(cap.centroid, cap.normal)]: capUuid,
+          [faceGeometryHash(side.centroid, side.normal)]: sideUuid,
+        },
+        faceAncestry: {
+          [capUuid]: [],
+          [sideUuid]: ['@sk1/bottom'],
+        },
+      }
+      const out = solidToMesh(occ, table, h, opts)
+      const [capIds] = parseAncestry(out.face_queries[capIdx])
+      expect(capIds, 'empty ancestry list must fall back to the profile tokens').toEqual(
+        expect.arrayContaining(['@ex1', '@body_ex1', '@sk1/bottom', '@sk1/top']),
+      )
+      const [sideIds] = parseAncestry(out.face_queries[sideIdx])
+      expect(sideIds, 'real ancestry tokens must win over the profile tokens').toEqual(
+        expect.arrayContaining(['@ex1', '@body_ex1', '@sk1/bottom']),
+      )
+      expect(sideIds).not.toEqual(expect.arrayContaining(['@sk1/top']))
     } finally {
       table.release(h)
       table.assertNoLeaks()
