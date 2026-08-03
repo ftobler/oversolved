@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { buildCommandEntries } from '@/pages/commandEntries'
+import { buildCommandEntries, constraintCommandFn } from '@/pages/commandEntries'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
+import type { ConstraintDef } from '@/registry'
 
 // The structural suites build the entry list but never invoke the store-driven
 // command bodies (cancel_draw / cancel_pick / set_tool_mirror / apply_offset).
@@ -75,6 +76,41 @@ describe('command callbacks that drive the sketch editor store', () => {
     entry('toggle_construction').fn()
 
     expect(toggleConstruction).toHaveBeenCalledOnce()
+  })
+
+  it('apply_concentric applies the constraint and never shows a toast', () => {
+    const store = useSketchEditorStore.getState()
+    const applyConstraint = vi.spyOn(store, 'applyConstraint').mockImplementation(noop)
+    const showMessage = vi.fn()
+
+    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
+    const e = entries.find(x => x.name === 'apply_concentric')!
+    e.fn()
+
+    expect(applyConstraint).toHaveBeenCalledWith('concentric')
+    expect(showMessage).not.toHaveBeenCalled()
+  })
+
+  it('a synthetic implemented:false constraint still surfaces the toast', () => {
+    const showMessage = vi.fn()
+    const applyConstraint = vi.fn()
+    const fake: ConstraintDef = {
+      kind: 'fake_thing',
+      label: 'Fake Thing',
+      description: 'synthetic unimplemented constraint',
+      category: 'geometric',
+      hasValue: false,
+      refPattern: 'target',
+      renderKind: 'symbol_unknown',
+      showInToolbar: true,
+      implemented: false,
+    }
+
+    constraintCommandFn(fake, () => ({ applyConstraint }), showMessage)()
+
+    expect(showMessage).toHaveBeenCalledOnce()
+    expect(showMessage).toHaveBeenCalledWith({ title: 'Not Implemented', message: 'Constraint "Fake Thing" is not yet implemented.', variant: 'info' })
+    expect(applyConstraint).not.toHaveBeenCalled()
   })
 })
 

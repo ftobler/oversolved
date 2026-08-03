@@ -81,6 +81,14 @@ export interface ConstraintDef {
   showInToolbar: boolean
 
   /**
+   * Whether the constraint is wired end to end (store applyConstraint, solver
+   * residual, render). When false the toolbar button shows a "Not Implemented"
+   * toast. Defaults to true: a missing `shortcut` only means the constraint is
+   * not bound to a key, never that it is unimplemented.
+   */
+  implemented?: boolean
+
+  /**
    * Allowed entity-kind combinations for this constraint's entity operands, as a
    * list of groups. The constraint is rejected before it reaches the solver (see
    * applyConstraint) unless every `entity:` operand's kind belongs to one common

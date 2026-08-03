@@ -1,4 +1,5 @@
 import { CONSTRAINTS, ENTITIES } from '@/registry'
+import type { ConstraintDef } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
@@ -7,6 +8,22 @@ export interface ShowMessagePayload {
   title: string
   message: string
   variant?: 'info' | 'success' | 'error'
+}
+
+/**
+ * Maps one constraint definition to its `apply_<kind>` command body. The toast
+ * branch is reachable only for a constraint explicitly flagged
+ * `implemented: false`; a missing keyboard shortcut never means "not
+ * implemented", only that the constraint is not bound to a key.
+ */
+export function constraintCommandFn(
+  c: ConstraintDef,
+  getState: () => Pick<ReturnType<typeof useSketchEditorStore.getState>, 'applyConstraint'>,
+  showMessage: (payload: ShowMessagePayload) => void,
+): () => void {
+  return c.implemented === false
+    ? () => { showMessage({ title: 'Not Implemented', message: `Constraint "${c.label}" is not yet implemented.`, variant: 'info' }); }
+    : () => getState().applyConstraint(c.kind)
 }
 
 /**
@@ -59,9 +76,7 @@ export function buildCommandEntries(
     { name: 'toggle_construction',   fn: () => getState().toggleConstruction() },
     ...CONSTRAINTS.map(c => ({
       name: `apply_${c.kind}`,
-      fn: c.shortcut
-        ? () => getState().applyConstraint(c.kind)
-        : () => { showMessage({ title: 'Not Implemented', message: `Constraint "${c.label}" is not yet implemented.`, variant: 'info' }); },
+      fn: constraintCommandFn(c, getState, showMessage),
     })),
     { name: 'cancel_draw', fn: () => {
         getState().clearDraw()
