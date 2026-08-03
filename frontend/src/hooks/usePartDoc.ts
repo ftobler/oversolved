@@ -318,6 +318,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       pushUndo(mutation, withheldDoc)
     } else {
       pushUndo(mutation, preDoc)
+      // A non-`add_constraint` mutation landing mid-gesture (a "steal", e.g. a
+      // rename or a delete) clears the withhold: keeping the pre-pick doc means
+      // a later dimension commit keys to it and restores a world without the
+      // projection, whose own entry then re-materialises it alone. The steal's
+      // entry restores the current doc (projection included), so the projection
+      // is owned by a normal entry chain and never orphaned.
+      brepWithholdRef.current = { armed: false, doc: null }
     }
   }, [pushUndo])
 

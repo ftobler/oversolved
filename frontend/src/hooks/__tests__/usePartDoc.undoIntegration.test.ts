@@ -1033,7 +1033,7 @@ describe('usePartDoc undo/redo integration', () => {
     }
   })
 
-  it('an unrelated mutation mid-gesture does not consume the brep withhold', () => {
+  it('an unrelated mutation mid-gesture clears the brep withhold and owns the projection', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
@@ -1047,20 +1047,82 @@ describe('usePartDoc undo/redo integration', () => {
       expect(result.current.undoStack).toHaveLength(0)
       expect(sketchEntitiesOf()).toHaveLength(1)
 
-      // A tree edit lands between the pick and the commit. It must push its own
-      // entry restoring the CURRENT doc (which carries the projection), not the
-      // pre-pick doc the withhold captured.
+      // A tree edit lands between the pick and the commit. It pushes its own
+      // entry restoring the CURRENT doc (which carries the projection) and
+      // clears the withhold, so the projection is owned by a normal entry chain
+      // instead of waiting on a pre-pick doc a later commit cannot see.
       act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })
       expect(result.current.undoStack).toHaveLength(1)
       expect((result.current.undoStack[0].doc.features?.[0] as { entities: unknown[] }).entities).toHaveLength(1)
 
-      // The withhold survives for the commit: OK still restores the pre-gesture
-      // doc, so the projection is not left stranded.
+      // The commit keys to the current doc: its entry restores the projection
+      // and the steal, so undo removes only the dimension.
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
       const dialog = useSketchEditorStore.getState().pendingDialog!
       act(() => { dialog.onConfirm('10') })
       expect(result.current.undoStack).toHaveLength(2)
-      expect((result.current.undoStack[1].doc.features?.[0] as { entities?: unknown[] }).entities ?? []).toHaveLength(0)
+      expect((result.current.undoStack[1].doc.features?.[0] as { entities?: unknown[] }).entities ?? []).toHaveLength(2)
+
+      act(() => { result.current.handleUndo() })
+
+      // The dimension is gone, the projection and the mid-gesture edit survive.
+      expect(sketchConstraintsOf()).toHaveLength(0)
+      expect(sketchEntitiesOf()).toHaveLength(2)
+
+      act(() => { result.current.handleUndo() })
+
+      // The steal reverts and the projection survives owned: no step can
+      // re-materialise it alone off a removed pre-pick key.
+      expect(sketchEntitiesOf()).toHaveLength(1)
+    } finally {
+      setSketchCallback('onMutation', null)
+      setSketchCallback('beginBrepProjection', null)
+      setSketchCallback('cancelBrepProjection', null)
+      setSketchCallback('getSketch', null)
+      useSketchEditorStore.getState().resetTransientState()
+    }
+  })
+
+  it('a rename-steal mid-gesture undoes per step and never strands the projection', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const store = useSketchEditorStore.getState()
+    setSketchCallback('onMutation', result.current.handleMutation)
+    setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
+    setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
+    setSketchCallback('getSketch', () => null)
+    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    try {
+      act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
+      expect(result.current.undoStack).toHaveLength(0)
+      expect(sketchEntitiesOf()).toHaveLength(1)
+
+      // A tree rename steals the gesture mid-flight. It pushes its own entry
+      // and clears the withhold, so the commit keys to the current doc instead
+      // of a pre-pick doc the steal's own undo has moved past.
+      act(() => { result.current.handleMutation({ type: 'rename_feature', featureId: 'sk1', label: 'renamed' } as Mutation) })
+      expect(result.current.undoStack).toHaveLength(1)
+      expect(labelOf()).toBe('renamed')
+
+      act(() => { store.finalizeDimensionPlacement([0, 0]) })
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      act(() => { dialog.onConfirm('10') })
+      expect(result.current.undoStack).toHaveLength(2)
+      expect(sketchConstraintsOf()).toHaveLength(1)
+
+      // One undo removes only the dimension: the projection and the rename
+      // survive, each owned by their own entry.
+      act(() => { result.current.handleUndo() })
+      expect(sketchConstraintsOf()).toHaveLength(0)
+      expect(sketchEntitiesOf()).toHaveLength(1)
+      expect(labelOf()).toBe('renamed')
+
+      // A second undo reverts the rename and keeps the projection as a normal
+      // entity: it never re-materialises alone off a removed pre-pick key.
+      act(() => { result.current.handleUndo() })
+      expect(result.current.undoStack).toHaveLength(0)
+      expect(sketchEntitiesOf()).toHaveLength(1)
+      expect(labelOf()).toBeUndefined()
     } finally {
       setSketchCallback('onMutation', null)
       setSketchCallback('beginBrepProjection', null)
