@@ -92,7 +92,7 @@ describe('Part - eliminate redundant solves', () => {
     })
   })
 
-  it('adds extrude then sketch with exactly 3 total solves', async () => {
+  it('adds extrude then sketch with exactly 2 total solves', async () => {
     await renderAndWaitForLoad()
     vi.mocked(solveViaWorker).mockClear()
 
@@ -105,13 +105,14 @@ describe('Part - eliminate redundant solves', () => {
 
     // Add Extrude auto-enters its edit session, so clicking Sketch here fires
     // plane-on-face while that session is still open. The nested-session fix
-    // (feature/undo-nested-session-guard.md) closes it first (commit's own
-    // resolve) before opening the new sketch (its own resolve): two solves,
-    // not one, same as any other commit-then-enter transition in this file.
+    // (feature/undo-nested-session-guard.md) closes it via enterEditFeature's
+    // own one-open-editor guard before opening the new sketch; that close is
+    // resolve-free (only the final open re-solves), so the transition still
+    // costs exactly one solve, same as adding any other feature.
     fireEvent.click(screen.getByTitle('Sketch'))
 
     await waitFor(() => {
-      expect(countSolveCalls()).toBe(3)
+      expect(countSolveCalls()).toBe(2)
     })
   })
 

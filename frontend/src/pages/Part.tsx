@@ -876,16 +876,13 @@ export default function Part() {
         if (feature?.kind === 'sketch') {
           // A plane pick for a fresh sketch can fire while another feature's
           // session is still open (e.g. picking a plane for a new sketch while
-          // an extrude edit is mid-gesture). Close that session first so the
-          // sketch opens onto a clean doc instead of tripping
-          // enterEditFeature's nested-session refusal; keepPlaneSelection
-          // preserves the pending pick request just recorded above, which
-          // lives in the same activePickField slot clearPlaneSelection would
-          // otherwise null out.
-          if (editingFeatureId) commitEditFeature({ keepPlaneSelection: true })
-          // A sketch entered via plane-on-face goes through enterEditSketch
-          // (per-action undo), not enterEditFeature (which would suppress
-          // every draw into one aggregate step).
+          // an extrude edit is mid-gesture). enterEditSketch -> enterEditFeature
+          // closes that other session itself before opening this one (the
+          // one-open-editor guard in useEditFeature.ts), so no manual
+          // close-then-open juggling is needed here. A sketch entered via
+          // plane-on-face goes through enterEditSketch (per-action undo), not
+          // enterEditFeature directly (which would suppress every draw into
+          // one aggregate step).
           enterEditSketch(planeSelectionFeatureId)
         }
       }
@@ -905,7 +902,7 @@ export default function Part() {
         }
       }
     }
-  }, [planeSelectionFeatureId, editingFeatureId, features, enterEditSketch, commitEditFeature, cancelEditFeature, setMode])
+  }, [planeSelectionFeatureId, editingFeatureId, features, enterEditSketch, cancelEditFeature, setMode])
 
   // A sketch created with its plane already bound needs no pick step, so it
   // drops straight into sketch edit once the new feature reaches `features`.
