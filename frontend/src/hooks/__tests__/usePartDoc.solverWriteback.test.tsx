@@ -296,7 +296,8 @@ describe('solver write-back undo round-trip', () => {
 
     // The delete re-solve hangs; while it is in flight a newer (succeeding)
     // solve lands with a result that legitimately has no sk1 entry. The stale
-    // failure must NOT restore the pruned sk1 over that newer result.
+    // failure must neither restore the pruned sk1 over that newer result nor
+    // paint the unavailable banner under it.
     let releaseDelete!: (v: unknown) => void
     mockSolveViaWorker.mockReturnValueOnce(new Promise<unknown>(r => { releaseDelete = r }))
     act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'sk1' } as Mutation) })
@@ -319,7 +320,7 @@ describe('solver write-back undo round-trip', () => {
       await flush()
     })
 
-    expect(result.current.solveError).toContain('Local solver unavailable')
+    expect(result.current.solveError).toBeNull()
     expect(result.current.solveResults.sk2).toBeDefined()
     expect(result.current.solveResults.sk1).toBeUndefined()
   })

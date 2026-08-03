@@ -356,6 +356,10 @@ export function useSolver(
         validate: opts?.validate,
         bypassCache: opts?.bypassCache,
       })
+      // A stale solve must exit before any setState: a newer reSolve owns the
+      // banner and the spinner, so a stale null must not paint "Local solver
+      // unavailable" nor clear solving under the newer solve.
+      if (isStale()) return
       if (!local) {
         const msg = 'Local solver unavailable (OCC.js failed to load)'
         setSolveError(msg)
@@ -364,7 +368,6 @@ export function useSolver(
         if (!cancelledRef.current) setSolving(false)
         return
       }
-      if (isStale()) return
       const endTime = performance.now()
       const solveTimeMs = Math.round((endTime - startTime) * 100) / 100
       if (local._validation) setValidation(local._validation)
@@ -383,6 +386,10 @@ export function useSolver(
       // Every failure restores the pruned entries (guarded against a stale
       // failure); the error banner stays suppressed for the benign kinds.
       restorePrunedResults()
+      // A stale non-benign failure (e.g. a crash surfaced after dropWorker
+      // rejected a superseded solve) must not banner either: the newer solve's
+      // outcome owns the banner, and its benign result will never clear it.
+      if (isStale()) return
       if (!BENIGN_SOLVE_FAILURES.has(reason)) {
         setSolveError(String(e))
         setSolveRawResult(String(e))

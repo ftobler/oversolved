@@ -115,4 +115,108 @@ describe('useSolver stale-result guard', () => {
     await act(async () => { await result.current.reSolve(makeDoc()) })
     expect(result.current.solveError).toBeNull()
   })
+
+  it('stale null result must not banner nor clear solving under a newer solve', async () => {
+    // Defends the isStale() guard moved above the `if (!local)` branch:
+    // a v1 solve that resolves null AFTER v2 bumped the request id must exit
+    // before setSolveError/setSolving run, or it paints "Local solver
+    // unavailable" and drops the spinner while v2 is still in flight.
+    const { result } = setupHook()
+
+    let resolveV1!: (v: unknown) => void
+    let resolveV2!: (v: unknown) => void
+    const v1Promise = new Promise(r => { resolveV1 = r })
+    const v2Promise = new Promise(r => { resolveV2 = r })
+
+    mockSolveLocally
+      .mockReturnValueOnce(v1Promise)
+      .mockReturnValueOnce(v2Promise)
+
+    let p1!: Promise<void>, p2!: Promise<void>
+    act(() => { p1 = result.current.reSolve(makeDoc()) })
+    act(() => { p2 = result.current.reSolve(makeDoc()) })
+
+    // v1 is stale by the time it resolves null; it must be dropped entirely.
+    await act(async () => { resolveV1(null) })
+
+    expect(result.current.solveError).toBeNull()
+    expect(result.current.solving).toBe(true)
+
+    const v2Response = {
+      solve_ms: 0,
+      result: { feat1: { status: 'ok' } },
+      bodies: {},
+      _build_state: null,
+      request_version: 2,
+    }
+    await act(async () => {
+      resolveV2(v2Response)
+      await Promise.all([p1, p2])
+    })
+
+    expect(result.current.solveError).toBeNull()
+    expect(result.current.solving).toBe(false)
+  })
+
+  it('stale non-benign failure must not banner under a newer solve', async () => {
+    // Defends the isStale() guard added to the catch path: a stale non-benign
+    // rejection (e.g. "solver worker crashed") must not paint a banner, since
+    // the newer solve's benign outcome will never clear it.
+    const { result } = setupHook()
+
+    let rejectV1!: (e: Error) => void
+    let resolveV2!: (v: unknown) => void
+    const v1Promise = new Promise((_, rej) => { rejectV1 = rej })
+    const v2Promise = new Promise(r => { resolveV2 = r })
+
+    mockSolveLocally
+      .mockReturnValueOnce(v1Promise)
+      .mockReturnValueOnce(v2Promise)
+
+    let p1!: Promise<void>, p2!: Promise<void>
+    act(() => { p1 = result.current.reSolve(makeDoc()) })
+    act(() => { p2 = result.current.reSolve(makeDoc()) })
+
+    await act(async () => { rejectV1(new Error('solver worker crashed')) })
+
+    expect(result.current.solveError).toBeNull()
+    expect(result.current.solving).toBe(true)
+
+    const v2Response = {
+      solve_ms: 0,
+      result: { feat1: { status: 'ok' } },
+      bodies: {},
+      _build_state: null,
+      request_version: 2,
+    }
+    await act(async () => {
+      resolveV2(v2Response)
+      await Promise.all([p1, p2])
+    })
+
+    expect(result.current.solveError).toBeNull()
+    expect(result.current.solving).toBe(false)
+  })
+
+  it('non-stale null result still surfaces the unavailable banner', async () => {
+    // Regression: a fresh null resolve (no newer solve in flight) must still
+    // reach the error banner and clear the spinner.
+    const { result } = setupHook()
+
+    mockSolveLocally.mockResolvedValue(null)
+
+    await act(async () => { await result.current.reSolve(makeDoc()) })
+    expect(result.current.solveError).toBe('Local solver unavailable (OCC.js failed to load)')
+    expect(result.current.solving).toBe(false)
+  })
+
+  it('non-stale crash still banners', async () => {
+    // Regression: a fresh non-benign rejection must still paint the banner.
+    const { result } = setupHook()
+
+    mockSolveLocally.mockRejectedValue(new Error('solver worker crashed'))
+
+    await act(async () => { await result.current.reSolve(makeDoc()) })
+    expect(result.current.solveError).toBe('Error: solver worker crashed')
+  })
 })
