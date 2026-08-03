@@ -30,6 +30,7 @@ export function dispatchSketchClick(
     toggleNormalSelection: state.toggleNormalSelection,
     clearNormalSelection: state.clearNormalSelection,
     onMutation: getSketchCallback('onMutation'),
+    onMutationBatch: getSketchCallback('onMutationBatch'),
     hoveredEntityKind: entityKind ?? null,
     dimensionPicks: state.dimensionPicks,
     addDimensionPick: state.addDimensionPick,

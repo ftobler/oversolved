@@ -3,9 +3,13 @@ import { createDrawingTool } from '@/tools/DrawingTool'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 
 function createMockContext(overrides: Partial<DrawingToolContext> = {}): DrawingToolContext {
-  return {
+  // Mirrors the context Drawing.tsx builds for a drawing-tool pointer-down
+  // (all required fields plus the optional snap/projection slots).
+  const context: DrawingToolContext = {
     normalSelection: new Set<string>(),
     hoveredSelectionId: null,
+    hoveredSourceKind: null,
+    hoveredFaceEdges: null,
     isPointerDown: false,
     activeFeatureId: 'S1',
     hoveredVertexId: null,
@@ -17,14 +21,17 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     drawPoints: [],
     drawSnapVertexId: null,
     setDrawHover: vi.fn(),
+    setDrawPoints: (pts) => { context.drawPoints = [...pts] },
     clearDraw: vi.fn(),
     setActiveTool: vi.fn(),
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
     alignmentSnapVertexId: null,
     setDrawSnap: vi.fn(),
+    ngonSides: 6,
     ...overrides,
   }
+  return context
 }
 
 describe('DrawingTool', () => {
@@ -238,6 +245,56 @@ describe('DrawingTool', () => {
 
       expect(onMutation).toHaveBeenCalledTimes(1)
       expect(onMutationBatch).not.toHaveBeenCalled()
+    })
+
+    it('warns in dev when a multi-mutation gesture has no onMutationBatch', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({
+        drawPoints: [[0, 0]],
+        hoveredVertexId: 'vertex:S1:l1:end',
+        hoveredSnapKind: 'vertex',
+        activeFeatureId: 'S1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 0], context)
+
+      // The batch is silently dropped, but the miss is loud enough to catch.
+      expect(warn).toHaveBeenCalled()
+      expect(warn.mock.calls[0][0]).toContain('onMutationBatch')
+      warn.mockRestore()
+    })
+  })
+
+  describe('intermediate clicks (setDrawPoints)', () => {
+    it('advances the buffer through setDrawPoints instead of mutating in place', () => {
+      const setDrawPoints = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({ setDrawPoints })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 20], context)
+
+      expect(setDrawPoints).toHaveBeenCalledTimes(1)
+      expect(setDrawPoints).toHaveBeenCalledWith([[10, 20]])
+      expect(context.drawPoints).toEqual([])
+      expect(context.drawPoints).not.toBe(setDrawPoints.mock.calls[0][0])
+    })
+
+    it('does not call setDrawPoints when the gesture commits (clearTool)', () => {
+      const setDrawPoints = vi.fn()
+      const onMutation = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        setDrawPoints,
+        drawPoints: [[0, 0]],
+        activeFeatureId: 'S1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+
+      expect(onMutation).toHaveBeenCalledTimes(1)
+      expect(setDrawPoints).not.toHaveBeenCalled()
     })
   })
 })

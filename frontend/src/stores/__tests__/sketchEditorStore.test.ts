@@ -702,6 +702,20 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().drawPoints).toEqual([[1, 2], [3, 4]])
     })
 
+    it('setDrawPoints replaces the whole buffer and notifies subscribers', () => {
+      useSketchEditorStore.getState().addDrawPoint([1, 2])
+      const states: { drawPoints: [number, number][] }[] = []
+      const unsub = useSketchEditorStore.subscribe(s => { states.push({ drawPoints: s.drawPoints }) })
+
+      useSketchEditorStore.getState().setDrawPoints([[7, 8]])
+
+      // A fresh reference flows through zustand so the preview re-renders on
+      // the committing click instead of waiting for the next pointermove.
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([[7, 8]])
+      expect(states[states.length - 1]?.drawPoints).toEqual([[7, 8]])
+      unsub()
+    })
+
     it('setDrawHover updates hover position', () => {
       useSketchEditorStore.getState().setDrawHover([5, 6])
       expect(useSketchEditorStore.getState().drawHover).toEqual([5, 6])

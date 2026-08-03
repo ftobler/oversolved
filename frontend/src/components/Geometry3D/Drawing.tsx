@@ -76,6 +76,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const setDimensionCursorWorld = useSketchEditorStore(s => s.setDimensionCursorWorld)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = getSketchCallback('onMutation')
+  const onMutationBatch = getSketchCallback('onMutationBatch')
   const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
@@ -159,10 +160,11 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         const tool = toolRegistry.get(effectiveTool)
         if (!tool?.handlers.onPointerDown) return
 
-        // The project tool commits on this pointer-down (and resets the tool),
-        // so claim the click: the canvas click listener must not also toggle
-        // normal selection on the body entity we are projecting.
-        if (effectiveTool === 'project') markDrawToolClickConsumed()
+        // Every drawing tool commits on this pointer-down (project projects,
+        // line/arc/rect/... add or advance their buffer), so claim the click:
+        // the canvas click listener must not also toggle normal selection on
+        // the sketch entity / vertex the gesture just acted on.
+        markDrawToolClickConsumed()
 
         const state = useSketchEditorStore.getState()
         // The project tool picks B-rep / sketch identity to project. Resolve the
@@ -191,7 +193,11 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           hoveredVertexPosition,
           hoveredSnapKind,
           onMutation,
+          onMutationBatch,
           drawPoints,
+          setDrawPoints: (pts: import('@/types/cad').Point[]) => {
+            useSketchEditorStore.getState().setDrawPoints(pts)
+          },
           drawSnapVertexId: state.drawSnapVertexId,
           setDrawHover,
           clearDraw,

@@ -222,6 +222,55 @@ describe('useIdBufferPointerDispatch', () => {
     })
   })
 
+  describe('draw-tool click consumption on sketch layers', () => {
+    const VERTEX_KEY = 'vertex:feat1:line1:start'
+
+    function stubVertexHit() {
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 2, layer: SKETCH_VERTEX_LAYER_NAME, entityKey: VERTEX_KEY, distancePx: 0,
+      })
+    }
+
+    beforeEach(() => {
+      // A drawing tool is active: DrawPlane commits on pointer-down and claims
+      // the click, so the trailing canvas click must not toggle selection.
+      useSketchEditorStore.setState({ activeTool: 'line', activeFeatureId: 'feat1', normalSelection: new Set() })
+      takeDrawToolClickConsumed()  // clear any leaked flag from prior tests
+    })
+
+    it('skips normal selection on a sketch vertex when a drawing tool consumed the click', async () => {
+      stubVertexHit()
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+      }))
+
+      markDrawToolClickConsumed()  // mimic DrawPlane.onPointerDown for every drawing tool
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(pipeline.resolveSync).not.toHaveBeenCalled()
+    })
+
+    it('leaves selection alone for a plain draw over empty space', async () => {
+      pipeline.resolveSync = vi.fn().mockReturnValue(null)
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+      }))
+
+      markDrawToolClickConsumed()
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(pipeline.resolveSync).not.toHaveBeenCalled()
+    })
+  })
+
   it('hover stream calls onOver then onOut as the resolved key changes', async () => {
     const onOver = vi.fn()
     const onOut = vi.fn()

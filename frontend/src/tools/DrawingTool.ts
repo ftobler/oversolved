@@ -6,11 +6,16 @@ import { computeDrawClick } from '@/components/Geometry3D/drawLogic'
 import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
 import { randomId } from '@/utils/yamlMutations'
 import { toolModeHandlers } from '@/tools/toolMode'
+import { devOnly } from '@/stores/stateInvariants'
 
 export interface DrawingToolContext extends ToolContext {
   drawPoints: Point[]
   drawSnapVertexId: string | null
   setDrawHover: (pt: Point | null) => void
+  // Replaces the intermediate-click buffer through zustand so the preview is
+  // reactive on the committing click (mutating the handed-in array in place
+  // bypassed change detection and deferred the re-render to the next move).
+  setDrawPoints: (pts: Point[]) => void
   clearDraw: () => void
   setActiveTool: (tool: string | null) => void
   hoveredVertexId: string | null
@@ -71,8 +76,13 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
 
       // A gesture that emits several mutations (an end-snapped line adds the
       // entity and the constraint; a face project adds one per boundary edge)
-      // must undo as a single step, so it goes through the batch seam.
+      // must undo as a single step, so it goes through the batch seam. A
+      // future context that forgets the seam would silently drop the whole
+      // gesture (the optional call is a no-op), so warn in dev.
       if (result.mutations.length > 1) {
+        if (!context.onMutationBatch) {
+          if (devOnly) console.warn(`[DrawingTool] ${config.entityKind}: gesture emitted ${result.mutations.length} mutations but the context has no onMutationBatch - dropping the batch.`)
+        }
         context.onMutationBatch?.(result.mutations)
       } else if (result.mutations.length === 1) {
         context.onMutation?.(result.mutations[0])
@@ -82,12 +92,13 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         context.setDrawSnap(result.nextDrawSnap.vertexId)
       }
 
+      if (result.nextDrawPoints !== null) {
+        context.setDrawPoints(result.nextDrawPoints)
+      }
+
       if (result.clearTool) {
         context.clearDraw()
         context.setActiveTool(null)
-      } else if (result.nextDrawPoints !== null) {
-        context.drawPoints.length = 0
-        context.drawPoints.push(...result.nextDrawPoints)
       }
 
       return null

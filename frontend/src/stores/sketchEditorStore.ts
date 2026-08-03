@@ -284,6 +284,7 @@ interface SketchEditorState {
   drawHover: [number, number] | null
   drawSnapVertexId: string | null
   addDrawPoint: (pt: [number, number]) => void
+  setDrawPoints: (pts: [number, number][]) => void
   setDrawHover: (pt: [number, number] | null) => void
   setDrawSnap: (vertexId: string | null) => void
   clearDraw: () => void
@@ -773,6 +774,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
+  setDrawPoints: (pts) => set({ drawPoints: pts }),
   setDrawHover: (pt) => set({ drawHover: pt }),
   setDrawSnap: (vertexId) => set({ drawSnapVertexId: vertexId }),
   clearDraw: () => {
