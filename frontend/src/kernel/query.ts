@@ -401,6 +401,14 @@ export class Repository {
     }
   }
 
+  /** The entry's element ids that are still registered. Dangling eids are a
+   *  supported state (clearBySketchId deletes elements without pruning the
+   *  index), so every scan that feeds a resolve/ambiguity decision must filter
+   *  by liveness or dead ids count toward ambiguity and can even win. */
+  private liveEntryEids(entry: AncestralEntry): string[] {
+    return entry.eids.filter(eid => this.elements.has(eid))
+  }
+
   /** Drop an ancestral entry, keeping `byAncestorId` in step. Does not touch the
    *  entry's elements: callers decide whether those die with it. */
   deleteAncestral(key: string): void {
@@ -585,7 +593,7 @@ export class Repository {
     if (nonHashIds.length) {
       querySet = new Set(nonHashIds)
       for (const entry of this.ancestral.values()) {
-        if (isSubset(querySet, entry.set)) candidateIds.push(...entry.eids)
+        if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
       }
     }
     candidateIds = orderFilter(candidateIds)
@@ -645,7 +653,7 @@ export class Repository {
     if (!candidateIds.length && nonHashIds.length) {
       let partialCandidates: string[] = []
       for (const entry of this.ancestral.values()) {
-        if (isSubset(entry.set, querySet)) partialCandidates.push(...entry.eids)
+        if (isSubset(entry.set, querySet)) partialCandidates.push(...this.liveEntryEids(entry))
       }
       partialCandidates = orderFilter([...new Set(partialCandidates)])
       if (typeRestriction !== null) {
@@ -676,6 +684,11 @@ export class Repository {
       }
     }
 
+    // Resolve can only happen on a live element: every scan above filters by
+    // liveness, but re-check here so the tier label never claims a resolve
+    // ("ancestral"/"descriptor") while returning null for a dead winner.
+    candidateIds = candidateIds.filter(eid => this.elements.has(eid))
+
     if (!candidateIds.length) return null
     if (candidateIds.length > 1) {
       throw new AmbiguousQueryError(
@@ -702,13 +715,13 @@ export class Repository {
     )
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
-      if (isSubset(querySet, entry.set)) candidateIds.push(...entry.eids)
+      if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
     }
     candidateIds = orderFilter(candidateIds)
     if (typeRestriction !== null) {
       candidateIds = candidateIds.filter(eid => objType(this.elements.get(eid)) === typeRestriction)
     }
-    return candidateIds.filter(eid => this.elements.has(eid)).map(eid => this.elements.get(eid))
+    return candidateIds.map(eid => this.elements.get(eid))
   }
 
   queryAllTyped(q: AncestryQuery, currentFeatureId: string | null = null): unknown[] {
@@ -724,13 +737,13 @@ export class Repository {
     )
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
-      if (isSubset(querySet, entry.set)) candidateIds.push(...entry.eids)
+      if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
     }
     candidateIds = orderFilter(candidateIds)
     if (q.typeRestriction !== null) {
       candidateIds = candidateIds.filter(eid => objType(this.elements.get(eid)) === q.typeRestriction)
     }
-    return candidateIds.filter(eid => this.elements.has(eid)).map(eid => this.elements.get(eid))
+    return candidateIds.map(eid => this.elements.get(eid))
   }
 }
 

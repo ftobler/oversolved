@@ -1073,6 +1073,77 @@ describe("clearBySketchId", () => {
   })
 })
 
+/** Dead (dangling) eids must never count toward ambiguity or become the winner.
+ *  The uuid tier and queryAll already filter by liveness; the ancestral subset,
+ *  partial and descriptor tiers must do the same, and _lastTier must stay honest
+ *  (a candidate list empty after the liveness filter is a miss, not a resolve). */
+describe("dead eid ambiguity filter", () => {
+  it("untyped query over an all-dead entry misses instead of throwing", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@sketch1/line1", "@sketch1"],
+      { type: "flatface", sketch_id: "sketch1" },
+    )
+    repo.registerAncestor(
+      ["@sketch1/line1", "@sketch1"],
+      { type: "flatface", sketch_id: "sketch1" },
+    )
+    repo.register("sketch1/line1", { external_params: [0, 0, 1, 0], sketch_id: "sketch1" })
+
+    repo.clearBySketchId("sketch1")
+
+    const result = repo.query(makeAncestryQuery(["@sketch1/line1", "@sketch1"]))
+    expect(result).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("mixed live+dead candidates resolve the live element", () => {
+    const repo = new Repository()
+    const live = { type: "flatface", id: "live", sketch_id: "sketch1" }
+    repo.registerAncestor(["@sketch1"], live)
+    const deadEid = repo.registerAncestor([
+      "@sketch1",
+    ], { type: "flatface", id: "dead", sketch_id: "sketch1" })
+    repo.deleteElement(deadEid)
+
+    const result = repo.query(makeAncestryQuery(["@sketch1"]))
+    expect(result).toBe(live)
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("two genuinely live candidates still throw AmbiguousQueryError", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@sketch1"], { type: "flatface", id: "a", sketch_id: "sketch1" })
+    repo.registerAncestor(["@sketch1"], { type: "flatface", id: "b", sketch_id: "sketch1" })
+
+    expect(() => repo.query(makeAncestryQuery(["@sketch1"]))).toThrow(AmbiguousQueryError)
+  })
+
+  it("partial tier ignores dead eids", () => {
+    const repo = new Repository()
+    const deadEid = repo.registerAncestor(["@A"], { type: "flatface", sketch_id: "sketch1" })
+    repo.deleteElement(deadEid)
+
+    const result = repo.query(makeAncestryQuery(["@A", "@extra"]))
+    expect(result).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("descriptor-only fallback never returns a dead element", () => {
+    const repo = new Repository()
+    const deadEid = repo.registerAncestor(
+      ["@ex1", "@body1"],
+      { type: "flatface", centroid: [0, 0, 10], normal: [0, 0, 1], sketch_id: "sketch1" },
+    )
+    repo.deleteElement(deadEid)
+
+    const q = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@X", "@Y"], "flatface")
+    const result = repo.query(q)
+    expect(result).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+})
+
 /** The orchestration prunes ancestral + elements together, leaving no
  * dangling eid: every eid listed in any ancestral list still exists in elements. */
 describe("clearFeatureGeometryRegistrations", () => {
