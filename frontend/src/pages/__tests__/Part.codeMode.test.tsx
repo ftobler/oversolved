@@ -19,6 +19,12 @@ vi.mock('@/kernel/solveLocally', () => ({
   solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
 }))
 
+// jsdom has no Worker, so the real solveViaWorker resolves null ("Local solver
+// unavailable") for every solve. That is the pre-test baseline; the swap
+// re-pin tests override the mock to observe what reaches the solver.
+const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }))
+vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveViaWorker }))
+
 vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule({ cancelPendingFit: vi.fn() }))
 
@@ -43,6 +49,52 @@ features:
   - id: typed1
     kind: sketch
     label: Typed Sketch
+`
+
+// The bar parked before the end of a 2-feature stack. After a Run or a tab
+// exit the store must read 2, and the first tree mutation's rollback mirror
+// must reflect position 2 (== the end, so the key is removed), never the old
+// document's position 1.
+const ROLLBACK_DOC = `version: 1
+kind: part
+rollback: 2
+features:
+  - id: rsk1
+    kind: sketch
+    label: Rollback Sketch 1
+  - id: rex1
+    kind: extrude
+    label: Rollback Extrude 1
+`
+
+// No parked position: the swap must land the store at the end of this stack (2),
+// the same concrete position the load path derives, never a leftover null.
+const NO_ROLLBACK_DOC = `version: 1
+kind: part
+features:
+  - id: nr1
+    kind: sketch
+    label: No Rollback Sketch 1
+  - id: nr2
+    kind: extrude
+    label: No Rollback Extrude 1
+`
+
+// A stale parked position: the doc says 5 but only 3 features exist. The swap
+// must clamp the store to 3 and solve the whole 3-feature stack.
+const STALE_ROLLBACK_DOC = `version: 1
+kind: part
+rollback: 5
+features:
+  - id: a1
+    kind: sketch
+    label: A 1
+  - id: a2
+    kind: sketch
+    label: A 2
+  - id: a3
+    kind: sketch
+    label: A 3
 `
 
 function renderPart(strict = false) {
@@ -73,6 +125,7 @@ describe('Part - code tab and undo history', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useUnsavedChangesStore.setState({ dirty: false, pendingCallback: null })
+    mockSolveViaWorker.mockResolvedValue(null)
     vi.stubGlobal('fetch', partDocFetchMock({ content: BASE_DOC }))
   })
 
@@ -464,5 +517,97 @@ describe('Part - code tab and undo history', () => {
     // StrictMode replays updaters. It belongs in the handler.
     expect(parseYaml).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(featureIds()).toEqual(['typed1']))
+  })
+
+  it('re-pins the rollback store to the typed rollback on Run', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: ROLLBACK_DOC } })
+    await act(async () => { fireEvent.click(screen.getByTitle('Run')) })
+
+    // The swap re-derived the store from the typed doc's rollback; the pre-swap
+    // store (1, from the single-feature base doc) must not survive.
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+
+    // The first tree mutation mirrors the STORE position into the doc. With the
+    // stale pre-swap position this wrote rollback: 1 over the typed rollback: 2.
+    await act(async () => { fireEvent.click(screen.getByTitle('Hide')) })
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    // Position 2 on a 2-feature stack is the end, so the mirror writes the key's
+    // absence - the correct reflection of "parked at the end", never the stale 1.
+    expect(usePartEditorStore.getState().doc?.rollback).toBeUndefined()
+  })
+
+  it('lands the store at the end of the stack for a doc with no rollback', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: NO_ROLLBACK_DOC } })
+    await act(async () => { fireEvent.click(screen.getByTitle('Run')) })
+
+    // The swap re-derives a concrete end-of-stack position (2), matching the
+    // load path, instead of leaving the store null from the previous doc.
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
+  it('re-pins the rollback store when typed YAML replaces the doc on tab exit', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: ROLLBACK_DOC } })
+    await act(async () => { fireEvent.click(screen.getByTitle('Feature mode')) })
+
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+
+    await act(async () => { fireEvent.click(screen.getByTitle('Hide')) })
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(usePartEditorStore.getState().doc?.rollback).toBeUndefined()
+  })
+
+  it('clamps a stale high rollback on the swap and solves the whole stack', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: STALE_ROLLBACK_DOC } })
+    // Echo the solved features back so the applied results expose what the
+    // swap's own solve actually sent (all three, or a truncated prefix).
+    mockSolveViaWorker.mockImplementation(async (spec: { features: Array<{ id: string }> }) => ({
+      result: Object.fromEntries((spec.features ?? []).map(f => [f.id, { status: 'solved' }])),
+      bodies: {},
+      _build_state: null,
+    }))
+    await act(async () => { fireEvent.click(screen.getByTitle('Run')) })
+
+    // Clamped to the 3-feature stack, not the stale 5.
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(3)
+
+    // The swap's reSolve read the re-derived position: all three features reached
+    // the solver (a stale position would have truncated the payload).
+    const payload = mockSolveViaWorker.mock.calls.at(-1)![0]
+    expect(payload.rollback_position).toBe(3)
+    expect((payload.features as Array<{ id: string }>).map(f => f.id)).toEqual(['a1', 'a2', 'a3'])
+    expect(Object.keys(usePartEditorStore.getState().solveResults).sort()).toEqual(['a1', 'a2', 'a3'])
+  })
+
+  it('the equal-doc fast path leaves the rollback store untouched', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    const originalText = area.value
+    // Type something, then type the doc back onto itself: Run parses an equal
+    // doc, so no swap happens and nothing may re-derive the store.
+    fireEvent.change(area, { target: { value: TYPED_DOC } })
+    fireEvent.change(area, { target: { value: originalText } })
+    const spy = vi.spyOn(usePartEditorStore.getState(), 'setRollbackPosition')
+    await act(async () => { fireEvent.click(screen.getByTitle('Run')) })
+
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
   })
 })

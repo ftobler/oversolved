@@ -326,6 +326,29 @@ describe('useSolver', () => {
       expect(payload.features[0].id).toBe('feat1')
     })
 
+    it('a code-tab swap solve reads the re-derived store position, not the stale one', async () => {
+      const { result } = setupHook()
+      // The swapped-in doc parks the bar at 2 and carries a raw rollback: 5. The
+      // swap writes the re-derived position into the store BEFORE reSolve; the
+      // solve must read that (2), not the previous document's position (1) and
+      // not the doc's own rollback field.
+      const doc = makeDoc({
+        rollback: 5,
+        features: [
+          { id: 'f1', kind: 'sketch' },
+          { id: 'f2', kind: 'extrude' },
+          { id: 'f3', kind: 'extrude' },
+        ],
+      })
+      usePartEditorStore.getState().setRollbackPosition(1)
+      usePartEditorStore.getState().setRollbackPosition(2)
+      await act(async () => { await result.current.reSolve(doc) })
+      const payload = mockSolveLocally.mock.calls[0][0]
+      expect(payload.rollback_position).toBe(2)
+      expect(payload.features).toHaveLength(2)
+      expect(payload.features.map((f: { id: string }) => f.id)).toEqual(['f1', 'f2'])
+    })
+
     it('handles pickBoundary for preview solves', async () => {
       const { result } = setupHook()
       usePartEditorStore.getState().setPickBoundary(5)

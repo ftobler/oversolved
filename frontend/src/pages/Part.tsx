@@ -57,6 +57,16 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
 
+// Re-derive the rollback store from a whole-document swap (load, and the code
+// tab's Run/exit which replaces the doc from text). The swapped-in doc's parked
+// `rollback` is authoritative; a position past the end of the feature list
+// (features removed, or the old store value left over from the previous doc)
+// falls back to the end.
+function syncRollbackFromDoc(doc: PartDoc) {
+  const count = extractFeatures(doc).length
+  usePartEditorStore.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
+}
+
 // yaml.parse only throws on malformed syntax. Well-formed text that is not a
 // mapping comes back happily -- '' as null, '42' as a number, '- a' as an array
 // -- and taking one of those as the document empties the feature list for good,
@@ -198,8 +208,7 @@ export default function Part() {
       rollbackInitialized.current = true
       // Reopen the document where the user parked the bar. A saved position past
       // the end (doc hand-edited, features removed) falls back to the end.
-      const count = extractFeatures(doc).length
-      usePartEditorStore.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
+      syncRollbackFromDoc(doc)
     }
   }, [doc])
 
@@ -251,6 +260,10 @@ export default function Part() {
         setDoc(parsed.doc)
         useUnsavedChangesStore.getState().setDirty(true)  // code tab edit replaces the doc
         discardHistoryAndSessions()
+        // The swap re-pins the rollback store to the typed doc BEFORE the solve,
+        // so this solve reads the doc's parked position, and the first tree
+        // mutation cannot mirror the previous document's stale position over it.
+        syncRollbackFromDoc(parsed.doc)
         reSolve(parsed.doc, { bypassCache: true })
       }
       codeTyped.current = false
@@ -745,6 +758,10 @@ export default function Part() {
       // A Run is a whole-document replacement with no undo entry behind it, so
       // any history left from the feature tree would rewind past it.
       discardHistoryAndSessions()
+      // Same re-pin as the exit swap: the Run's own solve reads the typed doc's
+      // parked position, and the next tree mutation keeps it (mirrors position
+      // 2 from `rollback: 2`, never the old document's stale bar).
+      syncRollbackFromDoc(parsed.doc)
       reSolve(parsed.doc, { bypassCache: true })
     }
     // The text now says exactly what the document says, so leaving the tab has
