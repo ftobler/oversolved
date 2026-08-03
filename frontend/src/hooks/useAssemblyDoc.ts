@@ -38,6 +38,13 @@ export function useAssemblyDoc(uuid: string | undefined) {
           parsed.features = ASSEMBLY_BUILTIN_DEFAULTS.map(f => ({ ...f }))
         }
         docRef.current = parsed
+        // A document swap must not inherit the previous document's transient
+        // editor state (a live drag, a pick, a selection): it describes geometry
+        // the new doc does not have, and the first solve would take the live-drag
+        // path against it. Clearing BEFORE setDoc/setSnapshot covers both the
+        // keyed remount and any future in-place reload. The undo/redo stacks are
+        // untouched here; clearAssemblyHistory below owns them.
+        useAssemblyStore.getState().resetTransientAssemblyState()
         setDoc(parsed)
         setDocName(data.name)
         setOwnerUsername(data.owner_username || '')

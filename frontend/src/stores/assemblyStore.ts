@@ -253,6 +253,15 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setSnapshot: (data: AssemblyEditorData) => void
   // A fresh document must not inherit a previous one's undo history; see useAssemblyDoc.
   clearAssemblyHistory: () => void
+  // Reset every store-owned interaction field to its create() default, EXCEPT
+  // the undo/redo stacks (clearAssemblyHistory owns those). Mirrors
+  // sketchEditorStore.resetTransientState: the store is module-level and
+  // survives a document swap, so the new doc would otherwise inherit the
+  // previous one's live drag, picks, and selection, which describe geometry it
+  // does not have. Deliberately a plain set, not the lifecycle actions: it
+  // tears down a half-open state (a live drag) that endPartManipulation would
+  // try to commit into the new doc.
+  resetTransientAssemblyState: () => void
   setSelectedPartHandle: (handle: string | null) => void
   // Open a mate's editor. Closing the previous one settles its owed solve.
   setSelectedMateId: (featureId: string | null) => void
@@ -339,6 +348,18 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
 
   clearAssemblyHistory: () => set({ undoStack: [], redoStack: [] }),
+
+  resetTransientAssemblyState: () => set(() => {
+    const next: Record<string, unknown> = {}
+    const defaults = DEFAULT_ASSEMBLY_EDITOR_DATA as unknown as Record<string, unknown>
+    for (const field of STORE_OWNED_FIELDS) {
+      // The stacks survive here: a doc load clears them via clearAssemblyHistory,
+      // and the reset is about interaction residue, not history.
+      if (field === 'undoStack' || field === 'redoStack') continue
+      next[field] = defaults[field]
+    }
+    return next as Partial<AssemblyEditorData>
+  }),
 
   setSelectedMateId: (featureId) => {
     get().setActiveMateField(null)  // leaving a mate settles the solve its picks owe

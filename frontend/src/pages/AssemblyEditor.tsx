@@ -227,6 +227,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     return () => setAssemblyCallbacks(null)
   }, [mutateOneShot, mutate, requestSolve])
 
+  // The store is module-level and survives a remount, so a new document would
+  // otherwise inherit the previous one's manipulation/picks/selection, which
+  // describe geometry it does not have. Deliberately unmount-only, mirroring
+  // the part editor's resetTransientState cleanup; the load path in
+  // useAssemblyDoc resets the same fields before setDoc.
+  useEffect(() => {
+    return () => {
+      useAssemblyStore.getState().resetTransientAssemblyState()
+    }
+  }, [])
+
   // Nothing renders until the assembly has been solved once: the bodies dict is
   // filled only by a solve, never by loading the doc.
   const solvedOnce = useRef(false)

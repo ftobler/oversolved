@@ -23,6 +23,7 @@ import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec } from '@/kernel/solveAssembly'
 import { dragTargetMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
+import { findInstance } from '@/utils/assemblyMutations'
 import { livePartPose, settledTransforms } from '@/utils/partManipulation'
 
 // A mate offset/angle authored as an expression string is not evaluated here;
@@ -125,10 +126,19 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     const current = docRef.current
     if (!current) return
     const store = useAssemblyStore.getState()
+    // A manipulation whose handle names no instance in the current doc is residue
+    // from an earlier document (a load raced the drag). Route it back to the
+    // ordinary full solve instead of taking the live-drag path against geometry
+    // it does not refer to; the error path below then surfaces like any other
+    // full-solve failure instead of being swallowed as a quiet live tick.
+    let manip = store.manipulation
+    if (manip !== null && !findInstance(current, manip.handle)) {
+      useAssemblyStore.setState({ manipulation: null, gizmoDrag: null })
+      manip = null
+    }
     // A drag in progress means a live tick: pin the grabbed part where the
     // pointer put it and let the mates pull the rest. Read fresh each run so the
     // final run after pointer-up (manipulation cleared) is an ordinary full solve.
-    const manip = store.manipulation
     const live = manip !== null
     const dragObjective = manip?.dragObjective ?? null
     if (!live) {
