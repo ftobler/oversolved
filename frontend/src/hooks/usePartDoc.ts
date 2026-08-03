@@ -10,6 +10,7 @@ import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { applySetRollback } from '@/utils/yamlMutations'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
@@ -83,6 +84,27 @@ const PREVIEW_SCOPE = new Set<Mutation['type']>([
   'set_part_transmission',
 ])
 
+// The kinds whose pruned solve result is the ONLY thing that can re-render them
+// after a failing solve: they produce body geometry with no `initial`-style doc
+// fallback (the plan's BREP/import scope). A sketch renders from `initial`
+// (Viewport/index.tsx), a plane solves trivially, a variable carries no
+// geometry, so retaining their snapshots would only consume the stash cap.
+const NO_FALLBACK_BREP_KINDS = new Set([
+  'extrude', 'revolve', 'sweep',
+  'fillet', 'chamfer',
+  'boolean', 'hole',
+  'array', 'circular_array',
+  'transform', 'mirror',
+  'delete_body', 'import_step',
+])
+
+// The kind of the named feature in `doc`, or undefined when absent. The stash
+// gate needs the kind of a feature about to be pruned; both funnels run before
+// the pre-mutation doc is replaced, so it still carries the feature.
+function featureKindOf(doc: PartDoc | null, featureId: string): string | undefined {
+  return (doc?.features ?? []).find(f => f.id === featureId)?.kind
+}
+
 // Whole-doc change test for the edit-session commit. part_style is excluded
 // because reconcilePartStyle fabricates entries there during a solve, which
 // would manufacture an edit out of nothing; rollback is excluded because it is
@@ -151,6 +173,29 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const reSolveRef = useRef<ReSolveFn | null>(null)
 
+  // Retained pruned solve results, keyed by feature id, held across the undo
+  // boundary. handleMutation prunes a deleted feature's solve result
+  // optimistically and hands it to the delete's OWN re-solve as
+  // _restoreSolveResults, so a failing forward solve re-renders the feature.
+  // The undo entry stores no solve results (they are not doc content), so the
+  // undo re-solve has nothing to restore; this stash is that one-shot contract
+  // extended across the boundary. Only whole-feature removals of body-producing
+  // kinds are appended, and a successful solve for a feature clears it.
+  const restoreStashRef = useRef<Record<string, SketchData>>({})
+
+  // Drops the retained snapshot of a feature once a solve genuinely produced a
+  // fresh result for it: the fresh result supersedes the snapshot, so keeping
+  // it would only leak memory and could resurrect stale geometry. Fires only on
+  // an APPLIED solve (useSolver calls it from the success path, after the
+  // request-id staleness guard), never on the failure-restore path, so a
+  // failing forward delete cannot eat the entry a later undo still needs.
+  const clearStashForSolved = useCallback((featureIds: string[]) => {
+    const stash = restoreStashRef.current
+    for (const featureId of featureIds) {
+      delete stash[featureId]
+    }
+  }, [])
+
   const {
     doc, setDoc, docRef, docName, ownerUsername,
     loading, error, setError, permission, isCloudDoc,
@@ -162,9 +207,38 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     solving, solveError, setSolveError, solveResult,
     featureTimings, reSolve,
     validation,
-  } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve }, docRef, setDoc)
+  } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve, onSolveApplied: clearStashForSolved }, docRef, setDoc)
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
+
+  // Append a pruned snapshot for a whole-feature removal, keyed by feature id.
+  // Capped like the undo stack: beyond MAX_UNDO_DEPTH the oldest entry falls
+  // out and the feature simply renders via the normal re-solve after a
+  // successful undo, matching undo-stack semantics.
+  const stashPrunedResult = useCallback((featureId: string, snapshot: SketchData) => {
+    const stash = restoreStashRef.current
+    const keys = Object.keys(stash)
+    if (!(featureId in stash) && keys.length >= MAX_UNDO_DEPTH) delete stash[keys[0]]
+    stash[featureId] = snapshot
+  }, [])
+
+  // The reSolve handed to useUndoRedo. applyUndoRedo restores an entry's doc and
+  // re-solves it, and that entry carries no solve results, so the re-solve has
+  // nothing to show while it runs - and nothing to fall back to if it fails. The
+  // stash is that fallback, filtered to the features the restored entry doc
+  // actually contains so a stale entry for a feature the doc lacks is never
+  // read.
+  const restoreAwareReSolve = useCallback((d: PartDoc) => {
+    const restore: Record<string, SketchData> = {}
+    const entryIds = new Set((d.features ?? []).map(f => f.id))
+    for (const [featureId, snapshot] of Object.entries(restoreStashRef.current)) {
+      if (entryIds.has(featureId)) restore[featureId] = snapshot
+    }
+    const restoreKeys = Object.keys(restore)
+    return restoreKeys.length > 0
+      ? reSolve(d, { _restoreSolveResults: restore })
+      : reSolve(d)
+  }, [reSolve])
 
   // Mirror of the solver's solveResults so handleMutation can compute the
   // optimistic prune (and what it removed) synchronously in an event handler.
@@ -211,7 +285,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const {
     undoStack, redoStack, suppressUndoRef, pushUndo, clearStacks, handleUndo, handleRedo,
     saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
-  } = useUndoRedo(docRef, setDoc, reSolve, tearDownEditorState)
+  } = useUndoRedo(docRef, setDoc, restoreAwareReSolve, tearDownEditorState)
 
   // Abandons open edit/preview sessions and re-enables undo pushes, WITHOUT
   // touching the stacks. The code tab's own exit path runs the full
@@ -233,6 +307,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   const discardHistoryAndSessions = useCallback(() => {
     discardSessions()
     clearStacks()
+    // The retained snapshots describe the old doc's history; the swapped-in
+    // doc could reuse the same feature ids, so holding them would risk a stale
+    // restore. The undo stacks they exist to serve are dropped here too.
+    restoreStashRef.current = {}
   }, [discardSessions, clearStacks])
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
@@ -400,8 +478,18 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // Only whole-feature removals carry a restorable snapshot (a partial
     // delete's snapshot would redraw deleted entities after a failing solve);
     // partial deletes stay pruned and the doc-driven fallback renders them.
+    // The restorable snapshot is also retained for the undo boundary (the undo
+    // re-solve has no other source for it), limited to body-producing kinds.
     const { next: nextSolveResults, restorable } = pruneSolveResults(m, solveResultsRef.current)
     if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
+    if (restorable) {
+      for (const featureId of Object.keys(restorable)) {
+        const kind = featureKindOf(current, featureId)
+        if (kind && NO_FALLBACK_BREP_KINDS.has(kind)) {
+          stashPrunedResult(featureId, restorable[featureId])
+        }
+      }
+    }
 
     const brep = brepWithholdRef.current
     // A mutation the color preview cannot produce while a preview is open is an
@@ -452,7 +540,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession, stashPrunedResult])
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
@@ -575,7 +663,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       const pruned = pruneSolveResults(m, nextSolveResults)
       if (pruned.next !== nextSolveResults) {
         nextSolveResults = pruned.next
-        if (pruned.restorable) restorable = { ...(restorable ?? {}), ...pruned.restorable }
+        if (pruned.restorable) {
+          restorable = { ...(restorable ?? {}), ...pruned.restorable }
+          for (const featureId of Object.keys(pruned.restorable)) {
+            const kind = featureKindOf(current, featureId)
+            if (kind && NO_FALLBACK_BREP_KINDS.has(kind)) {
+              stashPrunedResult(featureId, pruned.restorable[featureId])
+            }
+          }
+        }
       }
     }
 
@@ -631,7 +727,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       _suppressFirstSolve: true,
       ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession])
+  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession, stashPrunedResult])
 
   // Arms the brep dimension pick/commit pair: the next mutation (the
   // projection) is applied without an undo entry and the one after it (the

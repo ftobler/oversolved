@@ -557,3 +557,78 @@ describe('round-trip side effects', () => {
     expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
   })
 })
+
+// ─── Retained-snapshot stash across the undo boundary ───
+
+describe('undo/redo restore of the pruned-solve-result stash', () => {
+  beforeEach(() => {
+    docRef.current = null
+    solveResults = {}
+    reSolve.mockReset()
+    usePartEditorStore.getState().setEditingFeatureId(null)
+    usePartEditorStore.getState().setRollbackPosition(null)
+    usePartEditorStore.getState().setPickBoundary(null)
+  })
+
+  it('the undo re-solve receives the retained snapshot as _restoreSolveResults', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      features: [{ id: 'ex1', kind: 'extrude', label: 'Ext' }],
+    } as unknown as PartDoc
+    solveResults = { ex1: { status: 'ok', solved: {} } }
+    reSolve.mockClear()
+    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'ex1' } as Mutation) })
+    // The forward delete path is unchanged: the direct restorable is handed to
+    // the delete's own re-solve.
+    expect(reSolve).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ _restoreSolveResults: { ex1: { status: 'ok', solved: {} } } }),
+    )
+
+    reSolve.mockClear()
+    act(() => { result.current.handleUndo() })
+    // The undo re-solve gets the retained snapshot too (the wrapper reads the
+    // stash), so a failing undo re-solve can re-render the feature.
+    expect(reSolve).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ _restoreSolveResults: { ex1: { status: 'ok', solved: {} } } }),
+    )
+
+    reSolve.mockClear()
+    act(() => { result.current.handleRedo() })
+    // Redo restores the post-delete doc, which lacks ex1: the stash entry is
+    // filtered out and nothing is passed.
+    expect(reSolve.mock.calls[0][1]).toBeUndefined()
+  })
+
+  it('a stale stash entry is not handed to an undo whose entry doc lacks the feature', () => {
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      features: [
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'ex2', kind: 'extrude' },
+        { id: 'ex3', kind: 'extrude' },
+      ],
+    } as unknown as PartDoc
+    solveResults = {
+      ex1: { status: 'ok', solved: {} },
+      ex2: { status: 'ok', solved: {} },
+      ex3: { status: 'ok', solved: {} },
+    }
+    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'ex2' } as Mutation) })
+    act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'ex3' } as Mutation) })
+
+    reSolve.mockClear()
+    act(() => { result.current.handleUndo() })
+    // The undo restores the pre-delete doc [ex1, ex3]; the retained ex2 entry
+    // is dropped because the entry doc lacks ex2.
+    expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['ex1', 'ex3'])
+    expect(reSolve.mock.calls[0][1]).toEqual({ _restoreSolveResults: { ex3: { status: 'ok', solved: {} } } })
+  })
+})

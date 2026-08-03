@@ -74,7 +74,7 @@ export function useSolver(
   uuid: string | undefined,
   setCodeText: (t: string) => void,
   modeRef: React.MutableRefObject<string>,
-  { onFirstSolve }: { onFirstSolve?: () => void } = {},
+  { onFirstSolve, onSolveApplied }: { onFirstSolve?: () => void; onSolveApplied?: (featureIds: string[]) => void } = {},
   docRef: React.MutableRefObject<PartDoc | null>,
   setDoc: React.Dispatch<React.SetStateAction<PartDoc | null>>,
 ) {
@@ -208,6 +208,11 @@ export function useSolver(
       reconcilePartStyle(cloned, data.bodies)
     }
     setSolveResults(results)
+    // A fresh result for a feature supersedes any retained pre-delete snapshot
+    // of it (usePartDoc's undo stash). Only an APPLIED solve reaches this point
+    // (the request-id staleness guard runs before applyBuildResponse calls us),
+    // so a stale or failing solve never clears the stash.
+    onSolveApplied?.(Object.keys(results))
     const timings: Record<string, number> = {}
     for (const [id, feature] of Object.entries(result)) {
       if (typeof feature.solve_ms === 'number') {
@@ -230,7 +235,7 @@ export function useSolver(
       setSolveTime(solveTimeMs)
     }
     return cloned
-  }, [setCodeText, modeRef, docRef, setDoc])
+  }, [setCodeText, modeRef, docRef, setDoc, onSolveApplied])
 
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number): PartDoc | null => {
     // Stale-guard: if a newer reSolve has been issued, discard this response.
