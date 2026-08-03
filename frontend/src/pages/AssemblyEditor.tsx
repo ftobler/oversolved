@@ -224,8 +224,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       mutateDocSession: mutate,
       requestSolve,
     })
-    return () => setAssemblyCallbacks(null)
-  }, [mutateOneShot, mutate, requestSolve])
+    return () => {
+      // The page is unmounting with an open mate/instance editor. Its pinned
+      // coalescing session would otherwise die with the component: the edits
+      // are already in the doc but have no undo entry to reach them, so a save
+      // after navigation persists them forever beyond undo. Commit first so
+      // navigation leaves one coalesced entry and a consistent stack. The UI
+      // state itself needs no closing, the component is going away.
+      commitSession()
+      setAssemblyCallbacks(null)
+    }
+  }, [mutateOneShot, mutate, requestSolve, commitSession])
 
   // The store is module-level and survives a remount, so a new document would
   // otherwise inherit the previous one's manipulation/picks/selection, which

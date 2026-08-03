@@ -44,12 +44,16 @@ export function useAssemblyUndoRedo(
     const pending = pendingSession.current
     pendingSession.current = null
     if (!pending) return
-    const current = docRef.current
+    // The live doc is gone (a teardown after a failed load, an unmount after
+    // the doc already left): pushing would record an entry keyed to a doc that
+    // does not exist, so the pin is dropped instead. Mirrors applyUndoRedo's
+    // empty-stack/null-doc no-op.
+    if (!docRef.current) return
     // A session that left the doc exactly as it found it (typed back to its
     // start value) must not charge an entry: the pre-session doc and the
     // current doc are structurally equal, so undoing it would restore an
     // identical document. Mirrors docDiffersForSession's whole-doc guard.
-    if (current && assemblyDocEquals(pending.doc, current)) return
+    if (assemblyDocEquals(pending.doc, docRef.current)) return
     pushUndo(pending.doc, pending.label)
   }, [pushUndo, docRef])
 

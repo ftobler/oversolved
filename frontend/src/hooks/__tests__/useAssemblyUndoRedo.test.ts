@@ -344,6 +344,53 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  // The unmount path: AssemblyEditor's cleanup commits the pinned session before
+  // nulling its callbacks, so a navigation with an editor open leaves exactly
+  // one coalesced entry rather than dropping the edits from undo forever.
+  it('committing on unmount folds a pending session into exactly one entry with no orphan pin', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docA }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.recordSessionEdit(docA, 'Edit mate') })
+    docRef.current = docB  // the typed offset applied to the live doc
+
+    act(() => { result.current.commitSession() })
+    // The unmount commit is the editor's close: one coalesced entry.
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Edit mate'])
+    // The doc still holds the edit; committing only resolved the pin.
+    expect(docRef.current).toEqual(docB)
+
+    // No orphan pin remains: a later commit is a no-op.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  it('commitSession with a null live doc drops the pin and pushes nothing', () => {
+    const docRef = { current: null }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    // The doc went away while the editor was pinned (a teardown after a failed
+    // load): committing must not record an entry keyed to a doc that no longer
+    // exists, mirroring applyUndoRedo's null-doc no-op.
+    act(() => { result.current.recordSessionEdit(docWith(['a']), 'Edit mate') })
+    act(() => { result.current.commitSession() })
+
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(0)
+
+    // The pin was dropped with the entry: a later commit pushes nothing either.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   it('committing one editor then cancelling a later editor keeps both steps separate', () => {
     const docA = docWith(['a'])
     const docB = docWith(['a', 'b'])

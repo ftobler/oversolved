@@ -1107,6 +1107,40 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(0)
   })
 
+  // Route-level unmount with an editor open: the page keys by uuid, so this is
+  // the key-remount path. The unmount must commit the pinned session BEFORE the
+  // load clears the stacks, or the pending edits would die unreachable by undo.
+  it('route-level unmount commits a pending session; history survives until the next load clears it', async () => {
+    const first = renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)  // the Add mate step
+
+    // A mate offset edit pins a coalescing session on its keystroke.
+    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
+    await tick()
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+    expect(undoStack()).toHaveLength(1)  // still coalesced behind the open editor
+
+    // Navigating away unmounts the page with the editor open. The unmount must
+    // commit the pinned session: the edit is already in the doc, so leaving it
+    // without an undo entry would make it unreachable by undo for good.
+    first.unmount()
+    expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Edit mate'])
+    // The doc still holds the edit, so a save after navigation persists it with
+    // its undo entry in place.
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+
+    // The next load clears history (out by design), so the remount starts empty.
+    renderEditor()
+    await tick()
+    await tick()
+    expect(undoStack()).toHaveLength(0)
+  })
+
   it('a reorder of instances records one undo step and undo restores the order', async () => {
     renderEditor()
     await tick()
