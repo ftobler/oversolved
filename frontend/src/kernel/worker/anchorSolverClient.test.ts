@@ -47,6 +47,16 @@ class FakeWorker implements AnchorSolverWorkerLike {
 
 let fakeWorker: FakeWorker
 
+// Poll for a posted message of a given kind. The repo's vitest (3.2.4) resolves
+// `vi.waitFor` immediately with any non-thenable return, so the callback must
+// throw until the condition holds (a thenable return is what arms the polling).
+async function waitForPosted(worker: FakeWorker, kind: string): Promise<void> {
+  await vi.waitFor(async () => {
+    if (worker.posted.some(m => m.kind === kind)) return true
+    throw new Error(`expected a posted message of kind '${kind}'`)
+  }, { timeout: 1000 })
+}
+
 beforeEach(() => {
   fakeWorker = new FakeWorker()
   setAnchorSolverWorkerForTest(() => fakeWorker)
@@ -240,6 +250,84 @@ describe('relay plumbing', () => {
     if (relayRes) {
       expect(relayRes.ok).toBe(false)
       expect(relayRes.error).toContain('no relay handlers')
+    }
+  })
+
+  it('drops a stale relay reply when the worker crashed and respawned before it resolved', async () => {
+    const handlers = {
+      partDocContent: vi.fn(),
+      buildBundle: vi.fn(),
+    }
+    setRelayHandlers(handlers)
+
+    // Keep the FIRST relay handler call pending so the crash + respawn happen
+    // before it resolves; later calls (W2's own relay) resolve immediately.
+    let resolveRelay!: (v: unknown) => void
+    let relayCalls = 0
+    handlers.partDocContent.mockImplementation(() => {
+      relayCalls += 1
+      if (relayCalls === 1) {
+        return new Promise((res) => { resolveRelay = res })
+      }
+      return Promise.resolve({ kind: 'part', features: [] })
+    })
+
+    const part = { handle: 'p1', doc_id: 'd1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }
+    const w1 = fakeWorker
+
+    // W1 is wired by the solve, then sends a relay request.
+    const solve1 = solveAssemblyViaWorker('asm-1', [part], { d1: 1 }, [])
+    w1.reply({ kind: 'asr_relay', requestId: 1, subKind: 'partDocContent', doc_id: 'doc-x' })
+
+    // W1 crashes mid-relay; its pending solve is rejected.
+    w1.crash()
+    await expect(solve1).rejects.toThrow('anchor solver worker crashed')
+    expect(w1.terminated).toBe(true)
+
+    // A new solve respawns W2 before the stale relay handler resolves.
+    const w2 = new FakeWorker()
+    setAnchorSolverWorkerForTest(() => w2)
+    setRelayHandlers(handlers)
+    solveAssemblyViaWorker('asm-2', [part], { d1: 1 }, [])
+    expect(w2.posted).toHaveLength(1)
+
+    // The stale relay finally resolves; its reply must go to the captured
+    // sender (the terminated W1), never to the respawned W2.
+    resolveRelay({ kind: 'part', features: [] })
+    await waitForPosted(w1, 'asr_relayRes')
+    expect(w2.posted.some(m => m.kind === 'asr_relayRes')).toBe(false)
+
+    // W2's own relay still round-trips cleanly.
+    w2.reply({ kind: 'asr_relay', requestId: 10, subKind: 'partDocContent', doc_id: 'doc-y' })
+    await waitForPosted(w2, 'asr_relayRes')
+    const w2res = w2.posted.find(m => m.kind === 'asr_relayRes') as AnchorRelayOkResponse | undefined
+    expect(w2res).toBeDefined()
+    if (w2res) {
+      expect(w2res.requestId).toBe(10)
+      expect(w2res.ok).toBe(true)
+    }
+  })
+
+  it('regression: a normal in-flight relay (no crash) delivers to the same worker', async () => {
+    setRelayHandlers({
+      partDocContent: vi.fn().mockResolvedValue({ kind: 'part', features: [{ id: 'f1' }] }),
+      buildBundle: vi.fn(),
+    })
+
+    solveAssemblyViaWorker(
+      '_asm',
+      [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { _: 1 },
+      [],
+    )
+    fakeWorker.reply({ kind: 'asr_relay', requestId: 7, subKind: 'partDocContent', doc_id: 'doc' })
+
+    await waitForPosted(fakeWorker, 'asr_relayRes')
+    const res = fakeWorker.posted.find(m => m.kind === 'asr_relayRes') as AnchorRelayOkResponse | undefined
+    expect(res).toBeDefined()
+    if (res) {
+      expect(res.requestId).toBe(7)
+      expect(res.ok).toBe(true)
     }
   })
 })

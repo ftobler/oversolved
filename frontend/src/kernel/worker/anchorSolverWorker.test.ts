@@ -247,6 +247,46 @@ describe('relay plumbing', () => {
   })
 })
 
+describe('relay requestId scoping across worker generations', () => {
+  it('a stale reply with a colliding requestId cannot resolve a respawned entry', async () => {
+    vi.useFakeTimers()
+    try {
+      // Generation 1: the crashed worker. Its client had issued solve id 1,
+      // so its relay ids sit in the 1000 band.
+      vi.resetModules()
+      const gen1 = await import('./anchorSolverWorker')
+      const r1: AnchorRelayRequest[] = []
+      const service1 = gen1.createRelayService((m) => r1.push(m))
+      await gen1.handleSolveAssembly(makeReq({ id: 1 }), service1)
+      const staleProm = service1.requestPartDoc('old-doc')
+      const staleId = r1[0].requestId
+      const staleRejects = expect(staleProm).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(gen1.RELAY_TIMEOUT_MS)
+      await staleRejects
+
+      // Generation 2: the respawned worker. The client's nextId has grown, so
+      // its relay ids sit in a higher band and cannot collide.
+      vi.resetModules()
+      const gen2 = await import('./anchorSolverWorker')
+      const r2: AnchorRelayRequest[] = []
+      const service2 = gen2.createRelayService((m) => r2.push(m))
+      await gen2.handleSolveAssembly(makeReq({ id: 2 }), service2)
+      const liveProm = service2.requestPartDoc('new-doc')
+      const liveId = r2[0].requestId
+
+      expect(liveId).not.toBe(staleId)
+
+      // A stale reply from gen 1 misdelivered to gen 2 must not touch gen 2's
+      // live entry: it only resolves with its own id and payload.
+      gen2.handleRelayResponse({ kind: 'asr_relayRes', requestId: staleId, ok: true, payload: 'WRONG DOC' })
+      gen2.handleRelayResponse({ kind: 'asr_relayRes', requestId: liveId, ok: true, payload: 'RIGHT DOC' })
+      await expect(liveProm).resolves.toBe('RIGHT DOC')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('WorkerActor', () => {
   it('runs jobs serialized, one after another', async () => {
     const actor = new WorkerActor()

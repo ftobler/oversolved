@@ -38,6 +38,16 @@ export interface RelayService {
 let nextRelayId = 1
 const relayPending = new Map<number, { resolve: (val: unknown) => void; reject: (err: Error) => void }>()
 
+// The relay id counter lives in this worker's own realm and restarts at 1 on
+// every spawn, so two worker generations could mint colliding ids. Solve ids
+// come from the client's monotonic counter, so pushing the relay counter past
+// `solveId * 1000` on each solve keeps every generation's ids in its own band:
+// even a misdelivered stale reply cannot resolve a live entry in a respawned
+// worker.
+function scopeRelayIdsToGeneration(solveId: number): void {
+  nextRelayId = Math.max(nextRelayId, solveId * 1000)
+}
+
 // If the main thread never answers (tab backgrounded mid-navigation, a
 // listener that got detached, etc), an un-timed-out relay would hang
 // `solveAssembly` forever with `isSolving: true` and no banner. Exported so
@@ -102,6 +112,7 @@ export async function handleSolveAssembly(
   relay: RelayService,
 ): Promise<AssemblySolveResponse> {
   try {
+    scopeRelayIdsToGeneration(req.id)
     await initAnchorSolver()
     const solver = getMateSolver()
 

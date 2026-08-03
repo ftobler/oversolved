@@ -93,8 +93,14 @@ async function handleRelay(msg: AnchorRelayRequest): Promise<AnchorRelayResponse
 function onMessage(e: { data: AssemblyWorkerResponse }): void {
   const msg = e.data
   if (msg.kind === 'asr_relay') {
+    // Tie the reply to the worker that asked. The module `worker` is read at
+    // resolve time, and after a crash + respawn it can name a new generation;
+    // a stale reply would then resolve a NEW relay's slot. Capture the sender
+    // when the request arrives: a crash terminated + nulled it, so the stale
+    // reply is dropped instead of misdelivered.
+    const sender = worker
     handleRelay(msg).then((res) => {
-      worker?.postMessage(res)
+      sender?.postMessage(res)
     })
     return
   }
