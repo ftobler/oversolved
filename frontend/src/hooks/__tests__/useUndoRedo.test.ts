@@ -251,6 +251,29 @@ describe('useUndoRedo', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  it('redo with a null docRef is a no-op that keeps the stacks paired', () => {
+    const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+    const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
+    const docRef: { current: PartDoc | null } = { current: docB }
+    const setDoc = vi.fn()
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+    setDoc.mockClear()
+
+    docRef.current = null
+    act(() => { result.current.handleRedo() })
+
+    // A history with no current doc cannot be popped: moving the entry would
+    // orphan its counterpart and permanently desync the paired stacks, so the
+    // redo does nothing rather than dropping the entry.
+    expect(setDoc).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(1)
+  })
+
   it('handleRedo on empty stack is no-op', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()
@@ -507,6 +530,33 @@ describe('useUndoRedo', () => {
     // Absent rollback means "at the end of the stack", so the restore lands on
     // the restored doc's own feature count, not on a stale store position.
     expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
+  it('redo clamps a stale restored rollback to the restored feature count', () => {
+    // The clamp is shared by both legs of applyUndoRedo, but only the undo leg
+    // was pinned. A redo restoring a hand-edited doc must clamp the bar the
+    // same way, never overshooting into empty space.
+    const staleDoc = {
+      version: 1, kind: 'part', rollback: 5,
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+        { id: 'f3', kind: 'fillet' },
+      ],
+    } as PartDoc
+    const freshDoc = { version: 1, kind: 'part', features: [{ id: 'f4', kind: 'sketch' }] } as PartDoc
+    const docRef = { current: staleDoc }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, freshDoc) })
+    usePartEditorStore.getState().setRollbackPosition(99)
+    act(() => { result.current.handleUndo() })
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(1)  // freshDoc has one feature
+
+    act(() => { result.current.handleRedo() })
+
+    // The redo restores staleDoc: rollback 5 over a 3-feature list clamps to 3.
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(3)
   })
 
   it('restoreUndoStackSnapshot only re-pairs the stacks; the caller must rewind the doc first', () => {

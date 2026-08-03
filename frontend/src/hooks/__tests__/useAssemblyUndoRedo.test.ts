@@ -5,7 +5,8 @@ import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
-import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import { findInstance, findMate } from '@/utils/assemblyMutations'
+import { IDENTITY_TRANSFORM, rotateVector } from '@/utils/transform3d'
 import type { AssemblyDoc } from '@/types/cad'
 
 // The module store holds the stacks, so every test must start from an empty
@@ -311,6 +312,34 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.undoStack).toHaveLength(0)
   })
 
+  // Redo shares the session-drop with undo (applyUndoRedo's first line), but
+  // only the undo leg was pinned: a redo mid-edit must abandon the coalesced
+  // session the same way, or the commit of its stale pre-doc lands on the
+  // doc the redo just restored and duplicates history.
+  it('redo discards a pending coalesced session so a later commit pushes nothing stale', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docB }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.pushUndo(docA, 'Add part') })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+
+    // A mate editor is open and its first keystroke pinned a session entry.
+    act(() => { result.current.recordSessionEdit(docRef.current!, 'Edit mate') })
+    act(() => { result.current.handleRedo() })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(0)
+
+    // The stale session must not resurrect itself on a later OK click.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   it('undo on an empty stack still drops a pinned coalescing session', () => {
     const docRef = { current: docWith(['a']) }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
@@ -487,5 +516,141 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { result.current.handleUndo() })
     expect(hasMate(docRef.current!)).toBe(true)  // the delete is reverted
     expect(requestSolve.mock.calls.length).toBe(solvesAfterOps + 2)
+  })
+
+  // The gizmo-rotation undo step, driven through the same store funnel as the
+  // drag test above. assemblyManipulation.test.ts asserts the committed
+  // quaternion; this pins that the commit hands the stack ONE pre-rotation doc
+  // whose undo restores the identity transform.
+  it('a committed gizmo rotation pushes one entry and undo reverts the quaternion', () => {
+    const initial: AssemblyDoc = {
+      kind: 'assembly',
+      features: [
+        { id: 'fp1', kind: 'part_instance', instance: {
+          handle: 'p1', doc_id: 'd1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true,
+        } },
+      ],
+    }
+    const requestSolve = vi.fn()
+    const docRef = { current: initial }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, requestSolve,
+    ))
+    const { pushUndo } = result.current
+
+    // Stands in for the page's mutate: captures the pre-doc, then applies.
+    const pageMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+      const cur = docRef.current!
+      pushUndo(cur, label)
+      docRef.current = fn(cur)
+      setDoc(docRef.current)
+      useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: docRef.current })
+    }
+    setAssemblyCallbacks({ mutateDoc: pageMutate, mutateDocSession: pageMutate, requestSolve })
+    useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
+
+    act(() => {
+      const s = useAssemblyStore.getState()
+      s.beginPartManipulation('p1')
+      s.rotatePartGizmo([0, 0, 1], Math.PI / 2)
+      s.endPartManipulation()
+    })
+
+    // One entry with the pre-rotation doc and the shared drag label.
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Move part'])
+    expect(result.current.undoStack[0].doc).toEqual(initial)
+    const q = findInstance(docRef.current!, 'p1')!.transform
+    const x = rotateVector([q.qx, q.qy, q.qz, q.qw], [1, 0, 0])
+    expect(x[0]).toBeCloseTo(0, 9)
+    expect(x[1]).toBeCloseTo(1, 9)
+
+    act(() => { result.current.handleUndo() })
+    // The pre-rotation doc is back: the identity transform, not the turned one.
+    expect(findInstance(docRef.current!, 'p1')!.transform).toEqual(IDENTITY_TRANSFORM)
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(1)
+  })
+
+  // "Pick mate reference" folds into the open coalescing session: every pick
+  // routes through the store's commitAimToMateField to mutateDocSession, whose
+  // real page funnel records the session edit instead of pushing. The stack
+  // gets exactly one entry per editor close, restoring the pre-session doc.
+  it('ref picks folding into the session coalesce into one entry that undo reverts to the pre-session doc', () => {
+    const initial: AssemblyDoc = {
+      kind: 'assembly',
+      features: [
+        { id: 'fp1', kind: 'part_instance', instance: {
+          handle: 'p1', doc_id: 'd1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true,
+        } },
+        { id: 'fp2', kind: 'part_instance', instance: {
+          handle: 'p2', doc_id: 'd2', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true,
+        } },
+        { id: 'm1', kind: 'mate', mate: {
+          kind: 'spherical', ref_a: { part: '', anchor: '' }, ref_b: { part: '', anchor: '' },
+        } },
+      ],
+    }
+    const VERT_A = assemblyEntityKey('p1', 0, 'vertex', 0)
+    const VERT_B = assemblyEntityKey('p2', 0, 'vertex', 0)
+    const requestSolve = vi.fn()
+    const docRef = { current: initial }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, requestSolve,
+    ))
+    const { pushUndo, recordSessionEdit } = result.current
+
+    // The page funnel: an editor is open, so ref picks are session edits that
+    // pin only the FIRST pre-pick doc; anything else pushes immediately.
+    const oneShot = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+      const cur = docRef.current!
+      pushUndo(cur, label)
+      docRef.current = fn(cur)
+      setDoc(docRef.current)
+      useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: docRef.current })
+    }
+    const sessionEdit = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+      const cur = docRef.current!
+      recordSessionEdit(cur, label)
+      docRef.current = fn(cur)
+      setDoc(docRef.current)
+      useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: docRef.current })
+    }
+    setAssemblyCallbacks({ mutateDoc: oneShot, mutateDocSession: sessionEdit, requestSolve })
+    useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
+    act(() => {
+      useAssemblyStore.getState().setSolveResult({
+        transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
+        entityMateRefs: {
+          [VERT_A]: [{ part: 'p1', anchor: 'a_v' }],
+          [VERT_B]: [{ part: 'p2', anchor: 'b_v' }],
+        },
+        mateResults: {},
+      })
+    })
+
+    act(() => {
+      const s = useAssemblyStore.getState()
+      s.setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+      s.pickFromHitsOrCycle([{ entityKey: VERT_A }])
+      s.setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+      s.pickFromHitsOrCycle([{ entityKey: VERT_B }])
+    })
+    expect(findMate(docRef.current!, 'm1')!.ref_a).toEqual({ part: 'p1', anchor: 'a_v' })
+    expect(findMate(docRef.current!, 'm1')!.ref_b).toEqual({ part: 'p2', anchor: 'b_v' })
+    // Both picks stay coalesced behind the open editor: no entry yet.
+    expect(result.current.undoStack).toHaveLength(0)
+
+    // Closing the editor (OK) commits exactly one coalesced entry.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].label).toBe('Pick mate reference')
+    // The entry restores the pre-session doc: both refs still empty.
+    expect(result.current.undoStack[0].doc).toEqual(initial)
+
+    act(() => { result.current.handleUndo() })
+    expect(findMate(docRef.current!, 'm1')!.ref_a).toEqual({ part: '', anchor: '' })
+    expect(findMate(docRef.current!, 'm1')!.ref_b).toEqual({ part: '', anchor: '' })
   })
 })

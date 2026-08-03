@@ -98,4 +98,30 @@ describe('useAssemblyDoc', () => {
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
     expect(useAssemblyStore.getState().redoStack).toHaveLength(0)
   })
+
+  // The success path is the real cross-document corruption invariant: a later
+  // save in doc B would stringify the doc the Ctrl+Z restored, so A's history
+  // surviving into B could write A's content under B's uuid. The failed-load
+  // branch is tested above; this pins the same guard on a successful load.
+  it('a successful load clears any previous document history from the store', async () => {
+    renderHook(() => useAssemblyDoc('first'))
+    await tick()
+    await act(async () => { h.loads.first.resolve({ content: 'kind: assembly\nfeatures: []', name: 'AsmA' }) })
+    await tick()
+
+    // Simulate A's editing history: the entries A's own sessions pushed.
+    useAssemblyStore.setState({
+      undoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'A edit' }],
+      redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'A redo' }],
+    })
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+
+    renderHook(() => useAssemblyDoc('second'))
+    await tick()
+    await act(async () => { h.loads.second.resolve({ content: 'kind: assembly\nfeatures: []', name: 'AsmB' }) })
+    await tick()
+
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
+    expect(useAssemblyStore.getState().redoStack).toHaveLength(0)
+  })
 })

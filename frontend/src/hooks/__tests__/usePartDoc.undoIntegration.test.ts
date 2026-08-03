@@ -250,6 +250,34 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack).toHaveLength(1)
   })
 
+  // Redo shares applyUndoRedo with undo, so the teardown the undo test above
+  // pins is only half covered: a redo must tear the session down just the same,
+  // or the swallow it left standing would eat every later edit with no undo step.
+  it('redo exits any open edit and clears its suppression', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    usePartEditorStore.getState().setPickBoundary(1)
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+    expect(result.current.undoStack).toHaveLength(0)  // swallowed by the session
+
+    act(() => { result.current.handleRedo() })
+    expect(labelOf()).toBe('a')
+    expect(result.current.undoStack).toHaveLength(1)  // the redo counterpart
+    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+
+    // The redo left suppression off: this edit pushes instead of vanishing.
+    act(() => { result.current.handleMutation(renameTo('after')) })
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(labelOf()).toBe('after')
+  })
+
   it('a mutation after undoing mid-preview is still one undo step', () => {
     docRef.current = {
       oversolved: 1,
@@ -419,6 +447,44 @@ describe('usePartDoc undo/redo integration', () => {
     expect(labelOf()).toBe('a')
     act(() => { result.current.handleUndo() })
     expect(labelOf()).toBe('first')
+  })
+
+  // Every cancel test runs a suppressed session against an empty redo branch.
+  // A sketch session is not suppressed: each action pushes its own entry and
+  // each push clears the redo branch, so a cancel must restore the PARKED
+  // pre-session stacks - including the redo branch the pushes invalidated.
+  it('cancelling a sketch session with per-action entries restores both stacks and resurrects the pre-session redo', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    // Build a redo branch: undo a mutation so the pre-session redo has content.
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+    expect(labelOf()).toBe('first')
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
+    act(() => {
+      result.current.handleMutation(renameTo('b'))
+      result.current.handleMutation(renameTo('c'))
+    })
+    // Per-action entries; each push clears the redo branch it saw at start.
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.redoStack).toHaveLength(0)
+
+    act(() => { result.current.cancelEditSession() })
+
+    // The in-session entries are dropped and the parked snapshot is restored:
+    // undo goes back to empty and the pre-session redo branch comes back.
+    expect(labelOf()).toBe('first')
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(1)
+
+    // The resurrected branch still works: redo returns to the 'a' doc.
+    act(() => { result.current.handleRedo() })
+    expect(labelOf()).toBe('a')
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack).toHaveLength(0)
   })
 
   it('a suppressed feature session folds N actions into exactly one entry', () => {

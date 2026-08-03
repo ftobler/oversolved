@@ -900,6 +900,41 @@ describe('AssemblyEditor undo/redo', () => {
     expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
   })
 
+  // The editor's Fixed checkbox is a session edit (it folds into the coalesced
+  // step the Accept commits), so a Cancel that reverts it must not charge a
+  // phantom entry to the stack. The earlier test (Stage 6b) pins the flag
+  // revert; this pins the stack stays exactly as it was.
+  it('cancelling an instance edit charges no undo entry', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.click(screen.getByLabelText('Fixed'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
+    // The toggle pinned a coalescing session but pushed nothing on its own.
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
+    // Cancel reverted the doc from its snapshot and dropped the session: no
+    // step for the toggled flag, no redo branch either.
+    expect(undoStack()).toHaveLength(1)
+    expect(redoStack()).toHaveLength(0)
+
+    // The surviving stack still works: undo removes the part itself.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
+    expect(undoStack()).toHaveLength(0)
+  })
+
   it('a visibility toggle records one undo step and undo restores it', async () => {
     renderEditor()
     await tick()

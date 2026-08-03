@@ -38,28 +38,48 @@ describe('measurement gate: the undo stack does not duplicate the import payload
         { id: `f${i}`, kind: 'sketch', label: `sketch ${i}` },
       ],
     })
-    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
-    const { result } = renderHookStrict(() =>
-      useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+    // GC is only exposed when vitest's node runs with --expose-gc; force a
+    // collection when it is, so a previous run's allocation cannot bleed into
+    // this run's baseline.
+    const gc = (globalThis as { gc?: () => void }).gc
 
-    // Warm the jit path before the baseline read so compile-time allocation
-    // cannot leak into the delta.
-    act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(0)))
+    // A single heap read can be inflated by a GC spike on a contended CI box
+    // (vitest.config.ts notes the box). The gate takes the minimum over several
+    // independent runs: a full-clone regression (~50 payload copies) shows in
+    // EVERY run and outlives the budget, while a one-off spike inflates only
+    // one run and is discarded. The budget is a fraction of one copy, so min
+    // still holds the gate far under the ~50-copy regression.
+    let minRetained = Infinity
+    let depth = 0
+    for (let run = 0; run < 5; run++) {
+      const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
+      const { result } = renderHookStrict(() =>
+        useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
 
-    const baseline = process.memoryUsage().heapUsed
-    for (let i = 1; i < MAX_UNDO_DEPTH + 6; i++) {
-      act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(i)))
+      gc?.()
+      // Warm the jit path before the baseline read so compile-time allocation
+      // cannot leak into the delta.
+      act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(0)))
+      gc?.()
+      const baseline = process.memoryUsage().heapUsed
+      for (let i = 1; i < MAX_UNDO_DEPTH + 6; i++) {
+        act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(i)))
+      }
+      minRetained = Math.min(minRetained, process.memoryUsage().heapUsed - baseline)
+      depth = result.current.undoStack.length
+      // Release this run's retained entries so the next run measures against a
+      // clean heap instead of stacking another 50 clones on top of the last.
+      act(() => result.current.clearStacks())
     }
-    const retained = process.memoryUsage().heapUsed - baseline
 
+    expect(depth).toBe(MAX_UNDO_DEPTH)
     // A full clone per entry retains ~MAX_UNDO_DEPTH copies of a 6 MB payload
     // (~300 MB). Sharing the immutable payload retains roughly one payload
     // worth of the immutable strings the entries all point at. The budget is a
     // payload-relative fraction of one copy, generous for CI noise yet far
     // under the ~50-copy regression. Observed fixed-code retention is ~1x the
     // payload; 5x is ~9x over that and ~11x under the regression.
-    expect(result.current.undoStack).toHaveLength(MAX_UNDO_DEPTH)
-    expect(retained).toBeLessThan(PAYLOAD.length * 5)
+    expect(minRetained).toBeLessThan(PAYLOAD.length * 5)
   })
 })
 
