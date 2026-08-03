@@ -41,6 +41,18 @@ features:
     fillet: { edges: [], radius: 2 }
 `
 
+const FILLET_AND_SKETCH_DOC = `version: 1
+kind: part
+features:
+  - id: fil1
+    kind: fillet
+    label: Fillet 1
+    fillet: { edges: [], radius: 1 }
+  - id: sk1
+    kind: sketch
+    label: Sketch 1
+`
+
 function renderPart() {
   return render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -94,6 +106,38 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     // Undo walks back correctly: D's aggregate is its own entry, so one undo
     // (which also tears down C's now-open session, same as any undo) reverts
     // exactly D's radius change.
+    await act(async () => { executeCommand('undo') })
+    await waitFor(() => expect(radiusOf('fil1')).toBe(1))
+  })
+
+  // Same guard, a different door in: "Edit sketch" routes through
+  // enterEditSketch (per-action undo), not enterEditFeature directly, and the
+  // target kind differs from the open one (fillet -> sketch). Confirms the
+  // close-then-open generalizes across both the entry point and the kind,
+  // not just the fillet-editing-fillet case above.
+  it('clicking Edit sketch while a different feature is open closes it first too', async () => {
+    vi.stubGlobal('fetch', partDocFetchMock({ content: FILLET_AND_SKETCH_DOC }))
+    renderPart()
+    await screen.findByTitle('Feature mode')
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    await waitFor(() => expect(screen.getByText('Fillet 1')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTitle('Edit fillet'))
+    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('fil1'))
+
+    const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
+    fireEvent.change(radiusInput, { target: { value: '9' } })
+    fireEvent.blur(radiusInput)
+    await waitFor(() => expect(radiusOf('fil1')).toBe(9))
+
+    fireEvent.click(screen.getByTitle('Edit sketch'))
+
+    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('sk1'))
+    const fil1Item = screen.getByText('Fillet 1').closest('.feature-item') as HTMLElement
+    expect(within(fil1Item).queryByTitle('OK')).toBeNull()
+    expect(radiusOf('fil1')).toBe(9)
+
     await act(async () => { executeCommand('undo') })
     await waitFor(() => expect(radiusOf('fil1')).toBe(1))
   })
