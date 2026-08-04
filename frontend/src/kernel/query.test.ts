@@ -164,6 +164,60 @@ describe("parse/emit round-trips", () => {
   })
 })
 
+describe("local query key shape (context + eid[/sub])", () => {
+  it("string $ sub-point resolves the registered featureId/eid/sub key", () => {
+    const repo = new Repository()
+    repo.register("sk1/e3/start", { external_xy: [1, 2], sketch_id: "sk1" })
+    expect(repo.query("$e3start", "sk1/")).toEqual({ external_xy: [1, 2], sketch_id: "sk1" })
+  })
+
+  it("string $ bare local resolves the registered featureId/eid key", () => {
+    const repo = new Repository()
+    repo.register("sk1/e3", { external_params: [0, 0, 1, 0], sketch_id: "sk1" })
+    expect(repo.query("$e3", "sk1/")).toEqual({ external_params: [0, 0, 1, 0], sketch_id: "sk1" })
+  })
+
+  it("typed local sub-point resolves the slash key", () => {
+    const repo = new Repository()
+    repo.register("sk1/e3/start", { external_xy: [1, 2], sketch_id: "sk1" })
+    expect(repo.query(local("e3", "start"), "sk1/")).toEqual({ external_xy: [1, 2], sketch_id: "sk1" })
+  })
+
+  it("postRegister slash registrations are reachable from local queries", () => {
+    const repo = initGlobalRepo()
+    const feature = {
+      id: "sk1",
+      kind: "sketch",
+      plane: "@builtin_plane_front",
+      entities: [{ id: "e3", kind: "line" }],
+    }
+    const featureResult = {
+      status: "ok",
+      geometry: { e3: { start: [0, 0], end: [10, 0] } },
+      plane_transform: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [0, 0, 0] },
+    }
+    postRegister(repo, "sk1", feature, featureResult)
+
+    expect(repo.query("$e3", "sk1/")).toHaveProperty("kind", "line")
+    expect(repo.query("$e3end", "sk1/")).toEqual({ external_xy: [10, 0], sketch_id: "sk1" })
+    expect(repo.query(local("e3", "end"), "sk1/")).toEqual({ external_xy: [10, 0], sketch_id: "sk1" })
+  })
+
+  it("non-slash-terminated context fails loud in test mode", () => {
+    const repo = new Repository()
+    repo.register("sk1/e3", { v: 1 })
+    expect(() => repo.query("$e3", "sk1")).toThrow()
+    expect(() => repo.query(local("e3"), "sk1")).toThrow()
+  })
+
+  it("null context still returns null for local queries", () => {
+    const repo = new Repository()
+    repo.register("sk1/e3", { v: 1 })
+    expect(repo.query("$e3")).toBeNull()
+    expect(repo.query(local("e3"))).toBeNull()
+  })
+})
+
 describe("query coercion", () => {
   it("coerces face to solid via body_store", () => {
     const repo = new Repository()
@@ -1116,6 +1170,90 @@ describe("ordering guard", () => {
       setCurrentFeatureId(null)
     }
   })
+
+  it("orphaned owner (not in feature index) is excluded from an earlier feature's query", () => {
+    // The element's created_by names a feature no longer in the order; the
+    // guard must not treat it as built-in and must not leak it forward.
+    const repo = new Repository()
+    repo.setFeatureOrder(["sk1", "ex1"])
+    reg(repo, ["@sk1"], "dead_feature")
+    const q: AncestryQuery = { kind: "ancestry", ancestorIds: ["@sk1"], typeRestriction: null }
+
+    expect(repo.query(q)).not.toBeNull()
+    expect(repo.query(q, null, null, "ex1")).toBeNull()
+  })
+
+  it("built-in (no owner) stays matchable while orphaned is excluded", () => {
+    const repo = new Repository()
+    repo.setFeatureOrder(["f0", "f1"])
+    reg(repo, ["@sk1"], "dead_feature")
+    repo.registerAncestor(["@builtin"], { type: "plane" })
+
+    expect(repo.query(makeAncestryQuery(["@sk1"]), null, null, "f0")).toBeNull()
+    expect(repo.query(makeAncestryQuery(["@builtin"]), null, null, "f0")).not.toBeNull()
+  })
+
+  it("unknown currentFeatureId fails loud instead of silently disabling the guard", () => {
+    const repo = new Repository()
+    repo.setFeatureOrder(["f0", "f1"])
+    reg(repo, ["@sk1"], "f0")
+    const q: AncestryQuery = { kind: "ancestry", ancestorIds: ["@sk1"], typeRestriction: null }
+
+    expect(() => repo.query(q, null, null, "not_a_feature")).toThrow()
+  })
+})
+
+describe("topology ordering stamp", () => {
+  function sketchCase(topology: Record<string, unknown>): {
+    feature: Record<string, unknown>
+    featureResult: Record<string, unknown>
+  } {
+    return {
+      feature: { id: "sk2", kind: "sketch", plane: "@builtin_plane_front", entities: [] },
+      featureResult: {
+        status: "ok",
+        geometry: {},
+        plane_transform: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [0, 0, 0] },
+        topology,
+      },
+    }
+  }
+
+  it("stamps topology payloads with the owning sketch_id", () => {
+    const repo = initGlobalRepo()
+    const { feature, featureResult } = sketchCase({
+      surfaces: [{ query: "?9;@sk2/prof", boundary: [] }],
+      edges: [{ query: "?7;@sk2/e0", start: [0, 0], end: [10, 0], kind: "line" }],
+      vertices: { v1: { x: 1, y: 2 } },
+    })
+    postRegister(repo, "sk2", feature, featureResult)
+
+    const surface = repo.query(makeAncestryQuery(["@sk2/prof"])) as Record<string, unknown>
+    expect(surface).not.toBeNull()
+    expect(surface).toHaveProperty("sketch_id", "sk2")
+
+    const edge = repo.query(makeAncestryQuery(["@sk2/e0"])) as Record<string, unknown>
+    expect(edge).not.toBeNull()
+    expect(edge).toHaveProperty("sketch_id", "sk2")
+
+    const vertex = repo.query(makeAncestryQuery(["v1", "vertex", "@sk2"])) as Record<string, unknown>
+    expect(vertex).not.toBeNull()
+    expect(vertex).toHaveProperty("sketch_id", "sk2")
+  })
+
+  it("a later sketch's topology is excluded from an earlier feature's query", () => {
+    const repo = initGlobalRepo()
+    const { feature, featureResult } = sketchCase({
+      surfaces: [{ query: "?9;@sk2/prof", boundary: [] }],
+      edges: [],
+      vertices: {},
+    })
+    postRegister(repo, "sk2", feature, featureResult)
+
+    repo.setFeatureOrder(["sk1", "sk2"])
+    expect(repo.query(makeAncestryQuery(["@sk2/prof"]))).not.toBeNull()
+    expect(repo.query(makeAncestryQuery(["@sk2/prof"]), null, null, "sk1")).toBeNull()
+  })
 })
 
 /** Characterization tests for feature-geometry registration cleanup.
@@ -1679,8 +1817,8 @@ describe("typed query object dispatch", () => {
   it("repo.query accepts LocalQuery via local() helper", () => {
     const repo = new Repository()
     const obj = { v: 1 }
-    repo.register("AAAAAAAAAAAAAAAAAAe1", obj)
-    expect(repo.query(local("e1"), "AAAAAAAAAAAAAAAAAA")).toBe(obj)
+    repo.register("AAAAAAAAAAAAAAAAAA/e1", obj)
+    expect(repo.query(local("e1"), "AAAAAAAAAAAAAAAAAA/")).toBe(obj)
   })
 
   it("repo.query accepts AbsoluteQuery via absolute() helper", () => {

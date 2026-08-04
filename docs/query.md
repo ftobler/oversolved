@@ -10,14 +10,14 @@ The solver uses queries to reference geometry. A query is a string (or typed obj
 
 There are two element-key conventions, one per repository:
 
-- **Local sketch repo** (concatenated): no separator. Example: `sketch1line1start`. Matches `$` `LocalQuery` resolution (`context + ele + sub`).
-- **Global repo** (slash-separated): Example: `sketch1/line1/start`. Matches `@` `AbsoluteQuery` resolution (`feat + "/" + ele + "/" + sub`).
+- **Local sketch repo** (concatenated): no separator. Example: `sketch1line1start`.
+- **Global repo** (slash-separated): Example: `sketch1/line1/start`. Matches `@` `AbsoluteQuery` resolution (`feat + "/" + ele + "/" + sub`) and, for `$` `LocalQuery` resolution, the registered `featureId/eid/sub` sub-point keys.
 
 ## Query Syntax
 
 | Prefix | Kind | Description |
 |--------|------|-------------|
-| `$<ELE><SUB>` | Local | Element within current feature context. Resolved as `context + ele + sub` (concatenated). |
+| `$<ELE><SUB>` | Local | Element within current feature context. Resolved as `context + eid` (bare) or `context + eid + "/" + sub` (sub-point), matching the slash-registered `featureId/eid/sub` keys. |
 | `@<FEAT>/<ELE>/<SUB>` | Absolute | Cross-feature lookup by slash-separated key `feat + "/" + ele + "/" + sub`. |
 | `?<H,L>;<idA><idB>[:TYPE]` | Ancestry | Ancestry-based query with hex-encoded lengths and optional type filter. |
 
@@ -91,7 +91,7 @@ Frontend: Three.js `faceIndex` → `triangle_to_face` → B-rep face number → 
 
 `Repository.query(queryStr, context, bodyStore, currentFeatureId)`:
 
-- **`$` (local)**: requires `context`. Looks up `this.elements[context + eid + sub]`.
+- **`$` (local)**: requires a slash-terminated `context` (null is also allowed, returning null). Looks up `this.elements[context + eid]` for a bare local, or `this.elements[context + eid + "/" + sub]` for a sub-point, matching the slash-registered `featureId/eid/sub` keys.
 - **`@` (absolute)**: looks up `this.elements[feature_id + eid + sub]`.
 - **`?` (ancestry)**: finds elements whose registered ancestor set is a **subset** of the query's set (`registered ⊆ query`). If `type_restriction` given, filters to exact type matches first, then attempts type coercion. Raises `AmbiguousQueryError` if multiple candidates match.
 

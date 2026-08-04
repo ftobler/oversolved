@@ -77,6 +77,13 @@ function localFromString(s: string): LocalQuery {
   return { kind: "local", eid: body, sub: "" }
 }
 
+/** Slash key for a `$` local: `context + eid` for a bare local, `context +
+ *  eid + "/" + sub` for a sub-point. This is the shape
+ *  `registerSolvedGeometrySlash` registers (`featureId/eid/sub`). */
+function localKeyFor(context: string, q: LocalQuery): string {
+  return q.sub ? context + q.eid + "/" + q.sub : context + q.eid
+}
+
 export function parseQuery(s: string): QueryType {
   if (s.startsWith("$")) return localFromString(s)
   if (s.startsWith("@")) return parseAbsolute(s)
@@ -535,28 +542,45 @@ export class Repository {
     this.pruneUuid()
   }
 
-  featureIdxOfElement(eid: string): number | null {
-    return featureIdxOfElement(this, eid)
-  }
-
   private orderFilter(currentFeatureId: string | null): (eids: string[]) => string[] {
     if (currentFeatureId === null) currentFeatureId = getCurrentFeatureId()
-    let currentIdx: number | undefined
-    if (currentFeatureId !== null && this.featureIndex.size > 0) {
-      currentIdx = this.featureIndex.get(currentFeatureId)
+    if (currentFeatureId === null || this.featureIndex.size === 0) return eids => eids
+    const currentIdx = this.featureIndex.get(currentFeatureId)
+    if (currentIdx === undefined) {
+      failLoud(
+        `query: currentFeatureId ${JSON.stringify(currentFeatureId)} is not in the ` +
+          `feature order; the ordering guard falls back to identity filtering`,
+      )
+      return eids => eids
     }
-    if (currentIdx === undefined) return eids => eids
     const cap = currentIdx
     return eids => {
       const kept: string[] = []
       for (const eid of eids) {
-        const ownerIdx = this.featureIdxOfElement(eid)
-        if (ownerIdx === null || ownerIdx <= cap) kept.push(eid)
+        const owner = ownerStateOfElement(this, eid)
+        if (owner.kind === "builtin" || (owner.kind === "indexed" && owner.idx <= cap)) {
+          kept.push(eid)
+        }
       }
       return kept
     }
   }
 
+  /** Resolve a query against the repo.
+   *
+   *  Context contract: `context` applies to `$` local queries only and must be
+   *  null or end in "/". The element key is `context + eid` for a bare local
+   *  and `context + eid + "/" + sub` for a sub-point, matching the
+   *  `featureId/eid/sub` slash registration from postRegister. A non-slash
+   *  context is a programming error and fails loud in dev/test. Every
+   *  production caller passes null today.
+   *
+   *  Ordering guard: when `currentFeatureId` is set (or the solve-loop
+   *  contextvar is active), ancestry resolution refuses elements whose owning
+   *  feature comes after the current feature in the build order, plus elements
+   *  whose owner is no longer in the order at all (orphaned). Built-ins with no
+   *  owner field are always matchable. An unknown `currentFeatureId` fails loud
+   *  in dev/test instead of silently disabling the guard. */
   query(
     queryStr: string | QueryType,
     context: string | null = null,
@@ -570,7 +594,8 @@ export class Repository {
     const start = queryStr[0]
     if (start === "$") {
       if (context === null) return null
-      return this.elements.get(context + queryStr.slice(1)) ?? null
+      this.assertLocalContext(context)
+      return this.elements.get(localKeyFor(context, localFromString(queryStr))) ?? null
     }
     if (start === "@") {
       return this.elements.get(queryStr.slice(1)) ?? null
@@ -582,6 +607,15 @@ export class Repository {
     return null
   }
 
+  private assertLocalContext(context: string): void {
+    if (!context.endsWith("/")) {
+      failLoud(
+        `query: local context must end in "/" so the key is ` +
+          `"context + eid[/sub]" (got ${JSON.stringify(context)})`,
+      )
+    }
+  }
+
   private queryTyped(
     q: QueryType,
     context: string | null,
@@ -591,7 +625,8 @@ export class Repository {
     switch (q.kind) {
       case "local":
         if (context === null) return null
-        return this.elements.get(context + q.eid + q.sub) ?? null
+        this.assertLocalContext(context)
+        return this.elements.get(localKeyFor(context, q)) ?? null
       case "absolute": {
         const key = q.eid ? q.featureId + "/" + q.eid + (q.sub ? "/" + q.sub : "") : q.featureId
         return this.elements.get(key) ?? null
@@ -800,15 +835,32 @@ export class Repository {
   }
 }
 
-/** Return the build-order index of the element's owning feature.
- *  Returns null for built-in geometry with no owning feature. */
+/** Return the build-order index of the element's owning feature, or null when
+ *  the element has no owner or its owner is not in the current order. The
+ *  ordering guard does not use this: it reads the tri-state directly so an
+ *  orphaned owner is excluded instead of conflated with built-in. */
 export function featureIdxOfElement(repo: Repository, eid: string): number | null {
+  const state = ownerStateOfElement(repo, eid)
+  return state.kind === "indexed" ? state.idx : null
+}
+
+type OwnerState =
+  | { kind: "builtin" }
+  | { kind: "orphaned" }
+  | { kind: "indexed"; idx: number }
+
+/** Tri-state owner lookup for the ordering guard. "builtin" (no owner field at
+ *  all) is always matchable; "indexed" is compared against the current feature;
+ *  "orphaned" (an owner field naming a feature no longer in the order) is
+ *  excluded while the guard is active, since its build position is unknowable
+ *  and the stale-geometry hazard is exactly this case. */
+function ownerStateOfElement(repo: Repository, eid: string): OwnerState {
   const el = repo.elements.get(eid)
-  if (!isDict(el)) return null
+  if (!isDict(el)) return { kind: "builtin" }
   const owner = (el["created_by"] as string) || (el["sketch_id"] as string)
-  if (!owner) return null
+  if (!owner) return { kind: "builtin" }
   const idx = repo.featureIndex.get(owner)
-  return idx === undefined ? null : idx
+  return idx === undefined ? { kind: "orphaned" } : { kind: "indexed", idx }
 }
 
 /** Create and populate the global repository with built-in planes and origin. */

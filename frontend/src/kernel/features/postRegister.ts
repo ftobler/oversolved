@@ -169,8 +169,8 @@ export function postRegister(
     if (pt) {
       const plane = frameFromPlaneTransform(pt) as unknown as PlaneLike
       const topology = featureResult.topology as Dict
-      registerTopologySurfaces(globalRepo, topology, plane)
-      registerTopologyEdges(globalRepo, topology, plane)
+      registerTopologySurfaces(globalRepo, topology, plane, featureId)
+      registerTopologyEdges(globalRepo, topology, plane, featureId)
       registerTopologyVertices(globalRepo, topology, plane, featureId)
     }
     registerSketchFeature(globalRepo, featureId, featureResult)
@@ -305,9 +305,15 @@ function registerAncestralDeduped(
 
 /**
  * Register each topology surface as a face-typed plane. Classifiers stay off the ancestral key (the
- * resolver scores them in a separate tier) and ride on the payload instead.
+ * resolver scores them in a separate tier) and ride on the payload instead. The owning feature id is
+ * stamped so the ordering guard gates later topology like any other registered element.
  */
-function registerTopologySurfaces(globalRepo: Repository, topology: Dict, plane: PlaneLike): void {
+function registerTopologySurfaces(
+  globalRepo: Repository,
+  topology: Dict,
+  plane: PlaneLike,
+  featureId: string,
+): void {
   for (const surface of (topology.surfaces as Dict[]) ?? []) {
     const query = surface.query as string | undefined
     if (!query || !query.startsWith('?')) continue
@@ -327,13 +333,19 @@ function registerTopologySurfaces(globalRepo: Repository, topology: Dict, plane:
       y_axis: [...plane.y_axis],
       normal: [...plane.normal],
       classifiers,
+      sketch_id: featureId,
     }
     registerAncestralDeduped(globalRepo, keyIds, payload)
   }
 }
 
 /** Register each topology edge with its ancestry query. */
-function registerTopologyEdges(globalRepo: Repository, topology: Dict, plane: PlaneLike): void {
+function registerTopologyEdges(
+  globalRepo: Repository,
+  topology: Dict,
+  plane: PlaneLike,
+  featureId: string,
+): void {
   for (const edge of (topology.edges as Dict[]) ?? []) {
     const query = edge.query as string | undefined
     if (!query || !query.startsWith('?')) continue
@@ -344,6 +356,7 @@ function registerTopologyEdges(globalRepo: Repository, topology: Dict, plane: Pl
       kind,
       start: sketchToWorld2d((edge.start as number[]) ?? [0, 0], plane),
       end: sketchToWorld2d((edge.end as number[]) ?? [0, 0], plane),
+      sketch_id: featureId,
     }
     if ('center' in edge) {
       edgeData.center = sketchToWorld2d(edge.center as number[], plane)
@@ -371,7 +384,13 @@ function registerTopologyVertices(
     const worldXy = sketchToWorld2d([(v.x as number) ?? 0, (v.y as number) ?? 0], plane)
     // make/parse round-trips to identity; the ancestor list is the registration key.
     const ids = featureId ? [vid, 'vertex', ref(featureId)] : [vid, 'vertex']
-    const vertexData = { type: 'vertex', x: worldXy[0], y: worldXy[1], z: worldXy[2] }
+    const vertexData = {
+      type: 'vertex',
+      x: worldXy[0],
+      y: worldXy[1],
+      z: worldXy[2],
+      sketch_id: featureId,
+    }
     registerAncestralDeduped(globalRepo, ids, vertexData)
   }
 }
