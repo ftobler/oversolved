@@ -3,7 +3,7 @@
 // artifact, not a document payload. A miss just triggers a cold rebuild via
 // the OCC bundle builder worker; there is no invalidation API.
 
-import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
+import { BUNDLE_BUILD_FINGERPRINT, BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
 const DB_NAME = 'oversolved-bundles'
 // v2 adds the `latest` store. Bumping DB_VERSION with no migration
@@ -19,9 +19,40 @@ const LATEST_STORE = 'latest'
 // no other consumer of older revs.
 const MAX_REVS_PER_DOC = 3
 
+// Cap on distinct doc_ids the cache holds. Without it the cache grows
+// monotonically with the number of parts ever bundled (rev pruning only bounds
+// per-doc); on put, once this is exceeded the least-recently-written doc's revs
+// leave both stores.
+export const MAX_DOCS = 32
+
+// Monotonic LRU clock. Date.now() alone would tie every put inside one fast
+// fake-indexeddb test run (all ticks share a wall-clock instant), which would
+// make LRU order fall back to doc_id instead of write order. Seeding from
+// Date.now() keeps cross-page-load ordering intact, since a fresh session's
+// first put always advances past the last session's.
+let lastWrittenClock = 0
+
+function nextLastWritten(): number {
+  lastWrittenClock = Math.max(lastWrittenClock + 1, Date.now())
+  return lastWrittenClock
+}
+
 interface LatestRecord {
   doc_id: string
   revs: number[]  // ascending, at most MAX_REVS_PER_DOC entries
+  // When this doc was last written, for LRU eviction across docs. Absent on a
+  // record from a pre-LRU database; such a record sorts as the oldest, so the
+  // stale entry is the first to go once MAX_DOCS is exceeded.
+  last_written?: number
+}
+
+interface CachedBundleRecord {
+  key: string
+  payload: PartBundle
+  // Fingerprint of the code that built the bundle (see BUNDLE_BUILD_FINGERPRINT).
+  // A record cached before fingerprints existed carries no built_by, which
+  // reads back as a mismatch on get: a derivable artifact cold-rebuilds.
+  built_by: string
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null
@@ -67,12 +98,17 @@ function bundleKey(doc_id: string, doc_rev: number): string {
 // A record whose schema does not match the current one carries stale semantics
 // (older schemas: cylinder/cone/sphere/torus anchor axes read the surface
 // normal instead of its axis) -- treat it as a miss so the caller does a cold
-// rebuild instead of trusting a bundle that means something different now.
+// rebuild instead of trusting a bundle that means something different now. A
+// `built_by` mismatch means the record was built by different code (or before
+// fingerprints existed); a bundle is a derivable artifact, so both degrade to a
+// cold rebuild, never wrong geometry.
 export async function bundleCacheGet(doc_id: string, doc_rev: number): Promise<PartBundle | undefined> {
   const st = await store(STORE, 'readonly')
-  const record = await prom(st.get(bundleKey(doc_id, doc_rev)) as IDBRequest<{ payload: PartBundle } | undefined>)
+  const record = await prom(st.get(bundleKey(doc_id, doc_rev)) as IDBRequest<CachedBundleRecord | undefined>)
   const bundle = record?.payload
-  if (bundle && bundle.schema !== BUNDLE_SCHEMA) return undefined
+  if (bundle && (bundle.schema !== BUNDLE_SCHEMA || record?.built_by !== BUNDLE_BUILD_FINGERPRINT)) {
+    return undefined
+  }
   return bundle
 }
 
@@ -93,7 +129,11 @@ export async function bundleCachePut(bundle: PartBundle): Promise<void> {
   const bundles = tx.objectStore(STORE)
   const latest = tx.objectStore(LATEST_STORE)
 
-  await prom(bundles.put({ key: bundleKey(bundle.doc_id, bundle.doc_rev), payload: bundle }))
+  await prom(bundles.put({
+    key: bundleKey(bundle.doc_id, bundle.doc_rev),
+    payload: bundle,
+    built_by: BUNDLE_BUILD_FINGERPRINT,
+  }))
 
   const existing = await prom(latest.get(bundle.doc_id) as IDBRequest<LatestRecord | undefined>)
   const revs = Array.from(new Set([...(existing?.revs ?? []), bundle.doc_rev])).sort((a, b) => a - b)
@@ -101,11 +141,41 @@ export async function bundleCachePut(bundle: PartBundle): Promise<void> {
   for (const rev of evicted) {
     await prom(bundles.delete(bundleKey(bundle.doc_id, rev)))
   }
-  await prom(latest.put({ doc_id: bundle.doc_id, revs }))
+  await prom(latest.put({ doc_id: bundle.doc_id, revs, last_written: nextLastWritten() }))
+  await evictBeyondMaxDocs(bundles, latest, bundle.doc_id)
 }
 
-// Agrees with bundleCacheGet's schema-mismatch-is-a-miss rule, so a caller
-// cannot see `has() === true` and then `get() === undefined` for the same key.
+// Bound the cache across docs: once `latest` exceeds MAX_DOCS, drop the
+// least-recently-written doc's revs from both stores. The doc just written is
+// by definition the most recent, so it is never the eviction victim.
+async function evictBeyondMaxDocs(
+  bundles: IDBObjectStore,
+  latest: IDBObjectStore,
+  keepDocId: string,
+): Promise<void> {
+  const records = await prom(latest.getAll() as IDBRequest<LatestRecord[]>)
+  if (records.length <= MAX_DOCS) return
+  // Oldest last_written first; a pre-LRU record (no timestamp) sorts as oldest.
+  // Ties break deterministically by doc_id.
+  records.sort(
+    (a, b) => (a.last_written ?? 0) - (b.last_written ?? 0) || (a.doc_id < b.doc_id ? -1 : 1),
+  )
+  let evicted = 0
+  const evictable = records.length - MAX_DOCS
+  for (const doc of records) {
+    if (evicted >= evictable) break
+    if (doc.doc_id === keepDocId) continue
+    for (const rev of doc.revs) {
+      await prom(bundles.delete(bundleKey(doc.doc_id, rev)))
+    }
+    await prom(latest.delete(doc.doc_id))
+    evicted++
+  }
+}
+
+// Agrees with bundleCacheGet's schema/fingerprint-mismatch-is-a-miss rule, so
+// a caller cannot see `has() === true` and then `get() === undefined` for the
+// same key.
 export async function bundleCacheHas(doc_id: string, doc_rev: number): Promise<boolean> {
   return (await bundleCacheGet(doc_id, doc_rev)) !== undefined
 }

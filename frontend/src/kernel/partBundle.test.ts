@@ -1,6 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors } from './partBundle'
+import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
 import type { EdgeData, BodyResult, FaceData } from '../types/cad'
+
+describe('BUNDLE_BUILD_FINGERPRINT drift guard', () => {
+  it('is derived from BUNDLE_SCHEMA and BUNDLE_BUILD_ID, so bumping either changes it', () => {
+    // The constant must always be computed from the current inputs, never
+    // hand-set, or a developer could pin it to a stale value and defeat the
+    // cache-miss invalidation the fingerprint exists to provide.
+    expect(BUNDLE_BUILD_FINGERPRINT).toBe(buildBundleFingerprint(BUNDLE_SCHEMA, BUNDLE_BUILD_ID))
+    // Bumping either the schema or the geometry build id changes the
+    // fingerprint, so a deploy that forgot one of the two still misses.
+    expect(buildBundleFingerprint(BUNDLE_SCHEMA + 1, BUNDLE_BUILD_ID)).not.toBe(BUNDLE_BUILD_FINGERPRINT)
+    expect(buildBundleFingerprint(BUNDLE_SCHEMA, BUNDLE_BUILD_ID + 1)).not.toBe(BUNDLE_BUILD_FINGERPRINT)
+  })
+})
 
 describe('toEdgeCurve', () => {
   it('converts a line edge to an EdgeCurve with midpoint + normalized axis + endpoints', () => {

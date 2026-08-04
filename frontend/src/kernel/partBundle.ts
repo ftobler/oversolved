@@ -99,6 +99,31 @@ export interface PartBundle {
  */
 export const BUNDLE_SCHEMA = 1
 
+// Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
+// (a tessellation tweak, a boolean-op fix, a builder behavior change). The
+// anchor worker owns the bundle cache and cannot see builder code versions, so
+// this id is the only signal it has that a cached bundle was built by different
+// code. Forgetting to bump it serves stale geometry at unchanged revs; the
+// drift guard test in partBundle.test.ts proves the fingerprint folds this id
+// in, it cannot catch the forget.
+export const BUNDLE_BUILD_ID = 1
+
+// Deterministic fingerprint of the code that produced a bundle. Stamped on the
+// cached record and compared at the cache's single call site (bundleCacheGet):
+// a mismatch means the record was built by different code and reads back as a
+// miss (a derivable artifact cold-rebuilds, never wrong geometry). Derived, not
+// hand-set, so it cannot drift from BUNDLE_SCHEMA / BUNDLE_BUILD_ID.
+export const BUNDLE_BUILD_FINGERPRINT = buildBundleFingerprint(BUNDLE_SCHEMA, BUNDLE_BUILD_ID)
+
+/** Short deterministic hash of the schema + build id; collision-safe enough to serve as a miss tag. */
+export function buildBundleFingerprint(schema: number, buildId: number): string {
+  let hash = 5381
+  for (const n of [schema, buildId]) {
+    hash = ((hash << 5) + hash + n) | 0
+  }
+  return `bundle-${(hash >>> 0).toString(36)}`
+}
+
 // ─── Conversion from BuildResponse output ───
 
 type Vec3 = [number, number, number]

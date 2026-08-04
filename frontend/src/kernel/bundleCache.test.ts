@@ -1,12 +1,33 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, resetBundleDbConnection } from './bundleCache'
+import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, resetBundleDbConnection, MAX_DOCS } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
   resetBundleDbConnection()
+}
+
+// Rewrite a stored bundle record's built_by tag, simulating a record cached by
+// a different build of the bundle-producing code.
+async function overwriteBuiltBy(key: string, builtBy: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.open('oversolved-bundles')
+    req.onsuccess = () => {
+      const db = req.result
+      const tx = db.transaction('bundles', 'readwrite')
+      const st = tx.objectStore('bundles')
+      const getReq = st.get(key)
+      getReq.onsuccess = () => {
+        st.put({ ...getReq.result, built_by: builtBy })
+      }
+      getReq.onerror = () => reject(getReq.error)
+      tx.oncomplete = () => { db.close(); resolve() }
+      tx.onerror = () => reject(tx.error)
+    }
+    req.onerror = () => reject(req.error)
+  })
 }
 
 function fixtureBundle(doc_id: string, doc_rev: number): PartBundle {
@@ -88,6 +109,40 @@ describe('bundleCache', () => {
     await bundleCachePut(bundle)
     expect(await bundleCacheGet('docA', 1)).toBeUndefined()
     expect(await bundleCacheHas('docA', 1)).toBe(false)
+  })
+
+  it('a record built by different code reads back as a miss; a matching fingerprint is a hit', async () => {
+    await bundleCachePut(fixtureBundle('docA', 1))
+    expect(await bundleCacheGet('docA', 1)).toBeDefined()
+
+    await overwriteBuiltBy('docA@1', 'stale-build')
+
+    // The record now carries a different fingerprint than the current build,
+    // the exact state a deploy that changed geometry without a bump leaves
+    // behind. Treat it as a miss so the caller cold-rebuilds.
+    expect(await bundleCacheGet('docA', 1)).toBeUndefined()
+    expect(await bundleCacheHas('docA', 1)).toBe(false)
+
+    // Self-heal: the next put re-stamps the current fingerprint.
+    await bundleCachePut(fixtureBundle('docA', 1))
+    expect(await bundleCacheGet('docA', 1)).toBeDefined()
+  })
+
+  it('evicts the least-recently-written doc once the cache holds more than MAX_DOCS docs', async () => {
+    for (let i = 0; i < MAX_DOCS; i++) {
+      await bundleCachePut(fixtureBundle(`doc-${i}`, 1))
+    }
+    expect(await bundleCacheGet('doc-0', 1)).toBeDefined()
+
+    await bundleCachePut(fixtureBundle('new-doc', 1))
+
+    // doc-0 is the least-recently-written: its revs leave both stores.
+    expect(await bundleCacheGet('doc-0', 1)).toBeUndefined()
+    expect(await bundleCacheLatestRev('doc-0')).toBeUndefined()
+    // A non-LRU doc stays, and the most-recent doc stays.
+    expect(await bundleCacheGet('doc-1', 1)).toBeDefined()
+    expect(await bundleCacheGet('new-doc', 1)).toBeDefined()
+    expect(await bundleCacheLatestRev('new-doc')).toBe(1)
   })
 
   it('two revs of the same doc_id coexist as separate entries', async () => {
