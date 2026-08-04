@@ -6,8 +6,8 @@
 // This module runs inside the anchor solver worker (Rust-only, no OCC).
 // It is a pure async function over typed-array inputs, no React, no DOM.
 
-import { bundleCacheGet, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
-import { migrateBundle } from './partBundle'
+import { bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
+import { anchorIdFor, migrateBundle } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
 import type { Transform3D, MateKind, MateOffset } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
@@ -366,14 +366,22 @@ export async function solveAssembly(
       throw new Error(`bundle build failed for ${part.doc_id} rev ${currentRev}`)
     }
 
-    // Migrate anchors against the newest prior cached bundle of the same doc.
+    // Migrate anchors against the newest cached bundle of the same doc.
     // `bundleCacheLatestRev` is the latest-rev index lookup (one IndexedDB
     // get); it replaces a downward scan that used to issue up to
     // `currentRev - 1` separate `bundleCacheGet` transactions.
     let prevBundle: { anchors: Record<string, Anchor> } | undefined
     const latestCachedRev = await bundleCacheLatestRev(part.doc_id)
-    if (latestCachedRev !== undefined && latestCachedRev < currentRev) {
-      prevBundle = await bundleCacheGet(part.doc_id, latestCachedRev)
+    if (latestCachedRev !== undefined && latestCachedRev <= currentRev) {
+      // Read the newest cached bundle even when it reads back as a
+      // schema/fingerprint miss (a cache wipe or schema bump turns the bundle
+      // at the CURRENT rev into one): tier 1 of the remap matches by geom_hash,
+      // which is schema- and code-independent, so the stale anchors are the one
+      // source of the old random-id lineage the migration chain must preserve.
+      // Deterministic anchor ids make this a no-op for new documents; it exists
+      // for documents whose mate refs predate them.
+      const cached = await bundleCacheGetStale(part.doc_id, latestCachedRev)
+      if (cached) prevBundle = { anchors: cached.anchors }
     }
     if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
 
@@ -417,7 +425,30 @@ export async function solveAssembly(
       return { anchor: assemblyAnchors[ref.anchor], bodyIndex }
     }
     const b = partBundles.get(ref.part)
-    return { anchor: b?.anchors[ref.anchor], bodyIndex }
+    let anchor = b?.anchors[ref.anchor]
+    // A ref id that misses the dict may still be a deterministic id from a
+    // build that re-keyed it (a migration against an older random-id bundle, a
+    // collision-suffixed rebuild). Recompute the deterministic id over the
+    // bundle's anchors and re-parent onto the geometrically identical element.
+    if (!anchor && b) anchor = anchorByGeomHash(b.anchors, ref.anchor)
+    return { anchor, bodyIndex }
+  }
+
+  // Belt-and-braces re-parent for a stale anchor id: recompute the
+  // deterministic id (anchorIdFor) over the bundle's anchors and match the
+  // stale id to the element with the same geometry. Guarded by the tier-1
+  // collision rule: if two anchors hash to one id, refuse, so two elements are
+  // never re-parented onto one id (a missing id then degrades to stale-red, the
+  // existing contract).
+  function anchorByGeomHash(bundleAnchors: Record<string, Anchor>, staleId: string): Anchor | undefined {
+    let found: Anchor | undefined
+    for (const a of Object.values(bundleAnchors)) {
+      if (anchorIdFor(a.geom_hash, a.kind) === staleId) {
+        if (found) return undefined
+        found = a
+      }
+    }
+    return found
   }
 
   for (const mate of mates) {

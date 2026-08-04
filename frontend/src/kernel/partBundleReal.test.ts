@@ -267,7 +267,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     }
   })
 
-  it('same-rev rebuild produces same multiset of (kind, geom_hash) descriptors, different anchor ids', () => {
+  it('same-rev rebuild produces the SAME anchor ids, so a persisted mate ref survives a rebuild with no cache', () => {
     const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r2 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const b1 = toPartBundle('doc9', 1, r1.bodies as Record<string, BodyResult>)
@@ -278,10 +278,13 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     // Same rev → same descriptors (multiset). OCC geometry is deterministic per build.
     expect(descs1.length).toBe(descs2.length)
 
-    const ids1 = new Set(Object.keys(b1.anchors))
-    const ids2 = new Set(Object.keys(b2.anchors))
-    // Freshly minted ids per build, they should all differ.
-    for (const id of ids1) expect(ids2.has(id)).toBe(false)
+    const ids1 = Object.keys(b1.anchors).sort()
+    const ids2 = Object.keys(b2.anchors).sort()
+    // Anchor ids are deterministic from (geom_hash, kind), so a same-rev
+    // rebuild mints the same ids: a persisted mate ref survives with no cache.
+    // The old minter minted a random prefix per build, which is exactly what
+    // stranded every ref on a cache wipe.
+    expect(ids1).toEqual(ids2)
   })
 
   it('cylindrical hole face produces a coaxial cylinder anchor (Stage A: axis, not the radial normal)', () => {

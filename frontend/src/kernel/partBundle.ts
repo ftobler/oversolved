@@ -5,7 +5,7 @@
 // IndexedDb keyed by (doc_id, doc_rev); a miss triggers a cold rebuild.
 
 import type { EdgeData, BodyResult, FaceData } from '../types/cad'
-import { randomId } from '../utils/yamlMutations/helpers'
+import { sha256Hex } from './sha256'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
 
@@ -122,6 +122,25 @@ export function buildBundleFingerprint(schema: number, buildId: number): string 
     hash = ((hash << 5) + hash + n) | 0
   }
   return `bundle-${(hash >>> 0).toString(36)}`
+}
+
+// ─── Anchor ids are deterministic ───
+
+function shortHash(s: string): string {
+  return sha256Hex(s).slice(0, 16)
+}
+
+/**
+ * An anchor's deterministic identity, shortHash(geom_hash + kind). The geom_hash
+ * is the stable `@u|` construction token (or the positional `@gdf|`/`@gde|`/
+ * `@gdv|` descriptor), so a rebuilt bundle mints the same id for the same
+ * element and a persisted MateRef.anchor survives a cache wipe or schema bump
+ * with no migration chain at all. Two elements sharing a geom_hash AND a kind
+ * would hash to one id; `toPartBundle` disambiguates those with a suffix (the
+ * tier-1 collision rule: never two elements on one id).
+ */
+export function anchorIdFor(geomHash: string, kind: AnchorKind): string {
+  return `a_${shortHash(geomHash + kind)}`
 }
 
 // ─── Conversion from BuildResponse output ───
@@ -299,14 +318,19 @@ export function toPartBundle(
   bodyResults: Record<string, BodyResult>,
 ): PartBundle {
   const bodies: BodyMesh[] = []
-  // Math.random().toString(36) can yield a single character (e.g. (0.5) ->
-  // '0.i'), so two builds could mint the same prefix. migrateBundle then
-  // silently overwrites one migrated anchor with a fresh one of the same id.
-  // randomId(8) is the same minter the rest of the project uses for ids that
-  // must not collide.
-  const prefix = randomId(8)
-  let anchorCounter = 0
-  const mintAnchorId = (): string => { anchorCounter++; return `${prefix}_a${anchorCounter}` }
+  // Anchor ids are deterministic from the element's stable geom_hash + kind, so
+  // a persisted mate ref survives any rebuild with no cache at all. The old
+  // minter drew a random prefix per build, which stranded every ref on a cache
+  // wipe. Two elements that hash to one id (a tier-1 collision: same geom_hash,
+  // same kind) never share it: the first keeps the bare id, later ones get a
+  // disambiguation suffix, mirroring the collision marker anchorIdRemap uses.
+  const mintedBaseIds = new Map<string, number>()
+  const mintAnchorId = (geomHash: string, kind: AnchorKind): string => {
+    const base = anchorIdFor(geomHash, kind)
+    const n = mintedBaseIds.get(base) ?? 0
+    mintedBaseIds.set(base, n + 1)
+    return n === 0 ? base : `${base}_${n + 1}`
+  }
   const allAnchors: Record<string, Anchor> = {}
   for (const body of Object.values(bodyResults)) {
     const { anchors, entityAnchors } = extractBodyAnchors(body, mintAnchorId)
@@ -394,18 +418,19 @@ export interface BodyAnchorExtraction {
  * Skips freeform (bspline) faces, ellipse/spline edges. All vertices are kept.
  * A skipped entity keeps its slot in `entityAnchors` with an empty list, so the
  * positional join to `faceIdsPerTriangle` / `edges` / `vertices` stays intact.
- * @param mintId factory for unique anchor ids within this bundle.
+ * @param mintId factory for deterministic anchor ids within this bundle, keyed
+ *        on the anchor's own geom_hash + kind.
  */
 export function extractBodyAnchors(
   bodyResult: BodyResult,
-  mintId: () => string,
+  mintId: (geomHash: string, kind: AnchorKind) => string,
 ): BodyAnchorExtraction {
   const anchors: Record<string, Anchor> = {}
   const entityAnchors: EntityAnchorIndex = { faces: [], edges: [], vertices: [] }
   const created_by = bodyResult.created_by || ''
 
   const emit = (slot: string[][], anchor: Anchor): void => {
-    const id = mintId()
+    const id = mintId(anchor.geom_hash, anchor.kind)
     anchors[id] = anchor
     slot[slot.length - 1].push(id)
   }

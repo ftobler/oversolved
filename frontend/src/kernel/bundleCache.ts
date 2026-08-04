@@ -2,6 +2,13 @@
 // A separate database from the document store, the bundle is a derivable
 // artifact, not a document payload. A miss just triggers a cold rebuild via
 // the OCC bundle builder worker; there is no invalidation API.
+//
+// A cache wipe is NOT a pure geometry miss, because mate refs persist against
+// anchor ids minted in a bundle. Since anchor ids are deterministic from the
+// element's stable geom_hash (anchorIdFor, partBundle.ts), a cold rebuild mints
+// the same ids and refs survive with no cache at all; for documents whose refs
+// predate that, bundleCacheGetStale keeps a stale record readable for the
+// anchor-remap chain even when the schema/fingerprint rules call it a miss.
 
 import { BUNDLE_BUILD_FINGERPRINT, BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
@@ -10,6 +17,9 @@ const DB_NAME = 'oversolved-bundles'
 // path for `bundles` is safe here specifically: a bundle is a derivable
 // artifact, so wiping it just means the next lookup is a miss and cold-rebuilds,
 // never wrong geometry. Cheaper and safer than backfilling `latest` by hand.
+// The anchor-ids caveat to that: a wipe strands mate refs minted before
+// deterministic ids existed, which is what bundleCacheGetStale's remap-chain
+// read mitigates (see the file header).
 const DB_VERSION = 2
 const STORE = 'bundles'
 const LATEST_STORE = 'latest'
@@ -110,6 +120,19 @@ export async function bundleCacheGet(doc_id: string, doc_rev: number): Promise<P
     return undefined
   }
   return bundle
+}
+
+// The migration chain's read for the newest cached rev of a doc. It deliberately
+// skips the schema/fingerprint rules bundleCacheGet applies: anchorIdRemap's
+// tier-1 match runs on geom_hash, which is schema- and code-independent, so a
+// stale record is the one surviving source of the old random-id lineage after a
+// cache wipe or schema bump. The caller must never trust this bundle's geometry
+// or semantics, only its anchors dict, and only to migrate a freshly built
+// bundle's ids onto.
+export async function bundleCacheGetStale(doc_id: string, doc_rev: number): Promise<PartBundle | undefined> {
+  const st = await store(STORE, 'readonly')
+  const record = await prom(st.get(bundleKey(doc_id, doc_rev)) as IDBRequest<CachedBundleRecord | undefined>)
+  return record?.payload
 }
 
 // The newest rev of `doc_id` ever cached (regardless of eviction, pruning in

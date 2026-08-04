@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, resetBundleDbConnection, MAX_DOCS } from './bundleCache'
+import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, bundleCacheGetStale, resetBundleDbConnection, MAX_DOCS } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
 function freshDb(): void {
@@ -92,6 +92,34 @@ describe('bundleCache', () => {
   it('returns undefined on a miss', async () => {
     const loaded = await bundleCacheGet('nope', 1)
     expect(loaded).toBeUndefined()
+  })
+
+  it('bundleCacheGetStale misses when nothing is cached', async () => {
+    expect(await bundleCacheGetStale('nope', 1)).toBeUndefined()
+  })
+
+  it('bundleCacheGetStale reads a stale-schema bundle that bundleCacheGet treats as a miss', async () => {
+    // The migration chain's read: a record the schema/fingerprint rules call a
+    // miss must still serve its anchors, because anchorIdRemap matches by
+    // geom_hash, which is schema-independent. Without it a schema bump would
+    // destroy the remap chain and strand every persisted mate ref.
+    const stale = { ...fixtureBundle('docA', 1), schema: BUNDLE_SCHEMA - 1 }
+    await bundleCachePut(stale)
+    expect(await bundleCacheGet('docA', 1)).toBeUndefined()
+    expect(await bundleCacheGetStale('docA', 1)).toBeDefined()
+    expect((await bundleCacheGetStale('docA', 1))!.schema).toBe(BUNDLE_SCHEMA - 1)
+  })
+
+  it('bundleCacheGetStale reads a record built by different code that bundleCacheGet misses', async () => {
+    await bundleCachePut(fixtureBundle('docA', 1))
+    await overwriteBuiltBy('docA@1', 'stale-build')
+    expect(await bundleCacheGet('docA', 1)).toBeUndefined()
+    expect(await bundleCacheGetStale('docA', 1)).toBeDefined()
+  })
+
+  it('bundleCacheGetStale returns the fresh bundle unchanged when the record is valid', async () => {
+    await bundleCachePut(fixtureBundle('docA', 1))
+    expect(await bundleCacheGetStale('docA', 1)).toBeDefined()
   })
 
   it('has returns false on a miss', async () => {

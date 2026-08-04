@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
+import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
+import type { AnchorKind } from './partBundle'
 import type { EdgeData, BodyResult, FaceData } from '../types/cad'
 
 describe('BUNDLE_BUILD_FINGERPRINT drift guard', () => {
@@ -240,14 +241,12 @@ describe('toPartBundle', () => {
     expect(Object.keys(bundle.anchors).length).toBeGreaterThanOrEqual(0)
   })
 
-  it('mints anchor ids from a wide random prefix, so two builds of the same doc never collide', () => {
-    // Math.random().toString(36).slice(2, 6) (the old minter) can collapse to
-    // a single character -- (0.5).toString(36) === '0.i' -- making it
-    // plausible for two builds of the same doc to draw the same prefix.
-    // migrateBundle then writes `anchors[remap.get(newId) ?? newId]`, so a
-    // fresh id from one build colliding with a migrated-to id from another
-    // silently drops an anchor. randomId(8) draws from a 2^64 keyspace, which
-    // makes that collision practically impossible.
+  it('mints the same deterministic anchor id for two builds of the same geometry (no cache needed)', () => {
+    // Anchor ids are deterministic from the stable geom_hash + kind, so a
+    // persisted mate ref survives any rebuild with no cache at all. The old
+    // minter drew a random prefix per build, which made two cold builds of one
+    // rev mint DIFFERENT ids and strand every persisted mate ref on a cache
+    // wipe.
     const bodies: Record<string, BodyResult> = {
       b1: {
         id: 'b1', created_by: 'ex1', modified_by: [],
@@ -264,7 +263,43 @@ describe('toPartBundle', () => {
     const idsB = Object.keys(bundleB.anchors)
     expect(idsA).toHaveLength(1)
     expect(idsB).toHaveLength(1)
-    expect(idsA.some(id => idsB.includes(id))).toBe(false)
+    // Same geom_hash + kind -> same id, across builds and doc revs.
+    expect(idsA).toEqual(idsB)
+  })
+
+  it('anchorIdFor is a deterministic hash of geom_hash + kind', () => {
+    expect(anchorIdFor('@u|aaa', 'plane')).toBe(anchorIdFor('@u|aaa', 'plane'))
+    expect(anchorIdFor('@u|aaa', 'plane')).not.toBe(anchorIdFor('@u|aaa', 'line'))
+    expect(anchorIdFor('@u|aaa', 'plane')).not.toBe(anchorIdFor('@u|bbb', 'plane'))
+    expect(anchorIdFor('@u|aaa', 'plane')).toMatch(/^a_[0-9a-f]{16}$/)
+  })
+
+  it('two elements hashing to one id get distinct ids (tier-1 collision rule)', () => {
+    // Same geom_hash + kind in one bundle (e.g. two coincident vertices whose
+    // positional @gdv descriptor is identical): the first keeps the bare id,
+    // the second gets a disambiguation suffix. Never two elements on one id.
+    const bodies: Record<string, BodyResult> = {
+      b1: {
+        id: 'b1', created_by: 'ex1', modified_by: [],
+        mesh: {
+          vertices: [], faces: [],
+          face_queries: [
+            makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
+            makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
+          ],
+          face_data: [
+            { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
+            { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
+          ],
+        },
+      },
+    }
+    const bundle = toPartBundle('doc1', 1, bodies)
+    const ids = Object.keys(bundle.anchors)
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+    const base = anchorIdFor('@gdf|0,0,0|0,0,1', 'plane')
+    expect(ids.sort()).toEqual([base, `${base}_2`].sort())
   })
 })
 
@@ -280,7 +315,7 @@ function makeQuery(ids: string[], typeRestriction: string | null): string {
 const EX_FEATURE = 'ex123'
 
 describe('extractBodyAnchors', () => {
-  function mintFactory(): () => string {
+  function mintFactory(): (geomHash: string, kind: AnchorKind) => string {
     let n = 0
     return () => { n++; return `a${n}` }
   }
@@ -500,7 +535,7 @@ describe('extractBodyAnchors', () => {
 // ─── Stage 7: the entity -> anchor join a pick resolves through ───
 
 describe('extractBodyAnchors entity index', () => {
-  function mintFactory(): () => string {
+  function mintFactory(): (geomHash: string, kind: AnchorKind) => string {
     let n = 0
     return () => { n++; return `a${n}` }
   }
