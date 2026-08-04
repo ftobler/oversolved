@@ -43,6 +43,7 @@ export function resolveFaceIndexViaHash(
   shape: OccShape,
   oldIndex: number,
   globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null = null,
 ): number | null {
   let targetFace: OccShape
   try {
@@ -55,7 +56,7 @@ export function resolveFaceIndexViaHash(
   const geomHash = faceGeometryHash(centroid, normal)
   try {
     const queryStr = makeAncestryQuery([ref(geomHash)], 'face')
-    const faceEntry = globalRepo.query(queryStr, null, {}) as Dict | null
+    const faceEntry = globalRepo.query(queryStr, null, bodyStore) as Dict | null
     if (faceEntry && 'face_index' in faceEntry) {
       return faceEntry.face_index as number
     }
@@ -118,7 +119,7 @@ export function resolveFaceProfile(
     const body = findBodyForRef(bodyStore, refId)
     if (body === null) throw new Error(`No body found for '${refId}'`)
     const shape = bodyShape(table, body)
-    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo)
+    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore)
     if (resolved !== null) faceIndex = resolved
     return extractLoopsFromOccFace(oc, scope, shape, faceIndex)
   }

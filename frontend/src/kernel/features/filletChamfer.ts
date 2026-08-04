@@ -210,6 +210,7 @@ export function resolveEdgesWithIndex(
   body: Body,
   index: EdgeIndex,
   edgeQueries: string[],
+  bodyStore: Record<string, unknown> | null = null,
 ): OccShape[] {
   const result: OccShape[] = []
   const addUnique = (e: OccShape): void => {
@@ -231,7 +232,7 @@ export function resolveEdgesWithIndex(
     // which fails safe on the same lineage rather than filleting the wrong edge.
     let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
     if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
-      edge = resolveByStableAncestry(index.ancestryRepo, q)
+      edge = resolveByStableAncestry(index.ancestryRepo, q, bodyStore)
     }
     if (edge === undefined && isFaceQuery(q)) {
       for (const fe of resolveFaceToEdges(oc, scope, table, q, body)) addUnique(fe)
@@ -249,9 +250,13 @@ export function resolveEdgesWithIndex(
  * edges of overlapping extruded circles, distinguished only by @cls_yp/@cls_yn).
  * An ambiguous match stays unresolved: fail safe over filleting the wrong edge.
  */
-function resolveByStableAncestry(repo: Repository, q: string): OccShape | undefined {
+function resolveByStableAncestry(
+  repo: Repository,
+  q: string,
+  bodyStore: Record<string, unknown> | null = null,
+): OccShape | undefined {
   try {
-    const resolved = repo.query(q)
+    const resolved = repo.query(q, null, bodyStore)
     if (resolved !== null && typeof resolved === 'object' && 'shape' in resolved) {
       const payload = resolved as AncestryEdgePayload
       // The repo's classifier tier only runs on 2+ candidates, so a lone
@@ -275,9 +280,10 @@ export function resolveFilletEdges(
   table: HandleTable,
   body: Body,
   edgeQueries: string[],
+  bodyStore: Record<string, unknown> | null = null,
 ): OccShape[] {
   if (body.shape === null || edgeQueries.length === 0) return []
-  return resolveEdgesWithIndex(oc, scope, table, body, buildEdgeIndex(oc, scope, table, body), edgeQueries)
+  return resolveEdgesWithIndex(oc, scope, table, body, buildEdgeIndex(oc, scope, table, body), edgeQueries, bodyStore)
 }
 
 type ApplyFn = (
@@ -352,7 +358,7 @@ function applyEdgeFeature(
   const contains = (bid: string, q: string): boolean => {
     const body = bodyStore[bid]
     if (body === undefined || body.shape === null) return false
-    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(bid), [q]).length > 0
+    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(bid), [q], bodyStore).length > 0
   }
 
   const groups = new Map<string, string[]>()
@@ -424,7 +430,7 @@ function applyEdgeFeature(
       continue
     }
 
-    const topoEdges = resolveEdgesWithIndex(oc, scope, table, body, indexFor(bid), qlist)
+    const topoEdges = resolveEdgesWithIndex(oc, scope, table, body, indexFor(bid), qlist, bodyStore)
     if (topoEdges.length === 0) {
       unresolved.push(...qlist)
       continue

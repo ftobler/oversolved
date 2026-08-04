@@ -79,7 +79,7 @@ export function resolveProfileEdges(
     for (const bid of order) {
       const body = bodyStore[bid]
       if (body === undefined || body.shape === null) continue
-      resolved = resolveFilletEdges(oc, scope, table, body, [refStr])
+      resolved = resolveFilletEdges(oc, scope, table, body, [refStr], bodyStore)
       if (resolved.length > 0) break
     }
     if (resolved.length === 0) {

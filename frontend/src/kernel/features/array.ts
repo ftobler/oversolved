@@ -32,11 +32,16 @@ interface ArrayResult {
  * silent world-axis fallback, so the user cannot accidentally array a body
  * along an arbitrary direction.
  */
-function resolveArrayDirection(feature: Dict, axis: 'x' | 'y', globalRepo: Repository): number[] {
+function resolveArrayDirection(
+  feature: Dict,
+  axis: 'x' | 'y',
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null,
+): number[] {
   const label = axis.toUpperCase()
   const query = (feature[`direction_${axis}_query`] as string) ?? ''
   if (!query) throw new Error(`array: direction ${label} is required; pick a straight edge or planar face`)
-  const dir = resolveDirectionQueryStrict(query, globalRepo)
+  const dir = resolveDirectionQueryStrict(query, globalRepo, bodyStore)
   if (!dir) {
     throw new Error(`array: direction ${label} query '${query}' did not resolve to a straight edge or planar face`)
   }
@@ -46,7 +51,13 @@ function resolveArrayDirection(feature: Dict, axis: 'x' | 'y', globalRepo: Repos
 }
 
 /** Build linear/rectangular array instance transforms (mirrors `_build_array_transforms`). */
-export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature: Dict, globalRepo: Repository): OccTrsf[] {
+export function buildArrayTransforms(
+  oc: OccModule,
+  scope: DisposeScope,
+  feature: Dict,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null = null,
+): OccTrsf[] {
   const mode = (feature.mode as string) ?? 'linear'
   const includeSource = (feature.include_source as boolean) ?? true
   const trsfs: OccTrsf[] = []
@@ -54,7 +65,7 @@ export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature
   if (mode === 'linear') {
     const countX = Math.trunc(Number(feature.count_x ?? 2))
     const pitchX = Number(feature.pitch_x ?? 10.0)
-    const dirX = resolveArrayDirection(feature, 'x', globalRepo)
+    const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
     const num = includeSource ? countX - 1 : countX
     for (let i = 1; i <= num; i++) {
       trsfs.push(makeTranslationTrsf(oc, scope, dirX[0] * pitchX * i, dirX[1] * pitchX * i, dirX[2] * pitchX * i))
@@ -64,8 +75,8 @@ export function buildArrayTransforms(oc: OccModule, scope: DisposeScope, feature
     const countY = Math.trunc(Number(feature.count_y ?? 2))
     const pitchX = Number(feature.pitch_x ?? 10.0)
     const pitchY = Number(feature.pitch_y ?? 10.0)
-    const dirX = resolveArrayDirection(feature, 'x', globalRepo)
-    const dirY = resolveArrayDirection(feature, 'y', globalRepo)
+    const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
+    const dirY = resolveArrayDirection(feature, 'y', globalRepo, bodyStore)
     const numX = includeSource ? countX - 1 : countX
     for (let j = 0; j < countY; j++) {
       for (let i = 1; i <= numX; i++) {
@@ -270,7 +281,7 @@ export function solveArray(
   const body = resolveSourceBody(merged, bodyStore, 'array')
   const includeSource = (merged.include_source as boolean) ?? true
   const operation = (merged.operation as string) ?? 'add'
-  const transforms = buildArrayTransforms(oc, scope, merged, globalRepo)
+  const transforms = buildArrayTransforms(oc, scope, merged, globalRepo, bodyStore)
   return applyArray(oc, scope, table, body, transforms, includeSource, operation, featureId, bodyStore, 'array')
 }
 

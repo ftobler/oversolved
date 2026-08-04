@@ -22,6 +22,7 @@ import {
   parseGeomDescriptorId,
   type GeomDescriptor,
 } from "./geomDescriptor"
+import { failLoud } from "@/stores/stateInvariants"
 
 export class AmbiguousQueryError extends Error {}
 
@@ -217,12 +218,25 @@ function isDict(obj: unknown): obj is Record<string, unknown> {
   return obj !== null && typeof obj === "object" && !Array.isArray(obj)
 }
 
-/** Attempt to coerce element to targetType using bodyStore and repoElements. */
+/** The body's `modified_by` feature chain from the store, or null when absent. */
+function bodyModifiersOf(
+  bodyStore: Record<string, unknown> | null,
+  bodyId: unknown,
+): string[] | null {
+  if (bodyStore === null) return null
+  const body = bodyStore[bodyId as string]
+  if (!isDict(body)) return null
+  const mods = body["modified_by"]
+  return Array.isArray(mods) ? (mods as string[]) : null
+}
+
+/** Attempt to coerce element to targetType using bodyStore and the repository. */
 function coerceType(
   element: unknown,
   targetType: string,
   bodyStore: Record<string, unknown> | null,
-  repoElements: Map<string, unknown>,
+  repo: Repository,
+  queryIds: ReadonlySet<string>,
 ): unknown {
   if (element === null || element === undefined) return null
   const ot = objType(element)
@@ -233,21 +247,60 @@ function coerceType(
   if (bodyId === null || bodyId === undefined) return null
   const createdBy = element["created_by"]
   if (createdBy === null || createdBy === undefined) return null
-  // Upward: child -> solid
-  if (targetType === "solid" && bodyStore !== null) {
+  // Upward: child -> solid. The store is the only source of the solid; every
+  // solve-time call site threads it, so a null/empty store is a wiring bug and
+  // fails loud in dev/test instead of silently returning null.
+  if (targetType === "solid") {
+    if (bodyStore === null || Object.keys(bodyStore).length === 0) {
+      failLoud(
+        `coerceType: upward :solid coercion requested with no body store ` +
+          `(body ${JSON.stringify(bodyId)})`,
+      )
+      return null
+    }
     return bodyStore[bodyId as string] ?? null
   }
-  // Downward / sibling: scope to the same feature to avoid cross-feature collisions
-  for (const el of repoElements.values()) {
-    const elType = objType(el)
-    if (
-      isDict(el) &&
-      el["body_id"] === bodyId &&
-      el["created_by"] === createdBy &&
-      (elType === targetType || isSubtype(elType, targetType))
-    ) {
-      return el
+  // Downward / sibling: scope to the query's ancestry so a coerced sibling is
+  // provably in the query's lineage. Only entries sharing a nonHash query token
+  // are reachable through byAncestorId, so no element outside the lineage is
+  // even examined. A body's modified_by chain admits a sibling created by a
+  // different feature (a fillet-created face coerces to a same-body edge the
+  // original feature made).
+  const matches: unknown[] = []
+  const seen = new Set<unknown>()
+  const bodyMods = bodyModifiersOf(bodyStore, bodyId)
+  const keys = new Set<string>()
+  for (const qid of queryIds) {
+    const tagged = repo.byAncestorId.get(qid)
+    if (tagged) for (const k of tagged) keys.add(k)
+  }
+  for (const key of keys) {
+    const entry = repo.ancestral.get(key)
+    if (entry === undefined) continue
+    for (const eid of entry.eids) {
+      const el = repo.elements.get(eid)
+      if (el === undefined || el === element) continue
+      if (!isDict(el)) continue
+      if (el["body_id"] !== bodyId) continue
+      const elType = objType(el)
+      if (!(elType === targetType || isSubtype(elType, targetType))) continue
+      const elCreatedBy = el["created_by"]
+      if (typeof elCreatedBy !== "string") continue
+      if (elCreatedBy !== createdBy && !(bodyMods !== null && bodyMods.includes(elCreatedBy))) {
+        continue
+      }
+      if (!seen.has(el)) {
+        seen.add(el)
+        matches.push(el)
+      }
     }
+  }
+  if (matches.length === 1) return matches[0]
+  if (matches.length > 1) {
+    throw new AmbiguousQueryError(
+      `Query coerced to ${matches.length} distinct '${targetType}' elements ` +
+        `in body ${JSON.stringify(bodyId)}`,
+    )
   }
   return null
 }
@@ -609,7 +662,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this.elements)
+          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)

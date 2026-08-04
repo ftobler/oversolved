@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import type { OccModule } from '../occ/occTypes'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { Repository } from '../query'
+import { Repository as RealRepository } from '../query'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { buildArrayTransforms, buildCircularTransforms, solveArray, solveCircularArray } from './array'
@@ -139,6 +140,22 @@ describe('buildArrayTransforms (linear)', () => {
 
   it('throws when the direction query does not resolve', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'dangling' }, repo)).toThrow(/did not resolve/)
+  })
+
+  it('threads the body store so a :solid direction pick coerces upward', () => {
+    // The direction query restricts to `solid`; the repo holds only the body's
+    // face, so the pick resolves by upward coercion through the threaded store.
+    // Without the store the dev failLoud fires (throws in test mode).
+    const realRepo = new RealRepository()
+    realRepo.registerAncestor(
+      ['@ex1'],
+      { type: 'flatface', body_id: 'body_ex1', face_index: 0, created_by: 'ex1' },
+    )
+    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } }
+    const feature = { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: '?4;@ex1:solid' }
+    expect(() => buildArrayTransforms(makeFake(), scope, feature, realRepo)).toThrow()
+    const t = buildArrayTransforms(makeFake(), scope, feature, realRepo, bodyStore)
+    expect(translations(t)).toEqual([[0, 0, 5]])
   })
 })
 
