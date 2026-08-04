@@ -55,7 +55,7 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
   })
   return render(
     <PartEditorProvider value={makeCallbacks()}>
@@ -80,7 +80,7 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
   })
 })
 

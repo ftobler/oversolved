@@ -21,7 +21,10 @@ beforeEach(() => {
   setSketchCallback('onMutation', vi.fn())
   useSketchEditorStore.setState({
     normalSelection: new Set(),
+    // modeStack rides with activePickField: nulling the field alone would leave
+    // the previous test's 'pick' entry for the next one to stack onto.
     activePickField: null,
+    modeStack: [],
     hoveredSelectionId: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,

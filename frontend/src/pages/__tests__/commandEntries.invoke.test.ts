@@ -33,6 +33,10 @@ describe('command callbacks that drive the sketch editor store', () => {
     expect(clearDraw).toHaveBeenCalledOnce()
     expect(setActiveTool).toHaveBeenCalledWith(null)
     expect(setActivePickField).toHaveBeenCalledWith(null)
+    // Order is load-bearing: the tool's deactivate hook pops the mode stack, so
+    // on a desynced stack with 'pick' on top it would eat the pick's entry.
+    expect(setActivePickField.mock.invocationCallOrder[0])
+      .toBeLessThan(setActiveTool.mock.invocationCallOrder[0])
   })
 
   it('cancel_pick clears only the pick field', () => {

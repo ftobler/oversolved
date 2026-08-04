@@ -30,7 +30,7 @@ function bodiesChip(): Element {
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null,
+    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
   })
 })
 
@@ -103,7 +103,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
         type: 'add_transform_body', featureId: 'tr1', bodyQuery: picked,
       })
       unmount()
-      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null }) })
+      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [] }) })
     }
   })
 })

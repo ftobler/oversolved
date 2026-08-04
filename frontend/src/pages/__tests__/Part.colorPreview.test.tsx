@@ -66,7 +66,7 @@ describe('Part Color Preview', () => {
       hoveredSelectionId: null,
       hoveredVertexId: null,
       activeTool: null,
-      activePickField: null,
+      activePickField: null, modeStack: [],
       showDebugHit: false,
     })
   })

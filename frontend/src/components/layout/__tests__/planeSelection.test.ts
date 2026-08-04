@@ -16,6 +16,10 @@ function reset() {
     hoveredSelectionId: null,
     isPointerDown: false,
     activePickField: null,
+    // The pick field owns the top of the mode stack, so a test that leaves a
+    // field armed must have its entry cleared too or the next pick stacks a
+    // second 'pick' on the leftover.
+    modeStack: [],
   })
 }
 

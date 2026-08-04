@@ -80,8 +80,10 @@ export function buildCommandEntries(
     })),
     { name: 'cancel_draw', fn: () => {
         getState().clearDraw()
-        getState().setActiveTool(null)
+        // Pick first, tool second: on a desynced stack with 'pick' on top the
+        // tool's deactivate hook would otherwise pop the pick's entry.
         getState().setActivePickField(null)
+        getState().setActiveTool(null)
     }},
     { name: 'cancel_pick', fn: () => {
       getState().setActivePickField(null)

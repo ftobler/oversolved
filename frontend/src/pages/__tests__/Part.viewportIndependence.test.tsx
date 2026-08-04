@@ -46,7 +46,7 @@ function renderSidebar(
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
   })
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
@@ -71,7 +71,7 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
   })
 })
 

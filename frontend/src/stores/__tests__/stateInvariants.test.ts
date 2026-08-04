@@ -20,7 +20,14 @@ function defaultState(): SketchEditorInvariantState {
     drawPoints: [],
     drawHover: null,
     pendingDialog: null,
+    modeStack: [],
   }
+}
+
+// An armed tool owns the top of the mode stack, so any fixture that sets
+// activeTool must carry its entry to stay well-formed.
+function withTool(tool: string): Pick<SketchEditorInvariantState, 'activeTool' | 'modeStack'> {
+  return { activeTool: tool, modeStack: ['tool:' + tool] }
 }
 
 describe('validateSelectionState', () => {
@@ -252,7 +259,7 @@ describe('validateSketchEditorState', () => {
     })
 
     it('passes when dimensionPicks is non-empty with activeTool dimension', () => {
-      const state = { ...defaultState(), dimensionPicks: [{ target: 'entity:S1:L1' }], activeTool: 'dimension' }
+      const state = { ...defaultState(), dimensionPicks: [{ target: 'entity:S1:L1' }], ...withTool('dimension') }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
 
@@ -269,8 +276,53 @@ describe('validateSketchEditorState', () => {
     })
 
     it('passes when activePickField is set with activeTool null', () => {
-      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null }
+      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null, modeStack: ['pick'] }
       expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+  })
+
+  describe('modeStack invariant', () => {
+    it('throws when a tool entry outlives its tool', () => {
+      const state = { ...defaultState(), activeTool: null, modeStack: ['tool:line'] }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] modeStack is [tool:line]')
+    })
+
+    it('throws when a pick entry outlives its field', () => {
+      const state = { ...defaultState(), modeStack: ['pick'] }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] modeStack is [pick]')
+    })
+
+    it('throws when the armed tool does not own the top', () => {
+      const state = { ...defaultState(), activeTool: 'line', modeStack: ['tool:select'] }
+      expect(() => validateSketchEditorState(state)).toThrow("[invariant] activeTool is 'line' but modeStack top is 'tool:select'")
+    })
+
+    it('throws when a pick sits on top while a tool is armed', () => {
+      const state = { ...defaultState(), activeTool: 'line', modeStack: ['tool:line', 'pick'] }
+      expect(() => validateSketchEditorState(state)).toThrow("[invariant] activeTool is 'line' but modeStack top is 'pick'")
+    })
+
+    it('throws when the armed tool has no entry at all', () => {
+      const state = { ...defaultState(), activeTool: 'line', modeStack: [] }
+      expect(() => validateSketchEditorState(state)).toThrow("[invariant] activeTool is 'line' but modeStack top is 'null'")
+    })
+
+    it('throws when a pick field is armed without its entry on top', () => {
+      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, modeStack: ['tool:line'] }
+      expect(() => validateSketchEditorState(state)).toThrow("[invariant] activePickField set ('Sketch1:plane') but modeStack top is 'tool:line'")
+    })
+
+    it('couples only the top entry, deeper ones are not attributed', () => {
+      const state = { ...defaultState(), activeTool: 'line', modeStack: ['outer', 'tool:line'] }
+      expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+
+    it('passes for an armed tool that owns the top', () => {
+      expect(() => validateSketchEditorState({ ...defaultState(), ...withTool('line') })).not.toThrow()
+    })
+
+    it('passes for the all-clear state', () => {
+      expect(() => validateSketchEditorState(defaultState())).not.toThrow()
     })
   })
 
@@ -287,13 +339,13 @@ describe('validateSketchEditorState', () => {
 
     for (const tool of DRAWING_TOOLS) {
       it(`passes when drawing tool '${tool}' has draw state`, () => {
-        const state = { ...defaultState(), drawPoints: [[1, 2]], drawHover: [3, 4], activeTool: tool }
+        const state = { ...defaultState(), drawPoints: [[1, 2]], drawHover: [3, 4], ...withTool(tool) }
         expect(() => validateSketchEditorState(state)).not.toThrow()
       })
     }
 
     it('passes when drawPoints is empty and activeTool is not a drawing tool', () => {
-      const state = { ...defaultState(), drawPoints: [], drawHover: null, activeTool: 'select' }
+      const state = { ...defaultState(), drawPoints: [], drawHover: null, ...withTool('select') }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
   })

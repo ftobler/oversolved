@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import {
   KEYMAP,
   FEATURE_KEYMAP,
@@ -13,6 +13,7 @@ import {
 } from '@/utils/core/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { initializeTools } from '@/tools'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
@@ -325,6 +326,11 @@ describe('dispatchKey', () => {
 // ─── Tool commands via store (no React) ───
 
 describe('tool commands via store', () => {
+  // The store drives each tool's activate/deactivate hooks, and those maintain
+  // the mode stack. Without the registry the hooks are silent no-ops and the
+  // store's own invariants (armed tool owns the stack top) cannot hold.
+  beforeAll(() => { initializeTools() })
+
   beforeEach(() => {
     // Reset to known state before each test
     useSketchEditorStore.getState().setActiveTool(null)

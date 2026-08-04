@@ -161,6 +161,7 @@ export interface SketchEditorInvariantState extends SelectionInvariantState {
   drawPoints: unknown[]
   drawHover: unknown
   pendingDialog: unknown
+  modeStack: readonly string[]
 }
 
 export function validateSketchEditorState(state: SketchEditorInvariantState): void {
@@ -194,6 +195,32 @@ export function validateSketchEditorState(state: SketchEditorInvariantState): vo
   if (state.drawHover !== null && !isDrawingTool) {
     failLoud(
       `[invariant] drawHover is set but activeTool is '${state.activeTool}', not a drawing tool`,
+    )
+  }
+
+  // Mode stack coupling. The top entry names the mode the tool/pick fields
+  // describe, so whoever is armed owns the top and a disarmed editor owns
+  // nothing. Without this an unpaired activation leaks its entry, which
+  // permanently disables popMode's stack-empty validation hook.
+  const top = state.modeStack.length > 0 ? state.modeStack[state.modeStack.length - 1] : null
+
+  if (state.activeTool !== null && top !== `tool:${state.activeTool}`) {
+    failLoud(
+      `[invariant] activeTool is '${state.activeTool}' but modeStack top is '${top}', `
+      + `expected 'tool:${state.activeTool}'`,
+    )
+  }
+
+  if (state.activePickField !== null && top !== 'pick') {
+    failLoud(
+      `[invariant] activePickField set ('${state.activePickField.featureId}:${state.activePickField.field}') `
+      + `but modeStack top is '${top}', expected 'pick'`,
+    )
+  }
+
+  if (state.activeTool === null && state.activePickField === null && state.modeStack.length > 0) {
+    failLoud(
+      `[invariant] modeStack is [${state.modeStack.join(', ')}] but no tool or pick field is active`,
     )
   }
 }

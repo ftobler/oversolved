@@ -51,7 +51,7 @@ beforeEach(() => {
   })
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
   })
 })
 
@@ -62,7 +62,9 @@ describe('plane pick-chip on new sketch', () => {
       visibleFeatures: new Set(['sk1']),
       editingFeatureId: 'sk1',
     })
-    useSketchEditorStore.setState({ activePickField: { featureId: 'sk1', field: 'plane' } })
+    // An armed pick field owns the top of the mode stack, so seeding one by hand
+    // has to seed its entry too.
+    useSketchEditorStore.setState({ activePickField: { featureId: 'sk1', field: 'plane' }, modeStack: ['pick'] })
 
     render(
       <PartEditorProvider value={makeCallbacks()}>
@@ -81,7 +83,7 @@ describe('plane pick-chip on new sketch', () => {
       visibleFeatures: new Set(['sk1']),
       editingFeatureId: 'sk1',
     })
-    useSketchEditorStore.setState({ activePickField: null })
+    useSketchEditorStore.setState({ activePickField: null, modeStack: [] })
 
     render(
       <PartEditorProvider value={makeCallbacks()}>

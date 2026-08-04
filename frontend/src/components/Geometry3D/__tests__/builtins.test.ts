@@ -52,7 +52,7 @@ describe('store toggleNormalSelection with @-prefixed IDs', () => {
 describe('builtin click in normal mode (activePickField=null)', () => {
   beforeEach(() => {
     useSketchEditorStore.getState().clearNormalSelection()
-    useSketchEditorStore.setState({ activePickField: null })
+    useSketchEditorStore.setState({ activePickField: null, modeStack: [] })
   })
 
   it('toggleNormalSelection emits no mutation when onMutation is null (normal mode)', () => {

@@ -32,7 +32,7 @@ function simulateFaceClick(hoverQuery: string) {
 beforeEach(() => {
   useSketchEditorStore.setState({
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
     hoveredSelectionId: null,
   })
 })

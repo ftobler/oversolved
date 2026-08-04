@@ -45,7 +45,9 @@ function pick(selectionId: string) {
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null,
+    // modeStack rides with activePickField: clearing the field alone would leave
+    // the previous test's 'pick' entry for the next one to stack onto.
+    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
   })
 })
 

@@ -21,7 +21,7 @@ function pick(selectionId: string) {
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null,
+    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
   })
 })
 
@@ -122,7 +122,7 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
         type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: picked,
       })
       unmount()
-      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null }) })
+      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [] }) })
     }
   })
 

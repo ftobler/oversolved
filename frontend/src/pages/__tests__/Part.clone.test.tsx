@@ -37,7 +37,7 @@ describe('Part clone dialog', () => {
       hoveredSelectionId: null,
       hoveredVertexId: null,
       activeTool: null,
-      activePickField: null,
+      activePickField: null, modeStack: [],
       showDebugHit: false,
     })
   })

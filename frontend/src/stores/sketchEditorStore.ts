@@ -374,15 +374,34 @@ function buildToolContext(get: () => SketchEditorState): ToolContext {
   }
 }
 
-// Fire a tool's activate/deactivate lifecycle hook if the tool is registered.
-// Callers own the guard deciding whether the hook should run at all.
+// Fire a tool's activate hook if the tool is registered. Callers own the guard
+// deciding whether the hook should run at all; the tool field itself is written
+// by the caller's own set().
 function activateTool(get: () => SketchEditorState, toolId: ActiveTool): void {
   if (!toolId) return
   toolRegistry.get(toolId as ToolId)?.activate(buildToolContext(get))
 }
 
-function deactivateTool(get: () => SketchEditorState, toolId: ActiveTool): void {
+// Disarms the tool completely before running its hook: the field, plus the
+// transient state that only exists while a tool is armed. The hook pops the
+// tool's mode entry and popMode revalidates the whole store the moment the
+// stack empties, so it must not observe a half-disarmed editor (an activeTool
+// whose entry is already gone, or draw/dimension leftovers with no tool).
+// Callers that arm a new tool re-apply these resets anyway.
+function deactivateTool(
+  get: () => SketchEditorState,
+  set: (p: Partial<SketchEditorState>) => void,
+  toolId: ActiveTool,
+): void {
   if (!toolId) return
+  set({
+    activeTool: null,
+    drawPoints: [],
+    drawHover: null,
+    drawSnapVertexId: null,
+    dimensionPicks: [],
+    dimensionCursorWorld: null,
+  })
   toolRegistry.get(toolId as ToolId)?.deactivate(buildToolContext(get))
 }
 
@@ -575,7 +594,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const prevTool = get().activeTool
 
     // Deactivate previous tool (lifecycle hook)
-    deactivateTool(get, prevTool)
+    deactivateTool(get, set, prevTool)
 
     // Switching tools abandons any in-flight brep dimension gesture: the
     // projections it materialised were scratch work for that gesture.
@@ -638,6 +657,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // replay it).
     if (state.activeFeatureId !== null && id === null && state.pendingBrepProjectionIds.length > 0) {
       state.cancelBrepProjectionGesture()
+    }
+    // Leaving the sketch disarms the tool through its lifecycle hook rather than
+    // by nulling the field below: a plain write strands the tool's `tool:<id>`
+    // entry on the mode stack, and since the store outlives the editor mount the
+    // leak accumulates over enter/exit cycles.
+    if (state.activeFeatureId !== null && id === null) {
+      deactivateTool(get, set, get().activeTool)
     }
     set(state => {
       // Entering/exiting a sketch is never a continuation of a drag gesture (the
@@ -1005,9 +1031,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   },
 
   setActivePickField: (field, opts) => {
-    // Leaving any prior pick: drop its mode and chip-owned mirror.
+    // Leaving any prior pick: drop its mode and chip-owned mirror. The field is
+    // cleared before the pop for the same reason deactivateTool clears the tool:
+    // popMode revalidates on an empty stack and an armed pick field with no
+    // 'pick' entry is a violation.
     const prev = get().activePickField
     if (prev !== null) {
+      set({ activePickField: null })
       if (get().modeStack[get().modeStack.length - 1] === 'pick') {
         get().popMode('pick')
       }
@@ -1020,18 +1050,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       return
     }
 
-    // Entering a pick: deactivate any active tool first.
-    // Guard: only deactivate if the mode stack has the tool at the top.
-    // This handles the case where state was set directly (e.g., test setup via setState)
-    // and no tool mode was ever pushed onto the stack.
-    const prevTool = get().activeTool
-    const stack = get().modeStack
-    if (prevTool && stack.length > 0) {
-      const top = stack[stack.length - 1]
-      if (top === `tool:${prevTool}`) {
-        deactivateTool(get, prevTool)
-      }
-    }
+    // Entering a pick: deactivate any active tool first. Unguarded, like every
+    // other deactivate path: an armed tool always owns the top of the stack (the
+    // invariant says so), and a desync is a bug we want popMode to report rather
+    // than skip silently.
+    deactivateTool(get, set, get().activeTool)
 
     // Manual activate clears the existing normal selection so a stray prior
     // selection is not instantly consumed as a pick. `seed: true` (used by

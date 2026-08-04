@@ -7,7 +7,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, chipOwnedSelection: new Set() })
+  useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [], chipOwnedSelection: new Set() })
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

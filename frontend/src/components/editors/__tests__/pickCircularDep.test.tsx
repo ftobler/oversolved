@@ -35,7 +35,7 @@ function pick(selectionId: string) {
 
 beforeEach(() => {
   useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null,
+    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
   })
 })
 

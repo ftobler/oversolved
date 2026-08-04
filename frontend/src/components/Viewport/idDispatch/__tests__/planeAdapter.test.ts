@@ -6,7 +6,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({
     hoveredSelectionId: null,
     normalSelection: new Set(),
-    activePickField: null,
+    activePickField: null, modeStack: [],
   })
 })
 

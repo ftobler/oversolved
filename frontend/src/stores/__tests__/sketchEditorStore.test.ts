@@ -621,6 +621,25 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().drawPoints).toEqual([])
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
       expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+      // The tool must leave through its lifecycle hook, otherwise its mode entry
+      // outlives the sketch session.
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+
+    it('does not leak a tool mode entry across repeated enter/exit cycles', () => {
+      for (let i = 0; i < 3; i++) {
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().setActiveTool('line')
+        expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:line'])
+        useSketchEditorStore.getState().setActiveFeatureId(null)
+        expect(useSketchEditorStore.getState().modeStack).toEqual([])
+      }
+    })
+
+    it('leaves the stack alone when no tool is armed on exit', () => {
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setActiveFeatureId(null)
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
 
     it('does not reset tool when setting same null', () => {
@@ -1064,6 +1083,7 @@ describe('sketchEditorStore', () => {
           chipOwnedSelection: new Set(['@edge_0']),
           selectionDomain: 'mixed',
           activePickField: { featureId: 'F1', field: 'profile' },
+          modeStack: ['pick'],
         })
         useSketchEditorStore.getState().setActiveTool('dimension')
         const s = useSketchEditorStore.getState()
@@ -1105,6 +1125,7 @@ describe('sketchEditorStore', () => {
           activeTool: null,
           chipOwnedSelection: new Set(['?body_ex1/face/0']),
           normalSelection: new Set(['?body_ex1/face/0', '@other_item']),
+          modeStack: ['pick'],
         })
         useSketchEditorStore.getState().setActiveTool('select')
         const s = useSketchEditorStore.getState()
@@ -1115,7 +1136,7 @@ describe('sketchEditorStore', () => {
       })
 
       it('does not clear activePickField when setting tool to null', () => {
-        useSketchEditorStore.setState({ activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null })
+        useSketchEditorStore.setState({ activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null, modeStack: ['pick'] })
         useSketchEditorStore.getState().setActiveTool(null)
         // tool=null means we are NOT entering a tool mode, so the pick field persists
         expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
@@ -1179,6 +1200,23 @@ describe('sketchEditorStore', () => {
 
     it('setActivePickField(null) pops pick mode', () => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+      useSketchEditorStore.getState().setActivePickField(null)
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+
+    it('tool switch spam never stacks more than the armed tool', () => {
+      for (const tool of ['line', 'circle', 'select', 'line', 'dimension'] as const) {
+        useSketchEditorStore.getState().setActiveTool(tool)
+        expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:' + tool])
+      }
+      useSketchEditorStore.getState().setActiveTool(null)
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+
+    it('pick enter/exit around an armed tool returns to an empty stack', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
+      expect(useSketchEditorStore.getState().modeStack).toEqual(['pick'])
       useSketchEditorStore.getState().setActivePickField(null)
       expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
