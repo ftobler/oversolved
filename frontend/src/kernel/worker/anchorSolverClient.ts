@@ -21,11 +21,12 @@ import type {
   PartInputSpec,
 } from './solverProtocol'
 import type { MateSpec } from '../solveAssembly'
+import type { PartBundle } from '../partBundle'
 import { extractErrorMessage } from '../errors'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
 export interface AnchorSolverWorkerLike {
-  postMessage(msg: AssemblyWorkerRequest): void
+  postMessage(msg: AssemblyWorkerRequest, transfer?: Transferable[]): void
   onmessage: ((e: { data: AssemblyWorkerResponse }) => void) | null
   onerror: ((e: unknown) => void) | null
   terminate(): void
@@ -90,6 +91,32 @@ async function handleRelay(msg: AnchorRelayRequest): Promise<AnchorRelayResponse
   }
 }
 
+/**
+ * The mesh buffers of a `buildBundle` relay reply that the reply can transfer
+ * (zero-copy) to the anchor worker. Mirrors `bundleTransferables`
+ * (`solverWorker.ts`) over the `PartBundle` shape. Only a successful
+ * `buildBundle` reply carries them; `partDocContent` and error replies
+ * transfer nothing.
+ *
+ * Double-transfer guard: this is only safe because the main thread holds the
+ * bundle's sole reference here - the relay handler returns the OCC worker's
+ * reply straight into this post, and the solver client dropped its pending
+ * entry on arrival. A bundle retained anywhere else must never be transferred.
+ */
+function relayReplyTransferables(subKind: AnchorRelayRequest['subKind'], res: AnchorRelayResponse): Transferable[] {
+  if (subKind !== 'buildBundle' || !res.ok) return []
+  const bundle = res.payload as Partial<PartBundle> | null | undefined
+  if (!bundle || !Array.isArray(bundle.bodies)) return []
+  const out: Transferable[] = []
+  for (const body of bundle.bodies) {
+    const m = body?.mesh
+    if (m?.vertices instanceof Float32Array) out.push(m.vertices.buffer)
+    if (m?.indices instanceof Uint32Array) out.push(m.indices.buffer)
+    if (m?.faceIdsPerTriangle instanceof Uint32Array) out.push(m.faceIdsPerTriangle.buffer)
+  }
+  return out
+}
+
 function onMessage(e: { data: AssemblyWorkerResponse }): void {
   const msg = e.data
   if (msg.kind === 'asr_relay') {
@@ -100,7 +127,13 @@ function onMessage(e: { data: AssemblyWorkerResponse }): void {
     // reply is dropped instead of misdelivered.
     const sender = worker
     handleRelay(msg).then((res) => {
-      sender?.postMessage(res)
+      // Ownership contract: a buildBundle reply's mesh buffers are transferred
+      // (zero-copy) into the anchor worker's clone, detaching them on the main
+      // thread. The main thread holds the bundle's only reference, so nothing
+      // may read those buffers after this post - the transfer list is the
+      // last touch. Non-bundle replies (partDocContent, errors) pass no list.
+      const transfer = relayReplyTransferables(msg.subKind, res)
+      sender?.postMessage(res, transfer.length > 0 ? transfer : undefined)
     })
     return
   }

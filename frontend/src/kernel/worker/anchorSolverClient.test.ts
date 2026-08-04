@@ -22,17 +22,30 @@ import type {
   AnchorRelayOkResponse,
   AnchorRelayErrResponse,
 } from './solverProtocol'
+import { BUNDLE_SCHEMA, type PartBundle } from '../partBundle'
 
 class FakeWorker implements AnchorSolverWorkerLike {
   onmessage: ((e: { data: AssemblyWorkerResponse }) => void) | null = null
   onerror: ((e: unknown) => void) | null = null
   posted: AssemblyWorkerRequest[] = []
+  // Parallel to `posted`: the transfer arg passed to each postMessage.
+  transfers: (Transferable[] | undefined)[] = []
+  // Fresh copies delivered across a transfer: a transferred message is never
+  // the same object as the source - the source's buffers detach.
+  received: AssemblyWorkerRequest[] = []
   terminated = false
   failOnPost = false
 
-  postMessage(msg: AssemblyWorkerRequest): void {
+  postMessage(msg: AssemblyWorkerRequest, transfer?: Transferable[]): void {
     if (this.failOnPost) throw new Error('DataCloneError: the object could not be cloned')
     this.posted.push(msg)
+    this.transfers.push(transfer)
+    if (transfer && transfer.length > 0) {
+      // structuredClone with a transfer list detaches the source buffers and
+      // yields the receiver's fresh copy - the exact semantics of the real
+      // `postMessage(..., transfer)` the client's relay post performs.
+      this.received.push(structuredClone(msg, { transfer }) as AssemblyWorkerRequest)
+    }
   }
 
   terminate(): void {
@@ -182,6 +195,34 @@ describe('relay plumbing', () => {
     )
     // onmessage is now wired; simulate a relay request from the worker
     fakeWorker.reply(req)
+  }
+
+  // A relayable PartBundle: each body mesh carries one ArrayBuffer per heavy
+  // array, the exact buffers hop 2 must transfer instead of re-cloning.
+  function makeBundle(): PartBundle {
+    return {
+      doc_id: 'bundle-doc',
+      doc_rev: 5,
+      schema: BUNDLE_SCHEMA,
+      bodies: [
+        {
+          mesh: {
+            vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            indices: new Uint32Array([0, 1, 2]),
+            faceIdsPerTriangle: new Uint32Array([0]),
+          },
+          edges: [],
+          entityAnchors: { faces: [], edges: [], vertices: [] },
+        },
+      ],
+      anchors: {},
+    }
+  }
+
+  // Find the index of the relay reply post, mirroring the assertion helpers
+  // the existing tests use to locate `asr_relayRes` messages.
+  function relayReplyIndex(): number {
+    return fakeWorker.posted.findIndex(m => m.kind === 'asr_relayRes')
   }
 
   it('handles a partDocContent relay request and posts response back', async () => {
@@ -349,5 +390,91 @@ describe('relay plumbing', () => {
       expect(res.requestId).toBe(7)
       expect(res.ok).toBe(true)
     }
+  })
+
+  it('a buildBundle relay reply transfers its mesh buffers (zero-copy) to the worker', async () => {
+    const bundle = makeBundle()
+    setRelayHandlers({
+      partDocContent: vi.fn(),
+      buildBundle: vi.fn().mockResolvedValue(bundle),
+    })
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 501,
+      subKind: 'buildBundle',
+      doc_id: 'bundle-doc',
+      doc_rev: 5,
+      spec: { features: [] },
+    })
+
+    await waitForPosted(fakeWorker, 'asr_relayRes')
+    const idx = relayReplyIndex()
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const transfer = fakeWorker.transfers[idx]
+    expect(transfer).toBeDefined()
+    const mesh = bundle.bodies[0].mesh
+    expect(transfer).toContain(mesh.vertices.buffer)
+    expect(transfer).toContain(mesh.indices.buffer)
+    expect(transfer).toContain(mesh.faceIdsPerTriangle.buffer)
+  })
+
+  it('a partDocContent relay reply posts with no transfer list', async () => {
+    setRelayHandlers({
+      partDocContent: vi.fn().mockResolvedValue({ kind: 'part', features: [] }),
+      buildBundle: vi.fn(),
+    })
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 602,
+      subKind: 'partDocContent',
+      doc_id: 'doc',
+    })
+
+    await waitForPosted(fakeWorker, 'asr_relayRes')
+    const idx = relayReplyIndex()
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(fakeWorker.transfers[idx]).toBeUndefined()
+  })
+
+  it('ownership: the relay transfer detaches the main-thread bundle buffers and delivers a fresh copy', async () => {
+    const bundle = makeBundle()
+    const verts = Array.from(bundle.bodies[0].mesh.vertices)
+    const indices = Array.from(bundle.bodies[0].mesh.indices)
+    setRelayHandlers({
+      partDocContent: vi.fn(),
+      buildBundle: vi.fn().mockResolvedValue(bundle),
+    })
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 703,
+      subKind: 'buildBundle',
+      doc_id: 'bundle-doc',
+      doc_rev: 5,
+      spec: { features: [] },
+    })
+
+    await waitForPosted(fakeWorker, 'asr_relayRes')
+    // The relayed bundle is the main thread's only reference to these buffers:
+    // after the transfer they are detached, and the relay handler must not
+    // read them again (the contract is pinned here, not after the fact).
+    const mesh = bundle.bodies[0].mesh
+    expect(mesh.vertices.buffer.byteLength).toBe(0)
+    expect(mesh.indices.buffer.byteLength).toBe(0)
+    expect(mesh.faceIdsPerTriangle.buffer.byteLength).toBe(0)
+
+    // The worker side received a fresh structured-clone copy with usable
+    // buffers - what a real anchor worker's relay reply resolves to.
+    await vi.waitFor(() => {
+      if (fakeWorker.received.length > 0) return true
+      throw new Error('expected the transferred relay reply to arrive')
+    }, { timeout: 1000 })
+    const copy = fakeWorker.received[fakeWorker.received.length - 1] as AnchorRelayOkResponse
+    const copyBundle = copy.payload as PartBundle
+    expect(Array.from(copyBundle.bodies[0].mesh.vertices)).toEqual(verts)
+    expect(Array.from(copyBundle.bodies[0].mesh.indices)).toEqual(indices)
+    expect(copyBundle.bodies[0].mesh.faceIdsPerTriangle.byteLength).toBeGreaterThan(0)
   })
 })

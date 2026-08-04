@@ -17,6 +17,10 @@ import type {
   AssemblySolveOkResponse,
   AnchorRelayRequest,
 } from './solverProtocol'
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
+import { bundleCachePut, bundleCacheGet, resetBundleDbConnection } from '../bundleCache'
+import { BUNDLE_SCHEMA, type PartBundle } from '../partBundle'
 
 vi.mock('../../wasm-kernel/anchorSolver', () => ({
   initAnchorSolver: vi.fn().mockResolvedValue(undefined),
@@ -62,6 +66,26 @@ function fakeRelay(): { service: ReturnType<typeof createRelayService>; requests
   const requests: AnchorRelayRequest[] = []
   const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
   return { service: createRelayService(post), requests }
+}
+
+function makeBundle(doc_id: string, doc_rev: number): PartBundle {
+  return {
+    doc_id,
+    doc_rev,
+    schema: BUNDLE_SCHEMA,
+    bodies: [
+      {
+        mesh: {
+          vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          faceIdsPerTriangle: new Uint32Array([0]),
+        },
+        edges: [],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
+      },
+    ],
+    anchors: {},
+  }
 }
 
 beforeEach(() => {
@@ -244,6 +268,50 @@ describe('relay plumbing', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('a buildBundle relay reply that arrived via transfer still resolves to a usable, cacheable bundle', async () => {
+    // Fresh IndexedDB for the cache round-trip below.
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+
+    const requests: AnchorRelayRequest[] = []
+    const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+    const relay = createRelayService(post)
+
+    const prom = relay.requestBuildBundle('doc-a', 1, {})
+
+    // The main thread transfers the bundle buffers to this worker: the transfer
+    // detaches the source and the worker receives a fresh copy with full data.
+    const bundle = makeBundle('doc-a', 1)
+    const mesh = bundle.bodies[0].mesh
+    const transfer = [mesh.vertices.buffer, mesh.indices.buffer, mesh.faceIdsPerTriangle.buffer]
+    const fresh = structuredClone(bundle, { transfer }) as PartBundle
+
+    // Source detached, exactly as a real postMessage(..., transfer) leaves it.
+    expect(transfer[0].byteLength).toBe(0)
+    expect(transfer[1].byteLength).toBe(0)
+    expect(transfer[2].byteLength).toBe(0)
+
+    handleRelayResponse({
+      kind: 'asr_relayRes',
+      requestId: requests[0].requestId,
+      ok: true,
+      payload: fresh,
+    })
+
+    const received = await prom as PartBundle
+    expect(received.bodies[0].mesh.vertices.byteLength).toBeGreaterThan(0)
+    expect(received.bodies[0].mesh.indices.byteLength).toBeGreaterThan(0)
+    expect(Array.from(received.bodies[0].mesh.vertices)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0])
+
+    // The anchor worker caches what it received; the round-trip keeps the mesh
+    // bytes intact, so a subsequent solve reads real geometry, not detritus.
+    await bundleCachePut(received)
+    const loaded = await bundleCacheGet('doc-a', 1)
+    expect(loaded).toBeDefined()
+    expect(loaded && Array.from(loaded.bodies[0].mesh.vertices)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    expect(loaded && loaded.bodies[0].mesh.indices.byteLength).toBeGreaterThan(0)
   })
 })
 
