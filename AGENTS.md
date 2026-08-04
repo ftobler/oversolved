@@ -42,6 +42,7 @@ npx vitest run
 - Try to keep files shorter than 1k lines. This is not a hard limit.
 - icons are defined in `icons.py`.
 - CAD solver/core is 'blind and deaf'. It communicates via structured-clone postMessage from Web Workers to the main thread.
+- Commit style, start the comment as a normal sentence. E.g don't do `fix(solver): split the...` but do: `Fix split in solver...`.
 
 ## Feature planning / implementing
 
