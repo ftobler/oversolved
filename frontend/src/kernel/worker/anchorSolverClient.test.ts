@@ -9,6 +9,7 @@ import {
   solveAssemblyViaWorker,
   setRelayHandlers,
   setAnchorSolverWorkerForTest,
+  getPendingCount,
 } from './anchorSolverClient'
 import type {
   AnchorSolverWorkerLike,
@@ -27,8 +28,10 @@ class FakeWorker implements AnchorSolverWorkerLike {
   onerror: ((e: unknown) => void) | null = null
   posted: AssemblyWorkerRequest[] = []
   terminated = false
+  failOnPost = false
 
   postMessage(msg: AssemblyWorkerRequest): void {
+    if (this.failOnPost) throw new Error('DataCloneError: the object could not be cloned')
     this.posted.push(msg)
   }
 
@@ -146,6 +149,23 @@ describe('solveAssemblyViaWorker', () => {
     await expect(p1).rejects.toThrow('anchor solver worker crashed')
     await expect(p2).rejects.toThrow('anchor solver worker crashed')
     expect(fakeWorker.terminated).toBe(true)
+  })
+
+  it('rejects (not hangs) when postMessage throws, leaves pending empty, and the next solve still works', async () => {
+    fakeWorker.failOnPost = true
+    // A non-cloneable payload (or a worker that died mid-post) makes postMessage
+    // throw; the promise must reject rather than hang, and no entry may leak.
+    await expect(solveAssemblyViaWorker('asm-1', [], {}, [])).rejects.toThrow('DataCloneError')
+    expect(getPendingCount()).toBe(0)
+    fakeWorker.failOnPost = false
+    const p = solveAssemblyViaWorker('asm-2', [], {}, [])
+    const req = fakeWorker.posted[0] as SolveAssemblyRequest
+    fakeWorker.reply({
+      id: req.id, kind: 'solveAssembly', ok: true,
+      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+    })
+    const res = await p
+    expect(res).not.toBeNull()
   })
 })
 

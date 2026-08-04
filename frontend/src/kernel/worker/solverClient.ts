@@ -141,8 +141,11 @@ function ensureWorker(): SolverWorkerLike | null {
 
 /**
  * Post a request to the Worker and resolve once its reply arrives. `extract`
- * pulls the caller's value out of the successful response. Resolves `null` when
- * no Worker can be created (caller surfaces "local solver unavailable").
+ * pulls the caller's value out of the successful response and must be pure (a
+ * field read): it runs after the pending entry is deleted, so a throw would
+ * otherwise leave the promise unsettled. Any throw is converted to a rejection.
+ * Resolves `null` when no Worker can be created (caller surfaces "local solver
+ * unavailable").
  */
 function sendRequest<T>(
   buildMsg: (id: number) => WorkerRequest,
@@ -152,9 +155,30 @@ function sendRequest<T>(
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<T | null>((resolve, reject) => {
+    const msg = buildMsg(id)
+    // Post before registering the pending entry: a throw here (a non-cloneable
+    // payload, or a worker that died between ensureWorker and the post) must
+    // reject the promise rather than leak an entry that can never settle. The
+    // reply cannot arrive before the set below anyway - onmessage is a
+    // macrotask and this code runs without yielding.
+    try {
+      w.postMessage(msg)
+    } catch (e) {
+      reject(e)
+      return
+    }
     const timer = isFinite(solveTimeoutMs) ? setTimeout(onTimeout, solveTimeoutMs) : null
-    pending.set(id, { resolve: (res) => resolve(extract(res)), reject, timer })
-    w.postMessage(buildMsg(id))
+    pending.set(id, {
+      resolve: (res) => {
+        try {
+          resolve(extract(res))
+        } catch (e) {
+          reject(e)
+        }
+      },
+      reject,
+      timer,
+    })
   })
 }
 
@@ -241,4 +265,9 @@ export function setSolverWorkerForTest(
 /** @internal test-only: override the watchdog ceiling (ms). */
 export function setSolverTimeoutForTest(ms: number): void {
   solveTimeoutMs = ms
+}
+
+/** @internal test-only: number of in-flight (unsettled) requests. */
+export function getPendingCount(): number {
+  return pending.size
 }

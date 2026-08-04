@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   solveViaWorker, exportViaWorker, exportAssemblyViaWorker,
-  setSolverWorkerForTest, setSolverTimeoutForTest,
+  setSolverWorkerForTest, setSolverTimeoutForTest, getPendingCount,
   type SolverWorkerLike,
 } from './solverClient'
 import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
@@ -15,8 +15,10 @@ class FakeWorker implements SolverWorkerLike {
   onerror: ((e: unknown) => void) | null = null
   posted: WorkerRequest[] = []
   terminated = false
+  failOnPost = false
 
   postMessage(msg: WorkerRequest): void {
+    if (this.failOnPost) throw new Error('DataCloneError: the object could not be cloned')
     this.posted.push(msg)
   }
   terminate(): void {
@@ -228,5 +230,40 @@ describe('solveViaWorker', () => {
     expect(created).toHaveLength(2)
     created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
     await expect(p2).resolves.not.toBeNull()
+  })
+
+  describe('postMessage throw guard', () => {
+    it('rejects (not hangs) when postMessage throws, leaves pending empty, and the next solve still works', async () => {
+      // Wire the worker first (the factory assigns `fake` lazily on first use),
+      // then arm the throw.
+      const warmup = solveViaWorker({ id: 'warm' })
+      fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await warmup
+      fake.failOnPost = true
+      // A non-cloneable spec (or a worker that died mid-post) makes postMessage
+      // throw; the promise must reject rather than hang, and no entry may leak.
+      await expect(solveViaWorker({ id: 'd' })).rejects.toThrow('DataCloneError')
+      expect(getPendingCount()).toBe(0)
+      fake.failOnPost = false
+      const p = solveViaWorker({ id: 'e' })
+      fake.reply({ id: fake.posted[1].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await expect(p).resolves.not.toBeNull()
+    })
+
+    it('regression: the normal reply path still resolves exactly once', async () => {
+      const p = solveViaWorker({ id: 'd' })
+      fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: { r: 1 }, bodies: {} } })
+      await expect(p).resolves.toEqual({
+        solve_ms: 1, result: { r: 1 }, bodies: {},
+        _build_state: { feature_order: [], checkpoints: {} },
+      })
+      expect(getPendingCount()).toBe(0)
+      // A duplicate reply for the settled id is a no-op (the entry is gone), and
+      // a fresh solve still round-trips on the same worker.
+      fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 9, result: {}, bodies: {} } })
+      const p2 = solveViaWorker({ id: 'f' })
+      fake.reply({ id: fake.posted[1].id, ok: true, payload: { solve_ms: 2, result: { r: 2 }, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
   })
 })

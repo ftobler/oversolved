@@ -150,9 +150,19 @@ export function solveAssemblyViaWorker(
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<AssemblySolveOkResponse | null>((resolve, reject) => {
-    pending.set(id, { resolve, reject })
     const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', assemblyId, parts, revs, mates }
-    w.postMessage(msg)
+    // Post before registering the pending entry: a throw here (a non-cloneable
+    // payload, or a worker that died between ensureWorker and the post) must
+    // reject the promise rather than leak an entry that can never settle. The
+    // reply cannot arrive before the set below anyway - onmessage is a
+    // macrotask and this code runs without yielding.
+    try {
+      w.postMessage(msg)
+    } catch (e) {
+      reject(e)
+      return
+    }
+    pending.set(id, { resolve, reject })
   })
 }
 
@@ -171,4 +181,9 @@ export function setAnchorSolverWorkerForTest(
 /** @internal test-only: get the current relay handlers (for test assertions). */
 export function getRelayHandlers(): RelayHandlers | null {
   return relayHandlers
+}
+
+/** @internal test-only: number of in-flight (unsettled) requests. */
+export function getPendingCount(): number {
+  return pending.size
 }
