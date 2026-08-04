@@ -2,6 +2,7 @@ import { CONSTRAINTS, ENTITIES } from '@/registry'
 import type { ConstraintDef } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
+import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
 export interface ShowMessagePayload {
@@ -49,6 +50,9 @@ export function buildCommandEntries(
     { name: 'delete_selected',       fn: () => { getState().deleteSelected(); handleDeleteSelectedFeatures() } },
     { name: 'toggle_sketch_plane_visibility', fn: handleToggleSketchPlaneVisibility },
     { name: 'toggle_plane_visibility',        fn: handleTogglePlaneVisibility },
+    // The store spells select mode `activeTool: null`, so this disarms rather than
+    // arming anything. The registry's `select` tool still exists and click
+    // dispatch treats null and 'select' alike; it is simply never armed from here.
     { name: 'set_tool_select',       fn: () => getState().setActiveTool(null) },
     { name: 'set_tool_drag',         fn: () => getState().setActiveTool('drag') },
     // Drawing-entity tools are derived from the registry so a newly registered
@@ -79,14 +83,17 @@ export function buildCommandEntries(
       fn: constraintCommandFn(c, getState, showMessage),
     })),
     { name: 'cancel_draw', fn: () => {
+        // Escape is shared. Every modal on the Dialog shell and the sketch value
+        // dialog bind their own window listener, so both they and this command
+        // see the same keystroke: without standing down, dismissing a message box
+        // would also throw away the draw and the armed tool behind it. Each
+        // dialog closes itself, so Escape still does exactly one thing.
+        if (modalOwnsEscape() || getState().pendingDialog !== null) return
         getState().clearDraw()
         // Pick first, tool second: on a desynced stack with 'pick' on top the
         // tool's deactivate hook would otherwise pop the pick's entry.
         getState().setActivePickField(null)
         getState().setActiveTool(null)
-    }},
-    { name: 'cancel_pick', fn: () => {
-      getState().setActivePickField(null)
     }},
     { name: 'set_tool_mirror', fn: () => {
       showMessage({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })

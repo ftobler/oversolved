@@ -911,7 +911,7 @@ export default function Part() {
         if (feature.plane) {
           setMode('sketch')
         } else if (editingFeatureId === fid) {
-          // The pick was abandoned (Escape/cancel_pick, or the chip toggled
+          // The pick was abandoned (Escape/cancel_draw, or the chip toggled
           // off) before a plane landed. Nothing else resolves this session,
           // so close it here rather than stranding editingFeatureId with only
           // the feature tree's own OK/Cancel left to escape it.

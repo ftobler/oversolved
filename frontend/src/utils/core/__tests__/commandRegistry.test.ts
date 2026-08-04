@@ -395,17 +395,33 @@ describe('tool commands via store', () => {
   })
 
   it('constraint shortcuts take precedence over core keybindings with same key', () => {
-    // 'p' is in CORE_KEYBINDINGS for toggle_sketch_plane_visibility
-    // but also in CONSTRAINT_SHORTCUTS for apply_parallel
-    // KEYMAP should have constraint shortcut win
-    expect(KEYMAP['p']).toBe('apply_parallel')
+    // 'e' is in CORE_KEYBINDINGS for add_extrude and in CONSTRAINT_SHORTCUTS for
+    // apply_equal_length: the constraint wins in the merged KEYMAP, and
+    // FEATURE_KEYMAP restores add_extrude outside sketch-edit mode.
+    expect(KEYMAP['e']).toBe('apply_equal_length')
+    expect(FEATURE_KEYMAP['e']).toBe('add_extrude')
     expect(KEYMAP['y']).toBe('toggle_sketch_plane_visibility')
   })
 
-  it('apply_parallel constraint command calls applyConstraint on the store', () => {
-    registerCommand('apply_parallel', () => useSketchEditorStore.getState().applyConstraint('parallel'))
-    // applyConstraint returns early without selection, so just verify no throw
-    expect(() => executeCommand('apply_parallel')).not.toThrow()
+  it('parallel has no shortcut, so no key resolves to apply_parallel', () => {
+    // The 'p' mnemonic belongs to plane visibility; advertising it for parallel
+    // put an unreachable key in the tooltip and the Registry page.
+    expect(CONSTRAINT_SHORTCUTS.has('p')).toBe(false)
+    expect(KEYMAP['p']).toBe('toggle_plane_visibility')
+    expect(Object.values(KEYMAP)).not.toContain('apply_parallel')
+  })
+
+  it('p resolves to toggle_plane_visibility both inside and outside sketch edit', () => {
+    const fn = vi.fn()
+    registerCommand('toggle_plane_visibility', fn)
+
+    useSketchEditorStore.getState().setActiveFeatureId(null)
+    dispatchKey(fakeKey('p'))
+    useSketchEditorStore.getState().setActiveFeatureId('feat-1')
+    dispatchKey(fakeKey('p'))
+    useSketchEditorStore.getState().setActiveFeatureId(null)
+
+    expect(fn).toHaveBeenCalledTimes(2)
   })
 
   it('entity shortcut keys in KEYMAP map to set_tool_* commands', () => {

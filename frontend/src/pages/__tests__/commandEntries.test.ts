@@ -13,7 +13,6 @@ const TOOLBAR_ONLY_CONSTRAINT_COMMANDS = CONSTRAINTS
   .map(c => `apply_${c.kind}`)
 
 const PROGRAMMATIC_ONLY = new Set([
-  'cancel_pick',
   'set_tool_select',
   'set_tool_drag',
   'set_tool_mirror',

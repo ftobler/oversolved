@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { acquireModalEscape } from '@/utils/core/modalEscape'
 
 interface DialogProps {
   isOpen: boolean
@@ -40,6 +41,14 @@ export default function Dialog({
   // recalled, so a close would only desync the caller's state. The owner still
   // has to guard its own handlers, since a stale click can land mid-flight.
   const canClose = isOpen && !busy
+
+  // Claiming Escape is keyed on `isOpen`, not `canClose`: a busy dialog refuses
+  // to close, but it is still the thing on screen, so the global Escape command
+  // must not reach past it and cancel whatever raised the dialog.
+  useEffect(() => {
+    if (!isOpen) return
+    return acquireModalEscape()
+  }, [isOpen])
 
   useEffect(() => {
     if (!canClose) return

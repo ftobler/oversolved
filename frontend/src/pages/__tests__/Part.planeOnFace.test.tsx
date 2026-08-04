@@ -123,7 +123,7 @@ describe('plane-on-face and the nested edit session guard', () => {
     })
 
     // Abandon the pick: click the pick-chip itself, the same toggle-off a
-    // user drives via Escape (cancel_pick) or re-clicking the chip.
+    // user drives via Escape (cancel_draw) or re-clicking the chip.
     const chip = document.querySelector('.feature-pick-chip')
     expect(chip).not.toBeNull()
     await act(async () => { fireEvent.click(chip!) })

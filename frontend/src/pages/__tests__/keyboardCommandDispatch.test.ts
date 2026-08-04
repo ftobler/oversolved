@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   KEYMAP,
   SKETCH_KEYMAP,
+  FEATURE_KEYMAP,
   registerCommand,
   executeCommand,
   clearAllHandlers,
@@ -17,8 +18,15 @@ function fakeKey(key: string, extra: Record<string, boolean> = {}): KeyboardEven
 }
 
 describe('keyboard command dispatch', () => {
-  it('p key maps to apply_parallel in KEYMAP', () => {
-    expect(KEYMAP['p']).toBe('apply_parallel')
+  it('p key maps to toggle_plane_visibility in KEYMAP', () => {
+    expect(KEYMAP['p']).toBe('toggle_plane_visibility')
+  })
+
+  it('no key dispatches apply_parallel: it is toolbar-only', () => {
+    const allMaps = [KEYMAP, SKETCH_KEYMAP, FEATURE_KEYMAP]
+    for (const map of allMaps) {
+      expect(Object.values(map)).not.toContain('apply_parallel')
+    }
   })
 
   it('y key maps to toggle_sketch_plane_visibility in KEYMAP', () => {
@@ -60,8 +68,8 @@ describe('keyboard command dispatch', () => {
     expect(handler).toHaveBeenCalledOnce()
   })
 
-  it('p key maps to toggle_plane_visibility in SKETCH_KEYMAP', () => {
-    expect(SKETCH_KEYMAP['p']).toBe('toggle_plane_visibility')
+  it('SKETCH_KEYMAP holds no p override: the core binding already covers both modes', () => {
+    expect(SKETCH_KEYMAP['p']).toBeUndefined()
   })
 
   it('p key dispatches toggle_plane_visibility in sketch mode', () => {

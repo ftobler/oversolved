@@ -33,6 +33,7 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'shift+m',      command: 'set_tool_mirror',     label: 'Mirror tool',          description: 'Mirror selected entities across a line' },
   { key: 'y',            command: 'toggle_sketch_plane_visibility', label: 'Toggle sketches/planes', description: 'Hide or show all sketch and plane features' },
   { key: 'e',            command: 'add_extrude',          label: 'Add Extrude',         description: 'Add a new extrude feature (feature mode only)' },
+  { key: 'p',            command: 'toggle_plane_visibility', label: 'Toggle planes',    description: 'Hide or show all plane features' },
   { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel active draw or return to select tool' },
 ]
 
@@ -50,16 +51,18 @@ export const KEYMAP: Record<string, string> = {
 
 // Keys that are only active outside of sketch-edit mode.
 // These override KEYMAP entries when no sketch is being edited.
+// `e` is the only genuine mode split: in a sketch it applies the equal
+// constraint, outside one it adds an extrude.
 export const FEATURE_KEYMAP: Record<string, string> = {
-  'p': 'toggle_plane_visibility',
   'e': 'add_extrude',
 }
 
 // Keys that are only active inside sketch-edit mode.
 // These take precedence over KEYMAP entries when a sketch is being edited.
-export const SKETCH_KEYMAP: Record<string, string> = {
-  'p': 'toggle_plane_visibility',
-}
+// Currently empty: every binding that used to live here behaved the same in both
+// modes, so it belongs in CORE_KEYBINDINGS where the Registry page can see it.
+// An override here silently shadows KEYMAP, so only add one that really differs.
+export const SKETCH_KEYMAP: Record<string, string> = {}
 
 // ─── Registration ───
 

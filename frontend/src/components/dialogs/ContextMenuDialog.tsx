@@ -28,6 +28,21 @@ export default function ContextMenuDialog() {
     }
   }, [dialog])
 
+  // Escape lives on the window rather than on the input: cancel_draw stands down
+  // while this dialog is up (see commandEntries), so an input-only handler would
+  // leave Escape completely inert once focus moved to one of the buttons.
+  useEffect(() => {
+    if (!dialog) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      dialog.onCancel?.()
+      closeDialog()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [dialog, closeDialog])
+
   if (!dialog) return null
 
   const [x, y] = dialog.position
@@ -45,12 +60,10 @@ export default function ContextMenuDialog() {
     closeDialog()
   }
 
+  // Enter only: Escape is handled on the window above so it works from any focus.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleConfirm()
-    } else if (e.key === 'Escape') {
-      dialog.onCancel?.()
-      closeDialog()
     }
   }
 

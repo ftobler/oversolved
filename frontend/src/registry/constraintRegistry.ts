@@ -187,7 +187,11 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     renderKind: 'symbol_parallel',
     symbolIcon: 'constraint-parallel',
     toolbarIcon: 'constraint-parallel',
-    shortcut: 'p',
+    // No shortcut on purpose: `p` is toggle_plane_visibility. Do not put it back.
+    // CONSTRAINT_SHORTCUTS is spread after CORE_KEYMAP when KEYMAP is built, so a
+    // `shortcut: 'p'` here would not be harmlessly ignored, it would take the key
+    // away from plane visibility. Parallel stays toolbar-only until a free
+    // mnemonic is picked for it.
     showInToolbar: true,
     entityKindGroups: [['line']],  // parallel is defined for line directions only
   },

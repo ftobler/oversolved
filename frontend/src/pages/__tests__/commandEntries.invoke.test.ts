@@ -1,14 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { buildCommandEntries, constraintCommandFn } from '@/pages/commandEntries'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
 import type { ConstraintDef } from '@/registry'
+import { initializeTools } from '@/tools'
+import { acquireModalEscape, modalOwnsEscape, resetModalEscape } from '@/utils/core/modalEscape'
 
 // The structural suites build the entry list but never invoke the store-driven
-// command bodies (cancel_draw / cancel_pick / set_tool_mirror / apply_offset).
-// Those `fn` closures were uncovered. This drives each one against the real
-// store with the actions spied, so a renamed store action or a dropped step in
-// a multi-call body (e.g. cancel_draw forgetting to clear the pick field) fails.
+// command bodies (cancel_draw / set_tool_mirror / apply_offset). Those `fn`
+// closures were uncovered. This drives each one against the real store with the
+// actions spied, so a renamed store action or a dropped step in a multi-call
+// body (e.g. cancel_draw forgetting to clear the pick field) fails.
 
 const noop = () => {}
 
@@ -20,6 +22,13 @@ function entry(name: string) {
 }
 
 describe('command callbacks that drive the sketch editor store', () => {
+  // cancel_draw stands down under a dialog, so these only mean anything with no
+  // dialog claiming Escape. Do not rely on another suite's teardown for that.
+  beforeEach(() => {
+    resetModalEscape()
+    useSketchEditorStore.setState({ pendingDialog: null })
+  })
+
   afterEach(() => { vi.restoreAllMocks() })
 
   it('cancel_draw clears the draw, the active tool, and the pick field', () => {
@@ -39,13 +48,9 @@ describe('command callbacks that drive the sketch editor store', () => {
       .toBeLessThan(setActiveTool.mock.invocationCallOrder[0])
   })
 
-  it('cancel_pick clears only the pick field', () => {
-    const store = useSketchEditorStore.getState()
-    const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
-
-    entry('cancel_pick').fn()
-
-    expect(setActivePickField).toHaveBeenCalledWith(null)
+  it('cancel_pick is gone: Escape reaches the pick field through cancel_draw', () => {
+    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
+    expect(entries.find(e => e.name === 'cancel_pick')).toBeUndefined()
   })
 
   it('set_tool_mirror surfaces a not-implemented notice (showMessage) and does not switch tools', () => {
@@ -115,6 +120,107 @@ describe('command callbacks that drive the sketch editor store', () => {
     expect(showMessage).toHaveBeenCalledOnce()
     expect(showMessage).toHaveBeenCalledWith({ title: 'Not Implemented', message: 'Constraint "Fake Thing" is not yet implemented.', variant: 'info' })
     expect(applyConstraint).not.toHaveBeenCalled()
+  })
+})
+
+// Escape has more than one owner: every modal on the Dialog shell binds its own
+// window listener, the sketch value dialog binds one too, and the global
+// dispatchKey listener routes the same keystroke to cancel_draw. Without a guard
+// both fire and dismissing a dialog also throws away the armed tool behind it.
+describe('cancel_draw stands down while a dialog is open', () => {
+  // The tool lifecycle hooks maintain the mode stack, and the store validates
+  // the stack against activeTool, so the registry has to be live here.
+  beforeAll(() => { initializeTools() })
+
+  const openDialog: DialogState = {
+    position: [10, 20],
+    label: 'Length',
+    onConfirm: () => {},
+  }
+
+  beforeEach(() => { resetModalEscape() })
+
+  afterEach(() => {
+    resetModalEscape()
+    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchEditorStore.getState().setActiveTool(null)
+    vi.restoreAllMocks()
+  })
+
+  it('leaves the store untouched when pendingDialog is set', () => {
+    useSketchEditorStore.setState({ pendingDialog: openDialog })
+    const store = useSketchEditorStore.getState()
+    const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+    const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
+
+    entry('cancel_draw').fn()
+
+    expect(clearDraw).not.toHaveBeenCalled()
+    expect(setActiveTool).not.toHaveBeenCalled()
+    expect(setActivePickField).not.toHaveBeenCalled()
+  })
+
+  it('keeps the armed tool armed with a dialog open, and disarms it once closed', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    useSketchEditorStore.setState({ pendingDialog: openDialog })
+
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+
+    useSketchEditorStore.setState({ pendingDialog: null })
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBeNull()
+    expect(useSketchEditorStore.getState().modeStack).toEqual([])
+  })
+
+  it('still clears an armed pick field once the dialog is closed', () => {
+    useSketchEditorStore.getState().setActivePickField({ featureId: 'sketch1', field: 'plane' })
+    useSketchEditorStore.setState({ pendingDialog: openDialog })
+
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+
+    useSketchEditorStore.setState({ pendingDialog: null })
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activePickField).toBeNull()
+    expect(useSketchEditorStore.getState().modeStack).toEqual([])
+  })
+
+  it('a modal claim alone stands cancel_draw down, with pendingDialog null', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    const release = acquireModalEscape()
+
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+
+    release()
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBeNull()
+  })
+
+  it('an outer modal keeps the claim when an inner one closes', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    const releaseOuter = acquireModalEscape()
+    const releaseInner = acquireModalEscape()
+
+    releaseInner()
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+
+    releaseOuter()
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBeNull()
+  })
+
+  it('a double release cannot hand Escape back early', () => {
+    const releaseA = acquireModalEscape()
+    const releaseB = acquireModalEscape()
+    releaseA()
+    releaseA()
+    expect(modalOwnsEscape()).toBe(true)
+    releaseB()
+    expect(modalOwnsEscape()).toBe(false)
   })
 })
 

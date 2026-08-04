@@ -12,7 +12,7 @@ Maps string command names to handler functions registered at runtime.
 
 Core API: `registerCommand(name, fn)`, `unregisterCommand(name)`, `executeCommand(name)`, `buildKeyString(e)`, `dispatchKey(e)`.
 
-`dispatchKey` looks up the event in `KEYMAP` (assembled from `CORE_KEYBINDINGS`, `CONSTRAINT_SHORTCUTS`, `ENTITY_SHORTCUTS`). `FEATURE_KEYMAP` has keys only active outside sketch-edit mode. Keyboard events from INPUT/TEXTAREA elements are skipped.
+`dispatchKey` looks up the event in `KEYMAP` (assembled from `CORE_KEYBINDINGS`, `CONSTRAINT_SHORTCUTS`, `ENTITY_SHORTCUTS`). `FEATURE_KEYMAP` (outside sketch-edit) and `SKETCH_KEYMAP` (inside) hold only genuine mode splits and shadow `KEYMAP`, so a key that means the same thing in both modes belongs in `CORE_KEYBINDINGS`. Keyboard events from INPUT/TEXTAREA elements are skipped.
 
 ### Constraint Registry (`constraintRegistry.ts`)
 
@@ -90,13 +90,15 @@ Main page: uses `usePartDoc()`, builds command entries via `buildCommandEntries(
 
 - **`set_tool_*`** — activate tools (dispatch via shortcuts from `ENTITY_SHORTCUTS` / `CORE_KEYBINDINGS`)
 - **`apply_*`** — apply constraints (dispatch via `CONSTRAINT_SHORTCUTS`)
-- **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `toggle_sketch_plane_visibility`, `toggle_plane_visibility`, `cancel_draw`, `cancel_pick`, `apply_offset`, `add_extrude`, `add_hole`, `add_transform`
+- **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `toggle_sketch_plane_visibility`, `toggle_plane_visibility`, `cancel_draw`, `apply_offset`, `add_extrude`, `add_hole`, `add_transform`
+
+`cancel_draw` is the sketch editor's Escape handler: it clears the draw, the pick field and the tool. It is not the only Escape listener on `window` (`Dialog.tsx`, `ContextMenuDialog.tsx`, `useRubberBandSelect.ts` and `FeatureTree.tsx` each bind their own), so it stands down whenever a dialog is on screen: any modal built on the `Dialog` shell claims Escape through `utils/core/modalEscape.ts` while it is open, and the sketch value dialog is detected via `pendingDialog`. Each of those closes itself, so one Escape does exactly one thing. Coordinate through that claim, never through listener registration order.
 
 ## Keybindings
 
-Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `q` (construction toggle), `y` (toggle plane visibility), `e` (add extrude), `escape` (cancel).
+Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude), `p` (toggle plane visibility), `escape` (cancel).
 
-Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `p` (parallel), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed).
+Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed). Parallel is toolbar-only: `p` is owned by plane visibility.
 
 Entity shortcuts: `l` (line), `o` (circle), `a` (arc), `s` (spline), `j` (project).
 
