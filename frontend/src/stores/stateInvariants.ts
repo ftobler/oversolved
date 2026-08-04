@@ -73,6 +73,10 @@ export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain
 export function validateSelectionState(state: SelectionInvariantState): void {
   const { normalSelection, selectedPicks, chipOwnedSelection, selectionDomain } = state
 
+  // A chip-owned id outside normalSelection is how a re-click toggle-off is
+  // signalled, but it is only ever legal in the gap before usePickField's effect
+  // consumes it (that hook fails loud if no consumer can). Anything that reaches
+  // a validation gate in this state has stranded the signal.
   for (const v of chipOwnedSelection) {
     if (!normalSelection.has(v)) {
       failLoud(
@@ -114,31 +118,10 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
   const { normalSelection, selectedPicks, chipOwnedSelection, selectionDomain } = state
   const patches: Partial<SelectionInvariantState> = {}
 
-  const repairedChip = new Set(chipOwnedSelection)
-  for (const v of chipOwnedSelection) {
-    if (!normalSelection.has(v)) {
-      repairedChip.delete(v)
-    }
-  }
-  if (repairedChip.size !== chipOwnedSelection.size) {
-    patches.chipOwnedSelection = repairedChip
-  }
-
-  const repairedPicks = new Map(selectedPicks)
-  for (const [q, claims] of selectedPicks.entries()) {
-    if (!normalSelection.has(q) || claims.size === 0) {
-      repairedPicks.delete(q)
-    }
-  }
-  if (repairedPicks.size !== selectedPicks.size) {
-    patches.selectedPicks = repairedPicks
-  }
-
-  const expectedDomain = deriveSelectionDomain(normalSelection)
-  if (selectionDomain !== expectedDomain) {
-    patches.selectionDomain = expectedDomain
-  }
-
+  // Drop unrecognized ids first. Every repair below keys off the surviving
+  // selection, and deriving them from the pre-filter set would emit a patch that
+  // still fails validation -- the repair must be a fixpoint.
+  let live: ReadonlySet<string> = normalSelection
   if (devOnly || testMode) {
     const filtered = new Set<string>()
     for (const id of normalSelection) {
@@ -148,7 +131,33 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
     }
     if (filtered.size !== normalSelection.size) {
       patches.normalSelection = filtered
+      live = filtered
     }
+  }
+
+  const repairedChip = new Set(chipOwnedSelection)
+  for (const v of chipOwnedSelection) {
+    if (!live.has(v)) {
+      repairedChip.delete(v)
+    }
+  }
+  if (repairedChip.size !== chipOwnedSelection.size) {
+    patches.chipOwnedSelection = repairedChip
+  }
+
+  const repairedPicks = new Map(selectedPicks)
+  for (const [q, claims] of selectedPicks.entries()) {
+    if (!live.has(q) || claims.size === 0) {
+      repairedPicks.delete(q)
+    }
+  }
+  if (repairedPicks.size !== selectedPicks.size) {
+    patches.selectedPicks = repairedPicks
+  }
+
+  const expectedDomain = deriveSelectionDomain(live)
+  if (selectionDomain !== expectedDomain) {
+    patches.selectionDomain = expectedDomain
   }
 
   return Object.keys(patches).length > 0 ? patches : null

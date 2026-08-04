@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { planeLabel } from '@/components/Geometry3D/utils'
 import { buildSurfaceShapes, surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
 import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE } from '@/utils/core/partColors'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -44,25 +43,6 @@ describe('store toggleNormalSelection with raw surface queries', () => {
     useSketchEditorStore.getState().toggleNormalSelection('?3;@sketch1abc')
     useSketchEditorStore.getState().toggleNormalSelection('?3;@sketch1abc')
     expect(useSketchEditorStore.getState().normalSelection.has('?3;@sketch1abc')).toBe(false)
-  })
-})
-
-// 4g: planeLabel helper
-describe('planeLabel', () => {
-  it('returns Front for @builtin_plane_front', () => {
-    expect(planeLabel('@builtin_plane_front')).toBe('Front')
-  })
-  it('returns Top for @builtin_plane_top', () => {
-    expect(planeLabel('@builtin_plane_top')).toBe('Top')
-  })
-  it('returns Right for @builtin_plane_right', () => {
-    expect(planeLabel('@builtin_plane_right')).toBe('Right')
-  })
-  it('returns Derived face for arbitrary query', () => {
-    expect(planeLabel('?3;@sketch0abc:face')).toBe('Derived face')
-  })
-  it('returns None for undefined', () => {
-    expect(planeLabel(undefined)).toBe('None')
   })
 })
 

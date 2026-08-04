@@ -105,6 +105,20 @@ function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<Sketc
   }
 }
 
+// A pickKey claim only means anything while its query is still selected. Chip
+// diffs evict queries wholesale, so the claims they leave behind must go with
+// them or they resurrect as ghost highlights the next time the query is picked.
+// Returns the original map when nothing was pruned so subscribers stay put.
+function prunePickClaims(picks: Map<string, Set<string>>, live: ReadonlySet<string>): Map<string, Set<string>> {
+  let pruned: Map<string, Set<string>> | null = null
+  for (const q of picks.keys()) {
+    if (live.has(q)) continue
+    if (pruned === null) pruned = new Map(picks)
+    pruned.delete(q)
+  }
+  return pruned ?? picks
+}
+
 export const getEffectiveTool = (activeTool: ActiveTool): NonNullable<ActiveTool> => activeTool ?? 'drag'
 
 export interface DialogState {
@@ -638,6 +652,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           updates.modeStack = state.modeStack.slice(0, -1)
         }
       }
+      // The domain is a pure function of normalSelection, so whichever branch
+      // above rewrote it owes a fresh derivation. Doing it once here keeps the
+      // two branches from each having to remember.
+      if (updates.normalSelection !== undefined) {
+        updates.selectionDomain = deriveSelectionDomain(updates.normalSelection as Set<string>)
+      }
       return updates
     })
 
@@ -1077,8 +1097,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   syncChipSelection: (values) => {
     const s = get()
     const nextOwned = new Set(values)
-    // Bail if the set hasn't changed to avoid infinite re-render loops
-    // when callers pass a fresh array reference each render.
+    // Bail if the set hasn't changed to avoid infinite re-render loops when
+    // callers pass a fresh array reference each render. This deliberately
+    // compares only against chipOwnedSelection: a chip-owned id missing from
+    // normalSelection is the re-click toggle-off signal, and the chip's sync
+    // effect runs before its host's consumer effect, so healing it here would
+    // erase the signal before usePickField ever sees it.
     if (s.chipOwnedSelection.size === nextOwned.size
         && [...s.chipOwnedSelection].every(v => nextOwned.has(v))) {
       return
@@ -1088,7 +1112,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       if (!nextOwned.has(v)) next.delete(v)
     }
     for (const v of nextOwned) next.add(v)
-    set({ normalSelection: next, chipOwnedSelection: nextOwned })
+    set({
+      normalSelection: next,
+      chipOwnedSelection: nextOwned,
+      selectedPicks: prunePickClaims(s.selectedPicks, next),
+      selectionDomain: deriveSelectionDomain(next),
+    })
   },
 
   clearChipSelection: () => {
@@ -1096,7 +1125,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     if (s.chipOwnedSelection.size === 0) return
     const next = new Set(s.normalSelection)
     for (const v of s.chipOwnedSelection) next.delete(v)
-    set({ normalSelection: next, chipOwnedSelection: new Set() })
+    set({
+      normalSelection: next,
+      chipOwnedSelection: new Set(),
+      selectedPicks: prunePickClaims(s.selectedPicks, next),
+      selectionDomain: deriveSelectionDomain(next),
+    })
   },
 
 }))

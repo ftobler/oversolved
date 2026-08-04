@@ -22,6 +22,12 @@ describe('queryLabel', () => {
     it('returns Right for @builtin_plane_right', () => {
       expect(queryLabel('@builtin_plane_right', features)).toBe('Right')
     })
+
+    it('returns Origin for @builtin_origin', () => {
+      // The origin reaches chips through the plane editors' point fields, where
+      // it would otherwise fall through to the raw id.
+      expect(queryLabel('@builtin_origin', features)).toBe('Origin')
+    })
   })
 
   describe('ancestry queries', () => {

@@ -121,13 +121,14 @@ describe('usePickField — consumer (Layer 2)', () => {
 
   it('does not fire onPick for items that are already chip-owned', () => {
     const onPick = vi.fn()
+    const onUnpick = vi.fn()
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'edges' })
       useSketchEditorStore.getState().syncChipSelection(['?body_ex1/edge/0'])
     })
-    mountPickField('sk1', 'edges', onPick)
+    mountPickField('sk1', 'edges', onPick, { onUnpick })
 
-    // Toggle adds the same item that is already chip-owned → should not fire
+    // Toggling an already chip-owned item is a removal, never a new pick.
     act(() => {
       useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/edge/0')
     })
@@ -168,7 +169,9 @@ describe('usePickField — re-click toggles off (unpick)', () => {
     expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
   })
 
-  it('does not fire onUnpick when no field option is supplied', () => {
+  it('fails loud when a chip-owned drop has no onUnpick handler', () => {
+    // The drop is a transient invariant violation only this hook can consume, so
+    // a consumer that cannot is a wiring bug, not a silent no-op.
     const onPick = vi.fn()
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'edges', multi: true })
@@ -176,12 +179,16 @@ describe('usePickField — re-click toggles off (unpick)', () => {
     })
     mountPickField('sk1', 'edges', onPick, { multi: true })
 
-    act(() => {
-      useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/edge/0')
-    })
+    expect(() => {
+      act(() => {
+        useSketchEditorStore.getState().toggleNormalSelection('?body_ex1/edge/0')
+      })
+    }).toThrow('has no onUnpick handler')
     expect(onPick).not.toHaveBeenCalled()
-    // Without an onUnpick handler the chip-owned mirror is left untouched.
-    expect(useSketchEditorStore.getState().chipOwnedSelection.has('?body_ex1/edge/0')).toBe(true)
+    // The recovery runs before the report, so even the throwing mode leaves the
+    // store consistent instead of bleeding an orphan into the next test.
+    expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })
 })
 

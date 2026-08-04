@@ -24,6 +24,7 @@ export function queryLabel(
   if (query === '@builtin_plane_front') return 'Front'
   if (query === '@builtin_plane_top') return 'Top'
   if (query === '@builtin_plane_right') return 'Right'
+  if (query === '@builtin_origin') return 'Origin'
 
   try {
     const parsed = parseQuery(query)

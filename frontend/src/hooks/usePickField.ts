@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { failLoud } from '@/stores/stateInvariants'
 import { isPickAllowed } from '@/utils/query/pickOrder'
 
 /**
@@ -16,7 +17,20 @@ import { isPickAllowed } from '@/utils/query/pickOrder'
  * Re-clicking an already-picked element toggles it out of `normalSelection`
  * (the viewport click path is symmetric). A chip-owned id that has dropped out
  * of `normalSelection` is that toggle-off, so we call `onUnpick(selectionId)`
- * to let the editor dispatch the matching remove mutation.
+ * to let the editor dispatch the matching remove mutation. Every consumer owes
+ * an `onUnpick`: the drop breaks the "chipOwnedSelection subset of
+ * normalSelection" invariant until this hook consumes it, so a consumer without
+ * a handler is a wiring bug and fails loud rather than silently no-opping.
+ *
+ * KNOWN GAP: the toggle-off is only detectable when the chip mirrors the very
+ * string the viewport toggles. An editor that stores a REWRITTEN value (any
+ * `transform`, or `emitAbsoluteSelectionQuery`, which turns `vertex:sk1:l1:start`
+ * into `@sk1l1start`) mirrors a value no click can ever match, so a re-click
+ * takes the onPick branch instead and re-dispatches the value it already holds.
+ * Harmless but useless: a redundant mutation and a no-op undo entry. It bites
+ * sketch vertex/edge picks; plane, face and body values round-trip unchanged.
+ * Closing it means normalizing the clicked id the same way before comparing,
+ * which belongs with the transform, not here.
  *
  * `features` is the build-order stack. Passing it enables the circular-dependency
  * guard: this is the one choke point every pick chip funnels through, so the
@@ -63,9 +77,20 @@ export function usePickField(
     }
     // No new pick: a chip-owned id missing from normalSelection is a re-click
     // toggle-off, so remove it from the chip.
-    if (!onUnpick) return
     for (const id of s.chipOwnedSelection) {
       if (!s.normalSelection.has(id)) {
+        if (!onUnpick) {
+          // The drop is a transient invariant violation that only this hook can
+          // consume. A consumer without a handler leaves it stranded, so drop
+          // the mirror ourselves and then report the missing wiring. Order
+          // matters: failLoud throws in test mode, so reporting first would skip
+          // the recovery exactly where the leftover orphan bleeds into the next
+          // assertion. The chip re-syncs from its unchanged values on the next
+          // render, making this a visible no-op rather than corrupt state.
+          s.clearNormalSelection()
+          failLoud(`[usePickField] '${featureId}:${field}' dropped chip-owned '${id}' but has no onUnpick handler`)
+          return
+        }
         onUnpick(id)
         // Mirror the onPick path: empty both selection sets so the unstable
         // callback identity can't re-fire this remove before the async re-solve
@@ -74,7 +99,7 @@ export function usePickField(
         return
       }
     }
-  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId])
+  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()

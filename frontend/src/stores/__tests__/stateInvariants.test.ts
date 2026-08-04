@@ -169,16 +169,16 @@ describe('repairSelectionState', () => {
   it('drops empty claim sets from selectedPicks', () => {
     const state = {
       ...defaultSelectionState(),
-      normalSelection: new Set(['Q', 'R']),
+      normalSelection: new Set(['@body_1/edge/0', '@body_1/edge/1']),
       selectedPicks: new Map([
-        ['Q', new Set(['ex1/b0#edge#0'])],  // valid
-        ['R', new Set<string>()],  // empty claim set
+        ['@body_1/edge/0', new Set(['ex1/b0#edge#0'])],  // valid
+        ['@body_1/edge/1', new Set<string>()],  // empty claim set
       ]),
       selectionDomain: 'body_3d' as const,
     }
     const patches = repairSelectionState(state)
     expect(patches).not.toBeNull()
-    expect([...(patches!.selectedPicks as Map<string, Set<string>>).keys()]).toEqual(['Q'])
+    expect([...(patches!.selectedPicks as Map<string, Set<string>>).keys()]).toEqual(['@body_1/edge/0'])
   })
 
   it('fixes stale selectionDomain', () => {
@@ -206,6 +206,21 @@ describe('repairSelectionState', () => {
     expect(patches).not.toBeNull()
     expect(patches!.normalSelection).toBeInstanceOf(Set)
     expect([...(patches!.normalSelection as Set<string>)]).toEqual([])
+  })
+
+  it('is a fixpoint: applying the patches yields a state that validates', () => {
+    // Filtering an unrecognized entry is the one repair that shrinks
+    // normalSelection, so every other repair has to be derived from the survivors
+    // or the "repaired" state fails the very validation that requested it.
+    const state: SelectionInvariantState = {
+      normalSelection: new Set(['invalid!']),
+      selectedPicks: new Map([['invalid!', new Set(['ex1/b0#edge#0'])]]),
+      chipOwnedSelection: new Set(['invalid!']),
+      selectionDomain: 'sketch_2d' as const,
+    }
+    const patches = repairSelectionState(state)
+    expect(patches).not.toBeNull()
+    expect(() => validateSelectionState({ ...state, ...patches })).not.toThrow()
   })
 })
 

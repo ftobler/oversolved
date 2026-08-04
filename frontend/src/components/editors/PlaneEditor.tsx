@@ -2,7 +2,6 @@ import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { planeLabel } from '@/components/Geometry3D/utils'
 import { emitAbsoluteSelectionQuery } from '@/utils/query/selectionId'
 import { ExpressionInput } from './widgets/ExpressionInput'
 
@@ -30,7 +29,13 @@ export function PlaneEditor({
   usePickField(fid, pickingField ?? '', (selectionId) => {
     const value = emitAbsoluteSelectionQuery(selectionId)
     onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value })
-  }, { features })
+  }, {
+    features,
+    // A re-click toggles the picked value out of the selection; clearing the
+    // field is the matching mutation. `pickingField` is non-null whenever the
+    // hook is picking, which is the only state it calls this from.
+    onUnpick: () => onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value: '' }),
+  })
 
   const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
     const isPicking = pickingField === field
@@ -78,7 +83,7 @@ export function PlaneEditor({
         <>
           <div className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">Plane</span>
-            {pickChip('plane', 'plane', planeLabel(def.plane))}
+            {pickChip('plane', 'plane', def.plane)}
           </div>
           {numField('offset', 'Offset', 0)}
         </>
@@ -87,7 +92,7 @@ export function PlaneEditor({
         <>
           <div className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">Plane</span>
-            {pickChip('plane', 'plane', planeLabel(def.plane))}
+            {pickChip('plane', 'plane', def.plane)}
           </div>
           <div className="feature-field-row feature-field-row--stacked">
             <span className="feature-field-label">Point</span>
