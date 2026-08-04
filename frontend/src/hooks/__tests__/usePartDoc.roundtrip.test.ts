@@ -11,6 +11,7 @@ import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 
 const docRef: { current: PartDoc | null } = { current: null }
@@ -206,6 +207,25 @@ const deleteBodyDoc = (): PartDoc => ({
   ],
 } as unknown as PartDoc)
 
+// A transform authored before the pick was pluralized: singular `body`, no
+// `bodies`. add_transform_body on it is the direct crash reproducer (it threw
+// at featureDefs.ts:470 pre-fix); remove needs the migrated form because
+// splicing the healed empty list is a no-op no undo entry can represent.
+const legacyTransformDoc = (): PartDoc => ({
+  oversolved: 1,
+  kind: 'part',
+  features: [{
+    id: 't1', kind: 'transform', label: 'Transform',
+    transform: { body: '@b1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
+  }],
+} as unknown as PartDoc)
+
+const migratedLegacyTransformDoc = (): PartDoc => {
+  const doc = legacyTransformDoc()
+  migrateLegacyBodyPicks(doc)
+  return doc
+}
+
 // The remove-by-index handlers need a non-empty list to splice, while the
 // plain sweepDoc/chamferDoc start empty; these feed the remove round-trips.
 const sweepPopulatedDoc = (): PartDoc => ({
@@ -321,6 +341,8 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'transform set_transform_field', makeDoc: transformDoc, mutation: { type: 'set_transform_field', featureId: 't1', field: 'scale', value: 2 } as Mutation },
   { name: 'transform add_transform_body', makeDoc: transformDoc, mutation: { type: 'add_transform_body', featureId: 't1', bodyQuery: '@b3' } as Mutation },
   { name: 'transform remove_transform_body', makeDoc: transformDoc, mutation: { type: 'remove_transform_body', featureId: 't1', index: 0 } as Mutation },
+  { name: 'transform legacy add_transform_body', makeDoc: legacyTransformDoc, mutation: { type: 'add_transform_body', featureId: 't1', bodyQuery: '@b2' } as Mutation },
+  { name: 'transform legacy remove_transform_body', makeDoc: migratedLegacyTransformDoc, mutation: { type: 'remove_transform_body', featureId: 't1', index: 0 } as Mutation },
 
   // mirror
   { name: 'mirror add_mirror', makeDoc: emptyDoc, mutation: { type: 'add_mirror', featureId: 'm1', label: 'Mirror' } as Mutation },

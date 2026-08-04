@@ -5,7 +5,7 @@ import type { PartDoc } from '@/types/cad'
 import { parseHttpError } from '@/utils/core/httpClient'
 import { backendBundle } from '@/adapters/backend'
 import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
-import { dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 
@@ -55,6 +55,10 @@ export function useDocumentState(
         // Self-heal stale documents authored before whole-entity axis constraints
         // were rejected at creation time. See dropDeadAxisConstraints.
         dropDeadAxisConstraints(parsed)
+        // Self-heal docs authored before the transform/delete_body body pick was
+        // pluralized: the singular `body` becomes a one-element `bodies` list so
+        // the plural kernel read and the list mutators see the ref.
+        migrateLegacyBodyPicks(parsed)
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)

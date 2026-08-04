@@ -10,7 +10,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { parse as parseYaml } from 'yaml'
-import type { AssemblyDoc, AssemblyFeature, NumberOrExpr } from '@/types/cad'
+import type { AssemblyDoc, AssemblyFeature, NumberOrExpr, PartDoc } from '@/types/cad'
+import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { backendBundle } from '@/adapters/backend'
 import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
@@ -115,7 +116,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // A part picked from the cloud category has no local mirror; the shared
         // resolver falls back to the cloud domain for it.
         const { data } = await loadDocumentAnyDomain(doc_id)
-        return (parseYaml(data.content) ?? {}) as Record<string, unknown>
+        const doc = (parseYaml(data.content) ?? {}) as PartDoc
+        // Same self-heal as the part load seam: a legacy singular transform
+        // `body` must reach the OCC worker as the plural `bodies` it reads.
+        migrateLegacyBodyPicks(doc)
+        return doc as unknown as Record<string, unknown>
       },
       // Stamp the doc id onto the bundle spec: the raw PartDoc YAML carries no
       // id, and solveLocally's cache-reset guard keys on spec.id. Without it,

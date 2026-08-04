@@ -2,6 +2,8 @@
 
 export { parseTarget, randomId, normalizeRefList } from './helpers'
 
+export { migrateLegacyBodyPicks } from '../yamlMigrations'
+
 export {
   applyMoveVertex,
   applyMoveEntity,

@@ -5,11 +5,24 @@ import {
   applyAddTransformBody,
   applyRemoveTransformBody,
   applySetTransformField,
+  migrateLegacyBodyPicks,
 } from '@/utils/yamlMutations'
 
 const baseDoc: PartDoc = { features: [] }
 
 const makeDoc = (): PartDoc => structuredClone(baseDoc)
+
+// A transform authored before the pick was pluralized: singular `body`, no
+// `bodies`. Reaching a mutation path with this shape used to crash on
+// sub.bodies.indexOf/splice; migration (and the mutator's ??= defense) heal it.
+const legacyDoc = (): PartDoc => ({
+  features: [{
+    id: 'xf1',
+    kind: 'transform',
+    label: 'Transform',
+    transform: { body: '@b1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
+  }],
+} as unknown as PartDoc)
 
 describe('Transform mutations', () => {
   describe('applyAddTransform', () => {
@@ -70,6 +83,45 @@ describe('Transform mutations', () => {
       applyAddTransformBody(doc, 'missing', '@body_ex1')
       applyRemoveTransformBody(doc, 'missing', 0)
       expect(doc.features).toHaveLength(0)
+    })
+
+    describe('legacy singular-body docs', () => {
+      it('migration heals the singular ref before the mutators see it', () => {
+        const doc = legacyDoc()
+        expect(migrateLegacyBodyPicks(doc)).toBe(1)
+        const sub = doc.features![0].transform!
+        expect(sub.bodies).toEqual(['@b1'])
+        expect('body' in sub).toBe(false)
+      })
+
+      it('applyAddTransformBody does not throw on an unmigrated legacy doc and appends to the healed list', () => {
+        const doc = legacyDoc()
+        expect(() => applyAddTransformBody(doc, 'xf1', '@b2')).not.toThrow()
+        const sub = doc.features![0].transform!
+        expect(sub.bodies).toEqual(['@b2'])
+      })
+
+      it('after migration, adding @b2 lands next to the healed @b1', () => {
+        const doc = legacyDoc()
+        migrateLegacyBodyPicks(doc)
+        applyAddTransformBody(doc, 'xf1', '@b2')
+        const sub = doc.features![0].transform!
+        expect(sub.bodies).toEqual(['@b1', '@b2'])
+        expect('body' in sub).toBe(false)
+      })
+
+      it('re-picking the healed ref toggles it back off', () => {
+        const doc = legacyDoc()
+        migrateLegacyBodyPicks(doc)
+        applyAddTransformBody(doc, 'xf1', '@b1')
+        expect(doc.features![0].transform!.bodies).toEqual([])
+      })
+
+      it('applyRemoveTransformBody does not throw on an unmigrated legacy doc', () => {
+        const doc = legacyDoc()
+        expect(() => applyRemoveTransformBody(doc, 'xf1', 0)).not.toThrow()
+        expect(doc.features![0].transform!.bodies).toEqual([])
+      })
     })
   })
 

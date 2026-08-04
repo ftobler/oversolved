@@ -411,6 +411,9 @@ export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery
     warn(`applyAddDeleteBodyRef: feature ${featureId} has no delete_body`)
     return
   }
+  // A legacy doc reaching a mutation path unmigrated has no `bodies`; heal it
+  // so indexOf/splice cannot throw and take the UI down with them.
+  sub.bodies ??= []
   const idx = sub.bodies.indexOf(bodyQuery)
   if (idx >= 0) {
     sub.bodies.splice(idx, 1)
@@ -425,6 +428,8 @@ export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index:
     warn(`applyRemoveDeleteBodyRef: feature ${featureId} has no delete_body`)
     return
   }
+  // Same legacy-doc healing as applyAddDeleteBodyRef.
+  sub.bodies ??= []
   sub.bodies.splice(index, 1)
 }
 
@@ -467,6 +472,9 @@ export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery
     warn(`applyAddTransformBody: feature ${featureId} has no transform`)
     return
   }
+  // A legacy doc reaching a mutation path unmigrated has no `bodies`; heal it
+  // so indexOf/splice cannot throw and take the UI down with them.
+  sub.bodies ??= []
   const idx = sub.bodies.indexOf(bodyQuery)
   if (idx >= 0) {
     sub.bodies.splice(idx, 1)
@@ -481,6 +489,8 @@ export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index:
     warn(`applyRemoveTransformBody: feature ${featureId} has no transform`)
     return
   }
+  // Same legacy-doc healing as applyAddTransformBody.
+  sub.bodies ??= []
   sub.bodies.splice(index, 1)
 }
 

@@ -87,6 +87,26 @@ describe('TransformEditor (via FeatureEditor)', () => {
     expect(onMutation).toHaveBeenCalledWith({ type: 'remove_transform_body', featureId: 'tr1', index: 0 })
   })
 
+  it('renders a legacy singular-body feature and picking still emits add_transform_body', () => {
+    // A pre-pluralization doc carries `transform: { body: ... }` with no
+    // `bodies`. The chip renders empty (the missing list reads as []), the
+    // editor renders without crashing, and a pick still arms + emits the add.
+    const onMutation = vi.fn()
+    const legacy = {
+      id: 'tr1', kind: 'transform', label: 'Transform',
+      transform: { body: '@body_ex1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
+    } as unknown as PartFeature
+    render(<FeatureEditor feature={legacy} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
+    const chips = [...document.querySelectorAll('.feature-pick-chip-item-text')]
+    expect(chips).toHaveLength(0)
+
+    fireEvent.click(bodiesChip())
+    pick('@body_ex2')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'add_transform_body', featureId: 'tr1', bodyQuery: '@body_ex2',
+    })
+  })
+
   it('stores a picked ref verbatim, never narrowed to one body', () => {
     // Same reason DELETE_BODY_SCHEMA's field carries no transform: `@ex1` here
     // means EVERY body that feature made, and `resolveBodyPickRef` would coerce

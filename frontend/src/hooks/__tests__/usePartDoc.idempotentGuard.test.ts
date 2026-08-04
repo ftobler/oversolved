@@ -9,6 +9,7 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 // The no-op guard's failLoud for a body-style mutation missing its bodyId must
@@ -231,6 +232,44 @@ describe('idempotent no-op guard', () => {
     expect(pushUndo).toHaveBeenCalledTimes(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect((docRef.current!.features![0] as { fillet: { edges: string[] } }).fillet.edges).toEqual(['?e2'])
+  })
+
+  it('add_transform_body on a healed legacy doc toggles the ref and stays unguarded', () => {
+    // Same pin as add_fillet_edge: the add_* toggle family is not in the no-op
+    // guard, so re-picking the healed @b1 must push an entry, not be swallowed.
+    const doc: PartDoc = {
+      version: 1, kind: 'part',
+      features: [{ id: 't1', kind: 'transform', transform: { body: '@b1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 } }],
+    } as unknown as PartDoc
+    migrateLegacyBodyPicks(doc)
+    setDoc(doc)
+    const { result } = renderPartDoc()
+
+    act(() => { result.current.handleMutation({ type: 'add_transform_body', featureId: 't1', bodyQuery: '@b1' }) })
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(reSolve).toHaveBeenCalledTimes(1)
+    expect((docRef.current!.features![0] as { transform: { bodies: string[] } }).transform.bodies).toEqual([])
+  })
+
+  it('remove_transform_body out-of-range on a healed legacy doc no-ops', () => {
+    // A parse seam migrates the legacy doc first, so the out-of-range index
+    // splices a real list and leaves the doc byte-identical: no push, no solve.
+    const doc: PartDoc = {
+      version: 1, kind: 'part',
+      features: [{ id: 't1', kind: 'transform', transform: { body: '@b1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 } }],
+    } as unknown as PartDoc
+    migrateLegacyBodyPicks(doc)
+    setDoc(doc)
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => { result.current.handleMutation({ type: 'remove_transform_body', featureId: 't1', index: 9 }) })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })
 

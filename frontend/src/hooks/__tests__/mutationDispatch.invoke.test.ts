@@ -252,6 +252,36 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.add_import_step(doc, { type: 'add_import_step', featureId: 'IM', fileId: 'f1', label: 'Imported' })
     expect(feature(doc, 'IM')!.kind).toBe('import_step')
   })
+
+  it('delete_body handlers do not crash on a legacy singular-body doc', () => {
+    // A pre-pluralization delete_body carries `body` and no `bodies`; the
+    // handlers' ??= defense heals the list instead of throwing on indexOf/splice.
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'DB', kind: 'delete_body', delete_body: { body: '@body_1' } }],
+    } as unknown as PartDoc
+    expect(() => {
+      mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
+    }).not.toThrow()
+    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_2'])
+    expect(() => {
+      mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
+    }).not.toThrow()
+    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual([])
+  })
+
+  it('transform handlers do not crash on a legacy singular-body doc', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'TR', kind: 'transform', transform: { body: '@body_1', operation: 'new' } }],
+    } as unknown as PartDoc
+    expect(() => {
+      mutationHandlers.add_transform_body(doc, { type: 'add_transform_body', featureId: 'TR', bodyQuery: '@body_2' })
+    }).not.toThrow()
+    expect(feature(doc, 'TR')!.transform!.bodies).toEqual(['@body_2'])
+  })
 })
 
 describe('mutationHandlers forward doc-level + part-style mutations', () => {

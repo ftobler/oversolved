@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest'
-import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS, useDocumentState } from '@/hooks/useDocumentState'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+
+const { loadMock } = vi.hoisted(() => ({ loadMock: vi.fn() }))
+vi.mock('@/adapters/documentLoad', () => ({ loadDocumentAnyDomain: loadMock }))
+
+const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
 describe('BUILTIN_FEATURE_DEFAULTS', () => {
   it('contains the four standard built-in features', () => {
@@ -31,5 +38,64 @@ describe('BUILTIN_FEATURE_IDS', () => {
   it('does not contain arbitrary IDs', () => {
     expect(BUILTIN_FEATURE_IDS.has('S1')).toBe(false)
     expect(BUILTIN_FEATURE_IDS.has('extrude1')).toBe(false)
+  })
+})
+
+// The load seam self-heal: a pre-pluralization transform/delete_body doc carries
+// the singular `body` key. migrateLegacyBodyPicks runs beside dropDeadAxisConstraints
+// on every load, so the loaded doc is plural before it reaches the tree and solver.
+describe('useDocumentState legacy body pick migration at load', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useUnsavedChangesStore.getState().setDirty(false)
+  })
+
+  it('rewrites a legacy singular transform body to bodies and re-solves the migrated doc', async () => {
+    const content = `version: 1
+kind: part
+features:
+  - id: t1
+    kind: transform
+    transform:
+      body: "@body_ex1"
+      operation: new
+      translation: [0, 0, 0]
+      rotation_angle: 0
+      scale: 1
+`
+    loadMock.mockResolvedValue({ data: { content, name: 'Legacy Transform' }, store: {} })
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('L', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    const sub = result.current.doc!.features![0] as unknown as { transform: { bodies: string[]; body?: string } }
+    expect(sub.transform.bodies).toEqual(['@body_ex1'])
+    expect('body' in sub.transform).toBe(false)
+    // The self-heal predates user intent, so the doc still starts clean.
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    // The first solve receives the MIGRATED doc, not the raw legacy one.
+    expect(reSolveRef.current).toHaveBeenCalledTimes(1)
+    expect(reSolveRef.current).toHaveBeenCalledWith(result.current.doc)
+  })
+
+  it('rewrites a legacy singular delete_body body the same way', async () => {
+    const content = `version: 1
+kind: part
+features:
+  - id: db1
+    kind: delete_body
+    delete_body:
+      body: "@body_ex1"
+`
+    loadMock.mockResolvedValue({ data: { content, name: 'Legacy Delete' }, store: {} })
+    // Stable ref: a fresh object per render would re-trigger the load effect and
+    // the test would spin.
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('L', reSolveRef, { solveOnLoad: false }))
+    await tick()
+
+    const sub = result.current.doc!.features![0] as unknown as { delete_body: { bodies: string[]; body?: string } }
+    expect(sub.delete_body.bodies).toEqual(['@body_ex1'])
+    expect('body' in sub.delete_body).toBe(false)
   })
 })

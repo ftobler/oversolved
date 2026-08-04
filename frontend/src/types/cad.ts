@@ -123,8 +123,9 @@ export interface MirrorFeatureDef {
 
 export interface TransformFeatureDef {
   // One ref per body to move; picking is multi-select and the SAME transform is
-  // applied to every one of them. There is no singular `body` fallback -- a doc
-  // written before this field was plural does not load.
+  // applied to every one of them. A doc written before this field was plural
+  // carries the singular `body`; migrateLegacyBodyPicks rewrites it to a
+  // one-element `bodies` list at every parse seam.
   bodies: string[]
   operation?: 'new' | 'replace'
   translation?: [number, number, number]

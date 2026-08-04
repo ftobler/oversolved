@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
-import { randomId } from '@/utils/yamlMutations'
+import { randomId, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useAuth } from '@/contexts/AuthContext'
@@ -81,7 +81,12 @@ function parsePartDoc(text: string): { doc: PartDoc } | { error: string } {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { error: 'Parse error: the document must be a YAML mapping' }
   }
-  return { doc: parsed as PartDoc }
+  const doc = parsed as PartDoc
+  // Same self-heal as the load seam: the code tab can be fed a pre-plural
+  // transform/delete_body YAML, and running it (or leaving the tab) must not
+  // hand the singular `body` to the tree or the solver.
+  migrateLegacyBodyPicks(doc)
+  return { doc }
 }
 
 const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {

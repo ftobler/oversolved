@@ -51,6 +51,23 @@ features:
     label: Typed Sketch
 `
 
+// Pre-pluralization YAML: the transform pick was a singular `body` before
+// 2026-07-29. Running it must normalize to `bodies` so the kernel and mutators
+// see the ref, and the "typed back is a no-op" guard still holds on the result.
+const LEGACY_TRANSFORM_DOC = `version: 1
+kind: part
+features:
+  - id: t1
+    kind: transform
+    label: Legacy Transform
+    transform:
+      body: "@body_ex1"
+      operation: new
+      translation: [0, 0, 0]
+      rotation_angle: 0
+      scale: 1
+`
+
 // The bar parked before the end of a 2-feature stack. After a Run or a tab
 // exit the store must read 2, and the first tree mutation's rollback mirror
 // must reflect position 2 (== the end, so the key is removed), never the old
@@ -262,6 +279,24 @@ describe('Part - code tab and undo history', () => {
     // the warning for text that changed nothing.
     expect(featureIds()).toEqual(['sk1'])
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('Run normalizes a legacy singular transform body to the plural list', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    const area = await enterCodeMode()
+    fireEvent.change(area, { target: { value: LEGACY_TRANSFORM_DOC } })
+    await act(async () => { fireEvent.click(screen.getByTitle('Run')) })
+
+    // The code-tab seam (parsePartDoc) migrates the typed doc before it is
+    // applied, so the tree and the kernel both read the plural `bodies`.
+    const applied = usePartEditorStore.getState().doc!.features![0] as unknown as {
+      transform: { bodies: string[]; body?: string }
+    }
+    expect(applied.transform.bodies).toEqual(['@body_ex1'])
+    expect('body' in applied.transform).toBe(false)
+    expect(featureIds()).toEqual(['t1'])
   })
 
   it('Run on typed YAML marks the document dirty', async () => {

@@ -130,11 +130,15 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 - id: tr1
   kind: transform
   transform:
-    body: "@body_ex1"
+    bodies: ["@body_ex1"]
     translation: [20, 0, 0]
     rotation_angle: 90.0
     operation: new               # new | replace
 ```
+
+Note: the pick is a list; a document that still says `body:` (the pre-plural
+form) is migrated to `bodies:` on load by `migrateLegacyBodyPicks`, so the code
+tab should always write the plural key.
 
 ### array
 

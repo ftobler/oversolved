@@ -282,4 +282,19 @@ describe('useAssemblySolve', () => {
     expect(await handlers.partDocContent('doc-cloud')).toEqual({ kind: 'part', features: [{ id: 'f1' }] })
     expect(h.cloudLoad).toHaveBeenCalledWith('doc-cloud')
   })
+
+  it('relay partDocContent migrates a legacy singular transform body to the plural list', async () => {
+    // The anchor solver relays raw PartDoc YAML to the OCC worker, which reads
+    // only `bodies`; a legacy singular `body` would silently fail the solve.
+    h.load.mockResolvedValue({
+      content: 'kind: part\nfeatures:\n  - id: t1\n    kind: transform\n    transform:\n      body: "@body_ex1"\n      operation: new\n',
+    })
+    renderHook(() => useAssemblySolve('asm-1', null))
+
+    const handlers = h.setRelayHandlers.mock.calls[0][0]
+    const doc = (await handlers.partDocContent('doc-a')) as Record<string, unknown>
+    const sub = (doc.features as Array<Record<string, unknown>>)[0].transform as Record<string, unknown>
+    expect(sub.bodies).toEqual(['@body_ex1'])
+    expect('body' in sub).toBe(false)
+  })
 })

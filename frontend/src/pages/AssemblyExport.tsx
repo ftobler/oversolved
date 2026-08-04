@@ -1,30 +1,15 @@
 import { forwardRef, useImperativeHandle, useState } from 'react'
-import { parse as parseYaml } from 'yaml'
 import ExportDialog from '@/components/dialogs/ExportDialog'
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useNotify } from '@/contexts/ToastContext'
-import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { exportAssemblyViaWorker } from '@/kernel/worker/solverClient'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import { assemblyStlBytes, buildExportParts, exportableInstances } from '@/utils/assemblyExport'
-import type { AssemblyDoc, PartInstance } from '@/types/cad'
+import { assemblyStlBytes, buildExportParts, exportableInstances, loadPartContents } from '@/utils/assemblyExport'
+import type { AssemblyDoc } from '@/types/cad'
 
 export interface AssemblyExportHandle {
   openExport: () => void
-}
-
-/** Load and parse each referenced PartDoc once, keyed by doc id. Resolved
- * across both domains: a part instanced from the picker's cloud category has
- * no local mirror and would otherwise fail the whole STEP export. */
-async function loadPartContents(instances: PartInstance[]): Promise<Record<string, Record<string, unknown>>> {
-  const ids = [...new Set(instances.map(i => i.doc_id))]
-  const loaded = await Promise.all(ids.map(id => loadDocumentAnyDomain(id)))
-  const out: Record<string, Record<string, unknown>> = {}
-  ids.forEach((id, i) => {
-    out[id] = (parseYaml(loaded[i].data.content) ?? {}) as Record<string, unknown>
-  })
-  return out
 }
 
 interface AssemblyExportProps {
