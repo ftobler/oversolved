@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { validateSketchEditorState, validateSelectionState, repairSelectionState, DRAWING_TOOLS, deriveSelectionDomain } from '@/stores/stateInvariants'
+import { validateSketchEditorState, validateSelectionState, repairSelectionState, DRAWING_TOOLS, deriveSelectionDomain, DERIVE_SELECTION_DOMAIN_PREFIXES, KNOWN_SELECTION_PREFIXES } from '@/stores/stateInvariants'
 import type { SketchEditorInvariantState, SelectionInvariantState } from '@/stores/stateInvariants'
+import type { SelectionDomain } from '@/types/cad'
 
 function defaultSelectionState(): SelectionInvariantState {
   return {
@@ -103,7 +104,7 @@ describe('validateSelectionState', () => {
 
   it('passes with valid entity: prefix entries', () => {
     const state = {
-      normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L1:start', 'face:S1:?3;...', 'constraint:S1:c1']),
+      normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L1:start', 'constraint:S1:c1']),
       selectedPicks: new Map<string, Set<string>>(),
       chipOwnedSelection: new Set<string>(),
       selectionDomain: 'sketch_2d' as const,
@@ -116,7 +117,8 @@ describe('validateSelectionState', () => {
       normalSelection: new Set(['@body_1', '@builtin_plane_front']),
       selectedPicks: new Map<string, Set<string>>(),
       chipOwnedSelection: new Set<string>(),
-      selectionDomain: 'plane_3d' as const,
+      // A whole-body id and a plane together are genuinely mixed, not plane.
+      selectionDomain: 'mixed' as const,
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
@@ -229,24 +231,58 @@ describe('deriveSelectionDomain', () => {
     expect(deriveSelectionDomain(new Set())).toBe('sketch_2d')
   })
 
-  it('returns sketch_2d for sketch entities', () => {
-    expect(deriveSelectionDomain(new Set(['entity:S1:L1']))).toBe('sketch_2d')
-    expect(deriveSelectionDomain(new Set(['vertex:S1:L1:start']))).toBe('sketch_2d')
-    expect(deriveSelectionDomain(new Set(['face:S1:?3;...']))).toBe('sketch_2d')
-    expect(deriveSelectionDomain(new Set(['constraint:S1:c1']))).toBe('sketch_2d')
-    expect(deriveSelectionDomain(new Set(['dock:S1:pt1']))).toBe('sketch_2d')
-    expect(deriveSelectionDomain(new Set(['isect:S1:i1']))).toBe('sketch_2d')
+  it('classifies every id format actually produced in the app', () => {
+    // One row per format written into normalSelection in production code. A
+    // bare set of any single id must land in exactly one domain: `mixed` alone
+    // would mean a real selection the classifier cannot read.
+    const rows: Array<[string, SelectionDomain]> = [
+      ['entity:S1:L1', 'sketch_2d'],
+      ['vertex:S1:L1:start', 'sketch_2d'],
+      ['constraint:Sketch1:C1', 'sketch_2d'],
+      ['dock:S1:tan1', 'sketch_2d'],
+      ['isect:S1:1:2:curA:curB', 'sketch_2d'],
+      ['edge:ex1:?c;@a', 'body_3d'],
+      ['face:ex1:?8,8;@ex1f0:face', 'body_3d'],
+      ['?9;@ex1face0:face', 'body_3d'],
+      ['@ex1/edge/0', 'body_3d'],
+      ['@body_1', 'body_3d'],
+      ['@builtin_origin', 'sketch_2d'],
+      ['@builtin_plane_front', 'plane_3d'],
+      ['@sketch1', 'plane_3d'],
+    ]
+    for (const [id, domain] of rows) {
+      expect(deriveSelectionDomain(new Set([id]))).toBe(domain)
+    }
+  })
+
+  it('guard: classifier families and isValidSelectionId families are set-equal', () => {
+    // isValidSelectionId accepts every id family in KNOWN_SELECTION_PREFIXES.
+    // If deriveSelectionDomain stops recognizing one, its ids fall through to
+    // mixed instead of their real bucket. Both lists must be extended together.
+    expect(new Set(DERIVE_SELECTION_DOMAIN_PREFIXES)).toEqual(new Set(KNOWN_SELECTION_PREFIXES))
+  })
+
+  it('guard: every accepted id derives a concrete bucket, never mixed alone', () => {
+    for (const prefix of DERIVE_SELECTION_DOMAIN_PREFIXES) {
+      expect(deriveSelectionDomain(new Set([`${prefix}x`]))).not.toBe('mixed')
+    }
+    // `?` ancestry queries are first-class but are not a prefix.
+    expect(deriveSelectionDomain(new Set(['?2;@body_1@extrude1/face/3']))).toBe('body_3d')
+  })
+
+  it('wrapped and bare forms of one face share a bucket (no spurious mixed)', () => {
+    // face:ex1:?8,8;@ex1f0:face is the same face as the bare ?8,8;@ex1f0:face;
+    // the prefix is owner attribution only, so the pair must read as one
+    // domain rather than a sketch-plus-3d mix.
+    expect(deriveSelectionDomain(new Set(['face:ex1:?8,8;@ex1f0:face', '?8,8;@ex1f0:face']))).toBe('body_3d')
+    expect(deriveSelectionDomain(new Set(['face:ex1:?8,8;@ex1f0:face', '@ex1/face/0']))).toBe('body_3d')
   })
 
   it('returns body_3d for 3D body queries', () => {
     expect(deriveSelectionDomain(new Set(['?2;@body_1@extrude1/face/3']))).toBe('body_3d')
   })
 
-  it('returns plane_3d for bare @ queries', () => {
-    expect(deriveSelectionDomain(new Set(['@body_1']))).toBe('plane_3d')
-  })
-
-  it('returns mixed for combination', () => {
+  it('returns mixed for combination of sketch and body', () => {
     expect(deriveSelectionDomain(new Set(['entity:S1:L1', '?2;@body_1@extrude1/face/3']))).toBe('mixed')
   })
 })

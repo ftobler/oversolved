@@ -115,6 +115,15 @@ describe('selection survives mode change', () => {
     expect(useSketchEditorStore.getState().selectionDomain).toBe('mixed')
   })
 
+  it('wrapped and bare forms of one face coexist as a single body_3d domain', () => {
+    // face:ex1:?8,8;@ex1f0:face and @ex1/face/0 are both body-face identities;
+    // the face: prefix is owner attribution only, so the pair must read as one
+    // domain rather than a spurious mixed.
+    useSketchEditorStore.getState().addToNormalSelection('face:ex1:?8,8;@ex1f0:face')
+    useSketchEditorStore.getState().addToNormalSelection('@ex1/face/0')
+    expect(useSketchEditorStore.getState().selectionDomain).toBe('body_3d')
+  })
+
   it('selectionDomain derives correctly from different id types', () => {
     // sketch entity
     useSketchEditorStore.getState().addToNormalSelection('entity:sk1:L1')

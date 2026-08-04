@@ -36,7 +36,10 @@ export interface SelectionInvariantState {
   selectionDomain: SelectionDomain
 }
 
-const KNOWN_SELECTION_PREFIXES = [
+// Prefixes that mark an id family as first-class selection input. An id that
+// matches none of these (and is not a `?` ancestry query) is rejected by
+// isValidSelectionId and dropped by repairSelectionState.
+export const KNOWN_SELECTION_PREFIXES = [
   'entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:',
   '@builtin_', '@body_', '@',
 ]
@@ -50,19 +53,51 @@ function isValidSelectionId(id: string): boolean {
   return false
 }
 
+// Sketch-space id families. face:/edge: wrap an inner query when one is
+// present (bucketOfId decides those), but live here so a wrapper with no query
+// still has a home instead of falling through to mixed.
+const SKETCH_PREFIXES = ['entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:']
+
+// The families deriveSelectionDomain can bucket. Set-equality with
+// KNOWN_SELECTION_PREFIXES is enforced by a guard test: an id family accepted
+// as valid but missing here falls through to mixed.
+export const DERIVE_SELECTION_DOMAIN_PREFIXES = [...SKETCH_PREFIXES, '@builtin_', '@body_', '@']
+
+type DomainBucket = 'sketch' | '3d' | 'plane'
+
+// Bucket one selection id onto the domain axis it lives on. face:/edge: wrap
+// an inner query and the prefix is owner attribution only (pickOrder.ts), so
+// the wrapped query decides: a wrapped and bare form of one face must never
+// read as different domains.
+function bucketOfId(id: string): DomainBucket | null {
+  if (id.startsWith('face:') || id.startsWith('edge:')) {
+    const rest = id.slice(id.indexOf(':') + 1)
+    const colon = rest.indexOf(':')
+    if (colon >= 0) {
+      const inner = bucketOfId(rest.slice(colon + 1))
+      if (inner !== null) return inner
+    }
+  }
+  if (id.startsWith('@body_')) return '3d'
+  if (id.startsWith('@builtin_origin')) return 'sketch'
+  if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) return '3d'
+  for (const p of SKETCH_PREFIXES) {
+    if (id.startsWith(p)) return 'sketch'
+  }
+  if (id.startsWith('@')) return 'plane'
+  return null
+}
+
 export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain {
   if (ids.size === 0) return 'sketch_2d'
   let hasSketch = false
   let has3d = false
   let hasPlane = false
   for (const id of ids) {
-    if (id.startsWith('entity:') || id.startsWith('vertex:') || id.startsWith('face:') || id.startsWith('constraint:') || id.startsWith('dock:') || id.startsWith('isect:')) {
-      hasSketch = true
-    } else if (id.startsWith('?') || (id.startsWith('@') && id.includes('/'))) {
-      has3d = true
-    } else if (id.startsWith('@')) {
-      hasPlane = true
-    }
+    const bucket = bucketOfId(id)
+    if (bucket === 'sketch') hasSketch = true
+    else if (bucket === '3d') has3d = true
+    else if (bucket === 'plane') hasPlane = true
   }
   if (hasSketch && !has3d && !hasPlane) return 'sketch_2d'
   if (has3d && !hasSketch && !hasPlane) return 'body_3d'
