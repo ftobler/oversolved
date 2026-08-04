@@ -806,6 +806,28 @@ export function evictAncestryAndRegister(
   return repo.registerAncestor(ancestorIds, payload, uuid)
 }
 
+/** Evict every ancestral entry whose set carries `@bodyId` - a body's whole
+ *  face/edge/vertex index range at once - and prune the uuid buckets their
+ *  elements left behind. Body-scoped via the reverse index (O(entries sharing
+ *  the tag), not O(repo)), the same lookup `evictAncestryAndRegister` uses for
+ *  its index-tag spread. Call before re-registering a body's range so a
+ *  shrunken range replaces the old one wholesale instead of leaving indices
+ *  k..N-1 resolvable forever; delete_body routes through it too. */
+export function clearBodyAncestry(repo: Repository, bodyId: string): void {
+  const tagged = repo.byAncestorId.get('@' + bodyId)
+  if (!tagged) return
+  for (const key of [...tagged]) {
+    const entry = repo.ancestral.get(key)
+    if (entry === undefined) {
+      tagged.delete(key)  // index rot: self-heal rather than let the dangling key persist
+      continue
+    }
+    for (const eid of entry.eids) repo.deleteElement(eid)
+    repo.deleteAncestral(key)
+  }
+  repo.prunePendingUuids()
+}
+
 // ─── Plane/point helpers ───
 
 interface PlaneLike {

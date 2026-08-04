@@ -4,7 +4,15 @@
 
 import { sha256Hex } from './sha256'
 import { extractErrorMessage } from './errors'
-import { Repository, evictAncestryAndRegister, emitWire, absolute, ref, setCurrentFeatureId } from './query'
+import {
+  Repository,
+  evictAncestryAndRegister,
+  clearBodyAncestry,
+  emitWire,
+  absolute,
+  ref,
+  setCurrentFeatureId,
+} from './query'
 import { faceGeometryHash, edgeGeometryHash, vertexGeometryHash } from './geomHash'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { normalToFrame } from './types3d'
@@ -631,6 +639,11 @@ export function registerBodyBrepFromMeta(
   meta: Record<string, unknown>,
   deps?: BuildDeps,
 ): void {
+  // Replace the body's whole index range, old and shrunken tails included: the
+  // index-tag eviction inside each registrar only touches the indices about to
+  // be re-registered, so a body that comes back with fewer faces/edges/vertices
+  // would otherwise leave k..N-1 resolvable forever (index-shrink-ghost-eviction).
+  clearBodyAncestry(repo, body.id)
   const mesh = meta['mesh'] as TessMesh | undefined
   if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(repo, body, mesh, deps)
   // Non-array geometry is treated as absent rather than trusted: the checkpoint pass has
