@@ -13,6 +13,11 @@
 // the engine sees a different `spec.id`, which trips `resetLocalSolveCache` and
 // makes the next build of either document cold.
 //
+// The bundle spec reaches the engine WITH that id: `useAssemblySolve`'s relay
+// stamps it on (`{ ...spec, id: doc_id }`) before the request crosses to the
+// worker, so the guard above is live on the bundle path and not just the
+// editor's.
+//
 // So the cost is not "the bundle path is cold", it is "the engine caches one
 // document at a time". Both halves are pinned below, plus the assembly-side
 // guard that only the part whose rev moved is rebuilt -- that is what keeps a
@@ -44,8 +49,15 @@ import type { Transform3D } from '../types/cad'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-function bundleReq(spec: Record<string, unknown>, rev: number): BundleRequest {
-  return { id: rev, kind: 'buildBundle', spec, doc_id: spec.id as string, doc_rev: rev }
+/**
+ * The production bundle request shape: the raw PartDoc YAML (`part` carries no
+ * id, as `partDocContent` returns it) plus the doc id the relay stamps on
+ * (`useAssemblySolve`'s `{ ...spec, id: doc_id }`). `doc_id` is passed
+ * separately, as the wire protocol carries it -- the two only ever match by
+ * construction.
+ */
+function bundleReq(doc_id: string, rev: number, spec: Record<string, unknown>): BundleRequest {
+  return { id: rev, kind: 'buildBundle', spec: { ...spec, id: doc_id }, doc_id, doc_rev: rev }
 }
 
 // ─── the assembly side: which parts get rebuilt at all ───
@@ -140,10 +152,10 @@ function rectSketch(sketchId: string, w: number, h: number) {
   }
 }
 
-/** One sketch plus three pads; the last pad's distance is the edit. */
-function part(id: string, lastDistance: number): Record<string, unknown> {
+/** One sketch plus three pads; the last pad's distance is the edit. No `id`,
+ *  as the store hands the relay raw PartDoc YAML -- the relay stamps it on. */
+function part(lastDistance: number): Record<string, unknown> {
   return {
-    id,
     features: [
       rectSketch('sk1', 20, 20),
       { id: 'ex0', kind: 'extrude', sketch: '$sk1', distance: 3, direction: 'normal', operation: 'add' },
@@ -183,8 +195,8 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
 
   it('reuses the clean prefix across two bundle builds of the same document', async () => {
     const { engine, checkpoints } = recordingEngine()
-    await handleBundleRequest(bundleReq(part('doc-warm', 5), 1), engine)
-    const res = await handleBundleRequest(bundleReq(part('doc-warm', 9), 2), engine)
+    await handleBundleRequest(bundleReq('doc-warm', 1, part(5)), engine)
+    const res = await handleBundleRequest(bundleReq('doc-warm', 2, part(9)), engine)
 
     expect(res.ok).toBe(true)
     const [first, second] = checkpoints
@@ -196,11 +208,28 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
     expect(second.ex2).not.toBe(first.ex2)
   })
 
+  it('a different-doc bundle build resets the engine cache (zero checkpoint reuse)', async () => {
+    // Two consecutive bundle builds of DIFFERENT docs: solveLocally's doc-keyed
+    // reset fires on the second, so it rebuilds every feature instead of reusing
+    // doc-x's clean prefix. This guard used to be dead on the bundle path (raw
+    // specs carried no id); the relay stamps it on, and the stamp is what the
+    // request under test carries.
+    const { engine, checkpoints } = recordingEngine()
+    await handleBundleRequest(bundleReq('doc-x', 1, part(5)), engine)
+    const res = await handleBundleRequest(bundleReq('doc-y', 1, part(5)), engine)
+
+    expect(res.ok).toBe(true)
+    const [first, second] = checkpoints
+    expect(second.sk1).not.toBe(first.sk1)
+    expect(second.ex0).not.toBe(first.ex0)
+    expect(second.ex1).not.toBe(first.ex1)
+  })
+
   it('goes cold when another document is built in between', async () => {
     const { engine, checkpoints } = recordingEngine()
-    await handleBundleRequest(bundleReq(part('doc-x', 5), 1), engine)
-    await handleBundleRequest(bundleReq(part('doc-y', 5), 1), engine)
-    const res = await handleBundleRequest(bundleReq(part('doc-x', 9), 2), engine)
+    await handleBundleRequest(bundleReq('doc-x', 1, part(5)), engine)
+    await handleBundleRequest(bundleReq('doc-y', 1, part(5)), engine)
+    const res = await handleBundleRequest(bundleReq('doc-x', 2, part(9)), engine)
 
     expect(res.ok).toBe(true)
     const first = checkpoints[0]
@@ -221,9 +250,9 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
     // editor solve of doc-p cold. That is a wider blast radius than "two parts
     // missed in the same assembly solve", which is why it gets its own case.
     const { engine, checkpoints } = recordingEngine()
-    await handleSolveRequest({ id: 1, spec: part('doc-p', 5), options: {} }, engine)
-    await handleBundleRequest(bundleReq(part('doc-q', 5), 1), engine)
-    await handleSolveRequest({ id: 2, spec: part('doc-p', 9), options: {} }, engine)
+    await handleSolveRequest({ id: 1, spec: { ...part(5), id: 'doc-p' }, options: {} }, engine)
+    await handleBundleRequest(bundleReq('doc-q', 1, part(5)), engine)
+    await handleSolveRequest({ id: 2, spec: { ...part(9), id: 'doc-p' }, options: {} }, engine)
 
     const [first, , third] = checkpoints
     expect(third.sk1).not.toBe(first.sk1)

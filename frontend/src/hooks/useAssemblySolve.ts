@@ -117,7 +117,12 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         const { data } = await loadDocumentAnyDomain(doc_id)
         return (parseYaml(data.content) ?? {}) as Record<string, unknown>
       },
-      buildBundle: async (doc_id, doc_rev, spec) => buildBundleViaWorker(spec, doc_id, doc_rev),
+      // Stamp the doc id onto the bundle spec: the raw PartDoc YAML carries no
+      // id, and solveLocally's cache-reset guard keys on spec.id. Without it,
+      // bundle builds of different docs share one checkpoint slot and a bundle
+      // build evicts the part editor's incremental cache.
+      buildBundle: async (doc_id, doc_rev, spec) =>
+        buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev),
     })
   }, [])
 

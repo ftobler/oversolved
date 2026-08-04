@@ -266,7 +266,9 @@ describe('useAssemblySolve', () => {
     expect(h.cloudLoad).not.toHaveBeenCalled()  // local hit needs no cloud round-trip
 
     await handlers.buildBundle('doc-a', 4, { kind: 'part' })
-    expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part' }, 'doc-a', 4)
+    // The relay stamps the doc id onto the raw PartDoc YAML so the OCC worker's
+    // doc-keyed cache-reset guard fires between bundle builds of different docs.
+    expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part', id: 'doc-a' }, 'doc-a', 4)
   })
 
   it('falls back to the cloud store for a part with no local mirror', async () => {
