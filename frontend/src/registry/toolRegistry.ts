@@ -187,27 +187,20 @@ export class ToolRegistry {
     return this.registeredHandlers.size
   }
 
+  // Dev-only sanity check that the registry holds the canonical tools. The
+  // select tool and constraint tools are deliberately absent: select is the
+  // dispatchSketchClick fallback (`state.toggleNormalSelection`), and
+  // constraints go through `store.applyConstraint`, not a registered tool.
   validate(): void {
-    const hasSelectionTool = this.tools.has('select')
-    const hasDrawingTools = this.byCategory('drawing').length > 0
-    const hasDimensionTool = this.tools.has('dimension')
-    const hasDragTool = this.tools.has('drag')
-    const hasClickHandler = this.registeredHandlers.has('select:onClick')
-    
-    if (!hasSelectionTool) {
-      throw new Error('No selection tool registered')
-    }
-    if (!hasDrawingTools) {
+    const tools = Array.from(this.tools.values())
+    if (!tools.some(t => t.category === 'drawing')) {
       throw new Error('No drawing tools registered')
     }
-    if (!hasDimensionTool) {
+    if (!tools.some(t => t.id === 'dimension')) {
       throw new Error('Dimension tool not registered')
     }
-    if (!hasDragTool) {
+    if (!tools.some(t => t.id === 'drag')) {
       throw new Error('Drag tool not registered')
-    }
-    if (!hasClickHandler) {
-      throw new Error('Selection tool must have onClick handler')
     }
   }
 }

@@ -28,7 +28,11 @@ Singleton `ToolRegistry` class: `register(tool)`, `get(id)`, `byCategory(categor
 
 Tools implement `ToolHandlers`: `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerOver`, `onPointerOut`, `onClick`.
 
-Tool IDs: `select`, `dimension`, `drag`, the entity tools `line`, `circle`, `arc`, `ellipse`, `point`, `project`, `spline`, the compound drawing tools `rect`, `center_rect`, `ngon`, and one constraint tool per constraint kind.
+Tool IDs: `dimension`, `drag`, the entity tools `line`, `circle`, `arc`, `ellipse`, `point`, `project`, `spline`, and the compound drawing tools `rect`, `center_rect`, `ngon`.
+
+Not every interaction is a registered tool:
+- **Select** has no registered tool. Idle select is the dispatchSketchClick fallback (`state.toggleNormalSelection(id)` for the clicked entity/vertex) plus the DrawPlane backplane clear on empty-space clicks. The toolbar select button dispatches `set_tool_drag`, and `getEffectiveTool(null)` resolves to `'drag'`.
+- **Constraints** have no registered tools. Constraint apply is `apply_<kind>` -> `store.applyConstraint`, which owns the target validation.
 
 ### Snap & Measurement Registries (`snapRegistry.ts`, `measurementRegistry.ts`)
 
@@ -50,11 +54,13 @@ Zustand store managing selection state (normal, dynamic, hover), drag state, dra
 
 | Tool | File | Behavior |
 |---|---|---|
-| Selection | `SelectionTool.ts` | Toggles normal selection on click |
 | Drawing | `DrawingTool.ts` | Accumulates draw points, fires `add_entity` mutation |
 | Dimension | `DimensionTool.ts` | Two-click flow, resolves dimension kind |
 | Drag | `DragTool.ts` | Pointer with threshold detection for vertex drag |
-| Constraint | `ConstraintTool.ts` | Fires `add_constraint` mutation on pointer up |
+
+Selection and constraints have no tool implementation: select is the
+`dispatchSketchClick` fallback (see below) plus the backplane clear, and
+constraints are applied via the `apply_<kind>` commands -> `store.applyConstraint`.
 
 Initialized in `tools/index.ts` via `initializeTools()`.
 
@@ -68,7 +74,8 @@ Routes pointer clicks from sketch geometry through the tool registry:
 - Gets effective tool from store
 - Looks up tool in registry
 - Builds `ToolContext` from current state
-- Calls `tool.handlers.onClick()`
+- Calls `tool.handlers.onClick()` if the active tool has one; otherwise it
+  falls back to `state.toggleNormalSelection(id)` (the idle select path).
 
 ### Undo/Redo System (`usePartDoc.ts`)
 

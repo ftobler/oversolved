@@ -78,11 +78,14 @@ Selection IDs: `entity:<feat>:<eid>`, `vertex:<feat>:<eid>:<key>`, `constraint:<
 
 ### Layer 4: Tool Layer
 
-Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `onPointerDown`, `onPointerMove`, `onPointerUp`). Registered: select, dimension, drag, line, circle, arc, ellipse, point, project, spline, rect, center_rect, ngon, and one constraint tool per constraint kind.
+Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `onPointerDown`, `onPointerMove`, `onPointerUp`). Registered: dimension, drag, line, circle, arc, ellipse, point, project, spline, rect, center_rect, ngon.
+
+Not every interaction is a registered tool:
+- **Select** has no registered tool. Idle select is the dispatchSketchClick fallback (`state.toggleNormalSelection(id)` for the clicked entity/vertex) plus the DrawPlane backplane clear on empty-space clicks (`Drawing.tsx`). The toolbar select button dispatches `set_tool_drag`, and `getEffectiveTool(null)` resolves to `'drag'`.
+- **Constraints** have no registered tools. Constraint apply is `apply_<kind>` -> `store.applyConstraint` (`commandEntries.ts`), which owns the target validation. Snap-inferred constraints (vertex→coincident, path→coincident, alignment→horizontal/vertical) are added by the draw gestures.
 
 - **Drag**: threshold-based initiation, vertex/entity/alignment snap via `dragLogic.ts`, creates YAML mutation on release
 - **Draw**: inserts geometry via DrawPlane, snap to vertices/entities, preview rendering
-- **Constraint**: inferred from snap interactions (vertex→coincident, path→coincident, alignment→horizontal/vertical)
 
 ## Layer Contracts
 

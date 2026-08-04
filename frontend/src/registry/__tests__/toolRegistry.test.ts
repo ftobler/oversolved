@@ -111,10 +111,8 @@ describe('ToolRegistry', () => {
   })
 
   describe('validation', () => {
-    it('passes when all handlers registered via tool system', () => {
+    it('passes when the canonical tools are registered', () => {
       const registry = new ToolRegistry()
-      const tool = createMockTool('select')
-      registry.register(tool)
       registry.register(createMockTool('line', 'drawing'))
       registry.register(createMockTool('dimension', 'dimension'))
       registry.register(createMockTool('drag', 'drag'))
@@ -122,18 +120,8 @@ describe('ToolRegistry', () => {
       expect(() => registry.validate()).not.toThrow()
     })
 
-    it('throws when no selection tool registered', () => {
-      const registry = new ToolRegistry()
-      registry.register(createMockTool('line', 'drawing'))
-      registry.register(createMockTool('dimension', 'dimension'))
-      registry.register(createMockTool('drag', 'drag'))
-
-      expect(() => registry.validate()).toThrow('No selection tool registered')
-    })
-
     it('throws when no drawing tools registered', () => {
       const registry = new ToolRegistry()
-      registry.register(createMockTool('select'))
       registry.register(createMockTool('dimension', 'dimension'))
       registry.register(createMockTool('drag', 'drag'))
 
@@ -142,7 +130,6 @@ describe('ToolRegistry', () => {
 
     it('throws when dimension tool not registered', () => {
       const registry = new ToolRegistry()
-      registry.register(createMockTool('select'))
       registry.register(createMockTool('line', 'drawing'))
       registry.register(createMockTool('drag', 'drag'))
 
@@ -151,39 +138,16 @@ describe('ToolRegistry', () => {
 
     it('throws when drag tool not registered', () => {
       const registry = new ToolRegistry()
-      registry.register(createMockTool('select'))
       registry.register(createMockTool('line', 'drawing'))
       registry.register(createMockTool('dimension', 'dimension'))
 
       expect(() => registry.validate()).toThrow('Drag tool not registered')
     })
 
-    it('throws when selection tool missing onClick handler', () => {
-      const registry = new ToolRegistry()
-      const toolNoClick: Tool = {
-        id: 'select',
-        label: 'Select',
-        category: 'selection',
-        activate: () => {},
-        deactivate: () => {},
-        handlers: {
-          onPointerDown: () => null,
-          onPointerUp: () => {},
-        },
-      }
-      registry.register(toolNoClick)
-      registry.register(createMockTool('line', 'drawing'))
-      registry.register(createMockTool('dimension', 'dimension'))
-      registry.register(createMockTool('drag', 'drag'))
-
-      expect(() => registry.validate()).toThrow('Selection tool must have onClick handler')
-    })
-
     it('tracks registered handlers', () => {
       const registry = new ToolRegistry()
-      const tool = createMockTool('select')
+      const tool = createMockTool('line', 'drawing')
       registry.register(tool)
-      registry.register(createMockTool('line', 'drawing'))
       registry.register(createMockTool('dimension', 'dimension'))
       registry.register(createMockTool('drag', 'drag'))
 

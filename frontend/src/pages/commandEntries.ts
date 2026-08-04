@@ -50,9 +50,11 @@ export function buildCommandEntries(
     { name: 'delete_selected',       fn: () => { getState().deleteSelected(); handleDeleteSelectedFeatures() } },
     { name: 'toggle_sketch_plane_visibility', fn: handleToggleSketchPlaneVisibility },
     { name: 'toggle_plane_visibility',        fn: handleTogglePlaneVisibility },
-    // The store spells select mode `activeTool: null`, so this disarms rather than
-    // arming anything. The registry's `select` tool still exists and click
-    // dispatch treats null and 'select' alike; it is simply never armed from here.
+    // The store spells select mode `activeTool: null`, so this disarms rather
+    // than arming anything. Select behavior is the dispatchSketchClick fallback
+    // (`state.toggleNormalSelection`) plus the backplane clear, not a
+    // registered tool; `getEffectiveTool(null)` resolves to 'drag'. Kept as a
+    // programmatic-only command for toolbar/keymap compatibility.
     { name: 'set_tool_select',       fn: () => getState().setActiveTool(null) },
     { name: 'set_tool_drag',         fn: () => getState().setActiveTool('drag') },
     // Drawing-entity tools are derived from the registry so a newly registered

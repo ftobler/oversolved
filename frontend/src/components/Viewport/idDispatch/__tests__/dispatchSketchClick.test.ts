@@ -134,6 +134,37 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 })
 
+describe('dispatchSketchClick null-tool fallback (idle select contract)', () => {
+  // dispatchSketchClick only runs for a resolved hit; an empty-space click
+  // never reaches it. The clear half of the deleted SelectionTool contract is
+  // owned by the DrawPlane backplane (Drawing.tsx) + Viewport onPointerMissed,
+  // gated by shouldClearSelectionOnBackplaneClick (pinned by
+  // backplaneClearGuard.test.tsx). These tests pin the toggle half, which the
+  // fallback itself owns.
+  beforeEach(() => {
+    useSketchEditorStore.setState({
+      activeTool: null,
+      activeFeatureId: 'S1',
+      hoveredSelectionId: null,
+      hoveredVertexId: null,
+      normalSelection: new Set(),
+    })
+  })
+
+  it('idle click on a sketch entity toggles it into normal selection', () => {
+    dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has('entity:S1:L1')).toBe(true)
+  })
+
+  it('idle click on an already-selected entity toggles it back out', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1']) })
+    dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has('entity:S1:L1')).toBe(false)
+  })
+})
+
 describe('dispatchSketchClick with entityKind (sticky placement)', () => {
   beforeEach(() => {
     useSketchEditorStore.setState({

@@ -1127,7 +1127,9 @@ describe('sketchEditorStore', () => {
           normalSelection: new Set(['?body_ex1/face/0', '@other_item']),
           modeStack: ['pick'],
         })
-        useSketchEditorStore.getState().setActiveTool('select')
+        // drag is the real idle/select entry (getEffectiveTool(null) === 'drag');
+        // entering it is "entering a tool" from the idle state.
+        useSketchEditorStore.getState().setActiveTool('drag')
         const s = useSketchEditorStore.getState()
         expect(s.activePickField).toBeNull()
         expect(s.chipOwnedSelection.size).toBe(0)
@@ -1151,7 +1153,7 @@ describe('sketchEditorStore', () => {
 
     describe('setActivePickField', () => {
       it('clears activeTool and draw state when entering a pick', () => {
-        useSketchEditorStore.getState().setActiveTool('select')
+        useSketchEditorStore.getState().setActiveTool('drag')
         useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
         const s = useSketchEditorStore.getState()
         expect(s.activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
@@ -1162,7 +1164,7 @@ describe('sketchEditorStore', () => {
       })
 
       it('does not clear tool state when clearing the pick', () => {
-        useSketchEditorStore.getState().setActiveTool('select')
+        useSketchEditorStore.getState().setActiveTool('drag')
         useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
         useSketchEditorStore.getState().setActivePickField(null)
         expect(useSketchEditorStore.getState().activeTool).toBeNull()  // tool was already cleared when entering pick mode
@@ -1172,29 +1174,29 @@ describe('sketchEditorStore', () => {
 
   describe('tool lifecycle → mode stack integration', () => {
     it('setActiveTool pushes mode via activate', () => {
-      useSketchEditorStore.getState().setActiveTool('select')
-      expect(useSketchEditorStore.getState().modeStack).toContain('tool:select')
+      useSketchEditorStore.getState().setActiveTool('drag')
+      expect(useSketchEditorStore.getState().modeStack).toContain('tool:drag')
     })
 
     it('switching tools pops old mode and pushes new', () => {
-      useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setActiveTool('drag')
       useSketchEditorStore.getState().setActiveTool('line')
       const stack = useSketchEditorStore.getState().modeStack
-      expect(stack).not.toContain('tool:select')
+      expect(stack).not.toContain('tool:drag')
       expect(stack).toContain('tool:line')
     })
 
     it('setting tool to null pops mode', () => {
-      useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setActiveTool('drag')
       useSketchEditorStore.getState().setActiveTool(null)
       expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
 
     it('pick field pushes mode after deactivating tool', () => {
-      useSketchEditorStore.getState().setActiveTool('select')
+      useSketchEditorStore.getState().setActiveTool('drag')
       useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
       const stack = useSketchEditorStore.getState().modeStack
-      expect(stack).not.toContain('tool:select')
+      expect(stack).not.toContain('tool:drag')
       expect(stack).toContain('pick')
     })
 
@@ -1205,7 +1207,7 @@ describe('sketchEditorStore', () => {
     })
 
     it('tool switch spam never stacks more than the armed tool', () => {
-      for (const tool of ['line', 'circle', 'select', 'line', 'dimension'] as const) {
+      for (const tool of ['line', 'circle', 'drag', 'line', 'dimension'] as const) {
         useSketchEditorStore.getState().setActiveTool(tool)
         expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:' + tool])
       }
