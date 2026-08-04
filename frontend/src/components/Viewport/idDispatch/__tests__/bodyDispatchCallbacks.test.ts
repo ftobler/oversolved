@@ -43,6 +43,7 @@ beforeEach(() => {
   resetBodyCallbacksForTest()
   const s = useSketchEditorStore.getState()
   s.setHoveredSelectionId(null)
+  s.setHoveredPickKey(null)
   s.setHoveredFaceGeometry(null, null)
 })
 
@@ -71,8 +72,25 @@ describe('registerBodyCallbacks', () => {
 
     const after = useSketchEditorStore.getState()
     expect(after.hoveredSelectionId).toBeNull()
+    expect(after.hoveredPickKey).toBeNull()
     expect(after.hoveredFaceNormal).toBeNull()
     expect(after.hoveredFaceCenter).toBeNull()
+  })
+
+  it('unregister nulls hoveredPickKey alongside hoveredSelectionId', () => {
+    // hoveredPickKey rides with hoveredSelectionId to isolate one of several
+    // primitives that share a query; when the owning body goes away, both halves
+    // of the pair must go or hoverActiveFrom's pickKeys half keeps a stale key.
+    const unregister = registerBodyCallbacks('b1', makeCallbacks())
+    const s = useSketchEditorStore.getState()
+    s.setHoveredSelectionId('faceQ0')
+    s.setHoveredPickKey('body_1#1')
+
+    unregister()
+
+    const after = useSketchEditorStore.getState()
+    expect(after.hoveredSelectionId).toBeNull()
+    expect(after.hoveredPickKey).toBeNull()
   })
 
   it('unregister leaves hover untouched when another body owns the hover', () => {

@@ -43,6 +43,7 @@ import {
   wasLastClickConsumedByIdDispatch,
   wasLastClickStaleResolve,
 } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { clearAllHover } from '@/components/Viewport/idDispatch/brepAdapters'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/clickGesture'
@@ -515,6 +516,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     rubberBand.onPointerMove(e)
   }, [rubberBand])
 
+  // Pointer-leave must tear the hover down: the id-buffer dispatch hook only
+  // listens for move/down/click, so a stale hover would otherwise block the
+  // rubber-band start on re-entry and offer "Normal to" for a face the pointer
+  // is no longer over. Same teardown the assembly viewport applies.
+  const handlePointerLeave = useCallback(() => {
+    clearAllHover()
+  }, [])
+
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
   const renderBodyItem = (b: BodyRenderItem) => (
@@ -544,6 +553,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
       onContextMenu={handleContextMenu}
     >
       <Canvas

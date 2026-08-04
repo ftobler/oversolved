@@ -105,6 +105,7 @@ export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks
     const hovered = s.hoveredSelectionId
     if (hovered !== null && ownsQuery(entry, hovered)) {
       s.setHoveredSelectionId(null)
+      s.setHoveredPickKey(null)
       s.setHoveredFaceGeometry(null, null)
     }
   }

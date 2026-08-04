@@ -266,6 +266,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {
         sketchVertexAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+      } else if (hit.layer === SKETCH_SURFACE_LAYER_NAME) {
+        // The sketch surface has no per-primitive identity (pickKey === query),
+        // so toggle the query alone like a sketch entity/vertex. Falling into
+        // the B-rep branch would mint a phantom selectedPicks claim
+        // {query -> {query}} for a layer that never distinguishes primitives.
+        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))
       } else if (isBrepDimensionPick(hit.layer)) {
         // Dimensioning a body edge / vertex from inside a sketch: project it
         // into the sketch and dimension the projection. Faces are excluded --

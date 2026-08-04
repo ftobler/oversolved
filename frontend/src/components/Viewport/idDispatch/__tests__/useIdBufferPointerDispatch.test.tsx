@@ -7,6 +7,7 @@ import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
 import { markDrawToolClickConsumed, takeDrawToolClickConsumed } from '../drawToolClickGuard'
+import type { ActiveTool } from '@/types/cad'
 
 class StubRenderer {
   domElement: HTMLCanvasElement
@@ -269,6 +270,53 @@ describe('useIdBufferPointerDispatch', () => {
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
       expect(pipeline.resolveSync).not.toHaveBeenCalled()
     })
+
+    // The DrawPlane pointer-down marks the click consumed for EVERY drawing tool
+    // (Drawing.tsx), so a line/rect/circle/... gesture that snaps its release onto
+    // an existing sketch vertex must not toggle that vertex into normal selection.
+    // `line` is covered above; these pin the rest of the drawing family.
+    const DRAWING_TOOLS = ['rect', 'center_rect', 'circle', 'arc', 'ellipse', 'spline', 'point', 'ngon'] as ActiveTool[]
+    it.each(DRAWING_TOOLS)(
+      'skips normal selection for the %s tool after its draw pointer-down consumed the click',
+      async (tool) => {
+        useSketchEditorStore.setState({ activeTool: tool, activeFeatureId: 'feat1', normalSelection: new Set() })
+        stubVertexHit()
+        renderHook(() => useIdBufferPointerDispatch({
+          glRef: glRef as { current: import('three').WebGLRenderer | null },
+          consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+        }))
+
+        markDrawToolClickConsumed()  // mimic DrawPlane.onPointerDown for every drawing tool
+        await act(async () => {
+          canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+        })
+
+        expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+        expect(pipeline.resolveSync).not.toHaveBeenCalled()
+      },
+    )
+  })
+
+  it('toggles a sketch-surface hit query-only with no selectedPicks claim', async () => {
+    // A sketch surface has no per-primitive identity (pickKey === query), so the
+    // click must toggle the query wholesale like a sketch entity/vertex. Falling
+    // into the B-rep else would mint a phantom {query -> {query}} claim.
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 1, layer: SKETCH_SURFACE_LAYER_NAME, entityKey: 'sk1/surf:face0', distancePx: 0,
+    })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_SURFACE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has('sk1/surf:face0')).toBe(true)
+    expect(s.selectedPicks.size).toBe(0)
   })
 
   it('hover stream calls onOver then onOut as the resolved key changes', async () => {
