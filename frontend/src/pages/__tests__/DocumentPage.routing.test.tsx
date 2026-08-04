@@ -6,6 +6,12 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 // under test here, so stub both sides and assert which one was chosen. The Part
 // and AssemblyEditor stubs record mount/unmount so the keyed-remount tests can
 // assert the instances actually change when the uuid does.
+//
+// Lifecycle is recorded in useEffect, a passive effect. RTL's waitFor runs
+// outside act (it disables IS_REACT_ACT_ENVIRONMENT for the whole poll), so a
+// text waitFor can resolve while the effect flush still lags behind the
+// committed DOM. Mount/unmount counts must therefore be asserted INSIDE a
+// waitFor, never synchronously right after a text waitFor.
 const partLifecycle = vi.hoisted(() => vi.fn())
 const assemblyLifecycle = vi.hoisted(() => vi.fn())
 vi.mock('@/pages/AssemblyEditor', async () => {
@@ -118,7 +124,9 @@ describe('DocumentPage kind routing', () => {
       </MemoryRouter>
     )
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
-    expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+    await waitFor(() => {
+      expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))
 
@@ -154,8 +162,10 @@ describe('DocumentPage kind routing', () => {
         <GoToB />
       </MemoryRouter>
     )
-    await waitFor(() => expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument())
-    expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+    await waitFor(() => {
+      expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument()
+      expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))
 
