@@ -47,7 +47,7 @@ describe('useIdBufferPointerDispatch', () => {
     pipeline = new IdPipeline({ width: 800, height: 600 })
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({ activeTool: 'select' })
+    useSketchEditorStore.setState({ activeTool: null })  // idle select is activeTool null
   })
   afterEach(() => {
     setLivePipeline(null)
@@ -144,9 +144,9 @@ describe('useIdBufferPointerDispatch', () => {
       spy.mockRestore()
     })
 
-    it('calls sketchVertexAdapter.onPointerDown when activeTool is select', async () => {
+    it('calls sketchVertexAdapter.onPointerDown when no tool is active', async () => {
       stubVertexHit()
-      useSketchEditorStore.setState({ activeTool: 'select' })
+      useSketchEditorStore.setState({ activeTool: null })
       const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
 
       renderHook(() => useIdBufferPointerDispatch({
@@ -398,7 +398,7 @@ describe('useIdBufferPointerDispatch', () => {
     }))
 
     await act(async () => {
-      // 'select' allows every layer: the first move resolves, the second queues.
+      // No active tool allows every layer: the first move resolves, the second queues.
       canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 10, clientY: 50 }))
       canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 20, clientY: 50 }))
       await Promise.resolve()

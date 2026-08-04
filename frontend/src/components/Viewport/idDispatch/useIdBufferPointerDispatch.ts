@@ -314,9 +314,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         featureHandleAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
         dimensionLabelAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
-      } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME && (tool === 'drag' || tool === null || tool === 'select')) {
+      } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME && (tool === 'drag' || tool === null)) {
         sketchVertexAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
-      } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME && (tool === 'drag' || tool === null || tool === 'select')) {
+      } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME && (tool === 'drag' || tool === null)) {
         sketchEntityAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
     }

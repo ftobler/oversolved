@@ -68,7 +68,9 @@ export function dispatchDragInitiation(
   const effectiveTool = getEffectiveTool(state.activeTool)
 
   if (!state.activeFeatureId || state.activeFeatureId !== featureId) return
-  if (effectiveTool !== null && effectiveTool !== 'select' && effectiveTool !== 'drag') return
+  // Drag initiation only under the idle/drag entry: getEffectiveTool(null) is
+  // 'drag', and every drawing tool commits on pointer-down instead.
+  if (effectiveTool !== 'drag') return
 
   state.setIsPointerDown(true)
   state.setDragStartClient([clientX, clientY])

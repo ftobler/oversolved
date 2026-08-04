@@ -7,9 +7,8 @@ import {
 import type { ActiveTool } from '@/types/cad'
 
 describe('getToolAllowedLayers', () => {
-  it('allows all layers under the select / dimension / drag / offset tools (null)', () => {
+  it('allows all layers under null (idle select) / dimension / drag / offset', () => {
     expect(getToolAllowedLayers(null)).toBeNull()
-    expect(getToolAllowedLayers('select')).toBeNull()
     expect(getToolAllowedLayers('dimension')).toBeNull()
     expect(getToolAllowedLayers('drag')).toBeNull()
     expect(getToolAllowedLayers('offset')).toBeNull()
@@ -51,7 +50,6 @@ describe('getToolAllowedLayers', () => {
 describe('getToolPickConfig.clearsSelectionOnEnter', () => {
   it('is true only for the dimension tool', () => {
     expect(getToolPickConfig('dimension').clearsSelectionOnEnter).toBe(true)
-    expect(getToolPickConfig('select').clearsSelectionOnEnter).toBe(false)
     expect(getToolPickConfig('line').clearsSelectionOnEnter).toBe(false)
     expect(getToolPickConfig('project').clearsSelectionOnEnter).toBe(false)
     expect(getToolPickConfig('drag').clearsSelectionOnEnter).toBe(false)
@@ -64,7 +62,7 @@ describe('getToolPickConfig is total', () => {
     // Runtime guard mirroring the compile-time exhaustiveness of the Record:
     // every tool resolves to a config with both fields defined.
     const tools: ActiveTool[] = [
-      null, 'select', 'dimension', 'line', 'rect', 'center_rect', 'circle', 'arc',
+      null, 'dimension', 'line', 'rect', 'center_rect', 'circle', 'arc',
       'ellipse', 'spline', 'point', 'ngon', 'project', 'drag', 'mirror', 'offset',
     ]
     for (const t of tools) {

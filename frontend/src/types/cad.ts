@@ -8,7 +8,11 @@ export type Point = [number, number]
 // (kernel/evalExpr.ts) before the leaf solver runs.
 export type NumberOrExpr = number | string
 
-export type ActiveTool = 'select' | 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
+// The store's activatable tool union. Select is NOT here: idle select is
+// activeTool === null (the dispatchSketchClick fallback), so the union is
+// exactly the registry key type minus null (see toolRegistry.ts ToolId).
+// mirror/offset are forward-compat placeholders with no registered tool.
+export type ActiveTool = 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
 
 // Which geometric space the current selection lives in.
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'

@@ -24,9 +24,10 @@ export function initializeTools(): void {
   toolRegistry.register(createDimensionTool())
   toolRegistry.register(createDragTool())
 
-  if (import.meta.env.DEV) {
-    toolRegistry.validate()
-  }
+  // Unconditional: a dangling union member must fail everywhere (test, build,
+  // prod startup), not just under dev. initializeTools runs at app startup and
+  // in every test that exercises the store.
+  toolRegistry.validate()
 }
 
 export { createDrawingTool, createDimensionTool, createDragTool }

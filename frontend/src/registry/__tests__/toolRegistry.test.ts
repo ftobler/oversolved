@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ToolRegistry, toolRegistry } from '@/registry/toolRegistry'
+import { ToolRegistry, toolRegistry, ACTIVATABLE_TOOL_IDS, isDrawingTool, drawingToolIds } from '@/registry/toolRegistry'
 import { getEffectiveTool } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
 import { createDragTool } from '@/tools/DragTool'
@@ -25,20 +25,29 @@ function createMockTool(id: ToolId, category: ToolCategory = 'selection'): Tool 
   }
 }
 
+// Register every id validate() requires (drawing/dimension/drag plus the full
+// ACTIVATABLE set), so validate()-focused tests can vary one member at a time.
+function registerCanonicalTools(registry: ToolRegistry): void {
+  for (const id of ACTIVATABLE_TOOL_IDS) {
+    const category: ToolCategory = id === 'dimension' ? 'dimension' : id === 'drag' ? 'drag' : 'drawing'
+    registry.register(createMockTool(id, category))
+  }
+}
+
 describe('ToolRegistry', () => {
   describe('registration', () => {
     it('registers a tool and retrieves it by id', () => {
       const registry = new ToolRegistry()
-      const mockTool = createMockTool('select')
+      const mockTool = createMockTool('drag')
       registry.register(mockTool)
-      expect(registry.get('select')).toBe(mockTool)
+      expect(registry.get('drag')).toBe(mockTool)
     })
 
     it('throws when registering duplicate tool id', () => {
       const registry = new ToolRegistry()
-      registry.register(createMockTool('select'))
-      expect(() => registry.register(createMockTool('select'))).toThrow(
-        'Tool with id select already registered'
+      registry.register(createMockTool('drag'))
+      expect(() => registry.register(createMockTool('drag'))).toThrow(
+        'Tool with id drag already registered'
       )
     })
 
@@ -81,9 +90,9 @@ describe('ToolRegistry', () => {
         popMode: vi.fn(),
       }
       const tool: Tool = {
-        id: 'select',
-        label: 'Select',
-        category: 'selection',
+        id: 'line',
+        label: 'Line',
+        category: 'drawing',
         activate,
         deactivate,
         handlers: mockHandlers,
@@ -100,9 +109,7 @@ describe('ToolRegistry', () => {
   describe('validation', () => {
     it('passes when the canonical tools are registered', () => {
       const registry = new ToolRegistry()
-      registry.register(createMockTool('line', 'drawing'))
-      registry.register(createMockTool('dimension', 'dimension'))
-      registry.register(createMockTool('drag', 'drag'))
+      registerCanonicalTools(registry)
 
       expect(() => registry.validate()).not.toThrow()
     })
@@ -130,6 +137,17 @@ describe('ToolRegistry', () => {
 
       expect(() => registry.validate()).toThrow('Drag tool not registered')
     })
+
+    it('throws when a non-placeholder activatable tool is missing', () => {
+      const registry = new ToolRegistry()
+      for (const id of ACTIVATABLE_TOOL_IDS) {
+        if (id === 'point') continue  // deliberately not registered
+        const category: ToolCategory = id === 'dimension' ? 'dimension' : id === 'drag' ? 'drag' : 'drawing'
+        registry.register(createMockTool(id, category))
+      }
+
+      expect(() => registry.validate()).toThrow('Tool point not registered')
+    })
   })
 
   describe('fallback tool behavior', () => {
@@ -138,7 +156,6 @@ describe('ToolRegistry', () => {
     })
 
     it('returns the same tool when activeTool is set', () => {
-      expect(getEffectiveTool('select')).toBe('select')
       expect(getEffectiveTool('line')).toBe('line')
       expect(getEffectiveTool('dimension')).toBe('dimension')
     })
@@ -311,6 +328,44 @@ describe('ToolRegistry', () => {
         center: [0, 0],
         corner: [3, 4],
       })
+    })
+  })
+
+  describe('registry single-source-of-truth cross-check', () => {
+    it('after initializeTools, the registered id set is exactly the activatable ids', () => {
+      initializeTools()
+      const registered = new Set(toolRegistry.registeredIds())
+      for (const id of ACTIVATABLE_TOOL_IDS) {
+        expect(registered.has(id), `${id} should be registered`).toBe(true)
+      }
+      // Forward-compat placeholders have ActiveTool/ToolId slots but no tool
+      // mode, so they must NOT resolve to a registered tool.
+      expect(registered.has('mirror' as ToolId)).toBe(false)
+      expect(registered.has('offset' as ToolId)).toBe(false)
+      expect(registered.size).toBe(ACTIVATABLE_TOOL_IDS.length)
+    })
+
+    it('drawingToolIds equals the registered drawing-category ids', () => {
+      initializeTools()
+      expect(drawingToolIds()).toEqual(new Set(Array.from(toolRegistry.drawingIds())))
+    })
+  })
+
+  describe('isDrawingTool (draw-plane vs backplane classification)', () => {
+    it('classifies every registered drawing tool as drawing', () => {
+      initializeTools()
+      for (const id of toolRegistry.drawingIds()) {
+        expect(isDrawingTool(id)).toBe(true)
+      }
+    })
+
+    it('classifies every non-drawing tool as not drawing', () => {
+      initializeTools()
+      for (const id of ['dimension', 'drag', 'mirror', 'offset'] as const) {
+        expect(isDrawingTool(id)).toBe(false)
+      }
+      // A bogus id is a non-drawing tool, not a crash.
+      expect(isDrawingTool('bogus')).toBe(false)
     })
   })
 })

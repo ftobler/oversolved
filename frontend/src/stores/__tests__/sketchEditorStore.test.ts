@@ -1220,6 +1220,19 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().setActivePickField(null)
       expect(useSketchEditorStore.getState().modeStack).toEqual([])
     })
+
+    it('failLouds when activating an unregistered (forward-compat) tool id', () => {
+      // mirror is an ActiveTool member with no registered tool mode; activating
+      // it must throw in test mode, not silently no-op (the ellipse bug).
+      expect(() => useSketchEditorStore.getState().setActiveTool('mirror'))
+        .toThrow(/no registered tool/)
+    })
+
+    it('failLouds when deactivating an unregistered tool id', () => {
+      useSketchEditorStore.setState({ activeTool: 'mirror', modeStack: ['tool:mirror'] })
+      expect(() => useSketchEditorStore.getState().setActiveTool('line'))
+        .toThrow(/no registered tool/)
+    })
   })
 
   describe('mode stack', () => {

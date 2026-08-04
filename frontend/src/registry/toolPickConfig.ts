@@ -72,10 +72,9 @@ const PROJECT_PICK: ToolPickConfig = {
 /**
  * Exhaustive per-tool policy table. Keyed on the full `ActiveTool` union (minus
  * null) so the compiler forces an entry for every present and future tool. The
- * null (no active tool) case is handled by `getToolPickConfig`.
+ * null (no active tool = idle select) case is handled by `getToolPickConfig`.
  */
 const TOOL_PICK_CONFIG: Record<NonNullable<ActiveTool>, ToolPickConfig> = {
-  select: FULL_PICK,
   drag: FULL_PICK,
   dimension: DIMENSION_PICK,
   project: PROJECT_PICK,

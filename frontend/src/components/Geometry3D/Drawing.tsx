@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
-import { toolRegistry } from '@/registry/toolRegistry'
+import { toolRegistry, isDrawingTool } from '@/registry/toolRegistry'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 import { Dot } from '@/components/Geometry3D/VertexDots'
@@ -32,7 +32,9 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string
   // sketch may draw it, else other visible sketches double-render it on their
   // own planes (the draw cursor lives in the active sketch's local space).
   if (featureId !== activeFeatureId) return null
-  if (effectiveTool === 'select') return null
+  // Only a drawing tool owns draw state; idle select (activeTool null resolves
+  // to 'drag') and dimension/drag render nothing here.
+  if (!isDrawingTool(effectiveTool)) return null
 
   const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover, ngonSides)
   const endpoint = drawHover
@@ -134,7 +136,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
 
   if (featureId !== activeFeatureId) return null
 
-  if (effectiveTool === 'select' || effectiveTool === 'dimension' || effectiveTool === 'drag') {
+  // Non-drawing tools (drag, dimension) render the inert backplane; every
+  // drawing tool (including project) renders the active draw plane. Derived
+  // from the registry so a new tool lands on the right plane automatically.
+  if (!isDrawingTool(effectiveTool)) {
     return (
       <mesh
         position={[0, 0, -1000]}
@@ -205,7 +210,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           alignmentSnapKind: state.alignmentSnapKind,
           alignmentSnapVertexId: state.alignmentSnapVertexId,
           setDrawSnap: useSketchEditorStore.getState().setDrawSnap,
-          setActiveTool: (tool: string | null) => { useSketchEditorStore.getState().setActiveTool(tool as import('@/types/cad').ActiveTool) },
+          setActiveTool: (tool) => { useSketchEditorStore.getState().setActiveTool(tool) },
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
           ngonSides: state.ngonSides,

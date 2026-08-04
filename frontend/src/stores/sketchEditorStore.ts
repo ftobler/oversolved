@@ -10,7 +10,7 @@ import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoint
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
 import { toolRegistry } from '@/registry/toolRegistry'
-import type { ToolId, ToolContext } from '@/registry/toolRegistry'
+import type { ToolContext } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
 import { randomId } from '@/utils/yamlMutations/helpers'
@@ -390,10 +390,16 @@ function buildToolContext(get: () => SketchEditorState): ToolContext {
 
 // Fire a tool's activate hook if the tool is registered. Callers own the guard
 // deciding whether the hook should run at all; the tool field itself is written
-// by the caller's own set().
+// by the caller's own set(). An id with no registered tool (a union member that
+// was never wired) is a bug, not a no-op, so it fails loud.
 function activateTool(get: () => SketchEditorState, toolId: ActiveTool): void {
   if (!toolId) return
-  toolRegistry.get(toolId as ToolId)?.activate(buildToolContext(get))
+  const tool = toolRegistry.get(toolId)
+  if (tool === null) {
+    failLoud(`[sketchEditorStore] activateTool('${toolId}'): no registered tool`)
+    return
+  }
+  tool.activate(buildToolContext(get))
 }
 
 // Disarms the tool completely before running its hook: the field, plus the
@@ -401,7 +407,9 @@ function activateTool(get: () => SketchEditorState, toolId: ActiveTool): void {
 // tool's mode entry and popMode revalidates the whole store the moment the
 // stack empties, so it must not observe a half-disarmed editor (an activeTool
 // whose entry is already gone, or draw/dimension leftovers with no tool).
-// Callers that arm a new tool re-apply these resets anyway.
+// Callers that arm a new tool re-apply these resets anyway. An unregistered id
+// fails loud: the field is already cleared above, so a dev warn keeps the
+// editor consistent while flagging the leak.
 function deactivateTool(
   get: () => SketchEditorState,
   set: (p: Partial<SketchEditorState>) => void,
@@ -416,7 +424,12 @@ function deactivateTool(
     dimensionPicks: [],
     dimensionCursorWorld: null,
   })
-  toolRegistry.get(toolId as ToolId)?.deactivate(buildToolContext(get))
+  const tool = toolRegistry.get(toolId)
+  if (tool === null) {
+    failLoud(`[sketchEditorStore] deactivateTool('${toolId}'): no registered tool`)
+    return
+  }
+  tool.deactivate(buildToolContext(get))
 }
 
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({

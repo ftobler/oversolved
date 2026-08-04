@@ -3,6 +3,7 @@
 // Uses the 3-tier guard pattern: throw in test, warn in dev, silent in prod.
 
 import type { SelectionDomain } from '@/types/cad'
+import { drawingToolIds, isDrawingTool } from '@/registry/toolRegistry'
 
 export const devOnly = import.meta.env?.DEV ?? false
 export const testMode = import.meta.env?.MODE === 'test'
@@ -20,9 +21,10 @@ export function failLoud(message: string): void {
   }
 }
 
-type DrawingToolKind = 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'ngon' | 'project'
-
-export const DRAWING_TOOLS = new Set<DrawingToolKind>(['line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse', 'spline', 'point', 'ngon', 'project'])
+// Drawing-tool id set, derived from the registry so the draw-state invariants
+// can never drift from what initializeTools registered (single source of
+// truth). A function because the registry populates after module evaluation.
+export const DRAWING_TOOLS = drawingToolIds
 
 // ─── Selection State Invariants ───
 
@@ -227,16 +229,16 @@ export function validateSketchEditorState(state: SketchEditorInvariantState): vo
     )
   }
 
-  const isDrawingTool = state.activeTool ? (DRAWING_TOOLS as Set<string>).has(state.activeTool) : false
+  const drawingActive = state.activeTool !== null && isDrawingTool(state.activeTool)
 
-  if (state.drawPoints.length > 0 && !isDrawingTool) {
+  if (state.drawPoints.length > 0 && !drawingActive) {
     failLoud(
       `[invariant] drawPoints has ${state.drawPoints.length} entries `
       + `but activeTool is '${state.activeTool}', not a drawing tool`,
     )
   }
 
-  if (state.drawHover !== null && !isDrawingTool) {
+  if (state.drawHover !== null && !drawingActive) {
     failLoud(
       `[invariant] drawHover is set but activeTool is '${state.activeTool}', not a drawing tool`,
     )

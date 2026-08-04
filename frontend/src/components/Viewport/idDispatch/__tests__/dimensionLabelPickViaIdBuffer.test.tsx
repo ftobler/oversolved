@@ -33,7 +33,7 @@ describe('dimensionLabel pick goes through the id buffer (267.3 cutover)', () =>
     pipeline = new IdPipeline({ width: 800, height: 600 })
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({ activeTool: 'select' })
+    useSketchEditorStore.setState({ activeTool: null })  // idle select is activeTool null
   })
   afterEach(() => {
     setLivePipeline(null)

@@ -1,5 +1,5 @@
-import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
-import type { Point, Entity } from '@/types/cad'
+import type { Tool, ToolContext, ToolHandlers, ToolId } from '@/registry/toolRegistry'
+import type { Point, Entity, ActiveTool } from '@/types/cad'
 import { ENTITY_BY_ACTIVE_TOOL } from '@/registry'
 import type { SnapKind } from '@/registry'
 import { computeDrawClick } from '@/components/Geometry3D/drawLogic'
@@ -17,7 +17,7 @@ export interface DrawingToolContext extends ToolContext {
   // bypassed change detection and deferred the re-render to the next move).
   setDrawPoints: (pts: Point[]) => void
   clearDraw: () => void
-  setActiveTool: (tool: string | null) => void
+  setActiveTool: (tool: ActiveTool) => void
   hoveredVertexId: string | null
   hoveredVertexPosition: Point | null
   hoveredSnapKind: SnapKind | null
@@ -39,7 +39,7 @@ export interface DrawingTool extends Tool {
 }
 
 export interface DrawingToolConfig {
-  entityKind: string
+  entityKind: ToolId
   paramCount: number
 }
 
@@ -113,7 +113,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
   }
 
   return {
-    id: config.entityKind as Tool['id'],
+    id: config.entityKind,
     label: config.entityKind,
     category: 'drawing' as const,
     entityKind: config.entityKind,

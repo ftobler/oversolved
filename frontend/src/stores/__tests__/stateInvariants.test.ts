@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { validateSketchEditorState, validateSelectionState, repairSelectionState, DRAWING_TOOLS, deriveSelectionDomain, DERIVE_SELECTION_DOMAIN_PREFIXES, KNOWN_SELECTION_PREFIXES } from '@/stores/stateInvariants'
 import type { SketchEditorInvariantState, SelectionInvariantState } from '@/stores/stateInvariants'
 import type { SelectionDomain } from '@/types/cad'
+import { initializeTools } from '@/tools'
+import { toolRegistry } from '@/registry/toolRegistry'
+
+// The drawing-tool set is derived from the registry, so the invariant tests
+// need the canonical tools registered before they enumerate drawing ids.
+beforeAll(() => { initializeTools() })
 
 function defaultSelectionState(): SelectionInvariantState {
   return {
@@ -322,7 +328,7 @@ describe('validateSketchEditorState', () => {
 
   describe('activePickField invariant', () => {
     it('throws when activePickField is set but activeTool is not null', () => {
-      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: 'select' }
+      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: 'drag' }
       expect(() => validateSketchEditorState(state)).toThrow('[invariant] activePickField')
     })
 
@@ -379,7 +385,7 @@ describe('validateSketchEditorState', () => {
 
   describe('draw state invariants', () => {
     it('throws when drawPoints has entries but activeTool is not a drawing tool', () => {
-      const state = { ...defaultState(), drawPoints: [[1, 2]], activeTool: 'select' }
+      const state = { ...defaultState(), drawPoints: [[1, 2]], activeTool: 'dimension' }
       expect(() => validateSketchEditorState(state)).toThrow('[invariant] drawPoints')
     })
 
@@ -388,7 +394,7 @@ describe('validateSketchEditorState', () => {
       expect(() => validateSketchEditorState(state)).toThrow('[invariant] drawHover')
     })
 
-    for (const tool of DRAWING_TOOLS) {
+    for (const tool of DRAWING_TOOLS()) {
       it(`passes when drawing tool '${tool}' has draw state`, () => {
         const state = { ...defaultState(), drawPoints: [[1, 2]], drawHover: [3, 4], ...withTool(tool) }
         expect(() => validateSketchEditorState(state)).not.toThrow()
@@ -396,8 +402,14 @@ describe('validateSketchEditorState', () => {
     }
 
     it('passes when drawPoints is empty and activeTool is not a drawing tool', () => {
-      const state = { ...defaultState(), drawPoints: [], drawHover: null, ...withTool('select') }
+      const state = { ...defaultState(), drawPoints: [], drawHover: null, ...withTool('drag') }
       expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+  })
+
+  describe('drawing-tool set vs registry', () => {
+    it('DRAWING_TOOLS matches the registered drawing tools', () => {
+      expect(DRAWING_TOOLS()).toEqual(new Set(Array.from(toolRegistry.drawingIds())))
     })
   })
 
@@ -410,7 +422,7 @@ describe('validateSketchEditorState', () => {
       chipOwnedSelection: new Set<string>(),
         selectionDomain: 'mixed' as const,
         dimensionPicks: [{ target: 'entity:S1:L1' }],
-        activeTool: 'select',
+        activeTool: 'dimension',
       }
       expect(() => validateSketchEditorState(state)).toThrow('[invariant] normalSelection contains unrecognized entry')
     })

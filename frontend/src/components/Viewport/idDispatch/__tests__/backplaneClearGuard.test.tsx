@@ -47,7 +47,7 @@ describe('shouldClearSelectionOnBackplaneClick (backplane clear guard)', () => {
     pipeline.isDirty = () => false
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({ activeTool: 'select', normalSelection: new Set() })
+    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
     takeDrawToolClickConsumed()  // clear any flag leaked from a prior test
   })
   afterEach(() => {

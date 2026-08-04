@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { DrawPreview } from '@/components/Geometry3D/Drawing'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { initializeTools } from '@/tools'
 
 // The preview is composed of three.js primitives (drei Line, Dot, DashedLine)
 // that need no WebGL context to render as host elements under jsdom; we only
@@ -19,6 +20,9 @@ vi.mock('@/components/Geometry3D/dimensions', () => ({
 
 describe('DrawPreview active-feature guard', () => {
   beforeEach(() => {
+    // The draw-plane classification is registry-backed, so the canonical tools
+    // must be registered before the preview can recognize the line tool.
+    initializeTools()
     // Two draw points + a line tool produce a non-empty preview polyline.
     useSketchEditorStore.setState({
       activeTool: 'line',
