@@ -2,9 +2,9 @@ import path from 'path'
 import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
-// CI runs on a contended self-hosted box (6 runners + a high-priority devbox on
-// 8 cores), so tests are far slower than wall-clock under load. Bump timeouts in
-// CI only; local keeps the snappy vitest defaults for fast feedback.
+// CI runners can run into problems (slow tests, heavy load), so tests are far
+// slower than wall-clock under load. Bump timeouts in CI only; local keeps the
+// snappy vitest defaults for fast feedback.
 const ci = !!process.env.CI
 
 export default defineConfig({
