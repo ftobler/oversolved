@@ -131,6 +131,21 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
     } finally { scope.dispose() }
   })
 
+  it('never rewrites a producer-minted UUID (nameFacesFromNeighbours invariance)', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const { faceNames, faceAncestry } = nameAllFaces(scope, box)
+      const namesBefore = { ...faceNames }
+      const ancestryBefore = { ...faceAncestry }
+      nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
+      // Every producer-minted UUID and its ancestry survive the pass untouched;
+      // the pass only ever ADDS names for faces that had none.
+      expect(faceNames).toEqual(namesBefore)
+      expect(faceAncestry).toEqual(ancestryBefore)
+    } finally { scope.dispose() }
+  })
+
   it('deterministic: two builds of the same cylinder mint identical edge UUIDs', () => {
     const s1 = new DisposeScope(); const s2 = new DisposeScope()
     try {

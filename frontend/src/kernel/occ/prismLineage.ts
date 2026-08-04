@@ -15,6 +15,7 @@ import type { OccModule, OccShape, OccSubShape, OccListOfShape, OccCircle, OccPr
 import type { PlaneLike } from '../features/shared'
 import {
   edgeToGeom,
+  faceArea,
   faceCentroid,
   faceNormal,
   faceSurfaceType,
@@ -31,6 +32,8 @@ import {
 import { faceGh, edgeGh } from './lineageHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
+import { nameFacesFromNeighbours } from './constructionLineage'
+import { failLoud } from '@/stores/stateInvariants'
 import {
   mintFaceUuid,
   sideFacePath,
@@ -244,7 +247,7 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop
  * are holes. A loop made entirely of arcs on one shared circle is emitted as a
  * single closed circle edge so OCC builds one cylindrical face on extrude.
  */
-function sketchLoopsToFace(
+export function sketchLoopsToFace(
   oc: OccModule,
   scope: DisposeScope,
   loops: LoopEdge[][],
@@ -366,6 +369,88 @@ function capGeneratedFaces(
   return out
 }
 
+/**
+ * Find the two caps of a prism/sweep solid when the builder does not report
+ * FirstShape()/LastShape(). A cap is a face congruent to the profile face: a
+ * rigid translation of it (planar, normal parallel to the profile normal, equal
+ * area, centroid offset along the normal -- the sweep direction). The nearer
+ * face is the start cap and the farther is the end cap, matching
+ * `capFacePath`'s roles so a cap gets the SAME identity whether the builder
+ * reported it or not.
+ *
+ * `caps` is [] unless exactly two such faces are found (a rotated cap, e.g. an
+ * arc sweep, is deliberately not matched -- those builders still report their
+ * caps). `capRoleGhs` is the face-gh set of EVERY planar face with the profile
+ * face's area, named or not: the faces whose only legitimate names come from
+ * the cap path. The caller passes it to the neighbour pass as a skip set, so a
+ * cap the cap path could not reach (its builder omitted FirstShape/LastShape
+ * and the probe found no translation pair) stays exactly as the old wire output
+ * left it -- unnamed -- instead of being reclassified as a corner face.
+ */
+function geometricCapFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  occFace: OccShape,
+): { caps: { face: OccSubShape; which: 'start' | 'end' }[]; capRoleGhs: ReadonlySet<string> } {
+  let pc: Vec3
+  let pn: Vec3
+  let pa: number
+  try {
+    pc = faceCentroid(oc, scope, occFace)
+    pn = faceNormal(oc, scope, occFace)
+    pa = faceArea(oc, scope, occFace)
+  } catch {
+    return { caps: [], capRoleGhs: new Set() }
+  }
+  const E = oc.TopAbs_ShapeEnum
+  const candidates: { face: OccSubShape; d: number }[] = []
+  const capRoleGhs = new Set<string>()
+  const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  for (; fexp.More(); fexp.Next()) {
+    const f = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+    let n: Vec3
+    let a: number
+    let c: Vec3
+    try {
+      if (faceSurfaceType(oc, scope, f) !== 'flatface') continue
+      n = faceNormal(oc, scope, f)
+      a = faceArea(oc, scope, f)
+      c = faceCentroid(oc, scope, f)
+    } catch {
+      continue
+    }
+    if (Math.abs(a - pa) > 1e-6 * Math.max(1, pa)) continue
+    capRoleGhs.add(faceGh(oc, scope, f))
+    // Parallel (or anti-parallel): the face is a translation, not a rotation.
+    const cross = [
+      n[1] * pn[2] - n[2] * pn[1],
+      n[2] * pn[0] - n[0] * pn[2],
+      n[0] * pn[1] - n[1] * pn[0],
+    ]
+    if (Math.hypot(cross[0], cross[1], cross[2]) > 1e-6) continue
+    // The centroid offset is along the profile normal only (the sweep leaves no
+    // in-plane shift), so (c - pc) - d*pn is zero.
+    const d = (c[0] - pc[0]) * pn[0] + (c[1] - pc[1]) * pn[1] + (c[2] - pc[2]) * pn[2]
+    const inPlane = Math.hypot(
+      (c[0] - pc[0]) - d * pn[0],
+      (c[1] - pc[1]) - d * pn[1],
+      (c[2] - pc[2]) - d * pn[2],
+    )
+    if (inPlane > 1e-6) continue
+    candidates.push({ face: f as OccSubShape, d })
+  }
+  if (candidates.length !== 2) return { caps: [], capRoleGhs }
+  candidates.sort((x, y) => x.d - y.d)
+  return {
+    caps: [
+      { face: candidates[0].face, which: 'start' },
+      { face: candidates[1].face, which: 'end' },
+    ],
+    capRoleGhs,
+  }
+}
+
 /** A relative ordering key for an edge (its midpoint), for split multiplicity. */
 function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
   try {
@@ -389,12 +474,14 @@ function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): numbe
  * face/edge lineage (mirrors `_build_prism_lineage_map`) from the raw profile
  * entity ids, used only to seed each UUID's ancestral tokens (the caller
  * prepends `@sketch_id/`). When `createdBy` is non-empty, each side/cap face is
- * minted a construction UUID (side = the generating profile entity, cap =
- * FirstShape/LastShape role) and each edge derives its UUID from its two
- * adjacent face UUIDs; multiplicity (a face pair sharing >1 edge) is ordered by
- * `orderSplitChildren` and refuses on a near-tie.
+ * minted a construction UUID (side = the generating profile entity, cap = the
+ * FirstShape/LastShape role, or the profile-derived fallback when the builder
+ * omits them), a face neither match reached is named off its named neighbours,
+ * and each edge derives its UUID from its two adjacent face UUIDs; multiplicity
+ * (a face pair sharing >1 edge) is ordered by `orderSplitChildren` and refuses
+ * on a near-tie.
  */
-function buildPrismLineageMap(
+export function buildPrismLineageMap(
   oc: OccModule,
   scope: DisposeScope,
   occFace: OccShape,
@@ -440,7 +527,21 @@ function buildPrismLineageMap(
     }
   }
 
-  const capFaces = createdBy ? capGeneratedFaces(oc, scope, prismBuilder) : []
+  // Caps named from the builder's FirstShape/LastShape; when the builder omits
+  // them (or they throw), the geometric fallback derives the two caps from the
+  // profile face itself so a cap's identity never depends on builder reporting.
+  const capCandidates = createdBy ? capGeneratedFaces(oc, scope, prismBuilder) : []
+  let capRoleGhs: ReadonlySet<string> | undefined
+  if (createdBy && capCandidates.length < 2) {
+    const geo = geometricCapFaces(oc, scope, solid, occFace)
+    for (const g of geo.caps) {
+      if (!capCandidates.some((c) => c.face.IsSame(g.face))) capCandidates.push(g)
+    }
+    // A cap-role face the cap path could not reach must stay exactly as the old
+    // wire output left it (unnamed): the neighbour pass must not reclassify a
+    // cap as a corner face, which would change every fixture's ancestry.
+    capRoleGhs = geo.capRoleGhs
+  }
 
   // solid face -> tokens + construction uuid, keyed by geometry hash. Also track
   // each face's uuid and, per edge, its geom hash + the adjacent face ghs.
@@ -461,7 +562,7 @@ function buildPrismLineageMap(
         const slot = sketchId ? `${sketchId}/${match.eid}` : match.eid
         uuid = mintFaceUuid(sideFacePath(createdBy, slot))
       } else {
-        const cap = capFaces.find((c) => (sf as OccSubShape).IsSame(c.face))
+        const cap = capCandidates.find((c) => (sf as OccSubShape).IsSame(c.face))
         if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which))
       }
       if (uuid !== null) {
@@ -479,13 +580,24 @@ function buildPrismLineageMap(
     }
   }
 
-  // solid edge -> tokens, gathered from adjacent faces' tokens.
+  // A face the generated/cap match missed (e.g. a merged-profile side face the
+  // profile union trimmed off its source entity) is named off its named
+  // neighbours, so its edges do not all fall back to the body-wide ancestral
+  // query. Must run BEFORE the edge derivation, which needs both faces of an
+  // edge named. Cap-role faces are skipped: their only legitimate name comes
+  // from the cap path, and a cap the path could not reach stays unnamed so the
+  // output stays byte-identical to the pre-neighbour-pass wire.
+  nameFacesFromNeighbours(oc, scope, solid, faceNames, faceAncestry, capRoleGhs)
+
+  // solid edge -> tokens, gathered from adjacent faces' ancestry.
   const edgeLineage: Record<string, string[]> = {}
   for (const [egh, faceGhs] of Object.entries(adjacency)) {
     const tokens: string[] = []
     for (const fgh of faceGhs) {
-      for (const eid of faceLineage[fgh] ?? []) {
-        if (!tokens.includes(eid)) tokens.push(eid)
+      const fu = faceNames[fgh]
+      if (!fu) continue
+      for (const t of faceAncestry[fu] ?? []) {
+        if (!tokens.includes(t)) tokens.push(t)
       }
     }
     edgeLineage[egh] = tokens
@@ -509,6 +621,16 @@ function buildPrismLineageMap(
         (byPair[[...distinct].sort().join('|')] ??= []).push(egh)
       } else if (distinct.length === 1) {
         (bySingle[distinct[0]] ??= []).push(egh)
+      } else {
+        // Neither an edge between two named faces nor a single-face seam: a
+        // non-manifold junction (>2) or an edge every adjacent face stayed
+        // unnamed on (0) after the neighbour pass. Both would collapse onto the
+        // identical body-wide ancestral query, so flag them instead of silently
+        // leaving the edge unnameable.
+        failLoud(
+          `[prismLineage] edge has ${distinct.length} distinct named adjacent faces ` +
+            `(expected 1 or 2): non-manifold or unrescued topology (${createdBy})`,
+        )
       }
     }
     for (const [pairKey, eghs] of Object.entries(byPair)) {

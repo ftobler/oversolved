@@ -26,14 +26,14 @@
 // face and every edge (see the positive-control test below). The trigger is
 // purely the multi-group profile UNION trimming edges off their source entity.
 //
-// This test LOCKS THE CURRENT (buggy) STATE: it asserts that >=2 vertical side
-// edges share one identical query carrying no `@u|`. The follow-up fix (mint a
-// construction UUID for the merged-profile side faces -- e.g. attribute each
-// trimmed edge to the entity whose supporting line/curve contains it, or carry
-// the per-group face names through the fuse+clean history like
-// `transferBooleanNames` does) must FLIP these assertions: zero unnamed side
-// faces, and every vertical side-edge query unique and carrying `@u|`. The
-// `AFTER THE FIX` block below states exactly what to assert then.
+// The fix (prism-neighbour-naming): `buildPrismLineageMap` now runs
+// `nameFacesFromNeighbours` before deriving edge names -- the same rescue every
+// other producer (boolean/edgeModifier/import) performs -- so a merged-profile
+// side face that matches neither a Generated() side nor a cap is named off its
+// named neighbours, and the vertical side edges between such faces derive a
+// unique `@u|` construction UUID from the face pair. This file asserts the
+// fixed state: zero unnamed side faces, every vertical side-edge query unique
+// and carrying `@u|`.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
@@ -132,27 +132,23 @@ describe.skipIf(!oc)('plate edge UUID coverage: multi-group profile-union gap', 
   //
   // Two overlapping rectangles (an offset "stair") fuse to one solid, so the
   // extrude takes the merged-profile re-prism path. Four side faces -- the ones
-  // whose profile edge the union trimmed -- get no UUID, and two vertical side
-  // edges between them collapse to one identical, `@u|`-less query.
-  it('LOCKS BUG: overlapping-profile plate has vertical side edges sharing a no-@u| query', () => {
+  // whose profile edge the union trimmed -- match neither a Generated() side
+  // nor a cap, but the neighbour pass now names them off their named siblings,
+  // so no side face stays unnamed and every vertical side edge earns a unique
+  // construction UUID instead of collapsing onto the body-wide ancestral query.
+  it('fix verified: overlapping-profile plate names every side face and every vertical edge uniquely', () => {
     const c = coverage([rectLoop(0, 0, 12, 8, 'A'), rectLoop(8, 4, 20, 16, 'B')])
 
-    // Some side faces are unnamed (the diagnosed cause).
-    expect(c.unnamedSideFaces).toBeGreaterThan(0)
+    // The merged-profile side faces the union trimmed are now rescued by the
+    // neighbour pass: zero unnamed side faces.
+    expect(c.unnamedSideFaces).toBe(0)
 
-    // At least one vertical side edge carries no construction UUID.
-    const vertNoU = c.edgeQueries.filter((q, i) => c.vertical[i] && !q.includes('@u|'))
-    expect(vertNoU.length).toBeGreaterThanOrEqual(2)
+    // Every vertical side edge carries a construction UUID...
+    for (const [i, isV] of c.vertical.entries()) {
+      if (isV) expect(c.edgeQueries[i]).toContain('@u|')
+    }
 
-    // ...and >=2 of those vertical no-@u| edges share ONE identical query --
-    // exactly the non-uniqueness that makes the fillet resolver pick the wrong
-    // edge. This is the assertion the follow-up fix must break.
-    expect(duplicates(vertNoU).length).toBeGreaterThanOrEqual(1)
-
-    // AFTER THE FIX, replace the three assertions above with:
-    //   expect(c.unnamedSideFaces).toBe(0)
-    //   for (const [i, isV] of c.vertical.entries())
-    //     if (isV) expect(c.edgeQueries[i]).toContain('@u|')
-    //   expect(duplicates(c.edgeQueries)).toEqual([])
+    // ...and no two edges on the body share one query.
+    expect(duplicates(c.edgeQueries)).toEqual([])
   })
 })

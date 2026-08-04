@@ -71,6 +71,12 @@ function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): numbe
  * name -- a producer-minted UUID is never rewritten. Neighbours are read from
  * the pre-pass name set, so no residual name is derived from another residual
  * name and the result is independent of face iteration order.
+ *
+ * `skipGhs` names faces the caller has assigned a ROLE the pass must not
+ * override: a prism cap whose builder omitted FirstShape/LastShape is such a
+ * face (its name, if any, comes from the cap path, and the old wire output
+ * left it unnamed). Skipped faces keep whatever the producer decided -- named
+ * stays named, unnamed stays unnamed -- so the pass can never reclassify them.
  */
 export function nameFacesFromNeighbours(
   oc: OccModule,
@@ -78,6 +84,7 @@ export function nameFacesFromNeighbours(
   shape: OccShape,
   faceNames: Record<string, string>,
   faceAncestry: Record<string, string[]>,
+  skipGhs?: ReadonlySet<string>,
 ): void {
   const E = oc.TopAbs_ShapeEnum
   const faces: { gh: string; face: OccShape; edges: string[] }[] = []
@@ -89,6 +96,7 @@ export function nameFacesFromNeighbours(
     const gh = faceGh(oc, scope, face)
     if (seen.has(gh)) continue
     seen.add(gh)
+    if (skipGhs?.has(gh)) continue
     const edges: string[] = []
     const eExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
     for (; eExp.More(); eExp.Next()) {
