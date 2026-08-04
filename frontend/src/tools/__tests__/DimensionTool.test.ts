@@ -133,10 +133,5 @@ describe('DimensionTool', () => {
       const tool = createDimensionTool()
       expect(tool.category).toBe('dimension')
     })
-
-    it('shows in toolbar', () => {
-      const tool = createDimensionTool()
-      expect(tool.showInToolbar).toBe(true)
-    })
   })
 })

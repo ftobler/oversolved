@@ -45,7 +45,6 @@ export function createDimensionTool(): DimensionTool {
     id: 'dimension',
     label: 'Dimension',
     category: 'dimension' as const,
-    showInToolbar: true,
 
     ...toolModeHandlers('dimension'),
 

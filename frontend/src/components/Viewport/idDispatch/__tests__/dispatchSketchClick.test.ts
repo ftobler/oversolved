@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { dispatchSketchClick, dispatchDragInitiation } from '../dispatchSketchClick'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
-import { createDragTool } from '@/tools/DragTool'
-import { createDimensionTool } from '@/tools/DimensionTool'
+import { initializeTools } from '@/tools'
 
-// Ensure DragTool and DimensionTool are in the registry for these tests.
-try { toolRegistry.register(createDragTool()) } catch {  /* already registered */ }
-try { toolRegistry.register(createDimensionTool()) } catch {  /* already registered */ }
+beforeEach(() => {
+  toolRegistry.reset()
+  initializeTools()
+})
 
 beforeEach(() => {
   useSketchEditorStore.setState({

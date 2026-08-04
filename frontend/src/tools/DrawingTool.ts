@@ -118,7 +118,6 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
     category: 'drawing' as const,
     entityKind: config.entityKind,
     paramCount,
-    showInToolbar: entityDef?.showInToolbar ?? true,
 
     ...toolModeHandlers(config.entityKind),
 

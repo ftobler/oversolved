@@ -6,9 +6,12 @@ import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 import { dispatchDragInitiation } from '@/components/Viewport/idDispatch/dispatchSketchClick'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
-import { createDragTool } from '@/tools/DragTool'
+import { initializeTools } from '@/tools'
 
-try { toolRegistry.register(createDragTool()) } catch {  /* already registered */ }
+beforeEach(() => {
+  toolRegistry.reset()
+  initializeTools()
+})
 
 // REGRESSION TEST DOCUMENTATION: Dragging Coordinate and Collision Bugs
 //

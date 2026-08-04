@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
-import { createDragTool } from '@/tools/DragTool'
+import { initializeTools } from '@/tools'
 import { sketchEntityAdapter } from '../sketchEntityAdapter'
 
-try { toolRegistry.register(createDragTool()) } catch {  /* already registered */ }
+beforeEach(() => {
+  toolRegistry.reset()
+  initializeTools()
+})
 
 beforeEach(() => {
   useSketchEditorStore.setState({

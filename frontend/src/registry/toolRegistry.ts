@@ -16,15 +16,12 @@ export type ToolId =
   | 'spline'
   | 'point'
   | 'ngon'
-  | 'rectangle'
-  | 'center_rectangle'
   | 'project'
   | 'drag'
-  | 'constraint'
   | 'mirror'
   | 'offset'
 
-export type ToolCategory = 'navigation' | 'drawing' | 'constraint' | 'selection' | 'dimension' | 'drag'
+export type ToolCategory = 'drawing' | 'constraint' | 'selection' | 'dimension' | 'drag'
 
 // What the tool system provides to each tool
 export interface ToolContext {
@@ -75,7 +72,6 @@ export interface Tool<T extends ToolContext = ToolContext> {
   readonly id: ToolId
   readonly label: string
   readonly category: ToolCategory
-  readonly showInToolbar?: boolean
 
   activate(context: T): void
   deactivate(context: T): void
@@ -112,15 +108,9 @@ export interface DragTool extends Tool {
   readonly category: 'drag'
 }
 
-interface ToolHandlerRef {
-  toolId: ToolId
-  eventType: string
-}
-
 // Central registry - single source of truth
 export class ToolRegistry {
   private tools = new Map<ToolId, Tool>()
-  private registeredHandlers = new Map<string, ToolHandlerRef>()
 
   get(id: ToolId): Tool | null {
     return this.tools.get(id) ?? null
@@ -131,60 +121,12 @@ export class ToolRegistry {
       throw new Error(`Tool with id ${tool.id} already registered`)
     }
     this.tools.set(tool.id, tool)
-    this.registerToolHandlers(tool)
   }
 
-  private registerToolHandlers(tool: Tool): void {
-    const handlers = tool.handlers
-    
-    if ('onPointerDown' in handlers && handlers.onPointerDown) {
-      this.registeredHandlers.set(`${tool.id}:onPointerDown`, {
-        toolId: tool.id,
-        eventType: 'onPointerDown',
-      })
-    }
-    if ('onPointerMove' in handlers && handlers.onPointerMove != null) {
-      this.registeredHandlers.set(`${tool.id}:onPointerMove`, {
-        toolId: tool.id,
-        eventType: 'onPointerMove',
-      })
-    }
-    if ('onPointerUp' in handlers && handlers.onPointerUp) {
-      this.registeredHandlers.set(`${tool.id}:onPointerUp`, {
-        toolId: tool.id,
-        eventType: 'onPointerUp',
-      })
-    }
-    if ('onPointerOver' in handlers && handlers.onPointerOver != null) {
-      this.registeredHandlers.set(`${tool.id}:onPointerOver`, {
-        toolId: tool.id,
-        eventType: 'onPointerOver',
-      })
-    }
-    if ('onPointerOut' in handlers && handlers.onPointerOut != null) {
-      this.registeredHandlers.set(`${tool.id}:onPointerOut`, {
-        toolId: tool.id,
-        eventType: 'onPointerOut',
-      })
-    }
-    if ('onClick' in handlers && handlers.onClick != null) {
-      this.registeredHandlers.set(`${tool.id}:onClick`, {
-        toolId: tool.id,
-        eventType: 'onClick',
-      })
-    }
-  }
-
-  byCategory(category: ToolCategory): Tool[] {
-    return Array.from(this.tools.values()).filter(t => t.category === category)
-  }
-
-  getToolbarTools(): Tool[] {
-    return Array.from(this.tools.values()).filter(t => t.showInToolbar)
-  }
-
-  getRegisteredHandlerCount(): number {
-    return this.registeredHandlers.size
+  // Wipe all registered tools so a stale populate (module re-execution under
+  // HMR, a test file re-running initializeTools) never double-registers.
+  reset(): void {
+    this.tools.clear()
   }
 
   // Dev-only sanity check that the registry holds the canonical tools. The

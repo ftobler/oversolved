@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ToolRegistry } from '@/registry/toolRegistry'
+import { ToolRegistry, toolRegistry } from '@/registry/toolRegistry'
 import { getEffectiveTool } from '@/stores/sketchEditorStore'
+import { initializeTools } from '@/tools'
 import { createDragTool } from '@/tools/DragTool'
 import { createDrawingTool } from '@/tools/DrawingTool'
 
@@ -40,40 +41,26 @@ describe('ToolRegistry', () => {
         'Tool with id select already registered'
       )
     })
-  })
 
-  describe('byCategory', () => {
-    it('returns all tools in a category', () => {
+    it('reset clears the registry so a tool can be re-registered', () => {
       const registry = new ToolRegistry()
       registry.register(createMockTool('line', 'drawing'))
-      registry.register(createMockTool('circle', 'drawing'))
-      registry.register(createMockTool('select', 'selection'))
-
-      const drawingTools = registry.byCategory('drawing')
-      expect(drawingTools).toHaveLength(2)
-    })
-
-    it('returns empty array for empty category', () => {
-      const registry = new ToolRegistry()
-      expect(registry.byCategory('drawing')).toHaveLength(0)
+      registry.reset()
+      registry.register(createMockTool('line', 'drawing'))
+      expect(registry.get('line')?.label).toBe('line')
     })
   })
 
-  describe('getToolbarTools', () => {
-    it('returns tools that show in toolbar', () => {
-      const registry = new ToolRegistry()
-      registry.register({
-        ...createMockTool('select', 'selection'),
-        showInToolbar: true,
-      })
-      registry.register({
-        ...createMockTool('line', 'drawing'),
-        showInToolbar: false,
-      })
-
-      const toolbarTools = registry.getToolbarTools()
-      expect(toolbarTools).toHaveLength(1)
-      expect(toolbarTools[0].id).toBe('select')
+  describe('initializeTools idempotency', () => {
+    it('does not throw when called twice and keeps the tool set intact', () => {
+      expect(() => initializeTools()).not.toThrow()
+      expect(() => initializeTools()).not.toThrow()
+      expect(toolRegistry.get('line')).not.toBeNull()
+      expect(toolRegistry.get('rect')).not.toBeNull()
+      expect(toolRegistry.get('center_rect')).not.toBeNull()
+      expect(toolRegistry.get('dimension')).not.toBeNull()
+      expect(toolRegistry.get('drag')).not.toBeNull()
+      expect(() => toolRegistry.validate()).not.toThrow()
     })
   })
 
@@ -142,16 +129,6 @@ describe('ToolRegistry', () => {
       registry.register(createMockTool('dimension', 'dimension'))
 
       expect(() => registry.validate()).toThrow('Drag tool not registered')
-    })
-
-    it('tracks registered handlers', () => {
-      const registry = new ToolRegistry()
-      const tool = createMockTool('line', 'drawing')
-      registry.register(tool)
-      registry.register(createMockTool('dimension', 'dimension'))
-      registry.register(createMockTool('drag', 'drag'))
-
-      expect(registry.getRegisteredHandlerCount()).toBeGreaterThan(0)
     })
   })
 

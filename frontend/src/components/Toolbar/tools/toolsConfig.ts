@@ -1,9 +1,13 @@
+import type { ActiveTool } from '@/types/cad'
+
 export interface ToolDef {
   id: string
   label: string
   icon: string
   command: string
-  activeTool?: string
+  // The sketch-editor tool this button arms. Typed as ActiveTool so a stale
+  // literal (a dead ToolId, a renamed store tool) fails to compile.
+  activeTool?: ActiveTool
   shortcutCommand?: string
 }
 

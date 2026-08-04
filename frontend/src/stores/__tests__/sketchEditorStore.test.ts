@@ -1,16 +1,14 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
+import { toolRegistry } from '@/registry/toolRegistry'
 import type { Mutation } from '@/types/cad'
 
-// Lazy-init the tool registry once so tool lifecycle tests can verify activate/deactivate wiring.
-let toolsInitialized = false
-
-beforeAll(() => {
-  if (!toolsInitialized) {
-    initializeTools()
-    toolsInitialized = true
-  }
+// Reset + re-init the tool registry before each test so tool lifecycle tests
+// can verify activate/deactivate wiring against a known, non-throwing singleton.
+beforeEach(() => {
+  toolRegistry.reset()
+  initializeTools()
 })
 
 function reset() {

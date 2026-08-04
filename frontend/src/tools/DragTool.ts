@@ -110,7 +110,6 @@ export function createDragTool(): DragTool {
     label: 'Drag',
     category: 'drag' as const,
     dragModes: ['vertex', 'edge', 'dim_label'],
-    showInToolbar: true,
 
     ...toolModeHandlers('drag'),
 

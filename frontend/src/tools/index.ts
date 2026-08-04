@@ -5,6 +5,10 @@ import { createDragTool } from '@/tools/DragTool'
 import { ENTITIES } from '@/registry/entityRegistry'
 
 export function initializeTools(): void {
+  // Idempotent: a re-execution (HMR, repeated test setup) wipes the singleton
+  // before re-registering instead of throwing "already registered".
+  toolRegistry.reset()
+
   for (const entity of ENTITIES) {
     if (entity.activeTool) {
       toolRegistry.register(createDrawingTool({ entityKind: entity.activeTool, paramCount: entity.paramCount }))
