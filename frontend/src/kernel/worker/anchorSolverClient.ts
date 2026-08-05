@@ -9,6 +9,18 @@
  * When it needs PartDoc content or a bundle build, it sends a relay request
  * via postMessage; this client handles it, calling injected relay handlers,
  * and posts the response back.
+ *
+ * Hang handling: a mate solve is a synchronous WASM loop inside the worker; if
+ * it never settles, the main-thread promise is stuck and the user sees an
+ * eternal spinner. Mirroring the part solver (`solverClient.ts`), the ONLY
+ * recovery is to kill the Worker, and the ONLY thing that does it is the user
+ * pressing cancel (`cancelAssemblySolver`, wired to the `LoadingOverlay` the
+ * assembly editor mounts, which reads `useSolverStore`). There is deliberately
+ * no automatic ceiling: a legit heavy solve and a hung one are
+ * indistinguishable from here. The watchdog machinery is kept intact behind
+ * `solveTimeoutMs` (Infinity in production, lowered by
+ * `setAnchorSolverTimeoutForTest`) so the drop-and-respawn path stays covered
+ * by tests and can be re-armed by setting a ceiling.
  */
 
 import type {
@@ -52,10 +64,21 @@ function defaultFactory(): AnchorSolverWorkerLike | null {
 let workerFactory: () => AnchorSolverWorkerLike | null = defaultFactory
 let worker: AnchorSolverWorkerLike | null = null
 let nextId = 1
-const pending = new Map<number, {
+
+interface Pending {
   resolve: (res: AssemblySolveOkResponse) => void
   reject: (e: unknown) => void
-}>()
+  timer: ReturnType<typeof setTimeout> | null
+}
+const pending = new Map<number, Pending>()
+
+// Watchdog ceiling for a single worker request. Infinity disables the automated
+// timeout, which is the production setting - see the header on why cancelling is
+// the user's call. Tests lower it via setAnchorSolverTimeoutForTest(). The
+// Infinity case must skip the timer entirely rather than pass it through:
+// `setTimeout(fn, Infinity)` is spec-equivalent to `setTimeout(fn, 0)`, which
+// would kill every request immediately.
+let solveTimeoutMs = Infinity
 
 let relayHandlers: RelayHandlers | null = null
 
@@ -152,6 +175,7 @@ function onMessage(e: { data: AssemblyWorkerResponse }): void {
   if (msg.kind !== 'solveAssembly') return
   const p = pending.get(msg.id)
   if (!p) return
+  if (p.timer) clearTimeout(p.timer)
   pending.delete(msg.id)
   if (msg.ok) {
     p.resolve(msg)
@@ -160,12 +184,31 @@ function onMessage(e: { data: AssemblyWorkerResponse }): void {
   }
 }
 
-function onError(): void {
-  const err = new Error('anchor solver worker crashed')
-  for (const p of pending.values()) p.reject(err)
+// Fail every in-flight request and drop the Worker; the next request respawns a
+// fresh one. Shared by the crash trap, the hang watchdog, and the user cancel.
+function dropWorker(err: Error): void {
+  for (const p of pending.values()) {
+    if (p.timer) clearTimeout(p.timer)
+    p.reject(err)
+  }
   pending.clear()
   worker?.terminate()
   worker = null
+}
+
+function onError(): void {
+  dropWorker(new Error('anchor solver worker crashed'))
+}
+
+function onTimeout(): void {
+  // A request outran the watchdog: the Worker is presumed stuck in an
+  // un-interruptible synchronous WASM loop. Killing it is the only recovery.
+  dropWorker(new Error('anchor solver timed out'))
+}
+
+/** User-initiated cancel: kill the Worker so any in-flight solve is rejected. */
+export function cancelAssemblySolver(): void {
+  dropWorker(new Error('assembly solve cancelled'))
 }
 
 function ensureWorker(): AnchorSolverWorkerLike | null {
@@ -207,7 +250,8 @@ export function solveAssemblyViaWorker(
       reject(e)
       return
     }
-    pending.set(id, { resolve, reject })
+    const timer = isFinite(solveTimeoutMs) ? setTimeout(onTimeout, solveTimeoutMs) : null
+    pending.set(id, { resolve, reject, timer })
   })
 }
 
@@ -223,11 +267,22 @@ export function setAnchorSolverWorkerForTest(
     worker.terminate()
   }
   worker = null
-  for (const p of pending.values()) p.reject(new Error('worker reset by test'))
+  for (const p of pending.values()) {
+    if (p.timer) clearTimeout(p.timer)
+    p.reject(new Error('worker reset by test'))
+  }
   pending.clear()
   nextId = 1
   relayHandlers = null
+  // The production default, so a test that says nothing about the watchdog gets
+  // production behaviour. The timeout suite opts in explicitly.
+  solveTimeoutMs = Infinity
   workerFactory = factory ?? defaultFactory
+}
+
+/** @internal test-only: override the watchdog ceiling (ms). */
+export function setAnchorSolverTimeoutForTest(ms: number): void {
+  solveTimeoutMs = ms
 }
 
 /** @internal test-only: get the current relay handlers (for test assertions). */

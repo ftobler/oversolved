@@ -5,6 +5,7 @@ import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, setAssemblyCallbacks, type MateFieldTarget } from '@/stores/assemblyStore'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
@@ -756,6 +757,10 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
           </div>
           <div className="assembly-viewport-host">
             <AssemblyViewport ref={viewportRef} />
+            {/* The assembly solve mirrors useSolverStore.isSolving and claims its
+                onCancelSolve slot, so the shared overlay renders the spinner and
+                cancel for a full (non-live) solve; it is opacity-0 when idle. */}
+            <LoadingOverlay />
             {solveError && (
               <ErrorBanner
                 message={`Solver error: ${solveError}`}

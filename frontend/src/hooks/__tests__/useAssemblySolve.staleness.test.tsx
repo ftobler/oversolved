@@ -17,6 +17,7 @@ import { assemblyBodyId } from '@/utils/assemblyBodies'
 
 const h = vi.hoisted(() => ({
   solveAssemblyViaWorker: vi.fn(),
+  cancelAssemblySolver: vi.fn(),
   setRelayHandlers: vi.fn(),
   clearRelayHandlers: vi.fn(),
   buildBundleViaWorker: vi.fn(),
@@ -27,6 +28,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
   solveAssemblyViaWorker: h.solveAssemblyViaWorker,
+  cancelAssemblySolver: h.cancelAssemblySolver,
   setRelayHandlers: h.setRelayHandlers,
   clearRelayHandlers: h.clearRelayHandlers,
 }))

@@ -18,7 +18,7 @@ import { useAssemblyStore } from '@/stores/assemblyStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
 import { buildPickBodies } from '@/utils/assemblyPick'
-import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker } from '@/kernel/worker/anchorSolverClient'
+import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAssemblySolver } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec } from '@/kernel/solveAssembly'
@@ -26,6 +26,13 @@ import { dragTargetMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
 import { findInstance } from '@/utils/assemblyMutations'
 import { livePartPose, settledTransforms } from '@/utils/partManipulation'
+import { useSolverStore } from '@/stores/solverStore'
+
+// A failure the user walked into is not an error to banner: a cancel kills the
+// in-flight solve deliberately, and a watchdog timeout is the same drop of a
+// presumed-stuck worker as the part path (`useSolver`'s benign set). Everything
+// else is a real failure the user should see.
+const BENIGN_ASSEMBLY_FAILURES = new Set(['assembly solve cancelled', 'anchor solver timed out'])
 
 // A mate offset/angle authored as an expression string is not evaluated here;
 // expression binding arrives with the mate authoring UI (Stage 8).
@@ -156,11 +163,19 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       buildBundle: async (doc_id, doc_rev, spec) =>
         buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev),
     })
+    // Surface the cancel through the single-slot solver overlay (the assembly
+    // editor mounts LoadingOverlay, which reads this slot). The part hook
+    // (`useSolver`) and this hook never co-mount - they live on different
+    // pages - so the shared `onCancelSolve` slot is safe to claim here.
+    useSolverStore.getState().setOnCancelSolve(() => {
+      cancelAssemblySolver()
+    })
     // The client slot is single-consumer: unregister on unmount so a stale
     // worker's relay requests no-op instead of being serviced by this (now
     // dead) component's handlers.
     return () => {
       clearRelayHandlers()
+      useSolverStore.getState().setOnCancelSolve(null)
     }
   }, [])
 
@@ -187,6 +202,16 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     if (!live) {
       store.setIsSolving(true)
       store.setSolveError(null)
+      // Mirror into the solver store so LoadingOverlay (mounted in the assembly
+      // editor) renders the spinner and cancel button for the full solve; the
+      // overlay only reads the solver store.
+      useSolverStore.getState().setIsSolving(true)
+    } else {
+      // A drag is on screen: the spinner must not cover the dragged scene. A
+      // solve this live tick superseded skipped its own clear (the version
+      // guard in the finally below), so re-arm the mirror off here rather than
+      // leave it up for the whole drag.
+      useSolverStore.getState().setIsSolving(false)
     }
     try {
       let parts = partSpecs(current)
@@ -286,9 +311,23 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       // the one that must surface a persistent error, and a per-frame banner
       // would only flicker.
       if (version !== solveVersion.current) return
-      if (!live) useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
+      // A user cancel (or a watchdog drop of a presumed-stuck worker) is not an
+      // error worth a banner - the user asked for it.
+      const reason = extractErrorMessage(e)
+      if (!live && !BENIGN_ASSEMBLY_FAILURES.has(reason)) {
+        useAssemblyStore.getState().setSolveError(reason)
+      }
     } finally {
-      if (!live) useAssemblyStore.getState().setIsSolving(false)
+      if (!live) {
+        useAssemblyStore.getState().setIsSolving(false)
+        // Only the current solve owns the mirror: a superseded solve (a uuid
+        // switch starts a new drain over the old one) must not clear it under
+        // the newer solve still in flight. The live branch re-arms it off, so a
+        // drag that superseded this solve also ends up cleared.
+        if (version === solveVersion.current) {
+          useSolverStore.getState().setIsSolving(false)
+        }
+      }
     }
   }, [uuid])
 
@@ -342,12 +381,16 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
 
   // Unmount cleanup: an in-flight solve must not paint into the shared store
   // after the editor is gone, and a remount starts with a fresh version and a
-  // clean queue (the shared store survives; the hook's refs do not).
+  // clean queue (the shared store survives; the hook's refs do not). The mirror
+  // is cleared too: a hang that never reaches runSolve's finally (the worker
+  // never answers) would otherwise leave the shared solving flag up and the
+  // overlay stuck. The mount effect's cleanup already clears onCancelSolve.
   useEffect(() => {
     return () => {
       solveVersion.current += 1
       inFlight.current = false
       queued.current = false
+      useSolverStore.getState().setIsSolving(false)
     }
   }, [])
 
