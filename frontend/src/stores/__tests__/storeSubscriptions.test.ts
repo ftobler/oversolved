@@ -55,4 +55,18 @@ describe('hover setters do not notify when nothing changed', () => {
     expect(countNotifications(() => s.setHoveredVertex('v1', [3, 4], null))).toBe(0)
     s.setHoveredVertex(null, null, null)
   })
+
+  it('setHoveredPickKey is silent on a repeated clear and fires on a real change', () => {
+    // The b-rep hover path tears the per-primitive key down before re-applying it
+    // (clearAllHover -> setHoveredPickKey(null)), so an unguarded write would
+    // wake every subscriber on every move, exactly like the other hover setters.
+    const s = useSketchEditorStore.getState()
+    s.setHoveredPickKey(null)
+    expect(countNotifications(() => {
+      for (let i = 0; i < 50; i++) s.setHoveredPickKey(null)
+    })).toBe(0)
+    expect(countNotifications(() => s.setHoveredPickKey('ex1/b0#edge#2'))).toBe(1)
+    expect(countNotifications(() => s.setHoveredPickKey('ex1/b0#edge#2'))).toBe(0)
+    s.setHoveredPickKey(null)
+  })
 })

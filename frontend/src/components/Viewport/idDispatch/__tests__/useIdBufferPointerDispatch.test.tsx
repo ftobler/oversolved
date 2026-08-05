@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
-import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, EDGE_LAYER_NAME } from '@/picking'
+import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
@@ -317,6 +317,99 @@ describe('useIdBufferPointerDispatch', () => {
     const s = useSketchEditorStore.getState()
     expect(s.normalSelection.has('sk1/surf:face0')).toBe(true)
     expect(s.selectedPicks.size).toBe(0)
+  })
+
+  // The click -> claim-minting seam: the dispatcher is what carries the hit's
+  // per-primitive pickKey into toggleNormalSelection. Without this pass-through
+  // every b-rep pick would collapse onto the query alone (the pre-fix eviction
+  // behaviour) no matter how precise the ID buffer was.
+  describe('pickKey pass-through on B-rep clicks', () => {
+    beforeEach(() => {
+      useSketchEditorStore.setState({
+        normalSelection: new Set(),
+        selectedPicks: new Map(),
+        activeTool: null,
+      })
+    })
+
+    it('toggles the query and mints the hit pickKey claim', async () => {
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 10, layer: EDGE_LAYER_NAME, entityKey: '?03;abc:edge', pickKey: 'ex1/b0#edge#2', distancePx: 0,
+      })
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([EDGE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('?03;abc:edge')).toBe(true)
+      expect(s.selectedPicks.get('?03;abc:edge')).toEqual(new Set(['ex1/b0#edge#2']))
+    })
+
+    it('a click on a colliding sibling is additive, never a replacement', async () => {
+      // Two primitives that share a query (no construction UUID earned) resolve
+      // to distinct pickKeys; the second click must add, not evict the first.
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 10, layer: EDGE_LAYER_NAME, entityKey: '?03;abc:edge', pickKey: 'ex1/b0#edge#2', distancePx: 0,
+      })
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([EDGE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 11, layer: EDGE_LAYER_NAME, entityKey: '?03;abc:edge', pickKey: 'ex1/b0#edge#3', distancePx: 0,
+      })
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('?03;abc:edge')).toBe(true)
+      expect(s.selectedPicks.get('?03;abc:edge')).toEqual(new Set(['ex1/b0#edge#2', 'ex1/b0#edge#3']))
+    })
+  })
+
+  // Sketch entities have no per-primitive identity, so the dispatcher routes
+  // them through sketchEntityAdapter.onClick, which toggles the query without a
+  // pickKey. This pins that adapter fallback; it deliberately does not exercise
+  // the claim-minting seam (the B-rep else branch above).
+  describe('sketch-layer click toggles without a claim', () => {
+    beforeEach(() => {
+      useSketchEditorStore.setState({
+        normalSelection: new Set(),
+        selectedPicks: new Map(),
+        activeTool: null,
+      })
+    })
+
+    it('lands the query in normalSelection with no selectedPicks claim', async () => {
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 12, layer: SKETCH_ENTITY_LAYER_NAME, entityKey: 'entity:sk1:line1', distancePx: 0,
+      })
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([SKETCH_ENTITY_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('entity:sk1:line1')).toBe(true)
+      expect(s.selectedPicks.size).toBe(0)
+    })
   })
 
   it('hover stream calls onOver then onOut as the resolved key changes', async () => {

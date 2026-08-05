@@ -815,6 +815,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
     })
 
+    it('setHoveredPickKey records the per-primitive hover key', () => {
+      useSketchEditorStore.getState().setHoveredPickKey('ex1/b0#edge#2')
+      expect(useSketchEditorStore.getState().hoveredPickKey).toBe('ex1/b0#edge#2')
+    })
+
+    it('setHoveredPickKey clears on null', () => {
+      useSketchEditorStore.getState().setHoveredPickKey('ex1/b0#edge#2')
+      useSketchEditorStore.getState().setHoveredPickKey(null)
+      expect(useSketchEditorStore.getState().hoveredPickKey).toBeNull()
+    })
+
     it('setHoveredConstraintEntities updates constraint-highlighted entities', () => {
       const ids = new Set(['entity:S1:L1', 'entity:S1:L2'])
       useSketchEditorStore.getState().setHoveredConstraintEntities(ids)

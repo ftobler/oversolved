@@ -138,4 +138,29 @@ describe('multi-select holds one entry per primitive, not per query', () => {
     click(EDGE_LAYER_NAME, 0, 'Q')
     expect(useSketchEditorStore.getState().normalSelection.has('Q')).toBe(false)
   })
+
+  it('an off/on cycle across all three layers drops every claim', () => {
+    // A face, an edge and a vertex all claim the same query 'Q'. Toggling the
+    // query off wholesale must drop every claim under it (the selectedPicks
+    // guarantee at sketchEditorStore.ts:243), so re-selecting it cannot
+    // resurrect a stale sibling key: the final off leaves selectedPicks empty.
+    click(FACE_LAYER_NAME, 0, 'Q')
+    click(EDGE_LAYER_NAME, 0, 'Q')
+    click(VERTEX_LAYER_NAME, 0, 'Q')
+    expect(useSketchEditorStore.getState().selectedPicks.get('Q')?.size).toBe(3)
+
+    const { toggleNormalSelection } = useSketchEditorStore.getState()
+    toggleNormalSelection('Q')  // off: the query AND every layer claim leave
+    expect(useSketchEditorStore.getState().normalSelection.has('Q')).toBe(false)
+    expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
+
+    toggleNormalSelection('Q')  // on: query-only, no claim re-minted
+    expect(useSketchEditorStore.getState().normalSelection.has('Q')).toBe(true)
+    expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
+
+    toggleNormalSelection('Q')  // off again
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has('Q')).toBe(false)
+    expect(s.selectedPicks.size).toBe(0)
+  })
 })
