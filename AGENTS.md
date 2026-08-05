@@ -14,7 +14,7 @@ from the .justfile: `just backend`
 ```bash
 pytest tests/
 mypy oversolved/ tests/
-flake8 oversolved/ tests/
+ruff check oversolved/ tests/   # CI still runs flake8 as the safety net
 ```
 
 ## Frontend Commands

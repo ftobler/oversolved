@@ -16,14 +16,15 @@ default:
 # override DB with: TEST_DB_DSN=postgresql://... just backend
 backend:
     just mypy
-    just flake8
+    just ruff
     just pytest
 
 mypy:
     .venv/bin/python -m mypy tests/ oversolved/
 
-flake8:
-    .venv/bin/python -m flake8 tests/ oversolved/
+# local ruff gate; CI still runs flake8 (same E/F/W rule set) as the safety net
+ruff:
+    .venv/bin/python -m ruff check tests/ oversolved/
 
 pytest:
     .venv/bin/python -m pytest tests/

@@ -53,7 +53,7 @@ cd frontend && npm run dev    # Vite on :5173, proxies API to Flask
 ### Just recipes
 
 ```bash
-just backend    # mypy + flake8 + pytest
+just backend    # mypy + ruff + pytest (CI still runs flake8)
 just frontend   # lint + test + build
 just run_back   # backend dev server
 just run_front  # frontend dev server
@@ -95,7 +95,7 @@ These default to `--db-type postgres`; add `--db-type sqlite --db-path ...` for 
 ```bash
 pytest tests/ -v                           # backend (needs Postgres; see below)
 cd frontend && npx vitest run               # frontend
-mypy oversolved/ tests/ && flake8 oversolved/ tests/   # backend lint
+mypy oversolved/ tests/ && ruff check oversolved/ tests/   # backend lint (CI still runs flake8)
 cd frontend && npm run lint                 # frontend lint
 ```
 
