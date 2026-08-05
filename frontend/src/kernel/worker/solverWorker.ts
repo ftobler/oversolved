@@ -350,6 +350,48 @@ interface WorkerCtx {
   onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null
 }
 
+/**
+ * Dispatch one Worker message to its handler. Exported so tests can drive the
+ * dispatcher without a real Worker (the bootstrap below only runs in a Worker).
+ * The solve branch is reached only through an explicit kind check: a malformed
+ * message must not be mistaken for a solve, it is warned on and dropped.
+ */
+export function handleWorkerMessage(
+  msg: WorkerRequest,
+  post: (message: SolveResponse | ExportResponse | BundleResponse, transfer: Transferable[]) => void,
+  actor: WorkerActor,
+): void {
+  if (msg.kind === 'export') {
+    actor.submit(oneShot(
+      () => handleExportRequest(msg, exportLocally),
+      (res) => { post(res, exportTransferables(res)) },
+    ))
+  } else if (msg.kind === 'exportAssembly') {
+    actor.submit(oneShot(
+      () => handleExportAssemblyRequest(msg, exportAssemblyLocally),
+      (res) => { post(res, exportTransferables(res)) },
+    ))
+  } else if (msg.kind === 'buildBundle') {
+    actor.submit(oneShot(
+      () => handleBundleRequest(msg, solveLocally),
+      (res) => { post(res, bundleTransferables(res)) },
+    ))
+  } else if (msg.kind === 'solve') {
+    actor.submit({
+      supersedable: true,
+      run: async () => {
+        const res = await handleSolveRequest(msg, solveLocally)
+        post(res, collectTransferables(res))
+      },
+      onSuperseded: () => {
+        post({ id: msg.id, ok: false, error: SUPERSEDED_ERROR }, [])
+      },
+    })
+  } else {
+    console.warn('[solverWorker] unknown message kind', msg.kind)
+  }
+}
+
 if (inWorker()) {
   // Install the DOM-free OCC loader: the main-thread loadOccWeb uses
   // document/window, which do not exist here.
@@ -357,33 +399,6 @@ if (inWorker()) {
   const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
   ctx.onmessage = (e) => {
-    const msg = e.data
-    if (msg.kind === 'export') {
-      actor.submit(oneShot(
-        () => handleExportRequest(msg, exportLocally),
-        (res) => { ctx.postMessage(res, exportTransferables(res)) },
-      ))
-    } else if (msg.kind === 'exportAssembly') {
-      actor.submit(oneShot(
-        () => handleExportAssemblyRequest(msg, exportAssemblyLocally),
-        (res) => { ctx.postMessage(res, exportTransferables(res)) },
-      ))
-    } else if (msg.kind === 'buildBundle') {
-      actor.submit(oneShot(
-        () => handleBundleRequest(msg, solveLocally),
-        (res) => { ctx.postMessage(res, bundleTransferables(res)) },
-      ))
-    } else {
-      actor.submit({
-        supersedable: true,
-        run: async () => {
-          const res = await handleSolveRequest(msg, solveLocally)
-          ctx.postMessage(res, collectTransferables(res))
-        },
-        onSuperseded: () => {
-          ctx.postMessage({ id: msg.id, ok: false, error: SUPERSEDED_ERROR }, [])
-        },
-      })
-    }
+    handleWorkerMessage(e.data, (res, transfer) => { ctx.postMessage(res, transfer) }, actor)
   }
 }

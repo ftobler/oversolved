@@ -8,6 +8,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   solveAssemblyViaWorker,
   setRelayHandlers,
+  clearRelayHandlers,
+  getRelayHandlers,
   setAnchorSolverWorkerForTest,
   getPendingCount,
 } from './anchorSolverClient'
@@ -130,6 +132,57 @@ describe('solveAssemblyViaWorker', () => {
     await expect(prom).rejects.toThrow('mate solver not loaded')
   })
 
+  it('rejects with a fallback diagnostic when an error response has no error field', async () => {
+    const prom = solveAssemblyViaWorker('asm-1', [], {}, [])
+    const req = fakeWorker.posted[0] as SolveAssemblyRequest
+
+    fakeWorker.reply({ id: req.id, kind: 'solveAssembly', ok: false } as unknown as AssemblyWorkerResponse)
+    await expect(prom).rejects.toThrow('worker returned an error response')
+  })
+
+  it('does not settle a pending solve on a future response kind with a colliding id', async () => {
+    const prom = solveAssemblyViaWorker('asm-1', [], {}, [])
+    const req = fakeWorker.posted[0] as SolveAssemblyRequest
+
+    // A future response kind sharing the id must be ignored, not treated as a
+    // solveAssembly response: the pending solve stays live.
+    fakeWorker.reply({ id: req.id, kind: 'futureKind', ok: false, error: 'oops' } as unknown as AssemblyWorkerResponse)
+    expect(getPendingCount()).toBe(1)
+
+    fakeWorker.reply({
+      id: req.id, kind: 'solveAssembly', ok: true,
+      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+    })
+    await expect(prom).resolves.not.toBeNull()
+  })
+
+  it('test reset rejects an in-flight request and drops late replies from the old worker', async () => {
+    const prom = solveAssemblyViaWorker('asm-1', [], {}, [])
+    const oldWorker = fakeWorker
+    expect(getPendingCount()).toBe(1)
+
+    const w2 = new FakeWorker()
+    setAnchorSolverWorkerForTest(() => w2)
+    await expect(prom).rejects.toThrow('worker reset by test')
+    expect(getPendingCount()).toBe(0)
+
+    // nextId restarts at 1, so the old worker's late reply (also id 1) would
+    // settle the new worker's entry; the reset detaches the old onmessage so
+    // only the respawned worker's own reply lands.
+    const p2 = solveAssemblyViaWorker('asm-2', [], {}, [])
+    const req2 = w2.posted[0] as SolveAssemblyRequest
+    oldWorker.reply({
+      id: req2.id, kind: 'solveAssembly', ok: true,
+      payload: { transforms: { stale: { tx: 9, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: {}, anchors: {}, mateResults: {} },
+    })
+    w2.reply({
+      id: req2.id, kind: 'solveAssembly', ok: true,
+      payload: { transforms: { fresh: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: {}, anchors: {}, mateResults: {} },
+    })
+    const res = await p2
+    expect(res?.payload.transforms).toEqual({ fresh: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } })
+  })
+
   it('handles concurrent requests via single shared worker', async () => {
     const p1 = solveAssemblyViaWorker(
       'asm-1',
@@ -187,12 +240,12 @@ describe('relay plumbing', () => {
   // worker sending a relay request through that channel.
   async function sendRelay(req: AnchorRelayRequest): Promise<void> {
     // establish connection by starting a solve (we don't care about its outcome)
-    solveAssemblyViaWorker(
+    void solveAssemblyViaWorker(
       '_asm',
       [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
       { _: 1 },
       [],
-    )
+    ).catch(() => {})  // never settles here; the afterEach reset rejects it
     // onmessage is now wired; simulate a relay request from the worker
     fakeWorker.reply(req)
   }
@@ -314,6 +367,33 @@ describe('relay plumbing', () => {
     }
   })
 
+  it('clearRelayHandlers unregisters so a later relay request posts an error response', async () => {
+    setAnchorSolverWorkerForTest(() => fakeWorker)
+    setRelayHandlers({
+      partDocContent: vi.fn().mockResolvedValue({ kind: 'part' }),
+      buildBundle: vi.fn(),
+    })
+    expect(getRelayHandlers()).not.toBeNull()
+
+    clearRelayHandlers()
+    expect(getRelayHandlers()).toBeNull()
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 808,
+      subKind: 'partDocContent',
+      doc_id: 'doc',
+    })
+
+    await vi.waitFor(() => fakeWorker.posted.length > 1, { timeout: 1000 })
+    const relayRes = fakeWorker.posted.find(m => m.kind === 'asr_relayRes') as AnchorRelayErrResponse | undefined
+    expect(relayRes).toBeDefined()
+    if (relayRes) {
+      expect(relayRes.ok).toBe(false)
+      expect(relayRes.error).toContain('no relay handlers')
+    }
+  })
+
   it('drops a stale relay reply when the worker crashed and respawned before it resolved', async () => {
     const handlers = {
       partDocContent: vi.fn(),
@@ -349,7 +429,7 @@ describe('relay plumbing', () => {
     const w2 = new FakeWorker()
     setAnchorSolverWorkerForTest(() => w2)
     setRelayHandlers(handlers)
-    solveAssemblyViaWorker('asm-2', [part], { d1: 1 }, [])
+    void solveAssemblyViaWorker('asm-2', [part], { d1: 1 }, []).catch(() => {})  // never settles here; the reset rejects it
     expect(w2.posted).toHaveLength(1)
 
     // The stale relay finally resolves; its reply must go to the captured
@@ -375,12 +455,12 @@ describe('relay plumbing', () => {
       buildBundle: vi.fn(),
     })
 
-    solveAssemblyViaWorker(
+    void solveAssemblyViaWorker(
       '_asm',
       [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
       { _: 1 },
       [],
-    )
+    ).catch(() => {})  // never settles here; the afterEach reset rejects it
     fakeWorker.reply({ kind: 'asr_relay', requestId: 7, subKind: 'partDocContent', doc_id: 'doc' })
 
     await waitForPosted(fakeWorker, 'asr_relayRes')

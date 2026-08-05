@@ -103,7 +103,7 @@ function onMessage(e: { data: SolveResponse | ExportResponse | BundleResponse })
   if (p.timer) clearTimeout(p.timer)
   pending.delete(res.id)
   if (!res.ok) {
-    p.reject(new Error(res.error))
+    p.reject(new Error(res.error ?? 'worker returned an error response'))
     return
   }
   p.resolve(res)
@@ -202,7 +202,7 @@ export function solveViaWorker(
   options: SolveRequestOptions = {},
 ): Promise<BuildResponse | null> {
   return sendRequest(
-    (id) => ({ id, spec, options }),
+    (id) => ({ id, kind: 'solve', spec, options }),
     (res) => {
       const payload = (res as SolveOkResponse).payload
       return payload === null ? null : { ...payload, _build_state: EMPTY_BUILD_STATE }
@@ -261,9 +261,18 @@ export function buildBundleViaWorker(
 export function setSolverWorkerForTest(
   factory: (() => SolverWorkerLike | null) | null,
 ): void {
-  worker?.terminate()
+  if (worker) {
+    // Detach the old worker's reply path before dropping it: nextId restarts at
+    // 1 below, so a late reply from the old generation would otherwise settle
+    // the NEW worker's id-1 entry. With the handler detached it is dropped.
+    worker.onmessage = null
+    worker.terminate()
+  }
   worker = null
-  for (const p of pending.values()) if (p.timer) clearTimeout(p.timer)
+  for (const p of pending.values()) {
+    if (p.timer) clearTimeout(p.timer)
+    p.reject(new Error('worker reset by test'))
+  }
   pending.clear()
   nextId = 1
   // The production default, so a test that says nothing about the watchdog gets

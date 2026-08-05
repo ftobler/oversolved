@@ -18,7 +18,7 @@ import { useAssemblyStore } from '@/stores/assemblyStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
 import { buildPickBodies } from '@/utils/assemblyPick'
-import { setRelayHandlers, solveAssemblyViaWorker } from '@/kernel/worker/anchorSolverClient'
+import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec } from '@/kernel/solveAssembly'
@@ -156,6 +156,12 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       buildBundle: async (doc_id, doc_rev, spec) =>
         buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev),
     })
+    // The client slot is single-consumer: unregister on unmount so a stale
+    // worker's relay requests no-op instead of being serviced by this (now
+    // dead) component's handlers.
+    return () => {
+      clearRelayHandlers()
+    }
   }, [])
 
   const runSolve = useCallback(async () => {

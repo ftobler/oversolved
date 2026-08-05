@@ -11,11 +11,14 @@ import {
   createRelayService,
   RELAY_TIMEOUT_MS,
   WorkerActor,
+  handleWorkerMessage,
 } from './anchorSolverWorker'
 import type {
   SolveAssemblyRequest,
   AssemblySolveOkResponse,
   AnchorRelayRequest,
+  AssemblyWorkerRequest,
+  AssemblyWorkerResponse,
 } from './solverProtocol'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
@@ -417,5 +420,49 @@ describe('WorkerActor', () => {
     // subsequently queued job still executes (pre-fix it silently never ran).
     expect(onErrorCalls).toHaveLength(1)
     expect(secondRan).toBe(true)
+  })
+})
+
+describe('dispatcher', () => {
+  it('routes a solveAssembly message through the actor and posts its response', async () => {
+    // Earlier tests leave solveAssembly rejecting; pin the happy path here so
+    // the job under test resolves.
+    vi.mocked(solveAssembly).mockResolvedValue({ transforms: {}, bodies: {}, anchors: {}, mateResults: {} })
+    const actor = new WorkerActor()
+    const runSpy = vi.spyOn(actor, 'run')
+    const posted: AssemblyWorkerResponse[] = []
+    handleWorkerMessage(makeReq({ id: 5 }), (msg) => { posted.push(msg) }, actor)
+
+    // The dispatcher hands the actor a job plus a respond callback.
+    expect(runSpy).toHaveBeenCalledTimes(1)
+    expect(typeof runSpy.mock.calls[0][0]).toBe('function')
+    expect(typeof runSpy.mock.calls[0][1]).toBe('function')
+
+    // Let the actor chain run the job; its response is posted once.
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    expect(posted).toHaveLength(1)
+    expect(posted[0]).toMatchObject({ id: 5, kind: 'solveAssembly', ok: true })
+  })
+
+  it('warns on an unknown message kind instead of silently dropping it', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const actor = new WorkerActor()
+      const runSpy = vi.spyOn(actor, 'run')
+      const posted: AssemblyWorkerResponse[] = []
+      handleWorkerMessage(
+        { id: 5, kind: 'futureKind', assemblyId: 'asm', parts: [], revs: {}, mates: [] } as unknown as AssemblyWorkerRequest,
+        (msg) => { posted.push(msg) },
+        actor,
+      )
+      expect(warnSpy).toHaveBeenCalledWith('[anchorSolverWorker] unknown message kind', 'futureKind')
+      // An unknown kind is dropped, but loudly: no solve is queued and nothing
+      // is posted.
+      expect(runSpy).not.toHaveBeenCalled()
+      expect(posted).toHaveLength(0)
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

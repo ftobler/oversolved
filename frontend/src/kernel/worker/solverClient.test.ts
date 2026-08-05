@@ -94,6 +94,37 @@ describe('solveViaWorker', () => {
     await expect(p).rejects.toThrow('kernel boom')
   })
 
+  it('rejects with a fallback diagnostic when an error response has no error field', async () => {
+    const p = solveViaWorker({ id: 'd' })
+    fake.reply({ id: fake.posted[0].id, ok: false } as unknown as AnyResponse)
+    await expect(p).rejects.toThrow('worker returned an error response')
+  })
+
+  it('test reset rejects an in-flight request and drops late replies from the old worker', async () => {
+    // Left in flight across the reset, like a promise a beforeEach reset must
+    // not leave dangling.
+    const p = solveViaWorker({ id: 'd' })
+    const oldWorker = fake
+    expect(getPendingCount()).toBe(1)
+
+    setSolverWorkerForTest(() => {
+      fake = new FakeWorker()
+      created.push(fake)
+      return fake
+    })
+    await expect(p).rejects.toThrow('worker reset by test')
+    expect(getPendingCount()).toBe(0)
+
+    // nextId restarts at 1, so the old worker's late reply (also id 1) would
+    // settle the new worker's entry; the reset detaches the old onmessage so
+    // only the respawned worker's own reply lands.
+    const p2 = solveViaWorker({ id: 'e' })
+    const req2 = fake.posted[0]
+    oldWorker.reply({ id: req2.id, ok: true, payload: { solve_ms: 9, result: { stale: true }, bodies: {} } })
+    fake.reply({ id: req2.id, ok: true, payload: { solve_ms: 0, result: { fresh: true }, bodies: {} } })
+    expect((await p2)?.result).toEqual({ fresh: true })
+  })
+
   it('correlates concurrent requests independently and reuses one worker', async () => {
     const p1 = solveViaWorker({ id: 'a' })
     const p2 = solveViaWorker({ id: 'b' })

@@ -175,29 +175,45 @@ interface WorkerCtx {
   onmessage: ((e: MessageEvent<AssemblyWorkerRequest>) => void) | null
 }
 
+/**
+ * Dispatch one Worker message to its handler. Exported so tests can drive the
+ * dispatcher without a real Worker (the bootstrap below only runs in a Worker).
+ * The relay service is built per message from the post callback; the pending
+ * relay map and id counter it wraps are module-level, so it carries no state.
+ * An unknown kind is dropped, loudly, instead of silently.
+ */
+export function handleWorkerMessage(
+  msg: AssemblyWorkerRequest,
+  post: (msg: AssemblyWorkerResponse) => void,
+  actor: WorkerActor,
+): void {
+  if (msg.kind === 'asr_relayRes') {
+    // Relay responses resolve promises outside the actor queue, they
+    // just complete a pending relayRequest whose caller sits inside
+    // an actor-serialized task.
+    handleRelayResponse(msg)
+  } else if (msg.kind === 'solveAssembly') {
+    actor.run(
+      () => handleSolveAssembly(msg, createRelayService(post)),
+      (res) => { post(res) },
+      (err) => {
+        post({ id: msg.id, kind: 'solveAssembly', ok: false, error: extractErrorMessage(err) })
+      },
+    )
+  } else {
+    // The union is exhaustive, so TS narrows msg to never here; log the kind
+    // through the raw message so a malformed one is observable.
+    console.warn('[anchorSolverWorker] unknown message kind', (msg as { kind?: unknown }).kind)
+  }
+}
+
 if (inWorker()) {
   // Init the mate solver WASM eagerly but don't block the first message.
   initAnchorSolver()
 
   const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
-  const relay = createRelayService((msg) => ctx.postMessage(msg))
-
   ctx.onmessage = (e) => {
-    const msg = e.data
-    if (msg.kind === 'asr_relayRes') {
-      // Relay responses resolve promises outside the actor queue, they
-      // just complete a pending relayRequest whose caller sits inside
-      // an actor-serialized task.
-      handleRelayResponse(msg)
-    } else if (msg.kind === 'solveAssembly') {
-      actor.run(
-        () => handleSolveAssembly(msg, relay),
-        (res) => { ctx.postMessage(res) },
-        (err) => {
-          ctx.postMessage({ id: msg.id, kind: 'solveAssembly', ok: false, error: extractErrorMessage(err) })
-        },
-      )
-    }
+    handleWorkerMessage(e.data, (msg) => { ctx.postMessage(msg) }, actor)
   }
 }

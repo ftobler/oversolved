@@ -6,6 +6,7 @@ import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 const h = vi.hoisted(() => ({
   solveAssemblyViaWorker: vi.fn(),
   setRelayHandlers: vi.fn(),
+  clearRelayHandlers: vi.fn(),
   buildBundleViaWorker: vi.fn(),
   list: vi.fn(),
   load: vi.fn(),
@@ -15,6 +16,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
   solveAssemblyViaWorker: h.solveAssemblyViaWorker,
   setRelayHandlers: h.setRelayHandlers,
+  clearRelayHandlers: h.clearRelayHandlers,
 }))
 vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBundleViaWorker }))
 vi.mock('@/adapters/backend', () => ({
@@ -158,6 +160,14 @@ describe('useAssemblySolve', () => {
   it('does not solve on mount', () => {
     renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
     expect(h.solveAssemblyViaWorker).not.toHaveBeenCalled()
+  })
+
+  it('unregisters the relay handlers on unmount', () => {
+    const { unmount } = renderHook(() => useAssemblySolve('asm-1', null))
+    expect(h.setRelayHandlers).toHaveBeenCalledTimes(1)
+    unmount()
+    // A stale worker's relay requests must not be serviced by a dead component.
+    expect(h.clearRelayHandlers).toHaveBeenCalledTimes(1)
   })
 
   it('coalesces requests arriving while a solve is in flight into one trailing solve', async () => {

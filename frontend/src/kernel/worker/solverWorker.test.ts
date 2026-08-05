@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables } from './solverWorker'
-import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse } from './solverProtocol'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor } from './solverWorker'
+import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
+import { SUPERSEDED_ERROR } from './solverProtocol'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 import type { Transform3D } from '../../types/cad'
@@ -353,5 +354,47 @@ describe('handleBundleRequest', () => {
     // ~52 ms per feature (see knowledgebase, "bundle-rev invalidation cost",
     // and kernel/bundleRebuildCost.test.ts).
     expect(seen).toEqual([{ id: 'z' }, {}])
+  })
+})
+
+describe('dispatcher', () => {
+  it('routes a solve message to a supersedable solve job', () => {
+    const actor = new WorkerActor()
+    const submitSpy = vi.spyOn(actor, 'submit')
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    handleWorkerMessage(
+      { id: 77, kind: 'solve', spec: { id: 'doc1' }, options: {} },
+      (res, transfer) => { posted.push({ message: res, transfer }) },
+      actor,
+    )
+
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; onSuperseded: () => void }
+    expect(job.supersedable).toBe(true)
+    // A superseded solve still gets its reply, stamped with the request id.
+    job.onSuperseded()
+    expect(posted).toEqual([{ message: { id: 77, ok: false, error: SUPERSEDED_ERROR }, transfer: [] }])
+  })
+
+  it('warns on an unknown message kind and never submits a solve job', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const actor = new WorkerActor()
+      const submitSpy = vi.spyOn(actor, 'submit')
+      const posted: unknown[] = []
+      handleWorkerMessage(
+        { id: 99, kind: 'futureKind', spec: {}, options: {} } as unknown as WorkerRequest,
+        (res) => { posted.push(res) },
+        actor,
+      )
+      expect(warnSpy).toHaveBeenCalledWith('[solverWorker] unknown message kind', 'futureKind')
+      // The solve branch is reached only through an explicit kind check, so a
+      // malformed message cannot be mistaken for a solve: no job is queued and
+      // no response is posted.
+      expect(submitSpy).not.toHaveBeenCalled()
+      expect(posted).toHaveLength(0)
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

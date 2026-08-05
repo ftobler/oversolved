@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   save: vi.fn(),
   solveAssemblyViaWorker: vi.fn(),
   setRelayHandlers: vi.fn(),
+  clearRelayHandlers: vi.fn(),
   buildBundleViaWorker: vi.fn(),
   exportAssemblyViaWorker: vi.fn(),
 }))
@@ -36,6 +37,7 @@ vi.mock('@/components/Viewport/AssemblyViewport', () => ({
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
   solveAssemblyViaWorker: h.solveAssemblyViaWorker,
   setRelayHandlers: h.setRelayHandlers,
+  clearRelayHandlers: h.clearRelayHandlers,
 }))
 vi.mock('@/kernel/worker/solverClient', () => ({
   buildBundleViaWorker: h.buildBundleViaWorker,

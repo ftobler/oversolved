@@ -59,9 +59,19 @@ const pending = new Map<number, {
 
 let relayHandlers: RelayHandlers | null = null
 
-/** Register the handlers that service the worker's relay requests. */
+/**
+ * Register the handlers that service the worker's relay requests. Single
+ * consumer: only `useAssemblySolve` owns this slot, and it must pair every
+ * call with `clearRelayHandlers` on unmount so a stale worker's relay requests
+ * no-op instead of being serviced by a dead component.
+ */
 export function setRelayHandlers(handlers: RelayHandlers): void {
   relayHandlers = handlers
+}
+
+/** Unregister the relay handlers; relay requests then fail loudly. */
+export function clearRelayHandlers(): void {
+  relayHandlers = null
 }
 
 async function handleRelay(msg: AnchorRelayRequest): Promise<AnchorRelayResponse> {
@@ -137,14 +147,16 @@ function onMessage(e: { data: AssemblyWorkerResponse }): void {
     })
     return
   }
-  // Regular solveAssembly response
+  // Only a solveAssembly response may settle a pending solve: a future response
+  // kind carrying a colliding id must not resolve the wrong entry.
+  if (msg.kind !== 'solveAssembly') return
   const p = pending.get(msg.id)
   if (!p) return
   pending.delete(msg.id)
   if (msg.ok) {
     p.resolve(msg)
   } else {
-    p.reject(new Error(msg.error))
+    p.reject(new Error(msg.error ?? 'worker returned an error response'))
   }
 }
 
@@ -203,8 +215,15 @@ export function solveAssemblyViaWorker(
 export function setAnchorSolverWorkerForTest(
   factory: (() => AnchorSolverWorkerLike | null) | null,
 ): void {
-  worker?.terminate()
+  if (worker) {
+    // Detach the old worker's reply path before dropping it: nextId restarts at
+    // 1 below, so a late reply from the old generation would otherwise settle
+    // the NEW worker's id-1 entry. With the handler detached it is dropped.
+    worker.onmessage = null
+    worker.terminate()
+  }
   worker = null
+  for (const p of pending.values()) p.reject(new Error('worker reset by test'))
   pending.clear()
   nextId = 1
   relayHandlers = null
