@@ -211,6 +211,30 @@ describe('toBodyMesh', () => {
     expect(result.mesh.faceIdsPerTriangle.length).toBe(1)
     expect(result.mesh.faceIdsPerTriangle[0]).toBe(0)
   })
+
+  it('always copies a typed-array mesh to fresh arrays owned by the bundle', () => {
+    // A typed mesh handed straight in (a future producer) must not be reused:
+    // the bundle feeds bundleTransferables, and transferring an engine-owned
+    // buffer would detach the producer's cache. The bundle flattens to its own
+    // copy and the input stays intact.
+    const engineVerts = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    const engineFaces = new Uint32Array([0, 1, 2])
+    const body: BodyResult = {
+      id: 'body_typed',
+      created_by: 'ex1',
+      modified_by: [],
+      mesh: { vertices: engineVerts, faces: engineFaces, triangle_to_face: [0] },
+    }
+    const result = toBodyMesh(body)
+    // Buffer identity differs: the bundle owns its arrays.
+    expect(result.mesh.vertices.buffer).not.toBe(engineVerts.buffer)
+    expect(result.mesh.indices.buffer).not.toBe(engineFaces.buffer)
+    expect(Array.from(result.mesh.vertices)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    expect(Array.from(result.mesh.indices)).toEqual([0, 1, 2])
+    // The engine's input is untouched and not detached.
+    expect(engineVerts.buffer.byteLength).toBeGreaterThan(0)
+    expect(engineFaces.buffer.byteLength).toBeGreaterThan(0)
+  })
 })
 
 describe('toPartBundle', () => {

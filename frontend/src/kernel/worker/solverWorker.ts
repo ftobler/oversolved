@@ -149,8 +149,25 @@ export function bundleTransferables(res: BundleResponse): Transferable[] {
 // cross-solve tess cache + checkpoint snapshots, so we shallow-clone the body
 // and mesh and build *fresh* typed arrays. The cached tuple meshes are never
 // touched, and only the throwaway wire buffers are neutered by the transfer.
+//
+// What gets transferred is derived from what packBody freshly packed, never
+// from the array type alone: packBody stamps every mesh it creates with
+// PACKED_FRESH, and the collectors transfer only stamped meshes. A producer
+// that hands the worker a typed mesh it still owns can therefore never have its
+// buffer detached behind its back.
 
-function flattenVerts(verts: [number, number, number][]): Float32Array {
+type MeshVerts = [number, number, number][] | Float32Array
+type MeshFaces = [number, number, number][] | Uint32Array
+
+/**
+ * Stamp packBody puts on the throwaway mesh object it creates. A symbol key so
+ * structured clone drops it at the wire: the main thread never sees it, and a
+ * clone of a packed response cannot pick the mark up by accident.
+ */
+const PACKED_FRESH = Symbol('packed_fresh')
+
+function flattenVerts(verts: MeshVerts): Float32Array {
+  if (verts instanceof Float32Array) return new Float32Array(verts)
   const out = new Float32Array(verts.length * 3)
   for (let i = 0; i < verts.length; i++) {
     const v = verts[i]
@@ -159,7 +176,8 @@ function flattenVerts(verts: [number, number, number][]): Float32Array {
   return out
 }
 
-function flattenFaces(faces: [number, number, number][]): Uint32Array {
+function flattenFaces(faces: MeshFaces): Uint32Array {
+  if (faces instanceof Uint32Array) return new Uint32Array(faces)
   const out = new Uint32Array(faces.length * 3)
   for (let i = 0; i < faces.length; i++) {
     const f = faces[i]
@@ -174,16 +192,20 @@ function packBody(raw: unknown): unknown {
   const mesh = body.mesh as Record<string, unknown> | undefined
   if (!mesh) return raw
   const { vertices, faces } = mesh
-  // Only the kernel's tuple form needs packing; anything else passes through.
-  if (!Array.isArray(vertices) || !Array.isArray(faces)) return raw
-  return {
-    ...body,
-    mesh: {
-      ...mesh,
-      vertices: flattenVerts(vertices as [number, number, number][]),
-      faces: flattenFaces(faces as [number, number, number][]),
-    },
+  // A mesh with no geometry arrays (the empty-mesh case) passes through
+  // untouched; anything with data is flattened to fresh typed arrays whether
+  // the producer emitted tuples or typed arrays, so the buffers we transfer
+  // are always freshly created here.
+  const hasVerts = vertices instanceof Float32Array || Array.isArray(vertices)
+  const hasFaces = faces instanceof Uint32Array || Array.isArray(faces)
+  if (!hasVerts || !hasFaces) return raw
+  const packedMesh = {
+    ...mesh,
+    vertices: flattenVerts(vertices as MeshVerts),
+    faces: flattenFaces(faces as MeshFaces),
   }
+  Object.defineProperty(packedMesh, PACKED_FRESH, { value: true })
+  return { ...body, mesh: packedMesh }
 }
 
 function packBodies(bodies: Record<string, unknown>): Record<string, unknown> {
@@ -197,8 +219,17 @@ function collectBodyBuffers(bodies: Record<string, unknown> | undefined): Transf
   if (!bodies) return []
   const out: Transferable[] = []
   for (const body of Object.values(bodies)) {
-    const mesh = (body as { mesh?: Record<string, unknown> })?.mesh
+    const mesh = (body as { mesh?: Record<PropertyKey, unknown> })?.mesh
     if (!mesh) continue
+    const fresh = mesh[PACKED_FRESH] === true
+    if (!fresh && (mesh.vertices instanceof Float32Array || mesh.faces instanceof Uint32Array)) {
+      // A typed mesh with no fresh mark reached the transfer list: a producer
+      // handed the worker an engine-owned mesh packBody never packed. Skip the
+      // transfer (a silent detach would corrupt the producer's cached copy) and
+      // make the regression loud.
+      console.warn('mesh transfer: typed mesh was not freshly packed; skipping its buffers', mesh)
+    }
+    if (!fresh) continue
     if (mesh.vertices instanceof Float32Array) out.push(mesh.vertices.buffer)
     if (mesh.faces instanceof Uint32Array) out.push(mesh.faces.buffer)
   }

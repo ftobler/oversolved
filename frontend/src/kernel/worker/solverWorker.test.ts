@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables } from './solverWorker'
-import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest } from './solverProtocol'
+import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse } from './solverProtocol'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 import type { Transform3D } from '../../types/cad'
@@ -179,6 +179,93 @@ describe('mesh transfer packing', () => {
     }))
     expect(res.ok && res.payload!.bodies.b1).toEqual({ id: 'b1' })
     expect(collectTransferables(res)).toHaveLength(0)
+  })
+})
+
+describe('typed-array mesh producer hardening', () => {
+  it('packs an already-typed mesh to fresh arrays and never transfers the engine-owned buffers', async () => {
+    // Simulate a future producer that hands the worker typed meshes it still
+    // owns (the builder emits tuples today, but the safety must not depend on
+    // that). packBody must copy them so the transfer list never contains a
+    // buffer the engine still uses for its tess cache or checkpoints.
+    const engineVerts = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    const engineFaces = new Uint32Array([0, 1, 2])
+    const res = await handleSolveRequest(REQ, async () => ({
+      solve_ms: 1,
+      result: {},
+      bodies: { b1: { id: 'b1', mesh: { vertices: engineVerts, faces: engineFaces, triangle_to_face: [0] } } },
+      _build_state: DUMMY_STATE,
+    }))
+    expect(res.ok).toBe(true)
+    const mesh = res.ok && (res.payload!.bodies.b1 as { mesh: { vertices: Float32Array; faces: Uint32Array } }).mesh
+    expect(mesh).toBeTruthy()
+    if (!mesh) return
+    expect(mesh.vertices).toBeInstanceOf(Float32Array)
+    expect(mesh.faces).toBeInstanceOf(Uint32Array)
+    // The wire mesh is a fresh copy: it shares no buffer with the engine's
+    // input, and the engine's arrays are untouched (never detached).
+    expect(mesh.vertices.buffer).not.toBe(engineVerts.buffer)
+    expect(mesh.faces.buffer).not.toBe(engineFaces.buffer)
+    expect(engineVerts.buffer.byteLength).toBeGreaterThan(0)
+    expect(engineFaces.buffer.byteLength).toBeGreaterThan(0)
+    const transfer = collectTransferables(res)
+    expect(transfer).toHaveLength(2)
+    expect(transfer).toContain(mesh.vertices.buffer)
+    expect(transfer).toContain(mesh.faces.buffer)
+    // The engine's input buffers are never in the transfer list.
+    expect(transfer).not.toContain(engineVerts.buffer)
+    expect(transfer).not.toContain(engineFaces.buffer)
+  })
+
+  it('two bodies sharing one typed array never produce a duplicated transfer entry', async () => {
+    // One typed array shared by two bodies: the pre-fix collector pushed the
+    // same buffer twice and a real postMessage threw a DataCloneError. Each
+    // body must pack its own fresh copy so the transfer list stays unique.
+    const sharedVerts = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    const sharedFaces = new Uint32Array([0, 1, 2])
+    const res = await handleSolveRequest(REQ, async () => ({
+      solve_ms: 1,
+      result: {},
+      bodies: {
+        a: { id: 'a', mesh: { vertices: sharedVerts, faces: sharedFaces } },
+        b: { id: 'b', mesh: { vertices: sharedVerts, faces: sharedFaces } },
+      },
+      _build_state: DUMMY_STATE,
+    }))
+    expect(res.ok).toBe(true)
+    const transfer = collectTransferables(res)
+    // 2 buffers per body, each body its own fresh copy -> 4 distinct buffers.
+    expect(transfer).toHaveLength(4)
+    expect(new Set(transfer).size).toBe(4)
+    expect(transfer).not.toContain(sharedVerts.buffer)
+    expect(transfer).not.toContain(sharedFaces.buffer)
+    // A real transfer of this list must not throw the DataCloneError that a
+    // duplicated shared buffer produces.
+    expect(() => structuredClone({}, { transfer })).not.toThrow()
+  })
+
+  it('skips and warns on a typed mesh with no fresh mark instead of transferring it', async () => {
+    // Defense in depth: a response that reached the collector WITHOUT packBody
+    // running (a regression) must not have its engine-owned buffers transferred
+    // (a silent detach). The collector skips the mesh and the warn makes the
+    // regression loud.
+    const raw: SolveResponse = {
+      id: 1,
+      ok: true,
+      payload: {
+        solve_ms: 1,
+        result: {},
+        bodies: { b1: { id: 'b1', mesh: { vertices: new Float32Array([0, 0, 0]), faces: new Uint32Array([0]) } } },
+      },
+    }
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const transfer = collectTransferables(raw)
+      expect(transfer).toHaveLength(0)
+      expect(warnSpy).toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
 

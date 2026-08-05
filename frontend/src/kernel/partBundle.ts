@@ -251,7 +251,12 @@ export function toEdgeCurve(ed: EdgeData, edgeQuery: string): EdgeCurve {
   }
 }
 
-function flattenVerts(verts: [number, number, number][]): Float32Array {
+// Both flatteners accept an already-flat typed array too, so a typed-array mesh
+// (a possible future producer) is copied, never reused: a bundle's arrays must
+// be owned by the bundle, because bundleTransferables transfers them and
+// reusing an engine-owned buffer would detach the producer's cache.
+function flattenVerts(verts: [number, number, number][] | Float32Array): Float32Array {
+  if (verts instanceof Float32Array) return new Float32Array(verts)
   const out = new Float32Array(verts.length * 3)
   for (let i = 0; i < verts.length; i++) {
     const v = verts[i]
@@ -260,7 +265,8 @@ function flattenVerts(verts: [number, number, number][]): Float32Array {
   return out
 }
 
-function flattenFaces(faces: [number, number, number][]): Uint32Array {
+function flattenFaces(faces: [number, number, number][] | Uint32Array): Uint32Array {
+  if (faces instanceof Uint32Array) return new Uint32Array(faces)
   const out = new Uint32Array(faces.length * 3)
   for (let i = 0; i < faces.length; i++) {
     const f = faces[i]
@@ -294,13 +300,9 @@ export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
       edges,
     }
   }
-  const vertices = mesh.vertices instanceof Float32Array
-    ? mesh.vertices
-    : flattenVerts(mesh.vertices as [number, number, number][])
-  const facesRaw = mesh.faces as Uint32Array | [number, number, number][]
-  const indices = facesRaw instanceof Uint32Array
-    ? facesRaw
-    : flattenFaces(facesRaw)
+  // Always flatten to a fresh copy; never reuse an engine-owned typed array.
+  const vertices = flattenVerts(mesh.vertices as [number, number, number][] | Float32Array)
+  const indices = flattenFaces(mesh.faces as [number, number, number][] | Uint32Array)
   const triCount = indices.length / 3
   const faceIdsPerTriangle = mesh.triangle_to_face
     ? toUint32(mesh.triangle_to_face)
