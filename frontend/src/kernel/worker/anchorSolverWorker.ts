@@ -16,6 +16,8 @@ import { extractErrorMessage } from '../errors'
 import { initAnchorSolver, getMateSolver } from '../../wasm-kernel/anchorSolver'
 import { solveAssembly } from '../solveAssembly'
 import type { AssemblyBuildResponse } from '../solveAssembly'
+import { bundleCacheHas, bundleCachePut } from '../bundleCache'
+import type { PartBundle } from '../partBundle'
 import type {
   SolveAssemblyRequest,
   AssemblySolveResponse,
@@ -38,6 +40,14 @@ export interface RelayService {
 let nextRelayId = 1
 const relayPending = new Map<number, { resolve: (val: unknown) => void; reject: (err: Error) => void }>()
 
+// A relay that outran its budget is remembered briefly so a late reply can
+// still salvage the finished work. Only buildBundle entries exist (a partDoc
+// reply carries nothing to cache): its reply is a built PartBundle that
+// nothing else caches, so a timeout no longer throws it away (the next solve
+// would rebuild it). Entries self-evict via LATE_RELAY_GRACE_MS, which is also
+// what bounds the map; the original promise is already rejected.
+const lateRelay = new Map<number, { doc_id: string; doc_rev?: number }>()
+
 // The relay id counter lives in this worker's own realm and restarts at 1 on
 // every spawn, so two worker generations could mint colliding ids. Solve ids
 // come from the client's monotonic counter, so pushing the relay counter past
@@ -54,18 +64,37 @@ function scopeRelayIdsToGeneration(solveId: number): void {
 // tests can drive it with fake timers instead of waiting out the real delay.
 export const RELAY_TIMEOUT_MS = 30_000
 
+// A bundle build is the most expensive relay hop (an OCC evaluation of the
+// part), so it gets a longer budget than the document-fetch hop. Scaled off
+// the per-service timeout so an armed override shortens both kinds together.
+export const BUILD_BUNDLE_TIMEOUT_SCALE = 2
+
+// How long a timed-out buildBundle stays rememberable for a late reply to be
+// cached; also what bounds the lateRelay map. Shorter than the relay budget:
+// a build that takes longer than this to land is effectively lost work.
+export const LATE_RELAY_GRACE_MS = 5_000
+
 /** Send a relay request and await the main-thread response, or time out. */
 function relayRequest(
   subKind: 'partDocContent' | 'buildBundle',
   params: { doc_id: string; doc_rev?: number; spec?: Record<string, unknown> },
   post: (msg: AnchorRelayRequest) => void,
+  timeoutMs: number,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const requestId = nextRelayId++
     const timeout = setTimeout(() => {
       relayPending.delete(requestId)
-      reject(new Error(`relay request '${subKind}' timed out after ${RELAY_TIMEOUT_MS}ms`))
-    }, RELAY_TIMEOUT_MS)
+      // The solve that asked already gave up, but a buildBundle build may
+      // still be finishing: remember the request long enough for its late
+      // reply to be cached. A dead main thread produces no reply at all, so
+      // the grace timer just evicts the entry.
+      if (subKind === 'buildBundle') {
+        lateRelay.set(requestId, { doc_id: params.doc_id, doc_rev: params.doc_rev })
+        setTimeout(() => { lateRelay.delete(requestId) }, LATE_RELAY_GRACE_MS)
+      }
+      reject(new Error(`relay request '${subKind}' timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
     relayPending.set(requestId, {
       resolve: (val) => { clearTimeout(timeout); resolve(val) },
       reject: (err) => { clearTimeout(timeout); reject(err) },
@@ -81,24 +110,67 @@ function relayRequest(
   })
 }
 
-/** Resolve or reject a pending relay request from the main-thread response. */
-export function handleRelayResponse(msg: AnchorRelayResponse): void {
+/**
+ * Resolve or reject a pending relay request from the main-thread response.
+ * A reply for an already-timed-out request returns the pending cache-save
+ * promise (if any) so tests can await the salvage; the caller treats it as
+ * fire-and-forget.
+ */
+export function handleRelayResponse(msg: AnchorRelayResponse): Promise<void> | undefined {
   const p = relayPending.get(msg.requestId)
-  if (!p) return
-  relayPending.delete(msg.requestId)
-  if (msg.ok) p.resolve(msg.payload)
-  else p.reject(new Error(msg.error))
+  if (p) {
+    relayPending.delete(msg.requestId)
+    if (msg.ok) p.resolve(msg.payload)
+    else p.reject(new Error(msg.error))
+    return undefined
+  }
+  // No pending entry: the request already timed out. Only buildBundle relays
+  // create a late entry (partDocContent has nothing to cache), so a match
+  // here is a finished build whose reply can salvage the work.
+  const late = lateRelay.get(msg.requestId)
+  if (!late) return undefined
+  lateRelay.delete(msg.requestId)
+  // An error reply has nothing to cache and is dropped; only then does the
+  // ok arm narrow to a payload-bearing response.
+  if (!msg.ok) return undefined
+  const bundle = msg.payload as Partial<PartBundle> | null | undefined
+  // Shape guard mirroring the main thread's relay reply check: only a bundle
+  // with a `bodies` array, for the requested doc/rev, is plausible enough to
+  // cache. A malformed or mismatched late reply is dropped.
+  if (!bundle || !Array.isArray(bundle.bodies)) return undefined
+  if (bundle.doc_id !== late.doc_id || bundle.doc_rev !== late.doc_rev) return undefined
+  return cacheLateBundle(bundle as PartBundle)
+}
+
+async function cacheLateBundle(bundle: PartBundle): Promise<void> {
+  try {
+    // Never overwrite a migrated bundle: a concurrent successful solve caches
+    // the MIGRATED record under this key, and replacing it with the raw relay
+    // reply would revert the legacy anchor-id lineage migrateBundle applied.
+    if (await bundleCacheHas(bundle.doc_id, bundle.doc_rev)) return
+    await bundleCachePut(bundle)
+  } catch (e) {
+    // Best effort: the solve already failed, so a failed cache write must not
+    // surface as an unhandled rejection in the worker.
+    console.warn('failed to cache a late relayed bundle', e)
+  }
 }
 
 export function createRelayService(
   post: (msg: AnchorRelayRequest) => void,
+  relayTimeoutMs: number = RELAY_TIMEOUT_MS,
 ): RelayService {
   return {
     requestPartDoc(doc_id: string): Promise<Record<string, unknown>> {
-      return relayRequest('partDocContent', { doc_id }, post) as Promise<Record<string, unknown>>
+      return relayRequest('partDocContent', { doc_id }, post, relayTimeoutMs) as Promise<Record<string, unknown>>
     },
     requestBuildBundle(doc_id: string, doc_rev: number, spec: Record<string, unknown>): Promise<unknown> {
-      return relayRequest('buildBundle', { doc_id, doc_rev, spec }, post)
+      return relayRequest(
+        'buildBundle',
+        { doc_id, doc_rev, spec },
+        post,
+        relayTimeoutMs * BUILD_BUNDLE_TIMEOUT_SCALE,
+      )
     },
   }
 }

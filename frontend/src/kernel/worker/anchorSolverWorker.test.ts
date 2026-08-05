@@ -10,6 +10,8 @@ import {
   handleRelayResponse,
   createRelayService,
   RELAY_TIMEOUT_MS,
+  BUILD_BUNDLE_TIMEOUT_SCALE,
+  LATE_RELAY_GRACE_MS,
   WorkerActor,
   handleWorkerMessage,
 } from './anchorSolverWorker'
@@ -23,7 +25,7 @@ import type {
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { bundleCachePut, bundleCacheGet, resetBundleDbConnection } from '../bundleCache'
-import { BUNDLE_SCHEMA, type PartBundle } from '../partBundle'
+import { BUNDLE_SCHEMA, type Anchor, type PartBundle } from '../partBundle'
 
 vi.mock('../../wasm-kernel/anchorSolver', () => ({
   initAnchorSolver: vi.fn().mockResolvedValue(undefined),
@@ -37,6 +39,17 @@ vi.mock('../solveAssembly', () => ({
     mateResults: {},
   }),
 }))
+
+// Wrap bundleCachePut in a delegating spy (real IndexedDB behaviour intact) so
+// the late-relay tests can assert the timed-out build was cached. Mirrors the
+// pattern solveAssembly.test.ts uses for bundleCacheGet/bundleCacheGetStale.
+vi.mock('../bundleCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../bundleCache')>()
+  return {
+    ...actual,
+    bundleCachePut: vi.fn(actual.bundleCachePut),
+  }
+})
 
 import { solveAssembly } from '../solveAssembly'
 
@@ -273,6 +286,194 @@ describe('relay plumbing', () => {
     }
   })
 
+  it('createRelayService accepts a per-service timeout override; the default is RELAY_TIMEOUT_MS', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const post = (): void => {}
+      const defaultRelay = createRelayService(post)
+      const defaultProm = defaultRelay.requestPartDoc('default-doc')
+      const defaultAsserts = expect(defaultProm).rejects.toThrow(/timed out after 30000ms/)
+      await vi.advanceTimersByTimeAsync(RELAY_TIMEOUT_MS)
+      await defaultAsserts
+
+      const fastRelay = createRelayService(post, 250)
+      const fastProm = fastRelay.requestPartDoc('fast-doc')
+      const fastAsserts = expect(fastProm).rejects.toThrow(/timed out after 250ms/)
+      await vi.advanceTimersByTimeAsync(250)
+      await fastAsserts
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('buildBundle gets a longer budget than partDocContent', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const post = (): void => {}
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+
+      let settled = false
+      prom.then(() => { settled = true }, () => { settled = true })
+      // At the partDoc budget the build is still pending; only the scaled
+      // build budget fires the timeout.
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1000 * (BUILD_BUNDLE_TIMEOUT_SCALE - 1))
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('caches a late buildBundle reply after the timeout and keeps the promise rejected', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+
+      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      // The build finished just after its ceiling fired: the late reply must
+      // be cached, not thrown away, so the next solve reuses the work. The
+      // original promise already rejected and must not double-settle.
+      const bundle = makeBundle('doc-a', 1)
+      await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: bundle })
+      expect(bundleCachePut).toHaveBeenCalledWith(bundle)
+      const loaded = await bundleCacheGet('doc-a', 1)
+      expect(loaded).toBeDefined()
+      expect(loaded && loaded.bodies[0].mesh.vertices.byteLength).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a late partDocContent reply after the timeout is dropped, nothing is cached', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestPartDoc('slow-doc')
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(1000)
+      await assertion
+
+      expect(() => handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: true,
+        payload: { features: [] },
+      })).not.toThrow()
+      // partDocContent has nothing to cache: the late reply is a pure drop.
+      expect(bundleCachePut).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('evicts a timed-out buildBundle entry that never receives a reply', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      // No reply arrived within the grace window: the entry self-evicts, so a
+      // delivery after that can no longer cache anything.
+      await vi.advanceTimersByTimeAsync(LATE_RELAY_GRACE_MS)
+      handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', 1) })
+      expect(bundleCachePut).not.toHaveBeenCalled()
+      const loaded = await bundleCacheGet('doc-a', 1)
+      expect(loaded).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not overwrite an already-cached bundle with a late reply', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+
+      // A concurrent solve already cached the MIGRATED bundle under the key
+      // (its anchors survive the remap chain); the relay reply is the raw,
+      // pre-migration bundle.
+      const cached = {
+        ...makeBundle('doc-a', 1),
+        anchors: {
+          a1: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 1], geom_hash: 'g1', created_by: 'f1' } as Anchor,
+        },
+      }
+      await bundleCachePut(cached)
+      // The pre-cache put above is an expected call; clear it so the late-reply
+      // guard below is the only thing under assertion.
+      vi.mocked(bundleCachePut).mockClear()
+
+      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      // The late raw reply must not clobber the migrated record: the key is
+      // already cached, so the guard skips the put.
+      await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', 1) })
+      expect(bundleCachePut).not.toHaveBeenCalled()
+      const loaded = await bundleCacheGet('doc-a', 1)
+      expect(loaded && loaded.anchors['a1'].point).toEqual([1, 2, 3])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('drops a malformed late buildBundle reply (missing bodies) without caching', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      // The main thread only relays a bundle whose payload has a `bodies`
+      // array; a reply that fails that shape check is dropped, not cached.
+      await handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: true,
+        payload: { doc_id: 'doc-a', doc_rev: 1 },
+      })
+      expect(bundleCachePut).not.toHaveBeenCalled()
+      const loaded = await bundleCacheGet('doc-a', 1)
+      expect(loaded).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('a buildBundle relay reply that arrived via transfer still resolves to a usable, cacheable bundle', async () => {
     // Fresh IndexedDB for the cache round-trip below.
     globalThis.indexedDB = new IDBFactory()
@@ -315,6 +516,67 @@ describe('relay plumbing', () => {
     expect(loaded).toBeDefined()
     expect(loaded && Array.from(loaded.bodies[0].mesh.vertices)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0])
     expect(loaded && loaded.bodies[0].mesh.indices.byteLength).toBeGreaterThan(0)
+  })
+})
+
+describe('relay timeout + late bundle cache with solveAssembly', () => {
+  // Real solveAssembly round-trips through fake-indexeddb, which schedules on
+  // setImmediate; only setTimeout is faked here, so setImmediate still runs
+  // natively. Poll the real condition instead of counting ticks: an IndexedDB
+  // open chains several setImmediates, so a single flush is not enough.
+  async function until(pred: () => boolean | Promise<boolean>, what: string): Promise<void> {
+    for (let i = 0; i < 500; i++) {
+      if (await pred()) return
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    throw new Error(`timed out waiting for ${what}`)
+  }
+
+  it('a re-solve after a timed-out then late-cached build hits the cache instead of rebuilding', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      // The file-level mock is only for the handler-level tests; this test
+      // drives the real solveAssembly through the real relay service.
+      const real = await vi.importActual<typeof import('../solveAssembly')>('../solveAssembly')
+
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 500)
+
+      const parts = [
+        { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      ]
+      const revs = { 'doc-a': 1 }
+
+      // First solve: bundle cache miss, part doc answered in time, the build
+      // outruns its budget and the solve fails.
+      const first = real.solveAssembly(parts, revs, [], relay, null)
+      await until(() => requests.some(r => r.subKind === 'partDocContent'), 'part doc relay')
+      const partDocReq = requests.find(r => r.subKind === 'partDocContent')!
+      handleRelayResponse({ kind: 'asr_relayRes', requestId: partDocReq.requestId, ok: true, payload: { kind: 'part', features: [] } })
+      await until(() => requests.some(r => r.subKind === 'buildBundle'), 'build bundle relay')
+      const buildReq = requests.find(r => r.subKind === 'buildBundle')!
+      const firstFails = expect(first).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(1000)
+      await firstFails
+
+      // The finished build lands late and is cached instead of dropped.
+      await handleRelayResponse({ kind: 'asr_relayRes', requestId: buildReq.requestId, ok: true, payload: makeBundle('doc-a', 1) })
+      const loaded = await bundleCacheGet('doc-a', 1)
+      expect(loaded).toBeDefined()
+
+      // Second solve: the cache now serves the bundle, so no relay is needed,
+      // not even the part-doc fetch.
+      const second = real.solveAssembly(parts, revs, [], relay, null)
+      const res = await second
+      expect(res.bodies).toHaveProperty('p1')
+      expect(requests.filter(r => r.subKind === 'buildBundle')).toHaveLength(1)
+      expect(requests).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
