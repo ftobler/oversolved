@@ -128,4 +128,42 @@ describe('WorkerActor', () => {
     await settle()
     expect(log).toEqual(['run:after', 'done:after'])
   })
+
+  it('keeps the queue invariant when a superseded reply throws', async () => {
+    const log: string[] = []
+    const held = gate()
+    const actor = new WorkerActor()
+    actor.submit(solveJob('running', log, held.promise))
+    await settle()
+
+    // A supersedable job whose onSuperseded throws (a hostile callback, or a
+    // reply that will not clone). The sweep must still drop it and keep going.
+    const poison: ActorJob = {
+      supersedable: true,
+      run: async () => { log.push('run:poison') },
+      onSuperseded: () => {
+        log.push('superseded:poison')
+        throw new Error('superseded reply failed to clone')
+      },
+    }
+    actor.submit(poison)
+    // Pre-fix submit let the throw escape and silently lost the new solve;
+    // the invariant below is the point, so keep the test running to it.
+    try {
+      actor.submit(solveJob('fresh', log))
+    } catch {
+      // The buggy submit threw here; the invariant below is the point.
+    }
+    actor.submit(exportJob('after', log))
+    // The poison job got its superseded reply and never runs; 'fresh' is queued.
+    expect(log).toEqual(['run:running', 'superseded:poison'])
+
+    held.open()
+    await settle()
+    // The drain continues past the throwing reply: fresh then the export run.
+    expect(log).toEqual([
+      'run:running', 'superseded:poison', 'done:running',
+      'run:fresh', 'done:fresh', 'run:after', 'done:after',
+    ])
+  })
 })

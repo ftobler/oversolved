@@ -148,17 +148,23 @@ export async function handleSolveAssembly(
 export class WorkerActor {
   private queue: Promise<void> = Promise.resolve()
 
-  // `.catch` keeps `this.queue` itself always resolving. Without it, one
-  // rejection (job() throwing, or respond() throwing on a non-cloneable
-  // payload) would poison the chain: every `.then` chained after a rejected
-  // promise never runs, so every solve requested after the first failure
-  // would silently never execute. `onError`, when given, lets the caller
-  // still surface the failure (e.g. post an error response) instead of it
-  // being swallowed outright.
+  // `.catch` keeps `this.queue` itself always resolving, unconditionally.
+  // Without it, one rejection (job() throwing, or respond() throwing on a
+  // non-cloneable payload) would poison the chain: every `.then` chained
+  // after a rejected promise never runs, so every solve requested after the
+  // first failure would silently never execute. `onError`, when given, lets
+  // the caller still surface the failure (e.g. post an error response)
+  // instead of it being swallowed outright - and even an onError that throws
+  // cannot reject `this.queue`, so the guarantee holds for a hostile or
+  // non-cloneable error callback too.
   run<T>(job: () => Promise<T>, respond: (res: T) => void, onError?: (err: unknown) => void): void {
     this.queue = this.queue
       .then(() => job().then(respond))
-      .catch(err => onError?.(err))
+      .catch(err => {
+        try { onError?.(err) } catch (e) {
+          console.warn('error callback threw while reporting a failed solve', e)
+        }
+      })
   }
 }
 

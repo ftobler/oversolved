@@ -270,8 +270,13 @@ export class WorkerActor {
     if (job.supersedable) {
       const kept: ActorJob[] = []
       for (const queued of this.queue) {
-        if (queued.supersedable) queued.onSuperseded()
-        else kept.push(queued)
+        if (queued.supersedable) {
+          // The reply must not be able to lose the new job or leave the
+          // superseded one queued to run after its superseded reply was sent.
+          try { queued.onSuperseded() } catch (e) {
+            console.warn('superseded solve reply failed to post', e)
+          }
+        } else kept.push(queued)
       }
       this.queue = kept
     }

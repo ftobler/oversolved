@@ -389,4 +389,33 @@ describe('WorkerActor', () => {
     expect(errors).toHaveLength(1)
     expect(secondRan).toBe(true)
   })
+
+  it('a respond throw plus an onError throw does not poison the chain', async () => {
+    const actor = new WorkerActor()
+    const onErrorCalls: unknown[] = []
+    let secondRan = false
+
+    actor.run(
+      () => Promise.resolve('first'),
+      () => { throw new Error('respond blew up (e.g. non-cloneable payload)') },
+      (err) => {
+        onErrorCalls.push(err)
+        throw new Error('onError blew up too')
+      },
+    )
+    actor.run(
+      () => Promise.resolve('second'),
+      () => { secondRan = true },
+    )
+
+    // Let both queued .then/.catch links settle.
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => setTimeout(r, 0))
+
+    // The failing onError was reported, and the chain kept resolving so the
+    // subsequently queued job still executes (pre-fix it silently never ran).
+    expect(onErrorCalls).toHaveLength(1)
+    expect(secondRan).toBe(true)
+  })
 })
