@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { buildCommandEntries, constraintCommandFn } from '@/pages/commandEntries'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
 import type { ConstraintDef } from '@/registry'
 import { initializeTools } from '@/tools'
@@ -76,6 +76,40 @@ describe('command callbacks that drive the sketch editor store', () => {
 
     expect(setActiveTool).toHaveBeenNthCalledWith(1, null)
     expect(setActiveTool).toHaveBeenNthCalledWith(2, 'drag')
+  })
+
+  // The compound tools (rect/center_rect/ngon) and dimension have no ENTITIES
+  // entry, so their set_tool_* commands are hardcoded in buildCommandEntries.
+  // The toolbar button dispatches set_tool_<tool>, so a dropped entry would
+  // make the button silently inert: assert each entry exists AND forwards the
+  // right id. set_tool_project is separate: it only arms the pick tool when the
+  // selection-action half (projectSelection) has nothing to do.
+  const COMPOUND_TOOL_COMMANDS: [string, string][] = [
+    ['set_tool_rect', 'rect'],
+    ['set_tool_center_rect', 'center_rect'],
+    ['set_tool_ngon', 'ngon'],
+    ['set_tool_dimension', 'dimension'],
+  ]
+  it.each(COMPOUND_TOOL_COMMANDS)('%s exists and invokes setActiveTool(%s)', (name, id) => {
+    const store = useSketchEditorStore.getState()
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+
+    entry(name).fn()
+
+    expect(setActiveTool).toHaveBeenCalledWith(id)
+  })
+
+  it('set_tool_project arms the pick tool when the selection has nothing to project', () => {
+    // Empty selection alone forces the false path; the callback reset is
+    // belt-and-suspenders in case a prior test left a mutation seam registered.
+    useSketchEditorStore.setState({ normalSelection: new Set(), activeFeatureId: null })
+    setSketchCallback('onMutationBatch', null)
+    const store = useSketchEditorStore.getState()
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+
+    entry('set_tool_project').fn()
+
+    expect(setActiveTool).toHaveBeenCalledWith('project')
   })
 
   it('toggle_construction forwards to the store', () => {

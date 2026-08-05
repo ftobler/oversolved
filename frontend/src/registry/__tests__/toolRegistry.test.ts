@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ToolRegistry, toolRegistry, ACTIVATABLE_TOOL_IDS, isDrawingTool, drawingToolIds } from '@/registry/toolRegistry'
 import { getEffectiveTool } from '@/stores/sketchEditorStore'
+import { DRAWING_TOOLS } from '@/stores/stateInvariants'
 import { initializeTools } from '@/tools'
 import { createDragTool } from '@/tools/DragTool'
 import { createDrawingTool } from '@/tools/DrawingTool'
@@ -348,6 +349,10 @@ describe('ToolRegistry', () => {
     it('drawingToolIds equals the registered drawing-category ids', () => {
       initializeTools()
       expect(drawingToolIds()).toEqual(new Set(Array.from(toolRegistry.drawingIds())))
+      // DRAWING_TOOLS is the invariant layer's name for the same derivation
+      // (stateInvariants.ts); identity-pin it so a hand-listed literal cannot
+      // drift the draw-plane classification away from the registry.
+      expect(DRAWING_TOOLS).toBe(drawingToolIds)
     })
   })
 

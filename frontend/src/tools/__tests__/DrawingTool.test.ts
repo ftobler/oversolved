@@ -179,6 +179,122 @@ describe('DrawingTool', () => {
     })
   })
 
+  describe('ngon tool (compound)', () => {
+    it('first click stores center, second click emits add_ngon with the context side count', () => {
+      const onMutation = vi.fn()
+      const clearDraw = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'ngon', paramCount: 0 })
+      const context = createMockContext({
+        onMutation,
+        clearDraw,
+        setActiveTool,
+        drawPoints: [],
+        // Non-default side count proves the context slot reaches the lowering
+        // instead of the tool hardcoding the drawLogic default of 6.
+        ngonSides: 5,
+      })
+
+      // First click: store center
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(context.drawPoints).toEqual([[0, 0]])
+
+      // Second click: emit add_ngon
+      context.drawPoints = [[0, 0]]
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 0], context)
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_ngon',
+        featureId: 'S1',
+        center: [0, 0],
+        corner: [10, 0],
+        sides: 5,
+      })
+      expect(clearDraw).toHaveBeenCalled()
+      expect(setActiveTool).toHaveBeenCalledWith(null)
+    })
+  })
+
+  describe('project tool', () => {
+    it('emits add_projected_entity for a hovered foreign sketch entity', () => {
+      const onMutation = vi.fn()
+      const clearDraw = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'project', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        clearDraw,
+        setActiveTool,
+        hoveredSelectionId: 'entity:S2:L1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_projected_entity',
+        featureId: 'S1',
+        kind: 'line',
+        source: '@S2/L1',
+      })
+      expect(clearDraw).toHaveBeenCalled()
+      expect(setActiveTool).toHaveBeenCalledWith(null)
+    })
+
+    it('resolves the projected kind from the source sketch, not a hardcoded line', () => {
+      const onMutation = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'project', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        hoveredSelectionId: 'entity:S2:C1',
+        otherSketches: { S2: { C1: { center: [0, 0], radius: 5 } } } as DrawingToolContext['otherSketches'],
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_projected_entity',
+        featureId: 'S1',
+        kind: 'circle',
+        source: '@S2/C1',
+      })
+    })
+
+    it('passes the hovered body edge curve kind through to the lowering', () => {
+      const onMutation = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'project', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        hoveredSelectionId: '?4,4;@bxx@fyy:edge',
+        hoveredSourceKind: 'arc',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+
+      expect(onMutation).toHaveBeenCalledWith({
+        type: 'add_projected_entity',
+        featureId: 'S1',
+        kind: 'arc',
+        source: '?4,4;@bxx@fyy:edge',
+      })
+    })
+
+    it('does nothing for an entity of the sketch being projected onto', () => {
+      const onMutation = vi.fn()
+      const clearDraw = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'project', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        clearDraw,
+        hoveredSelectionId: 'entity:S1:L1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(clearDraw).not.toHaveBeenCalled()
+    })
+  })
+
   describe('alignment snap integration', () => {
     it('line tool creates entity on second click (prerequisite for alignment snap test)', () => {
       const onMutation = vi.fn()

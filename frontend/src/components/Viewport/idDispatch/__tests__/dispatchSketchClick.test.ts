@@ -163,6 +163,15 @@ describe('dispatchSketchClick null-tool fallback (idle select contract)', () => 
     const s = useSketchEditorStore.getState()
     expect(s.normalSelection.has('entity:S1:L1')).toBe(false)
   })
+
+  // sketchVertexAdapter (sketchVertexAdapter.ts) hands no entityKind (undefined)
+  // to the shared dispatch, so pin that call contract: the fallback must not
+  // depend on the kind being present.
+  it('idle click from the vertex adapter (no entityKind) toggles too', () => {
+    dispatchSketchClick('vertex:S1:P1:xy', undefined, 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has('vertex:S1:P1:xy')).toBe(true)
+  })
 })
 
 describe('dispatchSketchClick with entityKind (sticky placement)', () => {
@@ -196,5 +205,28 @@ describe('dispatchSketchClick with entityKind (sticky placement)', () => {
     expect(s.dimensionPicks).toEqual([
       { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
     ])
+  })
+
+  // The dimension tool owns an onClick handler, so its click must route to the
+  // tool and never fall through to the toggleNormalSelection fallback. A toggle
+  // on the pick target would silently add it to the selection on top of the
+  // dimension pick, which is not how the tool behaves.
+  it('dimension click routes to the tool, never the toggle fallback', () => {
+    dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.dimensionPicks).toHaveLength(1)
+    expect(s.normalSelection.has('entity:S1:L1')).toBe(false)
+  })
+
+  // No active sketch means no-op from BOTH layers: dispatchSketchClick bails
+  // before any handler runs, and DimensionTool.onClick has its own
+  // `!context.activeFeatureId` guard, so neither a pick nor a selection toggle
+  // may happen for a click the tool cannot act on even if one guard regresses.
+  it('dimension click outside a sketch does not pick or toggle', () => {
+    useSketchEditorStore.setState({ activeFeatureId: null })
+    dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
+    const s = useSketchEditorStore.getState()
+    expect(s.dimensionPicks).toHaveLength(0)
+    expect(s.normalSelection.size).toBe(0)
   })
 })
