@@ -5,7 +5,7 @@
  *
  * opencascade.js@1.1.1 quirks pinned here (probed against the real build): - history.Modified()
  * returns a TopTools_ListOfShape with no iterator binding; drain via
- * Size()/First_1()/RemoveFirst() (the same sharp edge as the spike). -
+ * Size()/First_1()/RemoveFirst() (the same sharp edge as the lineage drain). -
  * TopTools_IndexedDataMapOfShapeListOfShape / TopExp.MapShapesAndAncestors's map type are
  * absent, so any edge->face adjacency (e.g. deriveEdgeNames) is built face-by-face, not via the
  * indexed map.

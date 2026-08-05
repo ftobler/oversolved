@@ -5,12 +5,12 @@
  * opencascade.js is treated exactly like the wasm-pack solver build: a heavy,
  * gitignored, opt-in artifact, NOT a package.json dependency, so CI and a fresh
  * `just frontend` never pull its ~66 MB. Install it locally to run the gated
- * spike test:
+ * Real tests:
  *
  *   cd frontend && npm run occ:install     # npm i --no-save opencascade.js@1.1.1
  *
- * When it is not installed this resolves to `null` and the spike test skips
- * (see `occReal.test.ts`), mirroring `loadSolver.ts`.
+ * When it is not installed this resolves to `null` and the gated Real tests
+ * skip, mirroring `loadSolver.ts`.
  *
  * Loading quirks pinned against the real build:
  *   - The dist file (`opencascade.wasm.js`) mixes CommonJS `require()` with an

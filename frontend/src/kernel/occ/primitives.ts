@@ -5,7 +5,7 @@
  * Every function takes a [[DisposeScope]] and tracks its transient OCC objects (points, dirs,
  * builders, adaptors) in it. Functions that produce a shape the caller keeps return it WITHOUT
  * tracking it, so the caller decides its lifetime (typically `HandleTable.register`); the scope
- * still owns the builder that made it. This mirrors the spike's proven ownership pattern.
+ * still owns the builder that made it. This is the ownership pattern the handle table relies on.
  *
  * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCC 7.5).
  * Out-parameter APIs (BRepTools.UVBounds, BRepGProp_Face.Normal) do not

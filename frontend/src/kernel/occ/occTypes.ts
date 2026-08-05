@@ -1,11 +1,10 @@
 /**
- * The slice of the opencascade.js (Donalffons fork, OCC 7.5) embind surface
- * that the spike actually touches. Member names mirror the real
- * module exactly, so the live module satisfies this interface with a single
- * structural cast and the [[FakeOcc]] test double implements the same names.
+ * The opencascade.js (Donalffons fork, OCC 7.5) embind surface the kernel
+ * actually touches. Member names mirror the real module exactly, so the live
+ * module satisfies this interface with a single structural cast.
  *
  * Overload suffixes (`_1`, `_2`, ...) and exact arities are not cosmetic: they
- * were pinned against the real 1.1.1 build (see the gated spike test). Examples that bit during the spike:
+ * were pinned against the real 1.1.1 build. Examples that bit during porting:
  *   - `BRepPrimAPI_MakeBox_2` wants 4 args; the 3-arg box is `_1`.
  *   - `BRep_Tool.Triangulation` is 2 args in this build (no datatype arg).
  *   - There is no `TopTools_ListIteratorOfListOfShape`; drain a list with
@@ -162,7 +161,7 @@ export interface OccTriangle extends OccDisposable {
   Value(i: number): number
 }
 
-/** Triangle-count only: all the spike (FakeOcc leak gate) needs. */
+/** Triangle-count only: what the mesh handling needs. */
 export interface OccTriangulationBasic {
   NbTriangles(): number
 }
@@ -367,12 +366,12 @@ export interface OccCurveAdaptor extends OccDisposable {
 export type OccShapeEnumValue = object
 
 /**
- * The spike slice: what `extrudeSquareAndTessellate` and the FakeOcc leak
- * gate need. The full construction surface lives on [[OccModule]], which extends
- * this. Keeping the spike slice separate means the in-memory FakeOcc double
- * does not have to fake the whole construction kernel.
+ * The base slice [[OccModule]] extends: the builders, explorers and
+ * triangulation access the whole construction surface shares. Splitting it
+ * from the richer [[OccModule]] lets the live module override only what it
+ * augments.
  */
-export interface OccSpikeModule {
+export interface OccBaseModule {
   gp_Pnt_3: new (x: number, y: number, z: number) => OccPnt
   gp_Vec_4: new (x: number, y: number, z: number) => OccVec
   BRepBuilderAPI_MakePolygon_1: new () => OccPolygonBuilder
@@ -409,8 +408,8 @@ export interface OccSpikeModule {
   }
 }
 
-export interface OccModule extends OccSpikeModule {
-  // Richer location + triangulation than the spike slice (node-level access),
+export interface OccModule extends OccBaseModule {
+  // Richer location + triangulation than the base slice (node-level access),
   // plus VERTEX exploration, edge/vertex casts, and the curve adaptor.
   TopLoc_Location_1: new () => OccLocation
   BRep_Tool: {
