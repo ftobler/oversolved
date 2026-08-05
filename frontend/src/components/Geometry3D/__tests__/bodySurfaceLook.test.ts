@@ -24,15 +24,15 @@ describe('bodySurfaceLook colour precedence', () => {
   })
 
   it('removal outranks the part colour', () => {
-    expect(bodySurfaceLook({ removedByEdit: true, color: '#123456' }).color).toBe(COLOR_BODY_REMOVED)
+    expect(bodySurfaceLook({ doomed: true, color: '#123456' }).color).toBe(COLOR_BODY_REMOVED)
   })
 
   it('selection outranks removal on the doomed face', () => {
     // Nominal only: the doomed face renders fully transparent, so this colour
     // never reaches the pixels. It is kept so the precedence stays "selection
     // claims the surface" -- the visible affordance for the re-click is the
-    // wireframe brightening, pinned in Body3D.removedByEdit.test.tsx.
-    expect(bodySurfaceLook({ selected: true, removedByEdit: true, color: '#123456' }).color)
+    // wireframe brightening, pinned in Body3D.doomed.test.tsx.
+    expect(bodySurfaceLook({ selected: true, doomed: true, color: '#123456' }).color)
       .toBe(COLOR_BODY_SELECTED)
   })
 
@@ -44,7 +44,7 @@ describe('bodySurfaceLook colour precedence', () => {
       { color: '#123456', transmission: 1, metalness: 1, roughness: 0.05 },
       { color: '#654321', transparency: 0.2 },
       {},
-    ].map(style => JSON.stringify(bodySurfaceLook({ removedByEdit: true, ...style })))
+    ].map(style => JSON.stringify(bodySurfaceLook({ doomed: true, ...style })))
     expect(new Set(looks).size).toBe(1)
   })
 
@@ -91,13 +91,13 @@ describe('bodySurfaceLook transparency', () => {
     // The old clamp band existed to keep the pink FACE mark visible; the mark
     // has moved to the wireframe, so the face can go all the way to invisible.
     for (const t of [0, 0.2, 1]) {
-      expect(bodySurfaceLook({ removedByEdit: true, transparency: t }).transparency).toBe(1)
+      expect(bodySurfaceLook({ doomed: true, transparency: t }).transparency).toBe(1)
     }
   })
 
   it('a selected doomed body stays fully transparent', () => {
     // Selection recolours the surface but does not un-doom; the affordance for
     // the re-click is the brightened wireframe, not the face.
-    expect(bodySurfaceLook({ selected: true, removedByEdit: true }).transparency).toBe(1)
+    expect(bodySurfaceLook({ selected: true, doomed: true }).transparency).toBe(1)
   })
 })

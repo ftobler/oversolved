@@ -52,7 +52,7 @@ export interface BodyRenderItem {
   // Ghost layer only: the edit being previewed consumes this body. Orthogonal to
   // `visible`, which is the user's own show/hide -- a doomed body the user hid
   // stays hidden.
-  removedByEdit?: boolean
+  doomed?: boolean
 }
 
 function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPos: number | undefined): boolean {
@@ -102,7 +102,7 @@ export function getBodiesToRender(
  * every prior body.
  *
  * A body the edited feature removes (delete_body, or a boolean that swallows its
- * tool) is marked `removedByEdit` rather than hidden. It used to be hidden, but
+ * tool) is marked `doomed` rather than hidden. It used to be hidden, but
  * that told the user nothing about WHICH body was leaving, and it dropped the
  * body out of the id buffer (Body3D gates its registrations on `visible`), so
  * the toggle in `add_delete_body_ref` could never fire a second time and the
@@ -126,7 +126,7 @@ export function getGhostBodiesToRender(
   return items.map(item => {
     const visible = partStyle?.[item.bodyId]?.visible !== false
     if (previewBodies && !(item.bodyId in previewBodies)) {
-      return { ...item, visible, removedByEdit: true }
+      return { ...item, visible, doomed: true }
     }
     return { ...item, visible }
   })

@@ -146,7 +146,7 @@ describe('getGhostBodiesToRender', () => {
     // add_delete_body_ref toggle could never be fired a second time.
     const preview = { body_ex1: pickBodies.body_ex1 }
     const items = getGhostBodiesToRender(pickBodies, preview, features, {})
-    expect(items.map(i => [i.bodyId, i.visible, !!i.removedByEdit]))
+    expect(items.map(i => [i.bodyId, i.visible, !!i.doomed]))
       .toEqual([['body_ex1', true, false], ['body_ex2', true, true]])
   })
 
@@ -154,13 +154,13 @@ describe('getGhostBodiesToRender', () => {
     // Regression: the preview holds no body at all, so nothing derived from it
     // can name what left -- the removal has to be its own flag.
     const items = getGhostBodiesToRender(pickBodies, {}, features, {})
-    expect(items.map(i => [i.visible, !!i.removedByEdit])).toEqual([[true, true], [true, true]])
+    expect(items.map(i => [i.visible, !!i.doomed])).toEqual([[true, true], [true, true]])
   })
 
   it('keeps ghosts of bodies the edit leaves alone unmarked', () => {
     const items = getGhostBodiesToRender(pickBodies, pickBodies, features, {})
     expect(items.map(i => i.visible)).toEqual([true, true])
-    expect(items.some(i => i.removedByEdit)).toBe(false)
+    expect(items.some(i => i.doomed)).toBe(false)
   })
 
   it('keeps a user-hidden body hidden even though the edit keeps it', () => {
@@ -169,11 +169,11 @@ describe('getGhostBodiesToRender', () => {
   })
 
   it('does not resurrect a user-hidden body that the edit also removes', () => {
-    // visible and removedByEdit are orthogonal: the mark says what the edit
+    // visible and doomed are orthogonal: the mark says what the edit
     // does, the visibility says what the user asked for, and the user wins.
     const preview = { body_ex1: pickBodies.body_ex1 }
     const items = getGhostBodiesToRender(pickBodies, preview, features, hidden('body_ex1', 'body_ex2'))
-    expect(items.map(i => [i.bodyId, i.visible, !!i.removedByEdit]))
+    expect(items.map(i => [i.bodyId, i.visible, !!i.doomed]))
       .toEqual([['body_ex1', false, false], ['body_ex2', false, true]])
   })
 

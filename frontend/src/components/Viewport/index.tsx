@@ -530,7 +530,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS}
       metalness={partStyle?.[b.key]?.metalness ?? 0}
       transmission={partStyle?.[b.key]?.transmission ?? 0}
-      removedByEdit={b.removedByEdit}
+      doomed={b.doomed}
     />
   )
 

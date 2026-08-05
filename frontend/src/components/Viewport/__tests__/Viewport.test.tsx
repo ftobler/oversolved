@@ -24,16 +24,16 @@ vi.mock('../../Geometry3D', () => ({
 }))
 
 vi.mock('../../Geometry3D/Body3D', () => ({
-  default: ({ interactive, bodyId, visible, removedByEdit, color, transparency }: {
+  default: ({ interactive, bodyId, visible, doomed, color, transparency }: {
     interactive?: boolean; bodyId?: string; visible?: boolean
-    removedByEdit?: boolean; color?: string; transparency?: number
+    doomed?: boolean; color?: string; transparency?: number
   }) => (
     <div
       data-testid="body-3d"
       data-interactive={interactive}
       data-body-id={bodyId}
       data-visible={String(visible)}
-      data-removed={String(!!removedByEdit)}
+      data-doomed={String(!!doomed)}
       data-color={String(color)}
       data-transparency={String(transparency)}
     />
@@ -244,7 +244,7 @@ describe('Viewport delete_body ghost preview', () => {
 
   it('marks the ghost of the body being deleted instead of hiding it', () => {
     const container = renderDeleteOfEx2()
-    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
+    expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
     expect(ghostAttr(container, 'data-visible')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
   })
 
@@ -265,7 +265,7 @@ describe('Viewport delete_body ghost preview', () => {
     expect(ghostAttr(container, 'data-color')).toEqual({ body_ex1: '#123456', body_ex2: '#654321' })
     expect(ghostAttr(container, 'data-transparency')).toEqual({ body_ex1: '0.25', body_ex2: '0' })
     // Body3D itself, not the Viewport, turns the mark into the doomed look.
-    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
+    expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
   })
 
   it('does not resurrect a doomed body the user hid', () => {
@@ -281,7 +281,7 @@ describe('Viewport delete_body ghost preview', () => {
     })
     const { container } = render(<Viewport />)
     expect(ghostAttr(container, 'data-visible')).toEqual({ body_ex1: 'true', body_ex2: 'false' })
-    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
+    expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
   })
 
   it('marks both ghosts when the delete empties the body store', () => {
@@ -297,6 +297,6 @@ describe('Viewport delete_body ghost preview', () => {
       rollbackPosition: 4,
     })
     const { container } = render(<Viewport />)
-    expect(ghostAttr(container, 'data-removed')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
+    expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
   })
 })

@@ -81,7 +81,7 @@ export function entityRenderLayer(
 // claim the surface, so the precedence has to be stated somewhere rather than
 // fall out of the order of a ternary chain:
 //
-//   selected > removedByEdit > the part's own colour
+//   selected > doomed > the part's own colour
 //
 // Selection wins because it answers "what am I acting on", which is what the
 // user asked for most recently. The removal mark answers "what is this edit
@@ -96,7 +96,7 @@ export function entityRenderLayer(
 // the point it is supposed to hold.
 export interface BodySurfaceState {
   selected?: boolean
-  removedByEdit?: boolean
+  doomed?: boolean
   color?: string
   transparency?: number
   metalness?: number
@@ -114,14 +114,14 @@ export interface BodySurfaceLook {
 
 export function bodySurfaceLook({
   selected = false,
-  removedByEdit = false,
+  doomed = false,
   color,
   transparency = 0,
   metalness = 0,
   roughness = DEFAULT_PART_ROUGHNESS,
   transmission = 0,
 }: BodySurfaceState): BodySurfaceLook {
-  if (removedByEdit) {
+  if (doomed) {
     return {
       // The face goes fully see-through so the doomed body stops obscuring
       // what survives; the removal mark moves to the wireframe, which Body3D

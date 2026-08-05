@@ -99,10 +99,10 @@ interface Body3DProps {
   roughness?: number     // 0-1 (0 = smooth, 1 = rough)
   transmission?: number  // 0-1 (0 = opaque, 1 = fully transmissive / glass-like)
   interactive?: boolean
-  removedByEdit?: boolean  // ghost of a body the previewed edit consumes: drawn "doomed", still pickable
+  doomed?: boolean  // ghost of a body the previewed edit consumes: drawn "doomed", still pickable
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, removedByEdit = false }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -307,7 +307,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
 
   // The whole surface is one decision (see bodySurfaceLook for the precedence).
   const surface = bodySurfaceLook({
-    selected: isBodySelected, removedByEdit, color, transparency, metalness, roughness, transmission,
+    selected: isBodySelected, doomed, color, transparency, metalness, roughness, transmission,
   })
   const bodyColor = surface.color
 
@@ -318,7 +318,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // to be visible while the user points at it.
   const edgeColor = isBodySelected
     ? COLOR_BODY_EDGE_SEL
-    : removedByEdit ? COLOR_BODY_REMOVED : COLOR_BODY_EDGE
+    : doomed ? COLOR_BODY_REMOVED : COLOR_BODY_EDGE
 
   // Overlay geometry for a hovered or selected B-rep edge, keyed by edge index
   // (not query) so two edges sharing a query keep distinct overlays instead of

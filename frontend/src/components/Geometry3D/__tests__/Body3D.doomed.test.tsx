@@ -1,6 +1,6 @@
 // The Body3D half of delete-preview-marking. `bodySurfaceLook` is unit-tested
 // on its own, but Body3D is the ONLY place the decision becomes pixels, and a
-// mutation that passed `removedByEdit: false` into it -- deleting the whole
+// mutation that passed `doomed: false` into it -- deleting the whole
 // visual half of the feature -- left the rest of the suite green. This renders
 // the real component and observes the two things that actually reach the GPU:
 // the material props, and the palettes handed to useHighlightColors (the body
@@ -92,7 +92,7 @@ const edgeBase = () => (palettes[1] as HighlightPalette).base
 
 describe('Body3D draws a doomed body marked', () => {
   it('marks it with a pink wireframe, overriding the grey edge', async () => {
-    await renderBody({ removedByEdit: true })
+    await renderBody({ doomed: true })
     expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_REMOVED))
   })
 
@@ -113,13 +113,13 @@ describe('Body3D draws a doomed body marked', () => {
 
   it('brightens the doomed wireframe when selected, keeping the face transparent', async () => {
     useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) } as never)
-    const { container } = await renderBody({ removedByEdit: true })
+    const { container } = await renderBody({ doomed: true })
     expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_EDGE_SEL))
     expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
   })
 
   it('draws the doomed face fully transparent, not pink-tinted', async () => {
-    const { container } = await renderBody({ removedByEdit: true })
+    const { container } = await renderBody({ doomed: true })
     expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
   })
 
@@ -128,7 +128,7 @@ describe('Body3D draws a doomed body marked', () => {
     // the wireframe, so the face stays fully see-through even at an opaque
     // part style and at transparency 1.
     for (const transparency of [0, 1]) {
-      const { container } = await renderBody({ removedByEdit: true, transparency })
+      const { container } = await renderBody({ doomed: true, transparency })
       expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
     }
   })
@@ -142,7 +142,7 @@ describe('Body3D draws a doomed body marked', () => {
     // A doomed body still wearing transmission=1 (glass) or metalness=1 reads
     // as a different material and washes the mark out.
     const { container } = await renderBody({
-      removedByEdit: true, transmission: 1, metalness: 1, roughness: 0.05,
+      doomed: true, transmission: 1, metalness: 1, roughness: 0.05,
     })
     const m = material(container)
     expect(Number(m?.getAttribute('transmission'))).toBe(0)
@@ -164,13 +164,13 @@ describe('Body3D keeps a doomed body in the id buffer', () => {
   // ghost took it out of the id buffer, so add_delete_body_ref -- a toggle --
   // could never receive the second click that un-picks it.
   it('enables all three id registrations while marked', async () => {
-    await renderBody({ removedByEdit: true })
+    await renderBody({ doomed: true })
     expect(registrations.filter(r => r.enabled).map(r => r.hook).sort())
       .toEqual(['edge', 'face', 'vertex'])
   })
 
   it('still honours an explicit hide, which is the other axis', async () => {
-    await renderBody({ removedByEdit: true, visible: false })
+    await renderBody({ doomed: true, visible: false })
     expect(registrations.every(r => !r.enabled)).toBe(true)
   })
 })
