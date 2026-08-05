@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { bodyKeyFor, primitivePickKey, pickedIndicesForBody, parsePickKeyIndex } from '../pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
+import { IdPipeline } from '../IdPipeline'
+import { setLivePipeline } from '../IdPipelineContext'
+import { useFaceIdRegistration } from '../useFaceIdRegistration'
+import { useEdgeIdRegistration } from '../useEdgeIdRegistration'
+import { useVertexIdRegistration } from '../useVertexIdRegistration'
+import type { Mesh3D, EdgeData } from '@/types/cad'
 
 describe('primitivePickKey', () => {
   const body = bodyKeyFor('extrude1', 'body0')
@@ -92,5 +101,65 @@ describe('pickedIndicesForBody (pick set -> this body/layer)', () => {
     // which is only observable as: the call carries no per-body allocation.
     const keys = new Set([primitivePickKey(body, 12345, FACE_LAYER_NAME)])
     expect([...pickedIndicesForBody(keys, body, FACE_LAYER_NAME)!]).toEqual([12345])
+  })
+})
+
+describe('body key single source', () => {
+  const FID = 'extrude1'
+  const BID = 'body0'
+
+  const faceMesh: Mesh3D = {
+    vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    faces: new Uint32Array([0, 1, 2]),
+    triangle_to_face: [0],
+    face_queries: ['face@q0'],
+  }
+  const edges: EdgeData[] = [{ kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }]
+  const edgeQueries = ['edge@q0']
+  const vertices: [number, number, number][] = [[0, 0, 0]]
+  const vertexQueries = ['vtx@q0']
+
+  // One entry per registration hook. The layer mints per-primitive pick keys
+  // from the body key it was registered under, so a key derived from
+  // `bodyKeyFor` resolving in the registry proves the hook handed the layer
+  // exactly that body key -- and a divergent one would not resolve, keying the
+  // assertion to the bodyKeyFor format instead of "something got registered".
+  const cases: [string, () => void][] = [
+    [FACE_LAYER_NAME, () => useFaceIdRegistration({ featureId: FID, bodyId: BID, mesh: faceMesh })],
+    [EDGE_LAYER_NAME, () => useEdgeIdRegistration({ featureId: FID, bodyId: BID, edges, edgeQueries })],
+    [VERTEX_LAYER_NAME, () => useVertexIdRegistration({ featureId: FID, bodyId: BID, vertices, vertexQueries })],
+  ]
+
+  it.each(cases)('the %s registration hook registers under the bodyKeyFor body key', (layer, render) => {
+    const p = new IdPipeline({ width: 100, height: 100 })
+    setLivePipeline(p)
+    try {
+      const { unmount } = renderHook(render)
+      const expected = primitivePickKey(bodyKeyFor(FID, BID), 0, layer)
+      expect(p.registry.lookupKey(layer, expected)).toBeDefined()
+      expect(p.registry.lookupKey(layer, primitivePickKey('divergent/body', 0, layer))).toBeUndefined()
+      unmount()
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
+  // The hooks above prove the string the ID layers get; Body3D recomputes the
+  // same key for the dispatch registry without any layer to observe through.
+  // A source pin is the cheap guard that the re-typed literal does not creep
+  // back into any of the four mint sites (the format lives only in pickKey.ts).
+  it('no registration site re-types the `${featureId}/${bodyId}` literal', () => {
+    const files = [
+      join(__dirname, '..', 'useFaceIdRegistration.ts'),
+      join(__dirname, '..', 'useEdgeIdRegistration.ts'),
+      join(__dirname, '..', 'useVertexIdRegistration.ts'),
+      join(__dirname, '..', '..', 'components', 'Geometry3D', 'Body3D.tsx'),
+    ]
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8')
+      expect(src, file).not.toMatch(/\$\{featureId\}\/\$\{bodyId\}/)
+      expect(src, file).toMatch(/bodyKeyFor\(/)
+    }
   })
 })

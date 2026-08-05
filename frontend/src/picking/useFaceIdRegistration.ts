@@ -1,5 +1,6 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { bodyKeyFor } from './pickKey'
 import type { Mesh3D } from '@/types/cad'
 import { buildBodyGeometry, faceCount, toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
 
@@ -20,7 +21,7 @@ export function useFaceIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, bodyId, mesh, enabled = true } = params
-  const bodyKey = `${featureId}/${bodyId}`
+  const bodyKey = bodyKeyFor(featureId, bodyId)
 
   useRegisteredBody(pipeline, enabled, bodyKey,
     (p) => {

@@ -1,5 +1,6 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { bodyKeyFor } from './pickKey'
 import type { EdgeData } from '@/types/cad'
 import { buildEdgeSegments, getEdgeSegmentCounts } from '@/components/Geometry3D/bodyGeometry'
 
@@ -20,7 +21,7 @@ export function useEdgeIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, bodyId, edges, edgeQueries, enabled = true } = params
-  const bodyKey = `${featureId}/${bodyId}`
+  const bodyKey = bodyKeyFor(featureId, bodyId)
 
   useRegisteredBody(pipeline, enabled, bodyKey,
     (p) => {

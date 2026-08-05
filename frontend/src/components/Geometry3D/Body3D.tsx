@@ -143,7 +143,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // performed by the dispatcher directly.
   useEffect(() => {
     if (!interactive || !visible) return
-    const bodyKey = `${featureId}/${bodyId}`
+    const bodyKey = bodyKeyFor(featureId, bodyId)
     return registerBodyCallbacks(bodyKey, {
       featureId,
       bodyId,

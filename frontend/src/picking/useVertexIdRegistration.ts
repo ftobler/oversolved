@@ -1,5 +1,6 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { bodyKeyFor } from './pickKey'
 
 /**
  * Hook used by Body3D to register a body's vertices with the vertex ID
@@ -14,7 +15,7 @@ export function useVertexIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { featureId, bodyId, vertices, vertexQueries, enabled = true } = params
-  const bodyKey = `${featureId}/${bodyId}`
+  const bodyKey = bodyKeyFor(featureId, bodyId)
 
   useRegisteredBody(pipeline, enabled, bodyKey,
     (p) => {
