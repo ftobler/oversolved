@@ -192,9 +192,9 @@ describe('Viewport body interactivity', () => {
   })
 
   it('ghostMode passes pickBodyItems to PreviewEdgeOverlay so inherited edges are filtered out', () => {
-    // Regression test: without pickItems, the violet edge overlay renders every
+    // Regression test: without pickItems, the pink edge overlay renders every
     // edge of every body, including those that already existed before the edit
-    // (per user invariant: violet shows only the new geometry contributed by
+    // (per user invariant: pink shows only the new geometry contributed by
     // the edited feature).
     previewEdgeOverlayProps.mockClear()
     usePartEditorStore.setState({

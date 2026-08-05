@@ -150,7 +150,7 @@ describe('labelOffsetPx', () => {
 })
 
 describe('handleColor', () => {
-  it('matches the preview wireframe violet at rest', () => {
+  it('matches the preview wireframe pink at rest', () => {
     expect(handleColor(false, false)).toBe(COLOR_PREVIEW_EDGE)
   })
 

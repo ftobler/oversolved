@@ -6,21 +6,21 @@ export const COLOR_BODY_SELECTED = '#b5a16a'
 export const COLOR_BODY_EDGE_SEL = '#ffffff'
 export const DEFAULT_PART_ROUGHNESS = 0.7
 
-// A ghost body the edit in the editor is about to consume (delete_body, a
-// boolean that swallows its tool). One look for every removal -- no per-body
-// variants. Crimson: it has to stay clear of BOTH neighbours in this palette,
-// the violet COLOR_PREVIEW_EDGE (which means the OPPOSITE, "new geometry") and
-// COLOR_ERROR, which paints sketch entities in the same scene while an active
-// sketch is on screen. `bodyRemovedColorIsDistinct` pins that distance.
-export const COLOR_BODY_REMOVED = '#d81b60'
-
-// Floor and ceiling, not a fixed value: the floor keeps the doomed body from
-// hiding what survives behind it, the ceiling keeps the mark itself visible.
-// Without the ceiling a body the user had already styled at transparency 1
-// stayed fully invisible while still registered in the id buffer -- an
-// unclickable-through blocker with no mark, strictly worse than the old hide.
-export const BODY_REMOVED_TRANSPARENCY = 0.7
-export const BODY_REMOVED_TRANSPARENCY_MAX = 0.9
+// The mark of a body the edit in the editor is about to consume (delete_body,
+// a boolean that swallows its tool). It lives on the doomed body's WIREFRAME:
+// the face is drawn fully transparent, so the pink edges are what show which
+// body is leaving. One look for every removal -- no per-body variants. The hue
+// is the SAME as the preview overlay (COLOR_PREVIEW_EDGE), by user decision:
+// the colour that previews what the edit adds is exactly what the edit will
+// take away. It still has to stay clear of the palette's other claimants --
+// COLOR_ERROR above all, which paints sketch entities in the same scene while
+// an active sketch is on screen, and the selected/edge whites.
+// `bodyRemovedColorIsDistinct` pins that distance.
+//
+// The doomed FACE is always fully transparent, so there is no transparency
+// band to floor or ceiling: the pink wireframe is the mark and stays visible
+// whatever the part was styled at, while the face never obscures what survives.
+export const COLOR_BODY_REMOVED = '#bb5be1'
 
 // Geometry color palette
 export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained
@@ -31,7 +31,7 @@ export const COLOR_HOVER = '#ffffff'
 export const COLOR_SELECTED = '#ff9800'
 export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 export const COLOR_PREVIEW = '#aaaaaa'
-export const COLOR_PREVIEW_EDGE = '#A855F7'  // violet neon for edge-only preview overlay
+export const COLOR_PREVIEW_EDGE = '#bb5be1'  // pink edge-only preview overlay (shared with the doomed-body mark)
 export const COLOR_PROJECTED = '#ffca28'  // amber for projected/reference geometry
 export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
 

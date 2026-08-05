@@ -1,9 +1,9 @@
 /**
  * Entering a feature edit turns on the ghost preview (solid "before" bodies plus
- * a violet overlay of what the edit adds). Both halves come from the solve that
+ * a pink overlay of what the edit adds). Both halves come from the solve that
  * carries the pick bodies, so ghost mode must wait for it: while that solve is
  * in flight there is no "before" state, the overlay has nothing to subtract, and
- * the whole model flashes as violet wireframe.
+ * the whole model flashes as pink wireframe.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'

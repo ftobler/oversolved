@@ -447,7 +447,7 @@ export default function Part() {
 
   // Ghost preview waits for the solve that carries the pick bodies: until it
   // lands there is no "before" state to draw the ghosts from, and the overlay
-  // would flash the whole model as new (violet) geometry.
+  // would flash the whole model as new (pink) geometry.
   const ghostMode = useMemo(() => {
     if (!editingFeatureId || !pickStateReady) return false
     const feature = features.find(f => f.id === editingFeatureId)

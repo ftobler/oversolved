@@ -7,8 +7,6 @@ import {
   COLOR_BODY_EDGE,
   COLOR_BODY_EDGE_SEL,
   COLOR_BODY_REMOVED,
-  BODY_REMOVED_TRANSPARENCY,
-  BODY_REMOVED_TRANSPARENCY_MAX,
   DEFAULT_PART_ROUGHNESS,
   COLOR_ERROR,
   COLOR_SOLVED,
@@ -18,7 +16,6 @@ import {
   COLOR_SELECTED,
   COLOR_CONSTRAINT_HOVER,
   COLOR_PREVIEW,
-  COLOR_PREVIEW_EDGE,
   COLOR_PROJECTED,
   COLOR_SNAP,
 } from '@/utils/core/partColors'
@@ -30,8 +27,6 @@ export {
   COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE_SEL,
   COLOR_BODY_REMOVED,
-  BODY_REMOVED_TRANSPARENCY,
-  BODY_REMOVED_TRANSPARENCY_MAX,
   DEFAULT_PART_ROUGHNESS,
   COLOR_SOLVED,
   COLOR_FULLY_CONSTRAINED,
@@ -128,12 +123,13 @@ export function bodySurfaceLook({
 }: BodySurfaceState): BodySurfaceLook {
   if (removedByEdit) {
     return {
-      // Selection still recolours a doomed body -- otherwise the "click again
-      // to un-pick" affordance the marking exists to restore is invisible.
+      // The face goes fully see-through so the doomed body stops obscuring
+      // what survives; the removal mark moves to the wireframe, which Body3D
+      // paints pink. Selection still claims the surface so the "click again
+      // to un-pick" affordance stays defined -- the visible half of it is the
+      // wireframe brightening to the selected edge colour.
       color: selected ? COLOR_BODY_SELECTED : COLOR_BODY_REMOVED,
-      // Bounded, never a plain override: at least as see-through as the user
-      // styled it, but never so transparent that the mark itself disappears.
-      transparency: clamp(transparency, BODY_REMOVED_TRANSPARENCY, BODY_REMOVED_TRANSPARENCY_MAX),
+      transparency: 1,
       metalness: 0,
       roughness: DEFAULT_PART_ROUGHNESS,
       transmission: 0,
@@ -148,19 +144,18 @@ export function bodySurfaceLook({
   }
 }
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(Math.max(v, lo), hi)
-}
-
 // Every other colour that can share the 3D scene with a doomed body. The
 // removal mark must not be mistakable for any of them -- COLOR_ERROR above all,
 // which paints sketch entities in the same viewport whenever the active sketch
-// is overconstrained.
+// is overconstrained. COLOR_PREVIEW_EDGE is deliberately absent: by user
+// decision it IS the mark hue (both #bb5be1), so guarding against it would fail
+// on distance 0 -- the preview overlay and the doomed mark share the pink on
+// purpose.
 const SCENE_COLORS_AGAINST_REMOVED = [
   COLOR_BODY_DEFAULT, COLOR_BODY_SELECTED, COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_ERROR, COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_INACTIVE,
   COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER,
-  COLOR_PREVIEW, COLOR_PREVIEW_EDGE, COLOR_PROJECTED, COLOR_SNAP,
+  COLOR_PREVIEW, COLOR_PROJECTED, COLOR_SNAP,
 ] as const
 
 export const REMOVED_COLOR_MIN_DISTANCE = 50

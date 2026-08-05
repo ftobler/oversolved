@@ -33,7 +33,7 @@ describe('gizmoColors', () => {
     expect(TRIAD_COLOR).toMatch(/^#[0-9a-fA-F]{6}$/)
   })
 
-  it('is not the white or violet the triad used to borrow', () => {
+  it('is not the white or the preview-edge pink the triad used to borrow', () => {
     expect(TRIAD_COLOR.toLowerCase()).not.toBe(COLOR_HOVER.toLowerCase())
     expect(TRIAD_COLOR.toLowerCase()).not.toBe(COLOR_PREVIEW_EDGE.toLowerCase())
   })

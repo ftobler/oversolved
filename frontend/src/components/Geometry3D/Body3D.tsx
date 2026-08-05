@@ -6,7 +6,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import {
   COLOR_BODY_DEFAULT,
-  COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
+  COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL, COLOR_BODY_REMOVED,
   bodySurfaceLook,
   COLOR_SELECTED, COLOR_HOVER,
   blendWhite,
@@ -311,7 +311,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   })
   const bodyColor = surface.color
 
-  const edgeColor = isBodySelected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE
+  // The wireframe is where the removal mark lives now the doomed face is
+  // see-through: a consumed body's edges turn pink so the mark shows WHICH
+  // body is leaving. Selection still outranks removal, mirroring the face
+  // precedence in bodySurfaceLook -- the re-click affordance needs the change
+  // to be visible while the user points at it.
+  const edgeColor = isBodySelected
+    ? COLOR_BODY_EDGE_SEL
+    : removedByEdit ? COLOR_BODY_REMOVED : COLOR_BODY_EDGE
 
   // Overlay geometry for a hovered or selected B-rep edge, keyed by edge index
   // (not query) so two edges sharing a query keep distinct overlays instead of

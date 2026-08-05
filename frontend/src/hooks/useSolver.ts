@@ -89,7 +89,7 @@ export function useSolver(
   // True once a solve carrying pick bodies has landed. Entering an edit flips
   // the store's editing flags immediately, but the two worlds only exist after
   // that solve returns -- a ghost preview drawn before it has no "before" state
-  // to subtract, so it paints the entire model as new (violet) geometry.
+  // to subtract, so it paints the entire model as new (pink) geometry.
   const pickStateReady = world.status === 'editing'
   const [solving, setSolving] = useState(false)
   const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})

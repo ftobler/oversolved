@@ -3,8 +3,10 @@
 // mutation that passed `removedByEdit: false` into it -- deleting the whole
 // visual half of the feature -- left the rest of the suite green. This renders
 // the real component and observes the two things that actually reach the GPU:
-// the material props, and the palette handed to useHighlightColors (the body
-// colour travels as a vertex-colour attribute, not as a material prop).
+// the material props, and the palettes handed to useHighlightColors (the body
+// colour travels as a vertex-colour attribute, not as a material prop). The
+// doomed body is marked on the WIREFRAME now -- the face is fully transparent,
+// so the edge palette is the observable mark, not the face palette.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -12,9 +14,9 @@ import { paletteRGB } from '@/components/Geometry3D/useHighlightColors'
 import type { HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import {
   COLOR_BODY_REMOVED,
-  COLOR_BODY_SELECTED,
   COLOR_BODY_DEFAULT,
-  BODY_REMOVED_TRANSPARENCY,
+  COLOR_BODY_EDGE,
+  COLOR_BODY_EDGE_SEL,
   DEFAULT_PART_ROUGHNESS,
 } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
@@ -85,13 +87,21 @@ const material = (container: HTMLElement) => container.querySelector('meshphysic
 /** The face palette is the first useHighlightColors call of a render. */
 const faceBase = () => (palettes[0] as HighlightPalette).base
 
+/** The edge palette is the second useHighlightColors call of a render. */
+const edgeBase = () => (palettes[1] as HighlightPalette).base
+
 describe('Body3D draws a doomed body marked', () => {
-  it('paints it the removal colour, overriding the part colour', async () => {
-    await renderBody({ removedByEdit: true, color: '#123456' })
-    expect(faceBase()).toEqual(paletteRGB(COLOR_BODY_REMOVED))
+  it('marks it with a pink wireframe, overriding the grey edge', async () => {
+    await renderBody({ removedByEdit: true })
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_REMOVED))
   })
 
-  it('leaves an ordinary body its part colour', async () => {
+  it('keeps an ordinary body its grey wireframe', async () => {
+    await renderBody({ color: '#123456' })
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_EDGE))
+  })
+
+  it('keeps the part colour on an ordinary body', async () => {
     await renderBody({ color: '#123456' })
     expect(faceBase()).toEqual(paletteRGB('#123456'))
   })
@@ -101,30 +111,31 @@ describe('Body3D draws a doomed body marked', () => {
     expect(faceBase()).toEqual(paletteRGB(COLOR_BODY_DEFAULT))
   })
 
-  it('lets selection recolour it, so it can be seen to be re-clickable', async () => {
+  it('brightens the doomed wireframe when selected, keeping the face transparent', async () => {
     useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) } as never)
-    await renderBody({ removedByEdit: true })
-    expect(faceBase()).toEqual(paletteRGB(COLOR_BODY_SELECTED))
+    const { container } = await renderBody({ removedByEdit: true })
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_EDGE_SEL))
+    expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
   })
 
-  it('makes it transparent', async () => {
-    // React drops boolean props on these host elements, so opacity is the
-    // observable: it is what `transparent`/`blending` are derived from anyway.
+  it('draws the doomed face fully transparent, not pink-tinted', async () => {
     const { container } = await renderBody({ removedByEdit: true })
-    expect(Number(material(container)?.getAttribute('opacity')))
-      .toBeCloseTo(1 - BODY_REMOVED_TRANSPARENCY, 5)
+    expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
+  })
+
+  it('keeps the doomed face transparent whatever the user styled', async () => {
+    // The old ceiling kept the pink FACE mark visible; the mark now lives on
+    // the wireframe, so the face stays fully see-through even at an opaque
+    // part style and at transparency 1.
+    for (const transparency of [0, 1]) {
+      const { container } = await renderBody({ removedByEdit: true, transparency })
+      expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
+    }
   })
 
   it('leaves an ordinary body opaque', async () => {
     const { container } = await renderBody({})
     expect(Number(material(container)?.getAttribute('opacity'))).toBe(1)
-  })
-
-  it('stays visible even when the user styled the body fully transparent', async () => {
-    // Without the ceiling this renders at opacity 0: invisible, unmarked, and
-    // still in the id buffer -- strictly worse than the old hide.
-    const { container } = await renderBody({ removedByEdit: true, transparency: 1 })
-    expect(Number(material(container)?.getAttribute('opacity'))).toBeGreaterThan(0)
   })
 
   it('drops the part material so every removal looks the same', async () => {

@@ -129,7 +129,7 @@ export function labelOffsetPx(
 }
 
 /**
- * Arrow (shaft, cone, label) color. At rest the handle wears the same violet as
+ * Arrow (shaft, cone, label) color. At rest the handle wears the same pink as
  * the preview wireframe it drives, so the arrow reads as part of the preview
  * rather than as a selected entity. Hover and drag brighten it to white, the
  * project-wide "you are touching this" signal.
