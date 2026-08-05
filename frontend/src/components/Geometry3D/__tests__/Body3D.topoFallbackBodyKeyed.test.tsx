@@ -58,7 +58,7 @@ async function renderSibling(bodyId: string) {
 
 describe('Body3D topo-fallback queries are keyed on the body', () => {
   // All three mint sites run during this render: the face one is reached
-  // through `fallbackTriangleFlags`, the per-triangle paint path taken when the
+  // through `legacyFaceQueries`, the per-triangle paint path taken when the
   // mesh carries no `face_queries`.
   it('names the body, not the feature that created it', async () => {
     await renderSibling('body_ex1')

@@ -35,7 +35,7 @@ import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration }
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
-import { selectActiveFrom, hoverActiveFrom } from '@/picking/highlightActive'
+import { selectActiveFrom, hoverActiveFrom, EMPTY_STRING_SET } from '@/picking/highlightActive'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -368,22 +368,50 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   }, [faceQueriesResolved, faceTriangles, mesh])
 
   // Legacy per-triangle highlight, for meshes carrying no usable B-rep face
-  // metadata: membership in the raw query sets, triangle by triangle. Returns a
-  // stable null on the B-rep path so the painter below need not depend on
-  // `normalSelection` / `hoveredSelectionId` -- those change on every pointer move
-  // and would otherwise re-diff the colour buffer of every body in the scene.
-  const fallbackTriangleFlags = useMemo(() => {
+  // metadata. The per-triangle queries are materialized ONCE per body and then
+  // driven through the same HighlightIndex as the face-query path, so a hover
+  // that does not touch the body is gated by `intersects` onto the shared
+  // all-false `none` array -- instead of rebuilding two O(numTris) boolean
+  // arrays on every pointer move for every legacy body in the scene. The old
+  // direct scan keyed on `normalSelection` / `hoveredSelectionId` made every
+  // such body allocate on every hover; the flags memos below now run the index
+  // and skip on the identity of its answer.
+  //
+  // The retained cost is the string array itself: one `@body/face/<tri>` query
+  // per triangle, plus the index's query Set, held for the body's lifetime. On
+  // a very large imported legacy mesh that is O(triangles) of strings, the same
+  // order as the triangle data the mesh already holds, and is the price of
+  // giving the fallback a stable cache instead of rebuilding per hover.
+  const legacyFaceQueries = useMemo(() => {
     if (facePaintTarget.brep || !interactive) return null
     const numTris = faceCount(mesh.faces)
-    const selected = new Array<boolean>(numTris)
-    const hovered = new Array<boolean>(numTris)
-    for (let i = 0; i < numTris; i++) {
-      const query = resolveFaceQuery(i)
-      selected[i] = normalSelection.has(query)
-      hovered[i] = query === hoveredSelectionId
-    }
-    return { selected, hovered }
-  }, [mesh, facePaintTarget, normalSelection, hoveredSelectionId, resolveFaceQuery, interactive])
+    const queries = new Array<string>(numTris)
+    for (let i = 0; i < numTris; i++) queries[i] = resolveFaceQuery(i)
+    return queries
+  }, [mesh, facePaintTarget, resolveFaceQuery, interactive])
+
+  const legacyFaceHighlightIndex = useMemo(
+    () => legacyFaceQueries && new HighlightIndex(bodyKey, FACE_LAYER_NAME, legacyFaceQueries),
+    [bodyKey, legacyFaceQueries],
+  )
+
+  // The legacy index is keyed by TRIANGLE index, but the id layer only ever
+  // mints face pick keys keyed by the B-rep FACE index (FaceIdLayer registers
+  // per face, even for the mapped-but-short meshes that land on this path). A
+  // live per-face pick key parsed as a triangle index would claim the wrong
+  // primitive and split a whole-face highlight. So the legacy path drops the
+  // pick keys and decides by query membership alone -- exactly what the
+  // pre-index fallback did -- while still letting `intersects` gate the
+  // uninvolved-body answer onto the shared all-false array.
+  const legacyFaceSelectionFlags = useMemo(
+    () => legacyFaceHighlightIndex?.compute({ pickKeys: EMPTY_STRING_SET, queries: selectActive.queries }) ?? null,
+    [legacyFaceHighlightIndex, selectActive],
+  )
+
+  const legacyFaceHoverFlags = useMemo(
+    () => legacyFaceHighlightIndex?.compute({ pickKeys: EMPTY_STRING_SET, queries: hoverActive.queries }) ?? null,
+    [legacyFaceHighlightIndex, hoverActive],
+  )
 
   // The palettes. Only these three colours can move a primitive, and only a
   // change to one of them forces the painter to rewrite the whole buffer -- which
@@ -412,9 +440,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     geometry,
     runs: facePaintTarget.runs,
     selected: !interactive ? null
-      : facePaintTarget.brep ? faceSelectionFlags : (fallbackTriangleFlags?.selected ?? null),
+      : facePaintTarget.brep ? faceSelectionFlags : (legacyFaceSelectionFlags ?? null),
     hovered: !interactive ? null
-      : facePaintTarget.brep ? faceHoverFlags : (fallbackTriangleFlags?.hovered ?? null),
+      : facePaintTarget.brep ? faceHoverFlags : (legacyFaceHoverFlags ?? null),
     palette: facePalette,
   })
 

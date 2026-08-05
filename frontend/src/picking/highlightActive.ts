@@ -7,7 +7,11 @@ export type { ActiveHighlight } from './selectionHighlight'
 // Shared empty set so an empty framing (nothing under the cursor, no live pick
 // claims) is a stable reference and does not thrash the highlight memos each
 // render. Both pickKeys and queries back onto it, hence the neutral name.
-const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>()
+// Exported so a consumer that must run an ActiveHighlight WITHOUT the live pick
+// claims (the legacy per-triangle face path, whose queries are indexed by
+// triangle, not by the face-indexed pick keys the id layer mints) can build one
+// from the same stable reference.
+export const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>()
 
 /**
  * Click framing: the durable selection state exactly as the store holds it.
