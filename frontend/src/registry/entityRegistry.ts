@@ -11,7 +11,7 @@
 //   1. Add an entry to ENTITIES below.
 //   2. Add unflatten logic in utils/geometryMapping.ts  (unflattenGeometry).
 //   3. Add solver handling in the WASM kernel  (sketch solver).
-//   4. Add rendering in Geometry3D.tsx / SketchSvg.tsx.
+//   4. Add rendering in Geometry3D/.
 //   5. Optionally add an SVG icon in assets/icons/.
 
 import type { ActiveTool } from '@/types/cad'

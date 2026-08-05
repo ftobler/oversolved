@@ -55,7 +55,7 @@ Normalized 0-1 (not pixels). Use `px()` helper for pixel dimensions: `px(2)` = 2
 
 - **Toolbar buttons**: registry `toolbarIcon` field resolved via `iconUrl()` using `import.meta.glob` eager loading
 - **Direct imports**: components import specific SVGs (e.g. `import icon from '../assets/icons/feature-extrude.svg'`)
-- **Constraint symbols**: `SketchSvg.tsx` maps `RENDER_KIND_TO_ICON` via glob-loaded modules
+- **Constraint symbols**: `Geometry3D/dimensions/Symbol.tsx` resolves icons via `getIconUrl()` in `utils/geometry/sketchHelpers.ts`, which maps render kind to icon name via `RENDER_KIND_TO_ICON` in `registry/constraintRegistry.ts`
 
 ## Do Not
 
