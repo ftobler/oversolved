@@ -6,7 +6,9 @@
  *
  * The Worker owns the real `_build_state` (OCC handles + checkpoint cache);
  * the main thread never reads it, so responses arrive without it and this
- * client fills a frozen empty placeholder to satisfy the `BuildResponse` type.
+ * client fills a deeply-frozen empty placeholder to satisfy the `BuildResponse`
+ * type. The placeholder is shared by reference into every result, so it must
+ * stay empty and immutable.
  *
  * Crash handling: a Worker-level error rejects every in-flight solve and drops
  * the Worker; the next solve respawns it and rebuilds from feature 0 (the AST
@@ -47,7 +49,15 @@ export interface SolverWorkerLike {
   terminate(): void
 }
 
-const EMPTY_BUILD_STATE: BuildState = Object.freeze({ feature_order: [], checkpoints: {} })
+// Shared by reference into every solve result, so it must stay empty and
+// immutable: the nested freeze makes an accidental mutation throw in strict
+// mode instead of silently corrupting every placeholder. The cast only widens
+// the (shallow) `Readonly<BuildState>` type; the runtime object is frozen at
+// every level.
+export const EMPTY_BUILD_STATE: Readonly<BuildState> = Object.freeze({
+  feature_order: Object.freeze([] as string[]),
+  checkpoints: Object.freeze({}),
+}) as Readonly<BuildState>
 
 /** Successful response carrying the value to extract for an in-flight request. */
 type OkResponse = SolveOkResponse | ExportOkResponse | BundleOkResponse

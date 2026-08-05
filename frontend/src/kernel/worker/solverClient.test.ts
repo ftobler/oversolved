@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   solveViaWorker, exportViaWorker, exportAssemblyViaWorker,
   setSolverWorkerForTest, setSolverTimeoutForTest, getPendingCount,
+  EMPTY_BUILD_STATE,
   type SolverWorkerLike,
 } from './solverClient'
 import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
+import type { BuildState } from '../types3d'
 
 type AnyResponse = SolveResponse | ExportResponse | BundleResponse
 
@@ -54,6 +56,30 @@ describe('solveViaWorker', () => {
     fake.reply({ id, ok: true, payload: { solve_ms: 2, result: { r: 1 }, bodies: {} } })
     const res = await p
     expect(res).toEqual({ solve_ms: 2, result: { r: 1 }, bodies: {}, _build_state: { feature_order: [], checkpoints: {} } })
+  })
+
+  it('deep-freezes the placeholder that fills _build_state, nesting included', () => {
+    expect(Object.isFrozen(EMPTY_BUILD_STATE)).toBe(true)
+    expect(Object.isFrozen(EMPTY_BUILD_STATE.feature_order)).toBe(true)
+    expect(Object.isFrozen(EMPTY_BUILD_STATE.checkpoints)).toBe(true)
+  })
+
+  it('a mutation attempt on the shared placeholder throws and leaves it empty across solves', async () => {
+    const p1 = solveViaWorker({ id: 'd' })
+    fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+    const res1 = await p1
+    expect(res1).not.toBeNull()
+    // A consumer that bypasses the readonly type (a plain push) must hit the
+    // deep freeze at runtime rather than corrupt the shared placeholder.
+    const featureOrder = (res1!._build_state as BuildState).feature_order
+    expect(() => featureOrder.push('f1')).toThrow(TypeError)
+    expect(featureOrder).toHaveLength(0)
+
+    const p2 = solveViaWorker({ id: 'e' })
+    fake.reply({ id: fake.posted[1].id, ok: true, payload: { solve_ms: 2, result: {}, bodies: {} } })
+    const res2 = await p2
+    expect(res2).not.toBeNull()
+    expect(res2!._build_state.feature_order).toHaveLength(0)
   })
 
   it('resolves null when the engine reported OCC unavailable (null payload)', async () => {

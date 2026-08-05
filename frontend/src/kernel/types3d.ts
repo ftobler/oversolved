@@ -67,7 +67,9 @@ export interface FeatureCheckpoint {
   bodies_snapshot: Record<string, unknown>
 }
 
-/** Opaque cache passed from one build() call to the next. */
+/** Checkpoint cache passed from one build() call to the next. It is the
+ *  solver's private state; the main-thread copy (the `_build_state` stub) is
+ *  shared and must never be mutated by consumers. */
 export interface BuildState {
   feature_order: string[]
   checkpoints: Record<string, FeatureCheckpoint>

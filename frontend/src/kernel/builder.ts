@@ -103,7 +103,10 @@ export interface BuildResponse {
   solve_ms: number
   result: Record<string, unknown>
   bodies: Record<string, unknown>
-  _build_state: BuildState
+  // The worker owns `_build_state` (checkpoint cache) and mutates it between
+  // solves; main-thread consumers must treat it as read-only. The solver-client
+  // stub that satisfies this field is deeply frozen.
+  _build_state: Readonly<BuildState>
   pick_bodies?: Record<string, unknown>
   _validation?: RebuildValidation
 }
