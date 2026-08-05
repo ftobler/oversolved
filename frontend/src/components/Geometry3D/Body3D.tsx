@@ -25,6 +25,7 @@ import {
   getEdgeSegmentCounts,
   faceCount,
   lazyFaceTriangles,
+  resolveFaceQueries,
 } from '@/components/Geometry3D/bodyGeometry'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
@@ -207,15 +208,25 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [edgeHighlightIndex, hoverActive],
   )
 
+  // Resolved query per B-rep face (real query, else a topo fallback), padded to
+  // the rendered face count. The single list both the face HighlightIndex and
+  // the painter's face runs count from, so a kernel that returns fewer face
+  // queries than the tessellation contains still leaves every face highlightable
+  // -- and the two consumers can never disagree about how many faces there are.
+  const faceQueriesResolved = useMemo(
+    () => resolveFaceQueries(mesh, bodyId),
+    [mesh, bodyId],
+  )
+
   // Face highlight, decoupled from raw query membership exactly like edges:
   // sibling faces sharing an ancestral query (no minted UUID) must not co-highlight.
-  // Indexed by B-rep face index; null when the mesh carries no face queries (the
+  // Indexed by B-rep face index; null when the mesh carries no face queries, or
+  // when triangle_to_face is absent or does not cover the triangles (the
   // fallback path below keeps the legacy per-triangle query-membership highlight).
-  const faceHighlightIndex = useMemo(() => {
-    const { face_queries } = mesh
-    if (!face_queries || face_queries.length === 0) return null
-    return new HighlightIndex(bodyKey, FACE_LAYER_NAME, face_queries)
-  }, [bodyKey, mesh])
+  const faceHighlightIndex = useMemo(
+    () => faceQueriesResolved && new HighlightIndex(bodyKey, FACE_LAYER_NAME, faceQueriesResolved),
+    [bodyKey, faceQueriesResolved],
+  )
 
   const faceSelectionFlags = useMemo(
     () => faceHighlightIndex?.compute(selectActive) ?? null,
@@ -347,16 +358,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
 
   // Which primitives the face colour buffer is divided into: B-rep faces when the
   // mesh carries usable per-face metadata, else one primitive per triangle (the
-  // legacy query-membership path below). Both feed the same in-place painter, so
-  // the two highlight paths differ only in what indexes their flags.
+  // legacy query-membership path below). The face runs count from the SAME
+  // resolved query list as the HighlightIndex above, so a padded tail face is a
+  // paint primitive exactly when it is a highlight primitive.
   const facePaintTarget = useMemo(() => {
     const numTris = faceCount(mesh.faces)
-    const { triangle_to_face, face_queries } = mesh
-    const brep = face_queries !== undefined && face_queries.length > 0
-      && triangle_to_face !== undefined && triangle_to_face.length >= numTris
-    if (!brep) return { brep: false as const, runs: triangleRuns(numTris) }
-    return { brep: true as const, runs: faceRuns(face_queries.length, i => faceTriangles.get(i)) }
-  }, [mesh, faceTriangles])
+    if (!faceQueriesResolved) return { brep: false as const, runs: triangleRuns(numTris) }
+    return { brep: true as const, runs: faceRuns(faceQueriesResolved.length, i => faceTriangles.get(i)) }
+  }, [faceQueriesResolved, faceTriangles, mesh])
 
   // Legacy per-triangle highlight, for meshes carrying no usable B-rep face
   // metadata: membership in the raw query sets, triangle by triangle. Returns a

@@ -1,5 +1,6 @@
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
+import { topoFallbackQuery } from '@/utils/query/selectionId'
 
 export function buildBodyGeometry(mesh: Mesh3D): {
   positions: Float32Array
@@ -89,6 +90,36 @@ export function faceCount(faces: Mesh3D['faces']): number {
 export function vertexCount(vertices: Mesh3D['vertices']): number {
   if (vertices instanceof Float32Array) return vertices.length / 3
   return vertices.length
+}
+
+/**
+ * The query list the face highlight indexes, padded so every rendered B-rep
+ * face has one: raw `face_queries` where the kernel supplied a full set, else a
+ * topo fallback per missing tail face. The ONE list both the face HighlightIndex
+ * and the painter's face runs count from, so a mesh whose kernel returns fewer
+ * face queries than the tessellation contains (a defensive-alignment gap, not a
+ * crash) still lets the tail faces highlight. Returns the raw array unchanged
+ * when no padding is needed (reference-stable for the HighlightIndex memo), and
+ * null when the mesh carries no usable face queries, in which case the legacy
+ * per-triangle highlight path owns the buffer.
+ */
+export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | null {
+  const { face_queries, triangle_to_face } = mesh
+  if (!face_queries || face_queries.length === 0) return null
+  const numTris = faceCount(mesh.faces)
+  if (!triangle_to_face || triangle_to_face.length < numTris) return null
+  // A query set that already outnumbers the triangles covers every rendered
+  // face: a face index exists only where a triangle maps to it, so it is
+  // bounded by the triangle count. Skips the scan, which would only confirm it.
+  if (face_queries.length >= numTris) return face_queries
+  let rendered = face_queries.length
+  for (let tri = 0; tri < numTris; tri++) {
+    const face = triangle_to_face[tri]
+    if (face !== undefined && face + 1 > rendered) rendered = face + 1
+  }
+  if (rendered === face_queries.length) return face_queries
+  return Array.from({ length: rendered }, (_, i) =>
+    face_queries[i] ?? topoFallbackQuery(bodyId, 'face', i))
 }
 
 /**
