@@ -68,10 +68,11 @@ export function computeHighlight(
   // out of the pick set rather than by minting a key per primitive (see
   // pickedIndicesForBody). Null when the live pick belongs elsewhere -- the
   // persisted path and every unrelated body land here.
-  const picked = pickedIndicesForBody(active.pickKeys, bodyKey, layer)
-  // Queries those claimed primitives own, so a sibling sharing one loses.
+  const picked = pickedIndicesForBody(active.pickKeys, bodyKey, layer, queries.length)
+  // Queries those claimed primitives own, so a sibling sharing one loses. The
+  // count threading above guarantees every parsed index stays in range.
   const claimed = new Set<string>()
-  if (picked) for (const i of picked) { if (i < queries.length) claimed.add(queries[i]) }
+  if (picked) for (const i of picked) claimed.add(queries[i])
 
   for (let i = 0; i < queries.length; i++) {
     const q = queries[i]

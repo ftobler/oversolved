@@ -27,23 +27,6 @@ export function primitivePickKey(bodyKey: string, primitiveIndex: number, layer:
 }
 
 /**
- * Resolve which primitive index in `layer` a stored pick key points at, or -1 if
- * none. This is the id -> element back-mapping the viewport uses to isolate the
- * single hovered primitive. Because the key is layer-qualified, a pick key minted
- * by another layer (or a null) never matches, so a hovered vertex cannot resolve
- * to a same-index edge or face.
- */
-export function pickedPrimitiveIndex(
-  bodyKey: string,
-  count: number,
-  layer: string,
-  pickKey: string | null,
-): number {
-  if (pickKey === null) return -1
-  return parsePickKeyIndex(pickKey, `${bodyKey}#${layer}#`, count)
-}
-
-/**
  * Which primitive indices of `(bodyKey, layer)` the live pick set claims.
  *
  * The direction matters for a heavy model: the pick set holds one key while
@@ -52,17 +35,21 @@ export function pickedPrimitiveIndex(
  * a key per primitive to compare against the set would cost O(primitives) string
  * allocations per body, on every pointer move. Returns null when nothing in the
  * set belongs to this body/layer, so callers can skip the claim logic entirely.
+ * `count`, when the caller knows it (the highlight path does: it is the body's
+ * primitive count), bounds every parsed index to what this body/layer actually
+ * has.
  */
 export function pickedIndicesForBody(
   pickKeys: ReadonlySet<string>,
   bodyKey: string,
   layer: string,
+  count = Number.MAX_SAFE_INTEGER,
 ): Set<number> | null {
   if (pickKeys.size === 0) return null
   const prefix = `${bodyKey}#${layer}#`
   let out: Set<number> | null = null
   for (const key of pickKeys) {
-    const idx = parsePickKeyIndex(key, prefix)
+    const idx = parsePickKeyIndex(key, prefix, count)
     if (idx < 0) continue
     if (!out) out = new Set<number>()
     out.add(idx)
@@ -70,14 +57,19 @@ export function pickedIndicesForBody(
   return out
 }
 
-/** Index encoded in `key` when it carries `prefix`, else -1. `count`, when given,
- *  bounds the index to the primitives the caller actually has. */
-function parsePickKeyIndex(key: string, prefix: string, count = Infinity): number {
+/** Index encoded in `key` when it carries `prefix`, else -1. `count` bounds the
+ *  index to the primitives the caller actually has; without one the default
+ *  bounds it at the largest exactly-representable integer. */
+export function parsePickKeyIndex(key: string, prefix: string, count = Number.MAX_SAFE_INTEGER): number {
   if (!key.startsWith(prefix)) return -1
   const tail = key.slice(prefix.length)
   // Reject anything that is not a bare non-negative integer: a body key
   // containing '#' could otherwise let a foreign key parse as an index.
   if (!/^\d+$/.test(tail)) return -1
   const idx = Number(tail)
+  // Tails above 2^53 lose integer precision (two distinct tails collapse onto
+  // one set entry) and absurdly long tails overflow to Infinity. Bound them
+  // explicitly so an over-precision key cannot alias a real primitive index.
+  if (idx > Number.MAX_SAFE_INTEGER) return -1
   return idx < count ? idx : -1
 }

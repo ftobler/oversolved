@@ -112,6 +112,20 @@ describe('sketchEditorStore', () => {
       expect(s.selectedPicks.size).toBe(0)
     })
 
+    it('a colliding-sibling click re-adds a query that only its claim survived', () => {
+      // An orphan: another writer cleared normalSelection but left a pick claim
+      // behind. The sibling click must re-assert the query into normalSelection
+      // instead of growing the claim set under a query nobody selected.
+      useSketchEditorStore.setState({
+        normalSelection: new Set(),
+        selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0'])]]),
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('Q', 'ex1/b0#edge#1')
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('Q')).toBe(true)
+      expect(s.selectedPicks.get('Q')).toEqual(new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1']))
+    })
+
     it('leaves the pickKey channel untouched for selections with no pickKey', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)

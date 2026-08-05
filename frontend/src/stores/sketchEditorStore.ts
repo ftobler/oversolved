@@ -263,6 +263,10 @@ interface SketchEditorState {
   // `pickKey` refines the b-rep highlight to a single primitive; omit it for
   // selections with no per-primitive identity (sketch entities, planes).
   toggleNormalSelection: (id: string, pickKey?: string) => void
+  // Add-only: puts `id` into normalSelection and touches nothing else. Unlike
+  // toggleNormalSelection it leaves selectedPicks standing, so a pick persisted
+  // earlier survives. Pair it with clearNormalSelection for replace semantics
+  // (the callers today, useDimInteraction and Constraints.tsx, always do).
   addToNormalSelection: (id: string) => void
 
   // HOVER STATE
@@ -565,7 +569,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           nextPicks.delete(id)
         } else {
           next.add(id)
-          if (pickKey !== undefined) nextPicks.set(id, new Set([pickKey]))
         }
         return { normalSelection: next, selectedPicks: nextPicks, selectionDomain: deriveSelectionDomain(next) }
       }
@@ -587,11 +590,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       } else {
         // A colliding sibling: additive, never a replacement. This is the click
         // that used to silently un-select whatever already held this query.
+        // Re-assert the query too, so a claim left behind by another writer (an
+        // orphan) cannot grow under a query that is no longer selected.
+        next.add(id)
         nextPicks.set(id, new Set(claims).add(pickKey))
       }
       return { normalSelection: next, selectedPicks: nextPicks, selectionDomain: deriveSelectionDomain(next) }
     }),
 
+  // Add-only selection mutation. Puts `id` into normalSelection and touches
+  // nothing else: selectedPicks is left standing, so a pick persisted earlier
+  // is not evicted. Pair it with clearNormalSelection when the caller wants
+  // replace semantics (callers today: useDimInteraction, Constraints.tsx).
   addToNormalSelection: (id) =>
     set(s => {
       if (s.normalSelection.has(id)) return s
