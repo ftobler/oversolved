@@ -4,10 +4,6 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-}))
-
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
   __esModule: true,

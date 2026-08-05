@@ -11,10 +11,6 @@ import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 const mockAutoZoomToFit = vi.hoisted(() => vi.fn())
 const mockCancelPendingFit = vi.hoisted(() => vi.fn())
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-}))
-
 // jsdom has no Worker, so the real worker client resolves null for any non-empty
 // doc and the first solve (and its auto-zoom) never completes. Answer it with an
 // empty build so onFirstSolve actually fires for a doc with features.

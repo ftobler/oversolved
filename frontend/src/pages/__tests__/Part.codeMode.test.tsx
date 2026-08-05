@@ -15,10 +15,6 @@ import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 // pre-YAML document, the text edits still count as unsaved, and unparseable
 // text can never strand the user's typing.
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-}))
-
 // jsdom has no Worker, so the real solveViaWorker resolves null ("Local solver
 // unavailable") for every solve. That is the pre-test baseline; the swap
 // re-pin tests override the mock to observe what reaches the solver.

@@ -19,10 +19,6 @@ import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-}))
-
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
   __esModule: true,

@@ -9,10 +9,6 @@ import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 // plain const only by deferring the read to render time).
 const mockAutoZoomToFit = vi.hoisted(() => vi.fn())
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-}))
-
 vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule({ autoZoomToFit: mockAutoZoomToFit }))
 

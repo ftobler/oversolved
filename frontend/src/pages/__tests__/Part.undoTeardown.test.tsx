@@ -12,10 +12,6 @@ import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 // from three owners (usePartDoc's session refs, useEditFeature's UI reset and
 // Part's own popovers) and only the assembled page proves they all fire.
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
-}))
-
 // `cancelPendingFit` is deliberately not in the mock's default handle set, and
 // undo drives it, so this suite has to ask for it explicitly.
 vi.mock('../../components/Viewport', async () =>
