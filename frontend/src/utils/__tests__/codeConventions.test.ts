@@ -3,9 +3,9 @@
  * These tests catch regressions in naming and environment-access patterns.
  */
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { builtinModules } from 'node:module'
-import { join, extname } from 'path'
+import { dirname, extname, join } from 'path'
 
 const SRC = join(__dirname, '../../')
 
@@ -177,5 +177,86 @@ describe('declared dependencies', () => {
       .map(([name, files]) => `${name} (e.g. ${files[0]})`)
       .sort()
     expect(undeclared).toEqual([])
+  })
+})
+
+// The sketch editor store and its selection helpers advertise themselves as
+// pure headless logic ("delete the Viewport, the logic still passes"), which
+// only holds while nothing in their transitive import closure touches the
+// Three.js / R3F layer. geometryMapping once reached `three` through the
+// sketchHelpers re-export of ellipseAxisPoints; that link now points at the
+// pure ellipseAxis module. This closure walk keeps future imports from silently
+// pulling the rendering layer into the headless tests again.
+describe('headless module purity', () => {
+  const HEADLESS_ROOTS = [
+    'stores/sketchEditorStore.ts',
+    'picking/selectionHighlight.ts',
+    'stores/stateInvariants.ts',
+    'picking/highlightActive.ts',
+    'picking/pickKey.ts',
+  ]
+
+  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
+  const SPECIFIERS = [
+    /(?:^|\n)\s*(?:import|export)\s[^;'"]*?\sfrom\s*['"]([^'"]+)['"]/g,
+    /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
+    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  ]
+
+  // Resolve an `@/` alias or relative specifier to an on-disk source file.
+  // Returns null for bare packages and anything that does not exist. The `?`
+  // suffix drops Vite's loader hints (?url / ?worker), same as the package
+  // scan above.
+  function resolveSpecifier(fromFile: string, specifier: string): string | null {
+    const clean = specifier.split('?')[0]
+    const base = clean.startsWith('@/')
+      ? join(SRC, clean.slice(2))
+      : clean.startsWith('.')
+        ? join(dirname(fromFile), clean)
+        : null
+    if (!base) return null
+    const candidates = [base, base + '.ts', base + '.tsx', join(base, 'index.ts'), join(base, 'index.tsx')]
+    for (const candidate of candidates) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
+    }
+    return null
+  }
+
+  function closureImports(): { threeSpecifiers: string[]; files: string[] } {
+    const seen = new Set<string>()
+    const threeSpecifiers: string[] = []
+    const queue = HEADLESS_ROOTS.map(root => join(SRC, root))
+    while (queue.length > 0) {
+      const file = queue.pop() as string
+      if (seen.has(file)) continue
+      seen.add(file)
+      let text = readFileSync(file, 'utf8')
+      for (const pattern of COMMENTS) text = text.replace(pattern, '')
+      for (const pattern of SPECIFIERS) {
+        for (const match of text.matchAll(pattern)) {
+          const specifier = match[1]
+          if (specifier === 'three' || specifier.startsWith('@react-three/')) {
+            threeSpecifiers.push(`${file.replace(SRC, 'src/')} -> ${specifier}`)
+          }
+          const target = resolveSpecifier(file, specifier)
+          if (target) queue.push(target)
+        }
+      }
+    }
+    const files = [...seen].map(f => f.replace(SRC, 'src/')).sort()
+    return { threeSpecifiers, files }
+  }
+
+  it('transitive closure of the headless modules contains no three import', () => {
+    const { threeSpecifiers, files } = closureImports()
+    // Guards the guard: a broken resolver would report a clean closure on zero
+    // files, so pin the deep modules that only reach the closure through the
+    // store-to-geometryMapping chain.
+    expect(files).toEqual(expect.arrayContaining([
+      expect.stringContaining('stores/sketchEditorStore.ts'),
+      expect.stringContaining('utils/geometry/geometryMapping.ts'),
+      expect.stringContaining('utils/geometry/ellipseAxis.ts'),
+    ]))
+    expect(threeSpecifiers).toEqual([])
   })
 })

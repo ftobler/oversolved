@@ -7,7 +7,10 @@ import type {
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
-import { ellipseAxisPoints } from '@/utils/geometry/sketchHelpers'
+// Import from ellipseAxis directly (not the sketchHelpers re-export): sketchHelpers
+// pulls in Three.js, and this module sits in the headless closure of the sketch
+// editor store, which must stay Three-free.
+import { ellipseAxisPoints } from '@/utils/geometry/ellipseAxis'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
