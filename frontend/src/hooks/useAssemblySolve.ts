@@ -64,6 +64,18 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
     }))
 }
 
+// The identity the rev cache is keyed to: the uuid plus each referenced part's
+// recorded doc_rev, order-insensitive. Any of those changing (a doc swap, or a
+// mid-burst edit that bumped a recorded rev) invalidates the cached map so the
+// next non-live solve re-fetches instead of committing against a pre-edit bundle.
+function revCacheKey(uuid: string, doc: AssemblyDoc): string {
+  const parts = partSpecs(doc)
+    .map(p => `${p.doc_id}:${p.doc_rev}`)
+    .sort()
+    .join(',')
+  return `${uuid}|${parts}`
+}
+
 /**
  * Current revs per referenced part, the bundle cache key. The instance's own
  * `doc_rev` is the rev recorded at placement; a part edited since then has a
@@ -95,14 +107,29 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   // request bumped it meanwhile. The assembly worker protocol carries no token,
   // so the guard lives here on the main thread against a local counter.
   const solveVersion = useRef(0)
-  // Cached for one coalesced burst (see the effect below) so a trailing
-  // queued solve reuses the rev map instead of re-issuing `documents.list()`.
-  // Cleared once the burst drains, so the next burst reads fresh revs.
-  const burstRevs = useRef<Record<string, number> | null>(null)
-  // The rev map from the last full solve. A live drag tick reuses it rather than
-  // re-listing documents: no part is edited mid-drag, so the bundles are all
-  // cache hits and a solve stays OCC-free and fast.
+  // Cached under the identity the revs were computed for (see revCacheKey), so a
+  // coalesced burst reuses the map and issues documents.list() once per burst.
+  // A doc swap or a mid-burst edit that bumped a recorded rev changes the key,
+  // so the next run re-fetches instead of committing against a pre-edit bundle.
+  const burstRevs = useRef<{ key: string; revs: Record<string, number> } | null>(null)
+  // The rev map from the last full solve. A live drag tick reuses it without a
+  // version check: no part is edited mid-drag (applyUndoRedo clears the drag),
+  // and re-listing documents per tick is the exact cost this cache avoids.
   const lastRevs = useRef<Record<string, number> | null>(null)
+  // The assembly id the current render is solving for. The solve drain aborts
+  // when it changes, so an old IIFE cannot keep solving against an abandoned doc.
+  // Kept current in the render body so the abort check never sees a lagging uuid
+  // even if the drain resumes before the effect below runs its change branch.
+  const uuidRef = useRef(uuid)
+  uuidRef.current = uuid
+  // The uuid the solve effect last processed; the change branch compares against
+  // this rather than uuidRef, whose render-body write would hide the change.
+  const seenUuidRef = useRef(uuid)
+  // Monotonic drain id. The drain that starts it owns the in-flight slot, and
+  // only the LATEST drain may release it: on a uuid round-trip (asm-1 ->
+  // asm-2 -> asm-1) a stranded drain's uuid matches the current one again, so
+  // uuid equality alone cannot prove ownership.
+  const drainSeq = useRef(0)
   // A solve is requested by bumping a token, never by calling runSolve inline:
   // callers ask for it in the same event that mutates the doc (a drag commit
   // writes the transform, then re-solves), and the mutated doc only reaches
@@ -174,13 +201,19 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         parts = parts.map(p => (p.handle === manip!.handle ? { ...p, transform: pinned, fixed: true } : p))
       }
       // Revs are stable across a drag burst; a live tick reuses the last full
-      // solve's map, the standard burst reads once and caches it.
+      // solve's map. A non-live solve reuses its cached map only while the
+      // doc/uuid identity it was computed for is unchanged, so a doc swap or a
+      // mid-burst edit that bumped a recorded rev cannot feed stale doc_revs
+      // into the bundle cache key.
       let revs: Record<string, number>
       if (live && lastRevs.current) {
         revs = lastRevs.current
       } else {
-        if (!burstRevs.current) burstRevs.current = await currentRevs(current)
-        revs = burstRevs.current
+        const key = revCacheKey(uuid, current)
+        if (!burstRevs.current || burstRevs.current.key !== key) {
+          burstRevs.current = { key, revs: await currentRevs(current) }
+        }
+        revs = burstRevs.current.revs
         lastRevs.current = revs
       }
       const res = await solveAssemblyViaWorker(uuid, parts, revs, mates)
@@ -240,8 +273,13 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         useAssemblyStore.getState().setSolveError(res.payload.solveError)
       }
     } catch (e) {
-      // A live tick fails quietly: the pointer-up solve is the one that must
-      // surface a persistent error, and a per-frame banner would only flicker.
+      // A failure from a solve a newer request superseded belongs to that older
+      // request, not the one the user is waiting on: dropping it keeps a stale
+      // banner from painting over a queued re-solve that is about to own the
+      // record. A live tick fails quietly regardless: the pointer-up solve is
+      // the one that must surface a persistent error, and a per-frame banner
+      // would only flicker.
+      if (version !== solveVersion.current) return
       if (!live) useAssemblyStore.getState().setSolveError(extractErrorMessage(e))
     } finally {
       if (!live) useAssemblyStore.getState().setIsSolving(false)
@@ -256,6 +294,17 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   }, [])
 
   useEffect(() => {
+    // A uuid change drives a different assembly now (the editor remounts keyed
+    // by uuid, but a rerender can race the remount): bump the version so any
+    // solve the previous uuid left in flight is dropped, and clear the queue and
+    // rev cache so the old assembly's data does not carry into the new one.
+    if (seenUuidRef.current !== uuid) {
+      seenUuidRef.current = uuid
+      solveVersion.current += 1
+      queued.current = false
+      inFlight.current = false
+      burstRevs.current = null
+    }
     if (solveToken === 0) return  // no solve on mount; the caller asks for the first one
     // A request arriving mid-solve queues exactly one follow-up rather than
     // stacking, so a burst of drags collapses into one trailing solve.
@@ -264,19 +313,37 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       return
     }
     inFlight.current = true
+    const myUuid = uuid
+    const myDrain = ++drainSeq.current
     void (async () => {
       try {
-        await runSolve()
-        while (queued.current) {
+        if (myDrain === drainSeq.current && myUuid === uuidRef.current) await runSolve()
+        while (queued.current && myDrain === drainSeq.current && myUuid === uuidRef.current) {
           queued.current = false
           await runSolve()
         }
       } finally {
-        inFlight.current = false
-        burstRevs.current = null
+        // Only the drain that still owns the record may release it. A uuid
+        // round-trip can strand an older drain whose uuid matches the current
+        // one again, so ownership is proven by the drain id, not the uuid.
+        if (myDrain === drainSeq.current) {
+          inFlight.current = false
+          burstRevs.current = null
+        }
       }
     })()
-  }, [solveToken, runSolve])
+  }, [solveToken, runSolve, uuid])
+
+  // Unmount cleanup: an in-flight solve must not paint into the shared store
+  // after the editor is gone, and a remount starts with a fresh version and a
+  // clean queue (the shared store survives; the hook's refs do not).
+  useEffect(() => {
+    return () => {
+      solveVersion.current += 1
+      inFlight.current = false
+      queued.current = false
+    }
+  }, [])
 
   return { requestSolve }
 }

@@ -206,6 +206,75 @@ describe('useAssemblySolve', () => {
     expect(h.list).toHaveBeenCalledTimes(2)
   })
 
+  it('a live drag burst reuses the rev map instead of re-listing documents', async () => {
+    // Revs are stable across a drag; live ticks reuse the first solve's map so
+    // the bundle stays a cache hit and a drag never re-issues documents.list().
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: docWith(instance('p1'), instance('p2')),
+      transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+    })
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([10, 0, 0])
+
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    h.solveAssemblyViaWorker.mockImplementationOnce(async () => { await gate; return okResponse })
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
+
+    await act(async () => { result.current.requestSolve() })  // first live tick fetches once
+    expect(h.list).toHaveBeenCalledTimes(1)
+
+    // Queues a trailing live tick while the first is blocked; it reuses the
+    // burst's already-fetched rev map instead of listing again.
+    await act(async () => { result.current.requestSolve() })
+    expect(h.list).toHaveBeenCalledTimes(1)
+
+    await act(async () => { release(); await gate })
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    expect(h.list).toHaveBeenCalledTimes(1)  // the trailing tick reused lastRevs
+
+    useAssemblyStore.getState().cancelPartManipulation()
+  })
+
+  it('a mid-burst part edit invalidates the rev cache so the trailing solve re-fetches', async () => {
+    // The rev cache is keyed to the doc's recorded instance revs; a part edited
+    // mid-burst updates the assembly doc with the bumped rev, so the trailing
+    // solve must not reuse the pre-edit map.
+    const before = docWith(instance('p1'))  // the part is at rev 1 when the burst starts
+    const after = docWith(instance('p1', { doc_rev: 9 }))  // the edit bumps the recorded rev
+
+    let releaseA!: () => void
+    const gateA = new Promise<void>(r => { releaseA = r })
+    h.solveAssemblyViaWorker.mockImplementationOnce(async () => { await gateA; return okResponse })
+
+    // The store agrees with each doc's recorded rev at its fetch.
+    h.list.mockResolvedValueOnce([{ uuid: 'doc-p1', meta: { rev: 1 } }])
+    h.list.mockResolvedValueOnce([{ uuid: 'doc-p1', meta: { rev: 9 } }])
+
+    const { result, rerender } = renderHook(
+      ({ doc }: { doc: AssemblyDoc }) => useAssemblySolve('asm-1', doc),
+      { initialProps: { doc: before } },
+    )
+
+    await act(async () => { result.current.requestSolve() })  // solve #1 fetches revs for the pre-edit doc
+    expect(h.list).toHaveBeenCalledTimes(1)
+
+    // The part edit reaches the assembly doc mid-burst; the cached map predates
+    // it, so the trailing solve must re-fetch rather than reuse the old key.
+    await act(async () => { rerender({ doc: after }) })
+    await act(async () => { result.current.requestSolve() })  // queues a trailing solve
+
+    await act(async () => { releaseA(); await gateA })
+    await act(async () => {})  // the trailing solve runs
+
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    expect(h.list).toHaveBeenCalledTimes(2)  // the key change invalidated the cache
+    expect(h.solveAssemblyViaWorker.mock.calls[1][2]).toEqual({ 'doc-p1': 9 })
+  })
+
   it('surfaces a solver failure as a store error rather than throwing', async () => {
     h.solveAssemblyViaWorker.mockResolvedValue(null)
     const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))

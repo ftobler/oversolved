@@ -245,4 +245,163 @@ describe('useAssemblySolve staleness', () => {
     expect(store.bodies[assemblyBodyId('p1', 0)]).toBeDefined()
     expect(store.isSolving).toBe(false)
   })
+
+  it('a stale non-live failure does not surface a solveError under a newer live tick', async () => {
+    // The queued live tick owns the record: a live drag skips the full-solve
+    // error clear, so the stale full solve's failure must not write a banner
+    // the drag's success would then never clear.
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: docWith(instance('p1'), instance('p2')),
+      transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+    })
+
+    const dragResponse = (tx: number) => ({
+      id: 1,
+      kind: 'solveAssembly' as const,
+      ok: true as const,
+      payload: {
+        transforms: { p1: { ...IDENTITY_TRANSFORM, tx }, p2: { ...IDENTITY_TRANSFORM, tx } },
+        bodies: { p1: [meshPayload()], p2: [meshPayload()] },
+        mateResults: {},
+      },
+    })
+    let releaseA!: () => void
+    const gateA = new Promise<void>(r => { releaseA = r })
+    let releaseB!: () => void
+    const gateB = new Promise<void>(r => { releaseB = r })
+    h.solveAssemblyViaWorker
+      .mockImplementationOnce(async () => { await gateA; throw new Error('stale failure') })
+      .mockImplementationOnce(async () => { await gateB; return dragResponse(5) })
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
+
+    await act(async () => { result.current.requestSolve() })  // full solve A starts non-live
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+
+    // A drag starts while A is in flight; its request supersedes A.
+    act(() => {
+      useAssemblyStore.getState().beginPartManipulation('p1')
+      useAssemblyStore.getState().dragPartTranslate([10, 0, 0])
+    })
+    await act(async () => { result.current.requestSolve() })  // queues the live tick
+    await act(async () => { releaseA(); await gateA })  // A fails after the bump
+    await act(async () => {})  // the queued live tick starts and blocks on its gate
+
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    expect(useAssemblyStore.getState().solveError).toBe(null)  // stale failure dropped
+
+    await act(async () => { releaseB(); await gateB })
+    const store = useAssemblyStore.getState()
+    expect(store.solveError).toBe(null)
+    expect(store.transforms.p2.tx).toBe(5)  // the live tick applied its result
+    expect(store.isSolving).toBe(false)
+
+    useAssemblyStore.getState().cancelPartManipulation()
+  })
+
+  it('unmount mid-solve drops the result and a remount starts clean', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    h.solveAssemblyViaWorker
+      .mockImplementationOnce(async () => { await gate; return solveResponse(111) })
+      .mockImplementationOnce(async () => solveResponse(0))
+
+    const first = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
+    await act(async () => { first.result.current.requestSolve() })
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+
+    // Unmount while the solve is in flight: the cleanup bumps the version so the
+    // late result cannot paint into the shared store.
+    first.unmount()
+    await act(async () => { release(); await gate })
+    await act(async () => {})
+    const after = useAssemblyStore.getState()
+    expect(after.transforms.p1).toBeUndefined()
+    expect(after.bodies[assemblyBodyId('p1', 0)]).toBeUndefined()
+
+    // A remount gets a fresh version and a clean queue: one request, one solve.
+    const second = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
+    await act(async () => { second.result.current.requestSolve() })
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    expect(useAssemblyStore.getState().transforms.p1.tx).toBe(0)
+  })
+
+  it('a uuid change mid-burst drops the old IIFE queued runs against the old assembly', async () => {
+    let releaseA!: () => void
+    const gateA = new Promise<void>(r => { releaseA = r })
+    let releaseB!: () => void
+    const gateB = new Promise<void>(r => { releaseB = r })
+    h.solveAssemblyViaWorker
+      .mockImplementationOnce(async () => { await gateA; return solveResponse(1) })
+      .mockImplementationOnce(async () => { await gateB; return solveResponse(2) })
+
+    const { result, rerender } = renderHook(
+      ({ uuid }: { uuid: string }) => useAssemblySolve(uuid, docWith(instance('p1'))),
+      { initialProps: { uuid: 'asm-1' } },
+    )
+
+    await act(async () => { result.current.requestSolve() })  // solve #1 in flight against asm-1
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+    await act(async () => { result.current.requestSolve() })  // queued against asm-1
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+
+    // The doc switches mid-burst: the old drain must drop its queued solve and
+    // the new uuid owns the in-flight slot.
+    await act(async () => { rerender({ uuid: 'asm-2' }) })
+    await act(async () => { releaseA(); await gateA })
+    await act(async () => {})  // the new uuid's drain runs; the old queued run is dropped
+
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)  // no second solve against asm-1
+    expect(h.solveAssemblyViaWorker.mock.calls[1][0]).toBe('asm-2')
+    expect(useAssemblyStore.getState().transforms.p1).toBeUndefined()  // old result dropped
+
+    await act(async () => { releaseB(); await gateB })
+    expect(useAssemblyStore.getState().transforms.p1.tx).toBe(2)
+  })
+
+  it('a uuid round-trip does not let a stranded drain release the in-flight slot', async () => {
+    // asm-1 -> asm-2 -> asm-1 with all three drains blocked: D1's late resolve
+    // must not release the record D3 owns (a uuid equality check would see
+    // asm-1 === asm-1 and release it), or a fresh request would start a fourth
+    // drain while D3 is still genuinely solving.
+    let release1!: () => void
+    const gate1 = new Promise<void>(r => { release1 = r })
+    let release2!: () => void
+    const gate2 = new Promise<void>(r => { release2 = r })
+    let release3!: () => void
+    const gate3 = new Promise<void>(r => { release3 = r })
+    h.solveAssemblyViaWorker
+      .mockImplementationOnce(async () => { await gate1; return solveResponse(1) })
+      .mockImplementationOnce(async () => { await gate2; return solveResponse(2) })
+      .mockImplementationOnce(async () => { await gate3; return solveResponse(3) })
+      .mockImplementationOnce(async () => solveResponse(4))  // the queued trailing solve
+
+    const { result, rerender } = renderHook(
+      ({ uuid }: { uuid: string }) => useAssemblySolve(uuid, docWith(instance('p1'))),
+      { initialProps: { uuid: 'asm-1' } },
+    )
+
+    await act(async () => { result.current.requestSolve() })  // D1 (asm-1) in flight
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+    await act(async () => { rerender({ uuid: 'asm-2' }) })  // switch starts D2
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    await act(async () => { rerender({ uuid: 'asm-1' }) })  // switch back starts D3
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(3)
+
+    // D1 resolves late. If it had released the in-flight slot, this fresh
+    // request would start a fourth drain; it must instead just queue.
+    await act(async () => { release1(); await gate1 })
+    await act(async () => { result.current.requestSolve() })
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(3)
+
+    // The survivors drain in order; the final (queued) solve captures the latest
+    // version and wins the scene.
+    await act(async () => { release2(); await gate2 })
+    await act(async () => { release3(); await gate3 })
+    await act(async () => {})
+    expect(useAssemblyStore.getState().transforms.p1.tx).toBe(4)
+    expect(useAssemblyStore.getState().isSolving).toBe(false)
+  })
 })
