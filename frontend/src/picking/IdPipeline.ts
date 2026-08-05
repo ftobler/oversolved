@@ -160,21 +160,6 @@ export class IdPipeline {
   }
 
   /**
-   * Mark the three B-rep layers (face/edge/vertex) inert based on a
-   * caller-supplied predicate. Used to silence B-rep picking while a
-   * sketch is being edited (matches Body3D's `interactive={!activeFeatureId}`
-   * visible-pass rule from #221). When `predicate` returns true the
-   * layers are simply not rendered into the ID buffer, so the resolver
-   * cannot return a B-rep entity.
-   */
-  setBrepInertPredicate(predicate: (() => boolean) | null): void {
-    const inertWhen = predicate ?? undefined
-    this.faceLayer.inertWhen = inertWhen
-    this.edgeLayer.inertWhen = inertWhen
-    this.vertexLayer.inertWhen = inertWhen
-  }
-
-  /**
    * Mount a layer. Layers are rendered in ascending `priority` order
    * (lowest priority first, highest priority drawn last and therefore
    * highest pick precedence within the depth-test policy).

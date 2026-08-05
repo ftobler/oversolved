@@ -47,9 +47,11 @@ const SKETCH_PICK_LAYERS = [
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
 ] as const
 
-// The 3D solid layers. Only the project tool resolves these while a sketch is
-// being edited; bodies stay in the pick buffer (collision pass is always live)
-// but lower-priority than sketch layers, so sketch items win where they overlap.
+// The 3D solid layers. Always mounted in the pick buffer (the collision pass is
+// always live) and lower-priority than sketch layers, so sketch items win where
+// they overlap. Whether a B-rep hit resolves is decided by the per-tool
+// allowedLayers filter: select/drag/null and dimension resolve B-rep hits,
+// SKETCH_DRAW tools do not, and the project tool adds the layers back.
 const BREP_PICK_LAYERS = [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME] as const
 
 // ─── Presets: the only sites where a new field's default is decided ───

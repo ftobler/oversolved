@@ -6,6 +6,7 @@ import { rgbToId } from '@/picking/idEncoding'
 import { EMPTY_ID } from '@/picking/idEncoding'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getToolAllowedLayers } from '@/registry/toolPickConfig'
+import { SWALLOW_ONLY_PICK_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 
 interface RubberBandRect {
   x: number
@@ -35,6 +36,7 @@ export interface RubberBandState {
  */
 export function useRubberBandSelect(
   glRef: React.RefObject<THREE.WebGLRenderer | null>,
+  consumedLayers: ReadonlySet<string>,
 ): {
   state: RubberBandState
   // Call on the root container's onPointerDown. Returns true if the box drag consumed the event.
@@ -198,10 +200,16 @@ export function useRubberBandSelect(
 
     }
 
-    // Apply layer filter.
-    const filtered = allowed
-      ? entities.filter(e => allowed.has(e.layer))
-      : entities
+    // Commit only layers in the editor's consumed set, and only layers the
+    // dispatcher would toggle into normalSelection on a click: feature handles
+    // and dimension labels are swallow-only (the dispatcher consumes them
+    // without selecting, useIdBufferPointerDispatch's click routing), so a
+    // sweep over a handle or label pixel must never leak a fhandle:/dim: key
+    // into normalSelection. The tool's allowedLayers filter applies on top.
+    const filtered = entities.filter(e =>
+      consumedLayers.has(e.layer)
+      && !SWALLOW_ONLY_PICK_LAYERS.has(e.layer)
+      && (allowed === null || allowed.has(e.layer)))
 
     if (filtered.length > 0) {
       const state = useSketchEditorStore.getState()
@@ -214,7 +222,7 @@ export function useRubberBandSelect(
     rectRef.current = null
     draggingRef.current = false
     setRect(null)
-  }, [glRef])
+  }, [glRef, consumedLayers])
 
   // Clear drag on Escape.
   useEffect(() => {

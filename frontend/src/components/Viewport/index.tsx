@@ -23,22 +23,11 @@ import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
-import {
-  IdPickingDriver,
-  DIMENSION_LABEL_LAYER_NAME,
-  FEATURE_HANDLE_LAYER_NAME,
-  FACE_LAYER_NAME,
-  EDGE_LAYER_NAME,
-  VERTEX_LAYER_NAME,
-  PLANE_LAYER_NAME,
-  SKETCH_ENTITY_LAYER_NAME,
-  SKETCH_VERTEX_LAYER_NAME,
-  ORIGIN_LAYER_NAME,
-  SKETCH_SURFACE_LAYER_NAME,
-} from '@/picking'
+import { IdPickingDriver } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import type { IdPipeline } from '@/picking'
 import {
+  PART_EDITOR_CONSUMED_LAYERS,
   useIdBufferPointerDispatch,
   wasLastClickConsumedByIdDispatch,
   wasLastClickStaleResolve,
@@ -265,14 +254,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])
 
   // 267.2/267.4/267.5: canvas-level pointer dispatcher backed by the ID buffer.
-  // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin layers.
+  // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin
+  // layers (the shared PART_EDITOR_CONSUMED_LAYERS set).
   const consumedLayers = useMemo(() => (ENABLE_ID_BUFFER_PICKING
-    ? new Set([
-      DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
-      FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-      PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-      SKETCH_SURFACE_LAYER_NAME,
-    ])
+    ? PART_EDITOR_CONSUMED_LAYERS
     : new Set<string>()), [])
   useIdBufferPointerDispatch({ glRef, consumedLayers })
 
@@ -387,8 +372,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Layer 3B: clear isPointerDown on any pointer-up (including off-canvas releases).
   useSelectionPointerUpCleanup()
 
-  // 268: rubber-band drag-box selection on empty canvas space.
-  const rubberBand = useRubberBandSelect(glRef)
+  // 268: rubber-band drag-box selection on empty canvas space. Shares the
+  // dispatcher's consumedLayers so a sweep never collects a layer the editor
+  // does not consume.
+  const rubberBand = useRubberBandSelect(glRef, consumedLayers)
 
   const onPointerMissed = useCallback(() => {
     if (wasLastClickConsumedByIdDispatch()) return

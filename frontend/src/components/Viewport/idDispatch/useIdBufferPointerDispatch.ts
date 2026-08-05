@@ -20,6 +20,29 @@ import {
 } from '@/picking'
 
 /**
+ * The layers the part-editor id-buffer dispatcher consumes from the pick
+ * buffer: everything it routes (handles, labels, B-rep, sketch, plane, origin).
+ * `Viewport/index.tsx` passes this to both the dispatcher and the rubber-band
+ * select so the two can never disagree about what the editor consumes.
+ */
+export const PART_EDITOR_CONSUMED_LAYERS: ReadonlySet<string> = new Set([
+  DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME,
+])
+
+/**
+ * Layers the dispatcher resolves but never toggles into normalSelection:
+ * feature handles are a drag affordance and dimension labels are edited in
+ * place by their adapter. The click router and the rubber-band select both
+ * consult this set, so neither can leak a fhandle:/dim: key into selection.
+ */
+export const SWALLOW_ONLY_PICK_LAYERS: ReadonlySet<string> = new Set([
+  FEATURE_HANDLE_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
+])
+
+/**
  * Records whether the most recent left-click was consumed by the id-buffer
  * dispatcher. R3F's `onPointerMissed` fires AFTER our native click listener;
  * the Viewport reads this flag to decide whether to clear selection.
@@ -256,12 +279,15 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // entity / vertex drawing), which are not a parallel pick path, they
       // are the current tool acting. Pick chips are a consumer layer that
       // observes normalSelection downstream; they never branch the click.
-      if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
-        // A handle is a drag affordance, not a selectable entity: consume the
-        // click so it neither toggles selection nor clears it via the
-        // backplane, but dispatch nothing.
-      } else if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
-        dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+      // Swallow-only layers: resolved and consumed, but never toggled into
+      // normalSelection. A feature handle is a drag affordance, not a
+      // selectable entity: consume the click so it neither toggles selection
+      // nor clears it via the backplane, but dispatch nothing. A dimension
+      // label routes to its own adapter instead of a selection toggle.
+      if (SWALLOW_ONLY_PICK_LAYERS.has(hit.layer)) {
+        if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
+          dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+        }
       } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME) {
         sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {

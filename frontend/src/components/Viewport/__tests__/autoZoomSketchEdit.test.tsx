@@ -39,7 +39,10 @@ vi.mock('../ReferencePlane', () => ({ default: () => null, __esModule: true }))
 vi.mock('../EnvLight', () => ({ default: () => null, ENV_INTENSITY: 1.0, ENV_MAP_INTENSITY: 1.0, __esModule: true }))
 vi.mock('../UserDefinedPlane', () => ({ default: () => null, __esModule: true }))
 vi.mock('../PlaneVisual', () => ({ PlaneSurface: () => null, PlaneLabel: () => null }))
-vi.mock('../idDispatch/useIdBufferPointerDispatch', () => ({ useIdBufferPointerDispatch: () => {} }))
+vi.mock('../idDispatch/useIdBufferPointerDispatch', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../idDispatch/useIdBufferPointerDispatch')>()
+  return { ...actual, useIdBufferPointerDispatch: () => {} }
+})
 vi.mock('../../../picking/IdPickingDriver', () => ({ default: () => null, __esModule: true }))
 vi.mock('../IdDebugOverlay', () => ({ default: () => null, __esModule: true }))
 vi.mock('../../../picking/wasLastClickConsumedByIdDispatch', () => ({
