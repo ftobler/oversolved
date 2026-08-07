@@ -1,7 +1,7 @@
 import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '@/types/cad'
 import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '@/registry/measurementRegistry'
 import { getEntityKind } from '@/types/cad'
-import { parseTopoFallbackQuery, parseSelectionId } from '@/utils/query/selectionId'
+import { isWholeBodySelectionId, parseTopoFallbackQuery, parseSelectionId } from '@/utils/query/selectionId'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -35,6 +35,11 @@ export function computeMeasurements(
   const body3dIds = new Set<string>()
 
   for (const id of selection) {
+    // A whole-body pick (parts-list `@body_...`) is not a measurement source:
+    // only body primitives (face/edge/vertex) feed the B-rep rules. Without the
+    // exclusion it fell into the `@` plane lookup below, read as a feature id.
+    if (isWholeBodySelectionId(id)) continue
+
     // 3D body element: @bodyId/edge/N, @bodyId/face/N, or ancestry query (?...)
     if (id.startsWith('?') || parseTopoFallbackQuery(id) !== null) {
       body3dIds.add(id)

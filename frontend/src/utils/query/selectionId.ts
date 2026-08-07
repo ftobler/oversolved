@@ -146,6 +146,18 @@ export function emitAbsoluteSelectionQuery(selectionId: string): string {
 }
 
 /**
+ * True when `id` is a whole-body selection (the parts-list `@<bodyId>` form with
+ * no trailing primitive path). Body-primitive picks (`@<bodyId>/face/N`, a
+ * `face:` wrapper, a `?` ancestry query) name geometry, not the body, so they
+ * must NOT match. Measurement and projection accept body primitives but not a
+ * whole body, and the Delete key routes a body pick to delete_body, so every
+ * consumer shares this one classification.
+ */
+export function isWholeBodySelectionId(id: string): boolean {
+  return id.startsWith('@body_') && !id.includes('/')
+}
+
+/**
  * Parse a topo-fallback query string (`@<bodyId>/<kind>/<idx>`)
  * back into its components. The inverse of topoFallbackQuery().
  * Returns null if the string is not a valid topo-fallback query.

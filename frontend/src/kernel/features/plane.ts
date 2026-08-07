@@ -12,6 +12,10 @@ import { normalToFrame } from '../types3d'
 import type { PlaneLike } from './shared'
 import type { Vec3 } from './vec3'
 import { sub, dot, cross } from './vec3'
+import type { DisposeScope } from '../occ/disposeScope'
+import type { OccModule } from '../occ/occTypes'
+import type { HandleTable } from '../occ/handleTable'
+import { resolveFaceSlashFrame } from './faceProfile'
 
 type Dict = Record<string, unknown>
 
@@ -119,28 +123,71 @@ function planeThreePoint(def: Dict, repo: Repository): Frame3D {
   return frame(origin, xAxis, yAxis, normal)
 }
 
-function planeOnFace(def: Dict, repo: Repository, bodyStore: Dict | null): Frame3D {
-  const faceStr = def.face as string
-  const face = repo.query(faceStr, null, bodyStore) as Dict | null
-  if (face === null) throw new Error(`face not found: ${JSON.stringify(faceStr)}`)
-  const origin = face.centroid as Vec3
-  const normal = face.normal as Vec3
-  const { x_axis, y_axis } = normalToFrame(normal)
-  return frame(origin, x_axis, y_axis, normal)
+// A topo-fallback face ref (`@<body>/face/<idx>`) the render layer mints when
+// the kernel produced no named query for the face (selectionId.ts
+// topoFallbackQuery). Faces register under ancestry keys, never under the
+// slash key, so repo.query misses it and the frame must come from the shape.
+const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
+
+interface ResolvedFace {
+  centroid: Vec3
+  normal: Vec3
+  // The face's own OCC frame when resolved from a body shape (the slash form);
+  // absent for repo face entries, which only carry centroid + normal.
+  frame?: Frame3D
 }
 
-function planeOnFaceEdgeAngle(def: Dict, repo: Repository, bodyStore: Dict | null): Frame3D {
-  const faceStr = def.face as string
+// Resolve a face ref to its centroid + normal. The `@<body>/face/<idx>` form
+// goes through the body's OCC shape (the same path the extrude-on-face profile
+// uses); every other form is a repo face entry carrying centroid + normal.
+function resolveFaceFrame(
+  ref: string,
+  repo: Repository,
+  bodyStore: Dict | null,
+  oc: OccModule | null,
+  scope: DisposeScope | null,
+  table: HandleTable | null,
+): ResolvedFace {
+  if (SLASH_FACE.test(ref)) {
+    if (!oc || !scope || !table) {
+      throw new Error(`face not found: ${JSON.stringify(ref)}`)
+    }
+    const frame3d = resolveFaceSlashFrame(oc, scope, table, ref, repo, bodyStore as Record<string, Body>)
+    return { centroid: frame3d.origin, normal: frame3d.normal, frame: frame3d }
+  }
+  const face = repo.query(ref, null, bodyStore) as Dict | null
+  if (face === null) throw new Error(`face not found: ${JSON.stringify(ref)}`)
+  return { centroid: face.centroid as Vec3, normal: face.normal as Vec3 }
+}
+
+function planeOnFace(
+  def: Dict,
+  repo: Repository,
+  bodyStore: Dict | null,
+  oc: OccModule | null,
+  scope: DisposeScope | null,
+  table: HandleTable | null,
+): Frame3D {
+  const resolved = resolveFaceFrame(def.face as string, repo, bodyStore, oc, scope, table)
+  if (resolved.frame) return resolved.frame
+  const { x_axis, y_axis } = normalToFrame(resolved.normal)
+  return frame(resolved.centroid, x_axis, y_axis, resolved.normal)
+}
+
+function planeOnFaceEdgeAngle(
+  def: Dict,
+  repo: Repository,
+  bodyStore: Dict | null,
+  oc: OccModule | null,
+  scope: DisposeScope | null,
+  table: HandleTable | null,
+): Frame3D {
   const edgeStr = def.edge as string
   const angle = Number(def.angle ?? 0.0)
 
-  const face = repo.query(faceStr, null, bodyStore) as Dict | null
-  if (face === null) throw new Error(`face not found: ${JSON.stringify(faceStr)}`)
+  const { centroid: origin, normal } = resolveFaceFrame(def.face as string, repo, bodyStore, oc, scope, table)
   const edge = repo.query(edgeStr, null, bodyStore) as Dict | null
   if (edge === null) throw new Error(`edge not found: ${JSON.stringify(edgeStr)}`)
-
-  const origin = face.centroid as Vec3
-  const normal = face.normal as Vec3
 
   const edgeDir = normalize(sub(edge.end as Vec3, edge.start as Vec3))
   const xAxisRaw = sub(edgeDir, scale(normal, dot(edgeDir, normal)))
@@ -240,11 +287,13 @@ function planeOffset(def: Dict, repo: Repository): Frame3D {
 
 // ─── Dispatch ───
 
-/** Solve a plane feature (mirrors `_solve_plane`). */
+/** Solve a plane feature (mirrors `_solve_plane`). The OCC context is only
+ *  needed by the on_face modes when the face ref is a topo-fallback
+ *  `@<body>/face/<idx>`; the pure modes ignore it, so tests pass null. */
 export function solvePlane(
-  _oc: unknown,
-  _scope: unknown,
-  _table: unknown,
+  oc: OccModule | null,
+  scope: DisposeScope | null,
+  table: HandleTable | null,
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
@@ -257,8 +306,8 @@ export function solvePlane(
     case 'three_point': f = planeThreePoint(definition, globalRepo); break
     case 'plane_point': f = planeThroughPoint(definition, globalRepo); break
     case 'line_angle': f = planeLineAngle(definition, globalRepo); break
-    case 'on_face': f = planeOnFace(definition, globalRepo, bodyStore); break
-    case 'on_face_edge_angle': f = planeOnFaceEdgeAngle(definition, globalRepo, bodyStore); break
+    case 'on_face': f = planeOnFace(definition, globalRepo, bodyStore, oc, scope, table); break
+    case 'on_face_edge_angle': f = planeOnFaceEdgeAngle(definition, globalRepo, bodyStore, oc, scope, table); break
     case 'edge_point': f = planeEdgePoint(definition, globalRepo, bodyStore); break
     case 'offset': f = planeOffset(definition, globalRepo); break
     default: throw new Error(`unknown plane mode: ${JSON.stringify(mode)}`)

@@ -187,6 +187,33 @@ export function resolveFaceProfile(
   throw new Error(`Cannot resolve profile from: ${sketchRef}`)
 }
 
+/**
+ * Resolve a topo-fallback `@<body>/face/<idx>` ref to the face's 3D frame via
+ * the body's OCC shape. Shared by the extrude-on-face profile path and the
+ * on_face plane mode so a plane built from the same pick a user sees resolves
+ * identically: `repo.query` has no entry for the slash form (faces register
+ * under ancestry keys), so the frame has to come from the shape itself.
+ */
+export function resolveFaceSlashFrame(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  ref: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): Frame3D {
+  const slash = SLASH_FACE.exec(ref)
+  if (slash === null) throw new Error(`not a slash face ref: ${ref}`)
+  const refId = slash[1]
+  let faceIndex = parseInt(slash[2], 10)
+  const body = findBodyForRef(bodyStore, refId)
+  if (body === null) throw new Error(`No body found for '${refId}'`)
+  const shape = bodyShape(table, body)
+  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore)
+  if (resolved !== null) faceIndex = resolved
+  return extractFaceLoops(oc, scope, shape, faceIndex).plane
+}
+
 interface ExtrudeLoops {
   loops: EdgeDict[][]
   plane: PlaneLike

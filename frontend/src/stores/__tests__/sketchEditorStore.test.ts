@@ -638,6 +638,21 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredConstraintEntityIds.size).toBe(0)
     })
 
+    it('deletes only matching sketch entities and skips feature and body ids in a mixed selection', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('@ex1')
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')
+      useSketchEditorStore.getState().deleteSelected()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'delete',
+        targets: ['entity:S1:L1'],
+      })
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+
     it('constraint click replaces selection instead of accumulating (bug fix: delete too much)', () => {
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')

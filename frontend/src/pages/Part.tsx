@@ -4,6 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import { isWholeBodySelectionId, parseTopoFallbackQuery } from '@/utils/query/selectionId'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useAuth } from '@/contexts/AuthContext'
@@ -517,16 +518,46 @@ export default function Part() {
 
   const handleDeleteSelectedFeatures = useCallback(() => {
     const sel = useSketchEditorStore.getState().normalSelection
-    const featureIds = [...sel]
-      .filter(id => id.startsWith('@') && !id.startsWith('@builtin_'))
-      .map(id => id.slice(1))
-      .filter(id => !BUILT_IN_IDS.has(id))
-    // One Delete action on N features is one undo step, not N.
-    if (featureIds.length > 0) {
-      commitMutationGroup(featureIds.map(featureId => ({ type: 'delete_feature', featureId })))
+    const bodyIds = new Set(Object.keys(bodies))
+    const bodyDeletes: Mutation[] = []
+    const featureDeletes: Mutation[] = []
+    // First pass names the feature ids this Delete actually removes, so the body
+    // pass can tell whether a body's generator is going away with it.
+    const deletingFeatures = new Set<string>()
+    for (const id of [...sel]) {
+      if (!id.startsWith('@') || id.startsWith('@builtin_')) continue
+      const ref = id.slice(1)
+      if (features.some(f => f.id === ref)) deletingFeatures.add(ref)
+    }
+    for (const id of [...sel]) {
+      if (!id.startsWith('@') || id.startsWith('@builtin_')) continue
+      const ref = id.slice(1)
+      // A whole-body pick (parts list or pick chip) inserts a real delete_body
+      // feature through the same machinery the doomed-wireframe preview rides
+      // on, instead of a `delete_feature` aimed at a body id that names no
+      // feature. Face/edge/vertex picks are body primitives, not the body.
+      if (bodyIds.has(ref) || isWholeBodySelectionId(id)) {
+        // The feature that GENERATES the body is deleted in the same selection:
+        // the body vanishes with it, and a delete_body would then target a body
+        // the final doc no longer contains, failing every later solve.
+        const creator = bodies[ref]?.created_by
+        if (creator && deletingFeatures.has(creator)) continue
+        bodyDeletes.push({ type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Body' })
+        continue
+      }
+      if (features.some(f => f.id === ref)) {
+        featureDeletes.push({ type: 'delete_feature', featureId: ref })
+      }
+    }
+    // One Delete action on N targets is one undo step, not N. commitMutationGroup
+    // applies every handler to one doc clone and solves once at the end, so the
+    // array order below only groups the mutations, it does not sequence them.
+    const mutations = [...bodyDeletes, ...featureDeletes]
+    if (mutations.length > 0) {
+      commitMutationGroup(mutations)
       useSketchEditorStore.getState().clearNormalSelection()
     }
-  }, [commitMutationGroup])
+  }, [commitMutationGroup, bodies, features])
 
   const handleAddFeature = useCallback((kind: string, extra?: Record<string, unknown>) => {
     if (!doc) return
@@ -556,8 +587,18 @@ export default function Part() {
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
-    const faceQuery = [...selection].find(id => id.startsWith('?') && id.includes(':face'))
-    const definition = faceQuery ? { mode: 'on_face', face: faceQuery } as const : undefined
+    const faceQuery = [...selection].find(id =>
+      // `?`-ancestry face queries (flatface/cylinderface/face), `face:` wrappers
+      // (owner attribution; stored as their inner query), and topo-fallback
+      // `@<bodyId>/face/<idx>` refs all resolve to a face in the kernel. A
+      // whole-body pick (`@body_...`) names no face and must not match.
+      (id.startsWith('?') && id.includes(':face'))
+      || id.startsWith('face:')
+      || parseTopoFallbackQuery(id)?.kind === 'face'
+    )
+    const definition = faceQuery
+      ? { mode: 'on_face', face: faceQuery.startsWith('face:') ? faceQuery.split(':').slice(2).join(':') : faceQuery } as const
+      : undefined
     setRollbackForNewFeature(features)
     handleMutation({ type: 'add_plane', featureId, label, definition })
     usePartEditorStore.getState().setEditingFeatureId(featureId)

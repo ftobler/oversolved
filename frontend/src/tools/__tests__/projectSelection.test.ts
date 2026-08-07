@@ -31,6 +31,13 @@ describe('projectionMutationsForId', () => {
     expect(projectionMutationsForId('entity:S2', FEATURE, noResolvers)).toEqual([])
   })
 
+  it('excludes a whole-body pick as a projection source', () => {
+    // A parts-list `@body_...` pick names no geometry, so it is never
+    // projected; a body primitive (face/edge/vertex ancestry query) still is.
+    expect(projectionMutationsForId('@body_ex1', FEATURE, noResolvers)).toEqual([])
+    expect(projectionMutationsForId(FACE_Q, FEATURE, noResolvers)).not.toEqual([])
+  })
+
   it('projects a foreign sketch entity with its resolved kind', () => {
     const muts = projectionMutationsForId('entity:S2:C1', FEATURE, resolvers({ entityKind: () => 'circle' }))
     expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, kind: 'circle', source: '@S2/C1' }])
@@ -82,6 +89,10 @@ describe('projectionMutationsForSelection', () => {
   it('returns nothing for a wholly unprojectable selection', () => {
     expect(projectionMutationsForSelection([`entity:${FEATURE}:L1`], FEATURE, noResolvers)).toEqual([])
   })
+
+  it('returns nothing for a selection holding only whole-body picks', () => {
+    expect(projectionMutationsForSelection(['@body_ex1', '@body_ex2'], FEATURE, noResolvers)).toEqual([])
+  })
 })
 
 describe('projectSelection', () => {
@@ -117,6 +128,13 @@ describe('projectSelection', () => {
   it('reports failure on an empty selection so the caller enters the pick tool', () => {
     expect(projectSelection(noResolvers)).toBe(false)
     expect(batches).toHaveLength(0)
+  })
+
+  it('reports failure and leaves the selection when it holds only whole-body picks', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']), selectionDomain: 'body_3d' })
+    expect(projectSelection(noResolvers)).toBe(false)
+    expect(batches).toHaveLength(0)
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
   })
 
   it('reports failure when no sketch is being edited', () => {

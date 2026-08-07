@@ -518,4 +518,24 @@ describe('Measurement Selection and Evaluation', () => {
       expect(result).toEqual(['No match for 1x line, 1x circle'])
     })
   })
+
+  describe('26. whole-body selections are excluded', () => {
+    it('does not read a whole-body pick as a plane-id lookup', () => {
+      // A parts-list `@body_...` pick is not a measurement source: only body
+      // primitives (face/edge/vertex) feed the B-rep rules. Without the
+      // exclusion these ids fell into the plane-lookup branch, so two body ids
+      // that collided with solve-result keys read as a plane pair.
+      const solveResults = {
+        body_ex1: { plane: { origin: [0, 0, 0], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] } },
+        body_ex2: { plane: { origin: [0, 0, 7], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] } },
+      }
+      const result = computeMeasurements(sel('@body_ex1', '@body_ex2'), sketch, solveResults)
+      expect(result).toEqual([])
+    })
+
+    it('still measures a sketch entity in a mixed selection that holds a whole-body pick', () => {
+      const result = computeMeasurements(sel(entity('L1'), '@body_ex1'), sketch)
+      expect(result).toEqual(['[LINE] 5.000 mm'])
+    })
+  })
 })

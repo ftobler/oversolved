@@ -6,6 +6,7 @@
 // expansion.
 import type { Mutation } from '@/types/cad'
 import { parseQuery } from '@/utils/query'
+import { isWholeBodySelectionId } from '@/utils/query/selectionId'
 import { projectedKindForEdge } from '@/tools/dimensionProjection'
 
 /** Everything the pure lowering needs from the outside world, injected so the
@@ -35,6 +36,12 @@ export function projectionMutationsForId(
   featureId: string,
   resolvers: ProjectionResolvers,
 ): Mutation[] {
+  // A whole-body pick (parts-list `@body_...`) is not a projectable source:
+  // only body primitives (face/edge/vertex queries) and foreign sketch entities
+  // can land on the active sketch plane. Excluded up front rather than falling
+  // through to the generic empty return so the decision is explicit.
+  if (isWholeBodySelectionId(id)) return []
+
   // Sketch entity pick: entity:<featureId>:<entityId>
   if (id.startsWith('entity:')) {
     const parts = id.split(':')
