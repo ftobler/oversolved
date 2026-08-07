@@ -39,6 +39,10 @@ docs/feature/*
 data/*
 bugreports/
 feature/
+
+# AI Agent scratchpad & project temp space
+.tmp/
+.scratch/
 tmp/
 
 # Uploads
