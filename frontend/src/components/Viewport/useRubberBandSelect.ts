@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking'
 import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
-import { rgbToId } from '@/picking/idEncoding'
-import { EMPTY_ID } from '@/picking/idEncoding'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 import { SWALLOW_ONLY_PICK_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
@@ -13,8 +11,6 @@ interface RubberBandRect {
   y: number
   w: number
   h: number
-  // Left-to-right drag: entity must be fully enclosed. Right-to-left: any pixel touch.
-  mode: 'window' | 'crossing'
 }
 
 export interface RubberBandState {
@@ -30,9 +26,11 @@ export interface RubberBandState {
 /**
  * Hook for rubber-band (drag-box) selection on empty canvas space.
  *
- * Left-to-right drag = window selection: only entities fully enclosed in the
- * box are selected. Right-to-left drag = crossing selection: any entity whose
- * rendered pixels touch the box is selected.
+ * A box selects by crossing: every entity whose rendered pixels touch the box
+ * is collected. The box is query-only, never per-primitive, so the resulting
+ * selection highlights every sibling sharing a collected query. A fresh box
+ * REPLACES the current selection (Option A decision, 2026-08-05): the boxed
+ * set is the whole selection, with no additive-with-Shift modifier.
  */
 export function useRubberBandSelect(
   glRef: React.RefObject<THREE.WebGLRenderer | null>,
@@ -89,8 +87,7 @@ export function useRubberBandSelect(
     // Don't show a box until the user has dragged at least 4px.
     if (w < 4 && h < 4) return
 
-    const mode: 'window' | 'crossing' = 'crossing'
-    const nextRect = { x, y, w, h, mode }
+    const nextRect = { x, y, w, h }
     rectRef.current = nextRect
     setRect(nextRect)
   }, [glRef])
@@ -142,63 +139,22 @@ export function useRubberBandSelect(
       return
     }
 
-    let entities: { layer: string; entityKey: string }[]
+    // Crossing selection: any entity whose pixels touch the rect is selected.
+    // (The former window mode is dead: a box is crossing in every direction.)
+    const buf = new Uint8Array(rw * rh * 4)
+    const readY = h - y0 - rh
+    gl.readRenderTargetPixels(pipeline.target.target, x0, Math.max(0, readY), rw, rh, buf)
 
-    if (currentRect.mode === 'window') {
-      // Window selection: entity must have ALL pixels within the rect.
-      // Read the full ID buffer and split each entity ID into "seen inside rect"
-      // vs "seen outside rect". Only keep entities with no outside pixels.
-      const fullBuf = new Uint8Array(w * h * 4)
-      gl.readRenderTargetPixels(pipeline.target.target, 0, 0, w, h, fullBuf)
-
-      // Rect bounds in render-target coords (row 0 = bottom, GL convention).
-      const rtColMin = x0
-      const rtColMax = x0 + rw
-      const rtRowMin = h - y0 - rh
-      const rtRowMax = h - y0
-
-      const inRectIds = new Set<number>()
-      const outsideRectIds = new Set<number>()
-
-      for (let row = 0; row < h; row++) {
-        const rowInRect = row >= rtRowMin && row < rtRowMax
-        for (let col = 0; col < w; col++) {
-          const i = (row * w + col) * 4
-          if (fullBuf[i + 3] === 0) continue
-          const id = rgbToId(fullBuf[i], fullBuf[i + 1], fullBuf[i + 2])
-          if (id === EMPTY_ID) continue
-          if (rowInRect && col >= rtColMin && col < rtColMax) {
-            inRectIds.add(id)
-          } else {
-            outsideRectIds.add(id)
-          }
-        }
-      }
-
-      entities = []
-      for (const id of inRectIds) {
-        if (outsideRectIds.has(id)) continue
-        const rec = pipeline.registry.lookup(id)
-        if (rec) entities.push({ layer: rec.layer, entityKey: rec.entityKey })
-      }
-    } else {
-      // Crossing selection: any entity whose pixels touch the rect is selected.
-      const buf = new Uint8Array(rw * rh * 4)
-      const readY = h - y0 - rh
-      gl.readRenderTargetPixels(pipeline.target.target, x0, Math.max(0, readY), rw, rh, buf)
-
-      // Flip rows: readRenderTargetPixels returns row 0 = bottom,
-      // collectEntitiesFromPixels expects row 0 = top.
-      const flipped = new Uint8Array(rw * rh * 4)
-      for (let row = 0; row < rh; row++) {
-        const srcBase = row * rw * 4
-        const dstBase = (rh - 1 - row) * rw * 4
-        flipped.set(buf.subarray(srcBase, srcBase + rw * 4), dstBase)
-      }
-
-      entities = collectEntitiesFromPixels(flipped, rw, rh, pipeline.registry)
-
+    // Flip rows: readRenderTargetPixels returns row 0 = bottom,
+    // collectEntitiesFromPixels expects row 0 = top.
+    const flipped = new Uint8Array(rw * rh * 4)
+    for (let row = 0; row < rh; row++) {
+      const srcBase = row * rw * 4
+      const dstBase = (rh - 1 - row) * rw * 4
+      flipped.set(buf.subarray(srcBase, srcBase + rw * 4), dstBase)
     }
+
+    const entities = collectEntitiesFromPixels(flipped, rw, rh, pipeline.registry)
 
     // Commit only layers in the editor's consumed set, and only layers the
     // dispatcher would toggle into normalSelection on a click: feature handles
@@ -211,11 +167,15 @@ export function useRubberBandSelect(
       && !SWALLOW_ONLY_PICK_LAYERS.has(e.layer)
       && (allowed === null || allowed.has(e.layer)))
 
+    // An empty or swallowed-only box commits nothing: replacing with the empty
+    // set would wipe the selection on an accidental sweep across a feature
+    // handle, so the current selection is left untouched.
     if (filtered.length > 0) {
-      const state = useSketchEditorStore.getState()
-      for (const e of filtered) {
-        state.toggleNormalSelection(e.entityKey)
-      }
+      // A fresh box REPLACES the current selection with the boxed set. The box
+      // resolves entities without pickKeys, so the set is query-only: every
+      // sibling sharing a collected query highlights (the documented grouping).
+      const keys = filtered.map(e => e.entityKey)
+      useSketchEditorStore.getState().setNormalSelection(new Set(keys))
     }
 
     startRef.current = null

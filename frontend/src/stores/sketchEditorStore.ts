@@ -275,6 +275,11 @@ interface SketchEditorState {
   // earlier survives. Pair it with clearNormalSelection for replace semantics
   // (the callers today, useDimInteraction and Constraints.tsx, always do).
   addToNormalSelection: (id: string) => void
+  // Replace the whole normal selection with exactly `ids` (the rubber-band
+  // box set). A box resolves entities, never primitives, so selectedPicks
+  // claims and chip-owned entries the old selection held must not survive.
+  // selectionDomain is re-derived from the new set.
+  setNormalSelection: (ids: ReadonlySet<string>) => void
 
   // HOVER STATE
   // Vertex-specific hover data (for snap / visual highlight).
@@ -623,6 +628,23 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const next = new Set(s.normalSelection)
       next.add(id)
       return { normalSelection: next, selectionDomain: deriveSelectionDomain(next) }
+    }),
+
+  // Replace semantics for a fresh rubber band. Unlike toggleNormalSelection a
+  // box never deselects a covered entity and never accumulates outside it: the
+  // boxed set IS the whole selection. Claims are dropped the way
+  // clearNormalSelection drops them, because a box resolves queries without
+  // pickKeys and the old per-primitive claims would otherwise resurrect as
+  // ghost highlights (see computeHighlight).
+  setNormalSelection: (ids) =>
+    set(() => {
+      const next = new Set(ids)
+      return {
+        normalSelection: next,
+        selectedPicks: new Map(),
+        chipOwnedSelection: new Set(),
+        selectionDomain: deriveSelectionDomain(next),
+      }
     }),
 
   setAlignmentSnap: (point, kind, vertexId) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind, alignmentSnapVertexId: vertexId }),

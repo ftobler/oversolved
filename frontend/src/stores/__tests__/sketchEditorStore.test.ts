@@ -162,6 +162,55 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('setNormalSelection', () => {
+    it('replaces the current selection with the boxed set', () => {
+      const { toggleNormalSelection, setNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('entity:S1:L1')
+      toggleNormalSelection('vertex:S1:L2:start')
+      setNormalSelection(new Set(['entity:S1:L3', 'entity:S1:L4']))
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection).toEqual(new Set(['entity:S1:L3', 'entity:S1:L4']))
+    })
+
+    it('re-selecting a covered entity keeps it selected (no toggle-off)', () => {
+      // Regression: the old per-entity toggle loop deselected a covered
+      // entity that was already selected (edge A, then a box over A+B gave
+      // {B}). A replace box must never deselect a covered entity.
+      const { toggleNormalSelection, setNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('entity:S1:L1')
+      setNormalSelection(new Set(['entity:S1:L1', 'entity:S1:L2']))
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('entity:S1:L1')).toBe(true)
+      expect(s.normalSelection.has('entity:S1:L2')).toBe(true)
+    })
+
+    it('recomputes selectionDomain from the boxed set', () => {
+      const { setNormalSelection } = useSketchEditorStore.getState()
+      setNormalSelection(new Set(['entity:S1:L1']))
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('sketch_2d')
+      setNormalSelection(new Set(['@body_1@extrude1/face/3']))
+      expect(useSketchEditorStore.getState().selectionDomain).toBe('body_3d')
+    })
+
+    it('clears selectedPicks claims the box does not re-establish', () => {
+      const { toggleNormalSelection, setNormalSelection } = useSketchEditorStore.getState()
+      toggleNormalSelection('edge@q', 'ex1/b0#3')
+      setNormalSelection(new Set(['edge@q']))
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('edge@q')).toBe(true)
+      expect(s.selectedPicks.size).toBe(0)
+    })
+
+    it('clears chipOwnedSelection so no orphan chip signal survives the box', () => {
+      const { syncChipSelection, setNormalSelection } = useSketchEditorStore.getState()
+      syncChipSelection(['@edge_0'])
+      setNormalSelection(new Set(['entity:S1:L1']))
+      const s = useSketchEditorStore.getState()
+      expect(s.chipOwnedSelection.size).toBe(0)
+      expect(s.normalSelection.has('entity:S1:L1')).toBe(true)
+    })
+  })
+
   describe('clearNormalSelection', () => {
     it('empties the selection', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')

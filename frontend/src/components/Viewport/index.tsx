@@ -651,11 +651,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         <FeatureHandles />
       </Canvas>
 
-      {/* 268: rubber-band drag-box selection overlay */}
+      {/* 268: rubber-band drag-box selection overlay. A box is crossing-only;
+          the window-mode styling and its mode branch were deleted with the
+          dead window selection path. */}
       {rubberBand.state.dragging && rubberBand.state.rect && (
         <div style={(() => {
-          const color = rubberBand.state.rect.mode === 'window' ? '#4fc3f7' : '#81c784'
-          const fill  = rubberBand.state.rect.mode === 'window' ? 'rgba(79,195,247,0.08)' : 'rgba(129,199,132,0.08)'
+          const color = '#81c784'
+          const fill  = 'rgba(129,199,132,0.08)'
           // CSS `dashed` has no length control; use background gradients for custom dash size.
           const dash = `${color} 0, ${color} 5px, transparent 5px, transparent 8px`
           return {
