@@ -125,6 +125,8 @@ export function tessellateBodies(
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
+        created_by: body.created_by || '',
+        modified_by: body.modified_by ?? [],
       }
     } catch (e) {
       // Non-fatal: a body that fails to tessellate still has valid topology, so
@@ -194,6 +196,8 @@ export function extractBrepMetadata(
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
+        created_by: body.created_by || '',
+        modified_by: body.modified_by ?? [],
       }
     } catch (e) {
       // Non-fatal: a body whose B-rep cannot be read just lacks ancestry, as in

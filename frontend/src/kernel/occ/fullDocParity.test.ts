@@ -16,11 +16,11 @@
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from './loadOcc'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { unportedKinds } from '../solverRegistry'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { solveWithTimeout } from '../solveTimeout'
+import { buildBaselineBody } from '@/wasm-kernel/parityBaseline'
 import baseline from '@/wasm-kernel/regression-baseline.json'
 
 // ─── Pre-load OCC.js and the Rust solver ───
@@ -241,29 +241,17 @@ function diffBodies(
 
 // ─── Post-process body data (worker returns raw mesh, not hashes) ───
 
+// The body output carries the live mesh + edges; reduce it to the same golden
+// shape the corpus generator (scripts/regenCorpus.ts) freezes, so replaying the
+// baseline diffs TS-live against TS-frozen byte-identically. The spread of the
+// live body on top keeps the extra fields diffBodies does not compare but the
+// enrich consumers read; the golden fields survive because the live body has
+// none of them.
 function enrichBodyHashes(
   bid: string,
   body: Record<string, unknown>,
 ): Record<string, unknown> {
-  const mesh = body.mesh as Record<string, unknown> | undefined
-  const faceData = (mesh?.face_data ?? []) as Array<{ centroid: number[]; normal: number[] }>
-  const edges = (body.edges ?? []) as Record<string, unknown>[]
-  const faceHashes = faceData
-    .map((fd) => faceGeometryHash(fd.centroid, fd.normal))
-    .sort()
-  const edgeHashes = edges
-    .map((ed) => edgeGeometryHash(ed))
-    .sort()
-  return {
-    id: bid,
-    created_by: (body.created_by as string | undefined) ?? '',
-    modified_by: (body.modified_by as string[] | undefined) ?? [],
-    ...body,
-    face_count: faceData.length,
-    edge_count: edges.length,
-    face_hashes: faceHashes,
-    edge_hashes: edgeHashes,
-  }
+  return { ...buildBaselineBody(bid, body), ...body }
 }
 
 // ─── Test suite ───

@@ -36,6 +36,7 @@ interface RegressionEntry {
   error: string | null
   result: Record<string, FeatureResult>
   bodies: Record<string, BodyEntry>
+  spec: Record<string, unknown>
 }
 
 let entries: RegressionEntry[]
@@ -134,5 +135,47 @@ describe('WASM kernel regression baseline', () => {
     expect(labels.some(l => l.startsWith('array'))).toBe(true)
     expect(labels.some(l => l.startsWith('mirror'))).toBe(true)
     expect(labels.some(l => l.startsWith('plane'))).toBe(true)
+  })
+})
+
+// The projection tier guards the corpus itself: projection was the one solver
+// path with zero full-doc regression coverage (see feature/projection-corpus).
+// These entries must stay in the manifest and every one must actually carry a
+// `source` query on a sketch entity -- otherwise the tier is cosmetic and the
+// parity gate cannot catch a projection-lowering break (red-green proven).
+describe('WASM kernel projection corpus', () => {
+  interface ManifestCase { feature_kind: string; query_tier: string; ok: boolean }
+  const manifest = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'corpus-manifest.json'), 'utf-8')) as {
+    summary: { by_tier: Record<string, number> }
+    coverage: Record<string, string[]>
+    cases: Record<string, ManifestCase>
+  }
+
+  const projectionLabels = (): string[] =>
+    Object.entries(manifest.cases)
+      .filter(([, c]) => c.query_tier === 'projection')
+      .map(([label]) => label)
+
+  it('reports a projection tier in the coverage summary', () => {
+    expect(manifest.summary.by_tier.projection).toBeGreaterThan(0)
+    const labels = projectionLabels()
+    expect(labels.length).toBe(manifest.summary.by_tier.projection)
+    for (const label of labels) {
+      expect(manifest.coverage[`${manifest.cases[label].feature_kind}/${manifest.cases[label].query_tier}`]).toContain(label)
+    }
+  })
+
+  it('every projection case has a sketch entity carrying a source query', () => {
+    const labels = projectionLabels()
+    expect(labels.length).toBeGreaterThan(0)
+    const missing: string[] = []
+    for (const label of labels) {
+      const entry = entries.find(e => e.label === label)
+      if (!entry) { missing.push(`${label}: no baseline entry`); continue }
+      const hasSource = (entry.spec.features as Array<{ entities?: Array<{ source?: string }> }>)
+        .some(f => (f.entities ?? []).some(e => e.source))
+      if (!hasSource) missing.push(`${label}: no source query on any sketch entity`)
+    }
+    expect(missing).toEqual([])
   })
 })

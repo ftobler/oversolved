@@ -1,7 +1,7 @@
 {
   "summary": {
-    "total": 65,
-    "ok": 65,
+    "total": 70,
+    "ok": 70,
     "by_tier": {
       "ancestral": 5,
       "anchor": 20,
@@ -10,6 +10,7 @@
       "dimension_radius": 5,
       "edge_query": 5,
       "plane_query": 3,
+      "projection": 5,
       "real_doc": 15,
       "slash_point": 3
     }
@@ -123,6 +124,13 @@
     ],
     "transform/ancestral": [
       "transform_translate"
+    ],
+    "project/projection": [
+      "project_straight_edge",
+      "project_planar_face_wire",
+      "project_circular_edge",
+      "project_downstream_edit",
+      "project_tilted_circle_ellipse"
     ]
   },
   "cases": {
@@ -449,6 +457,31 @@
     "two_bodies_new_operation": {
       "feature_kind": "extrude",
       "query_tier": "anchor",
+      "ok": true
+    },
+    "project_straight_edge": {
+      "feature_kind": "project",
+      "query_tier": "projection",
+      "ok": true
+    },
+    "project_planar_face_wire": {
+      "feature_kind": "project",
+      "query_tier": "projection",
+      "ok": true
+    },
+    "project_circular_edge": {
+      "feature_kind": "project",
+      "query_tier": "projection",
+      "ok": true
+    },
+    "project_downstream_edit": {
+      "feature_kind": "project",
+      "query_tier": "projection",
+      "ok": true
+    },
+    "project_tilted_circle_ellipse": {
+      "feature_kind": "project",
+      "query_tier": "projection",
       "ok": true
     }
   }
