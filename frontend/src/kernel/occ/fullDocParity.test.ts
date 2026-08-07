@@ -4,12 +4,13 @@
 // baseline through the TS/WASM kernel (OCC.js + Rust sketch solver) and diffs
 // the output against the frozen baseline.
 //
-// The baseline (regression-baseline.json) is a golden snapshot of the now-deleted
-// Python kernel's output. The Python kernel and its extractor are gone, so the
-// baseline cannot be regenerated -- this is now a regression gate (live TS/WASM
-// kernel == frozen golden file), not a live old-vs-new comparison. Gated: skips
-// entirely when OCC.js or the Rust solver is absent, so the default CI run stays
-// green (the dedicated parity job installs OCC.js so it does run there).
+// The baseline (regression-baseline.json) is a golden snapshot frozen by
+// frontend/scripts/regenCorpus.ts + mergeCorpus.py, so it IS regenerable via
+// `npm run regen:corpus`. But the Python kernel is gone, so this is no longer a
+// live old-vs-new comparison -- it is a TS regression gate (live TS/WASM kernel
+// == frozen golden file). Gated: skips entirely when OCC.js or the Rust solver
+// is absent, so the default CI run stays green (the dedicated parity job
+// installs OCC.js so it does run there).
 //
 // Provision OCC.js:
 //   cd frontend && npm run occ:install

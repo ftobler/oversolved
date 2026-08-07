@@ -125,7 +125,7 @@ export function tessellateBodies(
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
-        created_by: body.created_by || '',
+        created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }
     } catch (e) {
@@ -196,7 +196,7 @@ export function extractBrepMetadata(
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
-        created_by: body.created_by || '',
+        created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }
     } catch (e) {

@@ -138,7 +138,6 @@ interface ProjectionCase {
 }
 
 const projectionCases: ProjectionCase[] = []
-const warn: string[] = []
 
 async function addProjectionCase(
   label: string,
@@ -226,19 +225,43 @@ async function buildProjectionCases(): Promise<void> {
     (sk2) => assertGeometry(sk2, ['proj0']),
   )
 
-  // Case 5: a circular edge whose plane is NOT parallel to the sketch plane
-  // (top plane) -> the lowerer must promote it to an ellipse, not a
-  // wrong-radius circle.
+  // Case 5: a circular edge whose plane is NOT parallel to the sketch plane ->
+  // the lowerer must promote it to a genuine ellipse (b > 0), not a
+  // wrong-radius circle or a degenerate line. A circle sketched on a datum
+  // plane tilted by line_angle(30deg) off a front-plane line sits in a plane
+  // whose normal is ~60deg from the front normal, so a radius-5 circle projects
+  // to a real ellipse with semi-minor 5*cos(60) = 2.5.
+  const tiltedCircleBase = partSpec([
+    lineDirectionSketch(),
+    { id: 'pl_tilt', kind: 'plane', definition: { mode: 'line_angle', line: '@sk_dir/lx', angle: 30 } },
+    circleSketch('sk1', 5, '@pl_tilt'),
+    extrude('ex1', 'sk1', 5),
+  ])
   await addProjectionCase(
     'project_tilted_circle_ellipse',
-    cylBase,
+    tiltedCircleBase,
     (body) => [{ id: 'proj0', kind: 'circle', source: pickCircleEdgeQuery(body) }],
-    undefined, '@builtin_plane_top',
+    undefined, '@builtin_plane_front',
     (sk2) => {
       assertGeometry(sk2, ['proj0'])
       const resolved = (sk2.resolved_kinds as Record<string, string>) ?? {}
       if (resolved.proj0 !== 'ellipse') {
         throw new Error(`expected tilted circle to lower to an ellipse, got resolved_kinds=${JSON.stringify(resolved)}`)
+      }
+      const params = (sk2.geometry as Record<string, number[]>).proj0
+      if (!params || params.length < 5) {
+        throw new Error(`expected a 5-param ellipse for proj0, got ${JSON.stringify(params)}`)
+      }
+      // 5-param ellipse format [cx, cy, a, b, theta]: the projected circle keeps
+      // its radius 5 along the direction inside the sketch plane and shrinks to
+      // R*cos(theta_planes) = 2.5 across it. Assert both semi-axes are genuine.
+      const major = Math.max(params[2], params[3])
+      const minor = Math.min(params[2], params[3])
+      if (Math.abs(major - 5) > 1e-6) {
+        throw new Error(`expected the ellipse semi-major to stay ~5, got ${JSON.stringify(params)}`)
+      }
+      if (minor < 1.5 || minor > 3.5) {
+        throw new Error(`expected a genuine non-degenerate ellipse (minor ~2.5), got ${JSON.stringify(params)}`)
       }
     },
   )
@@ -340,7 +363,6 @@ async function main(): Promise<void> {
   console.log(`added: ${projectionCases.map((c) => c.label).join(', ')}`)
   console.log(`regenerated: ${arrayCases.map((c) => c.label).join(', ')}`)
   console.log('then run: python3 scripts/mergeCorpus.py')
-  if (warn.length) console.warn('warnings:', warn.join('; '))
 
   // The solve child stays alive waiting for messages; kill it so this script
   // process can exit (otherwise the fork keeps the parent event loop open).

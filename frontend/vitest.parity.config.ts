@@ -16,9 +16,12 @@ export default defineConfig({
   test: {
     globals: true,
     include: ['src/kernel/occ/fullDocParity.test.ts'],
-    // Heavy gate (OCC.js download + WASM compile in hooks) on a contended CI
-    // box. Generous timeouts in CI only; local keeps vitest defaults.
-    testTimeout: process.env.CI ? 60000 : undefined,
-    hookTimeout: process.env.CI ? 120000 : undefined,
+    // Heavy gate (OCC.js download + WASM compile in hooks) on a contended box.
+    // The first test pays the cold start (fork child + load OCC.js + compile
+    // WASM) and solveWithTimeout already guards each solve at 30s, so a vitest
+    // timeout below that buys nothing and just flakes. Generous in both CI and
+    // local.
+    testTimeout: 60000,
+    hookTimeout: 120000,
   },
 })
