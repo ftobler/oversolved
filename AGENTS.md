@@ -72,3 +72,8 @@ When the user asks to plan a feature but mentions of making it light or quick:
 There is a knowledge base in `feature/knowledgebase.agent.md` and `feature/knowledgebase.user.md`.
 The user file is to be kept original accurate. There are MY statements as the user. They are to be put there by the agent.
 In the agent file the whole idea-knowledge-code flow comes together. Keep it detailed, put actual code references, codes and memory to remember in here.
+
+## Tmporary Directory
+
+- if something needs temporary files do not use system wide `/tmp` but the project internal `tmp/`.
+- do not access anything outside the project directory.

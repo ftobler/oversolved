@@ -39,6 +39,7 @@ docs/feature/*
 data/*
 bugreports/
 feature/
+tmp/
 
 # Uploads
 oversolved/uploads/*
