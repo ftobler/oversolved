@@ -12,10 +12,13 @@ import { readFileSync } from 'node:fs'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
-import { stepBytesToShapeWithIdentity } from './stepIo'
+import { stepBytesToShapeWithIdentity, stepShapeToBytes } from './stepIo'
 import { importedNameMaps } from './importLineage'
 import { faceGh, edgeGh } from './lineageHash'
 import { FACE_UUID_PREFIX, EDGE_UUID_PREFIX } from '../constructionName'
+import { makeBoxAt } from './primitives'
+import { makeTranslationTrsf } from './transforms'
+import { splitSolids } from '../features/bodySplit'
 
 const oc = await loadOcc()
 
@@ -45,7 +48,7 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1')
+      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
       const uuids = Object.values(maps.faceNames)
       // Without a floor here the whole test passes on an empty map: every
       // length check becomes 0 === 0 and every loop body is skipped.
@@ -65,7 +68,7 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1')
+      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
       const ghs = edgeGhs(occ, scope, shape)
       expect(ghs.length).toBeGreaterThan(0)
       for (const gh of ghs) {
@@ -82,8 +85,8 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const a = importedNameMaps(occ, scope, shape, faceStepIds, 'import1')
-      const b = importedNameMaps(occ, scope, shape, faceStepIds, 'import2')
+      const a = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
+      const b = importedNameMaps(occ, scope, shape, faceStepIds, 'import2', [])
       const bFaces = new Set(Object.values(b.faceNames))
       expect(Object.values(a.faceNames).filter((u) => bFaces.has(u))).toEqual([])
       // The edge UUIDs derive from the face pairs, so they must part company too.
@@ -101,10 +104,10 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
       const dropped = Object.keys(faceStepIds)[0]
       const partial = { ...faceStepIds }
       delete partial[dropped]
-      const maps = importedNameMaps(occ, scope, shape, partial, 'import1')
+      const maps = importedNameMaps(occ, scope, shape, partial, 'import1', [])
       expect(maps.faceNames[dropped], 'residual face left unnamed').toBeDefined()
       // Named off the neighbour set, so it must NOT be the entity-derived UUID.
-      const full = importedNameMaps(occ, scope, shape, faceStepIds, 'import1')
+      const full = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
       expect(maps.faceNames[dropped]).not.toBe(full.faceNames[dropped])
     } finally {
       scope.dispose()
@@ -116,8 +119,8 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     try {
       const first = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const second = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const a = importedNameMaps(occ, scope, first.shape, first.faceStepIds, 'import1')
-      const b = importedNameMaps(occ, scope, second.shape, second.faceStepIds, 'import1')
+      const a = importedNameMaps(occ, scope, first.shape, first.faceStepIds, 'import1', [])
+      const b = importedNameMaps(occ, scope, second.shape, second.faceStepIds, 'import1', [])
       expect(b.faceNames).toEqual(a.faceNames)
       expect(b.edgeNames).toEqual(a.edgeNames)
     } finally {
@@ -132,8 +135,8 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     try {
       const plain = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 1.0)
       const scaled = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 3.0)
-      const a = importedNameMaps(occ, scope, plain.shape, plain.faceStepIds, 'import1')
-      const b = importedNameMaps(occ, scope, scaled.shape, scaled.faceStepIds, 'import1')
+      const a = importedNameMaps(occ, scope, plain.shape, plain.faceStepIds, 'import1', [])
+      const b = importedNameMaps(occ, scope, scaled.shape, scaled.faceStepIds, 'import1', [])
       expect(new Set(Object.values(b.faceNames))).toEqual(new Set(Object.values(a.faceNames)))
       expect(new Set(Object.values(b.edgeNames))).toEqual(new Set(Object.values(a.edgeNames)))
       expect(Object.keys(b.faceNames)).not.toEqual(Object.keys(a.faceNames))
@@ -146,7 +149,7 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1')
+      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
       const E = occ.TopAbs_ShapeEnum
       const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
       let n = 0
@@ -156,6 +159,43 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
         n++
       }
       expect(n).toBeGreaterThan(1)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('keeps two placements of one part in disjoint UUID sets', () => {
+    // A repeated instance shares its TShape, so both copies carry the same STEP
+    // entity ids. With the per-solid index from `splitSolids` folded into the
+    // path, each placement mints its OWN six face UUIDs -- without it the two
+    // placements collapsed onto the same six and the resolver's UUID tier
+    // threw "collision by construction" on every pick.
+    const scope = new DisposeScope()
+    try {
+      const part = makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10)
+      const mover = scope.track(
+        new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false),
+      )
+      mover.Build()
+      const builder = scope.track(new occ.BRep_Builder())
+      const compound = scope.track(new occ.TopoDS_Compound())
+      builder.MakeCompound(compound)
+      builder.Add(compound, part)
+      builder.Add(compound, mover.Shape())
+      const { shape, faceStepIds } = stepBytesToShapeWithIdentity(
+        occ, scope, stepShapeToBytes(occ, scope, compound),
+      )
+      const solids = splitSolids(occ, scope, shape)
+      expect(solids.length).toBe(2)
+
+      const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', solids)
+      // 12 face keys (six per placement) carrying 12 DISTINCT uuids: pre-fix
+      // this was 12 keys collapsing onto 6 shared uuids.
+      expect(Object.keys(maps.faceNames).length).toBe(12)
+      expect(new Set(Object.values(maps.faceNames)).size).toBe(12)
+      // Edge UUIDs derive from the face pairs, so they part company too.
+      expect(Object.keys(maps.edgeNames).length).toBeGreaterThan(0)
+      expect(new Set(Object.values(maps.edgeNames)).size).toBe(Object.keys(maps.edgeNames).length)
     } finally {
       scope.dispose()
     }

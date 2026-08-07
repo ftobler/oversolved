@@ -9,6 +9,7 @@ import {
   filletFacePath,
   splitFacePath,
   importedFacePath,
+  importedInstanceFacePath,
   mintFaceUuid,
   deriveEdgeUuid,
   deriveVertexUuid,
@@ -30,6 +31,7 @@ describe('construction path grammar', () => {
       filletFacePath('fillet2', 'e_abc123'),
       splitFacePath('u_deadbeef', 7),
       importedFacePath('import1', 17),
+      importedInstanceFacePath('import1', 17, 1),
     ]
     for (const p of paths) expect(p).not.toMatch(FLOAT_RE)
   })
@@ -40,6 +42,8 @@ describe('construction path grammar', () => {
     expect(filletFacePath('fillet2', 'e_abc')).toBe('fillet2|fillet|e_abc')
     expect(splitFacePath('u_p', 2)).toBe('u_p|split|2')
     expect(importedFacePath('import1', 17)).toBe('import1|step|17')
+    expect(importedInstanceFacePath('import1', 17, 0)).toBe('import1|step|17')
+    expect(importedInstanceFacePath('import1', 17, 1)).toBe('import1|step|17|1')
   })
 })
 
@@ -55,6 +59,24 @@ describe('imported face paths', () => {
     // `1|7` vs `17` would collide if the separator were dropped from the path.
     const c = mintFaceUuid(sideFacePath('import1', 'step'))
     expect(new Set([a, b, c]).size).toBe(3)
+  })
+
+  it('index 0 stays byte-identical to the plain imported face path', () => {
+    // A single-solid import must not renumber: two docs that imported the same
+    // part as the first solid of a multi-solid file both keep today's UUIDs.
+    expect(mintFaceUuid(importedInstanceFacePath('import1', 17, 0)))
+      .toBe(mintFaceUuid(importedFacePath('import1', 17)))
+  })
+
+  it('separates repeated placements of one part by solid index', () => {
+    // Two placements of ONE part share their STEP entity ids; the per-solid
+    // index is the only thing that keeps their UUIDs disjoint.
+    const perIndex = [0, 1, 2].map(i => mintFaceUuid(importedInstanceFacePath('import1', 17, i)))
+    expect(new Set(perIndex).size).toBe(3)
+    // The entity-id separator is not enough on its own: entity 17 + index 1
+    // must not collide with entity 171 at index 0.
+    const neighbour = mintFaceUuid(importedInstanceFacePath('import1', 171, 0))
+    expect(new Set([...perIndex, neighbour]).size).toBe(4)
   })
 })
 

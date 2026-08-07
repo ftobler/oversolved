@@ -13,8 +13,9 @@
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
-import { mintFaceUuid, importedFacePath } from '../constructionName'
+import { mintFaceUuid, importedInstanceFacePath } from '../constructionName'
 import { deriveEdgeNames, nameFacesFromNeighbours } from './constructionLineage'
+import { faceGh } from './lineageHash'
 
 export interface ImportedNameMaps {
   faceNames: Record<string, string>
@@ -24,12 +25,38 @@ export interface ImportedNameMaps {
 }
 
 /**
+ * Index per face geometry-hash: which split solid of the import it belongs to.
+ * The caller hands in `splitSolids` (features/bodySplit.ts) so the index is the
+ * SAME order `registerSplitBodies` names the sibling bodies with (`body_x_1`'s
+ * faces carry index 1), and a near-tie refusal falls back the same way body ids
+ * do. A face with no entry (a shell-only shape has no solids) defaults to 0.
+ */
+function solidIndexByFaceGh(oc: OccModule, scope: DisposeScope, solids: OccShape[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  const E = oc.TopAbs_ShapeEnum
+  solids.forEach((solid, i) => {
+    const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    for (; exp.More(); exp.Next()) {
+      const gh = faceGh(oc, scope, scope.track(oc.TopoDS.Face_1(exp.Current())))
+      if (!(gh in out)) out[gh] = i
+    }
+  })
+  return out
+}
+
+/**
  * Name every face of an imported `shape` from its STEP entity id, then derive
  * the edges from the face pairs the way every other producer does.
  *
  * `faceStepIds` is keyed by `faceGh` as the explorer over `shape` hashes it --
  * the same key `bodySplit.namesForSolid` and `tessellation.classifyFace` look
  * names up by.
+ *
+ * `solids` is the `splitSolids` order of `shape`. A repeated assembly instance
+ * (one part placed twice) shares its STEP entity ids, so without a per-solid
+ * index both copies would mint the SAME UUIDs and the resolver's UUID tier
+ * would throw "collision by construction" on every pick -- `@<bodyId>` is only
+ * consulted by the ancestral tier, which the UUID tier never reaches.
  *
  * The ancestry of an imported face is deliberately EMPTY. The `@u|<uuid>` token
  * resolves in the UUID tier before ancestry is consulted, `buildFaceQuery` skips
@@ -43,11 +70,14 @@ export function importedNameMaps(
   shape: OccShape,
   faceStepIds: Record<string, number>,
   createdBy: string,
+  solids: OccShape[],
 ): ImportedNameMaps {
+  const solidIndexByGh = solidIndexByFaceGh(oc, scope, solids)
   const faceNames: Record<string, string> = {}
   const faceAncestry: Record<string, string[]> = {}
   for (const [gh, entityId] of Object.entries(faceStepIds)) {
-    const uuid = mintFaceUuid(importedFacePath(createdBy, entityId))
+    const solidIndex = solidIndexByGh[gh] ?? 0
+    const uuid = mintFaceUuid(importedInstanceFacePath(createdBy, entityId, solidIndex))
     faceNames[gh] = uuid
     faceAncestry[uuid] = []
   }

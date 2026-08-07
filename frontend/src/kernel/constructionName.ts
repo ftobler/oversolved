@@ -59,11 +59,30 @@ export function splitFacePath(parentUuid: string, index: number): string {
  * An imported face, named by the STEP entity id (`#17=ADVANCED_FACE(...)`) the
  * file gave it. Imported geometry has no construction history in THIS system,
  * but it has one in the file, and that id is symbolic: it survives a rebuild and
- * a rescale, and is unique within one file. `createdBy` keeps two imports of the
- * same file (two `import_step` features) in disjoint UUID namespaces.
+ * a rescale. `createdBy` keeps two imports of the same file (two `import_step`
+ * features) in disjoint UUID namespaces.
+ *
+ * The entity id alone is NOT unique within a file: a repeated assembly instance
+ * (the same part placed twice) shares its TShape, so both copies carry the same
+ * `ADVANCED_FACE` entities. `importedInstanceFacePath` adds the per-solid index
+ * for exactly that case.
  */
 export function importedFacePath(createdBy: string, stepEntityId: number): string {
   return `${createdBy}|step|${stepEntityId}`
+}
+
+/**
+ * An imported face inside ONE `import_step` feature that produced several
+ * solids. The `solidIndex` is the bodySplit solid order (features/bodySplit.ts),
+ * the same order `registerSplitBodies` hands out as `body_x_1`, `body_x_2`, ...
+ * A shared STEP entity id (a repeated instance) therefore lands in a disjoint
+ * UUID namespace per placement, so the resolver's UUID tier no longer sees a
+ * "collision by construction" on every pick. Index 0 is exactly
+ * `importedFacePath`, so a single-solid import stays byte-identical to before.
+ */
+export function importedInstanceFacePath(createdBy: string, stepEntityId: number, solidIndex: number): string {
+  const base = importedFacePath(createdBy, stepEntityId)
+  return solidIndex > 0 ? `${base}|${solidIndex}` : base
 }
 
 /**

@@ -280,9 +280,10 @@ function faceEntityIds(
  * A plain `SubShapeIndexMap` keeps only the first position per identity, which
  * would leave a repeated assembly instance (the same part placed twice, hence
  * the same TShape and the same STEP face entity) entirely unnamed past the
- * first copy. Every instance gets the entity id instead; they stay distinct
- * because each solid becomes its own `Body` and the face query carries
- * `@<bodyId>` alongside the `@u|` token.
+ * first copy. Every instance gets the entity id instead; they stay pickable
+ * apart because the per-solid index (importLineage.ts) folds the bodySplit
+ * solid order into the UUID path, so each copy's faces carry disjoint `@u|`
+ * tokens.
  */
 class UnplacedFaceIndex {
   private readonly canonical = new SubShapeIndexMap()
@@ -316,7 +317,8 @@ class UnplacedFaceIndex {
  *
  * Two placements of ONE part (a repeated assembly instance) therefore collapse
  * to the same key. That is handled, not tolerated: `UnplacedFaceIndex` hands
- * the entity id to every instance, and `@<bodyId>` keeps their queries apart.
+ * the entity id to every instance, and the per-solid index folded into the UUID
+ * path keeps their queries apart.
  *
  * `keep` copies live in `scope` because the index holds them; `borrow` is for a
  * lookup that ends inside the callback, and releases immediately.

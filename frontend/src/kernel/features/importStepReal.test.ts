@@ -63,6 +63,31 @@ function twoBoxStepB64(occ: OccModule): string {
   }
 }
 
+/**
+ * A STEP file holding TWO placements of the SAME part (a repeated assembly
+ * instance): one 10^3 box placed twice, 40 apart. Both copies share their
+ * TShape, so the file gives them the same face entities -- the case the
+ * per-solid index exists for.
+ */
+function twoPlacementStepB64(occ: OccModule): string {
+  const scope = new DisposeScope()
+  try {
+    const part = makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10)
+    const mover = scope.track(
+      new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false),
+    )
+    mover.Build()
+    const builder = scope.track(new occ.BRep_Builder())
+    const compound = scope.track(new occ.TopoDS_Compound())
+    builder.MakeCompound(compound)
+    builder.Add(compound, part)
+    builder.Add(compound, mover.Shape())
+    return bytesToBase64(stepShapeToBytes(occ, scope, compound))
+  } finally {
+    scope.dispose()
+  }
+}
+
 describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
   let occ: OccModule
   beforeAll(() => {
@@ -275,27 +300,13 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
 
   it('separates two placements of the SAME part by body', () => {
     // A repeated instance shares its TShape, so the file gives both copies the
-    // same face entities and both get the same face UUIDs. They stay pickable
-    // apart because each solid becomes its own Body and the query carries
-    // `@<bodyId>` next to the `@u|` token.
+    // same face entities. Each solid's faces get a per-placement index in their
+    // UUID path (importedInstanceFacePath), so the two copies mint DISJOINT
+    // `@u|` tokens -- before the per-solid index they shared six UUIDs and the
+    // resolver's UUID tier threw "collision by construction" on every pick
+    // (`@<bodyId>` only narrows the ancestral tier, which is never reached).
     const occ = oc!
-    const scope = new DisposeScope()
-    let file: string
-    try {
-      const builder = scope.track(new occ.BRep_Builder())
-      const compound = scope.track(new occ.TopoDS_Compound())
-      builder.MakeCompound(compound)
-      const part = scope.track(makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10))
-      const mover = scope.track(
-        new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false),
-      )
-      mover.Build()
-      builder.Add(compound, part)
-      builder.Add(compound, mover.Shape())
-      file = bytesToBase64(stepShapeToBytes(occ, scope, compound))
-    } finally {
-      scope.dispose()
-    }
+    const file = twoPlacementStepB64(occ)
 
     const h = new SharedHarness(occ)
     const IMP = 'stepimp5'
@@ -308,10 +319,56 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
       expect(queries.length).toBe(6)
       for (const q of queries) expect(uuidToken(q)).not.toBeNull()
     }
-    // The instances DO share their UUIDs -- that is what the file says -- but
-    // no whole query may repeat, or a pick would hit both copies.
-    expect(new Set(perBody[0].map(uuidToken))).toEqual(new Set(perBody[1].map(uuidToken)))
+    // The placements do NOT share their UUIDs any more, and no whole query may
+    // repeat, or a pick would hit both copies.
+    expect(new Set(perBody[0].map(uuidToken))).not.toEqual(new Set(perBody[1].map(uuidToken)))
     expect(new Set([...perBody[0], ...perBody[1]]).size).toBe(12)
+
+    // A real resolve: every face query of both bodies resolves in the UUID
+    // tier to exactly the queried body's face. Pre-fix the shared-uuid faces
+    // threw AmbiguousQueryError ("collision by construction").
+    const repo = repoFromSnapshot(
+      (r._build_state.checkpoints[IMP] as unknown as { repo_snapshot: Record<string, unknown> }).repo_snapshot,
+    )
+    for (const bid of bodyIds) {
+      const mesh = h.body(r, bid).mesh as { face_queries: string[] }
+      for (let i = 0; i < mesh.face_queries.length; i++) {
+        const hit = repo.query(mesh.face_queries[i], null, null, null) as
+          { face_index?: number; body_id?: string } | null
+        expect(hit, `face ${i} of ${bid} did not resolve`).not.toBeNull()
+        expect(hit!.body_id).toBe(bid)
+        expect(hit!.face_index).toBe(i)
+      }
+    }
+  }, 60000)
+
+  it('mints the same per-placement UUIDs on a rebuild of the same file', () => {
+    // The per-solid index comes from the bodySplit solid order (geometric,
+    // near-tie refusal falls back like body ids do), so a reload must hand the
+    // SAME uuid to the same (placement, face) -- or persisted picks would break.
+    // Per-BODY comparison (not one flattened multiset) also pins that a rebuild
+    // cannot swap which placement gets index 0 vs index 1.
+    const occ = oc!
+    const file = twoPlacementStepB64(occ)
+    const h = new SharedHarness(occ)
+    const tokensByBody = (): Record<string, string[]> => {
+      const r = h.run({ features: [{ id: 'impA', kind: 'import_step', file_data: file }] })
+      const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
+      expect(bodyIds.length).toBe(2)
+      const out: Record<string, string[]> = {}
+      for (const bid of bodyIds) {
+        const tokens: string[] = []
+        const queries = (h.body(r, bid).mesh as { face_queries: string[] }).face_queries
+        for (const q of queries) {
+          const t = uuidToken(q)
+          expect(t, `no @u| token in ${q}`).not.toBeNull()
+          tokens.push(t as string)
+        }
+        out[bid] = tokens.sort()
+      }
+      return out
+    }
+    expect(tokensByBody()).toEqual(tokensByBody())
   }, 60000)
 
   it('keeps two parts of a multi-solid STEP in disjoint name sets', () => {
