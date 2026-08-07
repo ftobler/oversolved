@@ -12,7 +12,10 @@
  *
  * Crash handling: a Worker-level error rejects every in-flight solve and drops
  * the Worker; the next solve respawns it and rebuilds from feature 0 (the AST
- * lives in main-thread JS, so no user work is lost).
+ * lives in main-thread JS, so no user work is lost). A crash arms a short
+ * cooldown that suppresses further respawns for CRASH_COOLDOWN_MS, so a drag
+ * burst over a trapping doc spins at most one Worker per window; the solve
+ * after the cooldown respawns normally.
  *
  * Hang handling: some OCC operations (notably ShapeUpgrade_UnifySameDomain's
  * face merge on self-overlapping geometry, e.g. a circular_array whose axis runs
@@ -79,6 +82,14 @@ interface Pending {
 // would kill every request immediately.
 let solveTimeoutMs = Infinity
 
+// Crash cooldown window: after a Worker trap, refuse to respawn for this long.
+// Only a crash sets the timestamp; cancels and watchdog timeouts do not (the
+// user or the per-request ceiling already made that call). Tests lower the
+// window via setSolverCrashBackoffForTest().
+const CRASH_COOLDOWN_MS = 2000
+let crashCooldownMs = CRASH_COOLDOWN_MS
+let workerCrashAt = 0  // Date.now() of the last Worker trap; 0 = no crash yet
+
 function defaultFactory(): SolverWorkerLike | null {
   try {
     if (typeof Worker === 'undefined') return null
@@ -123,7 +134,10 @@ function dropWorker(err: Error): void {
 }
 
 function onError(): void {
-  // A hard Worker trap loses the checkpoint cache.
+  // A hard Worker trap loses the checkpoint cache. Arm the respawn cooldown so
+  // a burst of reSolves over the same trapping doc does not spawn one Worker
+  // per request (see the header).
+  workerCrashAt = Date.now()
   dropWorker(new Error('solver worker crashed'))
 }
 
@@ -161,6 +175,12 @@ function sendRequest<T>(
   buildMsg: (id: number) => WorkerRequest,
   extract: (res: OkResponse) => T,
 ): Promise<T | null> {
+  if (workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs) {
+    // The last Worker trap is still inside the cooldown: spawning a fresh one
+    // now just rebuilds from feature 0 and traps again. Reject instead so a
+    // drag burst over a trapping doc pays one respawn per window.
+    return Promise.reject(new Error('solver worker crashed (backoff)'))
+  }
   const w = ensureWorker()
   if (!w) return Promise.resolve(null)
   const id = nextId++
@@ -278,12 +298,21 @@ export function setSolverWorkerForTest(
   // The production default, so a test that says nothing about the watchdog gets
   // production behaviour. The timeout suite opts in explicitly.
   solveTimeoutMs = Infinity
+  // Same for the crash cooldown: a fresh test starts with no crash recorded and
+  // the production window. The backoff suite opts in via setSolverCrashBackoff.
+  workerCrashAt = 0
+  crashCooldownMs = CRASH_COOLDOWN_MS
   workerFactory = factory ?? defaultFactory
 }
 
 /** @internal test-only: override the watchdog ceiling (ms). */
 export function setSolverTimeoutForTest(ms: number): void {
   solveTimeoutMs = ms
+}
+
+/** @internal test-only: override the crash cooldown window (ms). */
+export function setSolverCrashBackoffForTest(ms: number): void {
+  crashCooldownMs = ms
 }
 
 /** @internal test-only: number of in-flight (unsettled) requests. */

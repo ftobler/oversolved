@@ -160,8 +160,8 @@ describe('useSolver stale-result guard', () => {
 
   it('stale non-benign failure must not banner under a newer solve', async () => {
     // Defends the isStale() guard added to the catch path: a stale non-benign
-    // rejection (e.g. "solver worker crashed") must not paint a banner, since
-    // the newer solve's benign outcome will never clear it.
+    // rejection (e.g. "kernel boom") must not paint a banner, since the newer
+    // solve's benign outcome will never clear it.
     const { result } = setupHook()
 
     let rejectV1!: (e: Error) => void
@@ -177,7 +177,7 @@ describe('useSolver stale-result guard', () => {
     act(() => { p1 = result.current.reSolve(makeDoc()) })
     act(() => { p2 = result.current.reSolve(makeDoc()) })
 
-    await act(async () => { rejectV1(new Error('solver worker crashed')) })
+    await act(async () => { rejectV1(new Error('kernel boom')) })
 
     expect(result.current.solveError).toBeNull()
     expect(result.current.solving).toBe(true)
@@ -210,13 +210,15 @@ describe('useSolver stale-result guard', () => {
     expect(result.current.solving).toBe(false)
   })
 
-  it('non-stale crash still banners', async () => {
+  it('non-stale non-benign failure still banners', async () => {
     // Regression: a fresh non-benign rejection must still paint the banner.
+    // Uses "kernel boom", not a crash string: crashes are benign by design now
+    // (they are surfaced by the console error and the crash cooldown).
     const { result } = setupHook()
 
-    mockSolveLocally.mockRejectedValue(new Error('solver worker crashed'))
+    mockSolveLocally.mockRejectedValue(new Error('kernel boom'))
 
     await act(async () => { await result.current.reSolve(makeDoc()) })
-    expect(result.current.solveError).toBe('Error: solver worker crashed')
+    expect(result.current.solveError).toBe('Error: kernel boom')
   })
 })

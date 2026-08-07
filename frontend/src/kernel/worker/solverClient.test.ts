@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   solveViaWorker, exportViaWorker, exportAssemblyViaWorker,
-  setSolverWorkerForTest, setSolverTimeoutForTest, getPendingCount,
+  setSolverWorkerForTest, setSolverTimeoutForTest, setSolverCrashBackoffForTest,
+  cancelSolver, getPendingCount,
   EMPTY_BUILD_STATE,
   type SolverWorkerLike,
 } from './solverClient'
@@ -278,6 +279,10 @@ describe('solveViaWorker', () => {
   })
 
   it('rejects in-flight solves on a worker crash and respawns a fresh worker next solve', async () => {
+    // A single crash with no burst (cooldown disabled here) must respawn on the
+    // next solve exactly as before the cooldown existed. The burst case is the
+    // crash-cooldown suite below.
+    setSolverCrashBackoffForTest(0)
     const p = solveViaWorker({ id: 'd' })
     fake.crash()
     await expect(p).rejects.toThrow('solver worker crashed')
@@ -287,6 +292,82 @@ describe('solveViaWorker', () => {
     expect(created).toHaveLength(2)
     created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
     await expect(p2).resolves.not.toBeNull()
+  })
+
+  describe('crash cooldown', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('collapses a crash burst into one respawn: the rest backoff-reject', async () => {
+      vi.useFakeTimers()
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      // Three immediate reSolves inside the window: none may spawn a fresh
+      // Worker, all reject with the cooldown's own signal.
+      const p2 = solveViaWorker({ id: 'e' })
+      const p3 = solveViaWorker({ id: 'f' })
+      const p4 = solveViaWorker({ id: 'g' })
+      await expect(p2).rejects.toThrow('solver worker crashed (backoff)')
+      await expect(p3).rejects.toThrow('solver worker crashed (backoff)')
+      await expect(p4).rejects.toThrow('solver worker crashed (backoff)')
+      expect(created).toHaveLength(1)
+      expect(getPendingCount()).toBe(0)
+    })
+
+    it('after the cooldown elapses the next solve respawns a fresh worker', async () => {
+      vi.useFakeTimers()
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      vi.advanceTimersByTime(2001)  // past the 2000ms window
+      const p2 = solveViaWorker({ id: 'e' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('a user cancel does not arm the cooldown', async () => {
+      const p = solveViaWorker({ id: 'd' })
+      cancelSolver()
+      await expect(p).rejects.toThrow('solve cancelled')
+      expect(created[0].terminated).toBe(true)
+      // A cancel is user-initiated, not a trap: the next solve spawns at once.
+      const p2 = solveViaWorker({ id: 'e' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('a watchdog timeout does not arm the cooldown', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p = solveViaWorker({ id: 'd' })
+      vi.advanceTimersByTime(1000)
+      await expect(p).rejects.toThrow('solver worker timed out')
+      // The watchdog already spaced the drops, so the next solve respawns at
+      // once instead of waiting out a cooldown.
+      const p2 = solveViaWorker({ id: 'e' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('setSolverCrashBackoffForTest overrides the window', async () => {
+      vi.useFakeTimers()
+      setSolverCrashBackoffForTest(500)
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      // Inside the shortened window: still backing off.
+      vi.advanceTimersByTime(250)
+      await expect(solveViaWorker({ id: 'e' })).rejects.toThrow('solver worker crashed (backoff)')
+      // Past it: respawns normally.
+      vi.advanceTimersByTime(500)
+      const p2 = solveViaWorker({ id: 'f' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
   })
 
   describe('postMessage throw guard', () => {

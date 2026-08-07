@@ -15,9 +15,18 @@ import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 // Solve failures that are not document errors and must not reach the error
-// banner: the user cancelled, the watchdog killed a hung Worker, or a newer
-// solve flushed this one out of the Worker queue before it ran.
-const BENIGN_SOLVE_FAILURES = new Set(['solve cancelled', 'solver worker timed out', SUPERSEDED_ERROR])
+// banner: the user cancelled, the watchdog killed a hung Worker, a Worker trap
+// (the crash itself or its cooldown backoff), or a newer solve flushed this one
+// out of the Worker queue before it ran. The trap is crash noise, not a
+// document failure: the console error already surfaced it, and every reSolve
+// inside the cooldown rejects with the backoff string purely by design.
+const BENIGN_SOLVE_FAILURES = new Set([
+  'solve cancelled',
+  'solver worker timed out',
+  'solver worker crashed',
+  'solver worker crashed (backoff)',
+  SUPERSEDED_ERROR,
+])
 const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
 
 /**
