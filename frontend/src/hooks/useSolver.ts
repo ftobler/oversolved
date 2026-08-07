@@ -3,6 +3,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 
@@ -217,6 +218,12 @@ export function useSolver(
       reconcilePartStyle(cloned, data.bodies)
     }
     setSolveResults(results)
+    // A fresh solve owns the per-primitive pick claims: the geometry that just
+    // re-tessellated can shift a pickKey's positional index onto a different
+    // primitive, so every claim recorded before this solve is stale. Clear them
+    // here, the one point every applied solve converges on, so computeHighlight
+    // re-highlights by the durable query membership until the user picks again.
+    useSketchEditorStore.getState().clearSelectedPicks()
     // A fresh result for a feature supersedes any retained pre-delete snapshot
     // of it (usePartDoc's undo stash). Only an APPLIED solve reaches this point
     // (the request-id staleness guard runs before applyBuildResponse calls us),

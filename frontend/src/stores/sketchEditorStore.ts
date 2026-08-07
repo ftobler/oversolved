@@ -243,7 +243,9 @@ interface SketchEditorState {
   // drops every claim under it and no stale sibling key survives an off/on cycle.
   // Transient: unlike normalSelection it is not persisted and is empty after a
   // re-solve, where the query-keyed fallback takes over (see computeHighlight).
-  // Cleared whenever the normal selection is cleared/reset.
+  // Cleared whenever the normal selection is cleared/reset, and by
+  // clearSelectedPicks() at the solve seam, because a re-solve can re-tessellate
+  // and shift a pickKey's positional index onto a different primitive.
   selectedPicks: Map<string, Set<string>>
   // Derived domain of the current normal selection.
   selectionDomain: SelectionDomain
@@ -252,6 +254,11 @@ interface SketchEditorState {
   setHoveredPickKey: (key: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
+  // Empties the per-primitive claims WITHOUT touching normalSelection. This is
+  // the solve seam hook: a re-solve can shift primitive indices, so the claim a
+  // pickKey encodes becomes stale and must not survive. The durable queries stay
+  // and computeHighlight re-highlights by membership until the user picks again.
+  clearSelectedPicks: () => void
   // Reset every transient interaction field to its create() default, leaving
   // user preferences (showDebugHit, showConstraintTiles, ngonSides,
   // entityKindMap) intact. Called from Part's unmount cleanup: the store is
@@ -511,6 +518,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setIsPointerDown: (down: boolean) => set({ isPointerDown: down }),
 
   clearNormalSelection: () => set({ normalSelection: new Set(), selectedPicks: new Map(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
+
+  // Guarded so a solve that has nothing to clear does not mint a fresh map and
+  // notify subscribers: this runs on every applied solve, and most solves carry
+  // no claims at all.
+  clearSelectedPicks: () => {
+    if (get().selectedPicks.size === 0) return
+    set({ selectedPicks: new Map() })
+  },
 
   resetTransientState: () => set({
     normalSelection: new Set(),

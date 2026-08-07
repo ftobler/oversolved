@@ -164,3 +164,67 @@ describe('multi-select holds one entry per primitive, not per query', () => {
     expect(s.selectedPicks.size).toBe(0)
   })
 })
+
+describe('the solve seam (clearSelectedPicks)', () => {
+  // The documented contract at sketchEditorStore.ts:244-245: selectedPicks is
+  // transient and empty after a re-solve, where the query-keyed fallback in
+  // computeHighlight takes over. The seam action empties the claims ONLY, so
+  // the durable selection the user made survives a re-solve.
+  it('empties selectedPicks while normalSelection keeps its queries', () => {
+    click(FACE_LAYER_NAME, 0, 'Q')
+    click(EDGE_LAYER_NAME, 1, 'R')
+    const before = useSketchEditorStore.getState()
+    expect(before.normalSelection.has('Q')).toBe(true)
+    expect(before.selectedPicks.size).toBe(2)
+
+    useSketchEditorStore.getState().clearSelectedPicks()
+
+    const s = useSketchEditorStore.getState()
+    expect(s.selectedPicks.size).toBe(0)
+    expect(s.normalSelection.has('Q')).toBe(true)
+    expect(s.normalSelection.has('R')).toBe(true)
+  })
+
+  it('re-solve regression: computeHighlight falls back to query membership', () => {
+    // Two primitives share the durable query Q (the many-to-one identity); a
+    // click claimed only the first. After the seam clears the claims, both must
+    // highlight by membership, exactly the fallback the store comment promises.
+    click(EDGE_LAYER_NAME, 0, 'Q')
+    expect(highlightOf(EDGE_LAYER_NAME, ['Q', 'Q'])).toEqual([true, false])
+
+    useSketchEditorStore.getState().clearSelectedPicks()
+
+    expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
+    expect(useSketchEditorStore.getState().normalSelection.has('Q')).toBe(true)
+    expect(highlightOf(EDGE_LAYER_NAME, ['Q', 'Q'])).toEqual([true, true])
+  })
+
+  it('stale-claim-unremovable regression: a re-click deselects instead of persisting forever', () => {
+    // Before the seam, the additive toggle branch kept the stale claim forever:
+    // a click on the still-selected primitive grew the claim set, and the query
+    // could never leave normalSelection. With the claims cleared at the solve
+    // seam the query-only branch runs, so the click that used to be un-removable
+    // now toggles the query off.
+    click(EDGE_LAYER_NAME, 0, 'Q')
+    useSketchEditorStore.getState().clearSelectedPicks()  // the solve seam
+    click(EDGE_LAYER_NAME, 0, 'Q')  // click the still-highlighted primitive
+
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has('Q')).toBe(false)
+    expect(s.selectedPicks.size).toBe(0)
+  })
+
+  it('re-click-query-only pin: a pickKey click on a query-only selection deselects it', () => {
+    // The exact post-re-solve state the query-only branch in toggleNormalSelection
+    // is for: the query is selected and no claim rides on it. A click carrying a
+    // pickKey must deselect, not mint a fresh claim -- the documented toggle
+    // symmetry that used to be unreachable when stale claims survived.
+    useSketchEditorStore.getState().toggleNormalSelection('Q')
+    expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
+
+    click(EDGE_LAYER_NAME, 0, 'Q')
+
+    expect(useSketchEditorStore.getState().normalSelection.has('Q')).toBe(false)
+    expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)
+  })
+})

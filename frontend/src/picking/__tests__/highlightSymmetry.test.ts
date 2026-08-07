@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeHighlight } from '../selectionHighlight'
-import { selectActiveFrom, hoverActiveFrom } from '../highlightActive'
+import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP, EMPTY_STRING_SET } from '../highlightActive'
 import { primitivePickKey, bodyKeyFor } from '../pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
 
@@ -102,14 +102,15 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
     }
   })
 
-  it('the shared empty set keeps an empty hover reference-stable across builds', () => {
-    // Two independent empty hovers must reuse the SAME set instances so the memos
-    // in Body3D do not thrash. This pins the reference-stability contract the
-    // builder promises.
+  it('the shared empty containers keep an empty hover reference-stable across builds', () => {
+    // Two independent empty hovers must reuse the SAME container instances so the
+    // memos in Body3D do not thrash. This pins the reference-stability contract
+    // the builder promises for both halves of the framing.
     const a = hoverActiveFrom(null, null)
     const b = hoverActiveFrom(null, null)
     expect(a.pickKeys).toBe(b.pickKeys)
     expect(a.queries).toBe(b.queries)
-    expect(a.pickKeys).toBe(a.queries)
+    expect(a.pickKeys).toBe(EMPTY_CLAIM_MAP)
+    expect(a.queries).toBe(EMPTY_STRING_SET)
   })
 })

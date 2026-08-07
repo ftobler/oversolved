@@ -1,13 +1,15 @@
 import { pickedIndicesForBody } from './pickKey'
 
 /**
- * An active highlight request, expressed as two identity sets. This is the ONE
- * shape every highlight decision flows through, whether it is a durable click
- * selection or a transient hover:
+ * An active highlight request. This is the ONE shape every highlight decision
+ * flows through, whether it is a durable click selection or a transient hover:
  *
  * - `pickKeys`: the precise per-primitive pick keys (`bodyKey#layer#index`) that
- *   are live right now. A click stores the clicked primitive's key here; a hover
- *   carries a single key (the one under the cursor).
+ *   are live right now, grouped by the query each key claims. A click records
+ *   the clicked primitive's key under its query here (the store's selectedPicks
+ *   shape, preserved rather than flattened so computeHighlight can validate a
+ *   claim against the primitive that currently owns its index); a hover carries
+ *   a single (query, key) pair (the one under the cursor).
  * - `queries`: the durable ancestral queries. A click persists them; a hover
  *   carries the single query of the hovered primitive.
  *
@@ -17,7 +19,7 @@ import { pickedIndicesForBody } from './pickKey'
  * inputs always yield identical highlight flags.
  */
 export interface ActiveHighlight {
-  pickKeys: ReadonlySet<string>
+  pickKeys: ReadonlyMap<string, ReadonlySet<string>>
   queries: ReadonlySet<string>
 }
 
@@ -31,25 +33,32 @@ export interface ActiveHighlight {
  *   non-viewport consumer (measurement, projection, parts list, the feature
  *   editors) reads out of `normalSelection`. That set stays query-keyed.
  * - The **live** identity is the per-primitive pickKey (`bodyKey#layer#index`)
- *   the click or hover captured. Two primitives can legitimately share a query
- *   (no minted UUID, shared octant), so the query alone cannot isolate the one
- *   the user is pointing at; the pickKey can.
+ *   the click or hover captured, grouped under the query it claims. Two
+ *   primitives can legitimately share a query (no minted UUID, shared octant),
+ *   so the query alone cannot isolate the one the user is pointing at; the
+ *   pickKey can.
  *
  * A primitive highlights iff its query is in the active query set AND either it
- * is the precise pick, or no precise pick has claimed that query:
+ * is a live precise pick, or no live precise pick claims that query.
  *
- *   active.queries.has(q) && (active.pickKeys.has(pk) || !claimed.has(q))
- *
- * - Live pick: the pointed primitive's pickKey is active, so it wins the first
- *   arm; a sibling sharing its query loses the second arm (the query is claimed)
- *   and does not co-highlight. This is the decoupling: the highlight isolates
- *   ONE primitive regardless of query quality.
- * - Persisted / re-highlighted pick: after a re-solve the transient pickKey is
- *   gone, so `pickKeys` holds nothing for it. The query survives in `queries`,
- *   nothing claims it, and it highlights by query membership. If that query is
- *   non-unique the fallback groups every sibling sharing it -- but that is a
- *   query-coverage concern (naming-by-construction work), not a selection one,
- *   and it is EXPECTED until queries are unique per primitive.
+ * - Live pick: the pointed primitive's pickKey is active and its index still
+ *   resolves to a primitive carrying the claimed query, so it wins; a sibling
+ *   sharing its query loses (the query is claimed) and does not co-highlight.
+ *   This is the decoupling: the highlight isolates ONE primitive regardless of
+ *   query quality.
+ * - Persisted / re-highlighted pick: after a re-solve the transient pickKeys are
+ *   gone (cleared at the solve seam), so `pickKeys` holds nothing for it. The
+ *   query survives in `queries`, nothing claims it, and it highlights by query
+ *   membership. If that query is non-unique the fallback groups every sibling
+ *   sharing it -- but that is a query-coverage concern (naming-by-construction
+ *   work), not a selection one, and it is EXPECTED until queries are unique per
+ *   primitive.
+ * - Stale claim belt-and-braces: a claim is honored only while its index still
+ *   owns the query it was recorded under. A re-solve can shift indices, so a
+ *   claim whose index now carries a different query (queries[i] !== claimQuery)
+ *   is skipped entirely: it neither isolates that primitive nor suppresses a
+ *   sibling. The solve seam normally clears every claim, but a missed solve path
+ *   must degrade to inert, not to a wrong highlight.
  * - The `active.queries.has(q)` gate is load-bearing: a pickKey left in the set
  *   whose query has since left `queries` (e.g. a same-query re-click toggled the
  *   query off) is gated out, so a stale pickKey can never highlight something the
@@ -64,20 +73,28 @@ export function computeHighlight(
   const out = new Array<boolean>(queries.length)
   if (active.queries.size === 0) { out.fill(false); return out }
 
-  // Primitive indices in THIS body/layer claimed by a precise pickKey pick, read
-  // out of the pick set rather than by minting a key per primitive (see
-  // pickedIndicesForBody). Null when the live pick belongs elsewhere -- the
-  // persisted path and every unrelated body land here.
-  const picked = pickedIndicesForBody(active.pickKeys, bodyKey, layer, queries.length)
-  // Queries those claimed primitives own, so a sibling sharing one loses. The
-  // count threading above guarantees every parsed index stays in range.
+  // Live precise-pick claims, walked per claimed query. The association is what
+  // makes the belt-and-braces check possible: only a claim whose parsed index
+  // still resolves to a primitive carrying the claimed query is live. Indices
+  // are parsed out of the pick set rather than by minting a key per primitive
+  // (see pickedIndicesForBody); the count threading keeps every parsed index in
+  // range.
+  const isolated = new Set<number>()
   const claimed = new Set<string>()
-  if (picked) for (const i of picked) claimed.add(queries[i])
+  for (const [claimQuery, keys] of active.pickKeys) {
+    const picked = pickedIndicesForBody(keys, bodyKey, layer, queries.length)
+    if (!picked) continue
+    for (const i of picked) {
+      if (queries[i] !== claimQuery) continue
+      isolated.add(i)
+      claimed.add(claimQuery)
+    }
+  }
 
   for (let i = 0; i < queries.length; i++) {
     const q = queries[i]
     if (!active.queries.has(q)) { out[i] = false; continue }
-    out[i] = picked?.has(i) === true || !claimed.has(q)
+    out[i] = isolated.has(i) || !claimed.has(q)
   }
   return out
 }

@@ -35,7 +35,7 @@ import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration }
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
-import { selectActiveFrom, hoverActiveFrom, EMPTY_STRING_SET } from '@/picking/highlightActive'
+import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -411,12 +411,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // pre-index fallback did -- while still letting `intersects` gate the
   // uninvolved-body answer onto the shared all-false array.
   const legacyFaceSelectionFlags = useMemo(
-    () => legacyFaceHighlightIndex?.compute({ pickKeys: EMPTY_STRING_SET, queries: selectActive.queries }) ?? null,
+    () => legacyFaceHighlightIndex?.compute({ pickKeys: EMPTY_CLAIM_MAP, queries: selectActive.queries }) ?? null,
     [legacyFaceHighlightIndex, selectActive],
   )
 
   const legacyFaceHoverFlags = useMemo(
-    () => legacyFaceHighlightIndex?.compute({ pickKeys: EMPTY_STRING_SET, queries: hoverActive.queries }) ?? null,
+    () => legacyFaceHighlightIndex?.compute({ pickKeys: EMPTY_CLAIM_MAP, queries: hoverActive.queries }) ?? null,
     [legacyFaceHighlightIndex, hoverActive],
   )
 

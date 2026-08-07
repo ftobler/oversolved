@@ -29,14 +29,12 @@ features:
 `
 
 // Re-solve survival: the store comment at sketchEditorStore.ts:244-245 promises
-// selectedPicks is "empty after a re-solve", but nothing implements that. This
-// pins the CURRENT contract (the query AND its pick claims survive a real
-// re-solve) so the contradiction is visible, and feature/
-// selection-resolve-claim-invalidation updates it to the chosen contract when
-// the fix lands. Note the pin only breaks under the plan's Option A (clear
-// claims at the solve seam); under Option B (make stale claims inert in
-// computeHighlight) the claims stay in the store and this test keeps passing.
-describe('selection across a re-solve (pre-clearSelectedPicks contract)', () => {
+// selectedPicks is "empty after a re-solve". This pins the Option A contract:
+// every applied solve clears the per-primitive pick claims at the write-back
+// seam (useSolver applySolveResult -> clearSelectedPicks) while the durable
+// query selection survives, so computeHighlight re-highlights by query
+// membership. A stale positional claim must never survive a re-tessellation.
+describe('selection across a re-solve (clearSelectedPicks contract)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
@@ -51,7 +49,7 @@ describe('selection across a re-solve (pre-clearSelectedPicks contract)', () => 
     usePartEditorStore.setState({ editingFeatureId: null })
   })
 
-  it('keeps the query and its pick claims when an edit enter/exit re-solves', async () => {
+  it('clears the pick claims but keeps the query when an edit enter/exit re-solves', async () => {
     vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_DOC }))
 
     render(
@@ -88,6 +86,6 @@ describe('selection across a re-solve (pre-clearSelectedPicks contract)', () => 
 
     const s = useSketchEditorStore.getState()
     expect(s.normalSelection.has('?02;ab:face')).toBe(true)
-    expect(s.selectedPicks.get('?02;ab:face')).toEqual(new Set(['ex1/b0#face#0']))
+    expect(s.selectedPicks.size).toBe(0)
   })
 })

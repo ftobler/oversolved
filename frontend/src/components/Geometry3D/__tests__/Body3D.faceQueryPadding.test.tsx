@@ -120,7 +120,7 @@ describe('face HighlightIndex and painter agree on one primitive count', () => {
 
     const selected = index.compute({
       queries: new Set(['@body_ex1/face/2']),
-      pickKeys: new Set<string>(),
+      pickKeys: new Map<string, ReadonlySet<string>>(),
     })
     painter.apply(selected, null, palette)
 
