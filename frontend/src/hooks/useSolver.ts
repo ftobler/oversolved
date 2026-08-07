@@ -242,10 +242,12 @@ export function useSolver(
     if (expectedRequestId !== undefined && expectedRequestId !== requestIdRef.current) return null
     const cloned = applySolveResult(d, data, solveTimeMs)
     // Single set, the world transitions atomically.
-    // If the solve was requested with a pick_boundary the response carries
-    // pick_bodies (or {} when the checkpoint was unavailable), so the
-    // world enters 'editing'. Otherwise it goes to 'full' and pickBodies
-    // is structurally absent from the type.
+    // Every solve requested with an in-range pick_boundary carries pick_bodies,
+    // {} when the checkpoint is unavailable or the boundary is 0 (the empty doc
+    // before the first feature), so the world enters 'editing'. Out-of-range
+    // boundaries (only possible via direct build() calls) still omit the key.
+    // Otherwise it goes to 'full' and pickBodies is structurally absent from
+    // the type.
     const store = usePartEditorStore.getState()
     const wasEditing = store.pickBoundary !== null
     if (wasEditing && data.pick_bodies !== undefined) {

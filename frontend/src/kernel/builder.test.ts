@@ -736,11 +736,25 @@ describe('rollback transitions', () => {
 })
 
 describe('pickBoundary edge cases', () => {
-  it('pickBoundary=0 should not return pick_bodies', () => {
+  it('pickBoundary=0 returns empty pick_bodies (empty doc before the first feature)', () => {
     const deps = makeDeps()
     const r = build(
-      { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'ex1', kind: 'extrude' }] },
+      { features: [{ id: 'ex1', kind: 'extrude' }, { id: 'sk1', kind: 'sketch' }] },
       { pickBoundary: 0 },
+      deps,
+    )
+    // The first non-builtin, non-sketch feature is ex1 (computePickBoundary
+    // does not skip sketches, so it must lead the list). There is nothing
+    // before it to pick against, but the key must still arrive (empty) so the
+    // 'editing' world engages.
+    expect(r.pick_bodies).toEqual({})
+  })
+
+  it('pickBoundary=null omits the pick_bodies key', () => {
+    const deps = makeDeps()
+    const r = build(
+      { features: [{ id: 'sk1', kind: 'sketch' }] },
+      { pickBoundary: null },
       deps,
     )
     expect(r.pick_bodies).toBeUndefined()

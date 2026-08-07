@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', () => ({
@@ -42,9 +43,68 @@ features:
     radius: 2
 `
 
+// No sketch before the extrude: Extrude 1 is the first non-builtin, non-sketch
+// feature, so computePickBoundary returns 0 for it (the empty doc).
+const FIRST_EXTRUDE_DOC = `version: 1
+kind: part
+features:
+  - id: ex1
+    kind: extrude
+    label: Extrude 1
+    extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
+  - id: fil1
+    kind: fillet
+    label: Fillet 1
+    edges: []
+    radius: 1
+`
+
 describe('feature edit rollback restore', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('enters edit mode on the first non-builtin non-sketch feature with pickBoundary 0', async () => {
+    vi.stubGlobal('fetch', partDocFetchMock({ content: FIRST_EXTRUDE_DOC }))
+
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Extrude 1')).toBeInTheDocument()
+    })
+
+    // Enter edit mode on Extrude 1: with no sketch before it, the pick boundary
+    // is 0, the empty doc before the first feature. The edit must still engage
+    // (the store pins the boundary and the feature tree rolls Fillet 1 back).
+    const editBtn = screen.getByTitle('Edit extrude')
+    fireEvent.click(editBtn)
+
+    await waitFor(() => {
+      expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1')
+      expect(usePartEditorStore.getState().pickBoundary).toBe(0)
+      expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+    })
+
+    // Fillet 1 is now rolled back (grayed out)
+    await waitFor(() => {
+      const fil1 = screen.getByText('Fillet 1').closest('.feature-item')
+      expect(fil1?.classList.contains('rolled-back')).toBe(true)
+    })
+
+    // Exit edit mode
+    fireEvent.click(screen.getByTitle('OK'))
+
+    await waitFor(() => {
+      const fil1 = screen.getByText('Fillet 1').closest('.feature-item')
+      expect(fil1?.classList.contains('rolled-back')).toBe(false)
+    })
   })
 
   it('rollback bar returns to end after exiting edit mode on non-last feature', async () => {

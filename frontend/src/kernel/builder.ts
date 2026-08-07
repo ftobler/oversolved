@@ -1168,26 +1168,34 @@ export function build(
 
   let pickBodiesOut: Record<string, unknown> | undefined
   const pickBoundary = options.pickBoundary
-  if (pickBoundary != null && pickBoundary > 0 && pickBoundary <= features.length) {
-    const targetFid = String(features[pickBoundary - 1].id ?? '')
-    const pickCheckpoint = newCheckpoints[targetFid] ?? options.prevState?.checkpoints[targetFid]
-    if (pickCheckpoint) {
-      const snap = pickCheckpoint.bodies_snapshot
-      if (Object.keys(snap).length) {
-        pickBodiesOut = snap
-      } else {
-        const pickStore = pickCheckpoint.body_store_snapshot
-        const reused = reusePickBodyMeshes(options.prevState, firstDirty, pickStore, bodyStore)
-        const toTessellate = Object.fromEntries(
-          Object.entries(pickStore).filter(([bid]) => !(bid in reused)),
-        )
-        pickBodiesOut = { ...reused, ...deps.tessellateBodies(toTessellate, null) }
-      }
-    } else {
-      // Checkpoint not found (e.g. prevState was null on first solve, or the
-      // checkpoint was evicted between solves). Return empty so the caller
-      // clears stale pick_bodies state instead of silently keeping it.
+  if (pickBoundary != null && pickBoundary >= 0 && pickBoundary <= features.length) {
+    if (pickBoundary === 0) {
+      // Boundary 0 edits the first feature: the "before" state is the empty
+      // doc, there is nothing to pick against. Carry {} so the main thread
+      // still enters the 'editing' world (empty pick bodies) like any other
+      // boundary, matching the unavailable-checkpoint contract below.
       pickBodiesOut = {}
+    } else {
+      const targetFid = String(features[pickBoundary - 1].id ?? '')
+      const pickCheckpoint = newCheckpoints[targetFid] ?? options.prevState?.checkpoints[targetFid]
+      if (pickCheckpoint) {
+        const snap = pickCheckpoint.bodies_snapshot
+        if (Object.keys(snap).length) {
+          pickBodiesOut = snap
+        } else {
+          const pickStore = pickCheckpoint.body_store_snapshot
+          const reused = reusePickBodyMeshes(options.prevState, firstDirty, pickStore, bodyStore)
+          const toTessellate = Object.fromEntries(
+            Object.entries(pickStore).filter(([bid]) => !(bid in reused)),
+          )
+          pickBodiesOut = { ...reused, ...deps.tessellateBodies(toTessellate, null) }
+        }
+      } else {
+        // Checkpoint not found (e.g. prevState was null on first solve, or the
+        // checkpoint was evicted between solves). Return empty so the caller
+        // clears stale pick_bodies state instead of silently keeping it.
+        pickBodiesOut = {}
+      }
     }
   }
 

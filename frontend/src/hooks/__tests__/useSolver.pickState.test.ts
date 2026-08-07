@@ -47,6 +47,11 @@ function enterEditOfDeleteBody() {
   usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: 2, pickBoundary: 1 })
 }
 
+/** The editor store as enterEditFeature leaves it for the FIRST non-sketch feature. */
+function enterEditOfFirstFeature() {
+  usePartEditorStore.setState({ editingFeatureId: 'ex1', rollbackPosition: 1, pickBoundary: 0 })
+}
+
 describe('useSolver pick state readiness', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -87,6 +92,22 @@ describe('useSolver pick state readiness', () => {
 
     act(() => { usePartEditorStore.setState({ pickBoundary: null, rollbackPosition: null }) })
     expect(result.current.pickStateReady).toBe(false)
+  })
+
+  it('engages the editing world with empty pick bodies for pickBoundary=0', async () => {
+    // Editing the first non-builtin, non-sketch feature requests boundary 0,
+    // whose "before" state is the empty doc. The mocked response carries {} to
+    // pin the main-thread contract: boundary 0 must still transition to
+    // 'editing' (previously the key was absent and the world fell back to
+    // 'full', never engaging ghost/pick state).
+    const result = setupHook()
+    enterEditOfFirstFeature()
+    mockSolveViaWorker.mockResolvedValueOnce({
+      solve_ms: 0, result: {}, bodies: { body_ex1: {} }, pick_bodies: {}, _build_state: null,
+    })
+    await act(async () => { await result.current.reSolve(makeDoc()) })
+    expect(result.current.pickStateReady).toBe(true)
+    expect(result.current.pickBodies).toEqual({})
   })
 
   it('stays false for a solve outside an edit', async () => {
