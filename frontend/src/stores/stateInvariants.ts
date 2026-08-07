@@ -1,6 +1,15 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // Invariant validation for sketch editor store state.
 // Uses the 3-tier guard pattern: throw in test, warn in dev, silent in prod.
+//
+// HARNESS TIER (user decision 2026-08-05, Option B): this layer is a dev/test
+// harness by design, NOT a production guard. The only entry points are the four
+// validateWithRepair gates in sketchEditorStore.ts (popMode, setActiveTool,
+// setActivePickField, clearDraw), all gated `devOnly || testMode`. There is
+// deliberately no production store subscription: a per-mutation validate at the
+// write was considered and rejected, because the store is a single-source
+// document store and prod carries corruption silently by design. A violation
+// that slips past a gate is expected to be caught by the next gate or by a test.
 
 import type { SelectionDomain } from '@/types/cad'
 import { drawingToolIds, isDrawingTool } from '@/registry/toolRegistry'
@@ -43,6 +52,7 @@ export interface SelectionInvariantState {
 // isValidSelectionId and dropped by repairSelectionState.
 export const KNOWN_SELECTION_PREFIXES = [
   'entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:',
+  'dim:', 'fhandle:',
   '@builtin_', '@body_', '@',
 ]
 
@@ -57,8 +67,12 @@ function isValidSelectionId(id: string): boolean {
 
 // Sketch-space id families. face:/edge: wrap an inner query when one is
 // present (bucketOfId decides those), but live here so a wrapper with no query
-// still has a home instead of falling through to mixed.
-const SKETCH_PREFIXES = ['entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:']
+// still has a home instead of falling through to mixed. dim:/fhandle: are the
+// dimension-label and feature-handle overlay families; they are not real
+// selection input (the rubber band filters them), but recognizing them keeps a
+// stray overlay key from flipping the domain to mixed or being dropped as
+// unrecognized while production still carries it.
+const SKETCH_PREFIXES = ['entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:', 'dim:', 'fhandle:']
 
 // The families deriveSelectionDomain can bucket. Set-equality with
 // KNOWN_SELECTION_PREFIXES is enforced by a guard test: an id family accepted
@@ -88,6 +102,24 @@ function bucketOfId(id: string): DomainBucket | null {
   }
   if (id.startsWith('@')) return 'plane'
   return null
+}
+
+// Sketch-domain queries never mint per-primitive claims: only b-rep primitives
+// carry a pickKey, so a claim under a sketch query is cross-domain garbage.
+// bucketOfId is private to the classifier, so reuse it here rather than
+// re-deriving the bucket by hand.
+function isSketchQuery(query: string): boolean {
+  return bucketOfId(query) === 'sketch'
+}
+
+// A per-primitive pickKey is `bodyKey#layer#index` (pickKey.ts). The index tail
+// is a bare integer; anything else (a query, an overlay key) is not a claim.
+function isPickKeyClaim(claim: string): boolean {
+  const parts = claim.split('#')
+  return parts.length === 3
+    && parts[0].length > 0
+    && parts[1].length > 0
+    && /^\d+$/.test(parts[2])
 }
 
 export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain {
@@ -132,6 +164,37 @@ export function validateSelectionState(state: SelectionInvariantState): void {
       failLoud(
         `[invariant] selectedPicks has empty claim set for query '${q}'`,
       )
+    }
+    // A sketch query has no per-primitive identity, so a bodyKey#layer#index
+    // claim under one records a b-rep primitive against a 2D selection.
+    if (isSketchQuery(q)) {
+      for (const c of claims) {
+        if (isPickKeyClaim(c)) {
+          failLoud(
+            `[invariant] sketch-domain query '${q}' carries body pickKey claim '${c}'`,
+          )
+        }
+      }
+    }
+  }
+
+  // One pickKey identifies exactly one primitive, so two queries claiming it
+  // means one of them recorded a foreign claim (a ghost highlight would follow
+  // whenever either query is selected).
+  {
+    const claimedBy = new Map<string, string>()
+    for (const [q, claims] of selectedPicks.entries()) {
+      for (const c of claims) {
+        if (!isPickKeyClaim(c)) continue
+        const first = claimedBy.get(c)
+        if (first !== undefined && first !== q) {
+          failLoud(
+            `[invariant] pickKey '${c}' claimed by both '${first}' and '${q}'`,
+          )
+        } else {
+          claimedBy.set(c, q)
+        }
+      }
     }
   }
 
@@ -182,13 +245,69 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
     patches.chipOwnedSelection = repairedChip
   }
 
+  let picksChanged = false
   const repairedPicks = new Map(selectedPicks)
   for (const [q, claims] of selectedPicks.entries()) {
     if (!live.has(q) || claims.size === 0) {
       repairedPicks.delete(q)
+      picksChanged = true
+      continue
+    }
+    // Same rule as validateSelectionState: a pickKey-shaped claim under a
+    // sketch query is cross-domain garbage, so strip it (and drop the whole
+    // entry when nothing remains).
+    if (isSketchQuery(q)) {
+      const stripped = new Set<string>()
+      for (const c of claims) {
+        if (!isPickKeyClaim(c)) stripped.add(c)
+      }
+      if (stripped.size !== claims.size) {
+        picksChanged = true
+        if (stripped.size === 0) {
+          repairedPicks.delete(q)
+        } else {
+          repairedPicks.set(q, stripped)
+        }
+      }
     }
   }
-  if (repairedPicks.size !== selectedPicks.size) {
+
+  // A pickKey can only be claimed by one query. The first claimant (map order)
+  // keeps the key; a later query that re-claims it loses that claim, keeping the
+  // repaired state under the duplicate rule. If the stripped set empties, drop
+  // the whole entry: a query left in normalSelection with no claim entry is
+  // valid, an entry with an empty claim set is not.
+  {
+    const claimedBy = new Map<string, string>()
+    for (const [q, claims] of [...repairedPicks.entries()]) {
+      const kept = new Set<string>()
+      let stripped = false
+      for (const c of claims) {
+        if (!isPickKeyClaim(c)) {
+          kept.add(c)
+          continue
+        }
+        const first = claimedBy.get(c)
+        if (first === undefined || first === q) {
+          claimedBy.set(c, q)
+          kept.add(c)
+        } else {
+          stripped = true
+        }
+      }
+      if (stripped) {
+        picksChanged = true
+        if (kept.size === 0) {
+          repairedPicks.delete(q)
+        } else {
+          repairedPicks.set(q, kept)
+        }
+      }
+    }
+  }
+  // Size is not a faithful change signal: stripping one claim out of a set
+  // keeps the map size while changing its content.
+  if (picksChanged) {
     patches.selectedPicks = repairedPicks
   }
 

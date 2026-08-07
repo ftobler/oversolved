@@ -138,6 +138,52 @@ describe('validateSelectionState', () => {
     }
     expect(() => validateSelectionState(state)).not.toThrow()
   })
+
+  it('throws when a sketch-domain query carries a body pickKey claim', () => {
+    // Sketch selections have no per-primitive identity, so a bodyKey#layer#index
+    // claim under entity:S1:L1 records a b-rep primitive against a 2D query.
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['entity:S1:L1']),
+      selectedPicks: new Map([['entity:S1:L1', new Set(['ex1/b0#edge#0'])]]),
+    }
+    expect(() => validateSelectionState(state)).toThrow('[invariant] sketch-domain query')
+  })
+
+  it('passes when a body_3d query carries a pickKey claim', () => {
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])]]),
+      selectionDomain: 'body_3d' as const,
+    }
+    expect(() => validateSelectionState(state)).not.toThrow()
+  })
+
+  it('throws when one pickKey is claimed by two queries', () => {
+    // A pickKey identifies one primitive, so two queries naming the same key
+    // means one of them recorded a foreign claim.
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['?1;@body_1@extrude1/edge/3', '?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([
+        ['?1;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])],
+        ['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])],
+      ]),
+      selectionDomain: 'body_3d' as const,
+    }
+    expect(() => validateSelectionState(state)).toThrow('[invariant] pickKey')
+  })
+
+  it('recognizes dim: and fhandle: overlay keys instead of flagging them', () => {
+    // The rubber band filters these families out, but a stray key must not be
+    // reported as unrecognized (nor flip the domain away from sketch).
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['dim:c1', 'fhandle:ex1:distance']),
+    }
+    expect(() => validateSelectionState(state)).not.toThrow()
+  })
 })
 
 describe('repairSelectionState', () => {
@@ -201,7 +247,7 @@ describe('repairSelectionState', () => {
     expect(patches!.selectionDomain).toBe('body_3d')
   })
 
-  it('returns null when only repair is filter-invalid (not dev/test)', () => {
+  it('returns null only when not dev/test (the filter is harness-gated)', () => {
     // repairSelectionState filters invalid entries only in dev/test mode.
     // Since import.meta.env.MODE is 'test' in vitest, we expect filtering.
     const state = {
@@ -230,6 +276,95 @@ describe('repairSelectionState', () => {
     expect(patches).not.toBeNull()
     expect(() => validateSelectionState({ ...state, ...patches })).not.toThrow()
   })
+
+  it('is a fixpoint for every constructible invalid state', () => {
+    // Property-style pin: repair output must always pass the very validation
+    // that requested it, for each shape the plan enumerates plus the semantic
+    // checks added with it.
+    const invalidStates: SelectionInvariantState[] = [
+      {  // invalid id that is chip-owned
+        normalSelection: new Set(['invalid!']),
+        selectedPicks: new Map<string, Set<string>>(),
+        chipOwnedSelection: new Set(['invalid!']),
+        selectionDomain: 'sketch_2d' as const,
+      },
+      {  // invalid id that is a claims-query
+        normalSelection: new Set(['invalid!']),
+        selectedPicks: new Map([['invalid!', new Set(['ex1/b0#edge#0'])]]),
+        chipOwnedSelection: new Set<string>(),
+        selectionDomain: 'sketch_2d' as const,
+      },
+      {  // invalid id plus a stale domain
+        normalSelection: new Set(['invalid!']),
+        selectedPicks: new Map<string, Set<string>>(),
+        chipOwnedSelection: new Set<string>(),
+        selectionDomain: 'body_3d' as const,
+      },
+      {  // sketch-domain query carrying a body pickKey claim
+        normalSelection: new Set(['entity:S1:L1']),
+        selectedPicks: new Map([['entity:S1:L1', new Set(['ex1/b0#edge#0'])]]),
+        chipOwnedSelection: new Set<string>(),
+        selectionDomain: 'sketch_2d' as const,
+      },
+      {  // one pickKey claimed by two queries
+        normalSelection: new Set(['?1;@body_1@extrude1/edge/3', '?2;@body_1@extrude1/edge/3']),
+        selectedPicks: new Map([
+          ['?1;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])],
+          ['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])],
+        ]),
+        chipOwnedSelection: new Set<string>(),
+        selectionDomain: 'body_3d' as const,
+      },
+    ]
+    for (const state of invalidStates) {
+      const patches = repairSelectionState(state)
+      expect(patches).not.toBeNull()
+      expect(() => validateSelectionState({ ...state, ...patches })).not.toThrow()
+    }
+  })
+
+  it('strips a body pickKey claim from a sketch-domain query', () => {
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['entity:S1:L1', '?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([
+        ['entity:S1:L1', new Set(['ex1/b0#edge#0'])],  // cross-domain garbage
+        ['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#1'])],  // valid claim
+      ]),
+      selectionDomain: 'mixed' as const,
+    }
+    const patches = repairSelectionState(state)
+    expect(patches).not.toBeNull()
+    const picks = patches!.selectedPicks as Map<string, Set<string>>
+    expect([...picks.keys()]).toEqual(['?2;@body_1@extrude1/edge/3'])
+    expect(() => validateSelectionState({ ...state, ...patches })).not.toThrow()
+  })
+
+  it('drops a pickKey re-claimed by a later query, keeping the first claimant', () => {
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['?1;@body_1@extrude1/edge/3', '?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([
+        ['?1;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1'])],
+        ['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])],  // duplicate of the first
+      ]),
+      selectionDomain: 'body_3d' as const,
+    }
+    const patches = repairSelectionState(state)
+    expect(patches).not.toBeNull()
+    const picks = patches!.selectedPicks as Map<string, Set<string>>
+    expect([...picks.keys()]).toEqual(['?1;@body_1@extrude1/edge/3'])
+    expect([...picks.get('?1;@body_1@extrude1/edge/3')!]).toEqual(['ex1/b0#edge#0', 'ex1/b0#edge#1'])
+    expect(() => validateSelectionState({ ...state, ...patches })).not.toThrow()
+  })
+
+  it('keeps dim: and fhandle: ids instead of dropping them as invalid', () => {
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['dim:c1', 'fhandle:ex1:distance']),
+    }
+    expect(repairSelectionState(state)).toBeNull()
+  })
 })
 
 describe('deriveSelectionDomain', () => {
@@ -247,6 +382,8 @@ describe('deriveSelectionDomain', () => {
       ['constraint:Sketch1:C1', 'sketch_2d'],
       ['dock:S1:tan1', 'sketch_2d'],
       ['isect:S1:1:2:curA:curB', 'sketch_2d'],
+      ['dim:c1', 'sketch_2d'],
+      ['fhandle:ex1:distance', 'sketch_2d'],
       ['edge:ex1:?c;@a', 'body_3d'],
       ['face:ex1:?8,8;@ex1f0:face', 'body_3d'],
       ['?9;@ex1face0:face', 'body_3d'],

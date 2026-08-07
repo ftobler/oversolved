@@ -93,6 +93,11 @@ function pickProjectionEntityId(pick: DimensionPick, featureId: string): string 
   return parts[2] ?? null
 }
 
+// Dev/test-only harness gate (user decision 2026-08-05, Option B). repair then
+// validate, so a healable violation never failLouds on the very state repair
+// just produced. Callers gate on `devOnly || testMode`; there is deliberately
+// no store subscription that runs this on every mutation, so production carries
+// a violating write silently until a later gate or a test catches it.
 function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<SketchEditorState>) => void): void {
   const state = get()
   const patches = repairSelectionState(state)
