@@ -11,13 +11,14 @@ export function findFeature(doc: PartDoc, featureId: string): PartFeature | unde
 }
 
 /** Convert a selection ID to a query string.
- *  If the target belongs to a different feature than the host, use `@<featId><eleId>`
- *  (absolute ref). Otherwise use `$<eleId>` (local ref).
+ *  If the target belongs to a different feature than the host, use `@<featId>/<eleId>[/<sub>]`
+ *  (absolute ref, slash-joined). Otherwise use `$<eleId>` (local ref).
  *  For `face:` IDs, returns the raw ancestry query verbatim (already globally scoped).
  *
  *  entity/vertex IDs are serialized through the query engine (selectionToQuery +
  *  emitWire) rather than hand-built here, so the `@`/`$` wire format lives in one
- *  place. face passthrough and the lenient `@`/`$` fallbacks are kept as-is. */
+ *  place (kernel/query.ts, re-exported by utils/query). face passthrough and the
+ *  lenient `@`/`$` fallbacks are kept as-is. */
 export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
   if (t.startsWith('entity:') || t.startsWith('vertex:')) {
     return emitWire(selectionToQuery(parseSelectionId(t), hostFeatureId))

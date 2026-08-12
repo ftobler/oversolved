@@ -99,7 +99,7 @@ describe('PlaneEditor pick chips', () => {
   })
 
   // Pins a known gap rather than a desired behaviour. `emitAbsoluteSelectionQuery`
-  // rewrites a sketch vertex id ('vertex:sk1:l1:start') into '@sk1l1start' before
+  // rewrites a sketch vertex id ('vertex:sk1:l1:start') into '@sk1/l1/start' before
   // it is stored, but the viewport toggles the unrewritten id, so the mirrored
   // value can never match a click. The re-click therefore lands as a fresh pick
   // that re-dispatches the value already held instead of clearing the field. See
@@ -107,7 +107,7 @@ describe('PlaneEditor pick chips', () => {
   // normalization that closes it.
   it('re-clicking a sketch vertex re-picks it instead of clearing (known gap)', () => {
     const onMutation = vi.fn()
-    renderEditor(onMutation, { mode: 'plane_point', plane: '@builtin_plane_top', point: '@sk1l1start' })
+    renderEditor(onMutation, { mode: 'plane_point', plane: '@builtin_plane_top', point: '@sk1/l1/start' })
 
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'pl1', field: 'point' })
@@ -120,7 +120,7 @@ describe('PlaneEditor pick chips', () => {
       type: 'set_plane_definition_field',
       featureId: 'pl1',
       field: 'point',
-      value: '@sk1l1start',  // re-set to the value it already had, not ''
+      value: '@sk1/l1/start',  // re-set to the value it already had, not ''
     })
     expect(onMutation).not.toHaveBeenCalledWith(
       expect.objectContaining({ field: 'point', value: '' }),

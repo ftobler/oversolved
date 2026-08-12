@@ -1,6 +1,9 @@
+// Canonical typed-query shapes for the `?/@/$` wire format. The serialization
+// (emitWire/parseQuery) lives in kernel/query.ts and is re-exported by
+// utils/query; these types are the shared contract so both surfaces agree.
 export type LocalQuery    = { kind: "local";    eid: string; sub?: string }
 export type AbsoluteQuery = { kind: "absolute"; featureId: string; eid?: string; sub?: string }
-export type AncestryQuery = { kind: "ancestry"; ids: string[]; typeRestriction?: string; classifier?: string }
+export type AncestryQuery = { kind: "ancestry"; ancestorIds: string[]; typeRestriction: string | null; classifier?: string | null }
 export type Query = LocalQuery | AbsoluteQuery | AncestryQuery
 
 export type EntitySelectionId  = { kind: "entity";     featureId: string; eid: string }

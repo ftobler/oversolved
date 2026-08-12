@@ -6,7 +6,7 @@ function extractFeatureId(ancestorId: string): string | null {
   return m ? m[1] : null
 }
 
-function entityTypeFromRestriction(typeRestriction: string | undefined): string {
+function entityTypeFromRestriction(typeRestriction: string | null): string {
   if (!typeRestriction) return 'Entity'
   if (typeRestriction === 'flatface' || typeRestriction === 'cylinderface') return 'Face'
   if (typeRestriction === 'straightedge' || typeRestriction === 'edge') return 'Edge'
@@ -43,7 +43,7 @@ export function queryLabel(
       }
 
       case 'ancestry': {
-        const lastId = parsed.ids[parsed.ids.length - 1]
+        const lastId = parsed.ancestorIds[parsed.ancestorIds.length - 1]
         const featureId = extractFeatureId(lastId)
         const entityType = entityTypeFromRestriction(parsed.typeRestriction)
 

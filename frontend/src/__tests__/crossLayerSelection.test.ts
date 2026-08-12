@@ -180,9 +180,9 @@ describe('click commits ancestral query', () => {
     expect(useSketchEditorStore.getState().normalSelection.has(vertId)).toBe(true)
 
     // parseTarget with a different context still returns an absolute ref
-    // Vertex target: @<featId><eleId><sub> (concatenated, no slash separator)
+    // Vertex target: @<featId>/<eleId>/<sub> (slash-joined absolute)
     const result = parseTarget(vertId, 'B')
-    expect(result).toBe('@Aline1start')
+    expect(result).toBe('@A/line1/start')
   })
 })
 

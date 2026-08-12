@@ -23,28 +23,15 @@ import {
   type GeomDescriptor,
 } from "./geomDescriptor"
 import { failLoud } from "@/stores/stateInvariants"
+import { VERTEX_POINT_KEYS } from "@/types/vertexKeys"
+import type { LocalQuery, AbsoluteQuery, AncestryQuery, Query } from "@/types/query"
+
+export type { LocalQuery, AbsoluteQuery, AncestryQuery, Query as QueryType } from "@/types/query"
+
+/** Local alias for the canonical Query union (re-exported as QueryType). */
+type QueryType = Query
 
 export class AmbiguousQueryError extends Error {}
-
-// ─── Typed queries ───
-
-export interface LocalQuery {
-  kind: "local"
-  eid: string
-  sub: string
-}
-export interface AbsoluteQuery {
-  kind: "absolute"
-  featureId: string
-  eid: string
-  sub: string
-}
-export interface AncestryQuery {
-  kind: "ancestry"
-  ancestorIds: string[]
-  typeRestriction: string | null
-}
-export type QueryType = LocalQuery | AbsoluteQuery | AncestryQuery
 
 export function local(eid: string, sub = ""): LocalQuery {
   return { kind: "local", eid, sub }
@@ -53,26 +40,19 @@ export function absolute(featureId: string, eid = "", sub = ""): AbsoluteQuery {
   return { kind: "absolute", featureId, eid, sub }
 }
 export function ancestry(
-  ids: (QueryType | string)[],
+  ids: (Query | string)[],
   typeRestriction: string | null = null,
+  classifier: string | null = null,
 ): AncestryQuery {
   const wireIds = ids.map(i => (typeof i === "string" ? i : emitWire(i)))
-  return { kind: "ancestry", ancestorIds: wireIds, typeRestriction }
-}
-
-function isAlpha(ch: string): boolean {
-  return /[A-Za-z]/.test(ch)
+  return { kind: "ancestry", ancestorIds: wireIds, typeRestriction, classifier }
 }
 
 function localFromString(s: string): LocalQuery {
   const body = s.slice(1)
-  for (const pt of ["start", "end", "center", "xy"]) {
-    if (body.endsWith(pt) && body.length > pt.length) {
-      const rest = body.slice(0, body.length - pt.length)
-      if (rest && !isAlpha(rest[rest.length - 1])) {
-        return { kind: "local", eid: rest, sub: pt }
-      }
-    }
+  for (const pt of VERTEX_POINT_KEYS) {
+    if (body.length > pt.length && body.endsWith(pt))
+      return { kind: "local", eid: body.slice(0, -pt.length), sub: pt }
   }
   return { kind: "local", eid: body, sub: "" }
 }
@@ -95,7 +75,7 @@ export function parseQuery(s: string): QueryType {
 export function emitWire(q: QueryType): string {
   switch (q.kind) {
     case "local":
-      return "$" + q.eid + q.sub
+      return "$" + q.eid + (q.sub ?? "")
     case "absolute":
       if (q.eid) return "@" + q.featureId + "/" + q.eid + (q.sub ? "/" + q.sub : "")
       return "@" + q.featureId
@@ -103,6 +83,7 @@ export function emitWire(q: QueryType): string {
       const lengths = q.ancestorIds.map(i => i.length.toString(16)).join(",")
       let body = "?" + lengths + ";" + q.ancestorIds.join("")
       if (q.typeRestriction) body += ":" + q.typeRestriction
+      if (q.classifier) body += "@" + q.classifier
       return body
     }
   }
@@ -120,8 +101,8 @@ function parseAbsolute(s: string): AbsoluteQuery {
 }
 
 function parseAncestryObj(s: string): AncestryQuery {
-  const [ids, typeRestriction] = parseAncestry(s)
-  return { kind: "ancestry", ancestorIds: ids, typeRestriction: typeRestriction || null }
+  const [ids, typeRestriction, classifier] = parseAncestry(s)
+  return { kind: "ancestry", ancestorIds: ids, typeRestriction: typeRestriction || null, classifier: classifier || null }
 }
 
 /** Mint an ancestor token referencing a feature/body/geom-hash: "@<id>". */
@@ -143,8 +124,10 @@ export function bodyIdOf(queryStr: string, bodyStore?: Record<string, unknown> |
   return candidates.length ? candidates[0] : null
 }
 
-/** Parse `?A,B;<idA><idB>` or `...:<TYPE>`. Returns [ids, typeRestriction|null]. */
-export function parseAncestry(queryStr: string): [string[], string | null] {
+/** Parse `?A,B;<idA><idB>` or `...:<TYPE>` or `...:<TYPE>@<cls>`.
+ *  Returns [ids, typeRestriction, classifier|null]. The classifier suffix after
+ *  `:type` is a first-class field, never swallowed into the typeRestriction. */
+export function parseAncestry(queryStr: string): [string[], string | null, string | null] {
   if (!queryStr.startsWith("?")) {
     throw new Error(`Invalid ancestry query: ${JSON.stringify(queryStr)}`)
   }
@@ -178,17 +161,34 @@ export function parseAncestry(queryStr: string): [string[], string | null] {
   }
 
   let typeRestriction: string | null = null
-  if (pos < rest.length && rest[pos] === ":") {
-    typeRestriction = rest.slice(pos + 1)
+  let classifier: string | null = null
+  if (pos < rest.length) {
+    const tail = rest.slice(pos)
+    if (tail.startsWith(":")) {
+      const at = tail.indexOf("@", 1)
+      if (at >= 0) {
+        typeRestriction = tail.slice(1, at) || null
+        classifier = tail.slice(at + 1) || null
+      } else {
+        typeRestriction = tail.slice(1) || null
+      }
+    } else if (tail.startsWith("@")) {
+      classifier = tail.slice(1) || null
+    }
   }
-  return [ids, typeRestriction]
+  return [ids, typeRestriction, classifier]
 }
 
 /** Build an ancestry query string from a list of id strings. */
-export function makeAncestryQuery(ids: string[], typeRestriction: string | null = null): string {
+export function makeAncestryQuery(
+  ids: string[],
+  typeRestriction: string | null = null,
+  classifier: string | null = null,
+): string {
   const lengths = ids.map(i => i.length.toString(16)).join(",")
   let s = "?" + lengths + ";" + ids.join("")
   if (typeRestriction !== null && typeRestriction !== undefined) s += ":" + typeRestriction
+  if (classifier !== null && classifier !== undefined) s += "@" + classifier
   return s
 }
 

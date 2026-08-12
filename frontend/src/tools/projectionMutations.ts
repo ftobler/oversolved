@@ -5,7 +5,7 @@
 // by the pre-selection path, so both agree on kind resolution and face-wire
 // expansion.
 import type { Mutation } from '@/types/cad'
-import { parseQuery } from '@/utils/query'
+import { parseQuery, emitWire, absolute } from '@/utils/query'
 import { isWholeBodySelectionId } from '@/utils/query/selectionId'
 import { projectedKindForEdge } from '@/tools/dimensionProjection'
 
@@ -50,9 +50,9 @@ export function projectionMutationsForId(
     const sourceEntityId = parts[2]
     if (sourceFeatureId === featureId) return []
 
-    const source = `@${sourceFeatureId}/${sourceEntityId}`
     // Projection is carried by `source`, not by a distinct entity kind: emit
     // the base geometric kind of the source curve plus the source query.
+    const source = emitWire(absolute(sourceFeatureId, sourceEntityId))
     const ek = resolvers.entityKind(sourceFeatureId, sourceEntityId)
     const kind = ek && PROJECTABLE_KINDS.includes(ek) ? ek : 'line'
     return [{ type: 'add_projected_entity', featureId, kind, source }]

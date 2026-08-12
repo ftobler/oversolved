@@ -18,9 +18,10 @@ const BODY_PREFIX = 'body_'
 /**
  * Resolve an ancestor token to the feature that owns it. Handles the three
  * shapes `ref()` and the query builders emit: a bare `@<featureId>`, the topo
- * fallback `@<featureId>/face/3`, and the concatenated `@<featureId><eid>`
- * form from `emitWire(absolute(...))`. Geom-descriptor tokens (`@gdf|...`),
- * classifiers and builtin planes own no feature and resolve to null.
+ * fallback `@<featureId>/face/3`, and the slash-joined absolute `@<featureId>/<eid>`.
+ * Geom-descriptor tokens (`@gdf|...`), classifiers and builtin planes own no
+ * feature and resolve to null. The concatenated `@<featureId><eid>` form is a
+ * legacy fallback for tokens persisted before the slash-joined format.
  */
 function featureIdOfToken(token: string, known: ReadonlySet<string>): string | null {
   if (!token.startsWith('@')) return null
@@ -41,9 +42,10 @@ function featureIdOfToken(token: string, known: ReadonlySet<string>): string | n
     if (known.has(id)) return id
   }
 
-  // `@<featureId><eid>` has no separator, so the feature id can only be
-  // recovered by matching against the ids that actually exist. Longest wins:
-  // with both `ex1` and `ex12` present, `@ex12face0` belongs to `ex12`.
+  // `@<featureId><eid>` (legacy concatenated tokens) has no separator, so the
+  // feature id can only be recovered by matching against the ids that actually
+  // exist. Longest wins: with both `ex1` and `ex12` present, `@ex12face0`
+  // belongs to `ex12`.
   let best: string | null = null
   for (const f of known) {
     if (id.startsWith(f) && (best === null || f.length > best.length)) best = f
@@ -72,7 +74,7 @@ export function selectionSourceFeatureIds(selectionId: string, known: ReadonlySe
     try {
       const q = parseQuery(selectionId)
       if (q.kind !== 'ancestry') return []
-      for (const id of q.ids) {
+      for (const id of q.ancestorIds) {
         const f = featureIdOfToken(id, known)
         if (f) out.add(f)
       }

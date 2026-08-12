@@ -25,7 +25,7 @@ import { isPickAllowed } from '@/utils/query/pickOrder'
  * KNOWN GAP: the toggle-off is only detectable when the chip mirrors the very
  * string the viewport toggles. An editor that stores a REWRITTEN value (any
  * `transform`, or `emitAbsoluteSelectionQuery`, which turns `vertex:sk1:l1:start`
- * into `@sk1l1start`) mirrors a value no click can ever match, so a re-click
+ * into `@sk1/l1/start`) mirrors a value no click can ever match, so a re-click
  * takes the onPick branch instead and re-dispatches the value it already holds.
  * Harmless but useless: a redundant mutation and a no-op undo entry. It bites
  * sketch vertex/edge picks; plane, face and body values round-trip unchanged.

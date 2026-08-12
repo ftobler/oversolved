@@ -80,8 +80,8 @@ describe('test_click_sketch_entity_resolves_via_ancestry_after_reorder', () => {
     // parseTarget must still produce the correct query.
     const hostAfterReorder = 'Extrude1'  // consumer feature that is now first
     const resolved = parseTarget(entId, hostAfterReorder)
-    // Cross-feature -> @<featureId><entityId> (absolute ref, not a local index).
-    expect(resolved).toBe(`@${featureId}${entityId}`)
+    // Cross-feature -> @<featureId>/<entityId> (absolute ref, not a local index).
+    expect(resolved).toBe(`@${featureId}/${entityId}`)
     expect(resolved.startsWith('@')).toBe(true)
   })
 
@@ -96,7 +96,7 @@ describe('test_click_sketch_entity_resolves_via_ancestry_after_reorder', () => {
 
     // After reorder, featureId is still 'Sketch1'.
     const resolved = parseTarget(vertId, 'Extrude1')
-    expect(resolved).toBe(`@${featureId}${entityId}${sub}`)
+    expect(resolved).toBe(`@${featureId}/${entityId}/${sub}`)
     expect(resolved.startsWith('@')).toBe(true)
   })
 

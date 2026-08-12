@@ -25,13 +25,15 @@ describe('parseQuery round-trips via emitWire', () => {
 
 describe('emitWire handles all query shapes', () => {
   it('local',    () => expect(emitWire({ kind: 'local', eid: 'e1', sub: 'start' })).toBe('$e1start'))
-  it('absolute', () => expect(emitWire({ kind: 'absolute', featureId: 'sk1', eid: 'l1', sub: 'end' })).toBe('@sk1l1end'))
+  // The kernel's slash-joined absolute (canonical) separates featureId, eid
+  // and sub with "/" instead of concatenating them.
+  it('absolute', () => expect(emitWire({ kind: 'absolute', featureId: 'sk1', eid: 'l1', sub: 'end' })).toBe('@sk1/l1/end'))
   it('ancestry with string ids', () => {
     const anc = {
       kind: 'ancestry' as const,
-      ids: ['@sk1l1', '@sk1arc1'],
-      typeRestriction: 'flatface' as string | undefined,
-      classifier: undefined as string | undefined,
+      ancestorIds: ['@sk1l1', '@sk1arc1'],
+      typeRestriction: 'flatface' as string | null,
+      classifier: undefined as string | null | undefined,
     }
     expect(emitWire(anc)).toContain('@sk1l1')
     expect(emitWire(anc)).toContain('@sk1arc1')

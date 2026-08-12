@@ -799,7 +799,8 @@ describe('applyAddEntityWithConstraint', () => {
     const newEntity = doc.features![0].entities![0]
     const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
     expect(newConstraint.a).toBe(`$${newEntity.id}start`)
-    expect(newConstraint.b).toBe('@Sketch2line1start')
+    // Absolute cross-feature refs are slash-joined (canonical kernel format).
+    expect(newConstraint.b).toBe('@Sketch2/line1/start')
   })
 })
 

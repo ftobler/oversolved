@@ -95,9 +95,11 @@ describe('selectionToQuery', () => {
   describe('parity with old parseTarget (via emitWire)', () => {
     const cases: Array<[string, string, string]> = [
       ['entity:sketch1:line1',       'sketch1', '$line1'],
-      ['entity:sketch2:line1',       'sketch1', '@sketch2line1'],
+      // Absolute cross-feature refs are slash-joined (the canonical kernel
+      // format); the pre-single-source encoder concatenated `@feat+eid`.
+      ['entity:sketch2:line1',       'sketch1', '@sketch2/line1'],
       ['vertex:sketch1:line1:start', 'sketch1', '$line1start'],
-      ['vertex:sketch2:arc1:center', 'sketch1', '@sketch2arc1center'],
+      ['vertex:sketch2:arc1:center', 'sketch1', '@sketch2/arc1/center'],
       ['@builtin_plane_front',       'sketch1', '@builtin_plane_front'],
     ]
     cases.forEach(([raw, host, expected]) => {
@@ -114,14 +116,14 @@ describe('emitAbsoluteSelectionQuery', () => {
     expect(emitAbsoluteSelectionQuery('face:ex1:?9;@ex1face0:face')).toBe('?9;@ex1face0:face')
   })
   it('entity always absolute (cross-feature)', () => {
-    expect(emitAbsoluteSelectionQuery('entity:S1:L1')).toBe('@S1L1')
+    expect(emitAbsoluteSelectionQuery('entity:S1:L1')).toBe('@S1/L1')
   })
   it('entity always absolute even if host would match', () => {
     // Host concept is absent -- must never emit $ form.
-    expect(emitAbsoluteSelectionQuery('entity:sk1:L1')).toBe('@sk1L1')
+    expect(emitAbsoluteSelectionQuery('entity:sk1:L1')).toBe('@sk1/L1')
   })
   it('vertex always absolute with sub', () => {
-    expect(emitAbsoluteSelectionQuery('vertex:S1:L1:start')).toBe('@S1L1start')
+    expect(emitAbsoluteSelectionQuery('vertex:S1:L1:start')).toBe('@S1/L1/start')
   })
   it('plane @ ref pass through', () => {
     expect(emitAbsoluteSelectionQuery('@builtin_plane_front')).toBe('@builtin_plane_front')
@@ -139,10 +141,12 @@ describe('emitAbsoluteSelectionQuery', () => {
   describe('byte parity with old PlaneEditor inline code', () => {
     const cases: Array<[string, string]> = [
       ['face:ex1:?9;@ex1face0:face', '?9;@ex1face0:face'],
-      ['vertex:S1:L1:start', '@S1L1start'],
-      ['vertex:sketch2:arc1:center', '@sketch2arc1center'],
-      ['entity:S1:L1', '@S1L1'],
-      ['entity:sketch2:A1', '@sketch2A1'],
+      // Absolute cross-feature refs are slash-joined (canonical kernel format),
+      // replacing the old concatenated `@feat+eid+sub` bytes.
+      ['vertex:S1:L1:start', '@S1/L1/start'],
+      ['vertex:sketch2:arc1:center', '@sketch2/arc1/center'],
+      ['entity:S1:L1', '@S1/L1'],
+      ['entity:sketch2:A1', '@sketch2/A1'],
       ['@builtin_plane_front', '@builtin_plane_front'],
       ['edge:ex1:?9;@ex1edge0:edge', 'edge:ex1:?9;@ex1edge0:edge'],
       ['body:body_ex1', 'body:body_ex1'],

@@ -122,8 +122,11 @@ describe("parse/emit round-trips", () => {
   it("local with subpoint", () => {
     expect(parseQuery("$e3start")).toEqual(local("e3", "start"))
     expect(parseQuery("$e3")).toEqual(local("e3"))
-    // alpha char before suffix means it is part of the eid, not a subpoint
-    expect(parseQuery("$mystart")).toEqual(local("mystart"))
+    // The wider VERTEX_POINT_KEYS suffix set (shared with utils/query) splits
+    // `$mystart` into eid "my" + sub "start". The old isAlpha guard swallowed
+    // real persisted sub-suffixes like `$pwfYD59xKWiSyQhmcenter`; the kernel now
+    // adopts the utils set so the two serializers parse byte-identically.
+    expect(parseQuery("$mystart")).toEqual(local("my", "start"))
     expect(emitWire(local("e3", "start"))).toBe("$e3start")
   })
 
