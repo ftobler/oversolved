@@ -10,6 +10,7 @@ import {
   clearBodyAncestry,
   emitWire,
   absolute,
+  canonical,
   ref,
   setCurrentFeatureId,
 } from './query'
@@ -601,6 +602,8 @@ function _registerBrepVertexAncestry(
 // entry ends up holding N solid elements. Deliberate: an ambiguous entry makes
 // a `:solid`-restricted query fail loud, no production code issues that
 // restriction, and body-scoping the key is the change to make when one does.
+// `_reconcileFeatureSolids` keeps the count equal to the live body store after
+// every re-solve, so N is the number of bodies the feature owns right now.
 function _registerSolidAncestry(globalRepo: Repository, body: Body): void {
   if (!body.created_by) return
   globalRepo.registerAncestor([ref(body.created_by)], {
@@ -617,6 +620,52 @@ function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sk
     feature_id: featureId,
     sketch_id: sketchId,
   })
+}
+
+function isDict(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+// Drop only the `solid`/`extrusion-feature` elements under `[@fid]`, keeping every
+// other payload postRegister put there (e.g. the `sketch-feature` element). The wipe
+// in `clearFeatureGeometryRegistrations` is deliberately left wholesale (option b):
+// this evict plus the re-register below is what restores the solids a re-solve took
+// out, and it is what stops the checkpoint pass from stacking a duplicate per body.
+function _evictFeatureSolidAncestry(globalRepo: Repository, fid: string): void {
+  const key = canonical([ref(fid)])
+  const entry = globalRepo.ancestral.get(key)
+  if (!entry) return
+  const surviving: string[] = []
+  for (const eid of entry.eids) {
+    const payload = globalRepo.elements.get(eid)
+    const type = isDict(payload) ? payload.type : null
+    if (type === 'solid' || type === 'extrusion-feature') globalRepo.deleteElement(eid)
+    else surviving.push(eid)
+  }
+  if (surviving.length) entry.eids = surviving
+  else globalRepo.deleteAncestral(key)
+  globalRepo.prunePendingUuids()
+}
+
+// Make the `[@fid]` solid/extrusion entries match the current bodyStore: every body
+// the feature owns (`created_by === fid`) contributes exactly one `solid` and one
+// `extrusion-feature` element. `registerAncestor` accumulates (query.ts), so the
+// reconcile evicts the previous solid/extrusion elements first and re-registers --
+// that is what makes it idempotent instead of stacking a duplicate per rebuild.
+// Runs after the body loop (which re-registers solids only for bodies it just
+// created), so a feature re-solved with a cosmetic edit keeps its solids for bodies
+// the loop left alone.
+function _reconcileFeatureSolids(
+  globalRepo: Repository,
+  fid: string,
+  bodyStore: Record<string, Body>,
+): void {
+  _evictFeatureSolidAncestry(globalRepo, fid)
+  for (const body of Object.values(bodyStore)) {
+    if (body.created_by !== fid) continue
+    _registerSolidAncestry(globalRepo, body)
+    _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
+  }
 }
 
 /**
@@ -753,17 +802,21 @@ function _snapshotWithBrepGeometry(
   needing?: ReadonlySet<string>,
 ): Record<string, unknown> {
   const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
+  const ownedFids = new Set<string>()
   for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
     // Skip what the feature loop already registered into the very snapshot being
     // rehydrated here: `needing` is empty for a body whose version has not moved since
     // the loop registered it, and its ancestry is therefore already in the snapshot.
     if (needing && !needing.has(bodyId)) continue
     registerBodyBrepFromMeta(repo, body, bodiesOut[bodyId] ?? {}, deps)
-    if (body.created_by) {
-      _registerSolidAncestry(repo, body)
-      _registerExtrusionFeature(repo, body.created_by, body.sketch_id)
-    }
+    if (body.created_by) ownedFids.add(body.created_by)
   }
+  // Reconcile solids per owning feature exactly like the solve loop: the bodies above
+  // can include one the loop could NOT register (needing), whose solid the per-body
+  // append would otherwise stack onto the solid the loop already wrote --
+  // `registerAncestor` accumulates, so `[@fid]` would end up with two identical
+  // solids. Evict-then-register keeps the checkpoint matching the body store.
+  for (const fid of ownedFids) _reconcileFeatureSolids(repo, fid, checkpoint.body_store_snapshot)
   // One serializer, so the "derived indices never reach the persisted shape"
   // guard on snapshotRepo covers this path too.
   return { version: 2, ...snapshotRepo(repo) }
@@ -1071,6 +1124,12 @@ export function build(
         }
       }
     }
+
+    // postRegister wiped this feature's `[@fid]` entries wholesale, and the body loop
+    // only re-registered solids for bodies it just created. Reconcile so the entry
+    // matches the body store for every body the feature owns, or a cosmetic re-solve
+    // leaves `?@fid:solid` unresolvable into every later checkpoint.
+    _reconcileFeatureSolids(globalRepo, fid, bodyStore)
 
     const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
     newCheckpoints[fid] = {
