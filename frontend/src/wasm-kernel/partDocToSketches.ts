@@ -68,13 +68,20 @@ function resolveLocal(
     if (q === '@builtin_origin') return { external_xy: [...originLocal] }
     if (!q.startsWith('$')) return null
     const local = q.slice(1)
+    // The full string names a real entity when it is in the set: a minted
+    // base64url id can itself end in a vertex-key word, so a bare ref to it
+    // must resolve as the WHOLE id, not as a shorter id + a phantom vertex key
+    // (wire-format-hardening). Only when the full string is NOT a known entity
+    // do we split a known suffix -- the `$pwfYD59xKWiSyQhmcenter` sub-point
+    // case, whose residual is the known entity. Same full-id-first tie-break as
+    // resolveQueryRef in geometryMapping.ts.
+    if (entityIds.has(local)) return { entity: local }
     for (const pt of VERTEX_POINT_KEYS) {
       if (local.length > pt.length && local.endsWith(pt)) {
         const eid = local.slice(0, -pt.length)
         if (entityIds.has(eid)) return { entity: eid, point: pt }
       }
     }
-    if (entityIds.has(local)) return { entity: local }
   }
   return null
 }

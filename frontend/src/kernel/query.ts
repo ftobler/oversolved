@@ -33,6 +33,16 @@ type QueryType = Query
 
 export class AmbiguousQueryError extends Error {}
 
+/** Surface a wire-format ambiguity in dev/test only. Minted base64url entity
+ *  ids routinely end in a vertex-key word (a bare id ending in "xy" or "start"
+ *  is a real, frequently-minted shape), and the kernel parser cannot see the
+ *  entity-id set, so a loud failure here would break production writes. The
+ *  knownIds readers (resolveLocal / resolveQueryRef) are the resolver for these
+ *  strings; emitWire just warns so the ambiguity is never silently hidden. */
+const warnWireAmbiguity = import.meta.env?.DEV || import.meta.env?.MODE === "test"
+  ? (...args: unknown[]) => console.warn(...args)
+  : () => undefined
+
 export function local(eid: string, sub = ""): LocalQuery {
   return { kind: "local", eid, sub }
 }
@@ -48,11 +58,44 @@ export function ancestry(
   return { kind: "ancestry", ancestorIds: wireIds, typeRestriction, classifier }
 }
 
+/** Pure-word suffixes: a local ending in one of these is a sub-point reference
+ *  even when the residual is not a minted id shape, because a real entity id
+ *  ending in a plain English word is contrived while these refs are the common
+ *  case. The digit-bearing suffixes (c1/c2/major1/...) need the residual to be
+ *  a plausible id instead -- "arc1" must stay a bare local (residual "ar"). */
+const ALPHA_SUFFIXES = new Set(["start", "end", "center", "xy"])
+
+/** Legacy sketch entity ids (e3, line1, ell1, a1): lowercase letters and/or
+ *  digits, with at least one digit so a leftover word ("ar", "my") is never
+ *  taken for an id. Base64url ids (uppercase / `-` / `_`) are deliberately
+ *  excluded: the app mints those constantly, and a long mixed-case token ending
+ *  in a digit-bearing suffix must stay a bare local ("...Huc2" is a real id,
+ *  not eid "...Hu" sub "c2"). */
+function isPlausibleEntityId(s: string): boolean {
+  if (s.length === 0) return false
+  if (!/^[a-z0-9]+$/.test(s)) return false
+  return /[0-9]/.test(s)
+}
+
 function localFromString(s: string): LocalQuery {
   const body = s.slice(1)
+  // Canonical local-parse rule (wire-format-hardening): a suffix word splits
+  // only when the split is unambiguous. A suffix is split when it is a pure
+  // English word (start/end/center/xy), OR it is digit-bearing and the residual
+  // is a plausible legacy id (lowercase alnum with a digit). "$a1xy" reads eid
+  // "a1" sub "xy" (pure word); "$arc1" reads eid "arc1" (residual "ar" is not
+  // an id); a base64url id ending in "c2" reads as one id. This parser is
+  // context-free and cannot see the entity-id set, so a bare id that lands on
+  // the split side (e.g. a minted id ending in "xy") is read as eid+sub here;
+  // the knownIds consumers (resolveLocal / resolveQueryRef) disambiguate those
+  // strings by full entity-id membership. emitWire warns in dev/test when its
+  // output re-parses differently rather than throwing.
   for (const pt of VERTEX_POINT_KEYS) {
-    if (body.length > pt.length && body.endsWith(pt))
-      return { kind: "local", eid: body.slice(0, -pt.length), sub: pt }
+    if (body.length > pt.length && body.endsWith(pt)) {
+      const residual = body.slice(0, -pt.length)
+      if (ALPHA_SUFFIXES.has(pt) || isPlausibleEntityId(residual))
+        return { kind: "local", eid: residual, sub: pt }
+    }
   }
   return { kind: "local", eid: body, sub: "" }
 }
@@ -74,14 +117,40 @@ export function parseQuery(s: string): QueryType {
 /** Serialize a typed query to its wire-format string. */
 export function emitWire(q: QueryType): string {
   switch (q.kind) {
-    case "local":
-      return "$" + q.eid + (q.sub ?? "")
+    case "local": {
+      const wire = "$" + q.eid + (q.sub ?? "")
+      // The `$eid[sub]` grammar is inherently ambiguous between {eid, sub} and
+      // a longer eid: minted base64url ids end in pure-word suffixes routinely,
+      // while `$pwfYD59xKWiSyQhmcenter` is a real persisted sub-point. The
+      // kernel parser picks one deterministic reading (see localFromString); the
+      // knownIds consumers (resolveLocal / resolveQueryRef) are the resolver
+      // and disambiguate by full entity-id membership. When the two readings
+      // diverge we surface it in dev/test only -- never a prod throw, since a
+      // minted id can land on either side.
+      const reparsed = localFromString(wire)
+      if (reparsed.eid !== q.eid || reparsed.sub !== (q.sub ?? "")) {
+        warnWireAmbiguity(
+          `local query ${JSON.stringify(wire)} is ambiguous on the wire: the kernel ` +
+            `reads it as eid ${JSON.stringify(reparsed.eid)} sub ${JSON.stringify(reparsed.sub)}; ` +
+            `the knownIds readers resolve it by full entity-id membership`,
+        )
+      }
+      return wire
+    }
     case "absolute":
       if (q.eid) return "@" + q.featureId + "/" + q.eid + (q.sub ? "/" + q.sub : "")
       return "@" + q.featureId
     case "ancestry": {
-      const lengths = q.ancestorIds.map(i => i.length.toString(16)).join(",")
+      // An empty id is un-frameable: "?0;" reads back as zero ids, so emitting
+      // one would silently lose it.
+      if (q.ancestorIds.some(id => id.length === 0)) {
+        throw new Error(`ancestry query cannot frame an empty id: ${JSON.stringify(q.ancestorIds)}`)
+      }
+      // An empty id list is framed as "?0;" (the parseable canonical form;
+      // "?;" has an empty length header that parseAncestry rejects).
+      const lengths = q.ancestorIds.length ? q.ancestorIds.map(i => i.length.toString(16)).join(",") : "0"
       let body = "?" + lengths + ";" + q.ancestorIds.join("")
+      // An empty type restriction is null on the wire: never emit a trailing ":".
       if (q.typeRestriction) body += ":" + q.typeRestriction
       if (q.classifier) body += "@" + q.classifier
       return body
@@ -92,12 +161,16 @@ export function emitWire(q: QueryType): string {
 function parseAbsolute(s: string): AbsoluteQuery {
   const body = s.slice(1)
   const parts = body.split("/")
+  // Strict: emitWire can only produce 1-3 non-empty slash parts (the legacy
+  // concatenated `@feat+eid` reads back as the single-part featureId = whole
+  // tail). An empty part or a 4+ part key is a shape the typed path cannot
+  // construct, so it is rejected loudly instead of silently canonicalized.
+  if (parts.length > 3 || parts.some(p => p.length === 0)) {
+    throw new Error(`Unrecognized absolute query format: ${JSON.stringify(s)}`)
+  }
   if (parts.length === 1) return { kind: "absolute", featureId: parts[0], eid: "", sub: "" }
   if (parts.length === 2) return { kind: "absolute", featureId: parts[0], eid: parts[1], sub: "" }
-  if (parts.length === 3) {
-    return { kind: "absolute", featureId: parts[0], eid: parts[1], sub: parts[2] }
-  }
-  throw new Error(`Unrecognized absolute query format: ${JSON.stringify(s)}`)
+  return { kind: "absolute", featureId: parts[0], eid: parts[1], sub: parts[2] }
 }
 
 function parseAncestryObj(s: string): AncestryQuery {
@@ -147,9 +220,22 @@ export function parseAncestry(queryStr: string): [string[], string | null, strin
   })
 
   const ids: string[] = []
+  // The canonical empty form: a single "0" length field frames zero ids (what
+  // makeAncestryQuery([]) emits). A zero in any other position is a real
+  // zero-length segment and is rejected in the loop below.
+  if (lengths.length === 1 && lengths[0] === 0) {
+    const [typeRestriction, classifier] = parseAncestryTail(rest, queryStr)
+    return [ids, typeRestriction, classifier]
+  }
+
   let pos = 0
   for (let i = 0; i < lengths.length; i++) {
     const length = lengths[i]
+    if (length === 0) {
+      throw new Error(
+        `zero-length segment at index ${i} in ancestry query ${JSON.stringify(queryStr)}`,
+      )
+    }
     if (pos + length > rest.length) {
       throw new Error(
         `ancestry string truncated at position ${pos}: segment ${i} needs ${length} bytes ` +
@@ -163,20 +249,32 @@ export function parseAncestry(queryStr: string): [string[], string | null, strin
   let typeRestriction: string | null = null
   let classifier: string | null = null
   if (pos < rest.length) {
-    const tail = rest.slice(pos)
-    if (tail.startsWith(":")) {
-      const at = tail.indexOf("@", 1)
-      if (at >= 0) {
-        typeRestriction = tail.slice(1, at) || null
-        classifier = tail.slice(at + 1) || null
-      } else {
-        typeRestriction = tail.slice(1) || null
-      }
-    } else if (tail.startsWith("@")) {
-      classifier = tail.slice(1) || null
-    }
+    const [t, c] = parseAncestryTail(rest.slice(pos), queryStr)
+    typeRestriction = t
+    classifier = c
   }
   return [ids, typeRestriction, classifier]
+}
+
+/** Parse the `[:type][@cls]` tail after the framed ids. Anything else throws so
+ *  malformed framing fails loud instead of silently dropping bytes ("?3;abcdef"
+ *  used to swallow the "def"). An empty ":type" is null (the same as no
+ *  restriction), which is how "?2;@a:" reads back. */
+function parseAncestryTail(tail: string, queryStr: string): [string | null, string | null] {
+  if (tail.length === 0) return [null, null]
+  if (tail.startsWith(":")) {
+    const at = tail.indexOf("@", 1)
+    if (at >= 0) {
+      return [tail.slice(1, at) || null, tail.slice(at + 1) || null]
+    }
+    return [tail.slice(1) || null, null]
+  }
+  if (tail.startsWith("@")) {
+    return [null, tail.slice(1) || null]
+  }
+  throw new Error(
+    `unconsumed trailing data in ancestry query ${JSON.stringify(queryStr)}: ${JSON.stringify(tail)}`,
+  )
 }
 
 /** Build an ancestry query string from a list of id strings. */
@@ -185,10 +283,18 @@ export function makeAncestryQuery(
   typeRestriction: string | null = null,
   classifier: string | null = null,
 ): string {
-  const lengths = ids.map(i => i.length.toString(16)).join(",")
+  // An empty id is un-frameable: "?0;" reads back as zero ids, so emitting one
+  // would silently lose it.
+  if (ids.some(i => i.length === 0)) {
+    throw new Error(`ancestry query cannot frame an empty id: ${JSON.stringify(ids)}`)
+  }
+  // An empty id list is framed as "?0;" (the parseable canonical form; "?;"
+  // has an empty length header that parseAncestry rejects).
+  const lengths = ids.length ? ids.map(i => i.length.toString(16)).join(",") : "0"
   let s = "?" + lengths + ";" + ids.join("")
-  if (typeRestriction !== null && typeRestriction !== undefined) s += ":" + typeRestriction
-  if (classifier !== null && classifier !== undefined) s += "@" + classifier
+  // An empty type restriction is null on the wire: never emit a trailing ":".
+  if (typeRestriction) s += ":" + typeRestriction
+  if (classifier) s += "@" + classifier
   return s
 }
 
@@ -598,7 +704,13 @@ export class Repository {
       return this.elements.get(localKeyFor(context, localFromString(queryStr))) ?? null
     }
     if (start === "@") {
-      return this.elements.get(queryStr.slice(1)) ?? null
+      // Strict: route through parseAbsolute so the string and typed paths agree
+      // on shape (a 4+ part or empty-part key is rejected loudly instead of a
+      // lenient slice(1) lookup). The key is built exactly like queryTyped's
+      // absolute case.
+      const abs = parseAbsolute(queryStr)
+      const key = abs.eid ? abs.featureId + "/" + abs.eid + (abs.sub ? "/" + abs.sub : "") : abs.featureId
+      return this.elements.get(key) ?? null
     }
     if (start === "?") {
       const [ids, typeRestriction] = parseAncestry(queryStr)

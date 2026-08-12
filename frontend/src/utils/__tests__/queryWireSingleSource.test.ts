@@ -4,7 +4,7 @@
 // apart; utils/query now re-exports the kernel's emitWire/parseQuery. This test
 // pins that the two module surfaces agree on a representative corpus (every
 // kind x sub-suffix x classifier combo) so they cannot diverge again.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { emitWire as utilsEmit, parseQuery as utilsParse } from '@/utils/query'
 import { emitWire as kernelEmit, parseQuery as kernelParse } from '@/kernel/query'
 import type { Query } from '@/types/query'
@@ -27,6 +27,17 @@ const CORPUS: Query[] = [
   { kind: 'ancestry', ancestorIds: ['@a', '@b'], typeRestriction: 'flatface', classifier: 'inner' },
   // length-framed ids must survive a non-trivial byte length
   { kind: 'ancestry', ancestorIds: ['@sketch1line1', '@sketch1arc1'], typeRestriction: 'flatface' },
+  // wire-format-hardening: the ...1xy sub-point (eid ending in a suffix word
+  // is expressible as a SUB; a bare id on the split side emits verbatim and the
+  // knownIds readers resolve it, so it never throws)
+  { kind: 'local', eid: 'a1', sub: 'xy' },
+  // minted base64url bare id ending in a pure-word suffix: deterministic kernel
+  // reading is eid+sub, contextual readers resolve the whole id
+  { kind: 'local', eid: 'k-g9YNviFC85Z-7K', sub: 'xy' },
+  // empty id list: "?0;" is the parseable canonical empty form
+  { kind: 'ancestry', ancestorIds: [], typeRestriction: null },
+  // empty type restriction is null on the wire: no trailing ':'
+  { kind: 'ancestry', ancestorIds: ['@a'], typeRestriction: '' },
 ]
 
 const WIRE: string[] = [
@@ -38,6 +49,10 @@ const WIRE: string[] = [
   '?2,2;@a@b@inner',
   '?2,2;@a@b:flatface@inner',
   '?d,c;@sketch1line1@sketch1arc1:flatface',
+  '$a1xy',
+  '$k-g9YNviFC85Z-7Kxy',
+  '?0;',
+  '?2;@a',
 ]
 
 describe('kernel/query and utils/query emit byte-identical wire', () => {
@@ -109,5 +124,43 @@ describe('legacy concatenated absolute (old utils encoder)', () => {
     expect(kernel).toEqual(utils)
     expect(utilsEmit(utils)).toBe(legacy)
     expect(kernelEmit(kernel)).toBe(legacy)
+  })
+})
+
+// ─── wire-format-hardening: strict edges stay byte-equal across both surfaces ───
+
+describe('hardened grammar stays byte-equal across both surfaces', () => {
+  it('accepts "?2;@a:" and both surfaces canonicalize it to "?2;@a"', () => {
+    expect(utilsEmit(utilsParse('?2;@a:'))).toBe('?2;@a')
+    expect(kernelEmit(kernelParse('?2;@a:'))).toBe('?2;@a')
+  })
+
+  it('rejects zero-length segments, trailing garbage and >3-part absolute identically', () => {
+    for (const bad of ['?0;abc', '?0,2;@a', '?3;abcdef', '@a/b/c/d', '@a//c', '@a/b/']) {
+      let utilsThrew = false
+      let kernelThrew = false
+      try { utilsParse(bad) } catch { utilsThrew = true }
+      try { kernelParse(bad) } catch { kernelThrew = true }
+      expect(utilsThrew).toBe(true)
+      expect(kernelThrew).toBe(true)
+    }
+  })
+
+  it('the ...1xy parse decision is identical: sub-point in both, bare id emits verbatim in both', () => {
+    expect(utilsParse('$a1xy')).toEqual({ kind: 'local', eid: 'a1', sub: 'xy' })
+    expect(kernelParse('$a1xy')).toEqual(utilsParse('$a1xy'))
+    expect(utilsParse('$arc1')).toEqual({ kind: 'local', eid: 'arc1', sub: '' })
+    expect(kernelParse('$arc1')).toEqual(utilsParse('$arc1'))
+    // A bare id on the split side never throws (minted ids can land there);
+    // it emits verbatim and the knownIds readers resolve it by full-id
+    // membership. The deterministic kernel reading is the eid+sub split. The
+    // dev/test warn is expected here, so spy it out to keep the output clean.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      expect(utilsEmit({ kind: 'local', eid: 'a1xy' })).toBe('$a1xy')
+      expect(kernelEmit({ kind: 'local', eid: 'a1xy' })).toBe('$a1xy')
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

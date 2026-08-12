@@ -7,6 +7,7 @@ import {
   ancestry,
   makeAncestryQuery,
 } from "./query"
+import { VERTEX_POINT_KEYS } from "@/types/vertexKeys"
 
 /**
  * Unit tests for the typed query classes introduced in query.ts. Tests are pure TypeScript --
@@ -25,7 +26,11 @@ describe("LocalQuery parse subpoints", () => {
 })
 
 describe("LocalQuery roundtrip all subpoints", () => {
-  for (const sub of ["", "start", "end", "center", "xy"]) {
+  // Every VERTEX_POINT_KEYS suffix (the single source the kernel parser uses),
+  // not just the legacy five. A sub-point with a plausible residual eid always
+  // round-trips; a bare eid ending in a suffix word lands on the split side and
+  // is pinned to emit verbatim with a dev/test warn in queryWireHardening.test.ts.
+  for (const sub of ["", ...VERTEX_POINT_KEYS]) {
     it(`roundtrips sub=${JSON.stringify(sub)}`, () => {
       const q = local("e1", sub)
       expect(parseQuery(emitWire(q))).toEqual(q)

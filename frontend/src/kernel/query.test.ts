@@ -146,8 +146,12 @@ describe("parse/emit round-trips", () => {
     expect(emitWire(ancestry(["@feat_a", "edge:0", "@body_x"], "edge"))).toBe(wire)
   })
 
-  it("makeAncestryQuery keeps empty type restriction; emitWire drops it", () => {
-    expect(makeAncestryQuery(["@a"], "")).toBe("?2;@a:")
+  // wire-format-hardening: an empty restriction IS null on the wire, so the
+  // trailing ":" is never emitted. makeAncestryQuery and emitWire now agree
+  // ("?2;@a:" was the old makeAncestryQuery-only asymmetry, pinned below in
+  // queryWireHardening.test.ts as an accepted-but-canonicalized form).
+  it("empty type restriction is null on the wire (no trailing ':')", () => {
+    expect(makeAncestryQuery(["@a"], "")).toBe("?2;@a")
     expect(emitWire(ancestry(["@a"], ""))).toBe("?2;@a")
   })
 
@@ -1769,10 +1773,11 @@ describe("makeAncestryQuery construction details", () => {
 })
 
 describe("parseAncestry edge cases", () => {
-  it("ignores extra characters beyond parsed length", () => {
-    const [ids, typ] = parseAncestry("?3;abcdef")
-    expect(ids).toEqual(["abc"])
-    expect(typ).toBeNull()
+  // wire-format-hardening: unconsumed trailing data that is not a ":type" /
+  // "@cls" suffix used to be dropped silently; it now fails loud (pinned in
+  // queryWireHardening.test.ts). The old lenient behavior hid typos.
+  it("rejects unconsumed trailing data beyond the parsed length", () => {
+    expect(() => parseAncestry("?3;abcdef")).toThrow()
   })
 })
 

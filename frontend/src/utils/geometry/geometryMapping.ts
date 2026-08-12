@@ -117,18 +117,23 @@ export function unflattenGeometry(
 }
 
 /** Resolve a query string (e.g. "$line1" or "$arc1start") to an {entity, point?} ref.
- *  Tries known sub-element suffixes first, then falls back to a bare entity lookup. */
+ *  A bare entity lookup wins over a suffix split: a minted base64url id can
+ *  itself end in a vertex-key word, so a ref whose FULL string is a known
+ *  entity resolves as that whole id (wire-format-hardening). The split reading
+ *  (eid + point) applies only when the full string is not an entity, e.g. the
+ *  `$pwfYD59xKWiSyQhmcenter` sub-point whose residual is the known id. Same
+ *  full-id-first tie-break as resolveLocal in partDocToSketches.ts. */
 function resolveQueryRef(q: string | undefined, sketch: Sketch): { entity: string; point?: string } | null {
   if (!q) return null
   if (!q.startsWith('$')) return null
   const local = q.slice(1)
+  if (sketch[local]) return { entity: local }
   for (const pt of VERTEX_POINT_KEYS) {
     if (local.length > pt.length && local.endsWith(pt)) {
       const eid = local.slice(0, -pt.length)
       if (sketch[eid]) return { entity: eid, point: pt }
     }
   }
-  if (sketch[local]) return { entity: local }
   return null
 }
 

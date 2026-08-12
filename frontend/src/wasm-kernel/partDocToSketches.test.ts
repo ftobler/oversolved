@@ -34,6 +34,36 @@ describe('partDocToSketches', () => {
     expect(c[2]).toMatchObject({ kind: 'length', target: { entity: 'bottom' }, value: 10 })
   })
 
+  it('disambiguates a minted base64url id ending in a vertex-key word by full-id membership', () => {
+    // wire-format-hardening (B1): a minted bare id can itself end in a
+    // pure-word suffix. A ref whose FULL string names a known entity resolves
+    // as that whole id; a ref whose residual alone names a known entity (the
+    // `$pwfYD59xKWiSyQhmcenter` sub-point shape) resolves as eid + point.
+    const b64 = 'k-g9YNviFC85Z-7Kxy'
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: b64, kind: 'line' }, { id: 'pwfYD59xKWiSyQhm', kind: 'line' }],
+        initial: { [b64]: [0, 0, 10, 0], pwfYD59xKWiSyQhm: [10, 0, 10, 10] },
+        constraints: [
+          { id: 'c_bare', kind: 'horizontal', target: `$${b64}` },
+          { id: 'c_sub', kind: 'coincident', a: '$pwfYD59xKWiSyQhmcenter', b: '@builtin_origin' },
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    const cs = sketches[0].sketch.constraints
+    expect(cs).toHaveLength(2)
+    expect(cs[0]).toMatchObject({ kind: 'horizontal', target: { entity: b64 } })
+    expect(cs[1]).toMatchObject({
+      kind: 'coincident',
+      a: { entity: 'pwfYD59xKWiSyQhm', point: 'center' },
+    })
+  })
+
   it('drops constraints whose refs do not resolve locally (mirrors historical behavior)', () => {
     const features: PartFeature[] = [
       {
