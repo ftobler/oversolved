@@ -20,7 +20,13 @@ import { loadOcc } from './loadOcc'
 import { unportedKinds } from '../solverRegistry'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
-import { solveWithTimeout } from '../solveTimeout'
+import {
+  solveWithTimeout,
+  setSolveChildForTest,
+  resetSolveChildForTest,
+  type SolveChildLike,
+} from '../solveTimeout'
+import type { BuildResponse } from '../builder'
 import { buildBaselineBody } from '@/wasm-kernel/parityBaseline'
 import baseline from '@/wasm-kernel/regression-baseline.json'
 
@@ -255,7 +261,58 @@ function enrichBodyHashes(
   return { ...buildBaselineBody(bid, body), ...body }
 }
 
+// ─── Null-solve guard ───
+
+// The forked child returns null when OCC.js fails to load inside the worker or
+// the child OOMs. In this gate that is a real failure, never a skip: without
+// this guard a broken worker would turn every parity entry into a pass.
+function assertSolveResponse(
+  tsResponse: BuildResponse | null,
+  label: string,
+): asserts tsResponse is BuildResponse {
+  if (!tsResponse) {
+    throw new Error(
+      `[parity] ${label}: solve produced no response ` +
+        `(worker-side OCC.js load failure or forked-child OOM?)`,
+    )
+  }
+}
+
+// Test-only fake child that answers every solve request with ok + null, i.e.
+// exactly the "OCC.js unavailable" branch of the runner.
+class NullSolveChild {
+  private listeners = new Map<string, ((...args: unknown[]) => void)[]>()
+  send(msg: Record<string, unknown>): void {
+    const id = (msg as { id: number }).id
+    this.listeners.get('message')?.forEach((cb) => cb({ id, ok: true, result: null }))
+  }
+  on(event: string, cb: (...args: unknown[]) => void): void {
+    const list = this.listeners.get(event) ?? []
+    list.push(cb)
+    this.listeners.set(event, list)
+  }
+  kill(): void {}
+}
+
 // ─── Test suite ───
+
+// The null-solve guard does not need OCC.js (it uses a fake child), so it lives
+// outside the skipIf suite and runs in the default vitest run too.
+describe('parity null-solve guard', () => {
+  it('fails loudly when the solve returns null (worker load failure or child OOM)', async () => {
+    setSolveChildForTest(() => new NullSolveChild() as unknown as SolveChildLike)
+    try {
+      await expect(
+        (async () => {
+          const response = await solveWithTimeout({}, { prevState: null })
+          assertSolveResponse(response, 'null-solve-branch')
+        })(),
+      ).rejects.toThrow(/solve produced no response/)
+    } finally {
+      resetSolveChildForTest()
+    }
+  })
+})
 
 describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs frozen baseline)', () => {
   for (const entry of entries) {
@@ -280,11 +337,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
       }
 
       const tsResponse = await solveWithTimeout(spec, { prevState: null })
-      if (!tsResponse) {
-        // OCC.js unavailable inside the worker.
-        console.warn(`[parity] ${entry.label}: skipped (OCC.js unavailable)`)
-        return
-      }
+      assertSolveResponse(tsResponse, entry.label)
       const tsResult = tsResponse.result as Record<string, unknown>
       const rawBodies = tsResponse.bodies as Record<string, Record<string, unknown>>
       const tsBodies: Record<string, Record<string, unknown>> = {}
