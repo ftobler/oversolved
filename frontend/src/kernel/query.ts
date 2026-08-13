@@ -575,6 +575,43 @@ export class Repository {
     return entry.eids.filter(eid => this.elements.has(eid))
   }
 
+  /** Narrow candidates by the wanted classifier tokens (the bare `cls_*` names
+   *  behind the `@cls_*` wire tokens), scoping the veto to REAL evidence.
+   *  Classifiers are world-frame best-effort and the `@u|` uuid tier is the
+   *  primary identity (see geomHash.ts), so an element with NO classifiers
+   *  carries no evidence and can never contradict the wanted set - it must not
+   *  be vetoed, or persisted pre-uuid edge picks (whose registered payloads
+   *  collapse to [] for OCC-B-rep edges, see the knowledgebase follow-up) would
+   *  regress. Priority:
+   *    1. candidates whose payload carries every wanted token (a positive match
+   *       outranks no-evidence: an empty-payload sibling must not dilute the
+   *       narrowing into a false ambiguity);
+    *    2. else the no-evidence candidates (the only non-contradicted ones), so
+    *       resolution proceeds exactly as it did before this feature, except in
+    *       a MIXED set where a no-evidence sibling resolves (with the full set
+    *       kept pre-feature it threw AmbiguousQueryError) - intended, per the B1
+    *       fix;
+   *    3. else [] - every candidate carried conflicting NON-EMPTY evidence, and
+   *       the caller decides between the veto (miss) and staying ambiguous.
+   *  Shared by the subset and ancestral-partial tiers. */
+  private narrowByClassifier(candidateIds: string[], classifierIds: string[]): string[] {
+    const wanted = new Set(classifierIds.map(c => c.slice(1)))
+    const matching: string[] = []
+    const noEvidence: string[] = []
+    for (const eid of candidateIds) {
+      const el = this.elements.get(eid)
+      const cls = new Set((isDict(el) ? (el["classifiers"] as string[]) : null) ?? [])
+      if (cls.size === 0) {
+        noEvidence.push(eid)
+      } else if (isSubset(wanted, cls)) {
+        matching.push(eid)
+      }
+    }
+    if (matching.length) return matching
+    if (noEvidence.length) return noEvidence
+    return []
+  }
+
   /** Drop an ancestral entry, keeping `byAncestorId` in step. Does not touch the
    *  entry's elements: callers decide whether those die with it. */
   deleteAncestral(key: string): void {
@@ -864,14 +901,24 @@ export class Repository {
       }
     }
 
-    if (candidateIds.length > 1 && classifierIds.length) {
-      const wanted = new Set(classifierIds.map(c => c.slice(1)))
-      const narrowed = candidateIds.filter(eid => {
-        const el = this.elements.get(eid)
-        const cls = new Set((isDict(el) ? (el["classifiers"] as string[]) : null) ?? [])
-        return isSubset(wanted, cls)
-      })
-      if (narrowed.length) candidateIds = narrowed
+    if (classifierIds.length && candidateIds.length) {
+      // Classifier tier: narrow the subset candidates by the wanted @cls_* set.
+      // The veto is scoped to REAL evidence (narrowByClassifier): an empty
+      // payload is no evidence and never vetoes, so a lone edge whose registered
+      // payload collapses to [] (the pre-existing solidToEdges vs
+      // edgeAncestryPayload asymmetry) still resolves as it did before, while a
+      // positive classifier match still outranks no-evidence siblings. A lone
+      // candidate whose NON-EMPTY payload contradicts the wanted set is refused
+      // as a miss - the veto is independent of the descriptor tier, which runs
+      // AFTER and is skipped by this return; several contradictory candidates
+      // stay a loud ambiguity at the final multiplicity check instead of ever
+      // resolving a wrong sibling.
+      const narrowed = this.narrowByClassifier(candidateIds, classifierIds)
+      if (narrowed.length) {
+        candidateIds = narrowed
+      } else if (candidateIds.length === 1) {
+        return null
+      }
     }
 
     if (candidateIds.length > 1 && descriptorIds.length) {
@@ -899,6 +946,12 @@ export class Repository {
         partialCandidates = partialCandidates.filter(
           eid => objType(this.elements.get(eid)) === typeRestriction,
         )
+      }
+      // The partial tier only resolves a single hit; a wanted @cls_* set must
+      // narrow that hit before it is returned, or `?@ex1@extra@cls_zp` could
+      // resolve a lone sibling carrying `cls_zn` labeled "ancestral-partial".
+      if (classifierIds.length && partialCandidates.length) {
+        partialCandidates = this.narrowByClassifier(partialCandidates, classifierIds)
       }
       if (partialCandidates.length === 1) {
         this._lastTier = "ancestral-partial"

@@ -23,6 +23,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { SharedHarness } from '../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from './sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { makeAncestryQuery, constructionUuidToken } from '../query'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
@@ -68,6 +69,13 @@ const STORED_PROFILE_QUERY =
   '@body_' + EX +
   '@' + SK + '/suTKXFLy4QtrjqED' +
   '@cls_xn:flatface'
+
+// The construction @u| uuid the current build mints for the vertical corner
+// edge (the kbNgbTt/uYfJ14s intersection), read off the rebuilt edge query.
+// Deterministic per construction path: it is `deriveEdgeUuid` over the two
+// adjacent faces' construction uuids (kernel/constructionName.ts), so the
+// uuid-tier rescue below is stable across identical rebuilds.
+const CORNER_EDGE_UUID = 'e_f5d40995c2ac6f14'
 
 // Bug-report sketch verbatim: 9 entities + 17 constraints on the Front plane.
 // Initial coordinates are the solver-converged snapshot from the bug report
@@ -195,9 +203,15 @@ describe.skipIf(!oc || !solveBytes)('revolve axis verbatim from bug report corpu
   })
 
   it('resolves the revolve axis front-back direction (no fillet, sanity)', () => {
-    // Sanity variant without the fillet feature: the only Edge-of interest
-    // comes from Extrude's prism-lineage, so the vertical-corner edge token
-    // set should still carry both sketch-line tokens through resolve cleanly.
+    // The stored axis query's @cls_xn@cls_yn tokens are the picker's spatial
+    // hints, but the rebuilt vertical-corner edge's registered payload carries
+    // NO classifiers: `solidToEdges` mints the tokens into the edge query
+    // string while `edgeAncestryPayload` registers [] for OCC-B-rep edges. The
+    // scoped classifier veto (classifier-disambiguation-hardening) treats an
+    // empty payload as NO classifier evidence, never a contradiction, so the
+    // lone candidate still resolves exactly as it did before the veto; only a
+    // non-empty payload lacking the wanted tokens vetoes. The verbatim stored
+    // query therefore resolves the correct Z axis again.
     const result = h.run(bugReportSpec({ noFillet: true }))
     expect(h.res(result, EX).status).toBe('ok')
     const revRes = h.res(result, REV)
@@ -206,5 +220,28 @@ describe.skipIf(!oc || !solveBytes)('revolve axis verbatim from bug report corpu
     expect(handle).toBeDefined()
     if (!handle) return
     expect(Math.abs(handle.direction[2])).toBeLessThan(1e-6)
+
+    // Same axis, now carrying the corner edge's construction @u| uuid: the
+    // uuid tier (the primary identity) resolves it regardless of the @cls
+    // tokens, so the revolve axis is still the front-back (Z) direction (the
+    // world-frame best-effort contract: classifiers are hints, the uuid is the
+    // total order).
+    const uuidAxis = makeAncestryQuery(
+      [
+        constructionUuidToken(CORNER_EDGE_UUID),
+        `@${EX}`, `@body_${EX}`,
+        `@${SK}/kbNgbTt-fnV7itwD`, `@${SK}/uYfJ14s00xFk-vN1`,
+        '@cls_xn', '@cls_yn',
+      ],
+      'straightedge',
+    )
+    const uuidResult = h.run(bugReportSpec({ noFillet: true, axisQuery: uuidAxis }))
+    expect(h.res(uuidResult, EX).status).toBe('ok')
+    const uuidRev = h.res(uuidResult, REV)
+    expect(uuidRev.status).toBe('ok')
+    const uuidHandle = uuidRev.handle as { direction: number[] } | undefined
+    expect(uuidHandle).toBeDefined()
+    if (!uuidHandle) return
+    expect(Math.abs(uuidHandle.direction[2])).toBeLessThan(1e-6)
   })
 })

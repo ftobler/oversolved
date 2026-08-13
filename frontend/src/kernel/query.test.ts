@@ -962,6 +962,162 @@ describe("classifier tier resolution", () => {
   })
 })
 
+/** Classifier veto semantics (classifier-disambiguation-hardening).
+ *
+ * A wanted @cls_* set matching no candidate is a VETO, not a silent pass: the
+ * classifier tier is the only tier that kept the original candidate list when
+ * the narrowing came up empty, so a lone subset candidate carrying
+ * contradictory classifiers resolved wrong geometry and a multi-candidate set
+ * "degraded to ambiguous" only by accident. The descriptor tier and the fillet
+ * re-verify both refuse on mismatch; the classifier tier now does too. */
+describe("classifier veto semantics", () => {
+  it("a single subset candidate carrying contradictory classifiers misses instead of resolving", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("a single subset candidate carrying the wanted classifier still resolves", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual(["cls_zp"])
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("a multi-candidate subset with a stale classifier fails loud as ambiguous, not a silent pass", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
+    )
+    // Neither candidate carries the wanted cls_zp: the classifier cannot
+    // disambiguate, and the two candidates must stay a loud ambiguity, never
+    // silently narrow or resolve one of the wrong faces.
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
+
+  it("an element with no classifier evidence (empty payload) is not vetoed", () => {
+    // `classifiers: []` is NO evidence, not a contradiction: classifiers are
+    // world-frame best-effort and a rotated body's tokens can legitimately
+    // collapse to none, so the lone candidate resolves as it did before the
+    // veto (the pre-existing empty OCC-B-rep edge payload asymmetry, see
+    // knowledgebase). Only a non-empty payload lacking a wanted token vetoes.
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: [] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual([])
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("a positive classifier match outranks a no-evidence sibling", () => {
+    // A no-evidence candidate must not dilute the narrowing into a false
+    // ambiguity: when one sibling carries the wanted cls_zp and another
+    // carries [] (e.g. an edge near the body centre, or the empty OCC-B-rep
+    // edge payload), the classifier resolves the positive match.
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: [] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual(["cls_zp"])
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("a no-evidence sibling resolves over a contradicting sibling instead of a false ambiguity", () => {
+    // A MIXED set: one sibling carries non-empty CONTRADICTING evidence
+    // (cls_zn) and the other carries [] (no evidence). The classifier cannot
+    // disambiguate by a positive match, but the no-evidence sibling is the
+    // only non-contradicted candidate and must resolve, where keeping the
+    // full set pre-feature would have thrown AmbiguousQueryError (the B1 fix).
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: [] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual([])
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("the ancestral-partial tier filters classifiers before its single-hit return", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@A"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    // query_set {@A, @extra} is not a subset of the registered {@A}, so the
+    // exact tier misses; the partial tier sees one candidate carrying cls_zn.
+    // A wanted cls_zp must veto it (miss), not resolve it as ancestral-partial.
+    const wrong = makeAncestryQuery(["@A", "@extra", "@cls_zp"])
+    expect(repo.query(wrong)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+
+    // The matching classifier still resolves through the partial tier.
+    const right = makeAncestryQuery(["@A", "@extra", "@cls_zn"])
+    const result = repo.query(right)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual(["cls_zn"])
+    expect(repo._lastTier).toBe("ancestral-partial")
+  })
+})
+
+/** World-frame best-effort classifier contract (classifier-disambiguation-hardening).
+ *
+ * Classifiers are minted against the world-frame AABB, so a rotated body's
+ * side faces can collapse to empty or contradictory token sets (see
+ * geomHash.test.ts). The construction `@u|` UUID is the PRIMARY tier: a query
+ * naming the uuid resolves the element regardless of what its classifiers look
+ * like, so the collapse only ever weakens the stale-uuid fallback, never the
+ * primary identity. */
+describe("world-frame best-effort classifier contract", () => {
+  it("a rotated body's face resolves via its @u| uuid even when classifiers collapse to empty", () => {
+    const repo = new Repository()
+    // The world-frame AABB of a rotated square prism mints no classifier for
+    // some side faces (the collapse); the uuid tier must still resolve it.
+    const collapsed = { ...makeFacePayload("body1", "ex1", 0), classifiers: [] }
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], collapsed, "u_rot")
+    const q = makeAncestryQuery([constructionUuidToken("u_rot"), "@cls_zp", "@ex1", "@body1"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual([])
+    expect(repo._lastTier).toBe("uuid")
+  })
+})
+
 describe("ambiguous ancestry queries", () => {
   /** Direct test: manually create a scenario where the repository has
    *  multiple elements with overlapping ancestor sets. */

@@ -119,6 +119,94 @@ describe("geometry classifiers match Python", () => {
   }
 })
 
+describe("geometryClassifiers boundary policy", () => {
+  // The threshold `offset === rel*h` is a knife-edge: strict comparisons mint no
+  // token there, so a face sitting exactly on the classifier boundary (e.g. the
+  // 45 deg rotated square prism side faces) used to mint no classifiers at all.
+  // The boundary is inclusive (>= / <=): an offset exactly at rel*h is
+  // deterministically "on that side" and never silently minted as nothing.
+  it("an offset exactly at rel*h mints the + axis token", () => {
+    expect(geometryClassifiers([5, 0, 0], [0, 0, 0], [10, 10, 5])).toEqual(["cls_xp"])
+    expect(geometryClassifiers([0, 5, 0], [0, 0, 0], [10, 10, 5])).toEqual(["cls_yp"])
+    expect(geometryClassifiers([0, 0, 2.5], [0, 0, 0], [10, 10, 5])).toEqual(["cls_zp"])
+  })
+
+  it("an offset exactly at -rel*h mints the - axis token", () => {
+    expect(geometryClassifiers([-5, 0, 0], [0, 0, 0], [10, 10, 5])).toEqual(["cls_xn"])
+    expect(geometryClassifiers([0, -5, 0], [0, 0, 0], [10, 10, 5])).toEqual(["cls_yn"])
+    expect(geometryClassifiers([0, 0, -2.5], [0, 0, 0], [10, 10, 5])).toEqual(["cls_zn"])
+  })
+
+  it("an offset just inside the boundary still mints nothing", () => {
+    expect(geometryClassifiers([5 - 1e-6, 0, 0], [0, 0, 0], [10, 10, 5])).toEqual([])
+    expect(geometryClassifiers([-5 + 1e-6, 0, 0], [0, 0, 0], [10, 10, 5])).toEqual([])
+  })
+})
+
+describe("world-frame classifier minting (best-effort contract)", () => {
+  // The cls_* tokens are minted against the WORLD-FRAME body AABB (`bodyFrame`
+  // in tessellation.ts), never a body-local frame, so a given solid's tokens
+  // depend on its orientation in the document: the 45 deg and 60 deg rotations
+  // of one square prism mint different sets. This is accepted and documented:
+  // the classifier tier is secondary, and every element also carries a
+  // construction `@u|` UUID, the primary tier, so a rotated body still resolves
+  // when its classifiers collapse (pinned in query.test.ts).
+  function rotatedSquareSideCentroids(s: number, angleDeg: number): number[][] {
+    const th = (angleDeg * Math.PI) / 180
+    const c = Math.cos(th)
+    const sn = Math.sin(th)
+    const rot = (x: number, y: number): number[] => [x * c - y * sn, x * sn + y * c]
+    const verts = [rot(s / 2, s / 2), rot(-s / 2, s / 2), rot(-s / 2, -s / 2), rot(s / 2, -s / 2)]
+    const mids: number[][] = []
+    for (let i = 0; i < 4; i++) {
+      const a = verts[i]
+      const b = verts[(i + 1) % 4]
+      mids.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0])
+    }
+    return mids
+  }
+
+  function worldHalfExtents(s: number, h: number, angleDeg: number): number[] {
+    const th = (angleDeg * Math.PI) / 180
+    const span = Math.abs(Math.cos(th)) + Math.abs(Math.sin(th))
+    const r = (s * span) / 2
+    return [r, r, h / 2]
+  }
+
+  it("the 45 deg rotated square prism side faces sit exactly on the rel*h boundary and mint on the inclusive policy", () => {
+    const s = 2
+    const half = worldHalfExtents(s, 1, 45)
+    const tokens = rotatedSquareSideCentroids(s, 45).map(m =>
+      geometryClassifiers(m, [0, 0, 0], half).sort(),
+    )
+    expect(tokens).toEqual([
+      ["cls_xn", "cls_yp"],
+      ["cls_xn", "cls_yn"],
+      ["cls_xp", "cls_yn"],
+      ["cls_xp", "cls_yp"],
+    ])
+  })
+
+  it("the 60 deg rotated square prism side faces mint a distinct rotation-dependent set", () => {
+    const s = 2
+    const half = worldHalfExtents(s, 1, 60)
+    const tokens = rotatedSquareSideCentroids(s, 60).map(m =>
+      geometryClassifiers(m, [0, 0, 0], half).sort(),
+    )
+    // Every side-face centroid has one component at 0.25s (inside rel*h =
+    // 0.342s, no token) and one at 0.433s (outside, one token), so each side
+    // face mints exactly one rotation-dependent token and none mint zero.
+    // Different from the 45 deg set above (two tokens per face), which is
+    // exactly why the uuid tier must be the primary identity.
+    expect(tokens).toEqual([
+      ["cls_xn"],
+      ["cls_yn"],
+      ["cls_xp"],
+      ["cls_yp"],
+    ])
+  })
+})
+
 // JSON cannot carry negative zero (the bundler's JSON loader folds -0.0 to 0), so
 // the -0 path is gated against hardcoded Python references here. A geometry hash
 // must treat -0 == +0 (OCC builds disagree on the sign of a zero coordinate), so

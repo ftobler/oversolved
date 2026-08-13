@@ -10,10 +10,11 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
-import { HandleTable } from './handleTable'
+import { HandleTable, type OccHandle } from './handleTable'
 import { DisposeScope } from './disposeScope'
-import { buildCylinder } from './shapes'
+import { buildBox, buildCylinder } from './shapes'
 import { solidToMesh, solidToEdges, bodyFrame } from './tessellation'
+import { applyTransformShape } from './transforms'
 import { readSolidVertices, type Vec3 } from './primitives'
 import type { OccModule } from './occTypes'
 
@@ -98,6 +99,54 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
       expect(edgeCls.has('cls_zn')).toBe(true)
     } finally {
       table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  // spec 7: the body frame is the WORLD-frame AABB, never a body-local frame,
+  // so rotating a body changes its classifier tokens. A 4x2x2 box rotated
+  // 45 deg about its center is a routine shape, not an exotic one, and its two
+  // long (4x2) side faces fall inside rel*h on both axes and mint NO classifier
+  // at all (the collapse). This is the documented best-effort contract: the
+  // classifier tier is secondary, and the @u| construction UUID is the primary
+  // identity that survives the rotation (pinned in query.test.ts). No oriented
+  // per-body frame is built, by decision.
+  it('a 45 deg rotated box classifies against the world-frame AABB, collapsing its long side faces', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 4, dy: 2, dz: 2 })
+    const solid = table.get(h)
+    const scope = new DisposeScope()
+    let rotatedHandle: OccHandle | null = null
+    try {
+      const rotated = applyTransformShape(occ, scope, solid, {
+        rotationAxisOrigin: [2, 1, 1],  // the box center (buildBox anchors at the origin corner)
+        rotationAxisDirection: [0, 0, 1],
+        rotationAngleDeg: 45,
+      })
+      rotatedHandle = table.register(rotated)
+      const mesh = solidToMesh(occ, table, rotatedHandle, { createdBy: 'ex1', bodyId: 'body_ex1' })
+
+      // The rotation about z keeps every side-face centroid at mid-height
+      // (z=1); the caps sit at z=0/z=2. Filter to the four side faces.
+      const sideCls = mesh.face_data
+        .filter((fd) => Math.abs(fd.centroid[2] - 1) < 1e-6)
+        .map((fd) => (fd.classifiers ?? []).slice().sort())
+        .sort()
+
+      // World-frame best-effort: the two LONG (4x2) side faces (centroid offset
+      // 0.707 < rel*h = 1.061) mint NO classifier; the two SHORT (2x2) end
+      // faces (1.414) mint two. An axis-aligned 4x2x2 box mints one token per
+      // side face instead, so the tokens depend on the body's world orientation.
+      expect(sideCls).toEqual([
+        [],
+        [],
+        ['cls_xn', 'cls_yn'],
+        ['cls_xp', 'cls_yp'],
+      ])
+    } finally {
+      scope.dispose()
+      table.release(h)
+      if (rotatedHandle !== null) table.release(rotatedHandle)
       table.assertNoLeaks()
     }
   })

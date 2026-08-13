@@ -146,7 +146,13 @@ export function vertexGeometryHash(pt: number[]): string {
 // count as "on that side" of the body. Matches geom_hash._CLASSIFIER_REL.
 const CLASSIFIER_REL = 0.5
 
-/** Cardinal/axial classifier tokens ("cls_zp", "cls_xn", ...) for a point. */
+/** Cardinal/axial classifier tokens ("cls_zp", "cls_xn", ...) for a point.
+ *  The boundary is inclusive (offset exactly rel*h is "on that side"): strict
+ *  comparisons minted no token at the exact threshold, a knife-edge that left a
+ *  face sitting exactly on the boundary (e.g. the 45 deg rotated square prism
+ *  side faces) without classifiers at all. The tokens are minted against the
+ *  WORLD-FRAME body AABB, so they are rotation-dependent best-effort hints; the
+ *  construction `@u|` UUID is the primary identity (see query.ts). */
 export function geometryClassifiers(
   point: number[],
   center: number[],
@@ -159,8 +165,8 @@ export function geometryClassifiers(
     const h = halfExtents[axis]
     if (h <= 1e-9) continue
     const offset = point[axis] - center[axis]
-    if (offset > rel * h) tokens.push("cls_" + names[axis] + "p")
-    else if (offset < -rel * h) tokens.push("cls_" + names[axis] + "n")
+    if (offset >= rel * h) tokens.push("cls_" + names[axis] + "p")
+    else if (offset <= -rel * h) tokens.push("cls_" + names[axis] + "n")
   }
   return tokens
 }
