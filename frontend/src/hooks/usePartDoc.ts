@@ -583,6 +583,17 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // responsible for closing the active session before opening another.
       return
     }
+    // A preview left open when a session starts is the same half-open state
+    // commitEditSession guards against at the commit boundary: its swallowed
+    // part_style mutation would bake into the snapshot clone below, and a later
+    // cancel would rewind to a doc that carries the cancelled preview color
+    // with no undo entry for it. Resolve it FIRST so the snapshot is taken
+    // after the preview_commit (color kept, with its own entry). failLoud
+    // throws in test but only warns in prod, where the resolution still runs.
+    if (previewOriginalDoc.current !== null) {
+      failLoud('[usePartDoc] startEditSession called while a preview is active (preview must be resolved before a session starts)')
+      commitPreview({ type: 'preview_commit', description: 'preview resolved at session start' })
+    }
     editSnapshotRef.current = cloneDocForUndo(docRef.current)
     // Which kind of session this is decides what commitEditSession does: a
     // suppressed (feature) session folds into one aggregate entry, a sketch
@@ -592,7 +603,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     if (suppressUndo) {
       suppressUndoRef.current = true
     }
-  }, [docRef, saveUndoStackSnapshot, suppressUndoRef])
+  }, [docRef, saveUndoStackSnapshot, suppressUndoRef, commitPreview])
 
   const commitEditSession = useCallback(() => {
     if (editSnapshotRef.current === null) {

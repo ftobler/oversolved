@@ -83,6 +83,13 @@ describe('usePartDoc edit session guards', () => {
     expect(() => result.current.startPreviewMode({ features: [] } as never)).toThrow('[usePartDoc] startPreviewMode called while a preview is already active')
   })
 
+  it('throws on startEditSession with a live preview (half-open session start)', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    result.current.startPreviewMode({ features: [] } as never)
+    result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' } as never)
+    expect(() => result.current.startEditSession(true)).toThrow('[usePartDoc] startEditSession called while a preview is active')
+  })
+
   it('throws on commitPreview without start', () => {
     const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
     expect(() => result.current.commitPreview({ type: 'test' } as never)).toThrow('[usePartDoc] commitPreview called with no active preview')
