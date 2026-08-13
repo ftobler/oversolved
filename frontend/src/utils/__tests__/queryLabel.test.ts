@@ -4,6 +4,9 @@ import type { PartFeature } from '@/types/cad'
 
 const features: PartFeature[] = [
   { id: 'extrude1', kind: 'extrude', label: 'My Extrude' },
+  { id: 'ex1', kind: 'extrude', label: 'My Extrude' },
+  { id: 'ab-1', kind: 'extrude', label: 'Dash Feature' },
+  { id: 'e1tMr2u-m4rxTxhoZSw2z05E', kind: 'extrude', label: 'Real Base64url' },
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1' },
   { id: 'fillet2', kind: 'fillet', label: 'Fillet 2' },
   { id: 'sketch3', kind: 'sketch' },
@@ -88,6 +91,91 @@ describe('queryLabel', () => {
       // @ghost1face0 = 12 chars → hex "c"; "ghost1" is not a known feature.
       const q = '?c;@ghost1face0:flatface'
       expect(queryLabel(q, features)).toBe('Face of ghost1')
+    })
+
+    it('resolves the owning feature for a slash-joined body face token', () => {
+      // @body_ex1/face0 = 15 chars → hex "f"; the body tag names feature "ex1".
+      const q = '?f;@body_ex1/face0:flatface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('resolves the owning feature for a slash-joined feature face token', () => {
+      // @extrude1/face/3 = 16 chars → hex "10"; the entity index trails the slash.
+      const q = '?10;@extrude1/face/3:flatface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('resolves the owning feature for a slash-joined feature edge token', () => {
+      // @extrude1/edge/1 = 16 chars → hex "10".
+      const q = '?10;@extrude1/edge/1:straightedge'
+      expect(queryLabel(q, features)).toBe('Edge of My Extrude')
+    })
+
+    it('resolves the owning feature for a bare body tag', () => {
+      // @body_ex1 = 9 chars → hex "9"; the bare body tag must name feature
+      // "ex1", not read "body_ex1" as the feature id.
+      const q = '?9;@body_ex1:flatface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('resolves the feature for a bare feature tag', () => {
+      // @extrude1 = 9 chars → hex "9".
+      const q = '?9;@extrude1:flatface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('uses the bare feature ID when the body feature is not in the list', () => {
+      // @body_nope/face0 = 16 chars → hex "10"; "nope" is not a known feature.
+      const q = '?10;@body_nope/face0:flatface'
+      expect(queryLabel(q, features)).toBe('Face of nope')
+    })
+
+    it('resolves a dash-containing base64url feature id in a body face token', () => {
+      // Feature ids are randomId(18) base64url, which mints "-" and "_"
+      // (helpers.ts randomId): "ab-1" would fail a \w-only regex. @body_ab-1/face0
+      // = 16 chars → hex "10".
+      const q = '?10;@body_ab-1/face0:flatface'
+      expect(queryLabel(q, features)).toBe('Face of Dash Feature')
+    })
+
+    it('resolves a dash-containing base64url feature id in a bare feature tag', () => {
+      // @e1tMr2u-m4rxTxhoZSw2z05E = 25 chars → hex "19"; no entity suffix.
+      const q = '?19;@e1tMr2u-m4rxTxhoZSw2z05E:flatface'
+      expect(queryLabel(q, features)).toBe('Face of Real Base64url')
+    })
+
+    it('strips the derived-body numbered suffix to find the owning feature', () => {
+      // Array/mirror siblings mint body_<feat>_N (see the pickIdentity corpus:
+      // @body_e1tMr2u-..._1/_2/_3). The owning feature is the id minus the
+      // trailing numbered suffix. @body_e1tMr2u-m4rxTxhoZSw2z05E_1/face0
+      // = 38 chars → hex "26".
+      const q = '?26;@body_e1tMr2u-m4rxTxhoZSw2z05E_1/face0:flatface'
+      expect(queryLabel(q, features)).toBe('Face of Real Base64url')
+    })
+
+    it('falls through to the raw query when the last ancestor is a construction UUID', () => {
+      // @u|u_abc = 8 chars → hex "8".
+      const q = '?8;@u|u_abc:flatface'
+      expect(queryLabel(q, features)).toBe(q)
+    })
+
+    it('falls through to the raw query when the last ancestor is a classifier', () => {
+      // @cls_zp = 7 chars → hex "7".
+      const q = '?7;@cls_zp:flatface'
+      expect(queryLabel(q, features)).toBe(q)
+    })
+
+    it('falls through to the raw query when the last ancestor is a descriptor', () => {
+      // @gde|line|x = 11 chars → hex "b".
+      const q = '?b;@gde|line|x:flatface'
+      expect(queryLabel(q, features)).toBe(q)
+    })
+
+    it('falls through to the raw query when the last ancestor is a special token', () => {
+      // Extraction looks only at the LAST ancestor id: the trailing @cls_zp
+      // (7 chars) makes the whole query unnameable even with @extrude1 first.
+      const q = '?9,7;@extrude1@cls_zp:flatface'
+      expect(queryLabel(q, features)).toBe(q)
     })
   })
 

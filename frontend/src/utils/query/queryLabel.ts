@@ -2,8 +2,44 @@ import type { PartFeature } from '@/types/cad'
 import { parseQuery } from '@/utils/query'
 
 function extractFeatureId(ancestorId: string): string | null {
-  const m = ancestorId.match(/^@(\w+?)(face\d+|edge\d+|vertex\d+)?$/)
-  return m ? m[1] : null
+  // Special tokens (@u|<uuid>, @cls_* classifiers, @gd*| descriptors, @g*_
+  // geom-hash refs) are geometry identity, never feature refs: they must fall
+  // through to the raw query string.
+  if (
+    ancestorId.startsWith("@u|") ||
+    ancestorId.startsWith("@cls_") ||
+    ancestorId.startsWith("@gdf|") ||
+    ancestorId.startsWith("@gde|") ||
+    ancestorId.startsWith("@gdv|") ||
+    ancestorId.startsWith("@gface_") ||
+    ancestorId.startsWith("@gedge_") ||
+    ancestorId.startsWith("@gvertex_") ||
+    ancestorId.startsWith("@gnormal_")
+  ) {
+    return null
+  }
+
+  // The candidate id lives in the segment before the first "/" for the current
+  // slash-joined wire tokens (@body_ex1/face0, @extrude1/face/3).
+  const slash = ancestorId.indexOf("/")
+  const head = slash >= 0 ? ancestorId.slice(0, slash) : ancestorId
+
+  // Legacy concatenated token "@<featureId>face0" glues the entity suffix to
+  // the id, so the lazy regex yields the shortest id prefix. Feature ids are
+  // randomId(18) base64url, which mints "-" and "_", so the id class must be
+  // [-\w]: a \w-only class makes real ids like @body_ab-1/face0 fall through.
+  const m = head.match(/^@([-\w]+?)(face\d+|edge\d+|vertex\d+)?$/)
+  if (!m) return null
+  let id = m[1]
+
+  // Body tags are "body_<featureId>": the owning feature is the suffix.
+  // Derived bodies (array/mirror/split siblings) mint "body_<feat>_<N>", so a
+  // trailing numbered suffix belongs to the body scheme, not the feature id.
+  if (id.startsWith("body_")) {
+    id = id.slice("body_".length)
+    id = id.replace(/_\d+$/, "")
+  }
+  return id.length ? id : null
 }
 
 function entityTypeFromRestriction(typeRestriction: string | null): string {
