@@ -102,6 +102,7 @@ function diffResult(
     // entity determinate (the same rule shadowCompare applies).
     const tsGeom = tsVal.geometry as Record<string, number[]> | undefined
     const pyGeom = pyVal.geometry as Record<string, number[]> | undefined
+    const tsGeomFeat = tsVal.features as Record<string, { status: string }> | undefined
     const pyGeomFeat = pyVal.features as Record<string, { status: string }> | undefined
     if (tsGeom && pyGeom) {
       for (const [eid, pyParams] of Object.entries(pyGeom)) {
@@ -123,6 +124,15 @@ function diffResult(
           }
         }
       }
+
+      // Reverse geometry pass: entities the live kernel solved but the baseline
+      // never had are extra on the TS side. Only flag determinate entities so
+      // gauge-free/underconstrained ones (shared solution manifold) stay quiet.
+      for (const eid of Object.keys(tsGeom)) {
+        if (eid in pyGeom) continue
+        if (tsGeomFeat?.[eid]?.status !== 'fully_constrained') continue
+        issues.push(`${label}/result/${key}/geometry/${eid}: extra in TS`)
+      }
     }
 
     // Compare per-entity status (for sketch features)
@@ -141,6 +151,23 @@ function diffResult(
           )
         }
       }
+
+      // Reverse per-entity pass: entities the live kernel produced but the
+      // baseline never froze are extra on the TS side.
+      for (const eid of Object.keys(tsFeat)) {
+        if (!(eid in pyFeat)) {
+          issues.push(`${label}/result/${key}/features/${eid}: extra in TS`)
+        }
+      }
+    }
+  }
+
+  // Symmetric pass: keys the live TS kernel produced but the frozen baseline
+  // never saw are extra features/entities on the TS side. One-directional diffs
+  // silently pass these, so flag them explicitly.
+  for (const key of tsKeys) {
+    if (!pyKeys.has(key)) {
+      issues.push(`${label}/result/${key}: missing in Python baseline`)
     }
   }
 
@@ -240,6 +267,15 @@ function diffBodies(
           issues.push(msg)
         }
       }
+    }
+  }
+
+  // Symmetric pass: bodies the live TS kernel produced but the baseline never
+  // froze are extra bodies on the TS side (e.g. a boolean that leaves two
+  // bodies instead of fusing). Flag them rather than letting them pass unseen.
+  for (const bid of Object.keys(tsBodies)) {
+    if (!(bid in pyBodies)) {
+      issues.push(`${label}/bodies/${bid}: extra body in TS output`)
     }
   }
 
