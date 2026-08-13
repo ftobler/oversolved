@@ -991,50 +991,164 @@ export class Repository {
     return refuseUuidSwap(this.elements.get(candidateIds[0]) ?? null)
   }
 
-  // All elements whose ancestor set is a superset of the query's IDs.
-  queryAll(queryStr: string, currentFeatureId: string | null = null): unknown[] {
+  // Superset enumeration is only the ancestral-tier core: the uuid tier, the
+  // []-on-type-exclusion and the coerceType fallback all diverge from it. The
+  // aligned contract is the resolveAllAncestryIds doc comment below.
+  queryAll(
+    queryStr: string,
+    currentFeatureId: string | null = null,
+    bodyStore: Record<string, unknown> | null = null,
+  ): unknown[] {
     if (!queryStr || queryStr[0] !== "?") return []
     const orderFilter = this.orderFilter(currentFeatureId)
     const [ids, typeRestriction] = parseAncestry(queryStr)
-    const querySet = new Set(
-      ids.filter(
-        i =>
-          !isGeomHashId(i) &&
-          !isClassifierId(i) &&
-          !isGeomDescriptorId(i) &&
-          !isConstructionUuidId(i),
-      ),
-    )
-    let candidateIds: string[] = []
-    for (const entry of this.ancestral.values()) {
-      if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
-    }
-    candidateIds = orderFilter(candidateIds)
-    if (typeRestriction !== null) {
-      candidateIds = candidateIds.filter(eid => objType(this.elements.get(eid)) === typeRestriction)
-    }
-    return candidateIds.map(eid => this.elements.get(eid))
+    return this.resolveAllAncestryIds(ids, typeRestriction, orderFilter, bodyStore)
   }
 
-  queryAllTyped(q: AncestryQuery, currentFeatureId: string | null = null): unknown[] {
+  queryAllTyped(
+    q: AncestryQuery,
+    currentFeatureId: string | null = null,
+    bodyStore: Record<string, unknown> | null = null,
+  ): unknown[] {
     const orderFilter = this.orderFilter(currentFeatureId)
-    const querySet = new Set(
-      q.ancestorIds.filter(
-        i =>
-          !isGeomHashId(i) &&
-          !isClassifierId(i) &&
-          !isGeomDescriptorId(i) &&
-          !isConstructionUuidId(i),
-      ),
+    return this.resolveAllAncestryIds(q.ancestorIds, q.typeRestriction, orderFilter, bodyStore)
+  }
+
+  /** Multi-result analogue of resolveAncestryIds for queryAll/queryAllTyped.
+   *
+   *  Alignment decisions vs the single-result resolver (queryall-special-token-trap):
+   *  - Guard: a query whose ids are ALL special tokens (uuid/classifier/geom-hash/
+   *    descriptor) never enumerates the whole repo. A uuid-only query returns that
+   *    uuid's bucket; every other special-only query returns [].
+   *  - UUID tier first and exclusive: a query naming a live uuid returns exactly
+   *    that bucket's live elements (order- and type-filtered). Classifiers and
+   *    descriptors never narrow the uuid tier, exactly as the resolver's uuid tier
+   *    ignores them. A live uuid element that the type restriction excludes yields
+   *    [] with NO weaker-tier fallback - the multi-result shape of refuseUuidSwap,
+   *    softened because an enumeration has no single wrong element to swap to. A
+   *    dead or order-hidden uuid bucket falls through to the ancestral tier, the
+   *    resolver's "continue".
+   *  - Where the resolver must fail loud, enumeration answers: a bucket holding
+   *    2+ live elements (collision by construction) and a query naming 2+ distinct
+   *    uuids both enumerate the deduped bucket union, order- and type-filtered like
+   *    every other uuid-tier result. The resolver throws because it must pick one;
+   *    queryAll has no pick to make.
+   *  - The type restriction filters by subtype directly (t === typeRestriction ||
+   *    isSubtype). Exact-preference is deliberately NOT applied: an enumeration has
+   *    no single preferred answer, so a "face" query returns faces AND flatfaces
+   *    where the resolver returns only the exact face. When nothing subtype-matches,
+   *    the same coerceType fallback as the resolver runs (upward to solid, or
+   *    sibling); an internal AmbiguousQueryError from coerceType propagates.
+   *  - Classifier narrowing applies to the ancestral candidate set; a total veto
+   *    (narrowByClassifier -> []) yields [] - the multi-result shape of the
+   *    resolver's classifier miss/ambiguity, never the un-narrowed set.
+   *  - The ancestral-partial and descriptor-only global fallbacks are not ported:
+   *    queryAll's contract is superset enumeration, not recovery of a single
+   *    element. Legacy descriptor tokens still narrow a multi-candidate ancestral
+   *    set exactly as the resolver's descriptor tier does. */
+  private resolveAllAncestryIds(
+    ids: string[],
+    typeRestriction: string | null,
+    orderFilter: (eids: string[]) => string[],
+    bodyStore: Record<string, unknown> | null,
+  ): unknown[] {
+    const classifierIds = ids.filter(isClassifierId)
+    const descriptorIds = ids.filter(isGeomDescriptorId)
+    const uuidIds = ids.filter(isConstructionUuidId)
+    const nonHashIds = ids.filter(
+      i =>
+        !isGeomHashId(i) &&
+        !isClassifierId(i) &&
+        !isGeomDescriptorId(i) &&
+        !isConstructionUuidId(i),
     )
+
+    const uuidTokens = [
+      ...new Set(
+        uuidIds.map(parseConstructionUuidId).filter((u): u is string => u !== null),
+      ),
+    ]
+    if (uuidTokens.length) {
+      const liveBucket: string[] = []
+      const seen = new Set<string>()
+      for (const uuid of uuidTokens) {
+        for (const eid of this.byUuid.get(uuid) ?? []) {
+          if (this.elements.has(eid) && !seen.has(eid)) {
+            seen.add(eid)
+            liveBucket.push(eid)
+          }
+        }
+      }
+      if (liveBucket.length) {
+        const ordered = orderFilter(liveBucket)
+        if (ordered.length) {
+          let filtered = ordered
+          if (typeRestriction !== null) {
+            filtered = filtered.filter(eid => {
+              const t = objType(this.elements.get(eid))
+              return t === typeRestriction || isSubtype(t, typeRestriction)
+            })
+          }
+          // A type-excluded live uuid returns [] (no weaker-tier fallback), so the
+          // caller never sees a different element enumerated in the uuid's place.
+          return filtered.map(eid => this.elements.get(eid))
+        }
+        // Order-hidden bucket falls through like the resolver's "continue": the
+        // weaker tiers order-filter too, so the hidden element stays excluded.
+      }
+    }
+
+    // Guard: no non-special ids means the query set is empty; subset({}, set) is
+    // trivially true for every entry, so without this check a classifier/hash-only
+    // query would enumerate the whole repo (the original trap).
+    if (!nonHashIds.length) return []
+
+    const querySet = new Set(nonHashIds)
     let candidateIds: string[] = []
     for (const entry of this.ancestral.values()) {
       if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
     }
     candidateIds = orderFilter(candidateIds)
-    if (q.typeRestriction !== null) {
-      candidateIds = candidateIds.filter(eid => objType(this.elements.get(eid)) === q.typeRestriction)
+
+    if (typeRestriction !== null && candidateIds.length) {
+      const subtypeMatches = candidateIds.filter(eid => {
+        const t = objType(this.elements.get(eid))
+        return t === typeRestriction || isSubtype(t, typeRestriction)
+      })
+      if (subtypeMatches.length) {
+        candidateIds = subtypeMatches
+      } else {
+        const coercedResults: unknown[] = []
+        const seen = new Set<unknown>()
+        for (const eid of candidateIds) {
+          const element = this.elements.get(eid)
+          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet)
+          if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
+            seen.add(coerced)
+            coercedResults.push(coerced)
+          }
+        }
+        if (coercedResults.length) return coercedResults
+        candidateIds = []
+      }
     }
+
+    if (classifierIds.length && candidateIds.length) {
+      candidateIds = this.narrowByClassifier(candidateIds, classifierIds)
+    }
+
+    if (candidateIds.length > 1 && descriptorIds.length) {
+      for (const dTok of descriptorIds) {
+        if (candidateIds.length <= 1) break
+        const qd = parseGeomDescriptorId(dTok)
+        if (qd === null) continue
+        const pairs = candidateIds.map(
+          eid => [eid, descriptorOfElement(this.elements.get(eid))] as [string, GeomDescriptor | null],
+        )
+        candidateIds = narrowByDescriptor(qd, pairs)
+      }
+    }
+
     return candidateIds.map(eid => this.elements.get(eid))
   }
 }
