@@ -769,22 +769,61 @@ export class Repository {
     )
 
     // Primary tier: construction UUID exact match.
-    for (const tok of uuidIds) {
-      const uuid = parseConstructionUuidId(tok)
-      if (uuid === null) continue
-      let hits = orderFilter((this.byUuid.get(uuid) ?? []).filter(eid => this.elements.has(eid)))
-      if (typeRestriction !== null) {
-        hits = hits.filter(eid => {
-          const t = objType(this.elements.get(eid))
-          return t === typeRestriction || isSubtype(t, typeRestriction)
-        })
-      }
-      if (hits.length === 1) { this._lastTier = "uuid"; return this.elements.get(hits[0]) ?? null }
-      if (hits.length > 1) {
+    //
+    // Fail-loud contract (uuid-tier-type-fallthrough): a query naming a live
+    // construction UUID must resolve to the element that carries the uuid or
+    // throw - it must never silently fall through to a weaker tier and resolve
+    // a DIFFERENT element. Two guards make that hold:
+    //   - the multiplicity check counts ALL live hits in the bucket BEFORE the
+    //     type/order filters, so a genuine collision is never narrowed away;
+    //   - when the type restriction excludes the live uuid element, the weaker
+    //     tiers may only resolve nothing (the uuid-alone null case); a non-null
+    //     weaker-tier resolution would be a silent swap and fails loud.
+    const uuidTokens = [...new Set(
+      uuidIds.map(parseConstructionUuidId).filter((u): u is string => u !== null),
+    )]
+    if (uuidTokens.length > 1) {
+      throw new AmbiguousQueryError(
+        `Query names ${uuidTokens.length} distinct construction UUIDs; refusing to silently pick one`,
+      )
+    }
+    let uuidResolution: unknown = null
+    let uuidTypeExcluded: string | null = null
+    for (const uuid of uuidTokens) {
+      const liveHits = (this.byUuid.get(uuid) ?? []).filter(eid => this.elements.has(eid))
+      if (liveHits.length > 1) {
         throw new AmbiguousQueryError(
-          `Construction UUID ${uuid} matched ${hits.length} elements (collision by construction)`,
+          `Construction UUID ${uuid} matched ${liveHits.length} live elements (collision by construction)`,
         )
       }
+      if (liveHits.length === 0) continue  // no live element carries the uuid: weaker tiers may recover
+      const eid = liveHits[0]
+      if (orderFilter([eid]).length === 0) continue  // ordering guard: the element is not visible from here yet
+      const element = this.elements.get(eid)
+      if (typeRestriction !== null) {
+        const t = objType(element)
+        if (!(t === typeRestriction || isSubtype(t, typeRestriction))) {
+          uuidTypeExcluded = uuid
+          continue
+        }
+      }
+      uuidResolution = element ?? null
+    }
+    if (uuidResolution !== null) {
+      this._lastTier = "uuid"
+      return uuidResolution
+    }
+    // Gate every non-null exit of the weaker tiers while a live uuid element
+    // was excluded by the type restriction: such a result is a different
+    // element that does not carry the named uuid.
+    const refuseUuidSwap = (result: unknown): unknown => {
+      if (uuidTypeExcluded !== null && result !== null) {
+        throw new AmbiguousQueryError(
+          `Construction UUID ${uuidTypeExcluded} resolves an element that is not of type ` +
+            `'${typeRestriction}'; refusing to resolve a different element in its place`,
+        )
+      }
+      return result
     }
 
     let candidateIds: string[] = []
@@ -815,7 +854,7 @@ export class Repository {
             coercedResults.push(coerced)
           }
         }
-        if (coercedResults.length === 1) { this._lastTier = "ancestral"; return coercedResults[0] }
+        if (coercedResults.length === 1) { this._lastTier = "ancestral"; return refuseUuidSwap(coercedResults[0]) }
         if (coercedResults.length > 1) {
           throw new AmbiguousQueryError(
             `Query coerced to ${coercedResults.length} distinct '${typeRestriction}' elements`,
@@ -863,7 +902,7 @@ export class Repository {
       }
       if (partialCandidates.length === 1) {
         this._lastTier = "ancestral-partial"
-        return this.elements.get(partialCandidates[0]) ?? null
+        return refuseUuidSwap(this.elements.get(partialCandidates[0]) ?? null)
       }
     }
 
@@ -896,7 +935,7 @@ export class Repository {
       )
     }
     this._lastTier = descriptorFallback ? "descriptor" : "ancestral"
-    return this.elements.get(candidateIds[0]) ?? null
+    return refuseUuidSwap(this.elements.get(candidateIds[0]) ?? null)
   }
 
   // All elements whose ancestor set is a superset of the query's IDs.

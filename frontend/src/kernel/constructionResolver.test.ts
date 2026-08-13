@@ -52,6 +52,17 @@ describe('resolver UUID-first tier', () => {
       AmbiguousQueryError,
     )
   })
+
+  it('fails loud when the uuid element is excluded by type but a right-type sibling shares the ancestors', () => {
+    const repo = new Repository()
+    const face = { type: 'flatface', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_Y')
+    repo.registerAncestor(['@f1', '@body_b'], { type: 'straightedge', body_id: 'body_b', created_by: 'f1' })
+    // The old resolver fell through to the ancestral net and silently resolved
+    // the straightedge sibling, masking the swap behind _lastTier "ancestral".
+    const q = makeAncestryQuery([constructionUuidToken('u_Y'), '@f1', '@body_b'], 'straightedge')
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
 })
 
 describe('resolver tier channel (_lastTier)', () => {

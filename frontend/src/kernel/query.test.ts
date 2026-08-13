@@ -694,6 +694,82 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
   })
 })
 
+/** Fail-loud semantics of the construction-UUID tier (uuid-tier-type-fallthrough).
+ *
+ * A query that names a live construction UUID must resolve to the element that
+ * carries the uuid, or fail loud. It must never silently fall through to the
+ * ancestral tiers and resolve a DIFFERENT element that does not carry the uuid:
+ * the old type-filter-excludes path masked that swap behind _lastTier
+ * "ancestral". The uuid-alone null case is genuinely different - no right-type
+ * sibling exists under the same ancestors, so the weaker tiers resolve nothing
+ * and the query stays a miss. */
+describe("uuid tier fail-loud semantics", () => {
+  it("uuid + wrong type + a right-type sibling under the same ancestors throws instead of resolving the sibling", () => {
+    const repo = new Repository()
+    // The uuid element is a flatface; a straightedge sibling shares its
+    // ancestors and carries no uuid.
+    repo.registerAncestor(["@A", "@B"], makeFacePayload("body1", "ex1", 0), "u_face")
+    repo.registerAncestor(
+      ["@A", "@B"],
+      { type: "straightedge", body_id: "body1", created_by: "ex1", edge_index: 0 },
+    )
+    // Old behavior silently resolved the edge sibling via the ancestral tier,
+    // tagging the query _lastTier "ancestral" -- a masked swap of the uuid element.
+    const q = makeAncestryQuery([constructionUuidToken("u_face"), "@A", "@B"], "edge")
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
+
+  it("uuid + wrong type without a right-type sibling under the ancestors stays a null miss (uuid-alone)", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@A", "@B"], makeFacePayload("body1", "ex1", 0), "u_face")
+    const q = makeAncestryQuery([constructionUuidToken("u_face"), "@A", "@B"], "edge")
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("a 2-hit uuid bucket is a collision even when one hit fails the type filter", () => {
+    const repo = new Repository()
+    // Same construction uuid minted onto two elements; a face restriction would
+    // silently narrow the edge away under the old filter-then-collide ordering.
+    repo.registerAncestor(["@A"], makeFacePayload("body1", "ex1", 0), "u_dup")
+    repo.registerAncestor(
+      ["@A"],
+      { type: "straightedge", body_id: "body1", created_by: "ex1", edge_index: 0 },
+      "u_dup",
+    )
+    const q = makeAncestryQuery([constructionUuidToken("u_dup")], "face")
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
+
+  it("a query naming two distinct construction uuids fails loud instead of picking one", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@A"], makeFacePayload("body1", "ex1", 0), "u_one")
+    repo.registerAncestor(["@B"], makeFacePayload("body1", "ex1", 1), "u_two")
+    const q = makeAncestryQuery([constructionUuidToken("u_two"), constructionUuidToken("u_one")])
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
+
+  it("repeated tokens of the same uuid are not distinct: the query still resolves", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@A"], makeFacePayload("body1", "ex1", 0), "u_x")
+    const q = makeAncestryQuery([constructionUuidToken("u_x"), constructionUuidToken("u_x")])
+    expect(repo.query(q)).not.toBeNull()
+    expect(repo._lastTier).toBe("uuid")
+  })
+
+  it("a uuid-resolved query reports the uuid tier even when a right-type sibling shares the ancestors", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@A", "@B"], makeFacePayload("body1", "ex1", 0), "u_face")
+    repo.registerAncestor(
+      ["@A", "@B"],
+      { type: "straightedge", body_id: "body1", created_by: "ex1", edge_index: 0 },
+    )
+    const q = makeAncestryQuery([constructionUuidToken("u_face"), "@A", "@B"], "face")
+    expect(repo.query(q)).not.toBeNull()
+    expect(repo._lastTier).toBe("uuid")
+  })
+})
+
 /**
  * Face registrations have >=3 structural tags (positional /face tag, feature ref, body ref).
  * The geom hash lives in by_geom_hash, not in the ancestral key itself.
@@ -1156,9 +1232,10 @@ describe("ordering guard", () => {
     reg(repo, ["@f1"], "f1", "u_X")
     const q = ancestry([constructionUuidToken("u_X")])
 
-    const resolved = repo.query(q, null, null, "f0") as Record<string, unknown>
-    expect(resolved).not.toBeNull()
-    expect(resolved.created_by).toBe("f0")
+    // Collision-first semantics: the multiplicity check counts ALL live hits in
+    // the bucket before the ordering filter, so two live elements sharing one
+    // uuid is a loud collision, never a silent narrowing to the earlier one.
+    expect(() => repo.query(q, null, null, "f0")).toThrow(AmbiguousQueryError)
   })
 
   it("contextvar drives the ordering guard", () => {
