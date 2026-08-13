@@ -142,6 +142,29 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('revolve cut removes volume from base body', () => {
+    // The cut profile spans only PART of the height (a groove), so the cut keeps
+    // body_rev1 connected and the operation succeeds. A full-height concentric
+    // profile would sever it into two coaxial rings whose centroids both lie on
+    // the revolve axis -- an orderless bodySplit near-tie that now refuses
+    // loudly (see the symmetric-split test below).
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 }),
+        rectSketch('sk2', 1, 0.6, 1.5, 0.2), revolveSpec('rev2', 'sk2', { angle: 360, operation: 'cut' }),
+      ],
+    })
+    expect(res(result, 'rev1').status).toBe('ok')
+    expect(res(result, 'rev2').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_rev1')
+  })
+
+  it('a concentric revolve cut severs into coaxial rings and refuses loudly', () => {
+    // A full-height inner annulus cut out of the outer annulus leaves two rings
+    // whose volume centroids both sit exactly on the revolve axis. bodySplit
+    // cannot order them positionally, and per the user decision (2026-08-12) a
+    // flipped body id is worse than a failed split: the solve surfaces as an
+    // exception instead of naming the rings in OCC explorer order.
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -150,8 +173,8 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
       ],
     })
     expect(res(result, 'rev1').status).toBe('ok')
-    expect(res(result, 'rev2').status).toBe('ok')
-    expect(result.bodies).toHaveProperty('body_rev1')
+    expect(res(result, 'rev2').status).toBe('exception')
+    expect(String(res(result, 'rev2').exception)).toMatch(/near-tie/)
   })
 
   it('revolve operation=new creates a separate body', () => {
@@ -184,13 +207,15 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
   })
 
   it('merge_target cut removes from a specific body', () => {
+    // Same groove geometry as the non-merge cut above: an asymmetric profile so
+    // the target stays one connected solid and the operation succeeds.
     /** A revolve with operation=cut and merge_target cuts from a specific body
      *  created by an earlier feature. Port from test_revolve_merge_target.py. */
     const result = run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev0', 'sk1', { angle: 360, operation: 'new' }),
-        rectSketch('sk2', 1, 1, 1.5, 0), revolveSpec('rev1', 'sk2', { angle: 360, operation: 'cut', mergeTarget: '@body_rev0' }),
+        rectSketch('sk2', 1, 0.6, 1.5, 0.2), revolveSpec('rev1', 'sk2', { angle: 360, operation: 'cut', mergeTarget: '@body_rev0' }),
       ],
     })
     expect(res(result, 'rev0').status).toBe('ok')

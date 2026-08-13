@@ -32,7 +32,13 @@ import {
 import { faceGh, edgeGh } from './lineageHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
-import { nameFacesFromNeighbours } from './constructionLineage'
+import {
+  nameFacesFromNeighbours,
+  shapeNormalFrame,
+  normalizedWorldKey,
+  edgeMidpoint,
+  type NormalFrame,
+} from './constructionLineage'
 import { failLoud } from '@/stores/stateInvariants'
 import {
   mintFaceUuid,
@@ -451,23 +457,6 @@ function geometricCapFaces(
   }
 }
 
-/** A relative ordering key for an edge (its midpoint), for split multiplicity. */
-function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
-  try {
-    const { ed } = edgeToGeom(oc, scope, edge)
-    const s = (ed as { start?: number[] }).start
-    const e = (ed as { end?: number[] }).end
-    const c = (ed as { center?: number[] }).center
-    if (Array.isArray(s) && Array.isArray(e)) {
-      return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, (s[2] + e[2]) / 2]
-    }
-    if (Array.isArray(c)) return [...c]
-  } catch {
-    // fall through
-  }
-  return [0, 0, 0]
-}
-
 /**
  * The construction-name maps for an extruded solid
  * (query-naming-by-construction.md). Internally builds a geom-hash-keyed
@@ -633,13 +622,18 @@ export function buildPrismLineageMap(
         )
       }
     }
+    // Edge midpoints are world coordinates: normalize them by the parent
+    // solid's span so a uniform resize cancels and the refusal is relative.
+    let frame: NormalFrame | null = null
     for (const [pairKey, eghs] of Object.entries(byPair)) {
       const [a, b] = pairKey.split('|')
       let ordered: string[] | null = eghs
       if (eghs.length > 1) {
+        frame ??= shapeNormalFrame(oc, scope, solid)
+        const f = frame
         const children: SplitChild<string>[] = eghs.map((egh) => ({
           item: egh,
-          key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+          key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edgeShapes[egh])),
         }))
         ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
       }
@@ -653,9 +647,11 @@ export function buildPrismLineageMap(
     for (const [faceUuid, eghs] of Object.entries(bySingle)) {
       let ordered: string[] | null = eghs
       if (eghs.length > 1) {
+        frame ??= shapeNormalFrame(oc, scope, solid)
+        const f = frame
         const children: SplitChild<string>[] = eghs.map((egh) => ({
           item: egh,
-          key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+          key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edgeShapes[egh])),
         }))
         ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
       }

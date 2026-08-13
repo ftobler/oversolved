@@ -257,6 +257,24 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     r.scope.dispose()
   })
 
+  it('a symmetric split (two coincident solids) is a LOUD refusal, not explorer order', () => {
+    // Two identical boxes on top of each other have identical centroids: the
+    // ordering key is an exact tie, so naming them body_x / body_x_1 in OCC
+    // explorer order could flip the persisted id across a rebuild. The user
+    // decision (2026-08-12) is to fail the solve rather than assign a flipped
+    // body id. The throw must happen before any body lands in the store.
+    const r = rig()
+    const shape = compoundOf(r.scope, [
+      makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
+      makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
+    ])
+    expect(() =>
+      registerSplitBodies(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }),
+    ).toThrow(/near-tie/)
+    expect(Object.keys(r.store)).toEqual([])
+    r.scope.dispose()
+  })
+
   it('splitSolids orders siblings by relative position, not OCC walk order', () => {
     const r = rig()
     // Compound built +X first on purpose: explore order would put it first.

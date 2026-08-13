@@ -15,7 +15,14 @@ import { edgeGeometryHash } from '../geomHash'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
-import { deriveEdgeNames, faceSplitKey, nameFacesFromNeighbours } from './constructionLineage'
+import {
+  deriveEdgeNames,
+  faceSplitKey,
+  nameFacesFromNeighbours,
+  shapeNormalFrame,
+  normalizedWorldKey,
+  type NormalFrame,
+} from './constructionLineage'
 
 type Lineage = Record<string, string[]>
 type Names = Record<string, string>
@@ -90,6 +97,9 @@ function extractNames(
 ): NewNames {
   const faceNames: Names = {}
   const faceAncestry: Lineage = {}
+  // Generated-face centroids are world coordinates: normalize them by the new
+  // solid's span so the split-sibling refusal is relative, not unit-dependent.
+  let frame: NormalFrame | null = null
 
   // Modified()/Generated() hand back faces carrying a FORWARD orientation, but
   // every downstream consumer (deriveEdgeNames, tessellation, registration)
@@ -160,8 +170,13 @@ function extractNames(
     if (genFaces.length === 1) {
       assign(genFaces[0], base)
     } else if (genFaces.length > 1) {
+      frame ??= shapeNormalFrame(oc, scope, newShape)
+      const f0 = frame
       const ordered = orderSplitChildren(
-        genFaces.map<SplitChild<OccShape>>((f) => ({ item: f, key: faceCentroid(oc, scope, asFace(oc, f)) })),
+        genFaces.map<SplitChild<OccShape>>((f) => ({
+          item: f,
+          key: normalizedWorldKey(f0, faceCentroid(oc, scope, asFace(oc, f))),
+        })),
       )
       if (ordered !== null) ordered.forEach((f, i) => assign(f, mintFaceUuid(splitFacePath(base, i))))
     }

@@ -23,6 +23,13 @@ export const VERTEX_UUID_PREFIX = 'v_'
 // Two split siblings whose relative sort keys fall within this window are a
 // near-tie: `orderSplitChildren` refuses to order them (fail-safe over
 // fail-wrong) and the caller lets the ancestral path carry recovery.
+//
+// Dimensionless: every key convention normalizes by its own characteristic
+// length first (`faceSplitKey` by sqrt(face area), edges/vertices/corners and
+// body split by the parent AABB span), so the epsilon is one dimensionless
+// fraction per convention (1e-3 = 0.1% of that convention's own characteristic
+// length), internally consistent and resize-invariant -- never an absolute
+// world-unit distance. A uniform parent resize cancels exactly.
 export const SPLIT_EPS = 1e-3
 
 function shortHash(s: string): string {
@@ -195,6 +202,13 @@ function keyDistance(a: number[], b: number[]): number {
  */
 export function orderSplitChildren<T>(children: SplitChild<T>[]): T[] | null {
   if (children.length === 0) return []
+  // A NaN component is a geometry-read failure. NaN sorts as equal in keyLess and
+  // keyDistance ignores it (NaN > maxd is false), so without this gate a broken key
+  // silently lands on stable-sort insertion order -- OCC explorer order by another
+  // name. Refuse the whole group instead.
+  for (const c of children) {
+    if (c.key.some((k) => Number.isNaN(k))) return null
+  }
   const sorted = [...children].sort((x, y) => keyLess(x.key, y.key))
   for (let i = 1; i < sorted.length; i++) {
     if (keyDistance(sorted[i - 1].key, sorted[i].key) < SPLIT_EPS) return null

@@ -20,8 +20,9 @@
  * split-sibling ordering key" `orderSplitChildren` already provides for faces,
  * edges and vertices). It makes `body_x_1` denote the same half across a
  * rebuild instead of whatever order OCC's TopExp walk happened to produce.
- * A near-tie is a refusal, and a refusal falls back to explore order rather
- * than failing the solve: an ambiguous order is no worse than today's.
+ * A near-tie is a LOUD refusal (an exception): naming a flipped half `body_x`
+ * and its mirror `body_x_1` would silently swap the persisted id a part's
+ * name/colour ride on, so the solve fails instead (user decision 2026-08-12).
  */
 
 import type { DisposeScope } from '../occ/disposeScope'
@@ -29,9 +30,10 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { exploreSolids } from '../occ/booleans'
-import { readSolidVertices, solidCentroid } from '../occ/primitives'
+import { solidCentroid } from '../occ/primitives'
 import { faceGh, edgeGh } from '../occ/lineageHash'
 import { orderSplitChildren, type SplitChild } from '../constructionName'
+import { shapeNormalFrame } from '../occ/constructionLineage'
 
 /** The per-body identity fields a split has to hand down to every sibling. */
 export interface BodyTemplate {
@@ -56,45 +58,32 @@ interface SiblingNames {
 }
 
 /**
- * Axis-aligned bounds of a shape from its B-rep vertices, as (centre, span).
- * Vertex-based like `hole`'s span probe rather than Bnd_Box, so a curved face
- * bulge cannot shift the frame between two rebuilds of the same shape.
- */
-function shapeFrame(oc: OccModule, scope: DisposeScope, shape: OccShape): { centre: number[]; span: number }  {
-  const verts = readSolidVertices(oc, scope, shape)
-  if (verts.length === 0) return { centre: [0, 0, 0], span: 1 }
-  const lo = [Infinity, Infinity, Infinity]
-  const hi = [-Infinity, -Infinity, -Infinity]
-  for (const v of verts) {
-    for (let i = 0; i < 3; i++) {
-      if (v[i] < lo[i]) lo[i] = v[i]
-      if (v[i] > hi[i]) hi[i] = v[i]
-    }
-  }
-  const span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2])
-  return {
-    centre: [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2],
-    // A degenerate span would divide the ordering key by ~0 and turn every
-    // sibling into a near-tie; 1 keeps the key finite and the refusal honest.
-    span: span > 1e-9 ? span : 1,
-  }
-}
-
-/**
- * Order split siblings deterministically, or fall back to explore order.
+ * Order split siblings deterministically, or fail the solve on a near-tie.
  *
  * The key is each solid's centre of mass relative to the parent's own bounding
- * centre, divided by the parent's span, so a uniform resize of the parent
- * cancels and the key stays a pure relative position.
+ * centre, divided by the parent's span (via the shared `shapeNormalFrame`), so
+ * a uniform resize of the parent cancels and the key stays a pure relative
+ * position. A near-tie is a refusal, and here a refusal is a throw: every other
+ * UUID-minting caller turns a refusal into "leave unnamed" and the ancestral
+ * path recovers, but a body id names a persisted part (name/colour/visibility)
+ * so the id must never be assigned in OCC explorer order. A flipped body id is
+ * worse than a failed split (user decision 2026-08-12).
  */
 function orderSolids(oc: OccModule, scope: DisposeScope, parent: OccShape, solids: OccShape[]): OccShape[] {
   if (solids.length < 2) return solids
-  const { centre, span } = shapeFrame(oc, scope, parent)
+  const { centre, span } = shapeNormalFrame(oc, scope, parent)
   const children: SplitChild<OccShape>[] = solids.map((solid) => {
     const c = solidCentroid(oc, scope, solid)
     return { item: solid, key: [(c[0] - centre[0]) / span, (c[1] - centre[1]) / span, (c[2] - centre[2]) / span] }
   })
-  return orderSplitChildren(children) ?? solids
+  const ordered = orderSplitChildren(children)
+  if (ordered === null) {
+    throw new Error(
+      'bodySplit: split siblings are a near-tie in the parent frame; refusing to order them ' +
+        '(a flipped body id is worse than a failed split)',
+    )
+  }
+  return ordered
 }
 
 /**

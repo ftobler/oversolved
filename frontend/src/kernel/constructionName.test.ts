@@ -141,17 +141,47 @@ describe('orderSplitChildren', () => {
     expect(orderSplitChildren(children)).toEqual(['left', 'right'])
   })
 
-  it('is invariant to uniform parent resize (relative frame cancels scale)', () => {
-    // A 10->11 mm resize scales absolute geometry but not the relative key.
-    const before: SplitChild<string>[] = [
-      { item: 'a', key: [0.25] },
-      { item: 'b', key: [0.75] },
+  it('keys must already be normalized: a raw-scale shrink turns a clear order into a near-tie', () => {
+    // The old "resize invariance" test fed byte-identical keys before/after and
+    // asserted nothing. The real contract is that CALLERS normalize (faceSplitKey /
+    // normalizedWorldKey divide by the parent's characteristic length), so a uniform
+    // parent resize leaves the key unchanged. This test pins the boundary: raw world
+    // keys are NOT resize-invariant, and `orderSplitChildren` correctly turns the
+    // shrunk, ambiguous pair into a refusal. Both siblings 5 units apart in a 10-unit
+    // part are clearly ordered; after a 1000x shrink they sit within SPLIT_EPS and
+    // the ordering refuses.
+    const fullSize: SplitChild<string>[] = [
+      { item: 'a', key: [5.0] },
+      { item: 'b', key: [5.5] },
     ]
-    const afterResize: SplitChild<string>[] = [
-      { item: 'a', key: [0.25] },
-      { item: 'b', key: [0.75] },
+    const shrunk: SplitChild<string>[] = [
+      { item: 'a', key: [0.005] },
+      { item: 'b', key: [0.0055] },
     ]
-    expect(orderSplitChildren(before)).toEqual(orderSplitChildren(afterResize))
+    expect(orderSplitChildren(fullSize)).toEqual(['a', 'b'])
+    expect(orderSplitChildren(shrunk)).toBeNull()
+  })
+
+  it('refuses (returns null) on a NaN key component, not insertion order', () => {
+    // NaN compares as equal in keyLess, so without an explicit check a geometry-read
+    // failure falls through to the stable sort's insertion order -- OCC-explorer
+    // order by another name. The second component here is far apart, so the old
+    // keyDistance accidentally ignores the NaN and 'broken' silently sorts last.
+    const children: SplitChild<string>[] = [
+      { item: 'broken', key: [NaN, 100] },
+      { item: 'left', key: [0.1, 0] },
+      { item: 'right', key: [0.9, 0] },
+    ]
+    expect(orderSplitChildren(children)).toBeNull()
+  })
+
+  it('refuses on NaN even when every other sibling would order clearly', () => {
+    const children: SplitChild<string>[] = [
+      { item: 'far-left', key: [0.1] },
+      { item: 'broken', key: [NaN] },
+      { item: 'far-right', key: [0.9] },
+    ]
+    expect(orderSplitChildren(children)).toBeNull()
   })
 
   it('refuses (returns null) on a near-tie within SPLIT_EPS', () => {

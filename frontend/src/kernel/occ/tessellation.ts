@@ -29,6 +29,7 @@ import {
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
 import { geometryClassifiers, edgeGeometryHash, faceGeometryHash, vertexGeometryHash } from '../geomHash'
 import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
+import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
@@ -459,11 +460,19 @@ function vertexUuidsFromFaces(
     const setKey = [...uuidSet].sort().join('|')
     ;(bySet[setKey] ??= []).push(vgh)
   }
+  // Vertex points are world coordinates: normalize them by the solid's span so
+  // a uniform resize cancels and the refusal is relative, not unit-dependent.
+  let frame: NormalFrame | null = null
   for (const [setKey, vghs] of Object.entries(bySet)) {
     const faceUuids = setKey.split('|')
     let ordered: string[] | null = vghs
     if (vghs.length > 1) {
-      const children: SplitChild<string>[] = vghs.map((vgh) => ({ item: vgh, key: vertexPoints[vgh] }))
+      frame ??= shapeNormalFrame(oc, scope, solid)
+      const f = frame
+      const children: SplitChild<string>[] = vghs.map((vgh) => ({
+        item: vgh,
+        key: normalizedWorldKey(f, vertexPoints[vgh]),
+      }))
       ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
     }
     if (ordered === null) continue

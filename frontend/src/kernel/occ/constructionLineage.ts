@@ -6,7 +6,7 @@
 
 import { type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
-import { edgeToGeom, faceCentroid, faceNormal, faceArea } from './primitives'
+import { edgeToGeom, faceCentroid, faceNormal, faceArea, readSolidVertices } from './primitives'
 import { faceGh, edgeGh } from './lineageHash'
 import { normalToFrame, projectWorldToFrame } from '../types3d'
 import {
@@ -16,6 +16,81 @@ import {
   orderSplitChildren,
   type SplitChild,
 } from '../constructionName'
+
+// ─── shared parent-frame normalization (the confined world-geometry) ───
+
+/** The parent AABB centre + max-axis span that world-coordinate keys normalize by. */
+export interface NormalFrame {
+  centre: [number, number, number]
+  span: number
+}
+
+/**
+ * The characteristic frame of a parent shape: its B-rep vertex AABB centre and
+ * max-axis span. This is the length every world-coordinate ordering key divides
+ * by, so a uniform resize of the parent cancels and the key is dimensionless
+ * (comparable to `faceSplitKey`'s sqrt-area scaling and bodySplit's span
+ * scaling). Vertex-based like bodySplit's frame, so a curved-face bulge cannot
+ * shift it between two rebuilds of the same shape. A degenerate (zero-span) or
+ * vertex-less shape keeps span 1 so the refusal stays honest instead of
+ * dividing by ~0.
+ */
+export function shapeNormalFrame(oc: OccModule, scope: DisposeScope, shape: OccShape): NormalFrame {
+  const verts = readSolidVertices(oc, scope, shape)
+  if (verts.length === 0) return { centre: [0, 0, 0], span: 1 }
+  const lo = [Infinity, Infinity, Infinity]
+  const hi = [-Infinity, -Infinity, -Infinity]
+  for (const v of verts) {
+    for (let i = 0; i < 3; i++) {
+      if (v[i] < lo[i]) lo[i] = v[i]
+      if (v[i] > hi[i]) hi[i] = v[i]
+    }
+  }
+  const span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2])
+  return {
+    centre: [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2],
+    span: span > 1e-9 ? span : 1,
+  }
+}
+
+/**
+ * A world-space point as a relative ordering key inside `frame`:
+ * (point - centre) / span. All three components dimensionless, so `SPLIT_EPS`
+ * means the same fraction of the parent for edge, vertex and corner keys. A
+ * NaN component (a failed geometry read) survives the division and is refused
+ * by `orderSplitChildren`.
+ */
+export function normalizedWorldKey(frame: NormalFrame, point: readonly number[]): number[] {
+  const c = frame.centre
+  return [
+    (point[0] - c[0]) / frame.span,
+    (point[1] - c[1]) / frame.span,
+    (point[2] - c[2]) / frame.span,
+  ]
+}
+
+/**
+ * The world-space midpoint of an edge (line) or the centre of a circle/arc:
+ * the raw point `normalizedWorldKey` turns into an ordering key. Returns NaN
+ * components on a geometry-read failure so `orderSplitChildren` refuses the
+ * whole multiplicity group instead of ordering by a fabricated point (the old
+ * `[0, 0, 0]` fallback could falsely tie with a real edge at the origin).
+ */
+export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
+  try {
+    const { ed } = edgeToGeom(oc, scope, edge)
+    const s = (ed as { start?: number[] }).start
+    const e = (ed as { end?: number[] }).end
+    const c = (ed as { center?: number[] }).center
+    if (Array.isArray(s) && Array.isArray(e)) {
+      return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, (s[2] + e[2]) / 2]
+    }
+    if (Array.isArray(c)) return [...c]
+  } catch {
+    // fall through
+  }
+  return [NaN, NaN, NaN]
+}
 
 /**
  * A child face centroid expressed in its split parent's normalized in-plane
@@ -33,23 +108,6 @@ export function faceSplitKey(oc: OccModule, scope: DisposeScope, parent: OccShap
   const [u, v] = projectWorldToFrame(cc as [number, number, number], frame)
   const s = Math.sqrt(Math.max(pa, 1e-9))
   return [u / s, v / s]
-}
-
-/** A relative ordering key for an edge (its midpoint), for split multiplicity. */
-function edgeOrderKey(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
-  try {
-    const { ed } = edgeToGeom(oc, scope, edge)
-    const s = (ed as { start?: number[] }).start
-    const e = (ed as { end?: number[] }).end
-    const c = (ed as { center?: number[] }).center
-    if (Array.isArray(s) && Array.isArray(e)) {
-      return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, (s[2] + e[2]) / 2]
-    }
-    if (Array.isArray(c)) return [...c]
-  } catch {
-    // fall through
-  }
-  return [0, 0, 0]
 }
 
 /**
@@ -124,12 +182,21 @@ export function nameFacesFromNeighbours(
     ;(bySet[[...neighbours].sort().join('|')] ??= []).push({ gh: f.gh, face: f.face })
   }
 
+  let frame: NormalFrame | null = null
   for (const [setKey, group] of Object.entries(bySet)) {
     const neighbours = setKey.split('|')
     let ordered: Residual[] | null = group
     if (group.length > 1) {
+      // The centroid key must be in the shape's OWN normalized frame, not raw
+      // world coordinates: a uniform resize otherwise scales the absolute
+      // distance under SPLIT_EPS and makes the refusal unit-dependent.
+      frame ??= shapeNormalFrame(oc, scope, shape)
+      const f = frame
       ordered = orderSplitChildren(
-        group.map<SplitChild<Residual>>((r) => ({ item: r, key: faceCentroid(oc, scope, r.face) })),
+        group.map<SplitChild<Residual>>((r) => ({
+          item: r,
+          key: normalizedWorldKey(f, faceCentroid(oc, scope, r.face)),
+        })),
       )  // null on a near-tie -> leave unnamed
     }
     if (ordered === null) continue
@@ -189,13 +256,18 @@ export function deriveEdgeNames(
       (bySingle[distinct[0]] ??= []).push(egh)
     }
   }
+  let frame: NormalFrame | null = null
   for (const [pairKey, eghs] of Object.entries(byPair)) {
     const [a, b] = pairKey.split('|')
     let ordered: string[] | null = eghs
     if (eghs.length > 1) {
+      // Edge midpoints are world coordinates: normalize them by the parent
+      // shape's span so a uniform resize cancels and the refusal is relative.
+      frame ??= shapeNormalFrame(oc, scope, shape)
+      const f = frame
       const children: SplitChild<string>[] = eghs.map((egh) => ({
         item: egh,
-        key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+        key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edgeShapes[egh])),
       }))
       ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
     }
@@ -211,9 +283,11 @@ export function deriveEdgeNames(
   for (const [faceUuid, eghs] of Object.entries(bySingle)) {
     let ordered: string[] | null = eghs
     if (eghs.length > 1) {
+      frame ??= shapeNormalFrame(oc, scope, shape)
+      const f = frame
       const children: SplitChild<string>[] = eghs.map((egh) => ({
         item: egh,
-        key: edgeOrderKey(oc, scope, edgeShapes[egh]),
+        key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edgeShapes[egh])),
       }))
       ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
     }
