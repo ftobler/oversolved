@@ -197,3 +197,48 @@ describe('one payload-equality predicate everywhere', () => {
     expect(repoSemanticFingerprint(changed)).not.toEqual(repoSemanticFingerprint(base))
   })
 })
+
+describe('stableJson collision classes the doc comment documents', () => {
+  it('an undefined array element collides with null', () => {
+    // JSON.stringify serializes an undefined array element as null, so the two
+    // payloads hash equal even though their content differs. Pinning the
+    // collision keeps the documented contract honest: a future payload that
+    // accidentally carries an undefined array entry merges with its null twin.
+    expect(stableJson([1, undefined])).toBe(stableJson([1, null]))
+  })
+
+  it('an undefined-valued object key is dropped', () => {
+    // JSON.stringify omits keys whose value is undefined, so `{a: undefined}`
+    // hashes like the empty object.
+    expect(stableJson({ a: undefined })).toBe(stableJson({}))
+  })
+
+  it('NaN in an object value collides with null', () => {
+    // JSON.stringify serializes NaN as null, so `{a: NaN}` hashes like
+    // `{a: null}`.
+    expect(stableJson({ a: NaN })).toBe(stableJson({ a: null }))
+  })
+
+  it('a Map collides with a plain object holding the same entries', () => {
+    // The Map branch converts the map to a sorted-key object, so a Map and a
+    // plain object with the same entries are indistinguishable.
+    expect(stableJson(new Map([['a', 1]]))).toBe(stableJson({ a: 1 }))
+  })
+
+  it('is insensitive to object key order', () => {
+    expect(stableJson({ b: 1, a: 2 })).toBe(stableJson({ a: 2, b: 1 }))
+  })
+
+  it('normalizes -0 to 0', () => {
+    expect(stableJson(-0)).toBe(stableJson(0))
+  })
+
+  it('still hashes genuinely different JSON-clean payloads differently', () => {
+    // The collision classes are coarse, but a real content difference in
+    // JSON-clean payloads must still move the hash, or the dedupe could merge
+    // distinct elements.
+    expect(stableJson({ a: 1, nested: { ref: 'x' } })).not.toBe(
+      stableJson({ a: 1, nested: { ref: 'y' } }),
+    )
+  })
+})

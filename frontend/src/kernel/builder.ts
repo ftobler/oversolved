@@ -285,11 +285,19 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
 
 // The ONE canonical payload-equality predicate, shared by the restore dedupe
 // (`_dedupeRepo`), the live dedup-skip (`_registerBrepFaceAncestry`) and the
-// parity fingerprint (`repoFingerprintTestUtil`). Recursive key sort + Map
-// awareness + `-0` normalisation, so two payloads that differ anywhere in their
-// nested content hash differently. `undefined`-valued keys are dropped by
-// JSON.stringify (`{a:1,b:undefined}` hashes like `{a:1}`); pre-existing and
-// shared by all three uses, so it can never diverge live vs restored.
+// parity fingerprint (`repoFingerprintTestUtil`). Stable under object key
+// order (recursive key sort) and Map entry order (Maps become sorted-key
+// objects), and normalizes `-0` to `0`. It does NOT hash every content
+// difference: JSON.stringify drops undefined-valued object keys
+// (`{a:1,b:undefined}` hashes like `{a:1}`) and serializes undefined array
+// elements and NaN in arrays and object values as `null`, so `[1,undefined]`
+// collides with `[1,null]` and `{a:NaN}` with `{a:null}`; a Map also collides with a plain
+// object carrying the same entries. Equal hashes are therefore a coarser
+// equality than content identity: only payloads that really differ as
+// JSON-clean JSON are guaranteed to hash differently. The collisions are
+// pre-existing and shared by all three uses, so they can never diverge live
+// vs restored, but a future payload that accidentally carries an undefined or
+// NaN value will silently merge distinct elements.
 export function stableJson(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => {
     if (v instanceof Map) {
