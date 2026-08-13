@@ -296,6 +296,32 @@ class NullSolveChild {
 
 // ─── Test suite ───
 
+// The real parity work below is wrapped in describe.skipIf(!oc || !solveBytes ||
+// !topologyBytes). That makes a provisioning regression (OCC.js absent, WASM
+// build missing, baseline corrupted) look like a green 0-test run instead of a
+// failure. These always-running guards live outside the skipIf suite so a
+// provisioning or baseline regression fails the parity job loudly. They check
+// only the module-load results, which are null (never throw) when provisioning
+// is absent, so they do not need OCC/WASM to actually load.
+describe('parity provisioning guard', () => {
+  it('has all provisioning globals (OCC.js + solver + topology WASM)', () => {
+    expect(oc, 'oc: OCC.js absent - run `npm run occ:install`').toBeTruthy()
+    expect(solveBytes, 'solveBytes: Rust solver WASM absent - run `just shadow:wasm`').toBeTruthy()
+    expect(topologyBytes, 'topologyBytes: topology WASM absent - run `just shadow:wasm`').toBeTruthy()
+  })
+
+  it('has a non-trivial baseline corpus (not empty/corrupt)', () => {
+    expect(entries.length, 'baseline corpus is empty or corrupted').toBeGreaterThanOrEqual(20)
+  })
+
+  // A valid-JSON baseline of all-failed entries would pass the corpus-count
+  // guard and make every parity test hit the warn-and-return branch, so require
+  // at least one entry the parity suite actually solves.
+  it('has at least one baseline entry marked ok', () => {
+    expect(entries.some((e) => e.ok), 'baseline corpus has no ok:true entry').toBe(true)
+  })
+})
+
 // The null-solve guard does not need OCC.js (it uses a fake child), so it lives
 // outside the skipIf suite and runs in the default vitest run too.
 describe('parity null-solve guard', () => {
