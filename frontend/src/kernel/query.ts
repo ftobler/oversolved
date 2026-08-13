@@ -638,17 +638,25 @@ export class Repository {
    *    1. candidates whose payload carries every wanted token (a positive match
    *       outranks no-evidence: an empty-payload sibling must not dilute the
    *       narrowing into a false ambiguity);
-    *    2. else the no-evidence candidates (the only non-contradicted ones), so
-    *       resolution proceeds exactly as it did before this feature, except in
-    *       a MIXED set where a no-evidence sibling resolves (with the full set
-    *       kept pre-feature it threw AmbiguousQueryError) - intended, per the B1
-    *       fix;
-   *    3. else [] - every candidate carried conflicting NON-EMPTY evidence, and
-   *       the caller decides between the veto (miss) and staying ambiguous.
+   *    2. candidates whose payload carries SOME wanted token (a partial match is
+   *       positive evidence, not a contradiction: a wanted set is a snapshot of
+   *       an earlier geometry and a moved face can legitimately lose a token, so
+   *       vetoing it would break the persisted plane-on-face rescue that the
+   *       legacy descriptor tier exists for, see pickIdentityCorpus);
+   *    3. else the no-evidence candidates (the only non-contradicted ones), so
+   *       resolution proceeds exactly as it did before this feature, except in
+   *       a MIXED set where a no-evidence sibling resolves (with the full set
+   *       kept pre-feature it threw AmbiguousQueryError) - intended, per the B1
+   *       fix;
+   *    4. else [] - every candidate carried evidence with NO wanted token in
+   *       common (a pure contradiction). The resolver turns it into a miss and
+   *       gates the legacy descriptor-only fallback off, queryAll into [] -
+   *       never the un-narrowed set.
    *  Shared by the subset and ancestral-partial tiers. */
   private narrowByClassifier(candidateIds: string[], classifierIds: string[]): string[] {
     const wanted = new Set(classifierIds.map(c => c.slice(1)))
     const matching: string[] = []
+    const partial: string[] = []
     const noEvidence: string[] = []
     for (const eid of candidateIds) {
       const el = this.elements.get(eid)
@@ -657,9 +665,17 @@ export class Repository {
         noEvidence.push(eid)
       } else if (isSubset(wanted, cls)) {
         matching.push(eid)
+      } else {
+        for (const t of wanted) {
+          if (cls.has(t)) {
+            partial.push(eid)
+            break
+          }
+        }
       }
     }
     if (matching.length) return matching
+    if (partial.length) return partial
     if (noEvidence.length) return noEvidence
     return []
   }
@@ -932,6 +948,7 @@ export class Repository {
 
     let candidateIds: string[] = []
     let descriptorFallback = false
+    let classifierVetoFired = false
     let querySet = new Set<string>()
     if (nonHashIds.length) {
       querySet = new Set(nonHashIds)
@@ -973,18 +990,24 @@ export class Repository {
       // The veto is scoped to REAL evidence (narrowByClassifier): an empty
       // payload is no evidence and never vetoes, so a lone edge whose registered
       // payload collapses to [] (the pre-existing solidToEdges vs
-      // edgeAncestryPayload asymmetry) still resolves as it did before, while a
-      // positive classifier match still outranks no-evidence siblings. A lone
-      // candidate whose NON-EMPTY payload contradicts the wanted set is refused
-      // as a miss - the veto is independent of the descriptor tier, which runs
-      // AFTER and is skipped by this return; several contradictory candidates
-      // stay a loud ambiguity at the final multiplicity check instead of ever
-      // resolving a wrong sibling.
+      // edgeAncestryPayload asymmetry) still resolves as it did before, and a
+      // candidate sharing ANY wanted token is positive evidence, not a
+      // contradiction (a wanted set snapshots an earlier geometry - a moved face
+      // can lose a token, and the legacy descriptor tier exists to rescue that
+      // persisted query). Only a PURE contradiction (every candidate's non-empty
+      // payload has NO wanted token in common) vetoes: a lone candidate is
+      // refused as a miss, and a multi-candidate set is vetoed as a whole -
+      // candidateIds empties exactly like queryAll's unconditional assignment,
+      // so the descriptor tier and the descriptor-only fallback cannot shrink
+      // the contradictory set to a wrong winner.
       const narrowed = this.narrowByClassifier(candidateIds, classifierIds)
       if (narrowed.length) {
         candidateIds = narrowed
       } else if (candidateIds.length === 1) {
         return null
+      } else {
+        candidateIds = []
+        classifierVetoFired = true
       }
     }
 
@@ -1026,8 +1049,12 @@ export class Repository {
       }
     }
 
-    if (!candidateIds.length && descriptorIds.length) {
+    if (!candidateIds.length && descriptorIds.length && !classifierVetoFired) {
       // Descriptor-only fallback: without an ancestry bound, match TIGHT only.
+      // A fired classifier veto must gate it off too: the fallback scans EVERY
+      // element with no classifier re-check, so after a total veto it would
+      // otherwise tight-match a contradictory element that the partial tier
+      // already refused (the veto is a veto, matching queryAll's []).
       const qd = descriptorIds.map(parseGeomDescriptorId).find(d => d !== null) ?? null
       if (qd !== null) {
         const fallbackIds: string[] = []

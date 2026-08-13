@@ -995,7 +995,7 @@ describe("classifier veto semantics", () => {
     expect(repo._lastTier).toBe("ancestral")
   })
 
-  it("a multi-candidate subset with a stale classifier fails loud as ambiguous, not a silent pass", () => {
+  it("a multi-candidate subset with a total classifier veto misses instead of resolving a wrong face", () => {
     const repo = new Repository()
     repo.registerAncestor(
       ["@ex1", "@body1", "surface:0"],
@@ -1005,11 +1005,15 @@ describe("classifier veto semantics", () => {
       ["@ex1", "@body1", "surface:1"],
       { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
     )
-    // Neither candidate carries the wanted cls_zp: the classifier cannot
-    // disambiguate, and the two candidates must stay a loud ambiguity, never
-    // silently narrow or resolve one of the wrong faces.
+    // Neither candidate carries the wanted cls_zp and both carry NON-EMPTY
+    // contradictory evidence: the classifier veto empties the set, so the query
+    // misses exactly like queryAll enumerates []. This is deliberately stronger
+    // than the old behaviour (the set survived and threw AmbiguousQueryError at
+    // the final multiplicity check), and it must NOT let the descriptor tier
+    // shrink the set to a wrong winner.
     const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
-    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
   })
 
   it("an element with no classifier evidence (empty payload) is not vetoed", () => {
@@ -1092,6 +1096,144 @@ describe("classifier veto semantics", () => {
     expect(result).not.toBeNull()
     expect((result as Payload).classifiers).toEqual(["cls_zn"])
     expect(repo._lastTier).toBe("ancestral-partial")
+  })
+
+  it("a multi-candidate classifier veto is not re-bypassed by legacy descriptor tokens", () => {
+    // Two sibling caps share the ancestry tokens and BOTH carry NON-EMPTY
+    // contradictory evidence (cls_zn against the wanted cls_zp). The legacy
+    // descriptor token names the surface:0 face tightly, so the descriptor tier
+    // (and, after the veto empties the set, the descriptor-only fallback) would
+    // each pick a wrong face. The veto must win either way.
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
+    )
+    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("the descriptor-only fallback cannot resolve a vetoed contradictory candidate either", () => {
+    // Same veto, but the candidates share EXACTLY the query's non-hash tokens:
+    // after the veto empties the subset set, the ancestral-partial tier sees
+    // them again (and narrows them to []), and the descriptor-only fallback
+    // then tight-matches the surface:0 face over the WHOLE repo with no
+    // classifier re-check. It must stay a miss.
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
+    )
+    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("a positive classifier match outranks a legacy descriptor token", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zp"] },
+    )
+    // The descriptor names the cls_zn face (centroid [0,0,0]) but the wanted
+    // cls_zp is real positive evidence on the other sibling and must outrank it.
+    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual(["cls_zp"])
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("a partial classifier overlap is positive evidence, not a contradiction", () => {
+    // The wanted set {xp, yp} snapshots an earlier geometry; the +Y sibling lost
+    // its cls_xp when the model moved it. Its cls_yp is partial positive
+    // evidence, so the veto must NOT fire and the sibling resolves (the
+    // persisted plane-on-face rescue, pickIdentityCorpus).
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_yn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_yp"] },
+    )
+    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_xp", "@cls_yp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual(["cls_yp"])
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("queryAll enumerates the partial-overlap sibling, matching the resolver", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_yn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_yp"] },
+    )
+    // Same fixture as the resolver pin above: queryAll must enumerate exactly
+    // the partial-overlap sibling, not the zero-overlap one and not the empty
+    // whole set.
+    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_xp", "@cls_yp"])
+    const results = repo.queryAll(q) as Payload[]
+    expect(results.length).toBe(1)
+    expect(results[0].classifiers).toEqual(["cls_yp"])
+  })
+
+  it("partial positive evidence outranks a no-evidence sibling in both resolver and queryAll", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_xp"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: [] },
+    )
+    // The cls_xp sibling shares a wanted token and is positive evidence; the []
+    // payload is no evidence. Per the documented priority the partial match
+    // must outrank the no-evidence sibling in both the resolver and queryAll,
+    // or the tier order is wrong.
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_xp", "@cls_yp"])
+    const result = repo.query(q)
+    expect(result).not.toBeNull()
+    expect((result as Payload).classifiers).toEqual(["cls_xp"])
+    expect(repo._lastTier).toBe("ancestral")
+    const results = repo.queryAll(q) as Payload[]
+    expect(results.length).toBe(1)
+    expect(results[0].classifiers).toEqual(["cls_xp"])
+  })
+
+  it("the resolver veto and queryAll enumeration agree on a contradictory multi-candidate set", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:0"],
+      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    repo.registerAncestor(
+      ["@ex1", "@body1", "surface:1"],
+      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
+    )
+    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
+    expect(repo.query(q)).toBeNull()
+    expect(repo.queryAll(q)).toEqual([])
   })
 })
 
