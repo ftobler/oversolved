@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  solveViaWorker, exportViaWorker, exportAssemblyViaWorker,
+  solveViaWorker, exportViaWorker, exportAssemblyViaWorker, buildBundleViaWorker,
   setSolverWorkerForTest, setSolverTimeoutForTest, setSolverCrashBackoffForTest,
   cancelSolver, getPendingCount,
   EMPTY_BUILD_STATE,
@@ -350,6 +350,96 @@ describe('solveViaWorker', () => {
       expect(created).toHaveLength(2)
       created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
       await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('a user cancel clears a crash-armed cooldown so the next solve spawns at once', async () => {
+      // The clear is defensive: a backoff rejection is synchronous, so while
+      // the window is armed the overlay never paints a cancel button and no
+      // live user cancel can land here. The clear still matches documented
+      // intent (a deliberate drop lifts the cooldown), so pin that it works.
+      vi.useFakeTimers()
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      await expect(solveViaWorker({ id: 'e' })).rejects.toThrow('solver worker crashed (backoff)')
+      cancelSolver()
+      const p2 = solveViaWorker({ id: 'f' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('carves export out of the cooldown: an export proceeds at once while a solve still backoff-rejects', async () => {
+      vi.useFakeTimers()
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      // The cooldown is about a drag burst over a trapping doc; a solve inside
+      // the window still rides it...
+      await expect(solveViaWorker({ id: 'e' })).rejects.toThrow('solver worker crashed (backoff)')
+      // ...but an export is a deliberate single action, so it spawns a fresh
+      // worker immediately instead of waiting out the window.
+      const p2 = exportViaWorker({ id: 'f' }, { format: 'step' })
+      expect(created).toHaveLength(2)
+      const bytes = new Uint8Array([5, 6])
+      created[1].reply({ id: created[1].posted[0].id, ok: true, bytes })
+      await expect(p2).resolves.toBe(bytes)
+    })
+
+    it('carves exportAssembly out of the cooldown too', async () => {
+      vi.useFakeTimers()
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      await expect(solveViaWorker({ id: 'e' })).rejects.toThrow('solver worker crashed (backoff)')
+      // exportAssembly is a deliberate single click like export: it spawns a
+      // fresh worker immediately instead of waiting out the window.
+      const assemblyP = exportAssemblyViaWorker(
+        [{ spec: { id: 'a' }, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+        { format: 'step' },
+      )
+      expect(created).toHaveLength(2)
+      const bytes = new Uint8Array([9])
+      created[1].reply({ id: created[1].posted[0].id, ok: true, bytes })
+      await expect(assemblyP).resolves.toBe(bytes)
+    })
+
+    it('a buildBundle burst rides the crash cooldown: inside the window the relay backoff-rejects', async () => {
+      // buildBundle is relayed per solveAssembly (useAssemblySolve wires it as
+      // the anchor worker's buildBundle handler), so a drag tick over a trapping
+      // part doc fires it in a burst like solve. It must collapse to one respawn
+      // instead of spawning a fresh trapping OCC worker per tick.
+      vi.useFakeTimers()
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      const b1 = buildBundleViaWorker({ id: 'e' }, 'doc1', 1)
+      const b2 = buildBundleViaWorker({ id: 'f' }, 'doc1', 1)
+      const b3 = buildBundleViaWorker({ id: 'g' }, 'doc1', 1)
+      await expect(b1).rejects.toThrow('solver worker crashed (backoff)')
+      await expect(b2).rejects.toThrow('solver worker crashed (backoff)')
+      await expect(b3).rejects.toThrow('solver worker crashed (backoff)')
+      expect(created).toHaveLength(1)
+      expect(getPendingCount()).toBe(0)
+    })
+
+    it('the watchdog cannot fire inside the window after a crash, so onTimeout clearing is defensive', async () => {
+      // Reachability: both the onTimeout and cancelSolver clears are defensive.
+      // A crash's dropWorker clears every pending watchdog timer, so no onTimeout
+      // can fire inside the window (and production never arms the watchdog at
+      // all); a backoff rejection is synchronous, so the overlay never paints a
+      // cancel button while the window is armed. The clears stay because they
+      // match documented intent. This test pins that a crashed burst still
+      // backoff-rejects even when advanced past the watchdog ceiling.
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p = solveViaWorker({ id: 'd' })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      vi.advanceTimersByTime(1000)
+      await expect(solveViaWorker({ id: 'e' })).rejects.toThrow('solver worker crashed (backoff)')
+      expect(created).toHaveLength(1)
+      expect(getPendingCount()).toBe(0)
     })
 
     it('setSolverCrashBackoffForTest overrides the window', async () => {

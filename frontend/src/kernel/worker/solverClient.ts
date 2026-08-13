@@ -15,7 +15,11 @@
  * lives in main-thread JS, so no user work is lost). A crash arms a short
  * cooldown that suppresses further respawns for CRASH_COOLDOWN_MS, so a drag
  * burst over a trapping doc spins at most one Worker per window; the solve
- * after the cooldown respawns normally.
+ * after the cooldown respawns normally. Solve and bundle builds are the
+ * burst-driven kinds (drag solves, and the drag-driven assembly relays the
+ * anchor worker fires per part) and both ride the cooldown; exports and
+ * assembly exports are deliberate single clicks and bypass it, respawning at
+ * once.
  *
  * Hang handling: some OCC operations (notably ShapeUpgrade_UnifySameDomain's
  * face merge on self-overlapping geometry, e.g. a circular_array whose axis runs
@@ -84,8 +88,12 @@ let solveTimeoutMs = Infinity
 
 // Crash cooldown window: after a Worker trap, refuse to respawn for this long.
 // Only a crash sets the timestamp; cancels and watchdog timeouts do not (the
-// user or the per-request ceiling already made that call). Tests lower the
-// window via setSolverCrashBackoffForTest().
+// user or the per-request ceiling already made that call) and clear a cooldown
+// a crash armed earlier. Solve and bundle builds ride the gate (both are burst-
+// driven: drag solves, and the drag-driven assembly relays the anchor worker
+// fires per part); exports and assembly exports are deliberate single clicks
+// and bypass it, respawning at once. Tests lower the window via
+// setSolverCrashBackoffForTest().
 const CRASH_COOLDOWN_MS = 2000
 let crashCooldownMs = CRASH_COOLDOWN_MS
 let workerCrashAt = 0  // Date.now() of the last Worker trap; 0 = no crash yet
@@ -144,13 +152,23 @@ function onError(): void {
 function onTimeout(): void {
   // A request outran the watchdog: the Worker is presumed stuck in an
   // un-interruptible synchronous loop (see the file header). Killing it is the
-  // only recovery.
+  // only recovery. The cooldown clear below is defensive: a crash's dropWorker
+  // already cleared the watchdog timers, so no timeout can fire inside a window
+  // a crash armed (and production never arms the watchdog at all). It stays to
+  // match the documented intent that only a crash sets the timestamp.
   dropWorker(new Error('solver worker timed out'))
+  workerCrashAt = 0
 }
 
 /** User-initiated cancel: kill the Worker so any in-flight solve is rejected. */
 export function cancelSolver(): void {
+  // The cooldown clear below is defensive: a backoff rejection is synchronous,
+  // so while a window is armed the overlay never paints a cancel button and no
+  // user cancel can land here. It stays to match the documented intent that
+  // only a crash sets the timestamp (and exports pending in the window remain
+  // cancellable).
   dropWorker(new Error('solve cancelled'))
+  workerCrashAt = 0
 }
 
 function ensureWorker(): SolverWorkerLike | null {
@@ -169,13 +187,16 @@ function ensureWorker(): SolverWorkerLike | null {
  * field read): it runs after the pending entry is deleted, so a throw would
  * otherwise leave the promise unsettled. Any throw is converted to a rejection.
  * Resolves `null` when no Worker can be created (caller surfaces "local solver
- * unavailable").
+ * unavailable"). `bypassCrashBackoff` skips the cooldown gate: deliberate single
+ * clicks (export, assembly export) must respawn at once; solve and bundle
+ * builds are burst-driven and ride the drag-burst cooldown.
  */
 function sendRequest<T>(
   buildMsg: (id: number) => WorkerRequest,
   extract: (res: OkResponse) => T,
+  bypassCrashBackoff = false,
 ): Promise<T | null> {
-  if (workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs) {
+  if (!bypassCrashBackoff && workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs) {
     // The last Worker trap is still inside the cooldown: spawning a fresh one
     // now just rebuilds from feature 0 and traps again. Reject instead so a
     // drag burst over a trapping doc pays one respawn per window.
@@ -242,6 +263,7 @@ export function exportViaWorker(
   return sendRequest(
     (id) => ({ id, kind: 'export', spec, options }),
     (res) => (res as ExportOkResponse).bytes,
+    true,  // user-paced single click: bypass the crash cooldown (unlike solve/buildBundle)
   )
 }
 
@@ -258,6 +280,7 @@ export function exportAssemblyViaWorker(
   return sendRequest(
     (id) => ({ id, kind: 'exportAssembly', parts, options }),
     (res) => (res as ExportOkResponse).bytes,
+    true,  // user-paced single click: bypass the crash cooldown (unlike solve/buildBundle)
   )
 }
 
@@ -271,6 +294,8 @@ export function buildBundleViaWorker(
   doc_id: string,
   doc_rev: number,
 ): Promise<PartBundle | null> {
+  // Rides the crash cooldown: the anchor worker relays this per solveAssembly,
+  // so a drag tick over a trapping part doc fires it in a burst like solve.
   return sendRequest(
     (id) => ({ id, kind: 'buildBundle', spec, doc_id, doc_rev }),
     (res) => (res as BundleOkResponse).payload,
