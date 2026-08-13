@@ -617,10 +617,14 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // run from the popover's own buttons -- so it is folded in here first,
     // while editSessionSuppressedRef is still true, so commitPreview's own
     // suppress gate sees the session still active and leaves suppression on
-    // for the aggregate push below. This lands the stack in order
-    // [preview_commit, edit_session]: undo pops the aggregate first (reverts
-    // the whole gesture), then the preview.
-    if (editSessionSuppressedRef.current && previewOriginalDoc.current !== null) {
+    // for the aggregate push below. This lands a suppressed session's stack in
+    // order [preview_commit, edit_session]: undo pops the aggregate first
+    // (reverts the whole gesture), then the preview. The resolution is
+    // unconditional: every session boundary, suppressed or not, must clear an
+    // open preview, or a later popover Apply keys its preview_commit to a doc
+    // that predates the session, inverting the undo order and resurrecting a
+    // swallowed color on the second undo.
+    if (previewOriginalDoc.current !== null) {
       commitPreview({ type: 'preview_commit', description: 'preview resolved at session commit' })
     }
     const snapshot = editSnapshotRef.current
