@@ -162,8 +162,8 @@ export function findFirstDirty(
     if (i >= prevOrder.length || prevOrder[i] !== fid) return i
     const prevCheckpoint = prevState.checkpoints[fid]
     if (!prevCheckpoint) return i
-    if (_stableJson(_normalizeSpec(prevCheckpoint.spec as Record<string, unknown>))
-        !== _stableJson(_normalizeSpec(feature))) {
+    if (stableJson(_normalizeSpec(prevCheckpoint.spec as Record<string, unknown>))
+        !== stableJson(_normalizeSpec(feature))) {
       return i
     }
   }
@@ -238,7 +238,13 @@ function _dedupeRepo(repo: Repository): void {
     for (const elementId of entry.eids) {
       const payload = repo.elements.get(elementId)
       if (payload === undefined) continue
-      const payloadHash = JSON.stringify(payload, Object.keys(payload as object).sort())
+      // The ONE payload-equality predicate, shared with the live dedup-skip and
+      // the parity fingerprint (`stableJson`): recursive stable JSON, so nested
+      // object content is hashed. The old allowlist serializer
+      // (`Object.keys(payload).sort()`) is a per-level property allowlist, not a
+      // key sorter, so nested objects always serialized to `{}` and two payloads
+      // differing only in nested content were wrongly merged.
+      const payloadHash = stableJson(payload)
       if (seen.has(payloadHash)) {
         repo.deleteElement(elementId)
         continue
@@ -252,6 +258,9 @@ function _dedupeRepo(repo: Repository): void {
       repo.deleteAncestral(key)
     }
   }
+  // A deleted duplicate can empty a uuid bucket outright (it carried its own
+  // uuid); prune now so a restore never leaves a dead bucket behind.
+  repo.prunePendingUuids()
 }
 
 export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Repository {
@@ -274,7 +283,14 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
 
 // ─── Hash / validation helpers ───
 
-function _stableJson(obj: unknown): string {
+// The ONE canonical payload-equality predicate, shared by the restore dedupe
+// (`_dedupeRepo`), the live dedup-skip (`_registerBrepFaceAncestry`) and the
+// parity fingerprint (`repoFingerprintTestUtil`). Recursive key sort + Map
+// awareness + `-0` normalisation, so two payloads that differ anywhere in their
+// nested content hash differently. `undefined`-valued keys are dropped by
+// JSON.stringify (`{a:1,b:undefined}` hashes like `{a:1}`); pre-existing and
+// shared by all three uses, so it can never diverge live vs restored.
+export function stableJson(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => {
     if (v instanceof Map) {
       const entries = [...v.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
@@ -319,13 +335,13 @@ function _stripNonGeometric(obj: unknown): unknown {
 }
 
 export function hashCheckpointSpec(cp: FeatureCheckpoint): string {
-  return sha256Hex(_stableJson(cp.spec))
+  return sha256Hex(stableJson(cp.spec))
 }
 
 export function hashResultDict(result: Record<string, unknown>, fpRound?: number | null): string {
   let payload = _stripNonGeometric(result)
   if (fpRound != null) payload = _roundFloats(payload, fpRound)
-  return sha256Hex(_stableJson(payload))
+  return sha256Hex(stableJson(payload))
 }
 
 function _diffRepoSnapshot(
@@ -486,7 +502,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
     const key = [...new Set(ancestorIds)].sort().join('\0')
     const entry = globalRepo.ancestral.get(key)
     const existingIds = entry ? entry.eids : []
-    if (existingIds.some((eid) => _stableJson(globalRepo.elements.get(eid)) === _stableJson(payload))) {
+    if (existingIds.some((eid) => stableJson(globalRepo.elements.get(eid)) === stableJson(payload))) {
       continue
     }
     const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))
@@ -599,11 +615,17 @@ function _registerBrepVertexAncestry(
 
 // Keyed on the creating feature alone, so the N bodies of one feature all land
 // under one ancestral key -- `registerAncestor` accumulates (query.ts), so the
-// entry ends up holding N solid elements. Deliberate: an ambiguous entry makes
-// a `:solid`-restricted query fail loud, no production code issues that
-// restriction, and body-scoping the key is the change to make when one does.
-// `_reconcileFeatureSolids` keeps the count equal to the live body store after
-// every re-solve, so N is the number of bodies the feature owns right now.
+// entry ends up holding N solid elements, each with its own `body_id` (the
+// restore dedupe keeps them all; they are distinct payloads). Deliberate: a
+// `:solid`-restricted query over a multi-body feature is ambiguous and fails
+// loud. The ambiguity is NOT unobservable: `resolveBodyPickRef` lets a `?` pick
+// through and it is persisted as `merge_target`/`source_body`, and at solve time
+// `resolveBodyRefKeys` runs it through the repo query, catches the ambiguity,
+// and falls back to reading the `@body_*` ancestor from the query. So an
+// ambiguous `[@fid]` entry degrades a body pick to the query's body ancestor
+// rather than to a wrong single solid. `_reconcileFeatureSolids` keeps the count
+// equal to the live body store after every re-solve, so N is the number of
+// bodies the feature owns right now.
 function _registerSolidAncestry(globalRepo: Repository, body: Body): void {
   if (!body.created_by) return
   globalRepo.registerAncestor([ref(body.created_by)], {
@@ -613,13 +635,25 @@ function _registerSolidAncestry(globalRepo: Repository, body: Body): void {
   })
 }
 
+// The payload carries no body id, so a feature owning N bodies registers one
+// byte-identical `extrusion-feature` element per body. `registerAncestor`
+// accumulates (query.ts), which would leave N identical elements live while the
+// restore dedupe collapses them to 1 -- live and restored repos would disagree
+// under `?@fid:extrusion-feature`. Skip the insert when an equal payload already
+// sits in the entry (the SAME predicate the restore dedupe uses), so live holds
+// exactly one and matches the restored repo.
 function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sketchId = ''): void {
   if (!featureId) return
-  globalRepo.registerAncestor([ref(featureId)], {
+  const payload = {
     type: 'extrusion-feature',
     feature_id: featureId,
     sketch_id: sketchId,
-  })
+  }
+  const entry = globalRepo.ancestral.get(canonical([ref(featureId)]))
+  if (entry?.eids.some((eid) => stableJson(globalRepo.elements.get(eid)) === stableJson(payload))) {
+    return
+  }
+  globalRepo.registerAncestor([ref(featureId)], payload)
 }
 
 function isDict(v: unknown): v is Record<string, unknown> {
@@ -770,7 +804,7 @@ export function bodyVersion(b: Body): string {
  * checkpoint's `repo_snapshot` is taken after that -- so the snapshot the post-loop pass
  * rehydrates already contains the ancestry for every body version the loop registered.
  * Re-registering it is pure cost: identical face payloads hit the skip guard in
- * `_registerBrepFaceAncestry` (after a `_stableJson` per candidate AND per existing
+ * `_registerBrepFaceAncestry` (after a `stableJson` per candidate AND per existing
  * element), while edges and vertices churn through `evictAncestryAndRegister` and mint
  * fresh eids for the same payloads.
  *
@@ -1178,7 +1212,7 @@ export function build(
   // register the B-rep ancestry of any body the solve loop did NOT already register into
   // that checkpoint's own repo snapshot. Usually that is no body at all -- the snapshot is
   // taken after the loop's registration pass, so it already carries the ancestry, and
-  // re-registering it only churned eids and burned `_stableJson` per face per checkpoint.
+  // re-registering it only churned eids and burned `stableJson` per face per checkpoint.
   // The remainder still gets its pass here: a null-shape body, a body whose shape handle
   // moved (the `modified_by` check in the loop misses a body that changed without a push,
   // `bodyVersion` does not), and a body whose loop-side identification failed -- that last

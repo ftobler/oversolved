@@ -10,19 +10,13 @@
 // through `repoFromSnapshot`, which runs `_dedupeRepo` first. A pass that registers a payload
 // the snapshot already carries is therefore unobservable, and that is exactly the redundancy
 // `double-registration-pass` removed. Losing a payload entirely is NOT hidden.
+//
+// The payload hash is the SAME predicate `_dedupeRepo` and the live dedup-skip use
+// (`stableJson`, builder.ts) -- recursive key sort, Map-aware, `-0` normalised. One
+// predicate everywhere is what makes the replay above agree with the restore, so a
+// dedupe regression shows up here as a fingerprint that no longer matches the source.
 
-/** Deterministic JSON for a payload: recursive key sort, `-0` normalised to `0`. */
-function stableJson(value: unknown): string {
-  return JSON.stringify(value, (_k, v) => {
-    if (typeof v === 'number' && Object.is(v, -0)) return 0
-    if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const sorted: Record<string, unknown> = {}
-      for (const key of Object.keys(v as object).sort()) sorted[key] = (v as Record<string, unknown>)[key]
-      return sorted
-    }
-    return v
-  })
-}
+import { stableJson } from "./builder"
 
 interface SnapshotAncestralEntry {
   set: string[]

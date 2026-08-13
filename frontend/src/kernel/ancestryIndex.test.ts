@@ -148,16 +148,20 @@ describe("index integrity across mutation sites", () => {
 
   it("holds after a snapshotRepo -> repoFromSnapshot round-trip (with _dedupeRepo)", () => {
     const repo = seeded()
-    // Two ancestral keys carrying byte-identical payloads, so _dedupeRepo fires
-    // inside repoFromSnapshot and deletes elements + an entry after the rebuild.
-    repo.registerAncestor(["@dupe"], { type: "face", tag: "same" }, "u_dupe")
-    repo.registerAncestor(["@dupe"], { type: "face", tag: "same" }, "u_dupe")
+    // Two byte-identical payloads under one ancestral key, the duplicate with its
+    // OWN uuid: the dedupe inside repoFromSnapshot deletes the later element,
+    // which empties that uuid bucket. `_dedupeRepo` must prune it (or the bucket
+    // lingers until the next drain) for `assertNoDeadUuidBuckets` to hold.
+    repo.registerAncestor(["@dupe"], { type: "face", tag: "same" }, "u_dupe_keep")
+    repo.registerAncestor(["@dupe"], { type: "face", tag: "same" }, "u_dupe_gone")
 
     const restored = repoFromSnapshot(snapshotRepo(repo))
 
     expect(restored.ancestral.get(canonical(["@dupe"]))?.eids.length).toBe(1)
+    expect(restored.byUuid.has("u_dupe_gone")).toBe(false)
     expect(restored.byAncestorId.get("@extrude1")?.size).toBe(10)
     assertRepoIndicesConsistent(restored)
+    assertNoDeadUuidBuckets(restored)
   })
 
   it("survives further eviction on a restored repo", () => {

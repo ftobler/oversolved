@@ -786,6 +786,48 @@ describe('repo serialization', () => {
     expect(entry?.eids).toHaveLength(1)
     expect(repo.elements.has('id2')).toBe(false)
   })
+
+  // feature-repo-dedupe-payload-equality: the dedupe hash must reach into nested
+  // objects. The old allowlist serializer (`Object.keys(payload).sort()`) is a
+  // per-level property allowlist, so two payloads differing only in a nested
+  // field both serialized to the same `{}` and one was silently deleted on
+  // rehydrate. Both must survive now.
+  it('keeps two elements that differ only in a nested-object field', () => {
+    const key = canonical(['@ex1'])
+    const snapshot = {
+      elements: {
+        id1: { type: 'solid', body_id: 'b1', meta: { ref: 'a' } },
+        id2: { type: 'solid', body_id: 'b1', meta: { ref: 'b' } },
+      },
+      ancestral: { [key]: { set: ['@ex1'], eids: ['id1', 'id2'] } },
+      byUuid: {},
+    }
+    const repo = repoFromSnapshot(snapshot)
+    const entry = repo.ancestral.get(key)
+    expect(entry?.eids).toEqual(['id1', 'id2'])
+    expect(repo.elements.has('id1')).toBe(true)
+    expect(repo.elements.has('id2')).toBe(true)
+  })
+
+  it('dedupes a byte-identical duplicate next to a nested-distinct sibling', () => {
+    // Only a true duplicate is collapsed; a sibling that differs in nested
+    // content is distinct and survives, so dedupe never over-merges.
+    const key = canonical(['@ex1'])
+    const snapshot = {
+      elements: {
+        id1: { type: 'solid', body_id: 'b1', meta: { ref: 'a' } },
+        id2: { type: 'solid', body_id: 'b1', meta: { ref: 'a' } },
+        id3: { type: 'solid', body_id: 'b1', meta: { ref: 'b' } },
+      },
+      ancestral: { [key]: { set: ['@ex1'], eids: ['id1', 'id2', 'id3'] } },
+      byUuid: {},
+    }
+    const repo = repoFromSnapshot(snapshot)
+    const entry = repo.ancestral.get(key)
+    expect(entry?.eids).toHaveLength(2)
+    expect(repo.elements.has('id2')).toBe(false)
+    expect(repo.elements.has('id3')).toBe(true)
+  })
 })
 
 describe('robustness', () => {
