@@ -471,9 +471,53 @@ interface AncestralEntry {
   eids: string[]
 }
 
-/** Canonical frozenset key: dedup + sort + join (value-equal across permutations). */
+/**
+ * Canonical frozenset key: dedup + sort + join (value-equal across
+ * permutations). Ids are internally generated (feature ids, sketch entity ids,
+ * profile-query text, construction uuids) and none may contain the NUL
+ * separator: unescaped, a NUL would silently merge two DISTINCT ancestor sets
+ * into one key (`["a\u0000b","c"]` keys like `["a","b\u0000c"]`), producing
+ * wrong merges and wrong evictions. A NUL is a bug upstream, so it fails loud
+ * in dev/test (failLoud throws in test, warns in dev). The check is skipped in
+ * production because the ids are validated by construction.
+ */
 export function canonical(ids: Iterable<string>): string {
-  return [...new Set(ids)].sort().join("\u0000")
+  const uniq = [...new Set(ids)]
+  if (import.meta.env?.DEV || import.meta.env?.MODE === "test") {
+    for (const id of uniq) {
+      if (id.includes("\u0000")) {
+        failLoud(
+          `canonical: repository key id ${JSON.stringify(id)} contains the ` +
+            `NUL key separator; two distinct ancestor sets would merge into ` +
+            `one key`,
+        )
+        break
+      }
+    }
+  }
+  return uniq.sort().join("\u0000")
+}
+
+/**
+ * True when a full ancestor token (`@<id>`) is a feature reference. gc() keys
+ * on feature activity, so only feature refs pin an entry to a feature;
+ * construction uuid tokens (`@u|`), classifiers (`@cls_*`), body tags
+ * (`@body_*`), geom-hash refs (`@gface_`/`@gedge_`/`@gvertex_`/`@gnormal_`)
+ * and legacy descriptors (`@gdf|`/`@gde|`/`@gdv|`) are entity/geometry
+ * identity, never feature references: comparing them to feature ids would
+ * wrongly evict an entry whose only @-tags are non-feature (e.g. a
+ * uuid+body producer) while its body is still registered. Sketch-entity
+ * profile-query ids (`@sk1/line1`, `@sk9/r1`) and the test-fixture family
+ * `@profile_<fid>` are intentionally NOT excluded: they are never feature ids
+ * and always co-occur with a real `@<featureId>` ref, so they cannot pin an
+ * entry or wrongly evict one.
+ */
+export function isFeatureRefTag(tag: string): boolean {
+  if (isConstructionUuidId(tag)) return false
+  if (isClassifierId(tag)) return false
+  if (isGeomHashId(tag)) return false
+  if (isGeomDescriptorId(tag)) return false
+  return !tag.startsWith("@body_")
 }
 
 function isSubset(small: Set<string>, big: Set<string>): boolean {
@@ -670,10 +714,25 @@ export class Repository {
     }
   }
 
+  /**
+   * Evict entries whose feature refs are all inactive. Liveness model: gc keys
+   * on FEATURE activity. An entry lives while any of its feature-shaped tags
+   * (`@<featureId>`, e.g. the `@createdBy` every producer emits) names an
+   * active feature; a feature's elements die when the feature leaves the order.
+   * Body ownership is NOT a gc concern: bodies are re-registered and evicted by
+   * index-tag registration (`evictAncestryAndRegister` / `clearBodyAncestry`,
+   * see index-shrink-ghost-eviction), so body tags and entity/geometry identity
+   * tags (`@u|`, `@cls_*`, `@gface_*`, `@gd*|`, `@body_*`) are classified away
+   * before anything is compared to feature ids. Tagless entries (builtin
+   * planes) always live.
+   */
   gc(activeFids: Set<string>): void {
     for (const [key, entry] of [...this.ancestral]) {
       const refs = new Set<string>()
-      for (const tag of entry.set) if (tag.startsWith("@")) refs.add(tag.slice(1))
+      for (const tag of entry.set) {
+        if (!tag.startsWith("@") || !isFeatureRefTag(tag)) continue
+        refs.add(tag.slice(1))
+      }
       if (refs.size === 0) continue  // keep tagless entries (builtin planes)
       let intersects = false
       for (const r of refs) if (activeFids.has(r)) { intersects = true; break }

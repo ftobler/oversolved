@@ -499,7 +499,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       ...(uuid !== null ? { uuid } : {}),
       ...(axis ? { axis } : {}),
     }
-    const key = [...new Set(ancestorIds)].sort().join('\0')
+    const key = canonical(ancestorIds)
     const entry = globalRepo.ancestral.get(key)
     const existingIds = entry ? entry.eids : []
     if (existingIds.some((eid) => stableJson(globalRepo.elements.get(eid)) === stableJson(payload))) {
