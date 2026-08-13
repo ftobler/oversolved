@@ -140,6 +140,47 @@ const TWO_MAKES = {
   ],
 }
 
+// Build a feature owning two bodies whose meta extractor drops null-shape bodies
+// exactly like the Harness `meta` above. With `secondShapeNull`, the second body
+// carries `shape: null` (a body whose geometry never materialized); the first
+// body always has a real shape, so the phantom-solid case can assert the null
+// body adds no extra element under `[@f1]`.
+function buildNullShapePair(secondShapeNull: boolean) {
+  const spec = {
+    features: [{ id: 'f1', kind: 'make', label: 'pair', body_ids: ['body_f1', 'body_f1_null'] }],
+  }
+  const solvePair = (
+    feature: Record<string, unknown>,
+    _repo: Repository,
+    bodyStore: Record<string, Body>,
+  ): FeatureResult => {
+    const fid = String(feature.id ?? '')
+    bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000, { id: 'body_' + fid })
+    bodyStore['body_' + fid + '_null'] = makeBody(fid, (SHAPE_SEED[fid] ?? 1000) + 1, {
+      id: 'body_' + fid + '_null',
+      ...(secondShapeNull ? { shape: null } : {}),
+    })
+    return { status: 'ok' }
+  }
+  const meta = (store: Record<string, Body>) =>
+    Object.fromEntries(
+      Object.entries(store)
+        .filter(([, b]) => b.shape != null)
+        .map(([bid, b]) => [bid, fakeMeta(b)]),
+    )
+  const deps: BuildDeps = {
+    trySolveFeature: solvePair,
+    postRegister,
+    initGlobalRepo: () => new Repository(),
+    tessellateBodies: meta,
+    extractBrepMetadata: meta,
+    brepDiffNewFaceHashes: () => new Set<string>(),
+    brepDiffNewEdgeHashes: () => new Set<string>(),
+    brepDiffNewVertexHashes: () => new Set<string>(),
+  }
+  return build(spec, { prevState: null }, deps)
+}
+
 describe('real postRegister: solids survive a re-solve', () => {
   it('a cosmetic edit to a feature keeps ?@f1:solid resolving and in the checkpoint', () => {
     const h = new Harness()
@@ -235,6 +276,37 @@ describe('real postRegister: solids survive a re-solve', () => {
     const againSolids = elementsOfType(again._build_state!.checkpoints.f1, 'f1', 'solid')
     expect(againSolids.map((el) => (el as { body_id: string }).body_id).sort())
       .toEqual(['body_f1', 'body_f1_1'])
+  })
+
+  it('a null-shape owned body contributes no phantom solid under [@f1]', () => {
+    // The solve loop only registers solids for bodies with `body.shape != null`
+    // (builder.ts:1141), so a body whose geometry never materialized is invisible
+    // to `?@fid:solid`. The reconcile must not re-introduce it: before the guard
+    // it registered a phantom solid for the null-shape body, inflating `[@f1]` to
+    // two solids and making `?@f1:solid` throw AmbiguousQueryError. The two phantom
+    // solids are genuinely distinct payloads (`_dedupeRepo` at builder.ts:234
+    // collapses only byte-identical payloads and they differ by `body_id`), so the
+    // repo holds 2 solids and the restore keeps both.
+    const cold = buildNullShapePair(true)
+    const cp = cold._build_state!.checkpoints.f1
+    const solids = elementsOfType(cp, 'f1', 'solid')
+    expect(solids).toHaveLength(1)
+    expect((solids[0] as { body_id: string }).body_id).toBe('body_f1')
+    expect(elementsOfType(cp, 'f1', 'extrusion-feature')).toHaveLength(1)
+    const solid = resolveSolid(cp, 'f1')
+    expect(solid).not.toBeNull()
+    expect(solid!.body_id).toBe('body_f1')
+  })
+
+  it('the null-shape pair harness with every shape materialized keeps one solid per body', () => {
+    // Control for the null-shape case: the same two-body solve, with the second
+    // body's shape non-null, must keep the existing one-solid-per-body pin.
+    const cold = buildNullShapePair(false)
+    const cp = cold._build_state!.checkpoints.f1
+    const solids = elementsOfType(cp, 'f1', 'solid')
+    expect(solids.map((el) => (el as { body_id: string }).body_id).sort())
+      .toEqual(['body_f1', 'body_f1_null'])
+    expect(elementsOfType(cp, 'f1', 'extrusion-feature')).toHaveLength(1)
   })
 
   it('a partial rebuild keeps the creator solid while the modifier re-solves', () => {

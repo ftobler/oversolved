@@ -697,6 +697,8 @@ function _reconcileFeatureSolids(
   _evictFeatureSolidAncestry(globalRepo, fid)
   for (const body of Object.values(bodyStore)) {
     if (body.created_by !== fid) continue
+    if (body.shape == null) continue  // mirror the solve-loop guard at :1141:
+    // reconcile registers only what the loop would
     _registerSolidAncestry(globalRepo, body)
     _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
   }
