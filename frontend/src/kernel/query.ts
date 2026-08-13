@@ -343,13 +343,20 @@ function bodyModifiersOf(
   return Array.isArray(mods) ? (mods as string[]) : null
 }
 
-/** Attempt to coerce element to targetType using bodyStore and the repository. */
+/** Attempt to coerce element to targetType using bodyStore and the repository.
+ *  `orderFilter` is the caller's ordering guard: the coerce scan walks the
+ *  lineage independently of the ancestry-tier candidate filter, so it must apply
+ *  the same owner-order rule or a coerced sibling could belong to a feature
+ *  ordered after the current one (the forward-geometry hazard). The upward
+ *  `:solid` branch returns the body straight from the body store and stays
+ *  deliberately exempt from the owner-order rule. */
 function coerceType(
   element: unknown,
   targetType: string,
   bodyStore: Record<string, unknown> | null,
   repo: Repository,
   queryIds: ReadonlySet<string>,
+  orderFilter: (eids: string[]) => string[],
 ): unknown {
   if (element === null || element === undefined) return null
   const ot = objType(element)
@@ -402,6 +409,7 @@ function coerceType(
       if (elCreatedBy !== createdBy && !(bodyMods !== null && bodyMods.includes(elCreatedBy))) {
         continue
       }
+      if (orderFilter([eid]).length === 0) continue  // ordering guard: the sibling is not visible from here yet
       if (!seen.has(el)) {
         seen.add(el)
         matches.push(el)
@@ -944,7 +952,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet)
+          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, orderFilter)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)
@@ -1181,7 +1189,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet)
+          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, orderFilter)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)

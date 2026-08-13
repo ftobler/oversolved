@@ -1443,6 +1443,142 @@ describe("ordering guard", () => {
   })
 })
 
+/** Ordering guard applied inside the coerceType sibling scan: a query that
+ *  coerces to an edge/face must never reach a sibling owned by a feature
+ *  ordered after the current one. The ancestry tiers order-filter their
+ *  candidates before the type restriction, but the coerce scan walks the
+ *  lineage independently and used to bypass the guard entirely. */
+describe("ordering guard: coerce scan", () => {
+  it("rejects a later-feature sibling during coercion (forward geometry)", () => {
+    // Repro: featureOrder [ex0, ex1, fillet]. The face coerces to an edge and
+    // the only matching sibling is owned by the LATER 'fillet' (a body
+    // modifier). The guard must refuse it exactly as it refuses forward
+    // references in the ancestry tiers, so the coercion misses.
+    const repo = new Repository()
+    repo.setFeatureOrder(["ex0", "ex1", "fillet"])
+    const bodyStore: Record<string, unknown> = {
+      body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
+    }
+    repo.registerAncestor(
+      ["@ex1face0", "@ex1"],
+      { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" },
+    )
+    repo.registerAncestor(
+      ["@ex1edge0", "@ex1"],
+      { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
+    )
+    const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
+    const result = repo.query(q, null, bodyStore, "ex1")
+    expect(result).toBeNull()
+  })
+
+  it("still coerces to a same-feature sibling under the guard", () => {
+    const repo = new Repository()
+    repo.setFeatureOrder(["ex0", "ex1", "fillet"])
+    const bodyStore: Record<string, unknown> = {
+      body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1"] },
+    }
+    repo.registerAncestor(
+      ["@ex1face0", "@ex1"],
+      { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" },
+    )
+    repo.registerAncestor(
+      ["@ex1edge0", "@ex1"],
+      { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "ex1" },
+    )
+    const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
+    const result = repo.query(q, null, bodyStore, "ex1") as Record<string, unknown> | null
+    expect(result).not.toBeNull()
+    expect(result!.created_by).toBe("ex1")
+  })
+
+  it("a later feature may still coerce to an earlier feature's sibling (backward reference)", () => {
+    // From 'fillet' the ex1-owned edge is a backward reference and stays legal.
+    const repo = new Repository()
+    repo.setFeatureOrder(["ex0", "ex1", "fillet"])
+    const bodyStore: Record<string, unknown> = {
+      body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
+    }
+    repo.registerAncestor(
+      ["@ex1face0", "@ex1"],
+      { type: "flatface", body_id: "body_x", face_index: 0, created_by: "fillet" },
+    )
+    repo.registerAncestor(
+      ["@ex1edge0", "@ex1"],
+      { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "ex1" },
+    )
+    const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
+    const result = repo.query(q, null, bodyStore, "fillet") as Record<string, unknown> | null
+    expect(result).not.toBeNull()
+    expect(result!.created_by).toBe("ex1")
+  })
+
+  it("queryAll applies the guard to the coerce scan", () => {
+    const repo = new Repository()
+    repo.setFeatureOrder(["ex0", "ex1", "fillet"])
+    const bodyStore: Record<string, unknown> = {
+      body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
+    }
+    repo.registerAncestor(
+      ["@ex1face0", "@ex1"],
+      { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" },
+    )
+    repo.registerAncestor(
+      ["@ex1edge0", "@ex1"],
+      { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
+    )
+    const results = repo.queryAll(makeAncestryQuery(["@ex1"], "edge"), "ex1", bodyStore)
+    expect(results).toEqual([])
+  })
+
+  it("queryAllTyped applies the guard to the coerce scan", () => {
+    const repo = new Repository()
+    repo.setFeatureOrder(["ex0", "ex1", "fillet"])
+    const bodyStore: Record<string, unknown> = {
+      body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
+    }
+    repo.registerAncestor(
+      ["@ex1face0", "@ex1"],
+      { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" },
+    )
+    repo.registerAncestor(
+      ["@ex1edge0", "@ex1"],
+      { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
+    )
+    const results = repo.queryAllTyped(ancestry(["@ex1"], "edge"), "ex1", bodyStore)
+    expect(results).toEqual([])
+  })
+
+  it("contextvar drives the guard for the coerce scan", () => {
+    // The production solve loop sets the module contextvar instead of passing
+    // currentFeatureId explicitly; the coerce scan must honor it the same way.
+    // No explicit currentFeatureId is passed, so orderFilter falls back to the
+    // contextvar and the fillet-owned sibling stays hidden from 'ex1'.
+    const repo = new Repository()
+    repo.setFeatureOrder(["ex0", "ex1", "fillet"])
+    const bodyStore: Record<string, unknown> = {
+      body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
+    }
+    repo.registerAncestor(
+      ["@ex1face0", "@ex1"],
+      { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" },
+    )
+    repo.registerAncestor(
+      ["@ex1edge0", "@ex1"],
+      { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
+    )
+    const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
+
+    setCurrentFeatureId("ex1")
+    try {
+      const result = repo.query(q, null, bodyStore)
+      expect(result).toBeNull()
+    } finally {
+      setCurrentFeatureId(null)
+    }
+  })
+})
+
 describe("topology ordering stamp", () => {
   function sketchCase(topology: Record<string, unknown>): {
     feature: Record<string, unknown>
