@@ -15,7 +15,7 @@
 //   npm run regen:corpus   # node solve step, then the python merge step
 // (OCC.js + the Rust solver must be provisioned; see `just parity`.)
 
-import { writeFileSync } from 'node:fs'
+import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { solveWithTimeout, disposeWorker } from '../src/kernel/solveTimeout'
@@ -130,11 +130,17 @@ function pickFrontFaceBoundary(body: BodyOutput): string[] {
 
 // ─── Corpus cases ───
 
+interface SolvedDoc {
+  result: Dict
+  bodies: Record<string, unknown>
+}
+
 interface ProjectionCase {
   label: string
   feature_kind: string
   query_tier: string
   spec: Dict
+  solved: SolvedDoc
 }
 
 const projectionCases: ProjectionCase[] = []
@@ -149,7 +155,14 @@ async function addProjectionCase(
 ): Promise<void> {
   const base = await solveWithTimeout(baseSpec, { prevState: null })
   if (!base) throw new Error(`${label}: base solve returned null (OCC.js unavailable?)`)
-  const body = (base.bodies as Record<string, BodyOutput>)[Object.keys(base.bodies as Record<string, unknown>)[0]]
+  // Every projection spec pins a single source body; a multi-body base would
+  // make the picked edge queries depend on object order, so fail loudly rather
+  // than freeze an arbitrary body.
+  const bodyIds = Object.keys(base.bodies as Record<string, unknown>).sort()
+  if (bodyIds.length !== 1) {
+    throw new Error(`${label}: expected exactly one base body, found ${bodyIds.length} (${bodyIds.join(', ')})`)
+  }
+  const body = (base.bodies as Record<string, BodyOutput>)[bodyIds[0]]
   if (!body) throw new Error(`${label}: base solve produced no body`)
   const entities = buildProjection(body)
   const extraFeatures = buildExtra ? buildExtra(body) : []
@@ -161,7 +174,9 @@ async function addProjectionCase(
   const errors = (sk2.projection_errors as string[]) ?? []
   if (errors.length > 0) throw new Error(`${label}: projection errors: ${JSON.stringify(errors)}`)
   if (validate) validate(sk2, body)
-  projectionCases.push({ label, feature_kind: 'project', query_tier: 'projection', spec: fullSpec })
+  // Reuse this solve (already validated) as the golden; re-solving later would
+  // freeze a different, unvalidated run.
+  projectionCases.push({ label, feature_kind: 'project', query_tier: 'projection', spec: fullSpec, solved })
 }
 
 function assertGeometry(sk2: Dict, entIds: string[]): void {
@@ -291,7 +306,8 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
   if (!rectSolved) throw new Error('array_rectangular_3x2: solve returned null')
   const arr1 = (rectSolved.result as Record<string, Dict>).arr1
   if (arr1.status !== 'ok') throw new Error(`array_rectangular_3x2: arr1 ${arr1.status} ${JSON.stringify(arr1)}`)
-  out.push({ label: 'array_rectangular_3x2', feature_kind: 'array', query_tier: 'anchor', spec: rect })
+  // Reuse this status-checked solve as the golden instead of re-solving below.
+  out.push({ label: 'array_rectangular_3x2', feature_kind: 'array', query_tier: 'anchor', spec: rect, solved: rectSolved })
 
   // Circular array of a 2x2x2 box: 3 copies around Z, axis via a sketch circle.
   const circ = partSpec([
@@ -310,12 +326,17 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
   if (!circSolved) throw new Error('circular_array_3copies: solve returned null')
   const circArr1 = (circSolved.result as Record<string, Dict>).arr1
   if (circArr1.status !== 'ok') throw new Error(`circular_array_3copies: arr1 ${circArr1.status} ${JSON.stringify(circArr1)}`)
-  out.push({ label: 'circular_array_3copies', feature_kind: 'circular_array', query_tier: 'ancestral', spec: circ })
+  out.push({ label: 'circular_array_3copies', feature_kind: 'circular_array', query_tier: 'ancestral', spec: circ, solved: circSolved })
 
   return out
 }
 
 // ─── Payload write ───
+
+// Feature kinds this generator emits. The merge uses this set to tell the
+// regenerated cases apart from the Python-era corpus it never touches; keep it
+// in sync with the spec builders above.
+const GENERATED_KINDS = new Set(['project', 'array', 'circular_array'])
 
 interface BaselineEntry {
   label: string
@@ -336,6 +357,15 @@ function entryFrom(c: { label: string; spec: Dict }, solved: { result: Dict; bod
 }
 
 async function main(): Promise<void> {
+  // A stale payload from a previous run must never stay mergeable after this
+  // run fails: remove it up front so a partial regen fails the merge loudly
+  // (missing payload) instead of merging stale data.
+  try {
+    unlinkSync(PAYLOAD_PATH)
+  } catch {
+    // No previous payload to clear.
+  }
+
   console.log('regen: building projection cases...')
   await buildProjectionCases()
   console.log('regen: projection cases built:', projectionCases.map((c) => c.label).join(', '))
@@ -343,21 +373,24 @@ async function main(): Promise<void> {
   const arrayCases = await buildArrayCases()
   console.log('regen: array cases built')
 
+  // Each case already carries the solve that was validated while building it,
+  // so the golden is that exact solve, not a fresh unvalidated one.
   const entries: BaselineEntry[] = []
   for (const c of [...projectionCases, ...arrayCases]) {
-    console.log(`regen: solve ${c.label}...`)
-    const solved = await solveWithTimeout(c.spec, { prevState: null })
-    if (!solved) throw new Error(`${c.label}: final solve returned null`)
-    entries.push(entryFrom(c, solved))
+    entries.push(entryFrom(c, c.solved))
   }
 
-  const cases = [...projectionCases, ...arrayCases].map((c) => ({
+  const freshCases = [...projectionCases, ...arrayCases].map((c) => ({
     label: c.label,
     feature_kind: c.feature_kind,
     query_tier: c.query_tier,
     ok: true,
   }))
-  writeFileSync(PAYLOAD_PATH, JSON.stringify({ entries, cases }, null, 1) + '\n')
+  // owned_kinds tells the merge which manifest cases this generator owns, so a
+  // case removed from a spec is pruned instead of carried forward forever.
+  writeFileSync(`${PAYLOAD_PATH}.tmp`, JSON.stringify({ entries, cases: freshCases, owned_kinds: [...GENERATED_KINDS] }, null, 1) + '\n')
+  // Atomic rename: a half-written payload must never be mergeable.
+  renameSync(`${PAYLOAD_PATH}.tmp`, PAYLOAD_PATH)
 
   console.log(`payload written: ${PAYLOAD_PATH} (${entries.length} entries)`)
   console.log(`added: ${projectionCases.map((c) => c.label).join(', ')}`)
