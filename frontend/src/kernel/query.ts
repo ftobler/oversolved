@@ -1130,10 +1130,11 @@ export class Repository {
    *    queryAll has no pick to make.
    *  - The type restriction filters by subtype directly (t === typeRestriction ||
    *    isSubtype). Exact-preference is deliberately NOT applied: an enumeration has
-   *    no single preferred answer, so a "face" query returns faces AND flatfaces
-   *    where the resolver returns only the exact face. When nothing subtype-matches,
-   *    the same coerceType fallback as the resolver runs (upward to solid, or
-   *    sibling); an internal AmbiguousQueryError from coerceType propagates.
+   *    no single preferred answer, so a "face" query returns faces AND flatfaces.
+   *    The resolver only prefers the exact face when one exists; with no exact face
+   *    it too passes subtypes through via the same coerceType fallback (upward to
+   *    solid, or sibling), which also runs here when nothing subtype-matches; an
+   *    internal AmbiguousQueryError from coerceType propagates.
    *  - Classifier narrowing applies to the ancestral candidate set; a total veto
    *    (narrowByClassifier -> []) yields [] - the multi-result shape of the
    *    resolver's classifier miss/ambiguity, never the un-narrowed set.
