@@ -86,7 +86,7 @@ let relayHandlers: RelayHandlers | null = null
  * Register the handlers that service the worker's relay requests. Single
  * consumer: only `useAssemblySolve` owns this slot, and it must pair every
  * call with `clearRelayHandlers` on unmount so a stale worker's relay requests
- * no-op instead of being serviced by a dead component.
+ * fail loudly instead of being serviced by a dead component.
  */
 export function setRelayHandlers(handlers: RelayHandlers): void {
   relayHandlers = handlers
