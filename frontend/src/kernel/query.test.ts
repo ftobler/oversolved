@@ -168,6 +168,10 @@ describe("parse/emit round-trips", () => {
     expect(bodyIdOf(wire, { body_ex1: {} })).toBe("body_ex1")
     expect(bodyIdOf(wire)).toBe("body_ex1edge0")
     expect(bodyIdOf("?1;@a")).toBeNull()
+
+    // Slash-joined current-format token: the no-store branch must strip the
+    // "/face0" tail and return just the body id, not the full token.
+    expect(bodyIdOf(makeAncestryQuery(["@body_ex1/face0"]))).toBe("body_ex1")
   })
 })
 

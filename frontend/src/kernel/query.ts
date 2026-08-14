@@ -183,7 +183,7 @@ export function ref(elementId: string): string {
   return "@" + elementId
 }
 
-const BODY_AT_RE = /@(body_[^@:;,]+)/g
+const BODY_AT_RE = /@(body_[^@:;,/]+)/g
 
 /** Return the body id ("body_...") a query refers to, or null. */
 export function bodyIdOf(queryStr: string, bodyStore?: Record<string, unknown> | null): string | null {
