@@ -573,13 +573,6 @@ export class Repository {
     this.featureIndex = new Map(featureOrder.map((fid, i) => [fid, i]))
   }
 
-  private pruneUuid(): void {
-    for (const [u, eids] of [...this.byUuid]) {
-      if (!eids.some(eid => this.elements.has(eid))) this.byUuid.delete(u)
-    }
-    this._dirtyUuids.clear()
-  }
-
   // Prune only the uuid buckets touched since the last drain.
   prunePendingUuids(): void {
     for (const u of this._dirtyUuids) {
@@ -765,7 +758,7 @@ export class Repository {
         this.deleteAncestral(key)
       }
     }
-    this.pruneUuid()
+    this.prunePendingUuids()
   }
 
   private orderFilter(currentFeatureId: string | null): (eids: string[]) => string[] {
