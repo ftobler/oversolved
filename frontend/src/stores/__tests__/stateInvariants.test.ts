@@ -150,6 +150,18 @@ describe('validateSelectionState', () => {
     expect(() => validateSelectionState(state)).toThrow('[invariant] sketch-domain query')
   })
 
+  it('throws when a sketch-domain query carries any claim, even a non-pickKey one', () => {
+    // The store's only claim writer mints pickKey-shaped claims, so any other
+    // shape under a sketch query is equally cross-domain garbage. A non-pickKey
+    // claim must be flagged, not silently tolerated.
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['entity:S1:L1']),
+      selectedPicks: new Map([['entity:S1:L1', new Set(['something/else'])]]),
+    }
+    expect(() => validateSelectionState(state)).toThrow('[invariant] sketch-domain query')
+  })
+
   it('passes when a body_3d query carries a pickKey claim', () => {
     const state = {
       ...defaultSelectionState(),
@@ -306,6 +318,12 @@ describe('repairSelectionState', () => {
         chipOwnedSelection: new Set<string>(),
         selectionDomain: 'sketch_2d' as const,
       },
+      {  // sketch-domain query carrying a non-pickKey claim
+        normalSelection: new Set(['entity:S1:L1']),
+        selectedPicks: new Map([['entity:S1:L1', new Set(['something/else'])]]),
+        chipOwnedSelection: new Set<string>(),
+        selectionDomain: 'sketch_2d' as const,
+      },
       {  // one pickKey claimed by two queries
         normalSelection: new Set(['?1;@body_1@extrude1/edge/3', '?2;@body_1@extrude1/edge/3']),
         selectedPicks: new Map([
@@ -329,6 +347,26 @@ describe('repairSelectionState', () => {
       normalSelection: new Set(['entity:S1:L1', '?2;@body_1@extrude1/edge/3']),
       selectedPicks: new Map([
         ['entity:S1:L1', new Set(['ex1/b0#edge#0'])],  // cross-domain garbage
+        ['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#1'])],  // valid claim
+      ]),
+      selectionDomain: 'mixed' as const,
+    }
+    const patches = repairSelectionState(state)
+    expect(patches).not.toBeNull()
+    const picks = patches!.selectedPicks as Map<string, Set<string>>
+    expect([...picks.keys()]).toEqual(['?2;@body_1@extrude1/edge/3'])
+    expect(() => validateSelectionState({ ...state, ...patches })).not.toThrow()
+  })
+
+  it('strips any claim from a sketch-domain query, pickKey-shaped or not', () => {
+    // A non-pickKey claim under a sketch query is cross-domain garbage too: the
+    // store mints claims only when a pickKey is in hand, so a sketch query
+    // carrying anything at all is broken and must be emptied out.
+    const state = {
+      ...defaultSelectionState(),
+      normalSelection: new Set(['entity:S1:L1', '?2;@body_1@extrude1/edge/3']),
+      selectedPicks: new Map([
+        ['entity:S1:L1', new Set(['something/else'])],  // cross-domain garbage, non-pickKey
         ['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#1'])],  // valid claim
       ]),
       selectionDomain: 'mixed' as const,

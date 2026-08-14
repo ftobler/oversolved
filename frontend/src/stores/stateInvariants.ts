@@ -165,15 +165,16 @@ export function validateSelectionState(state: SelectionInvariantState): void {
         `[invariant] selectedPicks has empty claim set for query '${q}'`,
       )
     }
-    // A sketch query has no per-primitive identity, so a bodyKey#layer#index
-    // claim under one records a b-rep primitive against a 2D selection.
+    // A sketch query has no per-primitive identity, so no claim shape is
+    // legitimate under one: a bodyKey#layer#index claim records a b-rep
+    // primitive against a 2D selection, and the store mints nothing else for a
+    // sketch query (toggleNormalSelection writes claims only when a pickKey is
+    // in hand). Any claim here is cross-domain garbage.
     if (isSketchQuery(q)) {
       for (const c of claims) {
-        if (isPickKeyClaim(c)) {
-          failLoud(
-            `[invariant] sketch-domain query '${q}' carries body pickKey claim '${c}'`,
-          )
-        }
+        failLoud(
+          `[invariant] sketch-domain query '${q}' carries claim '${c}'`,
+        )
       }
     }
   }
@@ -253,22 +254,12 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
       picksChanged = true
       continue
     }
-    // Same rule as validateSelectionState: a pickKey-shaped claim under a
-    // sketch query is cross-domain garbage, so strip it (and drop the whole
-    // entry when nothing remains).
+    // Same rule as validateSelectionState: a sketch query legitimately carries
+    // no claim at all, so strip every claim under it. Stripping all of them
+    // always empties the set, so the whole entry is dropped.
     if (isSketchQuery(q)) {
-      const stripped = new Set<string>()
-      for (const c of claims) {
-        if (!isPickKeyClaim(c)) stripped.add(c)
-      }
-      if (stripped.size !== claims.size) {
-        picksChanged = true
-        if (stripped.size === 0) {
-          repairedPicks.delete(q)
-        } else {
-          repairedPicks.set(q, stripped)
-        }
-      }
+      picksChanged = true
+      repairedPicks.delete(q)
     }
   }
 
