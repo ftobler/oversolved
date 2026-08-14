@@ -19,6 +19,7 @@ import {
   parseQuery,
   emitWire,
   local,
+  absolute,
   ancestry,
   makeAncestryQuery,
   parseAncestry,
@@ -241,5 +242,18 @@ describe("absolute query strictness", () => {
     const repo = new Repository()
     repo.register("sketch2line1", { kind: "line" })
     expect(repo.query("@sketch2line1")).toEqual({ kind: "line" })
+  })
+
+  // failLoud throws in test mode, so an absolute query the wire grammar cannot
+  // frame is a programming error and must not silently emit a wrong or
+  // unparseable string (emitWire(absolute("")) used to produce a bare "@").
+  it("emitWire fails loud on an empty featureId (would emit an unparseable '@')", () => {
+    expect(() => emitWire(absolute(""))).toThrow()
+  })
+
+  it("emitWire fails loud on a sub with no eid (a sub has no wire slot without an eid)", () => {
+    // emitWire used to silently drop the sub and return "@feat"; the "@feat/sub"
+    // form would parse back as eid "sub", so neither reading is frameable.
+    expect(() => emitWire(absolute("feat", "", "sub"))).toThrow()
   })
 })

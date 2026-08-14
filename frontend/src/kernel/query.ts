@@ -137,9 +137,29 @@ export function emitWire(q: QueryType): string {
       }
       return wire
     }
-    case "absolute":
+    case "absolute": {
+      // The wire grammar needs a featureId and, for a sub, an eid: a bare "@"
+      // is unparseable and "@feat/sub" reads back as eid "sub". Both shapes are
+      // programming errors, so fail loud (throw in test) instead of emitting a
+      // wrong or unparseable string.
+      if (!q.featureId) {
+        failLoud(
+          `emitWire: absolute query without a featureId cannot be framed ` +
+            `(the bare "@" form is unparseable)`,
+        )
+        return ""
+      }
+      if (q.sub && !q.eid) {
+        failLoud(
+          `emitWire: absolute query with sub ${JSON.stringify(q.sub)} but no eid ` +
+            `cannot be framed (a sub has no wire slot without an eid; "@feat/sub" ` +
+            `would parse back as eid "sub")`,
+        )
+        return "@" + q.featureId
+      }
       if (q.eid) return "@" + q.featureId + "/" + q.eid + (q.sub ? "/" + q.sub : "")
       return "@" + q.featureId
+    }
     case "ancestry": {
       // An empty id is un-frameable: "?0;" reads back as zero ids, so emitting
       // one would silently lose it.

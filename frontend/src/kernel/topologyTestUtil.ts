@@ -16,7 +16,7 @@ export const topologyAvailable = !!topo
 // signature the behavioral suites were written against.
 export function detectTopology(
   geometry: Record<string, unknown>,
-  featureId = "",
+  featureId = "sk",
 ): TopologyDict {
   return solveTopology(geometry as Record<string, Record<string, unknown>>, featureId, topo)
 }
