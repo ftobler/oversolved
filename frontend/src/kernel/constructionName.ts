@@ -196,9 +196,9 @@ function keyDistance(a: number[], b: number[]): number {
 /**
  * Deterministically order split siblings by their relative position in the
  * parent's own frame, returning the items sorted stably. Returns `null` (a
- * refusal) when any two adjacent siblings sort within `SPLIT_EPS`: an ambiguous
- * order must not silently pick wrong, so the caller assigns no split UUID and
- * lets the ancestral path recover.
+ * refusal) when any two siblings sort within `SPLIT_EPS`: an ambiguous order
+ * must not silently pick wrong, so the caller assigns no split UUID and lets
+ * the ancestral path recover.
  */
 export function orderSplitChildren<T>(children: SplitChild<T>[]): T[] | null {
   if (children.length === 0) return []
@@ -210,8 +210,15 @@ export function orderSplitChildren<T>(children: SplitChild<T>[]): T[] | null {
     if (c.key.some((k) => Number.isNaN(k))) return null
   }
   const sorted = [...children].sort((x, y) => keyLess(x.key, y.key))
-  for (let i = 1; i < sorted.length; i++) {
-    if (keyDistance(sorted[i - 1].key, sorted[i].key) < SPLIT_EPS) return null
+  // Check every pair, not just adjacent ones: keyDistance nearness is a max
+  // over components while keyLess sorts lexicographically, so a near-tied pair
+  // can sit non-adjacent with a third key interleaving between them. That
+  // escape left an ambiguous order silently assigned. O(n^2) is fine for the
+  // small sibling counts that reach here.
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (keyDistance(sorted[i].key, sorted[j].key) < SPLIT_EPS) return null
+    }
   }
   return sorted.map((c) => c.item)
 }

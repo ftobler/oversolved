@@ -192,6 +192,21 @@ describe('orderSplitChildren', () => {
     expect(orderSplitChildren(children)).toBeNull()
   })
 
+  it('refuses on a near-tie that is split by an interleaving sibling', () => {
+    // The escape an adjacent-only check misses: 'left' and 'right' differ in the
+    // first component by less than SPLIT_EPS, but 'middle' interleaves
+    // lexicographically between them (its first component sits between theirs)
+    // while being far away in its second component. Sorted order is
+    // [left, middle, right], so every ADJACENT pair is far apart and the old
+    // loop let the near-tied outer pair slip through ordered.
+    const children: SplitChild<string>[] = [
+      { item: 'middle', key: [0.5 + SPLIT_EPS / 4, 100] },
+      { item: 'left', key: [0.5, 0] },
+      { item: 'right', key: [0.5 + SPLIT_EPS / 2, 0] },
+    ]
+    expect(orderSplitChildren(children)).toBeNull()
+  })
+
   it('orders by topological side index when supplied', () => {
     const children: SplitChild<string>[] = [
       { item: 'tool-side', key: [1] },
