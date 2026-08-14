@@ -102,7 +102,7 @@ runb:
 # already provisioned by `just install` (occ:provision needs the --no-save
 # opencascade.js dep, so it belongs to install, not every build).
 [working-directory: "frontend"]
-buildstatic:
+build:
     npm run build:static
 
 static:
