@@ -31,9 +31,15 @@ export interface NormalFrame {
  * by, so a uniform resize of the parent cancels and the key is dimensionless
  * (comparable to `faceSplitKey`'s sqrt-area scaling and bodySplit's span
  * scaling). Vertex-based like bodySplit's frame, so a curved-face bulge cannot
- * shift it between two rebuilds of the same shape. A degenerate (zero-span) or
- * vertex-less shape keeps span 1 so the refusal stays honest instead of
- * dividing by ~0.
+ * shift it between two rebuilds of the same shape.
+ *
+ * A vertex-less shape, or any shape whose span is at or below 1e-9 world units,
+ * keeps span 1 so the refusal stays honest instead of dividing by ~0. Note the
+ * clamp is an ABSOLUTE 1e-9-unit threshold, not an exact zero-span test: a
+ * uniform resize of a sub-1e-9-unit shape crosses it and flips that shape's
+ * refusal decisions (the clamped span does not cancel under the resize). The
+ * alternative -- dividing by the true ~0 span -- makes every key infinite and
+ * refuses everything, which is strictly worse.
  */
 export function shapeNormalFrame(oc: OccModule, scope: DisposeScope, shape: OccShape): NormalFrame {
   const verts = readSolidVertices(oc, scope, shape)
@@ -70,11 +76,18 @@ export function normalizedWorldKey(frame: NormalFrame, point: readonly number[])
 }
 
 /**
- * The world-space midpoint of an edge (line) or the centre of a circle/arc:
- * the raw point `normalizedWorldKey` turns into an ordering key. Returns NaN
- * components on a geometry-read failure so `orderSplitChildren` refuses the
- * whole multiplicity group instead of ordering by a fabricated point (the old
- * `[0, 0, 0]` fallback could falsely tie with a real edge at the origin).
+ * The world-space midpoint of an edge (line) or, for a circle/arc, the point at
+ * the MID-PARAMETER of its trimmed angle range -- never the bare centre. Two
+ * arcs of one circle would otherwise share the centre and produce byte-identical
+ * keys: a permanent tie, always refused and both left unnamed, never a swap.
+ * The mid-parameter point moves along the circle with the angle range, so
+ * distinct arcs order instead. It still cancels under a uniform resize because
+ * `normalizedWorldKey` divides by the parent span, and the point scales with
+ * the radius exactly like the span. Returns NaN components on a geometry-read
+ * failure so `orderSplitChildren` refuses the whole multiplicity group instead
+ * of ordering by a fabricated point (the old `[0, 0, 0]` fallback could falsely
+ * tie with a real edge at the origin). A circle/arc missing its angle fields
+ * (defensive; `edgeToGeom` always fills them) falls back to the centre.
  */
 export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
   try {
@@ -85,7 +98,35 @@ export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape)
     if (Array.isArray(s) && Array.isArray(e)) {
       return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, (s[2] + e[2]) / 2]
     }
-    if (Array.isArray(c)) return [...c]
+    if (Array.isArray(c)) {
+      const radius = (ed as { radius?: number }).radius
+      const axis = (ed as { axis?: number[] }).axis
+      const u = (ed as { x_axis?: number[] }).x_axis
+      const a0 = (ed as { angle_start?: number }).angle_start
+      const a1 = (ed as { angle_end?: number }).angle_end
+      if (
+        typeof radius === 'number' && Number.isFinite(radius) &&
+        Array.isArray(axis) && Array.isArray(u) &&
+        typeof a0 === 'number' && typeof a1 === 'number'
+      ) {
+        // v = axis x u makes a right-handed in-plane basis (bodyGeometry.ts
+        // uses the same convention); p(t) = center + radius*(cos t * u + sin t * v).
+        const t = (a0 + a1) / 2
+        const v = [
+          axis[1] * u[2] - axis[2] * u[1],
+          axis[2] * u[0] - axis[0] * u[2],
+          axis[0] * u[1] - axis[1] * u[0],
+        ]
+        const ct = Math.cos(t)
+        const st = Math.sin(t)
+        return [
+          c[0] + radius * (ct * u[0] + st * v[0]),
+          c[1] + radius * (ct * u[1] + st * v[1]),
+          c[2] + radius * (ct * u[2] + st * v[2]),
+        ]
+      }
+      return [...c]
+    }
   } catch {
     // fall through
   }

@@ -19,6 +19,7 @@ import { DisposeScope } from './disposeScope'
 import {
   makeBoxAt,
   makeCylinder,
+  makeArcEdge,
   faceCentroid,
   faceNormal,
   edgeToGeom,
@@ -30,6 +31,7 @@ import {
   faceSplitKey,
   shapeNormalFrame,
   normalizedWorldKey,
+  edgeMidpoint,
   deriveEdgeNames,
 } from './constructionLineage'
 import { orderSplitChildren } from '../constructionName'
@@ -309,6 +311,47 @@ describe.skipIf(!hasOcc)('edge multiplicity: a face pair sharing 2 edges', () =>
     } finally {
       s1.dispose()
       s2.dispose()
+    }
+  })
+
+  it('two arcs of one circle with different angle ranges get distinct keys, not a permanent centre tie', () => {
+    // An arc carries no start/end, so the old code fell back to the shared
+    // circle centre: two arcs of ONE circle produced the byte-identical key
+    // [0,0,0], orderSplitChildren refused (a permanent tie), and both stayed
+    // unnamed -- never a swap. The mid-parameter point moves along the circle
+    // with the angle range, so distinct arcs must order instead.
+    const scope = new DisposeScope()
+    try {
+      const first = makeArcEdge(oc, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 5, 0, Math.PI)
+      const second = makeArcEdge(oc, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 5, Math.PI, 2 * Math.PI)
+      const k1 = edgeMidpoint(oc, scope, first)
+      const k2 = edgeMidpoint(oc, scope, second)
+      for (const k of [k1, k2]) expect(k.some(Number.isNaN)).toBe(false)
+      expect(k1, 'distinct angle ranges must not collapse onto the circle centre').not.toEqual(k2)
+      const ordered = orderSplitChildren([
+        { item: 'first', key: k1 },
+        { item: 'second', key: k2 },
+      ])
+      expect(ordered, 'distinct arc keys order instead of permanently refusing').not.toBeNull()
+      expect(new Set(ordered!).size).toBe(2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('the arc midpoint lands on the circle at the mid-parameter, not the centre', () => {
+    const scope = new DisposeScope()
+    try {
+      // Arc [0, pi] on a radius-5 circle centred at the origin: the point at the
+      // mid-parameter pi/2 is (0, 5, 0) with v = axis x x_axis = (0, 1, 0).
+      const arc = makeArcEdge(oc, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 5, 0, Math.PI)
+      const m = edgeMidpoint(oc, scope, arc)
+      expect(m.some(Number.isNaN)).toBe(false)
+      expect(Math.hypot(m[0], m[1], m[2])).toBeCloseTo(5, 6)
+      expect(Math.abs(m[0])).toBeCloseTo(0, 6)
+      expect(m[1]).toBeCloseTo(5, 6)
+    } finally {
+      scope.dispose()
     }
   })
 
