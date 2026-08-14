@@ -892,6 +892,11 @@ export class Repository {
     //   - when the type restriction excludes the live uuid element, the weaker
     //     tiers may only resolve nothing (the uuid-alone null case); a non-null
     //     weaker-tier resolution would be a silent swap and fails loud.
+    // The one deliberate exception is the order-hidden case: when the ordering
+    // guard's 'continue' fires (the live uuid element is not visible from here),
+    // the query falls through to the weaker tiers, exactly as queryAll pins in
+    // resolveAllAncestryIds. That fallthrough is safe because the weaker tiers
+    // order-filter too, so they still cannot resolve the hidden element.
     const uuidTokens = [...new Set(
       uuidIds.map(parseConstructionUuidId).filter((u): u is string => u !== null),
     )]
