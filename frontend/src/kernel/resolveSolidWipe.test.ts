@@ -326,6 +326,118 @@ describe('real postRegister: solids survive a re-solve', () => {
   })
 })
 
+// The two suites below stub postRegister (no wipe), so they can plant the exact
+// live-repo state the reconcile has to clean up: a dead eid in `[@fid]` (nit 12)
+// and a feature owning no shaped body (nit 13 early-exit). The live repo is
+// captured through `initGlobalRepo` like the parity suite.
+function entryUnder(liveRepo: Repository, fid: string): { set: Set<string>; eids: string[] } | undefined {
+  return [...liveRepo.ancestral.values()].find((e) => e.set.size === 1 && e.set.has('@' + fid))
+}
+
+describe('reconcile hardening: the evict drops dead eids', () => {
+  it('an eid whose element was deleted is not carried forward by the reconcile', () => {
+    const liveRepo = new Repository()
+    const deps: BuildDeps = {
+      trySolveFeature: (feature, repo, bodyStore) => {
+        const fid = String(feature.id ?? '')
+        bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000)
+        // Plant the supported dangling-eid state (the kind clearBySketchId leaves):
+        // register under `[@fid]`, then delete the element without pruning the entry.
+        const eid = repo.registerAncestor(['@' + fid], { type: 'sketch-feature', feature_id: fid })
+        repo.deleteElement(eid)
+        return { status: 'ok' }
+      },
+      postRegister: () => {},
+      initGlobalRepo: () => liveRepo,
+      tessellateBodies: () => ({}),
+      extractBrepMetadata: () => ({}),
+      brepDiffNewFaceHashes: () => new Set<string>(),
+      brepDiffNewEdgeHashes: () => new Set<string>(),
+      brepDiffNewVertexHashes: () => new Set<string>(),
+    }
+    build({ features: [{ id: 'f1', kind: 'make' }] }, { prevState: null }, deps)
+
+    const entry = entryUnder(liveRepo, 'f1')
+    expect(entry).toBeDefined()
+    // Every eid the entry still lists resolves to a live element: the dead one was
+    // dropped by the evict, not kept for `liveEntryEids` to filter at query time.
+    expect(entry!.eids.every((eid) => liveRepo.elements.has(eid))).toBe(true)
+    const solids = entry!.eids
+      .map((eid) => liveRepo.elements.get(eid) as Record<string, unknown> | undefined)
+      .filter((el) => el?.type === 'solid')
+    expect(solids).toHaveLength(1)
+    expect(solids[0]).toMatchObject({ body_id: 'body_f1', created_by: 'f1' })
+  })
+})
+
+describe('reconcile hardening: no-body features exit early', () => {
+  it('a feature owning no body registers no solid while an owning feature keeps exactly one', () => {
+    const liveRepo = new Repository()
+    const deps: BuildDeps = {
+      trySolveFeature: (feature, _repo, bodyStore) => {
+        const fid = String(feature.id ?? '')
+        if (feature.kind === 'make') bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000)
+        return { status: 'ok' }
+      },
+      postRegister: () => {},
+      initGlobalRepo: () => liveRepo,
+      tessellateBodies: () => ({}),
+      extractBrepMetadata: () => ({}),
+      brepDiffNewFaceHashes: () => new Set<string>(),
+      brepDiffNewEdgeHashes: () => new Set<string>(),
+      brepDiffNewVertexHashes: () => new Set<string>(),
+    }
+    build(
+      { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'f1', kind: 'make' }] },
+      { prevState: null },
+      deps,
+    )
+
+    const entry = entryUnder(liveRepo, 'f1')
+    expect(entry).toBeDefined()
+    const solidBodies = entry!.eids
+      .map((eid) => liveRepo.elements.get(eid) as Record<string, unknown> | undefined)
+      .filter((el) => el?.type === 'solid')
+      .map((el) => el!.body_id)
+      .sort()
+    expect(solidBodies).toEqual(['body_f1'])
+
+    // sk1 owns no body, so its reconcile early-exits and `[@sk1]` carries no solid.
+    const skEntry = entryUnder(liveRepo, 'sk1')
+    const skSolids = (skEntry?.eids ?? [])
+      .map((eid) => liveRepo.elements.get(eid) as Record<string, unknown> | undefined)
+      .filter((el) => el?.type === 'solid')
+    expect(skSolids).toHaveLength(0)
+    expect(liveRepo.query(makeAncestryQuery(['@sk1'], 'solid'))).toBeNull()
+  })
+
+  it('a feature owning only a null-shape body registers no solid under [@fid]', () => {
+    const liveRepo = new Repository()
+    const deps: BuildDeps = {
+      trySolveFeature: (feature, _repo, bodyStore) => {
+        const fid = String(feature.id ?? '')
+        bodyStore['body_' + fid] = { ...makeBody(fid, SHAPE_SEED[fid] ?? 1000), shape: null }
+        return { status: 'ok' }
+      },
+      postRegister: () => {},
+      initGlobalRepo: () => liveRepo,
+      tessellateBodies: () => ({}),
+      extractBrepMetadata: () => ({}),
+      brepDiffNewFaceHashes: () => new Set<string>(),
+      brepDiffNewEdgeHashes: () => new Set<string>(),
+      brepDiffNewVertexHashes: () => new Set<string>(),
+    }
+    build({ features: [{ id: 'f1', kind: 'make' }] }, { prevState: null }, deps)
+
+    const skEntry = entryUnder(liveRepo, 'f1')
+    const solids = (skEntry?.eids ?? [])
+      .map((eid) => liveRepo.elements.get(eid) as Record<string, unknown> | undefined)
+      .filter((el) => el?.type === 'solid')
+    expect(solids).toHaveLength(0)
+    expect(liveRepo.query(makeAncestryQuery(['@f1'], 'solid'))).toBeNull()
+  })
+})
+
 // ─── real OCC: the production pipeline end to end ───
 
 import { loadOcc } from './occ/loadOcc'

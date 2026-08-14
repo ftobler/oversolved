@@ -238,12 +238,14 @@ function _dedupeRepo(repo: Repository): void {
     for (const elementId of entry.eids) {
       const payload = repo.elements.get(elementId)
       if (payload === undefined) continue
-      // The ONE payload-equality predicate, shared with the live dedup-skip and
-      // the parity fingerprint (`stableJson`): recursive stable JSON, so nested
-      // object content is hashed. The old allowlist serializer
-      // (`Object.keys(payload).sort()`) is a per-level property allowlist, not a
-      // key sorter, so nested objects always serialized to `{}` and two payloads
-      // differing only in nested content were wrongly merged.
+      // The payload-equality predicate shared with the live dedup-skip and the
+      // parity fingerprint (`stableJson`, see its doc comment; the structural
+      // `payloadEqual` in postRegister.ts is the other, stricter one):
+      // recursive stable JSON, so nested object content is hashed. The old
+      // allowlist serializer (`Object.keys(payload).sort()`) is a per-level
+      // property allowlist, not a key sorter, so nested objects always
+      // serialized to `{}` and two payloads differing only in nested content
+      // were wrongly merged.
       const payloadHash = stableJson(payload)
       if (seen.has(payloadHash)) {
         repo.deleteElement(elementId)
@@ -283,21 +285,27 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
 
 // ─── Hash / validation helpers ───
 
-// The ONE canonical payload-equality predicate, shared by the restore dedupe
-// (`_dedupeRepo`), the live dedup-skip (`_registerBrepFaceAncestry`) and the
-// parity fingerprint (`repoFingerprintTestUtil`). Stable under object key
-// order (recursive key sort) and Map entry order (Maps become sorted-key
-// objects), and normalizes `-0` to `0`. It does NOT hash every content
-// difference: JSON.stringify drops undefined-valued object keys
-// (`{a:1,b:undefined}` hashes like `{a:1}`) and serializes undefined array
-// elements and NaN in arrays and object values as `null`, so `[1,undefined]`
-// collides with `[1,null]` and `{a:NaN}` with `{a:null}`; a Map also collides with a plain
-// object carrying the same entries. Equal hashes are therefore a coarser
-// equality than content identity: only payloads that really differ as
-// JSON-clean JSON are guaranteed to hash differently. The collisions are
-// pre-existing and shared by all three uses, so they can never diverge live
-// vs restored, but a future payload that accidentally carries an undefined or
-// NaN value will silently merge distinct elements.
+// The canonical payload-equality predicate for the restore dedupe (`_dedupeRepo`),
+// the live dedup-skip (`_registerBrepFaceAncestry`) and the parity fingerprint
+// (`repoFingerprintTestUtil`). Stable under object key order (recursive key sort)
+// and Map entry order (Maps become sorted-key objects), and normalizes `-0` to
+// `0`. It does NOT hash every content difference: JSON.stringify drops
+// undefined-valued object keys (`{a:1,b:undefined}` hashes like `{a:1}`) and
+// serializes undefined array elements and NaN in arrays and object values as
+// `null`, so `[1,undefined]` collides with `[1,null]` and `{a:NaN}` with
+// `{a:null}`; a Map also collides with a plain object carrying the same entries.
+// Equal hashes are therefore a coarser equality than content identity: only
+// payloads that really differ as JSON-clean JSON are guaranteed to hash
+// differently. The collisions are pre-existing and shared by the three uses
+// above, so they can never diverge live vs restored, but a future payload that
+// accidentally carries an undefined or NaN value will silently merge distinct
+// elements. It is NOT the only payload-equality predicate in the codebase:
+// `registerAncestralDeduped` (postRegister.ts) dedupes with a structural
+// `payloadEqual` that keeps undefined-valued object keys, so the two predicates
+// disagree exactly on a payload carrying one (here it merges with the key-less
+// twin, there it stays distinct). No current payload carries an undefined key, so
+// the divergence is latent; a future one will behave differently in the two
+// dedupes.
 export function stableJson(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => {
     if (v instanceof Map) {
@@ -657,8 +665,11 @@ function _registerExtrusionFeature(globalRepo: Repository, featureId: string, sk
     feature_id: featureId,
     sketch_id: sketchId,
   }
+  // The payload carries no body id, so every owned body compares against the SAME
+  // target; hoist its hash once so N owned bodies cost N candidate hashes, not N x N.
+  const payloadHash = stableJson(payload)
   const entry = globalRepo.ancestral.get(canonical([ref(featureId)]))
-  if (entry?.eids.some((eid) => stableJson(globalRepo.elements.get(eid)) === stableJson(payload))) {
+  if (entry?.eids.some((eid) => stableJson(globalRepo.elements.get(eid)) === payloadHash)) {
     return
   }
   globalRepo.registerAncestor([ref(featureId)], payload)
@@ -680,6 +691,7 @@ function _evictFeatureSolidAncestry(globalRepo: Repository, fid: string): void {
   const surviving: string[] = []
   for (const eid of entry.eids) {
     const payload = globalRepo.elements.get(eid)
+    if (payload === undefined) continue  // already-dead eid: drop it, never ride the surviving list
     const type = isDict(payload) ? payload.type : null
     if (type === 'solid' || type === 'extrusion-feature') globalRepo.deleteElement(eid)
     else surviving.push(eid)
@@ -701,7 +713,14 @@ function _reconcileFeatureSolids(
   globalRepo: Repository,
   fid: string,
   bodyStore: Record<string, Body>,
+  shapeOwningFids?: ReadonlySet<string>,
 ): void {
+  // Most features (sketches, planes, modifiers, ...) own no shaped body, so the
+  // scan below would be pure waste per feature; both callers precompute who owns
+  // one and hand it in, turning the common case into an O(1) exit. Safe to skip:
+  // the loop is the only writer of solids under `[@fid]` and it only writes for
+  // shaped owned bodies, so nothing to evict or register here either.
+  if (shapeOwningFids && !shapeOwningFids.has(fid)) return
   _evictFeatureSolidAncestry(globalRepo, fid)
   for (const body of Object.values(bodyStore)) {
     if (body.created_by !== fid) continue
@@ -847,20 +866,26 @@ function _snapshotWithBrepGeometry(
 ): Record<string, unknown> {
   const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
   const ownedFids = new Set<string>()
+  const shapeOwningFids = new Set<string>()
   for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
     // Skip what the feature loop already registered into the very snapshot being
     // rehydrated here: `needing` is empty for a body whose version has not moved since
     // the loop registered it, and its ancestry is therefore already in the snapshot.
     if (needing && !needing.has(bodyId)) continue
     registerBodyBrepFromMeta(repo, body, bodiesOut[bodyId] ?? {}, deps)
-    if (body.created_by) ownedFids.add(body.created_by)
+    if (body.created_by) {
+      ownedFids.add(body.created_by)
+      // A needing body is shaped (the loop only attempts shaped bodies), so the
+      // fids that matter for the solid reconcile are exactly these.
+      if (body.shape != null) shapeOwningFids.add(body.created_by)
+    }
   }
   // Reconcile solids per owning feature exactly like the solve loop: the bodies above
   // can include one the loop could NOT register (needing), whose solid the per-body
   // append would otherwise stack onto the solid the loop already wrote --
   // `registerAncestor` accumulates, so `[@fid]` would end up with two identical
   // solids. Evict-then-register keeps the checkpoint matching the body store.
-  for (const fid of ownedFids) _reconcileFeatureSolids(repo, fid, checkpoint.body_store_snapshot)
+  for (const fid of ownedFids) _reconcileFeatureSolids(repo, fid, checkpoint.body_store_snapshot, shapeOwningFids)
   // One serializer, so the "derived indices never reach the persisted shape"
   // guard on snapshotRepo covers this path too.
   return { version: 2, ...snapshotRepo(repo) }
@@ -1071,6 +1096,16 @@ export function build(
 
   const registeredBodyIds = new Set(Object.keys(bodyStore))
 
+  // Fids that own at least one shaped body, so `_reconcileFeatureSolids` can exit in
+  // O(1) for the many features that own none. The body pass below refreshes it from
+  // the live store every feature, so bodies a solve creates mid-loop count too; it
+  // only ever grows, which over-approximates (an owning feature whose body died still
+  // reconciles, a harmless scan) but never under-approximates a current owner.
+  const shapeOwningFids = new Set<string>()
+  for (const body of Object.values(bodyStore)) {
+    if (body.shape != null && body.created_by) shapeOwningFids.add(body.created_by)
+  }
+
   // Body version -> "its B-rep ancestry is in `globalRepo` right now", so the post-loop
   // checkpoint pass can tell what a checkpoint's own snapshot already carries. Clean-prefix
   // bodies count as registered without being touched this build: their ancestry arrived
@@ -1147,6 +1182,7 @@ export function build(
     }
 
     for (const [bodyId, body] of Object.entries(bodyStore)) {
+      if (body.shape != null && body.created_by) shapeOwningFids.add(body.created_by)
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
         // Only a registration that LANDED may be recorded: an identification failure is
         // silent and per body, and the checkpoint pass reads a different producer, so
@@ -1173,7 +1209,7 @@ export function build(
     // only re-registered solids for bodies it just created. Reconcile so the entry
     // matches the body store for every body the feature owns, or a cosmetic re-solve
     // leaves `?@fid:solid` unresolvable into every later checkpoint.
-    _reconcileFeatureSolids(globalRepo, fid, bodyStore)
+    _reconcileFeatureSolids(globalRepo, fid, bodyStore, shapeOwningFids)
 
     const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
     newCheckpoints[fid] = {
