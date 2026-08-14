@@ -29,7 +29,7 @@ def test_ruff_select_covers_flake8_default_rule_families():
 
 
 def test_local_gate_uses_ruff_but_ci_keeps_flake8():
-    justfile = (ROOT / ".justfile").read_text()
+    justfile = (ROOT / "justfile").read_text()
     ci = (ROOT / ".github" / "workflows" / "ci.yaml").read_text()
     assert "just ruff" in justfile
     assert "just flake8" not in justfile

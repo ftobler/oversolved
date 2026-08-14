@@ -9,7 +9,7 @@ Python/Flask backend with a React frontend.
 - `frontend/` - React frontend (must `cd frontend` before running frontend commands)
 
 ## Backend Commands
-from the .justfile: `just backend`
+from the justfile: `just backend`
 
 Every gate tees its full output to a log in `tmp/` as well as printing to
 stdout, and keeps the gate's own exit code (pipefail). One run is slow, so the
@@ -22,7 +22,7 @@ log lets you re-grep the result afterwards without re-running the gate.
 ```
 
 ## Frontend Commands
-from the .justfile: `just frontend`
+from the justfile: `just frontend`
 
 Same logging convention as the backend. Run from `frontend/`; the `tmp/` log
 dir lives at the project root.

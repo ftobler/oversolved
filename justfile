@@ -1,4 +1,4 @@
-# .justfile
+# justfile
 
 # `just` command runner. Targets can be run with `just <target>`.
 
