@@ -105,8 +105,10 @@ runb:
 build:
     npm run build:static
 
+# Serve frontend/dist on a plain static server (npx serve, SPA fallback).
+# you need to build first.
 static:
-    .venv/bin/python -m oversolved.cli staticserve frontend/dist --host 127.0.0.1 --port 5001
+    npx --yes serve -s frontend/dist
 
 run_back:
     source .venv/bin/activate && oversolved run_server --debug
