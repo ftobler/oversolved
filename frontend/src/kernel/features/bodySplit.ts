@@ -76,6 +76,17 @@ function orderSolids(oc: OccModule, scope: DisposeScope, parent: OccShape, solid
     const c = solidCentroid(oc, scope, solid)
     return { item: solid, key: [(c[0] - centre[0]) / span, (c[1] - centre[1]) / span, (c[2] - centre[2]) / span] }
   })
+  // A NaN key component is a geometry-read failure (a centroid the kernel could
+  // not compute), not an ambiguity: `orderSplitChildren` would refuse it with
+  // the same null return, but a near-tie has a real fix (nudge the split) while
+  // a NaN centroid has none. Name the failure. Still pre-side-effect: no
+  // sibling has been registered or mutated yet.
+  if (children.some((c) => c.key.some((k) => Number.isNaN(k)))) {
+    throw new Error(
+      'bodySplit: a split sibling centroid read failed (NaN ordering key); refusing to order the siblings ' +
+      '(a flipped body id is worse than a failed split)',
+    )
+  }
   const ordered = orderSplitChildren(children)
   if (ordered === null) {
     throw new Error(
