@@ -642,8 +642,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   // pickKeys and the old per-primitive claims would otherwise resurrect as
   // ghost highlights (see computeHighlight).
   setNormalSelection: (ids) =>
-    set(() => {
+    set(s => {
       const next = new Set(ids)
+      // No-change guard: a box covering exactly the current selection with no
+      // claims or chip-owned entries standing must not mint fresh maps and
+      // notify. Returning `s` lets zustand skip the update entirely, like
+      // addToNormalSelection's guard. The selectionDomain is a pure function of
+      // the boxed set, so it is already consistent when the content matches.
+      const sameSelection = next.size === s.normalSelection.size
+        && [...next].every(v => s.normalSelection.has(v))
+      if (sameSelection && s.selectedPicks.size === 0 && s.chipOwnedSelection.size === 0) {
+        return s
+      }
       return {
         normalSelection: next,
         selectedPicks: new Map(),
@@ -1119,14 +1129,17 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // Leaving any prior pick: drop its mode and chip-owned mirror. The field is
     // cleared before the pop for the same reason deactivateTool clears the tool:
     // popMode revalidates on an empty stack and an armed pick field with no
-    // 'pick' entry is a violation.
+    // 'pick' entry is a violation. The chip mirror is cleared before the pop
+    // too: repair runs when the stack empties, and it must see a consistent
+    // state instead of a transient chip-owned set it would prune with a
+    // spurious set().
     const prev = get().activePickField
     if (prev !== null) {
       set({ activePickField: null })
+      get().clearChipSelection()
       if (get().modeStack[get().modeStack.length - 1] === 'pick') {
         get().popMode('pick')
       }
-      get().clearChipSelection()
     }
 
     if (field === null) {

@@ -209,6 +209,38 @@ describe('sketchEditorStore', () => {
       expect(s.chipOwnedSelection.size).toBe(0)
       expect(s.normalSelection.has('entity:S1:L1')).toBe(true)
     })
+
+    it('does not notify or mint fresh maps when the boxed set equals the current selection', () => {
+      const { setNormalSelection } = useSketchEditorStore.getState()
+      setNormalSelection(new Set(['entity:S1:L1', 'vertex:S1:L2:start']))
+      const before = useSketchEditorStore.getState().normalSelection
+      let notifications = 0
+      const unsubscribe = useSketchEditorStore.subscribe(() => { notifications++ })
+      try {
+        setNormalSelection(new Set(['vertex:S1:L2:start', 'entity:S1:L1']))
+      } finally {
+        unsubscribe()
+      }
+      expect(notifications).toBe(0)
+      expect(useSketchEditorStore.getState().normalSelection).toBe(before)
+    })
+
+    it('still replaces when the boxed set differs from the current selection', () => {
+      const { setNormalSelection } = useSketchEditorStore.getState()
+      setNormalSelection(new Set(['entity:S1:L1']))
+      setNormalSelection(new Set(['entity:S1:L2']))
+      expect(useSketchEditorStore.getState().normalSelection.has('entity:S1:L2')).toBe(true)
+    })
+
+    it('still clears a lingering claim even when the boxed set matches the selection', () => {
+      const { setNormalSelection } = useSketchEditorStore.getState()
+      setNormalSelection(new Set(['edge@q']))
+      useSketchEditorStore.setState({ selectedPicks: new Map([['edge@q', new Set(['ex1/b0#3'])]]) })
+      setNormalSelection(new Set(['edge@q']))
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('edge@q')).toBe(true)
+      expect(s.selectedPicks.size).toBe(0)
+    })
   })
 
   describe('clearNormalSelection', () => {
@@ -1124,6 +1156,40 @@ describe('sketchEditorStore', () => {
       })
       useSketchEditorStore.getState().setActivePickField(null)
       expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
+    })
+
+    it('setActivePickField(null) evicts chip-owned entries and their claims before the pick pops', () => {
+      // A toggled-off chip entry (in chipOwnedSelection, already out of
+      // normalSelection) must be cleaned up ahead of the mode pop: the repair
+      // that popMode runs on an emptied stack would otherwise prune the orphan
+      // itself with a spurious set() (nit 18).
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'plane' })
+      useSketchEditorStore.setState({
+        normalSelection: new Set(['entity:S1:L1']),
+        chipOwnedSelection: new Set(['@edge_0']),
+        selectedPicks: new Map([['@edge_0', new Set(['ex1/b0#3'])]]),
+      })
+      let chipClearOrder = -1
+      let popOrder = -1
+      let notify = 0
+      const unsubscribe = useSketchEditorStore.subscribe(s => {
+        notify++
+        if (chipClearOrder === -1 && s.chipOwnedSelection.size === 0) chipClearOrder = notify
+        if (popOrder === -1 && s.modeStack.length === 0) popOrder = notify
+      })
+      try {
+        useSketchEditorStore.getState().setActivePickField(null)
+      } finally {
+        unsubscribe()
+      }
+      expect(chipClearOrder).toBeGreaterThan(-1)
+      expect(popOrder).toBeGreaterThan(-1)
+      expect(chipClearOrder).toBeLessThan(popOrder)
+      const s = useSketchEditorStore.getState()
+      expect(s.modeStack).toEqual([])
+      expect(s.chipOwnedSelection.size).toBe(0)
+      expect(s.normalSelection).toEqual(new Set(['entity:S1:L1']))
+      expect(s.selectedPicks.has('@edge_0')).toBe(false)
     })
   })
 
