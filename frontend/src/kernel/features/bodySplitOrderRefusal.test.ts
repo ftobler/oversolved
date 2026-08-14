@@ -34,7 +34,7 @@ import { SPLIT_EPS } from '../constructionName'
 import type { OccShape } from '../occ/occTypes'
 
 describe('bodySplit: orderSolids refusal messages', () => {
-  /** Give the split two solid placeholders whose centroids read as `centroids`. */
+  // Give the split two solid placeholders whose centroids read as `centroids`.
   function stubSplit(centroids: Vec3[]): void {
     const items = centroids.map(() => ({}) as OccShape)
     vi.mocked(exploreSolids).mockReturnValue(items)
