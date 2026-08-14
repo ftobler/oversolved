@@ -8,6 +8,7 @@ import {
   CONSTRAINT_SHORTCUTS,
   DIMENSION_RULES,
   resolveDimension,
+  isDimensionKind,
 } from '@/registry/constraintRegistry'
 import {
   ENTITIES,
@@ -79,6 +80,13 @@ describe('constraintRegistry', () => {
         expect(c.hasValue).toBe(false)
       }
     }
+  })
+
+  it('isDimensionKind follows the registry category and rejects unknowns', () => {
+    for (const c of CONSTRAINTS) {
+      expect(isDimensionKind(c.kind)).toBe(c.category === 'dimensional')
+    }
+    expect(isDimensionKind('not_a_constraint')).toBe(false)
   })
 })
 

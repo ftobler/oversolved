@@ -1149,6 +1149,55 @@ describe('usePartDoc undo/redo integration', () => {
     }
   })
 
+  it('a non-dimension add_constraint mid-gesture clears the withhold instead of consuming it', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const store = useSketchEditorStore.getState()
+    setSketchCallback('onMutation', result.current.handleMutation)
+    setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
+    setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
+    setSketchCallback('getSketch', () => null)
+    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    try {
+      act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
+      expect(result.current.undoStack).toHaveLength(0)
+      expect(sketchEntitiesOf()).toHaveLength(1)
+
+      // A geometric add_constraint (coincident) lands between the pick and the
+      // commit. It is NOT the brep dimension commit, so it must push its own
+      // entry restoring the CURRENT doc (projection included) and clear the
+      // withhold, exactly like any other steal. Consuming the withhold here
+      // would key an entry to a pre-pick doc the projection can never be
+      // restored from.
+      act(() => { result.current.handleMutation({ type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:l1:end', 'vertex:sk1:l2:start'] } as Mutation) })
+      expect(result.current.undoStack).toHaveLength(1)
+      expect((result.current.undoStack[0].doc.features?.[0] as { entities: unknown[] }).entities).toHaveLength(1)
+
+      // The dimension commit now keys to the current doc: undo removes only the
+      // dimension, leaving the projection and the geometric constraint.
+      act(() => { store.finalizeDimensionPlacement([0, 0]) })
+      const dialog = useSketchEditorStore.getState().pendingDialog!
+      act(() => { dialog.onConfirm('10') })
+      expect(result.current.undoStack).toHaveLength(2)
+      expect(sketchConstraintsOf().map(c => c.kind).sort()).toEqual(['coincident', 'length'])
+      expect(sketchEntitiesOf()).toHaveLength(1)
+
+      act(() => { result.current.handleUndo() })
+      expect(sketchConstraintsOf().map(c => c.kind)).toEqual(['coincident'])
+      expect(sketchEntitiesOf()).toHaveLength(1)
+
+      act(() => { result.current.handleUndo() })
+      expect(sketchConstraintsOf()).toHaveLength(0)
+      expect(sketchEntitiesOf()).toHaveLength(1)
+    } finally {
+      setSketchCallback('onMutation', null)
+      setSketchCallback('beginBrepProjection', null)
+      setSketchCallback('cancelBrepProjection', null)
+      setSketchCallback('getSketch', null)
+      useSketchEditorStore.getState().resetTransientState()
+    }
+  })
+
   it('a rename-steal mid-gesture undoes per step and never strands the projection', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))

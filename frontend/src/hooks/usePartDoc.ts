@@ -10,6 +10,7 @@ import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { applySetRollback } from '@/utils/yamlMutations'
+import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
@@ -408,12 +409,15 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // same gesture keeps the EARLIEST captured doc, or the first pick's
       // projection would be orphaned by the commit's undo.
       brepWithholdRef.current = { armed: false, doc: brep.doc ?? preDoc }
-    } else if (brep.doc && mutation.type === 'add_constraint') {
+    } else if (brep.doc && mutation.type === 'add_constraint' && isDimensionKind(mutation.kind)) {
       // The brep dimension commit: one entry restoring the pre-projection doc,
       // so undo removes the dimension and its projection in a single step. The
       // type gate keeps an unrelated mid-gesture mutation (a rename, a delete)
       // from stealing the withhold and pushing an entry keyed to the pre-pick
-      // doc, which would silently unpair the projection.
+      // doc, which would silently unpair the projection. The kind gate stops a
+      // geometric add_constraint (e.g. a coincident applied mid-gesture) from
+      // being mistaken for the commit: only a dimension kind restores the
+      // pre-pick doc, and the registry is the single source of that split.
       const withheldDoc = brep.doc
       brepWithholdRef.current = { armed: false, doc: null }
       pushUndo(mutation, withheldDoc)

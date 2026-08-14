@@ -426,6 +426,15 @@ export const DIMENSION_RULES: readonly DimensionRule[] = [
 export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =
   new Map(CONSTRAINTS.map(c => [c.kind, c]))
 
+// Single-source gate for "is this a dimension?" questions. The registry's
+// category is the classification every consumer should share: the brep
+// dimension commit in usePartDoc uses it to tell a real dimension apart from a
+// geometric add_constraint landing mid-gesture. An unknown kind is not a
+// dimension, so it must not match.
+export function isDimensionKind(kind: string): boolean {
+  return CONSTRAINT_BY_KIND.get(kind)?.category === 'dimensional'
+}
+
 // Map from render kind → icon filename (for on-canvas symbols). The sugar
 // construction `ngon` is not an entry in CONSTRAINTS (it is not manually
 // insertable), but its constraint still renders a read-only tile so the user
