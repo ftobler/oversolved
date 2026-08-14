@@ -44,6 +44,7 @@ feature/
 .tmp/
 .scratch/
 tmp/
+scratch/
 
 # Uploads
 oversolved/uploads/*
