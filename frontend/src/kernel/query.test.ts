@@ -188,6 +188,16 @@ describe("local query key shape (context + eid[/sub])", () => {
     expect(repo.query("$e3", "sk1/")).toEqual({ external_params: [0, 0, 1, 0], sketch_id: "sk1" })
   })
 
+  it("string $ full minted id ending in a vertex-key word wins over the suffix split", () => {
+    // The kernel parser reads "$pwfYD59xKWiSyQhmstart" as eid + sub ("start" is
+    // a pure word); a bare element registered under the whole string must still
+    // resolve as that WHOLE id (full-id-first tie-break, same as resolveLocal /
+    // resolveQueryRef), not as a shorter id plus a phantom vertex key.
+    const repo = new Repository()
+    repo.register("sk1/pwfYD59xKWiSyQhmstart", { v: 1, sketch_id: "sk1" })
+    expect(repo.query("$pwfYD59xKWiSyQhmstart", "sk1/")).toEqual({ v: 1, sketch_id: "sk1" })
+  })
+
   it("typed local sub-point resolves the slash key", () => {
     const repo = new Repository()
     repo.register("sk1/e3/start", { external_xy: [1, 2], sketch_id: "sk1" })

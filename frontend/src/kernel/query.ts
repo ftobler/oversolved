@@ -834,6 +834,15 @@ export class Repository {
     if (start === "$") {
       if (context === null) return null
       this.assertLocalContext(context)
+      const local = queryStr.slice(1)
+      // Full-id-first tie-break, mirroring resolveLocal in partDocToSketches.ts
+      // and resolveQueryRef in geometryMapping.ts: a minted base64url id can
+      // itself end in a vertex-key word, so a registered element whose WHOLE
+      // local string is the id wins; the suffix split only applies when the
+      // full string is not an entity (the `$pwfYD59xKWiSyQhmcenter` sub-point
+      // case whose residual is the known entity).
+      const full = this.elements.get(context + local)
+      if (full !== undefined) return full
       return this.elements.get(localKeyFor(context, localFromString(queryStr))) ?? null
     }
     if (start === "@") {
