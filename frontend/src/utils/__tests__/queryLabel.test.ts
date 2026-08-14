@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { queryLabel } from '@/utils/query/queryLabel'
+import { queryLabel, extractFeatureId } from '@/utils/query/queryLabel'
 import type { PartFeature } from '@/types/cad'
 
 const features: PartFeature[] = [
@@ -231,6 +231,100 @@ describe('queryLabel', () => {
 
     it('returns raw query for plain text', () => {
       expect(queryLabel('just some text', features)).toBe('just some text')
+    })
+  })
+})
+
+describe('extractFeatureId', () => {
+  describe('slash-joined token shapes (current wire format)', () => {
+    it('extracts the owning feature from a slash-joined body face token', () => {
+      expect(extractFeatureId('@body_ex1/face0')).toBe('ex1')
+    })
+
+    it('extracts the feature from a face-with-index token', () => {
+      expect(extractFeatureId('@extrude1/face/3')).toBe('extrude1')
+    })
+
+    it('extracts the feature from an edge token', () => {
+      expect(extractFeatureId('@extrude1/edge/1')).toBe('extrude1')
+    })
+
+    it('extracts the feature from a vertex token', () => {
+      expect(extractFeatureId('@sk1/vertex/2')).toBe('sk1')
+    })
+
+    it('extracts the owning feature from a bare body tag', () => {
+      expect(extractFeatureId('@body_ex1')).toBe('ex1')
+    })
+
+    it('extracts the feature from a bare feature tag', () => {
+      expect(extractFeatureId('@extrude1')).toBe('extrude1')
+    })
+  })
+
+  describe('base64url feature ids (randomId(18) mints "-" and "_")', () => {
+    it('extracts a dash-containing base64url id from a slash-joined body token', () => {
+      expect(extractFeatureId('@body_ab-1/face0')).toBe('ab-1')
+    })
+
+    it('extracts a base64url id with both dashes and underscores', () => {
+      expect(extractFeatureId('@body_e1tMr2u-m4rxTxhoZSw2z05E/face0')).toBe('e1tMr2u-m4rxTxhoZSw2z05E')
+    })
+
+    it('strips the derived-body numbered suffix to find the owning feature', () => {
+      expect(extractFeatureId('@body_e1tMr2u-m4rxTxhoZSw2z05E_1/face0')).toBe('e1tMr2u-m4rxTxhoZSw2z05E')
+    })
+  })
+
+  describe('special tokens that fall through to the raw query', () => {
+    it('falls through for a construction UUID token', () => {
+      expect(extractFeatureId('@u|u_abc')).toBeNull()
+    })
+
+    it('falls through for a classifier token', () => {
+      expect(extractFeatureId('@cls_zp')).toBeNull()
+    })
+
+    it('falls through for a face geom-hash reference', () => {
+      expect(extractFeatureId('@gface_abc123')).toBeNull()
+    })
+
+    it('falls through for an edge geom-hash reference', () => {
+      expect(extractFeatureId('@gedge_abc123')).toBeNull()
+    })
+
+    it('falls through for a vertex geom-hash reference', () => {
+      expect(extractFeatureId('@gvertex_abc123')).toBeNull()
+    })
+
+    it('falls through for a normal geom-hash reference', () => {
+      expect(extractFeatureId('@gnormal_abc123')).toBeNull()
+    })
+
+    it('falls through for a face descriptor', () => {
+      expect(extractFeatureId('@gdf|0.000|0.000|0.000|0.000|0.000|1.000')).toBeNull()
+    })
+
+    it('falls through for an edge descriptor', () => {
+      expect(extractFeatureId('@gde|line|0,0,0|1,0,0|2.0')).toBeNull()
+    })
+
+    it('falls through for a vertex descriptor', () => {
+      expect(extractFeatureId('@gdv|0,0,0')).toBeNull()
+    })
+  })
+
+  describe('unknown feature ids', () => {
+    it('returns null when the token does not look like a feature ref', () => {
+      expect(extractFeatureId('@')).toBeNull()
+    })
+
+    it('returns null for an empty body tag', () => {
+      expect(extractFeatureId('@body_')).toBeNull()
+    })
+
+    it('returns null for a token with no @-feature shape', () => {
+      expect(extractFeatureId('?e,e;@extrude1face0@extrude1face1')).toBeNull()
     })
   })
 })

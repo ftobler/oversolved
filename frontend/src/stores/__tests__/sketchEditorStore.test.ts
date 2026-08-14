@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, prunePickClaims } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { Mutation } from '@/types/cad'
@@ -2022,6 +2022,39 @@ describe('sketchEditorStore', () => {
         featureId: 'S1', kind: 'point_distance',
       }))
       setSketchCallback('getSketch', null)
+    })
+  })
+
+  describe('prunePickClaims', () => {
+    it('returns the original map when no claim needs pruning', () => {
+      const picks = new Map([['Q', new Set(['a#1'])], ['R', new Set(['b#2'])]])
+      const live = new Set(['Q', 'R'])
+      expect(prunePickClaims(picks, live)).toBe(picks)
+    })
+
+    it('drops claims whose queries left the live set', () => {
+      const picks = new Map([['Q', new Set(['a#1'])], ['R', new Set(['b#2'])]])
+      const pruned = prunePickClaims(picks, new Set(['R']))
+      expect(pruned.has('Q')).toBe(false)
+      expect(pruned.get('R')).toEqual(new Set(['b#2']))
+    })
+
+    it('keeps the claim sets of surviving queries intact', () => {
+      const picks = new Map([['Q', new Set(['a#1', 'a#2'])], ['dead', new Set(['x#9'])]])
+      const pruned = prunePickClaims(picks, new Set(['Q']))
+      expect(pruned.get('Q')).toEqual(new Set(['a#1', 'a#2']))
+    })
+
+    it('does not mutate the caller map', () => {
+      const picks = new Map([['Q', new Set(['a#1'])], ['dead', new Set(['x#9'])]])
+      prunePickClaims(picks, new Set(['Q']))
+      expect(picks.has('dead')).toBe(true)
+    })
+
+    it('evicts every dead claim when the live set is empty', () => {
+      const picks = new Map([['Q', new Set(['a#1'])], ['R', new Set(['b#2'])]])
+      const pruned = prunePickClaims(picks, new Set())
+      expect(pruned.size).toBe(0)
     })
   })
 })

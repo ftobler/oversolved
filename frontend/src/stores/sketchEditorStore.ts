@@ -114,7 +114,7 @@ function validateWithRepair(get: () => SketchEditorState, set: (p: Partial<Sketc
 // diffs evict queries wholesale, so the claims they leave behind must go with
 // them or they resurrect as ghost highlights the next time the query is picked.
 // Returns the original map when nothing was pruned so subscribers stay put.
-function prunePickClaims(picks: Map<string, Set<string>>, live: ReadonlySet<string>): Map<string, Set<string>> {
+export function prunePickClaims(picks: Map<string, Set<string>>, live: ReadonlySet<string>): Map<string, Set<string>> {
   let pruned: Map<string, Set<string>> | null = null
   for (const q of picks.keys()) {
     if (live.has(q)) continue

@@ -1,7 +1,7 @@
 import type { PartFeature } from '@/types/cad'
 import { parseQuery } from '@/utils/query'
 
-function extractFeatureId(ancestorId: string): string | null {
+export function extractFeatureId(ancestorId: string): string | null {
   // Special tokens (@u|<uuid>, @cls_* classifiers, @gd*| descriptors, @g*_
   // geom-hash refs) are geometry identity, never feature refs: they must fall
   // through to the raw query string.
