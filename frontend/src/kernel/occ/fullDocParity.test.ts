@@ -211,9 +211,10 @@ function diffBodies(
       issues.push(`${label}/bodies/${bid}/mesh_error: TS=${tsErr} Python=${pyErr}`)
     }
 
-    // Structural counts.
-    const faceCountOk = typeof tsBody.face_count !== 'number' || tsBody.face_count === pyBody.face_count
-    const edgeCountOk = typeof tsBody.edge_count !== 'number' || tsBody.edge_count === pyBody.edge_count
+    // Structural counts. A missing or non-numeric count must fail, never pass
+    // as if it matched: the live body is always enriched to carry real numbers.
+    const faceCountOk = typeof tsBody.face_count === 'number' && tsBody.face_count === pyBody.face_count
+    const edgeCountOk = typeof tsBody.edge_count === 'number' && tsBody.edge_count === pyBody.edge_count
     if (!faceCountOk) {
       issues.push(`${label}/bodies/${bid}/face_count: TS=${tsBody.face_count} Python=${pyBody.face_count}`)
     }
@@ -287,9 +288,11 @@ function diffBodies(
 // The body output carries the live mesh + edges; reduce it to the same golden
 // shape the corpus generator (scripts/regenCorpus.ts) freezes, so replaying the
 // baseline diffs TS-live against TS-frozen byte-identically. The spread of the
-// live body on top keeps the extra fields diffBodies does not compare but the
-// enrich consumers read; the golden fields survive because the live body has
-// none of them.
+// live body on top deliberately overwrites the golden created_by/modified_by
+// with the live lineage the diff compares against, and keeps the extra fields
+// (mesh_error, edges, queries) that diffBodies reads but the golden shape drops.
+// The golden face_count/edge_count and geometry hashes survive because the live
+// body carries none of them.
 function enrichBodyHashes(
   bid: string,
   body: Record<string, unknown>,
