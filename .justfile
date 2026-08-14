@@ -19,15 +19,21 @@ backend:
     just ruff
     just pytest
 
+# Each gate tees its full output to tmp/<gate>.log as well as stdout. One run is
+# slow, so the log lets you re-grep the result afterwards without re-running the
+# gate. pipefail keeps the gate's own exit code (see `set shell` at the bottom).
 mypy:
-    .venv/bin/python -m mypy tests/ oversolved/
+    mkdir -p tmp
+    .venv/bin/python -m mypy tests/ oversolved/ 2>&1 | tee tmp/mypy.log
 
 # local ruff gate; CI still runs flake8 (same E/F/W rule set) as the safety net
 ruff:
-    .venv/bin/python -m ruff check tests/ oversolved/
+    mkdir -p tmp
+    .venv/bin/python -m ruff check tests/ oversolved/ 2>&1 | tee tmp/ruff.log
 
 pytest:
-    .venv/bin/python -m pytest tests/
+    mkdir -p tmp
+    .venv/bin/python -m pytest tests/ 2>&1 | tee tmp/pytest.log
 
 
 icons:
@@ -47,16 +53,19 @@ frontend:
 
 [working-directory: "frontend"]
 frontend-lint:
-    npm run lint
-    ../.venv/bin/python ../lint.py src
+    mkdir -p ../tmp
+    npm run lint 2>&1 | tee ../tmp/npm_lint.log
+    ../.venv/bin/python ../lint.py src 2>&1 | tee ../tmp/lint_py.log
 
 [working-directory: "frontend"]
 frontend-test:
-    npx vitest run
+    mkdir -p ../tmp
+    npx vitest run 2>&1 | tee ../tmp/npx_test.log
 
 [working-directory: "frontend"]
 frontend-build:
-    npm run build
+    mkdir -p ../tmp
+    npm run build 2>&1 | tee ../tmp/npm_build.log
 
 [working-directory: "frontend"]
 install-npm:
@@ -67,7 +76,8 @@ install-npm:
 [working-directory: "frontend"]
 parity:
     just install-occ
-    npm run test:parity
+    mkdir -p ../tmp
+    npm run test:parity 2>&1 | tee ../tmp/parity.log
 
 
 runf:
@@ -129,11 +139,13 @@ wasm:
 
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
 rust-test:
-    cargo test --workspace
+    mkdir -p tmp
+    cargo test --workspace 2>&1 | tee tmp/cargo_test.log
 
 # Lint the Rust solver workspace (clippy, deny warnings)
 rust-lint:
-    cargo clippy --workspace -- -D warnings
+    mkdir -p tmp
+    cargo clippy --workspace -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
 
 # Remove build artifacts (keeps .venv and node_modules)
 clean:
@@ -151,7 +163,7 @@ deepclean:
     rm -rf frontend/node_modules
 
 
-set shell := ["bash", "-cu"]
+set shell := ["bash", "-cuo", "pipefail"]
 run:
     trap 'kill 0' EXIT; \
     just run_front & \
