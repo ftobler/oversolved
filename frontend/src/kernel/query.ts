@@ -1048,11 +1048,14 @@ export class Repository {
     }
 
     if (!candidateIds.length && descriptorIds.length && !classifierVetoFired) {
-      // Descriptor-only fallback: without an ancestry bound, match TIGHT only.
-      // A fired classifier veto must gate it off too: the fallback scans EVERY
-      // element with no classifier re-check, so after a total veto it would
-      // otherwise tight-match a contradictory element that the partial tier
-      // already refused (the veto is a veto, matching queryAll's []).
+      // Descriptor-only fallback: fires whenever the ancestry tiers produced no
+      // candidate, i.e. when the query had no non-special ancestry tokens, or
+      // they were present but failed to match or coerce (candidateIds is empty).
+      // Match TIGHT only. A fired classifier veto must gate it off too: the
+      // fallback scans EVERY element with no classifier re-check, so after a
+      // total veto it would otherwise tight-match a contradictory element that
+      // the partial tier already refused (the veto is a veto, matching
+      // queryAll's []).
       const qd = descriptorIds.map(parseGeomDescriptorId).find(d => d !== null) ?? null
       if (qd !== null) {
         const fallbackIds: string[] = []
