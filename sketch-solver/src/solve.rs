@@ -200,6 +200,12 @@ fn entity_status(input: &Input, jac: &DMatrix<f64>, rank: usize, overall: Status
         .iter()
         .map(|e| {
             let size = e.kind.param_count();
+            // A stale entity whose block runs past the param buffer has no
+            // columns to pin; call it unconstrained rather than indexing out of
+            // bounds (its constraints were dropped in `Problem::new` anyway).
+            if e.param_offset + size > n {
+                return Status::Underconstrained.to_u8();
+            }
             let mut aug = DMatrix::<f64>::zeros(m + size, n);
             aug.view_mut((0, 0), (m, n)).copy_from(jac);
             for k in 0..size {
@@ -254,6 +260,11 @@ fn vertex_freedom(input: &Input, jac: &DMatrix<f64>) -> Vec<f32> {
     let v = eig.eigenvectors.column(col);
     for (ei, e) in input.entities.iter().enumerate() {
         let off = e.param_offset;
+        // Same stale-entity guard as `entity_status`: no anchor params in the
+        // buffer means no reportable freedom direction, so leave the (0, 0).
+        if off + 1 >= v.len() {
+            continue;
+        }
         let dx = v[off];
         let dy = v[off + 1];
         let mag = (dx * dx + dy * dy).sqrt();
@@ -271,6 +282,31 @@ mod tests {
     use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
     use crate::test_util::*;
     use crate::{EqualityPin, Options, Status};
+
+    #[test]
+    fn stale_entity_ref_solves_instead_of_panicking() {
+        // The whole status pass runs over an input carrying a constraint on a
+        // non-existent entity: the solve completes and simply ignores it.
+        let inp = input(
+            vec![line(0)],
+            vec![0.0, 0.0, 10.0, 1.0],
+            vec![c_target(ConstraintKind::Horizontal, 7, PointSelector::Absent)],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        assert_eq!(out.entity_status.len(), 1);
+    }
+
+    #[test]
+    fn entity_whose_param_block_overruns_the_buffer_solves() {
+        // Second entity claims params 4..8 of a 4-param buffer. Both the
+        // per-entity pinning pass and the vertex-freedom pass must skip it.
+        let inp = input(vec![line(0), line(4)], vec![0.0, 0.0, 10.0, 1.0], vec![]);
+        let out = solve_sketch(&inp);
+        assert_eq!(out.entity_status.len(), 2);
+        assert_eq!(out.entity_status[1], Status::Underconstrained.to_u8());
+        assert_eq!(out.vertex_freedom.len(), 4);
+    }
 
     #[test]
     fn free_line_is_underconstrained() {

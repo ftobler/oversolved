@@ -148,6 +148,21 @@ impl Input {
             .unwrap_or(false)
     }
 
+    /// True when entity `index` exists AND its whole param block lies inside
+    /// `params_initial`. Every read of an entity's params is unchecked slicing,
+    /// so a stale index (or a `param_offset` from an older param layout) would
+    /// panic the Worker; callers use this to drop the reference instead, the way
+    /// a constraint with a missing role is dropped.
+    pub fn entity_params_in_range(&self, index: usize) -> bool {
+        match self.entities.get(index) {
+            Some(e) => e
+                .param_offset
+                .checked_add(e.kind.param_count())
+                .is_some_and(|end| end <= self.params_initial.len()),
+            None => false,
+        }
+    }
+
     /// Count of params pinned by `pinned_mask` over `[0, n_params)`. Bits beyond
     /// the param range are ignored so a slack-padded mask byte never over-counts.
     pub fn pinned_mask_bit_count(&self, n_params: usize) -> usize {

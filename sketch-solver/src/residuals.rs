@@ -138,7 +138,10 @@ pub struct Problem<'a> {
     /// Initial param vector (widened from the wire `f32`), the `x0` of the
     /// `fixed` fallback and the pin rows.
     pub x0: Vec<f64>,
-    constraints: &'a [Constraint],
+    /// Only the constraints whose every entity reference is addressable (see
+    /// `Input::entity_params_in_range`). Referentially stale constraints are
+    /// dropped at build time so no residual row can index off the end.
+    constraints: Vec<&'a Constraint>,
     pinned_indices: Vec<usize>,
     equality_pins: Vec<(usize, f64)>,
     /// (line_index, curve_index) -> which line endpoint is pinned to the
@@ -153,14 +156,33 @@ impl<'a> Problem<'a> {
 
         let pinned_indices: Vec<usize> =
             (0..x0.len()).filter(|&i| input.is_pinned(i)).collect();
+        // A pin naming a param the buffer does not have is stale in exactly the
+        // same way a stale entity ref is; its row would index off the end of x.
         let equality_pins: Vec<(usize, f64)> = input
             .equality_pins
             .iter()
             .map(|p| (p.param_index as usize, p.target as f64))
+            .filter(|&(i, _)| i < x0.len())
+            .collect();
+
+        // The wire carries indices the crate never issued, so a stale or
+        // corrupt entity ref reaches us as a plain in-range-looking integer.
+        // Constraints that name one are dropped whole: a half-evaluated
+        // constraint is worse than an absent one, and the missing-role path
+        // already establishes "drop, do not panic" as the contract.
+        let constraints: Vec<&Constraint> = input
+            .constraints
+            .iter()
+            .filter(|c| {
+                c.refs.iter().all(|(_, r)| match r {
+                    Ref::Entity { index, .. } => input.entity_params_in_range(*index as usize),
+                    Ref::External { .. } => true,
+                })
+            })
             .collect();
 
         let mut line_circle_coincident = HashMap::new();
-        for c in &input.constraints {
+        for c in &constraints {
             if c.kind() != Some(ConstraintKind::Coincident) {
                 continue;
             }
@@ -209,7 +231,7 @@ impl<'a> Problem<'a> {
         Problem {
             entities: &input.entities,
             x0,
-            constraints: &input.constraints,
+            constraints,
             pinned_indices,
             equality_pins,
             line_circle_coincident,
@@ -317,7 +339,7 @@ impl<'a> Problem<'a> {
     /// rows in order, then the pinned-mask rows, then the equality-pin rows.
     pub fn residuals(&self, x: &[f64]) -> Vec<f64> {
         let mut r: Vec<f64> = Vec::new();
-        for c in self.constraints {
+        for c in &self.constraints {
             self.residual_one(c, x, &mut r);
         }
         for &i in &self.pinned_indices {
@@ -850,7 +872,7 @@ impl<'a> Problem<'a> {
     /// both the dense and sparse Jacobian builders.
     fn jacobian_rows(&self, x: &[f64], n: usize) -> Vec<Vec<f64>> {
         let mut rows: Vec<Vec<f64>> = Vec::new();
-        for c in self.constraints {
+        for c in &self.constraints {
             self.jac_one(c, x, n, &mut rows);
         }
         for &i in &self.pinned_indices {
@@ -1362,6 +1384,50 @@ mod tests {
         let r = p.residuals(&p.x0);
         assert!((r[0] - 1.0).abs() < 1e-12, "horizontal: {}", r[0]);
         assert!((r[1] - (101.0_f64.sqrt() - 10.0)).abs() < 1e-12, "length: {}", r[1]);
+    }
+
+    #[test]
+    fn constraint_with_out_of_range_entity_ref_is_dropped() {
+        // A stale index the host never revoked: index 3 with one entity. The
+        // constraint contributes no rows instead of panicking the Worker.
+        let inp = input(
+            vec![ent(Kind::Line, 0)],
+            vec![0.0, 0.0, 10.0, 1.0],
+            vec![
+                cons(ConstraintKind::Horizontal, vec![target(0, PointSelector::Absent)]),
+                cons(ConstraintKind::Horizontal, vec![target(3, PointSelector::Absent)]),
+            ],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1, "only the addressable constraint contributes a row");
+        assert!((r[0] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn constraint_on_entity_whose_params_overrun_the_buffer_is_dropped() {
+        // The index resolves but the entity's 4 line params run past the 3-param
+        // buffer: the params slice would panic, so the constraint goes too.
+        let inp = input(
+            vec![ent(Kind::Line, 0)],
+            vec![0.0, 0.0, 10.0],
+            vec![cons(ConstraintKind::Horizontal, vec![target(0, PointSelector::Absent)])],
+        );
+        let p = Problem::new(&inp);
+        assert!(p.residuals(&p.x0).is_empty());
+    }
+
+    #[test]
+    fn equality_pin_past_the_param_buffer_is_dropped() {
+        let mut inp = input(vec![ent(Kind::Point, 0)], vec![1.0, 2.0], vec![]);
+        inp.equality_pins = vec![
+            EqualityPin { param_index: 1, target: 5.0 },
+            EqualityPin { param_index: 9, target: 5.0 },
+        ];
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1, "only the in-range pin contributes a row");
+        assert!((r[0] - (2.0 - 5.0)).abs() < 1e-12);
     }
 
     #[test]
