@@ -91,7 +91,11 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
 
     updates = {}
     if "username" in data:
-        updates["username"] = data["username"].strip()
+        # username is NOT NULL, so a null or blank value is a client error, not a wipe.
+        new_username = (data["username"] or "").strip()
+        if not new_username:
+            return api_error("Username cannot be empty", "BAD_REQUEST", 400)
+        updates["username"] = new_username
     if "email" in data:
         updates["email"] = data["email"].strip() if data["email"] else None
     if "is_active" in data:
