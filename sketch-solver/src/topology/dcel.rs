@@ -669,6 +669,30 @@ struct Classified {
     ellipses: Vec<(String, InputEntity)>,
 }
 
+/// The fields the geometry pass unwraps for each kind. Everything downstream of
+/// `classify` (split seeding, the half-edge builders, the standalone-face
+/// builders) dereferences these without asking, so an entity that arrives
+/// truncated or stale would panic the Worker mid-pass. Requiring the full set
+/// here drops the bad record instead, the same way a construction entity is
+/// skipped: a partial entity contributes no edges rather than killing the solve.
+fn has_required_fields(kind: &str, e: &InputEntity) -> bool {
+    match kind {
+        "spline" => e.start.is_some() && e.end.is_some() && e.c1.is_some() && e.c2.is_some(),
+        // `theta` is genuinely optional (unrotated ellipses omit it).
+        "ellipse" => e.center.is_some() && e.a.is_some() && e.b.is_some(),
+        "arc" => {
+            e.center.is_some()
+                && e.radius.is_some()
+                && e.start.is_some()
+                && e.end.is_some()
+                && e.angle_start.is_some()
+                && e.angle_end.is_some()
+        }
+        "line" => e.start.is_some() && e.end.is_some(),
+        _ => e.center.is_some() && e.radius.is_some(), // circle
+    }
+}
+
 fn classify(geometry: &[(String, InputEntity)]) -> Classified {
     let mut c = Classified::default();
     for (eid, ent) in geometry {
@@ -676,17 +700,26 @@ fn classify(geometry: &[(String, InputEntity)]) -> Classified {
             continue;
         }
         let kind = ent.kind.as_deref();
-        if kind == Some("spline") {
-            c.splines.push((eid.clone(), ent.clone()));
+        // Which bucket an entity belongs to is decided by the same discriminating
+        // fields `classifyEntities` uses; completeness is a separate question, so
+        // an incomplete arc is a dropped arc, never demoted to a line.
+        let (bucket, kind_name): (&mut Vec<(String, InputEntity)>, &str) = if kind == Some("spline") {
+            (&mut c.splines, "spline")
         } else if kind == Some("ellipse") {
-            c.ellipses.push((eid.clone(), ent.clone()));
+            (&mut c.ellipses, "ellipse")
         } else if ent.start.is_some() && ent.radius.is_some() {
-            c.arcs.push((eid.clone(), ent.clone()));
+            (&mut c.arcs, "arc")
         } else if ent.start.is_some() {
-            c.lines.push((eid.clone(), ent.clone()));
+            (&mut c.lines, "line")
         } else if ent.center.is_some() {
-            c.circles.push((eid.clone(), ent.clone()));
+            (&mut c.circles, "circle")
+        } else {
+            continue;
+        };
+        if !has_required_fields(kind_name, ent) {
+            continue;
         }
+        bucket.push((eid.clone(), ent.clone()));
     }
     c
 }
@@ -1421,6 +1454,92 @@ mod tests {
         assert_eq!(t.surfaces.len(), 2);
         assert!(t.edges.is_empty(), "tangent circles must emit no split edges");
         assert_eq!(t.intersection_points.len(), 1, "one virtual tangent point");
+    }
+
+    // One incomplete entity per kind, each missing a field the geometry pass
+    // unwraps. The Worker is fed by structured-clone postMessage and cannot
+    // trust its input, so a truncated record must be dropped, not panicked on.
+    #[test]
+    fn incomplete_entities_are_dropped_per_kind() {
+        let cases: Vec<(&str, InputEntity)> = vec![
+            (
+                "line without end",
+                InputEntity {
+                    start: Some([0.0, 0.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "circle without radius",
+                InputEntity {
+                    center: Some([0.0, 0.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "arc without angle_start",
+                InputEntity {
+                    start: Some([1.0, 0.0]),
+                    end: Some([0.0, 1.0]),
+                    center: Some([0.0, 0.0]),
+                    radius: Some(1.0),
+                    angle_end: Some(90.0),
+                    ..Default::default()
+                },
+            ),
+            (
+                "arc without end",
+                InputEntity {
+                    start: Some([1.0, 0.0]),
+                    center: Some([0.0, 0.0]),
+                    radius: Some(1.0),
+                    angle_start: Some(0.0),
+                    angle_end: Some(90.0),
+                    ..Default::default()
+                },
+            ),
+            (
+                "spline without c1",
+                InputEntity {
+                    kind: Some("spline".into()),
+                    start: Some([0.0, 0.0]),
+                    end: Some([2.0, 0.0]),
+                    c2: Some([1.5, 1.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "ellipse without b",
+                InputEntity {
+                    kind: Some("ellipse".into()),
+                    center: Some([0.0, 0.0]),
+                    a: Some(3.0),
+                    ..Default::default()
+                },
+            ),
+        ];
+        for (label, ent) in cases {
+            let t = detect_topology(&[("bad".into(), ent)]);
+            assert!(t.edges.is_empty(), "{label} must contribute no edges");
+            assert!(t.surfaces.is_empty(), "{label} must contribute no surfaces");
+        }
+    }
+
+    #[test]
+    fn incomplete_entity_does_not_take_down_its_neighbours() {
+        // A stale record alongside good geometry loses only itself: the square
+        // still resolves to its one surface.
+        let mut geom = square(2.0);
+        geom.push((
+            "stale".into(),
+            InputEntity {
+                center: Some([0.5, 0.5]),
+                ..Default::default()
+            },
+        ));
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1);
+        assert_eq!(t.edges.len(), 4);
     }
 
     #[test]
