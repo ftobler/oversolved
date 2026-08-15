@@ -1035,11 +1035,15 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
         // the float noise between two analytically-equal tangent directions while
         // staying far below the gap between genuinely distinct crossing edges.
         const ANGLE_TIE: f64 = 1e-7;
+        // A NaN angle or curvature (a poisoned param that reached the geometry
+        // pass) compares to nothing, so both orderings fall back to Equal the
+        // way `dedup` does: an unordered edge is a lost face, an unwrap here is
+        // a dead Worker.
         outs.sort_by(|a, b| {
             if (a.0 - b.0).abs() > ANGLE_TIE {
-                a.0.partial_cmp(&b.0).unwrap()
+                a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
             } else if a.1 != b.1 {
-                a.1.partial_cmp(&b.1).unwrap()
+                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
             } else {
                 a.2.cmp(&b.2)
             }
@@ -1523,6 +1527,36 @@ mod tests {
             assert!(t.edges.is_empty(), "{label} must contribute no edges");
             assert!(t.surfaces.is_empty(), "{label} must contribute no surfaces");
         }
+    }
+
+    #[test]
+    fn nan_departure_angle_does_not_panic_the_cycle_tracer() {
+        // A NaN param (from a poisoned solve) reaching the half-edge graph gives
+        // an edge a NaN departure angle AND a NaN curvature. Ordering the edges
+        // leaving that vertex must degrade to "equal", not unwrap a None.
+        let mut verts = Verts::new();
+        let v0 = verts.vid([0.0, 0.0]);
+        let v1 = verts.vid([1.0, 0.0]);
+        let v2 = verts.vid([0.0, 1.0]);
+        let straight = EdgeGeom::Line {
+            start: [0.0, 0.0],
+            end: [1.0, 0.0],
+        };
+        let poisoned = EdgeGeom::Arc {
+            center: [0.0, 0.0],
+            radius: f64::NAN,
+            angle_start_deg: f64::NAN,
+            angle_end_deg: f64::NAN,
+            ccw: true,
+            start: [0.0, 0.0],
+            end: [0.0, 1.0],
+        };
+        let mut hes: Vec<HalfEdge> = Vec::new();
+        let mut he_eid: Vec<String> = Vec::new();
+        push_half_edge_pair(&mut hes, &mut he_eid, "good", &v0, &v1, straight);
+        push_half_edge_pair(&mut hes, &mut he_eid, "bad", &v0, &v2, poisoned);
+        // The result is meaningless geometry; the point is that it returns.
+        let _ = trace_face_cycles(&hes, &he_eid, &verts);
     }
 
     #[test]
