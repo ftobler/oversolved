@@ -548,7 +548,7 @@ export function isFeatureRefTag(tag: string): boolean {
   return !tag.startsWith("@body_")
 }
 
-function isSubset(small: Set<string>, big: Set<string>): boolean {
+function isSubset(small: ReadonlySet<string>, big: ReadonlySet<string>): boolean {
   for (const x of small) if (!big.has(x)) return false
   return true
 }
@@ -638,6 +638,36 @@ export class Repository {
    *  by liveness or dead ids count toward ambiguity and can even win. */
   private liveEntryEids(entry: AncestralEntry): string[] {
     return entry.eids.filter(eid => this.elements.has(eid))
+  }
+
+  /** Entries whose ancestor set contains every id in `querySet`, found through the
+   *  `byAncestorId` reverse index instead of scanning all of `ancestral`. Same
+   *  narrowing `evictAncestryAndRegister` does, and for the same reason: a resolve
+   *  on a 62k-entity assembly walked the whole repo per query.
+   *
+   *  Exactness: a matching entry must be indexed under EVERY query id, so the
+   *  RAREST id's key set is a complete superset of the answer, and re-testing the
+   *  subset on it yields exactly what the full scan yielded. Order is preserved
+   *  too, since a key enters `byAncestorId` in the same pass that puts its entry
+   *  in `ancestral`, so the rarest set iterates as a subsequence of the full scan
+   *  (queryAll returns its candidates in that order). */
+  private entriesContainingAll(querySet: ReadonlySet<string>): AncestralEntry[] {
+    let rarest: Set<string> | null = null
+    for (const id of querySet) {
+      const keys = this.byAncestorId.get(id)
+      if (keys === undefined) return []  // nothing carries this id, so nothing can contain the whole set
+      if (rarest === null || keys.size < rarest.size) rarest = keys
+    }
+    // An empty query set is a subset of every entry; keep the full-scan answer so
+    // this helper is a drop-in for the scan regardless of the caller's guards.
+    if (rarest === null) return [...this.ancestral.values()]
+    const out: AncestralEntry[] = []
+    for (const key of rarest) {
+      const entry = this.ancestral.get(key)
+      if (entry === undefined) continue  // index rot: a dangling key resolves to nothing
+      if (isSubset(querySet, entry.set)) out.push(entry)
+    }
+    return out
   }
 
   /** Narrow candidates by the wanted classifier tokens (the bare `cls_*` names
@@ -979,8 +1009,8 @@ export class Repository {
     let querySet = new Set<string>()
     if (nonHashIds.length) {
       querySet = new Set(nonHashIds)
-      for (const entry of this.ancestral.values()) {
-        if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
+      for (const entry of this.entriesContainingAll(querySet)) {
+        candidateIds.push(...this.liveEntryEids(entry))
       }
     }
     candidateIds = orderFilter(candidateIds)
@@ -1230,8 +1260,8 @@ export class Repository {
 
     const querySet = new Set(nonHashIds)
     let candidateIds: string[] = []
-    for (const entry of this.ancestral.values()) {
-      if (isSubset(querySet, entry.set)) candidateIds.push(...this.liveEntryEids(entry))
+    for (const entry of this.entriesContainingAll(querySet)) {
+      candidateIds.push(...this.liveEntryEids(entry))
     }
     candidateIds = orderFilter(candidateIds)
 
