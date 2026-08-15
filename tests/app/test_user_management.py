@@ -338,6 +338,32 @@ class TestProfile:
         me = json.loads(admin_client.get("/api/auth/me").data)
         assert me["user"]["username"] == "renamed_admin"
 
+    def test_update_username_to_taken_name_returns_409(self, admin_client):
+        """Renaming onto another account's username is a conflict, not a 500."""
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "takenname", "password": "password123",
+                "email": "takenname@example.com"
+            }),
+            content_type="application/json",
+        )
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"username": "takenname"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
+    def test_update_username_to_own_name_is_allowed(self, admin_client):
+        """Re-submitting the caller's own username is not a conflict."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"username": "admin"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
     def test_change_password_requires_current(self, admin_client):
         """Supplying new_password without current_password is rejected."""
         response = admin_client.put(
@@ -470,6 +496,52 @@ class TestAdminCreateUserWithEmail:
             content_type="application/json",
         )
         assert response.status_code == 400
+
+    def test_admin_update_duplicate_username_returns_409(self, admin_client):
+        """An existing username on the update path conflicts like it does on create."""
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "occupied", "password": "password123",
+                "email": "occupied@example.com"
+            }),
+            content_type="application/json",
+        )
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "renamer", "password": "password123",
+                "email": "renamer@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"username": "occupied"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
+    def test_admin_update_same_username_is_allowed(self, admin_client):
+        """Submitting the user's unchanged username is not a conflict."""
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "unchanged", "password": "password123",
+                "email": "unchanged@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"username": "unchanged"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
 
     def test_admin_update_blank_username_is_rejected(self, admin_client):
         """Whitespace-only usernames are rejected the same way as null."""

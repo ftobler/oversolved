@@ -25,7 +25,12 @@ def update_profile():
 
     updates = {}
     if username and username.strip():
-        updates["username"] = username.strip()
+        new_username = username.strip()
+        # Pre-check so a taken name answers 409 instead of an IntegrityError 500.
+        existing = user_store.find_by_username(new_username)
+        if existing is not None and existing["id"] != user_id:
+            return api_error("Username already exists", "CONFLICT", 409)
+        updates["username"] = new_username
 
     if email and email.strip():
         updates["email"] = email.strip()

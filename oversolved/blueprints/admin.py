@@ -95,6 +95,11 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
         new_username = (data["username"] or "").strip()
         if not new_username:
             return api_error("Username cannot be empty", "BAD_REQUEST", 400)
+        # Pre-check so a taken name answers 409 like create_user_admin instead of
+        # bubbling the unique-constraint IntegrityError out as a 500.
+        existing = user_store.find_by_username(new_username)
+        if existing is not None and existing["id"] != user_id:
+            return api_error("Username already exists", "CONFLICT", 409)
         updates["username"] = new_username
     if "email" in data:
         updates["email"] = data["email"].strip() if data["email"] else None
