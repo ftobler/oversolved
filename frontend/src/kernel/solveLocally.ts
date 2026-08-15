@@ -39,6 +39,15 @@ let persistentTable: HandleTable | null = null
 let lastBuildState: BuildState | null = null
 let lastDocId: string | null = null
 
+// Reentrancy guard for the shared state above. `persistentTable`,
+// `lastBuildState` and `lastDocId` are single-writer: a second solve entering
+// while the first is between its awaits would swap the doc id (or reset the
+// table) under a build that is still running, freeing the OCC handles the
+// checkpoints point at. Production serializes solves in the WorkerActor, but
+// that is out of this module's scope, so the invariant is enforced here rather
+// than assumed.
+let solveInFlight = false
+
 /** Drop the cross-solve cache (handles + state). Called on doc switch. */
 function resetLocalSolveCache(): void {
   persistentTable?.disposeAll()
@@ -68,6 +77,7 @@ export function setSolveLocalsForTest(
 ): void {
   setOccLoader(loader)
   resetLocalSolveCache()
+  solveInFlight = false
 }
 
 /** Load (or return the already-loaded) OCC module. */
@@ -240,21 +250,48 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): Buil
   }
 }
 
+interface SolveLocalOptions {
+  prevState?: BuildResponse['_build_state'] | null
+  pickBoundary?: number | null
+  rollbackPosition?: number | null
+  validate?: boolean
+  bypassCache?: boolean
+}
+
 /**
  * Solve a document locally through the TS/WASM kernel.
  *
  * Returns the ``BuildResponse`` on success, or ``null`` when OCC.js is not
  * available (will return null).
+ *
+ * Not reentrant: an overlapping call throws rather than interleave two builds
+ * over the shared cross-solve cache.
  */
 export async function solveLocally(
   spec: Record<string, unknown>,
-  options: {
-    prevState?: BuildResponse['_build_state'] | null
-    pickBoundary?: number | null
-    rollbackPosition?: number | null
-    validate?: boolean
-    bypassCache?: boolean
-  } = {},
+  options: SolveLocalOptions = {},
+): Promise<BuildResponse | null> {
+  // Refuse rather than corrupt: the shared build state below has no locking, so
+  // an overlapping solve is a caller bug (solves must be serialized) and a loud
+  // rejection is recoverable, while a silently interleaved build is not.
+  if (solveInFlight) {
+    throw new Error(
+      '[solveLocally] a solve is already in flight; the cross-solve checkpoint cache ' +
+      'is single-writer, serialize solves (the WorkerActor does) instead of overlapping them',
+    )
+  }
+  solveInFlight = true
+  try {
+    return await solveLocallyGuarded(spec, options)
+  } finally {
+    solveInFlight = false
+  }
+}
+
+/** The solve proper. Only ever called with the reentrancy guard held. */
+async function solveLocallyGuarded(
+  spec: Record<string, unknown>,
+  options: SolveLocalOptions,
 ): Promise<BuildResponse | null> {
   // Load OCC.js and the Rust sketch solver in parallel; both must be ready
   // before build() runs. initSketchSolver MUST be awaited: build() solves
