@@ -50,7 +50,6 @@ class TestPostgreSQLConnection:
 
         conn.close()
 
-
     def test_question_mark_in_literal_survives_translation(self, pg_dsn):
         """A ? inside a string literal is data and must reach PostgreSQL intact."""
         conn = PostgreSQLConnection(pg_dsn)
