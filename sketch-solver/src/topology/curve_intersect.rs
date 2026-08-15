@@ -15,7 +15,7 @@
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::dcel::pymod;
 use super::TOL_TOPOLOGY_MERGE;
-use crate::radians;
+use crate::{radians, MIN_SEMI_AXIS_SQ};
 
 pub type Vec2 = [f64; 2];
 
@@ -85,7 +85,11 @@ fn conic_residual(curve: &Curve) -> Box<dyn Fn(Vec2) -> f64> {
                 let dy = p[1] - c[1];
                 let xl = dx * cr + dy * sr;
                 let yl = -dx * sr + dy * cr;
-                (xl * xl) / (a * a) + (yl * yl) / (b * b) - 1.0
+                // Same degenerate-semi-axis floor the solver residual uses: a
+                // NaN here would propagate into split params and vertex ids.
+                (xl * xl) / (a * a).max(MIN_SEMI_AXIS_SQ)
+                    + (yl * yl) / (b * b).max(MIN_SEMI_AXIS_SQ)
+                    - 1.0
             })
         }
         _ => panic!("conic_residual: not a conic"),
@@ -525,6 +529,24 @@ mod tests {
         let ell = Curve::Ellipse { c: [0.0, 0.0], a: 3.0, b: 1.0, theta: 0.0 };
         let h = intersect_curves(&circ, &ell);
         assert_eq!(h.len(), 4);
+    }
+
+    #[test]
+    fn collapsed_ellipse_conic_produces_no_nan_hits() {
+        // b == 0 makes the conic residual divide by zero; the resulting NaN is
+        // never a sign change, so the scan must simply report nothing (or a
+        // finite point), never a NaN coordinate feeding the vertex merge.
+        let flat = Curve::Ellipse { c: [0.0, 0.0], a: 3.0, b: 0.0, theta: 0.0 };
+        let circ = Curve::Circle { c: [0.0, 0.0], r: 2.0 };
+        let g = conic_residual(&flat);
+        assert!(g([1.0, 0.5]).is_finite(), "conic residual off the flat axis");
+        assert!(g([1.0, 0.0]).is_finite(), "conic residual on the flat axis");
+        for hit in intersect_curves(&circ, &flat) {
+            assert!(
+                hit.point[0].is_finite() && hit.point[1].is_finite() && hit.t_a.is_finite(),
+                "degenerate ellipse produced {hit:?}"
+            );
+        }
     }
 
     #[test]

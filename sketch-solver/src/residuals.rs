@@ -13,7 +13,7 @@
 
 use crate::constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use solver_core::sparse::SparseRow;
-use crate::{Entity, Input, Kind, DEG2RAD};
+use crate::{Entity, Input, Kind, DEG2RAD, MIN_SEMI_AXIS_SQ};
 use nalgebra::DMatrix;
 use std::collections::HashMap;
 
@@ -37,7 +37,7 @@ fn ellipse_point_residual(p: P2, ep: &[f64]) -> f64 {
     let dy = p[1] - cy;
     let u = dx * ct + dy * st;
     let v = dy * ct - dx * st;
-    u * u / (a * a) + v * v / (b * b) - 1.0
+    u * u / (a * a).max(MIN_SEMI_AXIS_SQ) + v * v / (b * b).max(MIN_SEMI_AXIS_SQ) - 1.0
 }
 
 /// Evaluate a cubic Bezier `B(t)`. `sp` is the spline param block
@@ -1694,6 +1694,39 @@ mod tests {
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
         assert!(r[0].abs() < 1e-12, "rotated major vertex: {}", r[0]);
+    }
+
+    #[test]
+    fn collapsed_ellipse_semi_axis_stays_finite() {
+        // A semi-axis dragged (or decoded) to zero must not divide the conic
+        // residual by zero: one NaN row makes every later LM step NaN and the
+        // whole sketch stops converging with nothing reported.
+        for ep in [
+            [0.0, 0.0, 0.0, 1.0, 0.0],  // a collapsed
+            [0.0, 0.0, 2.0, 0.0, 0.0],  // b collapsed
+            [0.0, 0.0, 0.0, 0.0, 0.0],  // both
+        ] {
+            let r = ellipse_point_residual([1.0, 1.0], &ep);
+            assert!(r.is_finite(), "residual for {ep:?} was {r}");
+        }
+    }
+
+    #[test]
+    fn collapsed_ellipse_keeps_the_stacked_residual_finite() {
+        // The same degeneracy through the real constraint path: a point-on-
+        // ellipse row over an ellipse whose minor axis has collapsed.
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Ellipse, 2)],
+            vec![3.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0],
+            vec![cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, PointSelector::Absent)),
+            )],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1);
+        assert!(r[0].is_finite(), "point-on-collapsed-ellipse row: {}", r[0]);
     }
 
     #[test]

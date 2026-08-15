@@ -45,6 +45,16 @@ pub(crate) fn radians(deg: f64) -> f64 {
     deg * std::f64::consts::PI / 180.0
 }
 
+/// Floor on the `semi-axis^2` an ellipse conic residual divides by.
+///
+/// A collapsed (or corrupt) semi-axis turns `u*u / (a*a)` into infinity or NaN,
+/// and a single NaN row poisons the entire solve: every LM step from there on
+/// is NaN and the sketch silently stops converging with no error anywhere.
+/// Flooring the denominator keeps the row finite and very large, which pushes
+/// the ellipse back out of the degeneracy instead. NaN inputs floor too, since
+/// `f64::max` returns the non-NaN operand.
+pub(crate) const MIN_SEMI_AXIS_SQ: f64 = 1e-12;
+
 /// Geometric entity kinds the solver understands. Post kind-collapse (phase
 /// 0.5) there are exactly four; projection is a pin-mask concern, not a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
