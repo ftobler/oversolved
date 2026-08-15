@@ -1,7 +1,24 @@
 """Database connection abstractions for SQLite and PostgreSQL."""
 
+import re
 from typing import Any
 from abc import ABC, abstractmethod
+
+
+# Matches a single-quoted literal, a double-quoted identifier, or a bare ?.
+# Literals and identifiers are matched only so they can be skipped: a question
+# mark inside them is data, not a placeholder.
+_SQL_TOKEN_RE = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|\?")
+
+
+def translate_placeholders(query: str) -> str:
+    """Rewrite SQLite-style ? placeholders as psycopg2 %s placeholders.
+
+    Query strings are written once in the SQLite convention and translated for
+    PostgreSQL, so the translation must not corrupt question marks that live
+    inside quoted literals or identifiers.
+    """
+    return _SQL_TOKEN_RE.sub(lambda m: "%s" if m.group(0) == "?" else m.group(0), query)
 
 
 class DatabaseConnection(ABC):
@@ -81,7 +98,7 @@ class PostgreSQLConnection(DatabaseConnection):
         return instance
 
     def _translate(self, query: str) -> str:
-        return query.replace("?", "%s")
+        return translate_placeholders(query)
 
     def execute(self, query: str, params: tuple = ()) -> Any:
         import psycopg2.extras

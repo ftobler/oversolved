@@ -7,6 +7,7 @@ from oversolved.db import (
     UserStore,
     SessionStore,
 )
+from oversolved.db.connection import translate_placeholders
 from .dbutil import make_db as _make_db
 
 
@@ -48,6 +49,48 @@ class TestPostgreSQLConnection:
         assert cursor.fetchone()[0] == 1
 
         conn.close()
+
+
+    def test_question_mark_in_literal_survives_translation(self, pg_dsn):
+        """A ? inside a string literal is data and must reach PostgreSQL intact."""
+        conn = PostgreSQLConnection(pg_dsn)
+        cursor = conn.execute("SELECT ? AS given, 'who? me' AS literal", ("x",))
+        row = cursor.fetchone()
+        assert row[0] == "x"
+        assert row[1] == "who? me"
+        conn.close()
+
+
+class TestPlaceholderTranslation:
+    """Tests for the ? to %s placeholder rewrite."""
+
+    def test_bare_placeholders_are_translated(self):
+        assert (
+            translate_placeholders("SELECT * FROM t WHERE a = ? AND b = ?")
+            == "SELECT * FROM t WHERE a = %s AND b = %s"
+        )
+
+    def test_query_without_placeholders_is_unchanged(self):
+        sql = "SELECT COUNT(*) FROM documents"
+        assert translate_placeholders(sql) == sql
+
+    def test_question_mark_inside_single_quotes_is_kept(self):
+        assert (
+            translate_placeholders("UPDATE t SET note = 'why?' WHERE id = ?")
+            == "UPDATE t SET note = 'why?' WHERE id = %s"
+        )
+
+    def test_doubled_quote_inside_literal_does_not_end_it(self):
+        assert (
+            translate_placeholders("SELECT 'it''s a ?' , ?")
+            == "SELECT 'it''s a ?' , %s"
+        )
+
+    def test_question_mark_inside_quoted_identifier_is_kept(self):
+        assert (
+            translate_placeholders('SELECT "odd?col" FROM t WHERE id = ?')
+            == 'SELECT "odd?col" FROM t WHERE id = %s'
+        )
 
 
 class TestDatabase:
