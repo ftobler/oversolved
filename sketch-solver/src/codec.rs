@@ -103,7 +103,10 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let skip_status_pass = r.u8()? != 0;
     let drag_anchor_id = r.u32()?;
 
-    let mut entities = Vec::with_capacity(n_entities);
+    // Record widths for the pre-allocation caps below: entity = kind + offset,
+    // param = f32, pin = index + target, constraint = kind + n_refs + flags at
+    // its shortest. See `Reader::capacity_for` for why the counts are capped.
+    let mut entities = Vec::with_capacity(r.capacity_for(n_entities, 5));
     for _ in 0..n_entities {
         let kind_byte = r.u8()?;
         let kind = Kind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
@@ -111,7 +114,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
         entities.push(Entity { kind, param_offset });
     }
 
-    let mut params_initial = Vec::with_capacity(n_params);
+    let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
         params_initial.push(r.f32()?);
     }
@@ -119,7 +122,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let mask_len = pinned_mask_bytes(n_params);
     let pinned_mask = r.take(mask_len)?.to_vec();
 
-    let mut equality_pins = Vec::with_capacity(n_equality_pins);
+    let mut equality_pins = Vec::with_capacity(r.capacity_for(n_equality_pins, 8));
     for _ in 0..n_equality_pins {
         let param_index = r.u32()?;
         let target = r.f32()?;
@@ -129,7 +132,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
         });
     }
 
-    let mut constraints = Vec::with_capacity(n_constraints);
+    let mut constraints = Vec::with_capacity(r.capacity_for(n_constraints, 3));
     for _ in 0..n_constraints {
         constraints.push(decode_constraint(&mut r)?);
     }
@@ -324,15 +327,15 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     let n_status = r.u32()? as usize;
     let vf_len = r.u32()? as usize;
     let overall_status = r.u8()?;
-    let mut params_solved = Vec::with_capacity(n_params);
+    let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
         params_solved.push(r.f32()?);
     }
-    let mut entity_status = Vec::with_capacity(n_status);
+    let mut entity_status = Vec::with_capacity(r.capacity_for(n_status, 1));
     for _ in 0..n_status {
         entity_status.push(r.u8()?);
     }
-    let mut vertex_freedom = Vec::with_capacity(vf_len);
+    let mut vertex_freedom = Vec::with_capacity(r.capacity_for(vf_len, 4));
     for _ in 0..vf_len {
         vertex_freedom.push(r.f32()?);
     }
@@ -653,6 +656,23 @@ mod tests {
             decode_input(truncated),
             Err(CodecError::UnexpectedEof)
         ));
+    }
+
+    #[test]
+    fn corrupt_header_counts_stay_eof_instead_of_reserving_the_heap() {
+        // Each count in the header set to u32::MAX in turn, over a buffer that
+        // holds one entity and nothing else. Decoding must fail on the first
+        // short read: pre-allocating straight from the count would reserve
+        // gigabytes and abort the process outright on wasm32's 32-bit heap,
+        // which the Worker cannot report or recover from.
+        for count_offset in [4usize, 8, 12, 16] {
+            let mut bytes = encode_input(&one_entity_input());
+            bytes[count_offset..count_offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+            assert!(
+                matches!(decode_input(&bytes), Err(CodecError::UnexpectedEof)),
+                "corrupt count at byte {count_offset}"
+            );
+        }
     }
 
     #[test]

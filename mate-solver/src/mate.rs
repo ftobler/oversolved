@@ -317,7 +317,9 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         r.u32()?;
     }
 
-    let mut params_initial = Vec::with_capacity(n_params);
+    // Header counts are untrusted; see `Reader::capacity_for`. A mate record is
+    // a fixed 84 bytes, a param a single f32.
+    let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
         params_initial.push(r.f32()?);
     }
@@ -325,7 +327,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let mask_len = pinned_mask_bytes(n_bodies);
     let fixed_mask = r.take(mask_len)?.to_vec();
 
-    let mut mates = Vec::with_capacity(n_mates);
+    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 84));
     for _ in 0..n_mates {
         let kind_byte = r.u8()?;
         let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
@@ -387,6 +389,8 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         });
     }
 
+    // `n_bodies` needs no cap of its own: the param-count check above ties it to
+    // `n_params`, whose f32s have already been read out of the buffer.
     let mut bodies = Vec::with_capacity(n_bodies);
     for i in 0..n_bodies {
         bodies.push(RigidBody {
@@ -488,7 +492,7 @@ pub fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
     }
     let n_params = r.u32()? as usize;
     let overall_status = r.u8()?;
-    let mut params_solved = Vec::with_capacity(n_params);
+    let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
         params_solved.push(r.f32()?);
     }
@@ -649,6 +653,19 @@ mod tests {
         let bytes = encode_mate_input(&sample_input());
         assert!(matches!(
             decode_mate_input(&bytes[..bytes.len() - 1]),
+            Err(CodecError::UnexpectedEof)
+        ));
+    }
+
+    #[test]
+    fn corrupt_mate_count_stays_eof_instead_of_reserving_the_heap() {
+        // n_mates sits at byte 12. A corrupt count must fail on the first short
+        // record read rather than pre-allocating a mate array of that size,
+        // which aborts the process on wasm32 instead of returning an error.
+        let mut bytes = encode_mate_input(&sample_input());
+        bytes[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            decode_mate_input(&bytes),
             Err(CodecError::UnexpectedEof)
         ));
     }

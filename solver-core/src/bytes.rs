@@ -34,6 +34,22 @@ impl<'a> Reader<'a> {
         Ok(s)
     }
 
+    /// Bytes left between the cursor and the end of the buffer.
+    pub fn remaining(&self) -> usize {
+        self.buf.len().saturating_sub(self.pos)
+    }
+
+    /// How much to pre-allocate for `n` records of `record_bytes` each.
+    ///
+    /// Header counts arrive on an untrusted buffer, and `Vec::with_capacity(n)`
+    /// on a corrupt count aborts the process (the allocator has no fallible
+    /// path) BEFORE the first read gets a chance to fail. Reserving no more
+    /// than the buffer could actually supply keeps a corrupt count an ordinary
+    /// `Eof` while leaving every honest buffer allocated exactly once.
+    pub fn capacity_for(&self, n: usize, record_bytes: usize) -> usize {
+        n.min(self.remaining() / record_bytes.max(1))
+    }
+
     pub fn u8(&mut self) -> Result<u8, Eof> {
         Ok(self.take(1)?[0])
     }
@@ -111,6 +127,18 @@ mod tests {
         assert_eq!(r.take(4), Err(Eof));
         // The failed read left the cursor untouched, so the short read still works.
         assert_eq!(r.take(3), Ok(&[1u8, 2, 3][..]));
+    }
+
+    #[test]
+    fn capacity_for_clamps_a_corrupt_count_to_what_the_buffer_holds() {
+        let mut r = Reader::new(&[0u8; 12]);
+        assert_eq!(r.capacity_for(2, 4), 2); // honest count: reserved in full
+        assert_eq!(r.capacity_for(u32::MAX as usize, 4), 3); // 12 bytes / 4
+        r.u32().unwrap();
+        assert_eq!(r.remaining(), 8);
+        assert_eq!(r.capacity_for(u32::MAX as usize, 4), 2);
+        // A zero record width must not divide by zero.
+        assert_eq!(r.capacity_for(5, 0), 5);
     }
 
     #[test]
