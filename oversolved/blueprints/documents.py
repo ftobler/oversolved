@@ -269,9 +269,6 @@ def import_document():
     content = data.get("content") or ""
     if not name:
         return api_error("Document name required", "BAD_REQUEST", 400)
-    db = get_db()
-    doc_store = DocumentStore(db)
-    with db.transaction():
-        uuid = doc_store.create(name, g.current_user["id"])
-        doc_store.store_content(uuid, content)
+    doc_store = DocumentStore(get_db())
+    uuid = doc_store.import_document(name, g.current_user["id"], content)
     return jsonify({"uuid": uuid, "name": name}), 201

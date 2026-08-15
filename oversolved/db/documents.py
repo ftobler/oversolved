@@ -38,6 +38,22 @@ class DocumentStore:
             )
         return uuid
 
+    def import_document(self, name: str, owner_id: int, content: str) -> str:
+        """Create a document together with its content and return its UUID.
+
+        Import must never leave a committed empty-content row behind, so name and
+        content land in one INSERT inside a single transaction instead of the
+        create()/store_content() pair, which commits twice.
+        """
+        uuid = uuid_mod.uuid4().hex
+        now = _now()
+        with self.db.transaction():
+            self.db.execute(
+                "INSERT INTO documents (uuid, name, content, owner_id, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (uuid, name, content, owner_id, 0, now, now),
+            )
+        return uuid
+
     def store_content(self, uuid: str, content: str) -> None:
         """Update document content."""
         now = _now()
