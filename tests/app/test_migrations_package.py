@@ -54,6 +54,32 @@ class TestIdempotentMigrations:
         db.close()
 
 
+class TestTokenHashMigration:
+    def test_m018_drops_plaintext_sessions(self, pg_dsn):
+        """Sessions predating the hash column hold plaintext tokens and must be dropped."""
+        from oversolved.db import PostgreSQLConnection, UserStore
+        db = Database(PostgreSQLConnection(pg_dsn))
+        discover_and_register(db)
+        db.init()
+
+        user_id = UserStore(db).create("sessionowner", "hashed_pw")
+        # Recreate the pre-m018 shape so the guarded branch actually runs.
+        db.execute("ALTER TABLE sessions RENAME COLUMN token_hash TO token")
+        db.execute(
+            "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+            ("plaintext-token", user_id, "2999-01-01T00:00:00"),
+        )
+        db.commit()
+
+        apply_fn = next(f for v, _n, f in _load_migrations() if v == 18)
+        apply_fn(db)
+        db.commit()
+
+        cursor = db.execute("SELECT COUNT(*) FROM sessions")
+        assert cursor.fetchone()[0] == 0
+        db.close()
+
+
 class TestAppStartupIntegration:
     def test_register_migrations_on_app_startup(self, pg_dsn, monkeypatch):
         monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")
