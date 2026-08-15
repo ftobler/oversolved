@@ -594,6 +594,55 @@ mod tests {
     }
 
     #[test]
+    fn entity_index_past_the_entity_table_decodes_verbatim() {
+        // The wire layer is structural: an index no entity backs is a perfectly
+        // well-formed record, so decode must accept it and hand it on unchanged.
+        // Nothing in the byte stream can catch this class of staleness, which is
+        // why `Problem::new` is the one that drops the constraint.
+        let mut input = one_entity_input();
+        input.params_initial = vec![0.0, 0.0, 1.0, 0.0];
+        input.pinned_mask = vec![0];
+        input.constraints = vec![Constraint {
+            kind_code: crate::ConstraintKind::Horizontal.to_u8(),
+            refs: vec![(
+                RefRole::Target,
+                Ref::Entity {
+                    index: 4,
+                    point: PointSelector::Absent,
+                },
+            )],
+            ..Default::default()
+        }];
+        let decoded = decode_input(&encode_input(&input)).expect("decode");
+        assert_eq!(decoded.entities.len(), 1);
+        assert_eq!(
+            decoded.constraints[0].ref_for(RefRole::Target),
+            Some(Ref::Entity {
+                index: 4,
+                point: PointSelector::Absent
+            })
+        );
+        assert!(!decoded.entity_params_in_range(4));
+        assert!(decoded.entity_params_in_range(0));
+    }
+
+    #[test]
+    fn entity_param_offset_past_the_param_buffer_decodes_verbatim() {
+        // The other half of the same class: the index resolves, but the entity's
+        // param block does not fit the buffer the header describes.
+        let mut input = one_entity_input();
+        input.entities = vec![Entity {
+            kind: Kind::Line,
+            param_offset: 2,
+        }];
+        input.params_initial = vec![0.0, 0.0, 1.0];
+        input.pinned_mask = vec![0];
+        let decoded = decode_input(&encode_input(&input)).expect("decode");
+        assert_eq!(decoded.entities[0].param_offset, 2);
+        assert!(!decoded.entity_params_in_range(0));
+    }
+
+    #[test]
     fn bad_magic_rejected() {
         let mut bytes = encode_input(&sample_input());
         bytes[0] ^= 0xff;

@@ -75,6 +75,50 @@ mod tests {
     }
 
     #[test]
+    fn solve_mate_bytes_survives_a_stale_body_index_on_the_wire() {
+        // Decodes cleanly, references a body the assembly does not have. The
+        // Worker must answer with a normal output rather than trapping: the
+        // stale mate is ignored and the rest of the assembly still solves.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![Mate {
+                kind: MateKind::Spherical,
+                a: MateRef {
+                    body_index: 0,
+                    geometry: MateGeometry {
+                        point: [0.0, 0.0, 0.0],
+                        axis: [0.0, 0.0, 1.0],
+                    },
+                    anchor_kind: AnchorKind::Point,
+                },
+                b: MateRef {
+                    body_index: 9,
+                    geometry: MateGeometry {
+                        point: [0.0, 0.0, 0.0],
+                        axis: [0.0, 0.0, 1.0],
+                    },
+                    anchor_kind: AnchorKind::Point,
+                },
+                flip: false,
+                offset: [0.0; 3],
+                ratio: 1.0,
+                radius: 0.0,
+                angle: 0.0,
+            }],
+        };
+        let out_bytes = solve_mate_bytes(&encode_mate_input(&input)).expect("solve mate");
+        let out = decode_mate_output(&out_bytes).expect("decode output");
+        assert_eq!(out.params_solved.len(), 14);
+        // With its only mate dropped, body 1 stays where the seed put it.
+        assert!((out.params_solved[7] - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
     fn solve_mate_bytes_rejects_bad_input() {
         assert!(solve_mate_bytes(&[0, 1, 2, 3]).is_err());
     }

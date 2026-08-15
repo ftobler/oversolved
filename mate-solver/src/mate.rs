@@ -577,6 +577,18 @@ mod tests {
     }
 
     #[test]
+    fn body_index_past_the_body_table_decodes_verbatim() {
+        // Referential validity is not a wire property: a mate naming body 9 in a
+        // two-body assembly is a well-formed 84-byte record, so decode keeps it
+        // and `MateProblem::new` is what drops it.
+        let mut input = sample_input();
+        input.mates[0].b.body_index = 9;
+        let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
+        assert_eq!(decoded.bodies.len(), 2);
+        assert_eq!(decoded.mates[0].b.body_index, 9);
+    }
+
+    #[test]
     fn mate_output_round_trips() {
         let out = MateOutput {
             params_solved: vec![0.0; 14],

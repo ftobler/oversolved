@@ -104,6 +104,54 @@ mod tests {
     }
 
     #[test]
+    fn solve_bytes_survives_a_stale_entity_index_on_the_wire() {
+        // The full byte path over a buffer that decodes cleanly but references
+        // an entity that is not there: the Worker must answer with a normal
+        // output instead of trapping, since it cannot ask the host to re-send.
+        let stale = Constraint {
+            kind_code: ConstraintKind::Length.to_u8(),
+            refs: vec![(
+                RefRole::Target,
+                Ref::Entity {
+                    index: 9,
+                    point: PointSelector::Absent,
+                },
+            )],
+            value: Some(10.0),
+            ..Default::default()
+        };
+        let horizontal = Constraint {
+            kind_code: ConstraintKind::Horizontal.to_u8(),
+            refs: vec![(
+                RefRole::Target,
+                Ref::Entity {
+                    index: 0,
+                    point: PointSelector::Absent,
+                },
+            )],
+            ..Default::default()
+        };
+        let input = Input {
+            entities: vec![Entity {
+                kind: Kind::Line,
+                param_offset: 0,
+            }],
+            params_initial: vec![0.0, 0.0, 9.5, 0.8],
+            pinned_mask: Vec::new(),
+            equality_pins: Vec::new(),
+            constraints: vec![stale, horizontal],
+            options: Options::default(),
+        };
+
+        let out = decode_output(&solve_bytes(&encode_input(&input)).expect("solve"))
+            .expect("decode output");
+        assert_eq!(out.params_solved.len(), 4);
+        // The surviving horizontal constraint still did its work.
+        assert!((out.params_solved[1] - out.params_solved[3]).abs() < 1e-3);
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+    }
+
+    #[test]
     fn solve_bytes_rejects_garbage() {
         assert!(solve_bytes(&[0, 1, 2, 3]).is_err());
     }
