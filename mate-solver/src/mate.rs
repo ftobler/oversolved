@@ -304,6 +304,14 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let n_mates = r.u32()? as usize;
     let _n_fixed_bodies = r.u32()?; // informational
 
+    // The layout fixes 7 params per body and every residual reads a body's block
+    // as `body_index * 7`, so a header whose two counts disagree describes a
+    // buffer nothing downstream can index safely. Reject it here rather than
+    // running off the end of `params_initial` mid-solve.
+    if n_params != n_bodies * 7 {
+        return Err(CodecError::ParamCountMismatch);
+    }
+
     // Skip per-body index entries (informational).
     for _ in 0..n_bodies {
         r.u32()?;
@@ -621,6 +629,19 @@ mod tests {
         let bytes = encode_mate_input(&sample_input());
         let truncated = &bytes[..bytes.len() - 8];
         assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
+    }
+
+    #[test]
+    fn mate_input_param_count_must_match_body_count() {
+        // n_bodies sits right after the magic. Claiming three bodies over a
+        // two-body param buffer is exactly the header corruption that would let
+        // a per-body loop read past the end of params_initial.
+        let mut bytes = encode_mate_input(&sample_input());
+        bytes[4..8].copy_from_slice(&3u32.to_le_bytes());
+        assert!(matches!(
+            decode_mate_input(&bytes),
+            Err(CodecError::ParamCountMismatch)
+        ));
     }
 
     #[test]

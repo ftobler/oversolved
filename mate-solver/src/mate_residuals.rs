@@ -110,16 +110,32 @@ impl MateProblem {
 
         let x0: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
 
-        let mate_residual_total: usize = input.mates.iter().map(|m| mate_residual_count(m.kind)).sum();
+        // Every mate residual and Jacobian row indexes `body_index * 7`, and the
+        // index comes off the wire, so a stale mate (one authored against a body
+        // that has since left the assembly) would run off the end of x. Drop the
+        // whole mate: a half-applied mate is worse than an absent one, and the
+        // solve still reports the remaining assembly honestly.
+        let addressable = |bi: u32| {
+            let bi = bi as usize;
+            bi < n_bodies && (bi + 1) * 7 <= x0.len()
+        };
+        let mates: Vec<Mate> = input
+            .mates
+            .iter()
+            .filter(|m| addressable(m.a.body_index) && addressable(m.b.body_index))
+            .cloned()
+            .collect();
+
+        let mate_residual_total: usize = mates.iter().map(|m| mate_residual_count(m.kind)).sum();
         let m = mate_residual_total + n_bodies + 7 * grounded.iter().filter(|&&g| g).count();
 
         // Precompute seed-frame world axes for CopyRotation mates plus each
         // body's twist at the seed pose about those axes, and the pose-free
         // canonical roll frames for Fixed and Sliding.
-        let mut seed_axes: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
-        let mut seed_twist: Vec<(f64, f64)> = vec![(0.0, 0.0); input.mates.len()];
-        let mut roll_frames: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; input.mates.len()];
-        for (i, m) in input.mates.iter().enumerate() {
+        let mut seed_axes: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; mates.len()];
+        let mut seed_twist: Vec<(f64, f64)> = vec![(0.0, 0.0); mates.len()];
+        let mut roll_frames: Vec<Option<([f64; 3], [f64; 3])>> = vec![None; mates.len()];
+        for (i, m) in mates.iter().enumerate() {
             if m.kind == MateKind::CopyRotation {
                 let off_a = m.a.body_index as usize * 7;
                 let off_b = m.b.body_index as usize * 7;
@@ -146,7 +162,7 @@ impl MateProblem {
         MateProblem {
             n,
             x0,
-            mates: input.mates.clone(),
+            mates,
             bodies: input.bodies.clone(),
             grounded,
             m,
@@ -2403,6 +2419,54 @@ mod tests {
             assert_eq!(pushed - 2, want, "kind {:?} pushed {} mate residuals, want {}", kind, pushed - 2, want);
             assert_eq!(p.m, pushed, "MateProblem.m disagrees with residuals().len() for {:?}", kind);
         }
+    }
+
+    #[test]
+    fn mate_naming_a_body_outside_the_assembly_is_dropped() {
+        // Body index 5 in a two-body assembly: a stale mate the host never
+        // pruned. It must contribute no rows instead of indexing off x.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(5, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+            ],
+        };
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        // Only the two quaternion-norm rows and the grounded body's 7 pins remain.
+        assert_eq!(p.residuals(&x).len(), 9);
+        assert_eq!(p.m, 9);
+
+        // The whole solve survives and leaves the free body where it was.
+        let out = solve_mate(&input);
+        assert!((out.params_solved[7] - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn mate_whose_body_block_overruns_the_params_is_dropped() {
+        // Two declared bodies but only one body's worth of params: body 1's
+        // block is not in the buffer, so any mate touching it goes.
+        let input = MateInput {
+            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            params_initial: vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            fixed_mask: vec![0],
+            mates: vec![
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+            ],
+        };
+        let p = MateProblem::new(&input);
+        assert!(p.mates.is_empty());
     }
 
     #[test]

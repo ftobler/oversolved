@@ -15,6 +15,9 @@ pub enum CodecError {
     BadMagic,
     /// A `MateKind` or `AnchorKind` byte outside the known range.
     BadKind(u8),
+    /// The header's `n_params` is not `n_bodies * 7`. Every per-body loop reads
+    /// a fixed 7-param block, so a disagreeing header cannot be solved at all.
+    ParamCountMismatch,
 }
 
 /// Lets `r.u32()?` inside a `Result<_, CodecError>` function convert the
