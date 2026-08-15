@@ -184,7 +184,8 @@ def _iter_documents_page(db: Database, page_size: int = 100) -> Iterator[Any]:
     while True:
         cursor = db.execute(
             "SELECT uuid, name, content, preview_image, owner_id FROM documents "
-            "WHERE deleted_at IS NULL ORDER BY owner_id, name "
+            # uuid breaks ties so paging cannot repeat or skip same-named documents.
+            "WHERE deleted_at IS NULL ORDER BY owner_id, name, uuid "
             "LIMIT ? OFFSET ?",
             (page_size, offset),
         )
