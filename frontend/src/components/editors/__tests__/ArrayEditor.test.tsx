@@ -7,7 +7,7 @@
  * circular-array body-pick coverage in CircularArrayEditor.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent, act } from '@testing-library/react'
+import { render, fireEvent, act, screen } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { ARRAY_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -98,6 +98,50 @@ describe('ArrayEditor source body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_array_field', featureId: 'arr1', field: 'source_body', value: '',
+    })
+  })
+})
+
+describe('ArrayEditor count fields honour parse: \'int\'', () => {
+  // Type `text` into the labelled field and blur, which is the commit path.
+  function typeAndBlur(label: string, text: string) {
+    const input = screen.getByRole('textbox', { name: label }) as HTMLInputElement
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: text } })
+    fireEvent.blur(input)
+    return input
+  }
+
+  it('rejects a fractional Count X and reverts to the stored value', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    const input = typeAndBlur('Count X', '2.5')
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(input.value).toBe('2')
+  })
+
+  it('rejects an expression evaluating to a fraction', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    typeAndBlur('Count X', '5/2')
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
+  it('still commits a whole Count X', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    typeAndBlur('Count X', '4')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_array_field', featureId: 'arr1', field: 'count_x', value: 4,
+    })
+  })
+
+  it('leaves the float Pitch X field accepting fractions', () => {
+    const onMutation = vi.fn()
+    renderEditor(makeFeature(), onMutation)
+    typeAndBlur('Pitch X', '12.5')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_array_field', featureId: 'arr1', field: 'pitch_x', value: 12.5,
     })
   })
 })

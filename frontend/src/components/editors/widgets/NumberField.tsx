@@ -1,6 +1,7 @@
 import type { Mutation } from '@/types/cad'
 import { ExpressionInput } from './ExpressionInput'
 import type { NumberFieldWidgetProps } from './fieldTypes'
+import { validateNumberFieldValue } from './numberFieldValidate'
 
 export function NumberFieldWidget({
   field, value, arrayData, fid, onMutation, mutationType,
@@ -14,7 +15,7 @@ export function NumberFieldWidget({
         value={value ?? dv}
         ariaLabel={field.label}
         unit={field.unit}
-        validate={field.validate}
+        validate={(v) => validateNumberFieldValue(field, v)}
         onChange={(v) => {
           if (isArraySplice && arrayData) {
             const arr = [...arrayData]
