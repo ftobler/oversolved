@@ -548,6 +548,16 @@ class TestDocumentStore:
         assert len(doc_store.list_by_owner(uid1)) == 1
         assert len(doc_store.list_by_owner(uid2)) == 1
 
+    def test_list_by_owner_preview_image_is_bytes(self, doc_store, user_id):
+        """Postgres hands back a memoryview; callers expect plain bytes like retrieve()."""
+        uuid = doc_store.create("With Image", user_id)
+        image_data = b"\x89PNG\r\n\x1a\n"
+        doc_store.store_preview_image(uuid, image_data)
+
+        docs = doc_store.list_by_owner(user_id)
+        assert type(docs[0]["preview_image"]) is bytes
+        assert docs[0]["preview_image"] == image_data
+
     def test_store_and_retrieve_preview_image(self, doc_store, user_id):
         uuid = doc_store.create("Img Doc", user_id)
         image_data = b"\x89PNG\r\n\x1a\n"  # PNG magic header bytes

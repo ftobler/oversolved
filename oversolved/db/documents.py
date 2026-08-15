@@ -389,7 +389,7 @@ class DocumentStore:
         )
         return [
             {
-                "uuid": row[0], "name": row[1], "preview_image": row[2],
+                "uuid": row[0], "name": row[1], "preview_image": _to_bytes(row[2]),
                 "created_at": row[3], "updated_at": row[4], "is_public": bool(row[5]),
             }
             for row in cursor.fetchall()
