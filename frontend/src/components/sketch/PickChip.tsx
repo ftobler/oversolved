@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import type { PartFeature } from '@/types/cad'
 import { queryLabel } from '@/utils/query/queryLabel'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -116,7 +117,7 @@ export function PickChip({
             >
               {onReorder && (
                 <span className="feature-pick-chip-item-drag" title="Drag to reorder">
-                  <img src="/src/assets/icons/toolbar-menu.svg" alt="" draggable={false} />
+                  <img src={dragHandleIcon} alt="" draggable={false} />
                 </span>
               )}
               <span className="feature-pick-chip-item-text">{features ? queryLabel(v, features, partLabels) : v}</span>

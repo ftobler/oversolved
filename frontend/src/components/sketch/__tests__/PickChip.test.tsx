@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { PickChip } from '@/components/sketch/PickChip'
+import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
+const SRC = join(__dirname, '..', '..', '..')
 
 beforeEach(() => {
   useSketchEditorStore.setState({
@@ -251,6 +256,47 @@ describe('PickChip', () => {
     fireEvent.dragOver(items[1], { dataTransfer, clientX: 0 })
     fireEvent.drop(items[1], { dataTransfer })
     expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  describe('drag handle asset', () => {
+    it('renders the handle from the bundled asset module', () => {
+      render(
+        <PickChip
+          values={['@sk1']}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+          onReorder={vi.fn()}
+        />
+      )
+      const img = document.querySelector('.feature-pick-chip-item-drag img')!
+      expect(img.getAttribute('src')).toBe(dragHandleIcon)
+    })
+
+    it('leaves no dev-server-only /src/ asset path anywhere in src/', () => {
+      // A hardcoded src="/src/assets/..." only resolves while the vite dev
+      // server is serving the source tree. `vite build` emits assets under
+      // dist/ with a content hash, so the same literal 404s in production.
+      // Imports are the only form the bundler rewrites, so this scan guards the
+      // whole tree. `import.meta.glob` keys are also `/src/...` but are lookup
+      // keys rather than URLs, hence the attribute-shaped pattern.
+      const devOnlyAssetUrl = /(?:src|href)\s*=\s*["'`{]*\/src\/|url\(\s*["']?\/src\//
+      const files: string[] = []
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, entry.name)
+          if (entry.isDirectory()) walk(full)
+          else if (/\.(ts|tsx|css)$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) files.push(full)
+        }
+      }
+      walk(SRC)
+      const offenders = files
+        .filter(f => !f.includes('__tests__'))
+        .filter(f => devOnlyAssetUrl.test(readFileSync(f, 'utf8')))
+        .map(f => f.slice(SRC.length + 1))
+
+      expect(offenders).toEqual([])
+    })
   })
 
   describe('chipOwnedSelection sync', () => {
