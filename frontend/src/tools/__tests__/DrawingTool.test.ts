@@ -36,7 +36,7 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
 
 describe('DrawingTool', () => {
   describe('line tool', () => {
-    it('creates entity when enough points collected', () => {
+    it('creates a segment but keeps the chain open (no tool clear on second click)', () => {
       const onMutation = vi.fn()
       const clearDraw = vi.fn()
       const setActiveTool = vi.fn()
@@ -57,7 +57,32 @@ describe('DrawingTool', () => {
         kind: 'line',
         params: expect.any(Array),
       })
-      expect(clearDraw).toHaveBeenCalled()
+      // The chain continues: the draw is not cleared and the tool stays armed.
+      expect(clearDraw).not.toHaveBeenCalled()
+      expect(setActiveTool).not.toHaveBeenCalled()
+    })
+
+    it('chains across multiple clicks then finishes on a closing click', () => {
+      const onMutation = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
+      const context = createMockContext({
+        onMutation,
+        setActiveTool,
+        drawPoints: [],
+        activeFeatureId: 'S1',
+      })
+
+      // First vertex.
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
+      expect(setActiveTool).not.toHaveBeenCalled()
+
+      // Second click extends the chain.
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 0], context)
+      expect(setActiveTool).not.toHaveBeenCalled()
+
+      // Closing click on the first vertex terminates the polyline.
+      tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
       expect(setActiveTool).toHaveBeenCalledWith(null)
     })
 
@@ -396,7 +421,7 @@ describe('DrawingTool', () => {
       expect(context.drawPoints).not.toBe(setDrawPoints.mock.calls[0][0])
     })
 
-    it('does not call setDrawPoints when the gesture commits (clearTool)', () => {
+    it('advances the buffer via setDrawPoints when the segment commits (chains)', () => {
       const setDrawPoints = vi.fn()
       const onMutation = vi.fn()
       const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
@@ -410,7 +435,9 @@ describe('DrawingTool', () => {
       tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
 
       expect(onMutation).toHaveBeenCalledTimes(1)
-      expect(setDrawPoints).not.toHaveBeenCalled()
+      // The committed segment keeps the chain alive, so the buffer advances.
+      expect(setDrawPoints).toHaveBeenCalledTimes(1)
+      expect(setDrawPoints).toHaveBeenCalledWith([[0, 0], [10, 10]])
     })
   })
 })

@@ -80,13 +80,38 @@ describe('computeDrawClick - line tool', () => {
     expect(result.nextDrawSnap?.vertexId).toBe('vertex:S1:L1:end')
   })
 
-  it('second click with no snap emits add_entity and clearTool', () => {
+  it('second click with no snap emits add_entity and keeps the chain open', () => {
     const result = computeDrawClick('line', [[0, 0]], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_entity')
     if (result.mutations[0].type === 'add_entity') {
       expect(result.mutations[0].kind).toBe('line')
       expect(result.mutations[0].params).toEqual([0, 0, 5, 5])
+    }
+    // The just-drawn endpoint becomes the next start; the tool does not clear.
+    expect(result.clearTool).toBe(false)
+    expect(result.nextDrawPoints).toEqual([[0, 0], [5, 5]])
+  })
+
+  it('third click continues the chain instead of closing the tool', () => {
+    const result = computeDrawClick('line', [[0, 0], [5, 5]], [9, 2], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_entity')
+    if (result.mutations[0].type === 'add_entity') {
+      // Segment runs from the previous endpoint (5,5) to the new click.
+      expect(result.mutations[0].params).toEqual([5, 5, 9, 2])
+    }
+    expect(result.clearTool).toBe(false)
+    expect(result.nextDrawPoints).toEqual([[0, 0], [5, 5], [9, 2]])
+  })
+
+  it('clicking the first vertex closes the polyline', () => {
+    const result = computeDrawClick('line', [[0, 0], [5, 5]], [0, 0], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_entity')
+    if (result.mutations[0].type === 'add_entity') {
+      // Closing segment runs from the last vertex back to the first.
+      expect(result.mutations[0].params).toEqual([5, 5, 0, 0])
     }
     expect(result.clearTool).toBe(true)
   })
@@ -112,6 +137,57 @@ describe('computeDrawClick - line tool', () => {
     const kinds = result.mutations.map(m => m.type)
     expect(kinds).toContain('add_entity')
     expect(kinds).toContain('add_constraint')
+  })
+
+  it('end snap detected from the resolved vertex position, not the stale hover gate', () => {
+    // The legacy gate required hoveredVertexId && hoveredSnapKind; here
+    // hoveredSnapKind is absent yet the click still lands on the vertex, so the
+    // end constraint must still be emitted (the snap-drop bug).
+    const snap = emptySnap()
+    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.hoveredVertexPosition = [10, 0]
+    snap.hoveredVertexId = 'vertex:S1:L2:start'
+    const result = computeDrawClick('line', [[0, 0]], [10, 0], snap, FEATURE, newId)
+    const kinds = result.mutations.map(m => m.type)
+    expect(kinds).toContain('add_entity_with_constraint')
+    expect(kinds).toContain('add_constraint')
+    const constraint = result.mutations.find(m => m.type === 'add_constraint')
+    expect(constraint).toBeDefined()
+    if (constraint && constraint.type === 'add_constraint') {
+      expect(constraint.targets[1]).toBe('vertex:S1:L2:start')
+    }
+  })
+
+  it('both endpoints on distinct vertices emit start and end constraints', () => {
+    const snap = emptySnap()
+    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.hoveredVertexPosition = [10, 0]
+    snap.hoveredVertexId = 'vertex:S1:L2:start'
+    snap.hoveredSnapKind = 'vertex'
+    const result = computeDrawClick('line', [[0, 0]], [10, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(2)
+    expect(result.mutations[0].type).toBe('add_entity_with_constraint')
+    expect(result.mutations[1].type).toBe('add_constraint')
+  })
+
+  it('both endpoints on the SAME vertex fall back to a free line', () => {
+    const snap = emptySnap()
+    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.hoveredVertexPosition = [10, 0]
+    snap.hoveredVertexId = 'vertex:S1:L1:end'
+    snap.hoveredSnapKind = 'vertex'
+    const result = computeDrawClick('line', [[0, 0]], [10, 0], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_entity')
+    expect(result.clearTool).toBe(false)
+  })
+
+  it('a single-snapped (start only) line still works as before', () => {
+    const snap = emptySnap()
+    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    const result = computeDrawClick('line', [[0, 0]], [5, 5], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_entity_with_constraint')
   })
 
 

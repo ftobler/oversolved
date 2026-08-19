@@ -231,6 +231,7 @@ describe('ToolRegistry', () => {
 
       const onMutation = vi.fn()
       const clearDraw = vi.fn()
+      const setDrawPoints = vi.fn()
       const context = {
         normalSelection: new Set<string>(),
         hoveredSelectionId: null,
@@ -251,10 +252,14 @@ describe('ToolRegistry', () => {
         alignmentSnapKind: null,
         alignmentSnapVertexId: null,
         setDrawSnap: vi.fn(),
+        setDrawPoints,
       }
       registry.get('line')!.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
       expect(onMutation).toHaveBeenCalled()
-      expect(clearDraw).toHaveBeenCalled()
+      // The line tool chains: the second click emits the segment but keeps the
+      // draw alive, so the buffer advances and the tool does not clear.
+      expect(setDrawPoints).toHaveBeenCalled()
+      expect(clearDraw).not.toHaveBeenCalled()
     })
 
     it('routes rect tool through registry and generates add_rect mutation', () => {
