@@ -74,7 +74,7 @@ export function FeatureItemActions({
     <div className="feature-item-actions">
       {canEdit && showEditBtn && (
         kind === 'sketch' ? (
-          <button className="feature-edit-btn" onClick={() => onEnterEditSketch(featureId)} title="Edit sketch">
+          <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditSketch(featureId) }} title="Edit sketch">
             <img src={contextEditIcon} alt="Edit" />
           </button>
         ) : (
