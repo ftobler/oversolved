@@ -30,6 +30,20 @@ async function overwriteBuiltBy(key: string, builtBy: string): Promise<void> {
   })
 }
 
+// The whole rev list of a doc, which the module only exposes the maximum of.
+async function readLatestRevs(doc_id: string): Promise<number[] | undefined> {
+  return await new Promise((resolve, reject) => {
+    const req = indexedDB.open('oversolved-bundles')
+    req.onsuccess = () => {
+      const db = req.result
+      const getReq = db.transaction('latest', 'readonly').objectStore('latest').get(doc_id)
+      getReq.onsuccess = () => { db.close(); resolve(getReq.result?.revs) }
+      getReq.onerror = () => { db.close(); reject(getReq.error) }
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
 function fixtureBundle(doc_id: string, doc_rev: number): PartBundle {
   // Use small typed arrays so we can assert byte-level round-trip fidelity.
   return {
@@ -226,6 +240,24 @@ describe('bundleCache', () => {
     expect(await bundleCacheGet('d', 5)).toBeDefined()
     expect(await bundleCacheGet('d', 9)).toBeDefined()
     expect(await bundleCacheGet('d', 12)).toBeDefined()
+  })
+
+  it('merges concurrent puts of one doc without losing a rev', async () => {
+    // The rev list is a read-modify-write: a lost update would drop a rev from
+    // `latest` (leaving its bundle record unreachable and unprunable). Every put
+    // runs in ONE readwrite transaction spanning both stores, and IndexedDB
+    // serializes overlapping-scope transactions in creation order, so the
+    // interleaving cannot happen. Five overlapping puts, no awaits between them.
+    await Promise.all([1, 2, 3, 4, 5].map(rev => bundleCachePut(fixtureBundle('d', rev))))
+
+    // The newest three survive pruning; the two oldest are gone from both stores.
+    expect(await readLatestRevs('d')).toEqual([3, 4, 5])
+    expect(await bundleCacheLatestRev('d')).toBe(5)
+    expect(await bundleCacheGet('d', 1)).toBeUndefined()
+    expect(await bundleCacheGet('d', 2)).toBeUndefined()
+    expect(await bundleCacheGet('d', 3)).toBeDefined()
+    expect(await bundleCacheGet('d', 4)).toBeDefined()
+    expect(await bundleCacheGet('d', 5)).toBeDefined()
   })
 
   it('upgrades a v1 database to v2 without throwing, and treats every pre-existing record as a miss', async () => {
