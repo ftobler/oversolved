@@ -12,6 +12,26 @@ import { builtinSelectionId } from '@/components/Geometry3D/utils'
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
+// Kinds that open in the feature editor (onEnterEditFeature) rather than the
+// sketch editor. `sketch` is the lone exception handled separately below. This
+// mirrors the kinds that already expose an Edit button in FeatureItemActions.
+const EDITABLE_FEATURE_KINDS = new Set([
+  'plane',
+  'extrude',
+  'revolve',
+  'sweep',
+  'fillet',
+  'chamfer',
+  'boolean',
+  'array',
+  'circular_array',
+  'delete_body',
+  'hole',
+  'transform',
+  'mirror',
+  'variable',
+])
+
 interface FeatureTreeProps {
   splitPercent: number
 }
@@ -172,7 +192,18 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
               onClick={() => {
                 onToggleSelect(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`)
               }}
-              onDoubleClick={() => feature.kind === 'sketch' ? onEnterEditSketch(feature.id) : undefined}
+              onDoubleClick={() => {
+                if (isBuiltIn) return  // Origin/planes are not editable here
+                // A double-click on the row already being edited would stack a
+                // second editor session on the same feature. The Edit button
+                // already hides while editing; the tree must match that guard.
+                if (feature.id === editingFeatureId) return
+                if (feature.kind === 'sketch') {
+                  onEnterEditSketch(feature.id)
+                } else if (EDITABLE_FEATURE_KINDS.has(feature.kind)) {
+                  onEnterEditFeature(feature.id)
+                }
+              }}
               style={{ flexWrap: 'wrap' }}
             >
               <div className="feature-item-title">
