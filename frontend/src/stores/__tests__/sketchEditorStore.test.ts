@@ -1245,6 +1245,34 @@ describe('sketchEditorStore', () => {
         expect(s.chipOwnedSelection.size).toBe(0)
       })
 
+      it('keeps the pick field when entering the passive drag tool', () => {
+        // Regression: clicking empty canvas activates drag (select), which used
+        // to wipe activePickField and silently kill face picks afterwards.
+        useSketchEditorStore.setState({
+          normalSelection: new Set(['@edge_0']),
+          chipOwnedSelection: new Set(['@edge_0']),
+          activePickField: { featureId: 'F1', field: 'profile' },
+          modeStack: ['pick'],
+        })
+        useSketchEditorStore.getState().setActiveTool('drag')
+        const s = useSketchEditorStore.getState()
+        expect(s.activePickField).toEqual({ featureId: 'F1', field: 'profile' })
+        expect(s.modeStack).toEqual(['pick'])
+      })
+
+      it('clears the pick field and chip selection when entering a drawing tool', () => {
+        useSketchEditorStore.setState({
+          normalSelection: new Set(['@edge_0', '@edge_1']),
+          chipOwnedSelection: new Set(['@edge_0']),
+          activePickField: { featureId: 'F1', field: 'profile' },
+          modeStack: ['pick'],
+        })
+        useSketchEditorStore.getState().setActiveTool('line')
+        const s = useSketchEditorStore.getState()
+        expect(s.activePickField).toBeNull()
+        expect(s.chipOwnedSelection.size).toBe(0)
+      })
+
       it('clears dimensionPicks when leaving the dimension tool', () => {
         // Activate dimension tool, accumulate a pick, then switch away.
         useSketchEditorStore.getState().setActiveTool('dimension')
@@ -1272,7 +1300,7 @@ describe('sketchEditorStore', () => {
         expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
       })
 
-      it('clears activePickField and chip-owned selection when entering a tool', () => {
+      it('keeps activePickField and chip-owned selection when entering the passive drag tool', () => {
         useSketchEditorStore.setState({
           activePickField: { featureId: 'Sketch1', field: 'plane' },
           activeTool: null,
@@ -1280,13 +1308,15 @@ describe('sketchEditorStore', () => {
           normalSelection: new Set(['?body_ex1/face/0', '@other_item']),
           modeStack: ['pick'],
         })
-        // drag is the real idle/select entry (getEffectiveTool(null) === 'drag');
-        // entering it is "entering a tool" from the idle state.
+        // drag is the real idle/select entry (getEffectiveTool(null) === 'drag').
+        // Entering it must NOT steal an open pick field, so a later face click
+        // still routes through usePickField (the extrude Profile bug).
         useSketchEditorStore.getState().setActiveTool('drag')
         const s = useSketchEditorStore.getState()
-        expect(s.activePickField).toBeNull()
-        expect(s.chipOwnedSelection.size).toBe(0)
-        expect(s.normalSelection.has('?body_ex1/face/0')).toBe(false)
+        expect(s.activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
+        expect(s.chipOwnedSelection.has('?body_ex1/face/0')).toBe(true)
+        expect(s.activeTool).toBeNull()
+        expect(s.normalSelection.has('?body_ex1/face/0')).toBe(true)
         expect(s.normalSelection.has('@other_item')).toBe(true)
       })
 

@@ -502,8 +502,8 @@ describe('validateSketchEditorState', () => {
   })
 
   describe('activePickField invariant', () => {
-    it('throws when activePickField is set but activeTool is not null', () => {
-      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: 'drag' }
+    it('throws when activePickField is set but activeTool is a drawing tool', () => {
+      const state = { ...defaultState(), activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: 'line' }
       expect(() => validateSketchEditorState(state)).toThrow('[invariant] activePickField')
     })
 

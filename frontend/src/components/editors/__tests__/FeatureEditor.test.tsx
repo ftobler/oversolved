@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
 import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import type { PartFeature } from '@/types/cad'
+import type { PartFeature, Mutation } from '@/types/cad'
+import { useState } from 'react'
+import { initializeTools } from '@/tools'
+import { toolRegistry } from '@/registry/toolRegistry'
 
 beforeEach(() => {
+  toolRegistry.reset()
+  initializeTools()
   useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [], chipOwnedSelection: new Set() })
 })
 
@@ -211,6 +216,47 @@ describe('FeatureEditor text field', () => {
     fireEvent.change(input, { target: { value: 'invalid' } })
     fireEvent.blur(input)
     expect(onMutation).not.toHaveBeenCalled()
+  })
+})
+
+// ─── pick field survives canvas tool switch ───
+
+describe('FeatureEditor extrude profile pick survives canvas tool switch', () => {
+  it('keeps the profile pick field active after the select tool, so a face click still adds a profile', () => {
+    const initialFeature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: [], distance: 10, direction: 'normal' },
+    }
+    const mutations: Mutation[] = []
+    function Harness() {
+      const [feature, setFeature] = useState(initialFeature)
+      const onMutation = (m: Mutation) => {
+        mutations.push(m)
+        // Mirror the real reducer for add_extrude_profile so the chip re-renders.
+        setFeature(prev => m.type === 'add_extrude_profile'
+          ? { ...prev, extrude: { ...prev.extrude!, sketch: [...prev.extrude!.sketch, m.sketchQuery] } }
+          : prev)
+      }
+      return <FeatureEditor feature={feature} onMutation={onMutation} schema={EXTRUDE_SCHEMA} />
+    }
+    render(<Harness />)
+
+    // Activate the Profile pick field by clicking its chip.
+    const chip = document.querySelector('.feature-pick-chip')!
+    fireEvent.click(chip)
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'ex1', field: 'sketch', multi: true })
+
+    // Clicking empty canvas activates the passive select (drag) tool. With the
+    // bug, this wiped activePickField and subsequent face clicks did nothing.
+    act(() => { useSketchEditorStore.getState().setActiveTool('drag') })
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+
+    // A face click toggles a selection id into normalSelection.
+    act(() => { useSketchEditorStore.setState({ normalSelection: new Set(['@ex1/face/0']) }) })
+
+    // The pick field is still active, so onPick fired and the chip grew.
+    expect(mutations).toContainEqual({ type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '@ex1/face/0' })
+    expect(document.querySelector('.feature-pick-chip-item-text')?.textContent).toBe('@ex1/face/0')
   })
 })
 

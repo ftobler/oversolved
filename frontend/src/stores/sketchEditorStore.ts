@@ -9,7 +9,7 @@ import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/regist
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
 import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
 import { validateSketchEditorState, failLoud, repairSelectionState, devOnly, testMode, deriveSelectionDomain } from './stateInvariants'
-import { toolRegistry } from '@/registry/toolRegistry'
+import { toolRegistry, isDrawingTool } from '@/registry/toolRegistry'
 import type { ToolContext } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
@@ -691,9 +691,17 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       get().cancelBrepProjectionGesture()
     }
 
+    // Entering a tool that doesn't conflict with an open pick field (currently
+    // only the passive select/drag tool) must not steal the field: leave
+    // activeTool exactly as it is (null while a pick is open) and skip arming
+    // the tool, so the chip keeps routing face clicks through usePickField even
+    // after the user clicks empty canvas. Drawing/dimension tools still reset it.
+    const cur = get()
+    const keepsPickField = tool !== null && cur.activePickField !== null && !isDrawingTool(tool) && !getToolPickConfig(tool).clearsSelectionOnEnter
+
     set(state => {
       const updates: Record<string, unknown> = {
-        activeTool: tool,
+        activeTool: keepsPickField ? cur.activeTool : tool,
         drawPoints: [],
         drawHover: null,
         drawSnapVertexId: null,
@@ -711,11 +719,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         updates.normalSelection = new Set<string>()
         updates.selectedPicks = new Map<string, Set<string>>()
       }
-      // Clear stale pick-field state when entering any tool. Start from the
-      // selection the clearsSelectionOnEnter branch may already have emptied:
-      // rebuilding from state.normalSelection here would silently undo that
-      // clear when both branches fire (dimension tool entered mid-pick).
-      if (tool !== null && state.activePickField !== null) {
+      // Clear stale pick-field state when entering a tool, but only for tools
+      // that genuinely conflict with an open pick field. The passive select
+      // (drag) tool must leave activePickField intact so a face click after
+      // wandering the canvas still routes through usePickField. Drawing tools
+      // and the dimension tool (clearsSelectionOnEnter) still reset it.
+      if (tool !== null && state.activePickField !== null && (isDrawingTool(tool) || getToolPickConfig(tool).clearsSelectionOnEnter)) {
         updates.activePickField = null
         updates.chipOwnedSelection = new Set<string>()
         const baseNormal = (updates.normalSelection as Set<string> | undefined) ?? state.normalSelection
@@ -736,8 +745,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       return updates
     })
 
-    // Activate new tool (lifecycle hook)
-    activateTool(get, tool)
+    // Activate new tool (lifecycle hook). Skipped when the field is kept, since
+    // arming the drag tool would push a 'tool:drag' mode that conflicts with the
+    // open pick field's 'pick' mode.
+    if (!keepsPickField) {
+      activateTool(get, tool)
+    }
 
     if (devOnly || testMode) {
       validateWithRepair(get, set)
