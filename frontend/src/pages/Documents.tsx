@@ -521,7 +521,10 @@ export default function Documents() {
               type="text"
               placeholder={newDocKind === 'assembly' ? 'Assembly name' : 'Document name'}
               value={newDocName}
-              onChange={e => setNewDocName(e.target.value)}
+              onChange={e => {
+                setNewDocName(e.target.value)
+                if (e.target.value.trim()) setAddError(null)
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter') handleAddDocument()
                 if (e.key === 'Escape') setShowAddForm(false)
