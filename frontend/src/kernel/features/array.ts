@@ -162,7 +162,11 @@ function applyArray(
   bodyStore: Record<string, Body>,
   opLabel: string,
 ): ArrayResult {
-  const sourceShape = table.get<OccShape>(body.shape!)
+  // resolveSourceBody already guards this on both public entry points, but the
+  // assertion is kept here too so applyArray fails loud on its own, matching
+  // the fail-loud idiom the rest of this directory uses for required fields.
+  if (body.shape === null) throw new Error(`${opLabel}: source body has no shape`)
+  const sourceShape = table.get<OccShape>(body.shape)
   const sourceNames: NameMaps = {
     faceNames: body.face_names ?? {},
     faceAncestry: body.face_ancestry ?? {},
