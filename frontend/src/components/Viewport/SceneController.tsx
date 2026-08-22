@@ -33,7 +33,6 @@ interface SavedOrbitState {
   target: [number, number, number]
   zoom: number
 }
-let savedOrbitState: SavedOrbitState | null = null
 
 interface SceneControllerProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -53,6 +52,9 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   const { camera } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const cameraRefStable = useRef(camera)
+  // Per-instance save slot: module scope would leak one viewport's saved
+  // pose into another when multiple SceneControllers are mounted at once.
+  const savedOrbitStateRef = useRef<SavedOrbitState | null>(null)
   // eslint-disable-next-line react-hooks/refs
   cameraRefStable.current = camera
 
@@ -70,7 +72,7 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
     return () => {
       const cam = cameraRefStable.current
       if (ctrlRef.current && cam) {
-        savedOrbitState = {
+        savedOrbitStateRef.current = {
           position: [cam.position.x, cam.position.y, cam.position.z],
           target: [ctrlRef.current.target.x, ctrlRef.current.target.y, ctrlRef.current.target.z],
           zoom: cam.zoom,
@@ -82,8 +84,8 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   // Restore camera pose when a fresh controls is born (showSeq changes).
   // Deferred by one rAF so the new OrbitControls has connected first.
   useEffect(() => {
-    const state = savedOrbitState
-    savedOrbitState = null
+    const state = savedOrbitStateRef.current
+    savedOrbitStateRef.current = null
     if (!state) return
     const ctrl = ctrlRef.current
     const raf = requestAnimationFrame(() => {
