@@ -198,6 +198,9 @@ export function booleanWithHistory(
   // derived from, by Modified()/IsSame subshape identity. A source that maps to
   // several images is a genuine split; the name transfer orders those children.
   const facePairs: FaceOrigin[] = []
+  // Hoisted once (mirrors walkOutputs): the unchanged-face branch below would
+  // otherwise re-explore the result's faces per input face.
+  const resultFaces = explore(oc, scope, result, E.TopAbs_FACE)
   const collectPairs = (shape: OccShape, fromTool: boolean): void => {
     for (const s of explore(oc, scope, shape, E.TopAbs_FACE)) {
       if (history.IsRemoved(s)) continue
@@ -209,12 +212,8 @@ export function booleanWithHistory(
       // Unchanged face: the input handle does NOT live in the result, so find
       // the result face that is IsSame to it. Without this, faces untouched by
       // the boolean get no origin entry and lose their construction UUID.
-      for (const outFace of explore(oc, scope, result, E.TopAbs_FACE)) {
-        if (outFace.IsSame(s)) {
-          facePairs.push({ output: outFace, source: s, fromTool })
-          break
-        }
-      }
+      const outFace = resultFaces.find((f) => f.IsSame(s))
+      if (outFace) facePairs.push({ output: outFace, source: s, fromTool })
     }
   }
   collectPairs(targetShape, false)
