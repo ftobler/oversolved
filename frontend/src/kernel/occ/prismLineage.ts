@@ -11,7 +11,16 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import { extractErrorMessage } from '../errors'
-import type { OccModule, OccShape, OccSubShape, OccListOfShape, OccCircle, OccPrismBuilder } from './occTypes'
+import type {
+  OccModule,
+  OccShape,
+  OccSubShape,
+  OccListOfShape,
+  OccCircle,
+  OccPrismBuilder,
+  OccPipeShellBuilder,
+  OccEnumValue,
+} from './occTypes'
 import type { PlaneLike } from '../features/shared'
 import {
   edgeToGeom,
@@ -1107,6 +1116,41 @@ export function revolveProfileWithLineage(
 // ─── sweep (the sweep leaf's brep producer) ───
 
 /**
+ * Try each transition mode's pipe shell in order and return the first one
+ * that builds a solid cleanly. Pure loop, no face/profile dependency, so it
+ * unit-tests with a stub `oc.BRepOffsetAPI_MakePipeShell` (no WASM needed).
+ *
+ * `lastError` is reset at the top of every attempt: a mode that throws sets
+ * it, but the NEXT attempt clears it again before trying, so a mode that
+ * fails silently (no exception, just `IsDone()`/`MakeSolid()` false) never
+ * reports a stale exception message from an earlier, different mode.
+ */
+export function attemptPipeShellSweep(
+  oc: OccModule,
+  scope: DisposeScope,
+  spineWire: OccShape,
+  outerWire: OccShape,
+  modes: OccEnumValue[],
+): { result: { solid: OccShape; pipeBuilder: OccPipeShellBuilder } | null; lastError: unknown } {
+  let lastError: unknown = null
+  for (const mode of modes) {
+    lastError = null
+    const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
+    builder.SetTransitionMode(mode)
+    builder.Add_1(outerWire, false, false)
+    try {
+      builder.Build()
+      if (builder.IsDone() && builder.MakeSolid()) {
+        return { result: { solid: builder.Shape(), pipeBuilder: builder }, lastError: null }
+      }
+    } catch (e) {
+      lastError = e
+    }
+  }
+  return { result: null, lastError }
+}
+
+/**
  * Sweep profile loops along a spine wire and return (solid + construction-name
  * maps) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
  * boundary is swept (holes are not carried through the pipe shell, matching
@@ -1131,36 +1175,19 @@ export function sweepProfileWithLineage(
   const spineWire = healWire(oc, scope, makeWire(oc, scope, spineEdges))
   const outerWire = scope.track(healWire(oc, scope, rawOuterWire))
 
-  let solid: OccShape
-  let pipeBuilder = null
   const modes = [
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner,
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed,
   ]
-  let lastError: unknown = null
-  for (const mode of modes) {
-    const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
-    builder.SetTransitionMode(mode)
-    builder.Add_1(outerWire, false, false)
-    try {
-      builder.Build()
-      if (builder.IsDone() && builder.MakeSolid()) {
-        solid = builder.Shape()
-        pipeBuilder = builder
-        lastError = null
-        break
-      }
-    } catch (e) {
-      lastError = e
-    }
-  }
+  const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, modes)
   if (lastError !== null) {
     const msg = extractErrorMessage(lastError)
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)
   }
-  if (!solid!) throw new Error('sweep: could not build a solid from the swept shell')
+  if (result === null) throw new Error('sweep: could not build a solid from the swept shell')
+  const { solid, pipeBuilder } = result
 
-  const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder!, loops, plane, createdBy, sketchId)
+  const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder, loops, plane, createdBy, sketchId)
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
   prefixLineageMaps(lineage, tokenPrefix)
   return { solid, ...lineage }
