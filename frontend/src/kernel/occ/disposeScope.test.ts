@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { DisposeScope, type Disposable } from './disposeScope'
+import { DisposeScope, drainList, type Disposable } from './disposeScope'
+import type { OccListOfShape, OccShape } from './occTypes'
 
 class FakeObj implements Disposable {
   deleted = 0
@@ -12,6 +13,34 @@ class FakeObj implements Disposable {
   delete(): void {
     this.deleted++
     this.order.push(this.tag)
+  }
+  isDeleted(): boolean {
+    return this.deleted > 0
+  }
+}
+
+/** A fake TopTools_ListOfShape: Size/First_1/RemoveFirst, plus delete tracking
+ *  for the container itself. */
+class FakeList implements OccListOfShape {
+  deleted = 0
+  private readonly items: FakeObj[]
+  constructor(items: FakeObj[]) {
+    this.items = items
+  }
+  Size(): number {
+    return this.items.length
+  }
+  First_1(): OccShape {
+    return this.items[0]
+  }
+  RemoveFirst(): void {
+    this.items.shift()
+  }
+  Append_1(): void {
+    throw new Error('not used by drainList')
+  }
+  delete(): void {
+    this.deleted++
   }
   isDeleted(): boolean {
     return this.deleted > 0
@@ -83,4 +112,23 @@ describe('DisposeScope', () => {
     expect(() => scope.track({ delete() {} })).toThrow(/after dispose/)
   })
 
+})
+
+describe('drainList', () => {
+  it('frees both the drained shapes and the list container itself', () => {
+    const order: string[] = []
+    const a = new FakeObj('a', order)
+    const b = new FakeObj('b', order)
+    const list = new FakeList([a, b])
+    const scope = new DisposeScope()
+
+    const out = drainList(scope, list)
+
+    expect(out).toEqual([a, b])
+    expect(list.deleted).toBe(0)  // not deleted yet, only tracked
+    scope.dispose()
+    expect(list.deleted).toBe(1)
+    expect(a.deleted).toBe(1)
+    expect(b.deleted).toBe(1)
+  })
 })

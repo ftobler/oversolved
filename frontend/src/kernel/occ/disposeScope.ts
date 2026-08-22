@@ -74,6 +74,7 @@ export class DisposeScope {
 
 /** Drain a TopTools_ListOfShape into an array (Size/First_1/RemoveFirst). */
 export function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
+  scope.track(list)  // the list container itself owns native memory too
   const out: OccShape[] = []
   const n = list.Size()
   for (let i = 0; i < n; i++) {
