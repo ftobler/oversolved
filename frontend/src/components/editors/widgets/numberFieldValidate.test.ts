@@ -33,4 +33,22 @@ describe('validateNumberFieldValue', () => {
   it("leaves a float field alone when parse is 'float'", () => {
     expect(validateNumberFieldValue(field({ parse: 'float' }), 2.5)).toBe(true)
   })
+
+  it('rejects a value below the declared min', () => {
+    const f = field({ min: 1 })
+    expect(validateNumberFieldValue(f, 0)).toBe(false)
+    expect(validateNumberFieldValue(f, 1)).toBe(true)
+    expect(validateNumberFieldValue(f, 2)).toBe(true)
+  })
+
+  it('rejects NaN when a min is declared', () => {
+    expect(validateNumberFieldValue(field({ min: 0 }), NaN)).toBe(false)
+  })
+
+  it('still enforces min alongside parse and validate, as count_x does', () => {
+    const f = field({ parse: 'int', validate: (v) => v > 0, min: 1 })
+    expect(validateNumberFieldValue(f, 1)).toBe(true)
+    expect(validateNumberFieldValue(f, 0)).toBe(false)
+    expect(validateNumberFieldValue(f, -3)).toBe(false)
+  })
 })
