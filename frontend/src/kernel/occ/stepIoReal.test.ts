@@ -87,6 +87,69 @@ describe.skipIf(!oc)('stepShapeToBytes (real OCC)', () => {
   })
 })
 
+// ─── error branches (readStep + stepShapeToBytes status checks) ───
+
+describe.skipIf(!oc)('stepIo error branches (real OCC)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  it('stepBytesToShape throws when ReadFile rejects non-STEP bytes', () => {
+    // A genuine parse failure, not a stub: garbage bytes make the real
+    // STEPControl_Reader.ReadFile return a non-Done status (RetStop in this
+    // binding) on its own.
+    const scope = new DisposeScope()
+    try {
+      const garbage = new TextEncoder().encode('this is not a step file at all\nrandom garbage 1234')
+      expect(() => stepBytesToShape(occ, scope, garbage)).toThrow(/^import_step: STEP read failed \(status \d+\)$/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('stepShapeToBytes throws when Transfer rejects a null shape', () => {
+    // A default-constructed TopoDS_Shape carries no TShape at all, so the real
+    // STEPControl_Writer.Transfer genuinely returns a non-Done status for it --
+    // no stubbing needed. TopoDS_Shape's bare constructor is not part of
+    // OccModule (nothing else in this codebase needs an intentionally-null
+    // shape), so it is reached the same way booleansReal.test.ts reaches
+    // BRepTools_History: cast through unknown.
+    const anyOcc = occ as unknown as { TopoDS_Shape: new () => OccShape }
+    const scope = new DisposeScope()
+    try {
+      const nullShape = scope.track(new anyOcc.TopoDS_Shape())
+      expect(() => stepShapeToBytes(occ, scope, nullShape)).toThrow('STEP export: Transfer failed')
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('stepShapeToBytes throws when Write cannot create the scratch file', () => {
+    // Pre-occupy stepIo's internal scratch path with a directory so the real
+    // STEPControl_Writer.Write -- reached only after a genuinely successful
+    // Transfer -- fails to create the file there ("Step File could not be
+    // created"). Natural, no stubbing: FS.mkdir/rmdir aren't part of
+    // OccModule (only writeFile/unlink/readFile are declared, matching what
+    // stepIo.ts itself uses), so they are reached the same way, cast through
+    // unknown.
+    const anyFs = occ.FS as unknown as { mkdir: (p: string) => void; rmdir: (p: string) => void }
+    const scope = new DisposeScope()
+    try {
+      anyFs.mkdir('/s.step')
+      try {
+        const box = scope.track(makeBox(occ, scope, 5, 5, 5))
+        expect(() => stepShapeToBytes(occ, scope, box)).toThrow('STEP export: Write failed')
+      } finally {
+        anyFs.rmdir('/s.step')
+      }
+    } finally {
+      scope.dispose()
+    }
+  })
+})
+
 // ─── STEP entity identity (imported-face-naming) ───
 
 describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
