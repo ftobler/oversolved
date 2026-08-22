@@ -63,18 +63,33 @@ export function buildArrayTransforms(
   const trsfs: OccTrsf[] = []
 
   if (mode === 'linear') {
-    const countX = Math.trunc(Number(feature.count_x ?? 2))
+    // Number.isInteger rejects NaN, Infinity, and fractional values in one check,
+    // so a hand-edited or expression-derived 2.7 throws instead of silently
+    // truncating to 2.
+    const countX = Number(feature.count_x ?? 2)
+    if (!Number.isInteger(countX) || countX < 1) {
+      throw new Error(`array: count_x must be a positive integer, got ${feature.count_x}`)
+    }
     const pitchX = Number(feature.pitch_x ?? 10.0)
+    if (!Number.isFinite(pitchX)) throw new Error(`array: pitch_x must be a finite number, got ${feature.pitch_x}`)
     const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
     const num = includeSource ? countX - 1 : countX
     for (let i = 1; i <= num; i++) {
       trsfs.push(makeTranslationTrsf(oc, scope, dirX[0] * pitchX * i, dirX[1] * pitchX * i, dirX[2] * pitchX * i))
     }
   } else if (mode === 'rectangular') {
-    const countX = Math.trunc(Number(feature.count_x ?? 2))
-    const countY = Math.trunc(Number(feature.count_y ?? 2))
+    const countX = Number(feature.count_x ?? 2)
+    if (!Number.isInteger(countX) || countX < 1) {
+      throw new Error(`array: count_x must be a positive integer, got ${feature.count_x}`)
+    }
+    const countY = Number(feature.count_y ?? 2)
+    if (!Number.isInteger(countY) || countY < 1) {
+      throw new Error(`array: count_y must be a positive integer, got ${feature.count_y}`)
+    }
     const pitchX = Number(feature.pitch_x ?? 10.0)
+    if (!Number.isFinite(pitchX)) throw new Error(`array: pitch_x must be a finite number, got ${feature.pitch_x}`)
     const pitchY = Number(feature.pitch_y ?? 10.0)
+    if (!Number.isFinite(pitchY)) throw new Error(`array: pitch_y must be a finite number, got ${feature.pitch_y}`)
     const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
     const dirY = resolveArrayDirection(feature, 'y', globalRepo, bodyStore)
     const numX = includeSource ? countX - 1 : countX
@@ -103,10 +118,16 @@ export function buildCircularTransforms(
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): OccTrsf[] {
-  const count = Math.trunc(Number(feature.count ?? 4))
+  const count = Number(feature.count ?? 4)
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`circular_array: count must be a positive integer, got ${feature.count}`)
+  }
   const includeSource = (feature.include_source as boolean) ?? true
   const stepRaw = feature.step_angle
   const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
+  if (!Number.isFinite(step)) {
+    throw new Error(`circular_array: step_angle must be a finite number, got ${feature.step_angle}`)
+  }
   // The rotation axis can be a straight edge, circular edge, sketch line,
   // sketch circle, cylindrical face, or planar face; an empty or dangling pick
   // is a solve error rather than a silent rotation about world Z.

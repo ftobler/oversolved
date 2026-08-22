@@ -142,6 +142,28 @@ describe('buildArrayTransforms (linear)', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'dangling' }, repo)).toThrow(/did not resolve/)
   })
 
+  it('throws instead of silently no-opping when count_x is 0', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 0, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
+      .toThrow(/count_x must be a positive integer/)
+  })
+
+  it('throws when count_x is negative', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: -1, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
+      .toThrow(/count_x must be a positive integer/)
+  })
+
+  it('throws instead of silently truncating when count_x is fractional', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2.7, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
+      .toThrow(/count_x must be a positive integer/)
+  })
+
+  it('throws when pitch_x is not finite', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: NaN, direction_x_query: 'qx' }, xyRepo))
+      .toThrow(/pitch_x must be a finite number/)
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: Infinity, direction_x_query: 'qx' }, xyRepo))
+      .toThrow(/pitch_x must be a finite number/)
+  })
+
   it('threads the body store so a :solid direction pick coerces upward', () => {
     // The direction query restricts to `solid`; the repo holds only the body's
     // face, so the pick resolves by upward coercion through the threaded store.
@@ -189,6 +211,33 @@ describe('buildArrayTransforms (rectangular)', () => {
       xyRepo,
     )).toThrow(/direction Y is required/)
   })
+
+  it('throws when count_y is 0', () => {
+    expect(() => buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 2, count_y: 0, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
+    )).toThrow(/count_y must be a positive integer/)
+  })
+
+  it('throws instead of silently truncating when count_y is fractional', () => {
+    expect(() => buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 2, count_y: 2.7, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
+    )).toThrow(/count_y must be a positive integer/)
+  })
+
+  it('throws when pitch_y is not finite', () => {
+    expect(() => buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: NaN, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
+    )).toThrow(/pitch_y must be a finite number/)
+  })
 })
 
 describe('buildCircularTransforms', () => {
@@ -230,6 +279,26 @@ describe('buildCircularTransforms', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'az', invert_axis: true }, zRepo, {})
     expect(rotations(t)[0].direction).toEqual([0, 0, -1])
   })
+  it('throws instead of silently no-opping when count is 0', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: 0, axis: 'az' }, zRepo, {}))
+      .toThrow(/count must be a positive integer/)
+  })
+
+  it('throws when count is negative', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: -2, axis: 'az' }, zRepo, {}))
+      .toThrow(/count must be a positive integer/)
+  })
+
+  it('throws instead of silently truncating when count is fractional', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: 2.7, axis: 'az' }, zRepo, {}))
+      .toThrow(/count must be a positive integer/)
+  })
+
+  it('throws when step_angle is not finite', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: 4, step_angle: NaN, axis: 'az' }, zRepo, {}))
+      .toThrow(/step_angle must be a finite number/)
+  })
+
   it('throws when the axis picker is empty', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: 2 }, repo, {})).toThrow(/axis is required/)
   })
