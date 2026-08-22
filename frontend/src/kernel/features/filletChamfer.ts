@@ -495,7 +495,7 @@ export function solveFillet(
   const merged: Dict = { ...sub, ...feature }
   const radiusRaw = merged.radius
   const radius = Number(radiusRaw !== undefined && radiusRaw !== null ? radiusRaw : 1.0)
-  if (radius <= 0) throw new Error('fillet: radius must be positive')
+  if (!Number.isFinite(radius) || radius <= 0) throw new Error('fillet: radius must be positive')
   return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, nm) =>
     applyFilletWithLineage(o, s, shape, radius, edges, nm),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
@@ -522,7 +522,7 @@ export function solveChamfer(
   const distance = Number(distanceRaw !== undefined && distanceRaw !== null ? distanceRaw : 1.0)
   const angleRaw = merged.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
-  if (distance <= 0) throw new Error('chamfer: distance must be positive')
+  if (!Number.isFinite(distance) || distance <= 0) throw new Error('chamfer: distance must be positive')
   return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
     applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the

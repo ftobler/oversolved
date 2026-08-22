@@ -22,6 +22,15 @@ describe('solveExtrude guard paths', () => {
     ).toThrow(/at least one profile reference/)
   })
 
+  it('rejects a NaN distance the same way as a zero distance', () => {
+    // 'not-a-number' is truthy, so it survives the `||` default-chain and
+    // Number() coerces it to NaN, which `=== 0` alone would miss.
+    const repo = new Repository()
+    expect(() =>
+      solveExtrude(oc, scope, table, { id: 'f1', extrude: { distance: 'not-a-number' } }, repo, {}),
+    ).toThrow(/distance must be non-zero/)
+  })
+
   it('surfaces an unresolved sketch ref as the collected profile error', () => {
     const repo = new Repository()
     const bodyStore: Record<string, Body> = {}

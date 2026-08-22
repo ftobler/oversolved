@@ -55,6 +55,15 @@ describe('solveRevolve guard paths', () => {
     expect(result.mesh_warning).toMatch(/no closed profile/)
   })
 
+  it('rejects a NaN angle the same way as a zero-string angle', () => {
+    // 'not-a-number' is truthy, so it survives the `||` default-chain and
+    // Number() coerces it to NaN, which `=== 0` alone would miss.
+    const repo = new Repository()
+    expect(() =>
+      solveRevolve(oc, scope, table, { id: 'f1', revolve: { sketch: '$sk', angle: 'not-a-number' } }, repo, {}),
+    ).toThrow(/angle must be non-zero/)
+  })
+
   it('angle=0 defaults to 360 (no error)', () => {
     /** angle=0 is coerced to 360 by the || operator -- no error.
      *  This is intentional upstream behavior, not a bug. */

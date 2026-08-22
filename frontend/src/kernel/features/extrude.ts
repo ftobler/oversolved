@@ -62,7 +62,7 @@ export function solveExtrude(
       : []
   const distance = Number((merged.distance as number) || (merged.depth as number) || 1.0)
 
-  if (distance === 0) throw new Error('extrude: distance must be non-zero')
+  if (!Number.isFinite(distance) || distance === 0) throw new Error('extrude: distance must be non-zero')
   if (sketchRefs.length === 0) {
     throw new Error('extrude: requires at least one profile reference')
   }

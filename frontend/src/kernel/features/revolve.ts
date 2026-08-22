@@ -149,7 +149,7 @@ export function solveRevolve(
       : []
   const angle = Number((merged.angle as number) || 360.0)
 
-  if (angle === 0) throw new Error('revolve: angle must be non-zero')
+  if (!Number.isFinite(angle) || angle === 0) throw new Error('revolve: angle must be non-zero')
   if (sketchRefs.length === 0) throw new Error('revolve: requires at least one profile reference')
 
   const allLoops: Dict[][] = []

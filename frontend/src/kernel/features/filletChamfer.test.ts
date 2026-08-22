@@ -47,6 +47,12 @@ describe('solveFillet guard paths', () => {
     ).toThrow(/radius must be positive/)
   })
 
+  it('rejects a NaN radius the same way as a non-positive radius', () => {
+    expect(() =>
+      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: NaN } }, repo, oneBody()),
+    ).toThrow(/radius must be positive/)
+  })
+
   it('requires at least one edge', () => {
     expect(() =>
       solveFillet(oc, scope, table, { id: 'f', fillet: { edges: [], radius: 2 } }, repo, oneBody()),
@@ -64,6 +70,12 @@ describe('solveChamfer guard paths', () => {
   it('rejects a non-positive distance', () => {
     expect(() =>
       solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: ['?b:edge:0'], distance: -1 } }, repo, oneBody()),
+    ).toThrow(/distance must be positive/)
+  })
+
+  it('rejects a NaN distance the same way as a non-positive distance', () => {
+    expect(() =>
+      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: ['?b:edge:0'], distance: NaN } }, repo, oneBody()),
     ).toThrow(/distance must be positive/)
   })
 
