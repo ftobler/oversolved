@@ -500,9 +500,7 @@ export function applySetTransformField(
   field: keyof TransformFeatureDef,
   value: unknown,
 ): void {
-  const feat = doc.features?.find(f => f.id === featureId)
-  if (!feat?.transform) return
-  ;(feat.transform as unknown as Record<string, unknown>)[field] = value
+  applySetSubFeatureField(doc, featureId, 'transform', field, value, 'applySetTransformField')
 }
 
 // ─── Mirror ───
@@ -522,12 +520,7 @@ export function applySetMirrorField(
   field: keyof MirrorFeatureDef,
   value: unknown,
 ): void {
-  const feat = doc.features?.find(f => f.id === featureId)
-  if (!feat?.mirror) {
-    warn(`applySetMirrorField: feature ${featureId} has no mirror`)
-    return
-  }
-  ;(feat.mirror as unknown as Record<string, unknown>)[field] = value
+  applySetSubFeatureField(doc, featureId, 'mirror', field, value, 'applySetMirrorField')
 }
 
 // ─── Variable ───

@@ -173,5 +173,13 @@ describe('Transform mutations', () => {
       applySetTransformField(doc, 'missing', 'operation', 'replace')
       expect(doc.features).toHaveLength(0)
     })
+
+    it('clearing a field with undefined deletes the key rather than storing null', () => {
+      const doc = makeDoc()
+      applyAddTransform(doc, 'xf1')
+      applySetTransformField(doc, 'xf1', 'rotation_axis', '@sk1/axisLine')
+      applySetTransformField(doc, 'xf1', 'rotation_axis', undefined)
+      expect('rotation_axis' in doc.features![0].transform!).toBe(false)
+    })
   })
 })

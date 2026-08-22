@@ -69,5 +69,13 @@ describe('Mirror mutations', () => {
       applySetMirrorField(doc, 'missing', 'body', '@extrude1')
       expect(doc.features).toHaveLength(0)
     })
+
+    it('clearing a field with undefined deletes the key rather than storing null', () => {
+      const doc = makeDoc()
+      applyAddMirror(doc, 'mir1')
+      applySetMirrorField(doc, 'mir1', 'plane', '@builtin_plane_front')
+      applySetMirrorField(doc, 'mir1', 'plane', undefined)
+      expect('plane' in doc.features![0].mirror!).toBe(false)
+    })
   })
 })
