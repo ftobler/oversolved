@@ -15,13 +15,14 @@ import { DisposeScope } from './disposeScope'
 import { makeBox } from './primitives'
 import {
   booleanWithDiff,
+  booleanWithHistory,
   volumeOf,
   countSolids,
   countSubShapes,
   type BooleanOp,
 } from './booleans'
 import fixture from './__fixtures__/booleanDiff.json'
-import type { OccModule } from './occTypes'
+import type { OccHistory, OccListOfShape, OccModule, OccShape } from './occTypes'
 
 const oc = await loadOcc()
 
@@ -90,4 +91,47 @@ describe.skipIf(!oc)('booleans.ts pipeline (real OCC)', () => {
       }
     })
   }
+
+  it('frees every TopTools_ListOfShape history.Modified hands back, including recordTool\'s informational check', () => {
+    // Regression test: recordTool (the tool-side classify pass inside
+    // booleanWithHistory) used to call `history.Modified(s).Size() > 0` without
+    // tracking the returned TopTools_ListOfShape, leaking one native list per
+    // tool sub-shape checked -- the same shape of leak drainList had before it
+    // tracked the list container itself. Spy on BRepTools_History.prototype (the
+    // module exposes the class directly, and every algo.History() instance is
+    // this one class) to capture every list Modified() hands back during the
+    // run, then assert scope.dispose() deleted all of them, not just the ones
+    // classifyTarget/collectPairs drain via drainList.
+    const scope = new DisposeScope()
+    try {
+      const [tx, ty, tz] = fx.target
+      const [ux, uy, uz] = fx.tool
+      const target = makeBox(occ, scope, tx, ty, tz)
+      const tool = makeBox(occ, scope, ux, uy, uz)
+
+      const historyClass = (
+        occ as unknown as {
+          BRepTools_History: { prototype: { Modified: (s: OccShape) => OccListOfShape } }
+        }
+      ).BRepTools_History
+      const captured: OccListOfShape[] = []
+      const original = historyClass.prototype.Modified
+      historyClass.prototype.Modified = function (this: OccHistory, s: OccShape): OccListOfShape {
+        const list = original.call(this, s)
+        captured.push(list)
+        return list
+      }
+      try {
+        booleanWithHistory(occ, scope, target, tool, 'cut')
+      } finally {
+        historyClass.prototype.Modified = original
+      }
+
+      expect(captured.length).toBeGreaterThan(0)
+      scope.dispose()
+      for (const list of captured) expect(list.isDeleted?.()).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  })
 })

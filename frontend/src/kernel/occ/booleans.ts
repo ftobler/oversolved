@@ -156,7 +156,7 @@ export function booleanWithHistory(
     for (const s of explore(oc, scope, toolShape, kind)) {
       if (history.IsRemoved(s)) {
         deleted.push(s)
-      } else if (history.Modified(s).Size() > 0) {
+      } else if (scope.track(history.Modified(s)).Size() > 0) {
         modified.push(s)
       }
     }
