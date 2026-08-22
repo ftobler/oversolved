@@ -21,6 +21,12 @@ import { encodeBinaryStl } from '../stl'
 // unlinks synchronously, so reusing one path across calls is safe.
 const SCRATCH_PATH = '/s.step'
 
+// Various OCC.js return-status calls (ReadFile, Transfer, Write) may return a
+// raw enum number or an embind enum object wrapping it in `.value`, depending
+// on binding version. Unwrap either shape so callers can compare against a
+// named enum member instead of a magic number.
+const enumVal = (e: unknown): number => (typeof e === 'number' ? e : (e as { value: number }).value)
+
 /** Decode a base64 string to bytes (portable across Node + browser/Worker). */
 export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64)
@@ -84,8 +90,6 @@ function readStep(
   try {
     const reader = scope.track(new oc.STEPControl_Reader_1())
     const status = reader.ReadFile(path)
-    // ReadFile may return a raw enum number or an embind enum object (.value).
-    const enumVal = (e: unknown): number => (typeof e === 'number' ? e : (e as { value: number }).value)
     const statusVal = enumVal(status)
     const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
     if (statusVal !== doneVal) {
@@ -373,11 +377,12 @@ export function stepShapeToBytes(
   const path = SCRATCH_PATH
   const writer = scope.track(new oc.STEPControl_Writer_1())
   const wStatus = writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true)
-  if ((wStatus as { value: number }).value !== 1) {
+  const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
+  if (enumVal(wStatus) !== doneVal) {
     throw new Error('STEP export: Transfer failed')
   }
   const wrote = writer.Write(path)
-  if ((wrote as { value: number }).value !== 1) {
+  if (enumVal(wrote) !== doneVal) {
     throw new Error('STEP export: Write failed')
   }
   const text = oc.FS.readFile(path, { encoding: 'utf8' })
