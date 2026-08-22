@@ -79,8 +79,15 @@ export function queryLabel(
       }
 
       case 'ancestry': {
-        const lastId = parsed.ancestorIds[parsed.ancestorIds.length - 1]
-        const featureId = extractFeatureId(lastId)
+        // Scan from the closest (last-in-chain) ancestor id backward toward the
+        // root, since a trailing special token (classifier/geom-hash/uuid/
+        // descriptor -- see extractFeatureId) resolves to null even when an
+        // earlier id in the same chain names the owning feature.
+        let featureId: string | null = null
+        for (let i = parsed.ancestorIds.length - 1; i >= 0; i--) {
+          featureId = extractFeatureId(parsed.ancestorIds[i])
+          if (featureId) break
+        }
         const entityType = entityTypeFromRestriction(parsed.typeRestriction)
 
         if (featureId) {

@@ -171,10 +171,19 @@ describe('queryLabel', () => {
       expect(queryLabel(q, features)).toBe(q)
     })
 
-    it('falls through to the raw query when the last ancestor is a special token', () => {
-      // Extraction looks only at the LAST ancestor id: the trailing @cls_zp
-      // (7 chars) makes the whole query unnameable even with @extrude1 first.
+    it('resolves an earlier ancestor id when the last ancestor is a special token', () => {
+      // The trailing @cls_zp (7 chars) is a classifier token and extractFeatureId
+      // returns null for it, but the backward scan keeps looking and finds the
+      // resolvable @extrude1 (9 chars) earlier in the chain.
       const q = '?9,7;@extrude1@cls_zp:flatface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('falls through to the raw query when every ancestor id is a special token', () => {
+      // Both ids are unresolvable special tokens: the backward scan exhausts
+      // the chain and the raw query string is the only thing left to show.
+      // @cls_zp (7 chars), @u|u_abc (8 chars).
+      const q = '?7,8;@cls_zp@u|u_abc:flatface'
       expect(queryLabel(q, features)).toBe(q)
     })
   })
