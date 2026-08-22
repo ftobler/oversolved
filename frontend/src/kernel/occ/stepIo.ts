@@ -206,8 +206,7 @@ function drop(...objects: (OccDisposable | null | undefined)[]): void {
  * the same inconsistency), and `TopAbs_ShapeEnum` members are typed opaquely.
  */
 function sameEnum(a: unknown, b: unknown): boolean {
-  const v = (e: unknown): number => (typeof e === 'number' ? e : (e as { value: number }).value)
-  return v(a) === v(b)
+  return enumVal(a) === enumVal(b)
 }
 
 /**
