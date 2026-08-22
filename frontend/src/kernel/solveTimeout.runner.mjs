@@ -13,6 +13,7 @@ import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { extractErrorMessage } from '@/kernel/errors'
 
 setOccLoader(loadOcc)
 setSketchSolver(loadSolver())
@@ -23,6 +24,6 @@ process.on('message', async ({ id, spec, options }) => {
     const result = await solveLocally(spec, options ?? {})
     process.send?.({ id, ok: true, result })
   } catch (e) {
-    process.send?.({ id, ok: false, error: e.message })
+    process.send?.({ id, ok: false, error: extractErrorMessage(e) })
   }
 })
