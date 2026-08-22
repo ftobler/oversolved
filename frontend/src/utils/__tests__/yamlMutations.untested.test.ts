@@ -514,6 +514,18 @@ describe('applyReorderPickField', () => {
     expect(doc.features![0].revolve!.sketch).toEqual(['s2', 's1'])
   })
 
+  it('normalizes a bare-string extrude sketch onto the live document instead of a throwaway array', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext2', kind: 'extrude', extrude: { sketch: 's1', distance: 10, direction: 'normal' } }] }
+    applyReorderPickField(doc, 'ext2', 'sketch', 0, 0)
+    expect(doc.features![0].extrude!.sketch).toEqual(['s1'])
+  })
+
+  it('normalizes a bare-string revolve sketch onto the live document instead of a throwaway array', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'rev2', kind: 'revolve', revolve: { sketch: 's1', angle: 90, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] } }] }
+    applyReorderPickField(doc, 'rev2', 'sketch', 0, 0)
+    expect(doc.features![0].revolve!.sketch).toEqual(['s1'])
+  })
+
   it('no-ops for unknown feature id', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [] }
     expect(() => applyReorderPickField(doc, 'nonexistent', 'edges', 0, 1)).not.toThrow()

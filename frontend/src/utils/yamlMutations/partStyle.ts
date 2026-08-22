@@ -206,10 +206,21 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
       arr = feature.delete_body?.bodies ?? feature.transform?.bodies
       break
     case 'sketch':
+      // A bare-string sketch ref (legacy docs, or hand-authored YAML) is
+      // normalized in place into a one-element array first, so `arr` below
+      // is a live reference into the document -- same as every other branch
+      // -- rather than a throwaway copy the trailing splice would mutate
+      // without the change ever reaching the feature.
       if (feature.extrude?.sketch !== undefined) {
-        arr = Array.isArray(feature.extrude.sketch) ? feature.extrude.sketch : feature.extrude.sketch ? [feature.extrude.sketch] : []
+        if (!Array.isArray(feature.extrude.sketch)) {
+          feature.extrude.sketch = feature.extrude.sketch ? [feature.extrude.sketch] : []
+        }
+        arr = feature.extrude.sketch
       } else if (feature.revolve?.sketch !== undefined) {
-        arr = Array.isArray(feature.revolve.sketch) ? feature.revolve.sketch : feature.revolve.sketch ? [feature.revolve.sketch] : []
+        if (!Array.isArray(feature.revolve.sketch)) {
+          feature.revolve.sketch = feature.revolve.sketch ? [feature.revolve.sketch] : []
+        }
+        arr = feature.revolve.sketch
       }
       break
     default:
