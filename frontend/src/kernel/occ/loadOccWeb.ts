@@ -18,30 +18,40 @@ const DEFAULT_BASE = '/occ/'
 
 let cached: Promise<OccModule | null> | null = null
 
+// Same idiom as handleTable.ts's isDevBuild(): kept local rather than shared
+// since there is no common env util and the two modules are unrelated.
+function isDevBuild(): boolean {
+  try {
+    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
+  } catch {
+    return false
+  }
+}
+
 export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | null> {
   if (cached) {
-    console.log('[loadOccWeb] returning cached promise')
+    if (isDevBuild()) console.log('[loadOccWeb] returning cached promise')
     return cached
   }
   if (import.meta.env?.MODE === 'test') {
-    console.log('[loadOccWeb] test environment, skipping')
+    if (isDevBuild()) console.log('[loadOccWeb] test environment, skipping')
     return Promise.resolve(null)
   }
-  console.log('[loadOccWeb] starting load from', base)
+  if (isDevBuild()) console.log('[loadOccWeb] starting load from', base)
   cached = (async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any
 
       if (w.opencascade) {
-        console.log('[loadOccWeb] window.opencascade already present, calling factory')
+        if (isDevBuild()) console.log('[loadOccWeb] window.opencascade already present, calling factory')
         return await w.opencascade({
           locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
         }) as OccModule
       }
 
       const scriptUrl = `${base}opencascade.wasm.js`
-      console.log('[loadOccWeb] fetching script:', scriptUrl)
+      if (isDevBuild()) console.log('[loadOccWeb] fetching script:', scriptUrl)
       const resp = await fetch(scriptUrl)
       if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${scriptUrl}`)
       let text = await resp.text()
@@ -58,19 +68,23 @@ export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | nul
         script.src = blobUrl
         const timeout = setTimeout(() => {
           URL.revokeObjectURL(blobUrl)
-          console.error('[loadOccWeb] script load timed out after 10s')
+          // Redundant with the outer catch's console.error once this rejects;
+          // kept dev-only so prod doesn't double-log the same failure.
+          if (isDevBuild()) console.error('[loadOccWeb] script load timed out after 10s')
           reject(new Error(`timeout loading ${scriptUrl}`))
         }, 10_000)
         script.onload = () => {
           clearTimeout(timeout)
           URL.revokeObjectURL(blobUrl)
-          console.log('[loadOccWeb] script loaded, window.opencascade =', typeof w.opencascade)
+          if (isDevBuild()) console.log('[loadOccWeb] script loaded, window.opencascade =', typeof w.opencascade)
           resolve()
         }
         script.onerror = () => {
           clearTimeout(timeout)
           URL.revokeObjectURL(blobUrl)
-          console.error('[loadOccWeb] script load error')
+          // Redundant with the outer catch's console.error once this rejects;
+          // kept dev-only so prod doesn't double-log the same failure.
+          if (isDevBuild()) console.error('[loadOccWeb] script load error')
           reject(new Error(`failed to load ${scriptUrl}`))
         }
         document.head.appendChild(script)
@@ -78,16 +92,18 @@ export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | nul
 
       const factory = w.opencascade
       if (!factory) {
-        console.warn('[loadOccWeb] script loaded but window.opencascade is', typeof factory)
+        if (isDevBuild()) console.warn('[loadOccWeb] script loaded but window.opencascade is', typeof factory)
         return null
       }
-      console.log('[loadOccWeb] calling factory with locateFile')
+      if (isDevBuild()) console.log('[loadOccWeb] calling factory with locateFile')
       const mod = await factory({
         locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
       })
-      console.log('[loadOccWeb] factory resolved, module ready')
+      if (isDevBuild()) console.log('[loadOccWeb] factory resolved, module ready')
       return mod as OccModule
     } catch (e) {
+      // Genuine unrecoverable loader failure (the WASM kernel is unavailable);
+      // kept ungated so it is not silently swallowed in production.
       console.error('[loadOccWeb] error:', e)
       return null
     }
