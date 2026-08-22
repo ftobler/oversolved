@@ -104,7 +104,13 @@ async function handleRelay(msg: AnchorRelayRequest): Promise<AnchorRelayResponse
     if (msg.subKind === 'partDocContent') {
       payload = await relayHandlers.partDocContent(msg.doc_id)
     } else if (msg.subKind === 'buildBundle') {
-      payload = await relayHandlers.buildBundle(msg.doc_id, msg.doc_rev!, msg.spec!)
+      // doc_rev/spec are optional on the wire type only because `partDocContent`
+      // requests omit them; a buildBundle request missing either is a malformed
+      // message, not a value to silently pass through as undefined.
+      if (msg.doc_rev === undefined || msg.spec === undefined) {
+        throw new Error('malformed buildBundle relay request: missing doc_rev/spec')
+      }
+      payload = await relayHandlers.buildBundle(msg.doc_id, msg.doc_rev, msg.spec)
     } else {
       throw new Error(`unknown relay subKind: ${msg.subKind}`)
     }

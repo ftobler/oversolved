@@ -401,6 +401,31 @@ describe('relay plumbing', () => {
     expect(handlers.buildBundle).toHaveBeenCalledWith('bundle-doc', 5, { features: [] })
   })
 
+  it('relay response carries a protocol error when a buildBundle request is missing doc_rev/spec', async () => {
+    const handlers = {
+      partDocContent: vi.fn(),
+      buildBundle: vi.fn(),
+    }
+    setRelayHandlers(handlers)
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 204,
+      subKind: 'buildBundle',
+      doc_id: 'bundle-doc',
+      // doc_rev and spec deliberately omitted: a malformed wire message.
+    })
+
+    await vi.waitFor(() => fakeWorker.posted.length > 1, { timeout: 1000 })
+    const relayRes = fakeWorker.posted.find(m => m.kind === 'asr_relayRes') as AnchorRelayErrResponse | undefined
+    expect(relayRes).toBeDefined()
+    if (relayRes) {
+      expect(relayRes.ok).toBe(false)
+      expect(relayRes.error).toContain('missing doc_rev/spec')
+    }
+    expect(handlers.buildBundle).not.toHaveBeenCalled()
+  })
+
   it('relay response carries error when handler throws', async () => {
     setRelayHandlers({
       partDocContent: vi.fn().mockRejectedValue(new Error('store unreachable')),
