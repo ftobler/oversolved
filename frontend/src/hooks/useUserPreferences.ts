@@ -25,13 +25,21 @@ export function useUserPreferences(signedIn = true) {
 
   useEffect(() => {
     if (!cloudLoad) return  // guest or synchronous store: defaults already stand
+    // A logout (or session expiry) mid-fetch flips cloudLoad back to false
+    // without unmounting this hook's owner (Documents.tsx does not remount on
+    // login/logout), so a stale resolution must not overwrite the now-guest
+    // preferences with the logged-out user's server-side values. Mirrors the
+    // `cancelled` guard in useDocumentState.ts/useAssemblyDoc.ts.
+    let cancelled = false
     prefs.load()
       .then(loaded => {
+        if (cancelled) return
         preferencesRef.current = loaded
         setPreferences(loaded)
       })
       .catch(() => {  /* fall back to defaults */ })
-      .finally(() => setLoading(false))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [prefs, cloudLoad])
 
   const updatePreference = useCallback(async (key: keyof UserPreferences, value: string) => {
