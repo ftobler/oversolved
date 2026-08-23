@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
+import { parseHttpError } from '@/utils/core/httpClient'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, type MateFieldTarget } from '@/stores/assemblyStore'
@@ -84,6 +85,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     setDoc,
     docRef,
     loading,
+    error,
+    setError,
     docName,
     instances,
     mates,
@@ -282,9 +285,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   const handleClone = useCallback(async () => {
     if (!uuid) return
-    const data = await cloneDoc(uuid)
-    navigate(`/documents/${data.uuid}`)
-  }, [uuid, cloneDoc, navigate])
+    try {
+      const data = await cloneDoc(uuid)
+      navigate(`/documents/${data.uuid}`)
+    } catch (e) {
+      setError(parseHttpError(e, 'Failed to clone document'))
+    }
+  }, [uuid, cloneDoc, navigate, setError])
 
   const handleRename = useCallback(
     (name: string) => renameDoc(uuid, name),
@@ -772,10 +779,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
                 onCancelSolve slot, so the shared overlay renders the spinner and
                 cancel for a full (non-live) solve; it is opacity-0 when idle. */}
             <LoadingOverlay />
-            {solveError && (
+            {(solveError || error) && (
               <ErrorBanner
-                message={`Solver error: ${solveError}`}
-                onDismiss={() => useAssemblyStore.getState().setSolveError(null)}
+                message={solveError ? `Solver error: ${solveError}` : `Error: ${error}`}
+                onDismiss={() => {
+                  useAssemblyStore.getState().setSolveError(null)
+                  setError(null)
+                }}
               />
             )}
             {instances.length === 0 && mates.length === 0 && (
