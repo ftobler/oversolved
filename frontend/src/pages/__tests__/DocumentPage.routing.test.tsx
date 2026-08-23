@@ -176,4 +176,95 @@ describe('DocumentPage kind routing', () => {
     expect(sequence.indexOf('unmount')).toBeGreaterThan(-1)
     expect(sequence.indexOf('unmount')).toBeLessThan(sequence.lastIndexOf('mount'))
   })
+
+  // Cross-kind navigation (/documents/A part -> /documents/B assembly) is the
+  // sharp edge: the route element is not keyed by uuid, so a kind left over
+  // from A pairs with B's uuid for one render and lets the wrong editor mount
+  // against B (a real solve round-trip for the part case, a spurious error
+  // banner for the reverse). While B's load is pending, neither editor may be
+  // mounted and no assembly lifecycle may have fired.
+  it('never mounts the wrong editor while a cross-kind navigation loads', async () => {
+    load.mockImplementation(async () => ({ content: 'kind: part\nfeatures: []\n' }))
+
+    function GoToB() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate('/documents/B')}>to B</button>
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/documents/A']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<DocumentPage />} />
+        </Routes>
+        <GoToB />
+      </MemoryRouter>
+    )
+    await waitFor(() => {
+      expect(screen.getByText('PART EDITOR')).toBeInTheDocument()
+      expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+    })
+
+    let resolveB!: (value: { content: string }) => void
+    const pendingB = new Promise<{ content: string }>(resolve => { resolveB = resolve })
+    load.mockImplementation(async (uuid: string) => {
+      if (uuid === 'B') return pendingB
+      return { content: 'kind: part\nfeatures: []\n' }
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'to B' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
+      expect(screen.queryByText('ASSEMBLY EDITOR')).not.toBeInTheDocument()
+      expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(0)
+    })
+
+    resolveB({ content: 'kind: assembly\nfeatures: []\n' })
+
+    await waitFor(() => {
+      expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument()
+      expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+      expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
+    })
+  })
+
+  // The kindError side of the same hazard: an error banner from A must not
+  // ride along into B's route while B's load is in flight, otherwise the user
+  // sees A's failure reported against B.
+  it('clears a stale load error when the uuid changes', async () => {
+    load.mockRejectedValue(new Error('boom'))
+
+    function GoToB() {
+      const navigate = useNavigate()
+      return <button onClick={() => navigate('/documents/B')}>to B</button>
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/documents/A']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<DocumentPage />} />
+        </Routes>
+        <GoToB />
+      </MemoryRouter>
+    )
+    await waitFor(() => expect(screen.getByText(/boom/)).toBeInTheDocument())
+
+    let resolveB!: (value: { content: string }) => void
+    const pendingB = new Promise<{ content: string }>(resolve => { resolveB = resolve })
+    load.mockImplementation(async (uuid: string) => {
+      if (uuid === 'B') return pendingB
+      throw new Error('boom')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'to B' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.queryByText(/boom/)).not.toBeInTheDocument()
+    })
+
+    resolveB({ content: 'kind: part\nfeatures: []\n' })
+    await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
+  })
 })

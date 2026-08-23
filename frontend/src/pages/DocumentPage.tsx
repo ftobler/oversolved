@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { parse as parseYaml } from 'yaml'
 import { backendBundle } from '@/adapters/backend'
@@ -9,6 +9,18 @@ export default function DocumentPage() {
   const { uuid } = useParams<{ uuid: string }>()
   const [kind, setKind] = useState<'part' | 'assembly' | null>(null)
   const [kindError, setKindError] = useState<string | null>(null)
+  const lastUuidRef = useRef(uuid)
+  // Reset during render, not in the load effect: a child editor's passive
+  // effects run before this component's own effect in the same commit, so an
+  // effect-based reset would let the stale kind survive long enough for the
+  // wrong editor to mount against the new uuid for one commit (and kick off a
+  // spurious solve round-trip or error banner). The very next render then
+  // takes the Loading branch until the new document's kind is known.
+  if (lastUuidRef.current !== uuid) {
+    lastUuidRef.current = uuid
+    if (kind !== null) setKind(null)
+    if (kindError !== null) setKindError(null)
+  }
 
   useEffect(() => {
     if (!uuid) return
