@@ -3,6 +3,7 @@
 from flask import Blueprint, jsonify, request, make_response, current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 from oversolved.db import UserStore, SessionStore, _now
+from oversolved.auth import AuthOk, authenticate_token
 from oversolved.blueprints import get_db, require_csrf, require_json, api_error
 from oversolved.rate_limit import RateLimiter
 
@@ -113,14 +114,10 @@ def logout():
 
 @auth_bp.route("/me", methods=["GET"])
 def me():
-    token = request.cookies.get("session_token")
-    if not token:
-        return api_error("Not authenticated", "UNAUTHORIZED", 401)
-    db = get_db()
-    session = SessionStore(db).find(token)
-    if session is None:
-        return api_error("Invalid or expired session", "UNAUTHORIZED", 401)
-    user = UserStore(db).find_by_id(session["user_id"])
-    if user is None:
-        return api_error("User not found", "USER_NOT_FOUND", 401)
-    return jsonify({"user": _user_response(user)})
+    # Same gate as @require_auth: deactivation keeps the session row alive, so
+    # a hand-rolled lookup here let a deactivated user bootstrap login state
+    # from /me while every other route 401'd.
+    result = authenticate_token(get_db(), request.cookies.get("session_token"))
+    if not isinstance(result, AuthOk):
+        return api_error(result.message, "UNAUTHORIZED", 401)
+    return jsonify({"user": _user_response(result.user)})
