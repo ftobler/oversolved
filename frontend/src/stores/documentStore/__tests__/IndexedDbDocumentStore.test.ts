@@ -185,6 +185,71 @@ describe('IndexedDbDocumentStore', () => {
     })
   })
 
+  describe('atomic read-modify-write (save/rename/remove/markSynced/recover)', () => {
+    // review-09: save/rename/remove/markSynced/recover each read a record then
+    // write it back. Done as two separate IndexedDB transactions, a concurrent
+    // writer against the same id (another in-flight call, another tab) could
+    // put its own record between this read and this write, and this write
+    // would then silently clobber it -- a lost update. The fix wraps each
+    // read+write in ONE readwrite transaction (idbReadModifyWrite in idb.ts),
+    // which IndexedDB serializes against any other transaction on the store.
+
+    it('save opens exactly one readwrite transaction for its read+write', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      const transactionSpy = vi.spyOn(IDBDatabase.prototype, 'transaction')
+      await store.save(uuid, { content: 'x' })
+      expect(transactionSpy).toHaveBeenCalledTimes(1)
+      transactionSpy.mockRestore()
+    })
+
+    it('rename opens exactly one readwrite transaction for its read+write', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      const transactionSpy = vi.spyOn(IDBDatabase.prototype, 'transaction')
+      await store.rename(uuid, 'Renamed')
+      expect(transactionSpy).toHaveBeenCalledTimes(1)
+      transactionSpy.mockRestore()
+    })
+
+    it('concurrent saves against one doc do not lose an update', async () => {
+      // Five overlapping saves, no awaits between them (Promise.all). Each
+      // save reads the current rev and writes rev+1; a two-transaction
+      // implementation lets the async gap between its read and its write be
+      // interleaved by another save's write, landing on a rev below 5.
+      // IndexedDB serializes whole readwrite transactions in creation order,
+      // so with the single-transaction fix every rev bump is applied in turn.
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      await Promise.all([1, 2, 3, 4, 5].map(n => store.save(uuid, { content: `v${n}` })))
+      const [summary] = await store.list()
+      expect(summary.meta?.rev).toBe(5)
+    })
+
+    it('concurrent renames against one doc do not lose an update', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      await Promise.all(['Alpha', 'Beta', 'Gamma'].map(name => store.rename(uuid, name)))
+      const [summary] = await store.list()
+      // Three renames -> three rev bumps, none lost to interleaving.
+      expect(summary.meta?.rev).toBe(3)
+    })
+
+    it('a concurrent save and rename against one doc both apply (neither is lost)', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      await Promise.all([
+        store.save(uuid, { content: 'body' }),
+        store.rename(uuid, 'Renamed'),
+      ])
+      const [summary] = await store.list()
+      const loaded = await store.load(uuid)
+      expect(summary.name).toBe('Renamed')
+      expect(loaded.content).toBe('body')
+      expect(summary.meta?.rev).toBe(2)  // both bumps landed, none clobbered the other
+    })
+  })
+
   describe('preview_image in list summaries', () => {
     it('summary carries preview_image after save with one', async () => {
       const store = new IndexedDbDocumentStore()

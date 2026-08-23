@@ -1,6 +1,6 @@
 import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
 import type { TrashAdapter, TrashDoc } from '@/adapters/trash'
-import { idbGet, idbGetAll, idbPut, idbDelete } from './idb'
+import { idbGet, idbGetAll, idbPut, idbDelete, idbReadModifyWrite } from './idb'
 import { suggestedCloneName } from './cloneName'
 
 // In a fully local, single-user build there is no account system. Documents are
@@ -87,39 +87,44 @@ export class IndexedDbDocumentStore implements DocumentStore {
     }
   }
 
+  // Read + modify + write in one readwrite transaction (idbReadModifyWrite):
+  // a concurrent save/rename against the same id (another tab, another
+  // in-flight call) must not be able to land its put between this read and
+  // this write, or it would be silently overwritten by this one (lost update).
   async save(id: string, input: SaveInput): Promise<void> {
-    const existing = await idbGet<StoredDoc>(id)
-    const now = Date.now()
-    const prevRev = existing?.meta.rev ?? 0
-    // Sync-readiness rules: bump rev, stamp updatedAt, flag dirty. baseRev is
-    // never touched by a local save -- only a future sync engine sets it.
-    const meta: DocMeta = {
-      id,
-      rev: prevRev + 1,
-      updatedAt: now,
-      dirty: true,
-      baseRev: existing?.meta.baseRev,
-    }
-    const rec: StoredDoc = {
-      uuid: id,
-      name: existing?.name ?? 'Untitled',
-      content: input.content,
-      preview_image: input.preview_image ?? existing?.preview_image,
-      is_public: existing?.is_public ?? false,
-      created_at: existing?.created_at ?? new Date(now).toISOString(),
-      updated_at: new Date(now).toISOString(),
-      meta,
-    }
-    await idbPut(rec)
+    await idbReadModifyWrite<StoredDoc>(id, existing => {
+      const now = Date.now()
+      const prevRev = existing?.meta.rev ?? 0
+      // Sync-readiness rules: bump rev, stamp updatedAt, flag dirty. baseRev is
+      // never touched by a local save -- only a future sync engine sets it.
+      const meta: DocMeta = {
+        id,
+        rev: prevRev + 1,
+        updatedAt: now,
+        dirty: true,
+        baseRev: existing?.meta.baseRev,
+      }
+      return {
+        uuid: id,
+        name: existing?.name ?? 'Untitled',
+        content: input.content,
+        preview_image: input.preview_image ?? existing?.preview_image,
+        is_public: existing?.is_public ?? false,
+        created_at: existing?.created_at ?? new Date(now).toISOString(),
+        updated_at: new Date(now).toISOString(),
+        meta,
+      }
+    })
   }
 
   // Soft delete: stamp a tombstone and keep the record so the local Trash can
   // recover or purge it. A missing record is a no-op (already gone). This mirrors
   // the cloud store, whose remove() is a server-side soft delete feeding its Trash.
   async remove(id: string): Promise<void> {
-    const existing = await idbGet<StoredDoc>(id)
-    if (!existing || existing.deleted_at) return
-    await idbPut({ ...existing, deleted_at: new Date(Date.now()).toISOString() })
+    await idbReadModifyWrite<StoredDoc>(id, existing => {
+      if (!existing || existing.deleted_at) return undefined  // no-op: gone or already trashed
+      return { ...existing, deleted_at: new Date(Date.now()).toISOString() }
+    })
   }
 
   async create(name: string, opts: { is_public?: boolean } = {}): Promise<{ uuid: string }> {
@@ -141,19 +146,21 @@ export class IndexedDbDocumentStore implements DocumentStore {
   }
 
   async rename(id: string, name: string): Promise<void> {
-    const existing = await idbGet<StoredDoc>(id)
-    if (!existing) throw new Error(`Document not found: ${id}`)
-    // A rename is a local change like a save: bump rev, restamp updatedAt, flag
-    // dirty so it re-sorts by "modified" and a sync engine pushes it. baseRev
-    // stays put (only an actual sync sets it).
-    const now = Date.now()
-    const meta: DocMeta = {
-      ...existing.meta,
-      rev: existing.meta.rev + 1,
-      updatedAt: now,
-      dirty: true,
-    }
-    await idbPut({ ...existing, name, updated_at: new Date(now).toISOString(), meta })
+    const renamed = await idbReadModifyWrite<StoredDoc>(id, existing => {
+      if (!existing) return undefined
+      // A rename is a local change like a save: bump rev, restamp updatedAt, flag
+      // dirty so it re-sorts by "modified" and a sync engine pushes it. baseRev
+      // stays put (only an actual sync sets it).
+      const now = Date.now()
+      const meta: DocMeta = {
+        ...existing.meta,
+        rev: existing.meta.rev + 1,
+        updatedAt: now,
+        dirty: true,
+      }
+      return { ...existing, name, updated_at: new Date(now).toISOString(), meta }
+    })
+    if (!renamed) throw new Error(`Document not found: ${id}`)
   }
 
   async duplicate(id: string): Promise<{ uuid: string }> {
@@ -184,10 +191,11 @@ export class IndexedDbDocumentStore implements DocumentStore {
   // Engine-facing primitive (NOT part of DocumentStore). A future sync engine
   // calls this on push-ack: the document is now in sync with the server.
   async markSynced(id: string): Promise<void> {
-    const existing = await idbGet<StoredDoc>(id)
-    if (!existing) return
-    const meta: DocMeta = { ...existing.meta, baseRev: existing.meta.rev, dirty: false }
-    await idbPut({ ...existing, meta })
+    await idbReadModifyWrite<StoredDoc>(id, existing => {
+      if (!existing) return undefined
+      const meta: DocMeta = { ...existing.meta, baseRev: existing.meta.rev, dirty: false }
+      return { ...existing, meta }
+    })
   }
 }
 
@@ -219,11 +227,12 @@ export class IndexedDbTrashAdapter implements TrashAdapter {
 
   // Lift the tombstone: the document returns to the library at its prior place.
   async recover(id: string): Promise<void> {
-    const rec = await idbGet<StoredDoc>(id)
-    if (!rec || !rec.deleted_at) return
-    const restored = { ...rec }
-    delete restored.deleted_at
-    await idbPut(restored)
+    await idbReadModifyWrite<StoredDoc>(id, existing => {
+      if (!existing || !existing.deleted_at) return undefined
+      const restored = { ...existing }
+      delete restored.deleted_at
+      return restored
+    })
   }
 
   // The soft delete's hard end: drop the record for good.
