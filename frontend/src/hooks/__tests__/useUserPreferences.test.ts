@@ -88,4 +88,53 @@ describe('useUserPreferences', () => {
       expect.objectContaining({ method: 'PUT' })
     )
   })
+
+  it('does not let a stale revert stomp a later successful update (rapid toggles)', async () => {
+    // Two PUTs go out back to back; we hold both open, then resolve the
+    // second (later) call first and reject the first (earlier) call last --
+    // reproducing a revert that fires after a subsequent update has already
+    // landed. The final state must reflect the second call's value, not a
+    // revert to the pre-first-call default.
+    const puts: { resolve: () => void, reject: () => void }[] = []
+    const mockFetch = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return new Promise<Response>((resolve, reject) => {
+          puts.push({
+            resolve: () => resolve({ ok: true, text: () => Promise.resolve('{}') } as Response),
+            reject: () => reject(new Error('put failed')),
+          })
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ document_sort: 'date_newest_first' }),
+        text: () => Promise.resolve(JSON.stringify({ document_sort: 'date_newest_first' })),
+      } as Response)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { result } = renderHook(() => useUserPreferences())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    let call1: Promise<void> | undefined
+    let call2: Promise<void> | undefined
+    await act(async () => {
+      call1 = result.current.updatePreference('document_sort', 'alphabetical')
+      await Promise.resolve()
+      call2 = result.current.updatePreference('document_sort', 'date_oldest_first')
+      await Promise.resolve()
+    })
+
+    expect(puts.length).toBe(2)
+    expect(result.current.preferences.document_sort).toBe('date_oldest_first')  // second toggle's optimistic write
+
+    await act(async () => {
+      puts[1].resolve()  // second (later) call succeeds
+      await call2
+      puts[0].reject()  // first (earlier) call fails and reverts, after the fact
+      await call1
+    })
+
+    expect(result.current.preferences.document_sort).toBe('date_oldest_first')
+  })
 })

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { backendBundle } from '@/adapters/backend'
 import type { DocumentSort, UserPreferences } from '@/adapters/preferences'
 
@@ -14,26 +14,44 @@ export function useUserPreferences(signedIn = true) {
   // Static hydrates synchronously from localStorage via the lazy initializer
   // (no setState-in-effect); the HTTP build loads asynchronously after defaults.
   const [preferences, setPreferences] = useState<UserPreferences>(() => prefs.initial())
+  // `preferences` (the state value closed over by callbacks) only reflects
+  // React's latest *committed* render -- it can lag behind calls that already
+  // fired. The ref is written synchronously by every update below, so two
+  // rapid updatePreference calls always read/write the true current value
+  // instead of racing on a stale closure.
+  const preferencesRef = useRef(preferences)
   const cloudLoad = prefs.async && signedIn  // a guest skips the server round-trip
   const [loading, setLoading] = useState(cloudLoad)
 
   useEffect(() => {
     if (!cloudLoad) return  // guest or synchronous store: defaults already stand
     prefs.load()
-      .then(setPreferences)
+      .then(loaded => {
+        preferencesRef.current = loaded
+        setPreferences(loaded)
+      })
       .catch(() => {  /* fall back to defaults */ })
       .finally(() => setLoading(false))
   }, [prefs, cloudLoad])
 
   const updatePreference = useCallback(async (key: keyof UserPreferences, value: string) => {
-    const next = { ...preferences, [key]: value } as UserPreferences
+    const previous = preferencesRef.current[key]
+    const next = { ...preferencesRef.current, [key]: value } as UserPreferences
+    preferencesRef.current = next
     setPreferences(next)
     try {
       await prefs.save(next, key, value)
     } catch {
-      setPreferences(preferences)  // revert on failure (HTTP)
+      // Only revert if this key still holds the value *this* call set. If a
+      // later call already changed it again (e.g. a second rapid toggle),
+      // reverting here would stomp that newer update with our stale value.
+      if (preferencesRef.current[key] === value) {
+        const reverted = { ...preferencesRef.current, [key]: previous } as UserPreferences
+        preferencesRef.current = reverted
+        setPreferences(reverted)
+      }
     }
-  }, [preferences, prefs])
+  }, [prefs])
 
   return { preferences, loading, updatePreference }
 }
