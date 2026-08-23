@@ -313,6 +313,13 @@ interface SketchEditorState {
   setDragPending: (pending: DragPendingState | null) => void
   setDragSnap: (snap: SnapTarget | null) => void
   setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
+  // Drops a live drag gesture (sketch vertex/edge, dimension label, or feature
+  // handle) and its pointer/alignment residue WITHOUT touching the doc: used
+  // where the doc is already being replaced (undo), so a pointer-up that
+  // arrives afterward finds no drag to commit onto the new doc. Mirrors
+  // clearBrepProjectionState's rationale, and the assembly editor's equivalent
+  // guard in resetTransientAssemblyState/applyUndoRedo.
+  clearDragState: () => void
 
   // DRAW TOOL STATE
   drawPoints: [number, number][]
@@ -537,42 +544,40 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     set({ selectedPicks: new Map() })
   },
 
-  resetTransientState: () => set({
-    normalSelection: new Set(),
-    selectedPicks: new Map(),
-    selectionDomain: 'sketch_2d',
-    hoveredSelectionId: null,
-    hoveredPickKey: null,
-    isPointerDown: false,
-    alignmentSnapPoint: null,
-    alignmentSnapKind: null,
-    alignmentSnapVertexId: null,
-    drag: null,
-    dragStartClient: null,
-    dragPending: null,
-    dragSnap: null,
-    isRotating: false,
-    hoveredConstraintEntityIds: new Set(),
-    hoveredVertexId: null,
-    hoveredFaceNormal: null,
-    hoveredFaceCenter: null,
-    hoveredVertexPosition: null,
-    hoveredSnapKind: null,
-    activeTool: null,
-    activeFeatureId: null,
-    drawPoints: [],
-    drawHover: null,
-    drawSnapVertexId: null,
-    dimensionPicks: [],
-    pendingBrepProjectionIds: [],
-    dimensionCursorWorld: null,
-    pendingDialog: null,
-    pendingProjectTarget: null,
-    contextMenu: null,
-    modeStack: [],
-    activePickField: null,
-    chipOwnedSelection: new Set(),
-  }),
+  // Delegates the drag/pointer fields to clearDragState so the two lists
+  // cannot drift apart the way applyUndoRedo's hand-listed reset once did
+  // (see useAssemblyUndoRedo.ts) -- this is the canonical list they both draw
+  // from.
+  resetTransientState: () => {
+    get().clearDragState()
+    set({
+      normalSelection: new Set(),
+      selectedPicks: new Map(),
+      selectionDomain: 'sketch_2d',
+      hoveredSelectionId: null,
+      hoveredPickKey: null,
+      hoveredConstraintEntityIds: new Set(),
+      hoveredVertexId: null,
+      hoveredFaceNormal: null,
+      hoveredFaceCenter: null,
+      hoveredVertexPosition: null,
+      hoveredSnapKind: null,
+      activeTool: null,
+      activeFeatureId: null,
+      drawPoints: [],
+      drawHover: null,
+      drawSnapVertexId: null,
+      dimensionPicks: [],
+      pendingBrepProjectionIds: [],
+      dimensionCursorWorld: null,
+      pendingDialog: null,
+      pendingProjectTarget: null,
+      contextMenu: null,
+      modeStack: [],
+      activePickField: null,
+      chipOwnedSelection: new Set(),
+    })
+  },
 
   // The unit of selection is one PRIMITIVE, not one query. When the click
   // carries a pickKey the (query, pickKey) pair is what toggles, so two distinct
@@ -668,6 +673,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setDragStartClient: (pos) => set({ dragStartClient: pos }),
   setDragPending: (pending) => set({ dragPending: pending }),
   setDragSnap: (snap) => set({ dragSnap: snap }),
+
+  clearDragState: () => set({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    dragSnap: null,
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+    alignmentSnapVertexId: null,
+    isPointerDown: false,
+    isRotating: false,
+  }),
 
   setIsRotating: (rotating: boolean) => set({ isRotating: rotating }),
 

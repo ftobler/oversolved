@@ -410,6 +410,16 @@ export default function Part() {
     // drop the bookkeeping without a compensating delete (the doc is already
     // being replaced by the undo's own restore).
     sketchStore.clearBrepProjectionState()
+    // A live drag (sketch vertex/edge, dimension label, or a BREP feature
+    // handle) targets entities in the doc that is about to be replaced. Undo
+    // exits the edit that owns it (editingFeatureId -> null above), which
+    // unmounts DragPlane/FeatureHandles and drops their window pointerup
+    // listener -- so without this the drag/isPointerDown residue is never
+    // cleared and either commits onto the restored doc's stale ids on the
+    // next pointerup that IS still listening (an unrelated drag surface), or
+    // (if the listener really is gone) gets stuck non-null forever. Mirrors
+    // the assembly editor's identical mid-drag-undo guard.
+    sketchStore.clearDragState()
     setContextMenu(null)
     // The color preview is discarded rather than applied: undo brings its own
     // doc, and a popover left open would only be able to commit or revert

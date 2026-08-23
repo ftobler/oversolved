@@ -46,6 +46,15 @@ describe('Part - undo tears down transient editor state', () => {
       activePickField: null,
       modeStack: [],
       pendingDialog: null,
+      drag: null,
+      dragPending: null,
+      dragStartClient: null,
+      dragSnap: null,
+      isPointerDown: false,
+      isRotating: false,
+      alignmentSnapPoint: null,
+      alignmentSnapKind: null,
+      alignmentSnapVertexId: null,
     })
   })
 
@@ -122,6 +131,55 @@ describe('Part - undo tears down transient editor state', () => {
     await act(async () => { executeCommand('undo') })
 
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+
+  // A vertex/handle drag holds the mouse button down across the keystroke, so
+  // Ctrl+Z can land mid-gesture: the drag's featureId/entityId describe the
+  // pre-undo doc, and the pointerup that eventually commits it (or the
+  // listener silently dropped by the edit-exit unmount) must not find a live
+  // drag pointing into a doc that no longer exists.
+  it('clears a live drag and pointer-down state on an undo made mid-gesture', async () => {
+    vi.stubGlobal('fetch', partDocFetchMock())
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
+    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+
+    act(() => {
+      useSketchEditorStore.setState({
+        drag: {
+          type: 'vertex',
+          vertexId: 'v1',
+          featureId: 'sk1',
+          entityId: 'e1',
+          vertexKey: 'start',
+          startWorld: [0, 0],
+          currentWorld: [1, 1],
+          startClient: [0, 0],
+        },
+        isPointerDown: true,
+        dragStartClient: [0, 0],
+        isRotating: true,
+        alignmentSnapPoint: [1, 1],
+        alignmentSnapKind: 'kinda_horizontal',
+        alignmentSnapVertexId: 'v2',
+      })
+    })
+
+    await act(async () => { executeCommand('undo') })
+
+    const sketchStore = useSketchEditorStore.getState()
+    expect(sketchStore.drag).toBeNull()
+    expect(sketchStore.dragPending).toBeNull()
+    expect(sketchStore.dragStartClient).toBeNull()
+    expect(sketchStore.dragSnap).toBeNull()
+    expect(sketchStore.isPointerDown).toBe(false)
+    expect(sketchStore.isRotating).toBe(false)
+    expect(sketchStore.alignmentSnapPoint).toBeNull()
+    expect(sketchStore.alignmentSnapKind).toBeNull()
+    expect(sketchStore.alignmentSnapVertexId).toBeNull()
   })
 
   it('an undo with an empty stack tears nothing down', async () => {
