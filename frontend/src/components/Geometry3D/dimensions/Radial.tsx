@@ -1,4 +1,5 @@
 import { Line } from '@react-three/drei'
+import { isPointInsideRadius } from '@/utils/geometry/dimensionRenderLayout'
 import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
@@ -55,8 +56,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   // the arc should be virtually extended with a thin dashed dimension line to show
   // that the dimension applies to the extended geometry. This would require knowing
   // the arc range (p1, p2 endpoints + center) to detect if label is outside arc span.
-  const labelDist = Math.hypot(labelX - cx, labelY - cy)
-  const isInside = labelDist <= r
+  const isInside = isPointInsideRadius(labelX, labelY, cx, cy, r)
 
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
@@ -129,8 +129,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   //     Arrows at endpoints pointing outward (away from center), label within circle bounds.
   //   Outside (beyond circle):  ->|---o----|<--X
   //     Arrows at endpoints pointing inward (toward center), leader line from endpoint to label.
-  const labelDist = Math.hypot(labelX - anchorX, labelY - anchorY)
-  const isInside = labelDist <= r
+  const isInside = isPointInsideRadius(labelX, labelY, anchorX, anchorY, r)
   const diamLen = Math.hypot(ep2x - ep1x, ep2y - ep1y)
   const udirX = diamLen > 0 ? (ep2x - ep1x) / diamLen : 1
   const udirY = diamLen > 0 ? (ep2y - ep1y) / diamLen : 0

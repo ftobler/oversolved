@@ -8,6 +8,7 @@ import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLa
 import { DimensionLabel } from './DimensionLabel'
 import type { DimInteraction } from './useDimInteraction'
 import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
+import { radialWitnessStart as computeRadialWitnessStart } from '@/utils/geometry/dimensionRenderLayout'
 import type { PlaneTransform } from '@/types/cad'
 
 export function AngleDimension({ cid, dim, interaction, planeTransform }: {
@@ -69,23 +70,9 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   // [sMin, sMax] from the vertex. When the arc radius falls outside that range
   // the arc no longer touches the segment, so extend the segment along the ray
   // out to the arc endpoint (gap at the geometry, overshoot past the arrow tip).
-  // Returns the witness start point on the ray, or null when the arc sits on the
-  // segment (no witness needed).
-  const radialWitnessStart = (
-    px1: number, py1: number, px2: number, py2: number, ang: number,
-  ): [number, number] | null => {
-    const dx = Math.cos(ang), dy = Math.sin(ang)
-    const s1 = (px1 - vx) * dx + (py1 - vy) * dy
-    const s2 = (px2 - vx) * dx + (py2 - vy) * dy
-    const sMax = Math.max(s1, s2), sMin = Math.min(s1, s2)
-    let b: number | null = null
-    if (arcR > sMax) b = sMax
-    else if (arcR < sMin) b = sMin
-    if (b === null) return null
-    return [vx + b * dx, vy + b * dy]
-  }
-  const witnessAStart = radialWitnessStart(dim.p1[0], dim.p1[1], dim.p2[0], dim.p2[1], angle1)
-  const witnessBStart = radialWitnessStart(dim.p3[0], dim.p3[1], dim.p4[0], dim.p4[1], angle2)
+  // Null (no witness needed) when the arc sits on the segment.
+  const witnessAStart = computeRadialWitnessStart(vx, vy, arcR, dim.p1[0], dim.p1[1], dim.p2[0], dim.p2[1], angle1)
+  const witnessBStart = computeRadialWitnessStart(vx, vy, arcR, dim.p3[0], dim.p3[1], dim.p4[0], dim.p4[1], angle2)
 
   // Arc tangent directions at each endpoint (unit tangent in arc travel direction).
   // Forward tangent at angle th: (-sin(th), cos(th)) * sign where sign = +1 CCW, -1 CW.

@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { Line } from '@react-three/drei'
 import { getSketchCallback } from '@/stores/sketchEditorStore'
 import { linearDimensionSign, lineDistanceSign } from '@/utils/geometry/dimensionNaturalValue'
+import { computeLinearArrowLayout, evalExtensionLine } from '@/utils/geometry/dimensionRenderLayout'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
@@ -77,37 +78,17 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   // Note: For parallel lines, the arrows should remain aligned with the dimension line,
   // not skewed or offset. The dimension line (d1->d2) is parallel to the measured line (x1->x2),
   // so arrows should point along the dimension line direction only.
-  const dimLen = Math.hypot(d2x - d1x, d2y - d1y)
-  const udirX = dimLen > 0 ? (d2x - d1x) / dimLen : 1
-  const udirY = dimLen > 0 ? (d2y - d1y) / dimLen : 0
-  // Project label onto the d1->d2 axis.
-  const tLabel = (labelX - d1x) * udirX + (labelY - d1y) * udirY
-  const isInside = tLabel >= 0 && tLabel <= dimLen
+  const { udirX, udirY, tLabel, isInside } = computeLinearArrowLayout([d1x, d1y], [d2x, d2y], [labelX, labelY])
 
   const label = dim.value % 1 === 0 ? String(dim.value) : dim.value.toFixed(2)
 
-  // Extension-line evaluation: each side is evaluated independently.
-  // When an entity segment is provided (ext1_line / ext2_line) the extension
-  // line is skipped if the dimension-line endpoint projects inside the segment
-  // (the dim already touches the entity). Otherwise the line runs from the
+  // Extension-line evaluation: each side is evaluated independently. When an
+  // entity segment is provided (ext1_line / ext2_line) the extension line is
+  // skipped if the dimension-line endpoint projects inside the segment (the
+  // dim already touches the entity). Otherwise the line runs from the
   // nearest segment point to the dimension-line endpoint.
-  const extEval = (lx1: number, ly1: number, lx2: number, ly2: number, dx: number, dy: number) => {
-    const edx = lx2 - lx1, edy = ly2 - ly1
-    const elen2 = edx * edx + edy * edy
-    if (elen2 < 1e-12) return { skip: true, touchX: lx1, touchY: ly1 } as const
-    let t = ((dx - lx1) * edx + (dy - ly1) * edy) / elen2
-    t = Math.max(0, Math.min(1, t))
-    const nx = lx1 + t * edx, ny = ly1 + t * edy
-    const d2 = (dx - nx) * (dx - nx) + (dy - ny) * (dy - ny)
-    // If the dim line endpoint projects onto the segment (within fp tolerance),
-    // the dimension already crosses the entity -- no extension line needed.
-    return d2 < 0.001
-      ? { skip: true, touchX: nx, touchY: ny } as const
-      : { skip: false, touchX: nx, touchY: ny } as const
-  }
-
-  const ext1 = dim.ext1_line ? extEval(dim.ext1_line[0], dim.ext1_line[1], dim.ext1_line[2], dim.ext1_line[3], d1x, d1y) : { skip: false, touchX: x1, touchY: y1 } as const
-  const ext2 = dim.ext2_line ? extEval(dim.ext2_line[0], dim.ext2_line[1], dim.ext2_line[2], dim.ext2_line[3], d2x, d2y) : { skip: false, touchX: x2, touchY: y2 } as const
+  const ext1 = dim.ext1_line ? evalExtensionLine(dim.ext1_line[0], dim.ext1_line[1], dim.ext1_line[2], dim.ext1_line[3], d1x, d1y) : { skip: false, touchX: x1, touchY: y1 }
+  const ext2 = dim.ext2_line ? evalExtensionLine(dim.ext2_line[0], dim.ext2_line[1], dim.ext2_line[2], dim.ext2_line[3], d2x, d2y) : { skip: false, touchX: x2, touchY: y2 }
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
   useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
