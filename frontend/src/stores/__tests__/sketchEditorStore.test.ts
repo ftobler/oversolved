@@ -820,6 +820,48 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       expect(useSketchEditorStore.getState().dragPending).toBe(pending)
     })
+
+    // The transition reset used to hand-list a subset of clearDragState's fields,
+    // so any field clearDragState later grew silently missed this path too.
+    it("setActiveFeatureId's drag reset covers every clearDragState field", () => {
+      useSketchEditorStore.getState().setActiveFeatureId('S0')
+      useSketchEditorStore.getState().setDrag({
+        type: 'vertex',
+        vertexId: 'vertex:S0:e1:start',
+        featureId: 'S0',
+        entityId: 'e1',
+        vertexKey: 'start',
+        startWorld: [0, 0],
+        currentWorld: [1, 1],
+        startClient: [5, 6],
+      })
+      useSketchEditorStore.getState().setDragPending({
+        type: 'vertex',
+        vertexId: 'vertex:S0:e1:start',
+        featureId: 'S0',
+        entityId: 'e1',
+        vertexKey: 'start',
+        startWorld: [0, 0],
+      })
+      useSketchEditorStore.getState().setDragStartClient([10, 20])
+      useSketchEditorStore.getState().setDragSnap({ kind: 'vertex', constraintKind: 'coincident', vertexId: 'vertex:S0:L1:start', position: [3, 4] })
+      useSketchEditorStore.getState().setIsPointerDown(true)
+      useSketchEditorStore.getState().setIsRotating(true)
+      useSketchEditorStore.getState().setAlignmentSnap([1, 2], 'kinda_horizontal', 'vertex:S0:L2:end')
+
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+
+      const s = useSketchEditorStore.getState()
+      expect(s.drag).toBeNull()
+      expect(s.dragPending).toBeNull()
+      expect(s.dragStartClient).toBeNull()
+      expect(s.dragSnap).toBeNull()
+      expect(s.isPointerDown).toBe(false)
+      expect(s.isRotating).toBe(false)
+      expect(s.alignmentSnapPoint).toBeNull()
+      expect(s.alignmentSnapKind).toBeNull()
+      expect(s.alignmentSnapVertexId).toBeNull()
+    })
   })
 
   describe('draw tool state', () => {
