@@ -145,6 +145,47 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
   })
 
+  // The store is module-level: without this reset, the very first render of the
+  // NEXT assembly (a different uuid mounted in this store's place) would paint
+  // this assembly's leftover bodies/transforms until its own first solve lands.
+  it('unmounting resets the solved scene to default, not just the transient interaction state', async () => {
+    h.solveAssemblyViaWorker.mockResolvedValue({
+      payload: {
+        transforms: { hA: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+        bodies: {
+          hA: [{
+            vertices: new Float32Array([0, 0, 0]),
+            indices: new Uint32Array([0]),
+            faceIdsPerTriangle: new Uint32Array([0]),
+            edges: [],
+          }],
+        },
+        mateResults: {},
+      },
+    })
+    const first = renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    await waitFor(() => expect(Object.keys(useAssemblyStore.getState().bodies).length).toBeGreaterThan(0))
+    expect(useAssemblyStore.getState().doc).not.toBeNull()
+    expect(useAssemblyStore.getState().instances).toHaveLength(1)
+
+    first.unmount()
+
+    const store = useAssemblyStore.getState()
+    expect(store.doc).toBeNull()
+    expect(store.instances).toEqual([])
+    expect(store.mates).toEqual([])
+    expect(store.bodies).toEqual({})
+    expect(store.transforms).toEqual({})
+    expect(store.mateResults).toEqual({})
+    expect(store.edgeCurves).toEqual({})
+    expect(store.anchors).toEqual({})
+    expect(store.pickGeometry).toEqual([])
+    expect(store.entityMateRefs).toEqual({})
+  })
+
   it('inserting a part re-solves so its bodies enter the scene', async () => {
     await renderLoaded()
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
@@ -1163,13 +1204,17 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)  // still coalesced behind the open editor
 
     // Navigating away unmounts the page with the editor open. The unmount must
-    // commit the pinned session: the edit is already in the doc, so leaving it
-    // without an undo entry would make it unreachable by undo for good.
+    // commit the pinned session (the edit is already in the doc, so leaving it
+    // without an undo entry would make it unreachable by undo for good) before
+    // it resets the store's mirrored scene to default, which the unmount does
+    // too now so the next assembly's first render never paints this document's
+    // stale bodies/transforms/doc.
     first.unmount()
     expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Edit mate'])
-    // The doc still holds the edit, so a save after navigation persists it with
-    // its undo entry in place.
-    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+    // The store's mirrored doc is cleared with the rest of the scene on unmount;
+    // the committed edit survives only in the undo stack's pre-session snapshot
+    // until the next load's clearAssemblyHistory retires it below.
+    expect(useAssemblyStore.getState().doc).toBeNull()
 
     // The next load clears history (out by design), so the remount starts empty.
     renderEditor()

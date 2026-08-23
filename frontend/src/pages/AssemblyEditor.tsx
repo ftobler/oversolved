@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
-import { useAssemblyStore, setAssemblyCallbacks, type MateFieldTarget } from '@/stores/assemblyStore'
+import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, type MateFieldTarget } from '@/stores/assemblyStore'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
@@ -242,9 +242,20 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // describe geometry it does not have. Deliberately unmount-only, mirroring
   // the part editor's resetTransientState cleanup; the load path in
   // useAssemblyDoc resets the same fields before setDoc.
+  //
+  // resetTransientAssemblyState alone leaves the solved-scene fields (doc,
+  // instances, mates, bodies, transforms, edgeCurves, anchors, pickGeometry,
+  // mateResults) untouched, since those are React-mirrored via setSnapshot,
+  // not store-owned. Without also resetting them here, the module-level store
+  // keeps assembly A's scene until assembly B's own first solve overwrites it,
+  // so the very first render of B briefly paints A's stale bodies/transforms.
+  // setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA) clears exactly those fields,
+  // mirroring useSyncPartEditorStore's unmount reset for the part editor.
   useEffect(() => {
     return () => {
-      useAssemblyStore.getState().resetTransientAssemblyState()
+      const store = useAssemblyStore.getState()
+      store.setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+      store.resetTransientAssemblyState()
     }
   }, [])
 
