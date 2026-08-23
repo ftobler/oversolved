@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Mutation } from '@/types/cad'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
@@ -36,11 +36,22 @@ export default function PartToolbar({
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docName ?? '')
   const [saveState, setSaveState] = useState<'idle' | 'success'>('idle')
+  // Tracks the pending "success" -> "idle" reset so it can be cleared on
+  // unmount. Without this a stray timer fires setState after the component
+  // (and, in tests, the whole jsdom environment) is gone.
+  const saveResetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (saveResetTimeout.current !== null) clearTimeout(saveResetTimeout.current)
+    }
+  }, [])
 
   const handleSaveClick = () => {
     handleSave()
     setSaveState('success')
-    setTimeout(() => setSaveState('idle'), 1500)
+    if (saveResetTimeout.current !== null) clearTimeout(saveResetTimeout.current)
+    saveResetTimeout.current = setTimeout(() => setSaveState('idle'), 1500)
   }
 
   const handleRename = async () => {
