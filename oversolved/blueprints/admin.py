@@ -47,6 +47,11 @@ def list_users() -> ResponseReturnValue:
 @auth_required(admin=True, json=True)
 def create_user_admin() -> ResponseReturnValue:
     data = request.get_json()
+    # Non-string scalars would crash .strip(); reject them as client errors.
+    if data.get("username") is not None and not isinstance(data.get("username"), str):
+        return api_error("Username must be a string", "BAD_REQUEST", 400)
+    if data.get("email") is not None and not isinstance(data.get("email"), str):
+        return api_error("Email must be a string", "BAD_REQUEST", 400)
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
@@ -89,8 +94,13 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
     db = get_db()
     user_store = UserStore(db)
 
-    updates = {}
+    # Annotated because the isinstance guards below narrow the field types and
+    # mypy would otherwise pin the value type from the first write.
+    updates: dict[str, Any] = {}
     if "username" in data:
+        # A non-string scalar such as a number would crash .strip().
+        if data["username"] is not None and not isinstance(data["username"], str):
+            return api_error("Username must be a string", "BAD_REQUEST", 400)
         # username is NOT NULL, so a null or blank value is a client error, not a wipe.
         new_username = (data["username"] or "").strip()
         if not new_username:
@@ -102,6 +112,9 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
             return api_error("Username already exists", "CONFLICT", 409)
         updates["username"] = new_username
     if "email" in data:
+        if data["email"] is not None and not isinstance(data["email"], str):
+            # A non-string scalar such as a number would crash .strip().
+            return api_error("Email must be a string", "BAD_REQUEST", 400)
         new_email = data["email"].strip() if data["email"] else None
         # Pre-check so a taken address answers 409 like create_user_admin instead of
         # bubbling the unique-constraint IntegrityError out as a 500.

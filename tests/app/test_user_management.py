@@ -446,6 +446,24 @@ class TestProfile:
         assert response.status_code == 400
         assert "incorrect" in json.loads(response.data)["error"].lower()
 
+    def test_change_password_numeric_new_password_is_rejected(self, admin_client):
+        """A numeric new_password must be a 400, not an unhandled 500 on len()."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"current_password": "admin", "new_password": 123}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_change_password_non_string_current_password_is_rejected(self, admin_client):
+        """A non-string current_password must be a 400, not an unhandled 500 in hash checking."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"current_password": [], "new_password": "newpassword123"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
     def test_change_password_success(self, app, admin_client):
         """A valid password change persists and lets the user log in anew."""
         response = admin_client.put(
@@ -638,6 +656,68 @@ class TestAdminCreateUserWithEmail:
             content_type="application/json",
         )
         assert response.status_code == 200
+
+    def test_admin_update_numeric_username_is_rejected(self, admin_client):
+        """A numeric username must be a 400, not an unhandled 500 on .strip()."""
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "numrename", "password": "password123",
+                "email": "numrename@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"username": 123}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_admin_update_numeric_email_is_rejected(self, admin_client):
+        """A numeric email must be a 400, not an unhandled 500 on .strip()."""
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "nummail", "password": "password123",
+                "email": "nummail@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"email": 42}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_create_user_numeric_username_is_rejected(self, admin_client):
+        """A numeric username on create must be a 400, not an unhandled 500."""
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": 7, "password": "password123",
+                "email": "numuser@example.com"
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_create_user_numeric_email_is_rejected(self, admin_client):
+        """A numeric email on create must be a 400, not an unhandled 500 on .strip()."""
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "numaddress", "password": "password123",
+                "email": 9
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
 
     def test_admin_update_blank_username_is_rejected(self, admin_client):
         """Whitespace-only usernames are rejected the same way as null."""

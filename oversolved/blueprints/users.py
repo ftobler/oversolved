@@ -21,11 +21,16 @@ def update_profile():
     current_password = data.get("current_password", "")
     new_password = data.get("new_password", "")
 
-    # Non-string scalars would crash .strip() below; reject them as client errors.
+    # Non-string scalars would crash .strip(), len() or hash checks below;
+    # reject them as client errors.
     if username is not None and not isinstance(username, str):
         return api_error("Username must be a string", "BAD_REQUEST", 400)
     if email is not None and not isinstance(email, str):
         return api_error("Email must be a string", "BAD_REQUEST", 400)
+    if new_password is not None and not isinstance(new_password, str):
+        return api_error("New password must be a string", "BAD_REQUEST", 400)
+    if current_password is not None and not isinstance(current_password, str):
+        return api_error("Current password must be a string", "BAD_REQUEST", 400)
 
     db = get_db()
     user_store = UserStore(db)
