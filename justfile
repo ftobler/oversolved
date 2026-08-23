@@ -51,7 +51,7 @@ frontend:
 frontend-lint:
     mkdir -p ../tmp
     npm run lint 2>&1 | tee ../tmp/npm_lint.log
-    ../.venv/bin/python ../lint.py src 2>&1 | tee ../tmp/lint_py.log
+    ../.venv/bin/python ../lint.py src scripts 2>&1 | tee ../tmp/lint_py.log
 
 [working-directory: "frontend"]
 frontend-test:
