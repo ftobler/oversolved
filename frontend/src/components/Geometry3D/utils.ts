@@ -13,16 +13,6 @@ export function builtinSelectionId(name: string): string {
   return `@builtin_plane_${name.toLowerCase()}`
 }
 
-// Returns the selection ID for a topology edge.
-export function edgeSelectionId(featureId: string, query: string): string {
-  return `edge:${featureId}:${query}`
-}
-
-// Returns the selection ID for a topology vertex.
-export function vertexSelectionId(featureId: string, query: string): string {
-  return `vertex:${featureId}:${query}`
-}
-
 export function planeRotation(planeQuery: string | undefined): [number, number, number] {
   if (!planeQuery) return [0, 0, 0]
   const id = planeQuery.startsWith('@') ? planeQuery.slice(1) : planeQuery
