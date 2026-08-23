@@ -410,13 +410,14 @@ export default function Part() {
     // state, projection bookkeeping AND the hover residue none of the
     // individual actions touched -- without which a stale hoveredFaceNormal
     // could still feed buildContextMenu's "Normal to" item after its face is
-    // gone. The drag half matters even though a later setActiveFeatureId(null)
-    // would clear most of it: a mid-drag undo exits the edit that owns the
-    // gesture (editingFeatureId -> null above), unmounting
-    // DragPlane/FeatureHandles and dropping their window pointerup listener --
-    // so without it the residue either commits onto the restored doc's stale
-    // ids or gets stuck non-null forever. Mirrors the assembly editor's
-    // identical mid-drag-undo guard.
+    // gone. The drag half is load-bearing on its own: because the wipe also
+    // nulls activeFeatureId, the later setActiveFeatureId(null) effect no
+    // longer transitions and this is the only place drag state gets cleared
+    // on this path. A mid-drag undo exits the edit that owns the gesture,
+    // unmounting DragPlane/FeatureHandles and dropping their window pointerup
+    // listener -- so without the wipe the residue either commits onto the
+    // restored doc's stale ids or gets stuck non-null forever. Mirrors the
+    // assembly editor's identical mid-drag-undo guard.
     //
     // clearBrepProjectionState stays explicit ahead of the reset: unlike the
     // plain wipe it fires the R3F-side gesture-abort callback, and an undone
