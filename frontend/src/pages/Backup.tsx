@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAdminGuard } from '@/hooks/useAdminGuard'
 import { http } from '@/utils/core/httpClient'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import MessageDialog from '@/components/dialogs/MessageDialog'
@@ -7,18 +9,15 @@ import '@/pages/adminSettings.css'
 
 export default function Backup() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [loadingDownload, setLoadingDownload] = useState(false)
   const [loadingImport, setLoadingImport] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [messageDialog, setMessageDialog] = useState<{ title: string; message: string; variant?: 'info' | 'success' | 'error' } | null>(null)
 
-  if (!user?.is_admin) {
-    return (
-      <div className="setting-card">
-        <p>Backup is only available to administrators.</p>
-      </div>
-    )
-  }
+  const isAdmin = useAdminGuard(user, navigate)
+
+  if (!isAdmin) return null
 
   const handleDownload = async () => {
     setLoadingDownload(true)
