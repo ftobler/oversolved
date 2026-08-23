@@ -74,6 +74,7 @@ pub enum CodecError {
     BadPointSelector(u8),
     BadAxis(u8),
     BadRefType(u8),
+    NonFinite,
 }
 
 /// Lets `r.u32()?` inside a `Result<_, CodecError>` function convert the
@@ -89,6 +90,21 @@ fn pinned_mask_bytes(n_params: usize) -> usize {
 }
 
 // ─── Input ───
+
+/// Gate against non-finite floats on the wire.
+///
+/// A NaN or Inf that reaches the residual builders poisons the cost from
+/// iteration 1, so LM returns the seed unchanged and the solve reports the
+/// sketch Fully/Underconstrained with no error anywhere. The JSON topology
+/// path already rejects non-finite literals via serde; the byte path has no
+/// such gate, so every decoded float is checked here instead.
+fn finite(v: f32) -> Result<f32, CodecError> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(CodecError::NonFinite)
+    }
+}
 
 pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let mut r = Reader::new(buf);
@@ -116,7 +132,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
 
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
-        params_initial.push(r.f32()?);
+        params_initial.push(finite(r.f32()?)?);
     }
 
     let mask_len = pinned_mask_bytes(n_params);
@@ -125,7 +141,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let mut equality_pins = Vec::with_capacity(r.capacity_for(n_equality_pins, 8));
     for _ in 0..n_equality_pins {
         let param_index = r.u32()?;
-        let target = r.f32()?;
+        let target = finite(r.f32()?)?;
         equality_pins.push(EqualityPin {
             param_index,
             target,
@@ -168,8 +184,8 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
                 Ref::Entity { index, point }
             }
             1 => {
-                let x = r.f32()? as f64;
-                let y = r.f32()? as f64;
+                let x = finite(r.f32()?)? as f64;
+                let y = finite(r.f32()?)? as f64;
                 Ref::External { x, y }
             }
             other => return Err(CodecError::BadRefType(other)),
@@ -178,13 +194,13 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
     }
     let flags = r.u8()?;
     let value = if flags & 0b001 != 0 {
-        Some(r.f32()? as f64)
+        Some(finite(r.f32()?)? as f64)
     } else {
         None
     };
     let xy = if flags & 0b010 != 0 {
-        let x = r.f32()? as f64;
-        let y = r.f32()? as f64;
+        let x = finite(r.f32()?)? as f64;
+        let y = finite(r.f32()?)? as f64;
         Some((x, y))
     } else {
         None
@@ -196,7 +212,7 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
         None
     };
     let sign = if flags & 0b1000 != 0 {
-        Some(r.f32()? as f64)
+        Some(finite(r.f32()?)? as f64)
     } else {
         None
     };
@@ -788,6 +804,79 @@ mod tests {
         // With no refs the record is kind_code, n_refs(0), flags(has_axis), axis.
         bytes[HEADER_LEN + 3] = 0xff;
         assert!(matches!(decode_input(&bytes), Err(CodecError::BadAxis(_))));
+    }
+
+    // Each float field class on the input wire is gated individually: one NaN
+    // row reaching the residuals silently poisons a whole solve into a wrong
+    // status, so there is no "harmless" slot for a non-finite to hide in.
+    fn assert_nonfinite_rejected(field: &str, apply: impl Fn(&mut Input, f32)) {
+        for v in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut input = sample_input();
+            apply(&mut input, v);
+            assert!(
+                matches!(
+                    decode_input(&encode_input(&input)),
+                    Err(CodecError::NonFinite)
+                ),
+                "{field} accepted {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn nonfinite_param_coordinate_rejected() {
+        assert_nonfinite_rejected("param", |input, v| input.params_initial[0] = v);
+    }
+
+    #[test]
+    fn nonfinite_equality_pin_target_rejected() {
+        assert_nonfinite_rejected("pin target", |input, v| input.equality_pins[0].target = v);
+    }
+
+    #[test]
+    fn nonfinite_constraint_scalar_value_rejected() {
+        // The Length constraint is the canonical scalar value carrier.
+        assert_nonfinite_rejected("value", |input, v| {
+            input.constraints[1].value = Some(v as f64);
+        });
+    }
+
+    #[test]
+    fn nonfinite_constraint_xy_field_rejected() {
+        assert_nonfinite_rejected("xy.x", |input, v| {
+            input.constraints[0].xy = Some((v as f64, 0.5));
+        });
+        assert_nonfinite_rejected("xy.y", |input, v| {
+            input.constraints[0].xy = Some((0.5, v as f64));
+        });
+    }
+
+    #[test]
+    fn nonfinite_sign_field_rejected() {
+        // Value dropped alongside so the sign branch is exercised through its
+        // own flag bit, independent of has_value.
+        assert_nonfinite_rejected("sign", |input, v| {
+            input.constraints[1].value = None;
+            input.constraints[1].sign = Some(v as f64);
+        });
+    }
+
+    #[test]
+    fn nonfinite_external_coord_rejected() {
+        assert_nonfinite_rejected("external x", |input, v| {
+            let (_, rf) = &mut input.constraints[2].refs[1];
+            match rf {
+                Ref::External { x, .. } => *x = v as f64,
+                _ => panic!("expected the external ref"),
+            }
+        });
+        assert_nonfinite_rejected("external y", |input, v| {
+            let (_, rf) = &mut input.constraints[2].refs[1];
+            match rf {
+                Ref::External { y, .. } => *y = v as f64,
+                _ => panic!("expected the external ref"),
+            }
+        });
     }
 
     #[test]
