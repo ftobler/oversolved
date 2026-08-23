@@ -32,6 +32,8 @@ const KIND_CODE: Record<string, number> = {
   ellipse: Kind.Ellipse,
   spline: Kind.Spline,
 }
+// Keys must cover VERTEX_POINT_KEYS (types/vertexKeys.ts), which validates
+// dict-ref points upstream; anything it admits has to resolve here.
 const SEL_CODE: Record<string, number> = {
   start: Sel.start,
   end: Sel.end,
@@ -162,7 +164,9 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     if (pointName) {
       // Fail loud: Sel.absent is meaningful locus semantics in the solver, so a
       // typo'd selector must never fall back into it.
-      const code = SEL_CODE[pointName]
+      // Own-property guard: a plain table inherits Object.prototype members,
+      // and an inherited function would encode as 0 (= absent) instead of failing.
+      const code = Object.hasOwn(SEL_CODE, pointName) ? SEL_CODE[pointName] : undefined
       if (code === undefined) throw new Error(`lowerSketch: unknown point selector '${pointName}'`)
       point = code
     }
@@ -188,7 +192,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     // Fail loud: an unencoded axis would leave the flag unset so the Rust
     // decoder sees axis=None, bypassing its own BadAxis rejection.
     if (typeof c.axis === 'string') {
-      const axis = AxisCode[c.axis]
+      const axis = Object.hasOwn(AxisCode, c.axis) ? AxisCode[c.axis] : undefined
       if (axis === undefined) throw new Error(`lowerSketch: unknown axis '${c.axis}'`)
       out.axis = axis
     }

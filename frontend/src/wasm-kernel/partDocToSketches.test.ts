@@ -258,6 +258,27 @@ describe('partDocToSketches', () => {
     expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
   })
 
+  it('drops a constraint whose dict ref carries a non-string point value', () => {
+    // A truthy non-string point is present but not a VERTEX_POINT_KEYS member,
+    // so it drops like any other unresolvable ref rather than degrading to
+    // bare locus.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+        constraints: [
+          { id: 'keep', kind: 'horizontal', target: '$l1' },
+          { id: 'drop', kind: 'coincident', a: { entity: 'l1', point: 3 }, b: '@builtin_origin' } as unknown as PartConstraint,
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
+  })
+
   it.each([...VERTEX_POINT_KEYS])('passes dict-ref point %s through unchanged', (pt) => {
     const features: PartFeature[] = [
       {
