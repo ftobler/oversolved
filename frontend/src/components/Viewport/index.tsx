@@ -260,7 +260,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const consumedLayers = useMemo(() => (ENABLE_ID_BUFFER_PICKING
     ? PART_EDITOR_CONSUMED_LAYERS
     : new Set<string>()), [])
-  useIdBufferPointerDispatch({ glRef, consumedLayers })
+  const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers })
 
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
@@ -511,10 +511,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Pointer-leave must tear the hover down: the id-buffer dispatch hook only
   // listens for move/down/click, so a stale hover would otherwise block the
   // rubber-band start on re-entry and offer "Normal to" for a face the pointer
-  // is no longer over. Same teardown the assembly viewport applies.
+  // is no longer over. Same teardown the assembly viewport applies. Beyond the
+  // store clear, clearIdBufferHover also invalidates the dispatcher's own
+  // in-flight GPU-readback resolve: without it, a hover resolve already
+  // launched before the pointer left can land a frame later and redraw the
+  // highlight the leave was meant to clear.
   const handlePointerLeave = useCallback(() => {
     clearAllHover()
-  }, [])
+    clearIdBufferHover()
+  }, [clearIdBufferHover])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 

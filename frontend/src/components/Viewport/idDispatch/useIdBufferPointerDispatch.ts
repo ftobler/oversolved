@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking'
 import type { ResolvedHit } from '@/picking'
@@ -155,7 +155,16 @@ const hoverAdapters: Record<string, ((entityKey: string, pickKey?: string) => vo
   [FEATURE_HANDLE_LAYER_NAME]: setSelectionIdOnHover,
 }
 
-export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): void {
+/**
+ * @returns `clearHover`, a stable callback that tears down this dispatcher's
+ * hover state and invalidates any in-flight GPU-readback resolve, so a caller
+ * (pointer-leave) can stop a stale hit from landing a frame after the pointer
+ * left. Backed by a ref because the real implementation lives inside the
+ * effect below and is only assigned once attached.
+ */
+export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): () => void {
+  const clearHoverRef = useRef<() => void>(() => {})
+
   useEffect(() => {
     let lastHoverEntity: string | null = null
     let lastHoverLayer: string | null = null
@@ -165,6 +174,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     // The claimed hover frame, and the cursor waiting for it. See onPointerMove.
     let hoverFrame = 0
     let queuedHover: { cursor: { x: number; y: number }; allowed: ReadonlySet<string> } | null = null
+    // Bumped by clearHover to invalidate any resolveAsync promise already in
+    // flight: unlike the AssemblyViewport hover path (which defers the whole
+    // GPU readback into the rAF callback), resolveHover here fires the async
+    // readback immediately on the first move of a frame, so cancelling the rAF
+    // alone cannot stop an already-launched readback from landing late.
+    let hoverEpoch = 0
 
     const computeAllowed = (): ReadonlySet<string> => {
       const tool = useSketchEditorStore.getState().activeTool
@@ -205,13 +220,31 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       const pipeline = getLivePipeline()
       const gl = glRef.current
       if (!pipeline || !gl) return
+      const epoch = hoverEpoch
       void pipeline
         .resolveAsync(gl, cursor, { allowedLayers: allowed })
         .then(hit => {
+          // A clearHover (pointer-leave, unmount, tool switch to a
+          // disallowed layer) since this readback launched must win: applying
+          // a hit now would resurrect a hover the clear was meant to end.
+          if (epoch !== hoverEpoch) return
           applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
         })
         .catch(() => {})
     }
+
+    // Tear the hover down AND make sure it cannot come back: cancels the
+    // queued trailing-frame resolve and bumps hoverEpoch so an
+    // already-launched resolveAsync readback lands as a no-op instead of
+    // re-applying a hover for a cursor position that no longer applies.
+    const clearHover = () => {
+      hoverEpoch++
+      if (hoverFrame) cancelAnimationFrame(hoverFrame)
+      hoverFrame = 0
+      queuedHover = null
+      applyHoverHit(null, null)
+    }
+    clearHoverRef.current = clearHover
 
     /**
      * Hover resolves are capped at ~two per animation frame: the first move in a
@@ -230,12 +263,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (!attached) return
       const allowed = computeAllowed()
       if (allowed.size === 0) {
-        // Drop anything already queued as well. The queued resolve carries the
-        // allowed set it was captured with, so leaving it armed lets a hover the
-        // active tool no longer accepts land one frame after this clear -- the
-        // hover would reappear with nothing left to un-set it.
-        queuedHover = null
-        applyHoverHit(null, null)
+        // clearHover drops the queued trailing resolve AND invalidates any
+        // readback already launched for the now-disallowed layer set -- either
+        // one landing after this point would reapply a hover with nothing
+        // left to un-set it.
+        clearHover()
         return
       }
       const cursor = cursorFromEvent(e, attached)
@@ -373,8 +405,10 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     return () => {
       if (raf) cancelAnimationFrame(raf)
-      if (hoverFrame) cancelAnimationFrame(hoverFrame)
-      queuedHover = null
+      // Also bumps hoverEpoch, so a readback launched just before unmount
+      // cannot write a stale hover into the store after this hook is gone.
+      clearHover()
+      clearHoverRef.current = () => {}
       if (attached) {
         attached.removeEventListener('pointermove', onPointerMove)
         attached.removeEventListener('pointerdown', onPointerDown)
@@ -382,13 +416,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached.removeEventListener('dblclick', onDoubleClick)
         attached = null
       }
-      if (lastHoverLayer === DIMENSION_LABEL_LAYER_NAME && lastHoverEntity !== null) {
-        dimensionLabelAdapter.onOut(lastHoverEntity)
-      } else if (lastHoverLayer !== null) {
-        clearAllHover()
-      }
-      lastHoverLayer = null
-      lastHoverEntity = null
     }
   }, [canvasRef, glRef, consumedLayers])
+
+  return useCallback(() => { clearHoverRef.current() }, [])
 }

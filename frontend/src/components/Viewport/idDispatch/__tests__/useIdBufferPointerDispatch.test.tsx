@@ -554,4 +554,38 @@ describe('useIdBufferPointerDispatch', () => {
 
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('sk1/surf:face0')
   })
+
+  it('a resolveAsync readback landing after the returned clearHover does not resurrect the hover', async () => {
+    // The pointer-leave race this closes: resolveHover launches the GPU
+    // readback immediately (not deferred into an rAF the way AssemblyViewport's
+    // hover path is), so a caller that only cancels the queued frame cannot
+    // stop an already-launched readback from landing late and re-applying a
+    // hover for a cursor position the pointer already left.
+    let landReadback: (hit: unknown) => void = () => {}
+    pipeline.resolveAsync = vi.fn().mockImplementation(
+      () => new Promise(resolve => { landReadback = resolve }),
+    ) as unknown as typeof pipeline.resolveAsync
+
+    const { result } = renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_SURFACE_LAYER_NAME]),
+    }))
+
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+    })
+
+    // The pointer leaves before the readback lands -- this is exactly what
+    // Viewport/index.tsx's handlePointerLeave calls.
+    act(() => {
+      result.current()
+    })
+
+    await act(async () => {
+      landReadback({ id: 1, layer: SKETCH_SURFACE_LAYER_NAME, entityKey: 'sk1/surf:face0', distancePx: 0 })
+      await Promise.resolve()
+    })
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
 })
