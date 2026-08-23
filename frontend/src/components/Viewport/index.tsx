@@ -37,6 +37,7 @@ import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/clickGesture'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
+import { useDrawToolClickGuardCleanup } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import {
   getBodiesToRender,
   getGhostBodiesToRender,
@@ -371,6 +372,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   // Layer 3B: clear isPointerDown on any pointer-up (including off-canvas releases).
   useSelectionPointerUpCleanup()
+
+  // Layer 3C: clear a stale draw-tool click-consumed flag when a gesture ends
+  // without ever producing a click on the canvas (see drawToolClickGuard.ts).
+  useDrawToolClickGuardCleanup()
 
   // 268: rubber-band drag-box selection on empty canvas space. Shares the
   // dispatcher's consumedLayers so a sweep never collects a layer the editor
