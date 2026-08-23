@@ -719,6 +719,25 @@ class TestAdminCreateUserWithEmail:
         )
         assert response.status_code == 400
 
+    def test_admin_reset_numeric_password_is_rejected(self, admin_client):
+        """A numeric reset password must be a 400, not an unhandled 500 on len()."""
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "numpass", "password": "password123",
+                "email": "numpass@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.post(
+            f"/api/admin/users/{user_id}/reset",
+            data=json.dumps({"password": 123}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
     def test_admin_update_blank_username_is_rejected(self, admin_client):
         """Whitespace-only usernames are rejected the same way as null."""
         create_resp = admin_client.post(

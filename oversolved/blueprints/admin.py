@@ -156,7 +156,12 @@ def admin_delete_user(user_id: int) -> ResponseReturnValue:
 @auth_required(admin=True, json=True)
 def admin_reset_password(user_id: int) -> ResponseReturnValue:
     data = request.get_json()
-    new_password = data.get("password") or ""
+    raw_password = data.get("password")
+    # A non-string scalar such as a number would crash len() inside
+    # validate_password_strength.
+    if raw_password is not None and not isinstance(raw_password, str):
+        return api_error("Password must be a string", "BAD_REQUEST", 400)
+    new_password = raw_password or ""
     if not new_password:
         return api_error("Password required", "BAD_REQUEST", 400)
 
