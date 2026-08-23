@@ -116,6 +116,64 @@ class TestShareAPI:
         )
         assert response.status_code == 404
 
+    def test_create_share_empty_username_rejected(self, app, authed_client):
+        """An explicit empty username must 400, not fall through to publish."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        response = authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": ""}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "BAD_REQUEST"
+
+        doc_resp = authed_client.get(f"/api/documents/{uuid}")
+        assert json.loads(doc_resp.data)["is_public"] is False
+
+    def test_create_share_whitespace_username_rejected(self, app, authed_client):
+        """Whitespace-only counts as empty and must not publish the document."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        response = authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": "   "}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+        doc_resp = authed_client.get(f"/api/documents/{uuid}")
+        assert json.loads(doc_resp.data)["is_public"] is False
+
+    def test_create_share_absent_username_still_publishes(self, app, authed_client):
+        """Omitting the username key remains a public link-share request."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        response = authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+
+        doc_resp = authed_client.get(f"/api/documents/{uuid}")
+        assert json.loads(doc_resp.data)["is_public"] is True
+
     def test_create_share_non_owner(self, app, authed_client):
         create_resp = authed_client.post(
             "/api/documents",

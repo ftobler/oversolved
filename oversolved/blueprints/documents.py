@@ -199,6 +199,14 @@ def create_share(uuid):
     if permission not in ("view", "edit"):
         return api_error("Invalid permission", "BAD_REQUEST", 400)
 
+    # An absent username key is the public link-share request. A present but
+    # blank one must fail loudly here: falling into the falsy branch would
+    # silently publish the document instead of sharing it with anyone.
+    if "username" in data and (
+        not isinstance(data["username"], str) or not data["username"].strip()
+    ):
+        return api_error("Username required", "BAD_REQUEST", 400)
+
     if username:
         user = UserStore(db).find_by_username(username)
         if user is None:
@@ -271,7 +279,13 @@ def rebuild_stats(doc_id):
 def import_document():
     data = request.get_json()
     name = (data.get("name") or "").strip()
-    content = data.get("content") or ""
+    content = data.get("content")
+    if content is None:
+        content = ""
+    # Match update_document: a non-string payload would either 500 in
+    # psycopg2 or be silently stringified into the stored document.
+    if not isinstance(content, str):
+        return api_error('"content" must be a string', "BAD_REQUEST", 400)
     if not name:
         return api_error("Document name required", "BAD_REQUEST", 400)
     doc_store = DocumentStore(get_db())

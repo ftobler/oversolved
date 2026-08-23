@@ -48,6 +48,19 @@ def test_import_defaults_missing_content_to_empty(authed_client):
     assert authed_client.get(f"/api/documents/{uuid}").get_json()["content"] == ""
 
 
+def test_import_rejects_dict_content(authed_client):
+    """Structured content must 400 instead of erroring in psycopg2 or later."""
+    resp = _import(authed_client, {"name": "dict-content", "content": {"features": []}})
+    assert resp.status_code == 400
+    assert resp.get_json()["code"] == "BAD_REQUEST"
+
+
+def test_import_rejects_numeric_content(authed_client):
+    """A numeric content payload must not be silently stringified into the row."""
+    resp = _import(authed_client, {"name": "numeric-content", "content": 5})
+    assert resp.status_code == 400
+
+
 def test_import_never_commits_an_empty_content_row(authed_client, pg_dsn, monkeypatch):
     """A failing content write must not leave a half-imported document behind.
 
