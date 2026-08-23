@@ -42,6 +42,22 @@ describe('RebuildButton', () => {
     expect(container.querySelector('img')).toBeInTheDocument()
   })
 
+  // A hover-then-navigate-away can unmount while the 500ms hide delay is
+  // still pending; without a cleanup effect the timer survives the unmount
+  // and later calls setState on a gone component.
+  it('clears the pending hide timer on unmount', () => {
+    const { unmount } = render(<RebuildButton {...defaultProps} />)
+    const button = screen.getByRole('button', { name: /Rebuild geometry/i })
+    fireEvent.mouseEnter(button)
+    fireEvent.mouseLeave(button)  // schedules the hide timer
+
+    const clearSpy = vi.spyOn(window, 'clearTimeout')
+    unmount()
+
+    expect(clearSpy).toHaveBeenCalled()
+    clearSpy.mockRestore()
+  })
+
   describe('validation badge', () => {
     const propsWithEntries = {
       ...defaultProps,

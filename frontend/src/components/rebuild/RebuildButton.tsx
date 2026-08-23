@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import rebuildIcon from '@/assets/icons/context-rebuild.svg'
 import { RebuildTimingPopover } from '@/components/rebuild/RebuildTimingPopover'
 import { formatMs } from '@/components/rebuild/formatMs'
@@ -36,6 +36,11 @@ export function RebuildButton({ featureTimings, features, onClick, isLoading, di
       setIsPopoverHovered(false)
     }, 500)
   }, [cancelHide])
+
+  // A hover-then-navigate-away can unmount within the pending hide window;
+  // without this the timeout still fires and calls setState on an unmounted
+  // component.
+  useEffect(() => cancelHide, [cancelHide])
 
   return (
     <div className="rebuild-button-container">
