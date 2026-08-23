@@ -186,6 +186,9 @@ def create_app(config: dict | None = None) -> Flask:
     @app.route("/")
     @app.route("/<path:path>")
     def serve_frontend(path="index.html"):
+        # Unmatched api paths must stay JSON; SPA html here breaks typed error parsing.
+        if path == "api" or path.startswith("api/"):
+            return _json_error(404, "not found")
         if not frontend_dist.exists():
             return "", 404
         if path:
