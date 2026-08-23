@@ -115,6 +115,7 @@ export default function Documents() {
         if (reqId !== listReqRef.current) return
         setDocuments(documents)
         setError(null)
+        setLoading(false)
       })
       .catch(e => {
         if (reqId !== listReqRef.current) return
@@ -124,9 +125,11 @@ export default function Documents() {
           setOnline(false)
           setError(null)
           setNotice('Cloud unavailable. Showing your local documents.')
+          setLoading(false)
           return
         }
         setError(parseHttpError(e, 'Failed to load documents'))
+        setLoading(false)
       })
   }, [sortBy, activeStore, onCloud, setOnline])
 
@@ -134,7 +137,6 @@ export default function Documents() {
     if (prefsLoading) return
     setLoading(true)
     fetchDocuments(activeFilter, debouncedSearch)
-    setLoading(false)
   }, [activeFilter, debouncedSearch, fetchDocuments, prefsLoading])
 
   const handleAddDocument = async () => {
