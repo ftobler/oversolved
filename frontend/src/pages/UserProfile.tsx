@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
@@ -18,6 +18,10 @@ export default function UserProfile() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // handleSave is an event handler, not effect-scoped, so a plain cancelled
+  // local wouldn't be reachable across the await. A ref survives the closure
+  // and still flips on unmount, mirroring DocumentPage's cancelled guard.
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     if (user) {
@@ -25,6 +29,10 @@ export default function UserProfile() {
       setEmail(user.email || '')
     }
   }, [user])
+
+  useEffect(() => {
+    return () => { mountedRef.current = false }
+  }, [])
 
   const handleSave = async () => {
     setError(null)
@@ -57,10 +65,13 @@ export default function UserProfile() {
       try {
         await http.putJson('/api/users/me', body)
       } catch (e) {
-        setError(parseHttpError(e, 'Update failed'))
-        setLoading(false)
+        if (mountedRef.current) {
+          setError(parseHttpError(e, 'Update failed'))
+          setLoading(false)
+        }
         return
       }
+      if (!mountedRef.current) return
 
       if ((body.username || body.email) && user) {
         setUser({
@@ -79,9 +90,9 @@ export default function UserProfile() {
       }
       setSuccess('Profile updated successfully')
     } catch (e) {
-      setError(String(e))
+      if (mountedRef.current) setError(String(e))
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 
