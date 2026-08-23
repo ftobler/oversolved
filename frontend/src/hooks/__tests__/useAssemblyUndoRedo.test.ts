@@ -219,6 +219,26 @@ describe('useAssemblyUndoRedo', () => {
     expect(useAssemblyStore.getState().selectedMateId).toBeNull()
   })
 
+  // applyUndoRedo's transient-field reset must delegate to the store's own
+  // resetTransientAssemblyState rather than hand-listing fields, or it silently
+  // drifts from STORE_OWNED_FIELDS (which happened: showPickDebug was missing).
+  // Pinning this one field proves the reset now covers the full owned set.
+  it('undo resets showPickDebug along with the rest of the store-owned transient state', () => {
+    const docA = docWith(['a'])
+    const docRef = { current: docWith(['a', 'b']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => {
+      useAssemblyStore.setState({ showPickDebug: true })
+      result.current.pushUndo(docA, 'Add part')
+    })
+    act(() => { result.current.handleUndo() })
+
+    expect(useAssemblyStore.getState().showPickDebug).toBe(false)
+  })
+
   // The selection fields live outside the doc, so an undo that removes the
   // selected part must not leave them naming entities the restored doc lacks.
   it('undo of an insert clears the B-rep selection, hover and selected part handle', () => {

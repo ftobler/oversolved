@@ -95,17 +95,14 @@ export function useAssemblyUndoRedo(
     // entities being selected or the instance the tree has selected; the armed
     // field, its owed solve, its candidates and the selection state must not
     // aim into a vanished feature. The page's safety effects clear
-    // selectedMateId and selectedPartHandle for the same reason.
-    useAssemblyStore.setState({
-      activeMateField: null, mateFieldDirty: false,
-      pickCandidates: [], pickIndex: -1, selectedMateId: null,
-      selection: new Set(), hoveredEntity: null, selectedPartHandle: null,
-      // A mid-drag undo must not leave the session behind: pointer-up would
-      // otherwise commit the drag onto the restored doc. The offsets, hover
-      // scope and hits all describe the pre-undo scene too.
-      manipulation: null, gizmoDrag: null, settlingOffsets: {},
-      pickScopeEntity: null, hoverHits: [],
-    })
+    // selectedMateId and selectedPartHandle for the same reason. A mid-drag
+    // undo must not leave the session behind either: pointer-up would
+    // otherwise commit the drag onto the restored doc. Delegated to the
+    // store's own reset (rather than hand-listing the fields here) so this
+    // call site can't drift from STORE_OWNED_FIELDS the way it already had
+    // (missing showPickDebug); it deliberately skips the two undo stacks,
+    // which this call already set above.
+    useAssemblyStore.getState().resetTransientAssemblyState()
     docRef.current = entry.doc
     setDoc(entry.doc)
     // The store still holds the post-drag solved scene, so the viewport would
