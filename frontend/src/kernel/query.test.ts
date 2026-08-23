@@ -1599,6 +1599,74 @@ describe("ordering guard", () => {
   })
 })
 
+describe("ordering guard: order-hidden uuid fallthrough (the deliberate exception)", () => {
+  // Same shape as the ordering-guard reg helper but with a tag, so the
+  // assertions can name which sibling resolved.
+  function reg(
+    repo: Repository,
+    ancestors: string[],
+    owner: string,
+    tag: string,
+    uuid?: string,
+    type = "face",
+  ): string {
+    return repo.registerAncestor(
+      ancestors,
+      { type, tag, created_by: owner },
+      uuid ?? null,
+    )
+  }
+
+  it("hidden uuid plus earlier-owned sibling resolves the sibling via the ancestral tier", () => {
+    // Pins the deliberate fallthrough documented in query.ts: when the live
+    // uuid element is order-hidden, the uuid tier 'continue's into the weaker
+    // tiers instead of failing loud like refuseUuidSwap does for type
+    // exclusion. That is safe because every weaker tier applies the same
+    // orderFilter, so the hidden sk2 element can never be the answer.
+    const repo = new Repository()
+    repo.setFeatureOrder(["sk1", "sk2"])
+    reg(repo, ["@sk1"], "sk1", "a")
+    reg(repo, ["@sk1"], "sk2", "b", "u_X")
+    const q = ancestry([constructionUuidToken("u_X"), "@sk1"])
+
+    const resolved = repo.query(q, null, null, "sk1") as Record<string, unknown>
+    expect(resolved).not.toBeNull()
+    expect(resolved.tag).toBe("a")
+    expect(resolved.created_by).toBe("sk1")
+    expect(repo._lastTier).toBe("ancestral")
+  })
+
+  it("uuid whose only live element is order-hidden resolves nothing", () => {
+    // A uuid naming only a forward element must resolve nothing rather than
+    // leak geometry the current feature may not see yet. Contrast the
+    // type-excluded case, which fails loud via refuseUuidSwap: here the
+    // weaker tiers legitimately own the miss, so null is the contract.
+    const repo = new Repository()
+    repo.setFeatureOrder(["sk1", "sk2"])
+    reg(repo, ["@sk1"], "sk1", "a")
+    reg(repo, ["@sk1"], "sk2", "b", "u_X")
+    const q = ancestry([constructionUuidToken("u_X")])
+
+    expect(repo.query(q, null, null, "sk1")).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("without a current feature the same uuid-only query resolves the element", () => {
+    // The hidden-ness comes only from the guard context, not from
+    // registration: with no current feature the filter is identity and the
+    // uuid tier answers directly.
+    const repo = new Repository()
+    repo.setFeatureOrder(["sk1", "sk2"])
+    reg(repo, ["@sk1"], "sk1", "a")
+    reg(repo, ["@sk1"], "sk2", "b", "u_X")
+    const q = ancestry([constructionUuidToken("u_X")])
+
+    const resolved = repo.query(q) as Record<string, unknown>
+    expect(resolved.tag).toBe("b")
+    expect(repo._lastTier).toBe("uuid")
+  })
+})
+
 /** Ordering guard applied inside the coerceType sibling scan: a query that
  *  coerces to an edge/face must never reach a sibling owned by a feature
  *  ordered after the current one. The ancestry tiers order-filter their
