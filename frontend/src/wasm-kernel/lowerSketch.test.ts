@@ -74,6 +74,30 @@ describe('lowerSketch ellipse entity', () => {
   })
 })
 
+describe('lowerSketch fails loud on malformed refs', () => {
+  it('throws naming an unknown point selector instead of silently mapping it to Sel.absent', () => {
+    // Sel.absent means whole-curve locus to the Rust solver, so a typo'd
+    // selector must never degrade into that semantics.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ kind: 'coincident', a: { entity: 'l1', point: 'strt' }, b: '@builtin_origin' }],
+    })).toThrow("lowerSketch: unknown point selector 'strt'")
+  })
+
+  it('throws naming an unknown axis string instead of dropping the axis flag', () => {
+    // An unencoded axis lowered to undefined, so the flag was never set and the
+    // Rust decoder saw axis=None past its own BadAxis guard.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ kind: 'horizontal', target: { entity: 'l1' }, axis: 'diagonal' }],
+    })).toThrow("lowerSketch: unknown axis 'diagonal'")
+  })
+})
+
 describe('pinnedMaskFor (projected-entity pinning)', () => {
   // Two lines (4 params each) then a circle (3): flat params 0..10, the origin
   // appended by lowerSketch is irrelevant to the helper which only sees layout.

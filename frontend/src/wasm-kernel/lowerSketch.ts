@@ -158,7 +158,14 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     const index = idToIndex.get(entityId)
     if (index === undefined) throw new Error(`lowerSketch: unknown entity '${entityId}'`)
     const pointName = refDict.point as string | undefined
-    const point = pointName ? SEL_CODE[pointName] ?? Sel.absent : Sel.absent
+    let point: number = Sel.absent
+    if (pointName) {
+      // Fail loud: Sel.absent is meaningful locus semantics in the solver, so a
+      // typo'd selector must never fall back into it.
+      const code = SEL_CODE[pointName]
+      if (code === undefined) throw new Error(`lowerSketch: unknown point selector '${pointName}'`)
+      point = code
+    }
     return { kind: 'entity', index, point }
   }
 
@@ -178,7 +185,13 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     const out: FlatConstraint = { kind, refs }
     if (typeof c.value === 'number') out.value = c.value
     if (typeof c.x === 'number' && typeof c.y === 'number') out.xy = [c.x, c.y]
-    if (typeof c.axis === 'string') out.axis = AxisCode[c.axis]
+    // Fail loud: an unencoded axis would leave the flag unset so the Rust
+    // decoder sees axis=None, bypassing its own BadAxis rejection.
+    if (typeof c.axis === 'string') {
+      const axis = AxisCode[c.axis]
+      if (axis === undefined) throw new Error(`lowerSketch: unknown axis '${c.axis}'`)
+      out.axis = axis
+    }
     if (typeof c.sign === 'number') out.sign = c.sign
     return out
   }
