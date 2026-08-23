@@ -10,8 +10,8 @@ describe('assemblyStore', () => {
     useAssemblyStore.getState().setSelectedPartHandle(null)
     useAssemblyStore.getState().setIsSolving(false)
     useAssemblyStore.getState().setSolveError(null)
-    // selection/hoveredEntity/showPickDebug are store-owned, so setSnapshot does
-    // not reset them; clear explicitly to keep the selection tests isolated.
+    // Everything from the two calls above down is store-owned, so setSnapshot
+    // does not reset it; clear explicitly to keep the tests isolated.
     useAssemblyStore.getState().clearSelection()
     useAssemblyStore.getState().setHoveredEntity(null)
     useAssemblyStore.getState().setShowPickDebug(false)
@@ -33,10 +33,14 @@ describe('assemblyStore', () => {
   // and a field the store owns must survive that. The specimen used to be
   // `activePartHandle`, which was deleted as vestigial; picking another owned
   // field keeps the mechanic covered rather than losing it with the field.
+  // The solve lifecycle fields are pinned explicitly: they were the last two
+  // data fields missing from the list, and DEFAULT carries their idle values,
+  // so only ownership stops a snapshot from clearing them mid-solve.
   it('setSnapshot replaces mirrored fields but preserves owned fields', () => {
     const { getState } = useAssemblyStore
     getState().setSelectedPartHandle('part-1')
     getState().setIsSolving(true)
+    getState().setSolveError('boom')
     getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
       doc: { kind: 'assembly', features: [] },
@@ -44,7 +48,33 @@ describe('assemblyStore', () => {
     })
     // selectedPartHandle is a store-owned field, preserved from setter.
     expect(getState().selectedPartHandle).toBe('part-1')
+    // The snapshot's own false/null for these must not win over the setters.
+    expect(getState().isSolving).toBe(true)
+    expect(getState().solveError).toBe('boom')
     expect(getState().doc).toEqual({ kind: 'assembly', features: [] })
+  })
+
+  // resetTransientAssemblyState is what both unmount (AssemblyEditor) and a
+  // document load (useAssemblyDoc) run, so it is where a stale isSolving or
+  // solveError now actually gets cleared once setSnapshot no longer touches
+  // them. History is deliberately out of its sweep; clearAssemblyHistory owns
+  // the stacks.
+  it('resetTransientAssemblyState clears the solve flags but leaves the stacks alone', () => {
+    const { getState } = useAssemblyStore
+    const entry = { label: 'Add part', doc: { kind: 'assembly' as const, features: [] } }
+    const undoStack = [entry]
+    const redoStack = [entry]
+    useAssemblyStore.setState({ undoStack, redoStack })
+    getState().setIsSolving(true)
+    getState().setSolveError('boom')
+
+    getState().resetTransientAssemblyState()
+
+    expect(getState().isSolving).toBe(false)
+    expect(getState().solveError).toBeNull()
+    // Reference identity: the reset did not rebuild the arrays either.
+    expect(getState().undoStack).toBe(undoStack)
+    expect(getState().redoStack).toBe(redoStack)
   })
 
   it('setSelectedPartHandle survives a snapshot that names a different handle', () => {

@@ -218,14 +218,18 @@ export function sameInstances(a: readonly PartInstance[], b: readonly PartInstan
 }
 
 // Fields owned exclusively by the store (not overwritten by setSnapshot). The
-// undo stacks are mutable store state too: the page spreads the current store
-// into every setSnapshot, so they would survive anyway, but naming them here
-// keeps setSnapshot's "React-mirrored state only" contract intact.
+// solve lifecycle fields belong here because their writer is the async solve in
+// useAssemblySolve, not page state a snapshot mirrors: a snapshot landing
+// mid-solve must not clear a running flag or resurrect a banner just retired.
+// The undo stacks are mutable store state too: the page spreads the current
+// store into every setSnapshot, so they would survive anyway, but naming them
+// here keeps setSnapshot's "React-mirrored state only" contract intact.
 const STORE_OWNED_FIELDS = [
   'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
+  'isSolving', 'solveError',
   'undoStack', 'redoStack',
 ] as const
 
