@@ -12,6 +12,30 @@ import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
 /** Digits shown for every length readout here. Angles keep their own precision. */
 const LENGTH_DECIMALS = 3
 
+/**
+ * Two "is this pair of lines parallel" thresholds live in this file and they
+ * are NOT the same tolerance in different clothing, so they stay two named
+ * constants rather than one shared value:
+ *
+ * - `LINE_PAIR_PARALLEL_CROSS_EPS` gates the 2D sketch-line check, which tests
+ *   the raw (non-normalized) 2D cross product `lX*bY - lY*bX` of the two
+ *   direction vectors. That magnitude is `|l| * |b| * sin(angle)`, so it
+ *   scales with both line lengths -- it is not an angle and its effective
+ *   angular tolerance gets tighter as the lines get longer. Normalizing it
+ *   into a true `sin(angle)` (dividing by `lLen * bLen`) would change the
+ *   detection tolerance for every existing sketch line pair -- a real
+ *   precision regression, not a refactor -- so it is left as-is.
+ * - `EDGE_PAIR_PARALLEL_ANGLE_EPS_RAD` gates the 3D body-edge check, which
+ *   already normalizes both direction vectors before dotting them, so its
+ *   `angle = Math.acos(clampedDot)` is a genuine angle in radians independent
+ *   of edge length.
+ *
+ * Keep both defined here, next to the code that uses them, so a future
+ * reader can see their units side by side instead of re-deriving them.
+ */
+const LINE_PAIR_PARALLEL_CROSS_EPS = 1e-6
+const EDGE_PAIR_PARALLEL_ANGLE_EPS_RAD = 1e-4
+
 /** Single place that renders a length, so the precision stays consistent. */
 function mm(value: number): string {
   return `${value.toFixed(LENGTH_DECIMALS)} mm`
@@ -149,7 +173,7 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
       if (lLen <= 0 || bLen <= 0) return []
       const dot = lX * bX + lY * bY
       const cross = lX * bY - lY * bX
-      const parallel = Math.abs(cross) < 1e-6
+      const parallel = Math.abs(cross) < LINE_PAIR_PARALLEL_CROSS_EPS
       if (parallel) {
         const dist = Math.abs((bx0 - ax0) * (-lY) + (by0 - ay0) * lX) / lLen
         return [`parallel lines, distance: ${mm(dist)}`]
@@ -457,7 +481,7 @@ export function measure3dSelection(
       const dot = Math.abs(dax * dbx + day * dby + daz * dbz) / (lenA * lenB)
       const clampedDot = Math.max(0, Math.min(1, dot))
       const angle = Math.acos(clampedDot)
-      if (angle < 1e-4) {
+      if (angle < EDGE_PAIR_PARALLEL_ANGLE_EPS_RAD) {
         // Parallel: compute perpendicular distance between the infinite lines
         const [cx, cy, cz] = [bx0 - ax0, by0 - ay0, bz0 - az0]
         const crossX = cy * daz - cz * day, crossY = cz * dax - cx * daz, crossZ = cx * day - cy * dax

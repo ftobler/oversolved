@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import type { LineSegment, Arc, Circle, PointEntity } from '@/types/cad'
+import type { BodyResult, EdgeDataLine, LineSegment, Arc, Circle, PointEntity } from '@/types/cad'
 import {
   measureSingleEntity,
   measurePair,
   measurePointToPlane,
   measurePlanes,
+  measure3dSelection,
   type Plane3D,
 } from '@/registry/measurementRegistry'
 
@@ -82,6 +83,25 @@ describe('measurePair', () => {
     ])
   })
 
+  it('pins the 2D parallel threshold: just inside the raw cross-product eps still reads as parallel', () => {
+    // Unit-length line1 along +X; line2 is offset to y=3 and tilted so its raw
+    // (non-normalized) cross product with line1 is 9e-7, just under the 1e-6
+    // LINE_PAIR_PARALLEL_CROSS_EPS threshold. Distance only depends on the
+    // lines' start points here, so it stays a clean 3.
+    expect(measurePair({ line1: line(0, 0, 1, 0), line2: line(0, 3, 1, 3 + 9e-7) })).toEqual([
+      'parallel lines, distance: 3.000 mm',
+    ])
+  })
+
+  it('pins the 2D parallel threshold: just outside the raw cross-product eps reads as an angle', () => {
+    // Same construction, tilted so the raw cross product is 1.1e-6, just over
+    // the threshold -- this must fall through to the angle branch, not the
+    // parallel one, even though the angle itself rounds to 0.0 degrees.
+    expect(measurePair({ line1: line(0, 0, 1, 0), line2: line(0, 3, 1, 3 + 1.1e-6) })).toEqual([
+      'angle: 0.0°',
+    ])
+  })
+
   it('measures circle-circle center distance', () => {
     expect(measurePair({ circle1: circle(0, 0, 1), circle2: circle(3, 4, 1) })).toEqual([
       'center dist: 5.000 mm',
@@ -140,5 +160,41 @@ describe('measurePlanes', () => {
   it('returns no measurement for non-parallel planes', () => {
     const xz: Plane3D = { origin: [0, 0, 0], normal: [0, 1, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1] }
     expect(measurePlanes(xy(0), xz)).toEqual([])
+  })
+})
+
+describe('measure3dSelection: edge-pair parallel threshold', () => {
+  // Two line edges on one body, addressed via the "@bodyId/edge/N" fallback
+  // query format that findBodyElement understands. edgeA runs along +X;
+  // edgeB is tilted by `theta` radians in the XY plane and offset to y=3, so
+  // (for these unit-length directions) the acos-of-normalized-dot angle the
+  // code computes comes out to exactly `theta`, and the perpendicular
+  // distance in the parallel branch depends only on the y=3 offset, not on
+  // theta -- both make the threshold easy to pin precisely.
+  const edgeLine = (
+    start: [number, number, number],
+    end: [number, number, number]
+  ): EdgeDataLine => ({ kind: 'line', start, end })
+
+  const bodyWithEdges = (edgeA: EdgeDataLine, edgeB: EdgeDataLine): Record<string, BodyResult> => ({
+    b1: { id: 'b1', created_by: '', modified_by: [], edges: [edgeA, edgeB] },
+  })
+
+  const ids = new Set(['@b1/edge/0', '@b1/edge/1'])
+
+  it('pins the 3D parallel threshold: just inside the angle eps still reads as parallel', () => {
+    const theta = 9e-5  // < EDGE_PAIR_PARALLEL_ANGLE_EPS_RAD (1e-4)
+    const edgeA = edgeLine([0, 0, 0], [1, 0, 0])
+    const edgeB = edgeLine([0, 3, 0], [Math.cos(theta), 3 + Math.sin(theta), 0])
+    expect(measure3dSelection(ids, bodyWithEdges(edgeA, edgeB))).toEqual([
+      'parallel edges, distance: 3.000 mm',
+    ])
+  })
+
+  it('pins the 3D parallel threshold: just outside the angle eps reads as an edge angle', () => {
+    const theta = 1.1e-4  // > EDGE_PAIR_PARALLEL_ANGLE_EPS_RAD (1e-4)
+    const edgeA = edgeLine([0, 0, 0], [1, 0, 0])
+    const edgeB = edgeLine([0, 3, 0], [Math.cos(theta), 3 + Math.sin(theta), 0])
+    expect(measure3dSelection(ids, bodyWithEdges(edgeA, edgeB))).toEqual(['edge angle: 0.0°'])
   })
 })
