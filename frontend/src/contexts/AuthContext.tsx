@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { http } from '@/utils/core/httpClient'
 import { hasBackend } from '@/config/capabilities'
@@ -72,15 +72,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (!hasBackend) return  // nothing to log out of locally
     await http.postJson('/api/auth/logout').catch(() => undefined)
     setUser(null)  // drops the credential only; the local library is untouched
     setOnline(true)  // reset connectivity for the next sign-in; nothing is cleared
-  }
+  }, [])
+
+  // setUser/setOnline are useState setters, already stable across renders; logout is
+  // memoized above. Memoizing this object keeps its identity stable across renders
+  // that don't change user/loading/online, so consumers only re-render when the
+  // actual session state changes.
+  const value = useMemo(
+    () => ({ user, loading, online, setUser, setOnline, logout }),
+    [user, loading, online, logout],
+  )
 
   return (
-    <AuthContext.Provider value={{ user, loading, online, setUser, setOnline, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

@@ -275,4 +275,63 @@ describe('AuthContext', () => {
       expect(result.current.user).toEqual(testUser)
     })
   })
+
+  // Memoize context values: the value object handed to AuthContext.Provider must
+  // keep its identity across renders that do not touch user/loading/online, so a
+  // consumer wrapped in React.memo does not re-render for unrelated reasons. It must
+  // still change identity when the underlying session state actually changes.
+  describe('context value memoization', () => {
+    it('keeps the same value object across an unrelated re-render', async () => {
+      vi.mocked(http.getJson).mockResolvedValue({ user: testUser })
+
+      const seen: unknown[] = []
+      function Recorder({ tick }: { tick: number }) {
+        const ctx = useAuth()
+        seen.push(ctx)
+        return <span data-testid="tick">{tick}</span>
+      }
+
+      const { rerender } = render(
+        <AuthProvider>
+          <Recorder tick={0} />
+        </AuthProvider>,
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('tick').textContent).toBe('0')
+      })
+
+      // Re-render the tree with a prop change that has nothing to do with auth
+      // state; the AuthProvider itself re-renders too since it is the parent.
+      rerender(
+        <AuthProvider>
+          <Recorder tick={1} />
+        </AuthProvider>,
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('tick').textContent).toBe('1')
+      })
+
+      expect(seen.length).toBeGreaterThanOrEqual(2)
+      expect(seen[seen.length - 1]).toBe(seen[seen.length - 2])
+    })
+
+    it('produces a new value object when the session state actually changes', async () => {
+      const { promise, resolve } = deferred<{ user: User }>()
+      vi.mocked(http.getJson).mockReturnValue(promise)
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+      const before = result.current
+      expect(before.user).toBeNull()
+
+      await act(async () => {
+        resolve({ user: testUser })
+      })
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false)
+      })
+
+      expect(result.current).not.toBe(before)
+      expect(result.current.user).toEqual(testUser)
+    })
+  })
 })

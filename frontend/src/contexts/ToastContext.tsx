@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 
@@ -32,8 +32,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, open: false }))
   }
 
+  // notify is already useCallback-stable; memoizing the value object too keeps its
+  // identity stable across renders (e.g. snackbar open/close) that don't touch notify.
+  const value = useMemo(() => ({ notify }), [notify])
+
   return (
-    <ToastContext.Provider value={{ notify }}>
+    <ToastContext.Provider value={value}>
       {children}
       <Snackbar
         open={state.open}
