@@ -310,9 +310,13 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // face / edge / vertex (B-rep) / plane / origin. Carry the hit's
         // per-primitive pickKey so the highlight isolates the exact primitive
         // clicked even when its query collides with a sibling's. pickKey equals
-        // the query for layers with no per-primitive identity (planes, origin),
-        // so this is a no-op there.
-        useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit), hit.pickKey)
+        // the query for layers with no per-primitive identity (planes, origin);
+        // passing it through unchanged there is NOT a no-op, it mints a
+        // redundant self-claim ({query -> {query}}) in selectedPicks the same
+        // way the sketch-surface branch above explicitly avoids, so omit it
+        // when it carries no extra identity.
+        const key = hitToSelectionKey(hit)
+        useSketchEditorStore.getState().toggleNormalSelection(key, hit.pickKey === key ? undefined : hit.pickKey)
       }
       setLastClickIdHit(true)
     }

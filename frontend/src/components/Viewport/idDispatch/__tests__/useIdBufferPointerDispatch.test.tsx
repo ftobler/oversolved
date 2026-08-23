@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
-import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME } from '@/picking'
+import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
@@ -316,6 +316,32 @@ describe('useIdBufferPointerDispatch', () => {
 
     const s = useSketchEditorStore.getState()
     expect(s.normalSelection.has('sk1/surf:face0')).toBe(true)
+    expect(s.selectedPicks.size).toBe(0)
+  })
+
+  it.each([
+    ['origin', ORIGIN_LAYER_NAME, '@builtin_origin'],
+    ['plane', PLANE_LAYER_NAME, '@builtin_front'],
+  ])('toggles a %s hit query-only with no selectedPicks claim (pickKey === query)', async (_label, layer, entityKey) => {
+    // Origin/plane picks have no per-primitive identity, so the id-buffer
+    // registration defaults pickKey to entityKey (IdRegistry.allocate). Passing
+    // that pickKey through unchanged would mint a redundant self-claim
+    // ({query -> {query}}) exactly like the sketch-surface case above.
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 13, layer, entityKey, pickKey: entityKey, distancePx: 0,
+    })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([layer]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    const s = useSketchEditorStore.getState()
+    expect(s.normalSelection.has(entityKey)).toBe(true)
     expect(s.selectedPicks.size).toBe(0)
   })
 
