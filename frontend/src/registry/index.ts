@@ -42,10 +42,5 @@ export type {
   ToolDragInit,
   ToolHandlers,
   Tool,
-  DrawingTool,
-  ConstraintTool,
-  DimensionTool,
-  SelectionTool,
-  DragTool,
   ToolRegistry,
 } from '@/registry/toolRegistry'

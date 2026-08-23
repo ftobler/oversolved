@@ -103,37 +103,6 @@ export interface Tool<T extends ToolContext = ToolContext> {
   handlers: ToolHandlers<T>
 }
 
-// Drawing tools (line, circle, arc, rect, center_rect, ngon, project, and the
-// entity-registry kinds ellipse/spline/point). All are registered with the
-// 'drawing' category by initializeTools.
-export interface DrawingTool extends Tool {
-  readonly category: 'drawing'
-  readonly entityKind: string
-  readonly paramCount: number
-}
-
-// Constraint tools (horizontal, vertical, coincident, etc.)
-export interface ConstraintTool extends Tool {
-  readonly category: 'constraint'
-  readonly constraintKind: string
-  readonly requiresSelection: number
-}
-
-// Dimension tool
-export interface DimensionTool extends Tool {
-  readonly category: 'dimension'
-}
-
-// Selection tool
-export interface SelectionTool extends Tool {
-  readonly category: 'selection'
-}
-
-// Drag tool
-export interface DragTool extends Tool {
-  readonly category: 'drag'
-}
-
 // Central registry - single source of truth
 export class ToolRegistry {
   private tools = new Map<ToolId, Tool>()
