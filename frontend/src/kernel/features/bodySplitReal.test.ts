@@ -275,6 +275,42 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     r.scope.dispose()
   })
 
+  it('a resplitBody near-tie refusal leaves the pre-call parent writes intact and adds no sibling', () => {
+    // The near-tie throw lands AFTER callers have written their pre-call state
+    // onto the parent: boolean.ts pushes modified_by and overwrites all four
+    // name maps before resplitting (boolean.ts ~100-107), while transformMirror
+    // only writes its name maps first and pushes modified_by after (~240-247).
+    // The documented post-refusal state is therefore: caller writes survive on
+    // the parent, old shape still registered, no siblings, store still satisfies
+    // one-solid-per-body. Nothing needs cleanup because the solve-level caller
+    // discards the whole in-memory store on {status:'exception'}, but this pins
+    // the contract so a future reorder (throwing after the first mutation)
+    // cannot happen silently.
+    const r = rig()
+    const body = seedBox(r, 'body_t', [0, 0, 0], 10)
+    body.modified_by = ['cut0']
+    const oldHandle = body.shape
+    // The pre-call writes boolean.ts performs on the target before resplitting.
+    body.modified_by.push('cut1')
+    body.face_names = { ghX: '@u|f0' }
+    body.face_ancestry = { '@u|f0': ['@body_t'] }
+    body.edge_names = { ghE: '@u|e0' }
+    body.edge_ancestry = { '@u|e0': ['@body_t'] }
+    body.brep_diff = null
+    const newShape = compoundOf(r.scope, [
+      makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
+      makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
+    ])
+    expect(() => resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1')).toThrow(/near-tie/)
+    expect(Object.keys(r.store)).toEqual(['body_t'])  // no sibling landed
+    expect(r.store.body_t.modified_by).toEqual(['cut0', 'cut1'])  // caller write retained through the throw
+    expect(r.store.body_t.face_names).toEqual({ ghX: '@u|f0' })  // the caller's fresh map survived; resplit overwrote nothing
+    expect(r.store.body_t.edge_names).toEqual({ ghE: '@u|e0' })
+    expect(body.shape).toBe(oldHandle)  // identity preserved; resplit released/replaced nothing
+    expect(() => assertOneSolidPerBody(oc, r.scope, r.table, r.store)).not.toThrow()
+    r.scope.dispose()
+  })
+
   it('splitSolids orders siblings by relative position, not OCC walk order', () => {
     const r = rig()
     // Compound built +X first on purpose: explore order would put it first.
