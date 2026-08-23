@@ -135,9 +135,17 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
     let mut weights = vec![REG_WEIGHT_BASE; n];
     let anchor = input.options.drag_anchor_id as usize;
     if let Some(e) = input.entities.get(anchor) {
-        let end = (e.param_offset + e.kind.param_count()).min(n);
-        for w in weights.iter_mut().take(end).skip(e.param_offset) {
-            *w = REG_WEIGHT_DRAG;
+        // A stale anchor whose block runs past the buffer (or whose offset
+        // arithmetic would overflow on 32-bit targets) gets only the base
+        // pull, matching the out-of-range handling everywhere else.
+        if let Some(end) = e
+            .param_offset
+            .checked_add(e.kind.param_count())
+            .filter(|&end| end <= n)
+        {
+            for w in &mut weights[e.param_offset..end] {
+                *w = REG_WEIGHT_DRAG;
+            }
         }
     }
     weights
@@ -198,12 +206,16 @@ fn entity_status(input: &Input, jac: &DMatrix<f64>, rank: usize, overall: Status
     input
         .entities
         .iter()
-        .map(|e| {
+        .enumerate()
+        .map(|(ei, e)| {
             let size = e.kind.param_count();
             // A stale entity whose block runs past the param buffer has no
             // columns to pin; call it unconstrained rather than indexing out of
             // bounds (its constraints were dropped in `Problem::new` anyway).
-            if e.param_offset + size > n {
+            // The shared range check is checked arithmetic, so a verbatim
+            // offset near u32::MAX cannot wrap past the guard on wasm32 and
+            // index far out of bounds below.
+            if !input.entity_params_in_range(ei) {
                 return Status::Underconstrained.to_u8();
             }
             let mut aug = DMatrix::<f64>::zeros(m + size, n);
@@ -262,7 +274,9 @@ fn vertex_freedom(input: &Input, jac: &DMatrix<f64>) -> Vec<f32> {
         let off = e.param_offset;
         // Same stale-entity guard as `entity_status`: no anchor params in the
         // buffer means no reportable freedom direction, so leave the (0, 0).
-        if off + 1 >= v.len() {
+        // Checked add keeps a verbatim offset near u32::MAX from wrapping the
+        // bounds check and slicing the eigenvector far out of range.
+        if off.checked_add(2).is_none_or(|end| end > v.len()) {
             continue;
         }
         let dx = v[off];
@@ -281,7 +295,7 @@ mod tests {
     use super::*;
     use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
     use crate::test_util::*;
-    use crate::{EqualityPin, Options, Status};
+    use crate::{EqualityPin, Kind, Options, Status};
 
     #[test]
     fn stale_entity_ref_solves_instead_of_panicking() {
@@ -306,6 +320,57 @@ mod tests {
         assert_eq!(out.entity_status.len(), 2);
         assert_eq!(out.entity_status[1], Status::Underconstrained.to_u8());
         assert_eq!(out.vertex_freedom.len(), 4);
+    }
+
+    #[test]
+    fn entity_with_overflowing_param_offset_takes_the_out_of_range_path() {
+        // The codec decodes a stale param_offset verbatim, so one near
+        // u32::MAX can arrive with a small param buffer. On wasm32 the old
+        // wrapping `offset + size` guards passed and the status pass indexed
+        // far out of bounds; it must take the same graceful absent path as
+        // any other past-the-buffer offset instead.
+        let inp = input(
+            vec![line(0), ent(Kind::Line, u32::MAX as usize)],
+            vec![0.0, 0.0, 10.0, 1.0],
+            vec![c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent)],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        assert_eq!(out.entity_status.len(), 2);
+        // Same absent status a neighboring past-the-buffer entity reports.
+        assert_eq!(out.entity_status[1], Status::Underconstrained.to_u8());
+        assert_eq!(out.vertex_freedom.len(), 4);
+        assert_eq!(&out.vertex_freedom[2..], &[0.0, 0.0]);
+    }
+
+    #[test]
+    fn vertex_freedom_skips_entity_whose_offset_wraps_the_bounds_check() {
+        // Line 0 carries the free DOF so a null-space column exists; the
+        // stale-offset line must not wrap `off + 1` into a passing bounds
+        // check and slice the eigenvector at ~4e9.
+        let inp = input(
+            vec![line(0), ent(Kind::Line, u32::MAX as usize)],
+            vec![0.0, 0.0, 10.0, 1.0],
+            vec![c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent)],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        // Freedom pair emitted for the real line, (0, 0) left for the stale one.
+        assert_eq!(out.vertex_freedom.len(), 4);
+        assert_eq!(&out.vertex_freedom[2..], &[0.0, 0.0]);
+    }
+
+    #[test]
+    fn drag_anchor_with_overflowing_offset_leaves_base_weights() {
+        // A verbatim stale anchor offset must not wrap through
+        // `offset + count` and bump arbitrary weights; it just gets no firmer
+        // pull, like any other out-of-range anchor block.
+        let inp = Input {
+            options: Options { drag_anchor_id: 1, ..Default::default() },
+            ..input(vec![line(0), ent(Kind::Line, u32::MAX as usize)], vec![0.0; 4], vec![])
+        };
+        let w = drag_reg_weights(&inp, 4);
+        assert_eq!(w, vec![REG_WEIGHT_BASE; 4]);
     }
 
     #[test]
