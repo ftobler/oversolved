@@ -280,6 +280,37 @@ fn bezier_line(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2) -> Ve
 
 type BzCtrl = [Vec2; 4];
 
+// Recursion budget for the subdivision search. Two cubics cross at most nine
+// times (Bezout), and even a nasty near-tangential pair resolves within a few
+// thousand node visits, so this cap sits orders of magnitude above anything a
+// legitimate pair can spend. Coincident splines are the opposite: every split
+// pair's AABBs keep touching (boxes_overlap counts touching as overlap) down
+// to the FLAT cutoff, roughly 2^27 nodes on a sketch-sized curve, which used
+// to exhaust the wasm heap before the >10 discard ever saw the output. The
+// hit cap mirrors that same discard: once this many raw leaf points exist the
+// result can only be degenerate overlap, so there is nothing worth searching.
+const NODE_BUDGET: u32 = 50_000;
+const HIT_CAP: usize = 1_024;
+
+/// Search bookkeeping shared by the recursion: how many overlapping-node
+/// visits remain, and whether the search stopped with unexplored overlap
+/// left over (which makes any collected hits unreliable).
+struct BbBudget {
+    visits_left: u32,
+    truncated: bool,
+}
+
+/// True when both splines carry essentially the same shape: each corresponding
+/// control-point pair sits within POINT_MERGE, so the curves run on top of
+/// each other along their whole length and cannot produce a transversal
+/// crossing. This is the copy-paste-duplicate case, reported as no crossing
+/// consistent with the degenerate-overlap policy rather than searched.
+fn ctrl_polygons_coincident(a: &BzCtrl, b: &BzCtrl) -> bool {
+    a.iter().zip(b.iter()).all(|(p, q)| {
+        (p[0] - q[0]).abs() < POINT_MERGE && (p[1] - q[1]).abs() < POINT_MERGE
+    })
+}
+
 fn bz_split(c: &BzCtrl, t: f64) -> (BzCtrl, BzCtrl) {
     let lerp = |p: Vec2, q: Vec2| -> Vec2 { [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])] };
     let ab = lerp(c[0], c[1]);
@@ -306,8 +337,12 @@ fn boxes_overlap(a: &[f64; 4], b: &[f64; 4]) -> bool {
 }
 
 fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
+    if ctrl_polygons_coincident(&ca, &cb) {
+        return vec![];
+    }
     let mut out: Vec<Hit> = Vec::new();
     const FLAT: f64 = 1e-7;
+    let mut budget = BbBudget { visits_left: NODE_BUDGET, truncated: false };
     #[allow(clippy::too_many_arguments)]
     fn recurse(
         x: &BzCtrl,
@@ -317,6 +352,7 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
         yt0: f64,
         yt1: f64,
         depth: u32,
+        budget: &mut BbBudget,
         out: &mut Vec<Hit>,
     ) {
         let bx = bbox(x);
@@ -324,6 +360,15 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
         if !boxes_overlap(&bx, &by) {
             return;
         }
+        // Overlapping boxes plus an empty budget means unexplored overlap
+        // remains, so the collected hits are a partial ring of phantom split
+        // points; flag it and let the caller apply the degenerate-overlap
+        // policy instead of reporting them.
+        if budget.visits_left == 0 || out.len() >= HIT_CAP {
+            budget.truncated = true;
+            return;
+        }
+        budget.visits_left -= 1;
         let size_x = (bx[2] - bx[0]).max(bx[3] - bx[1]);
         let size_y = (by[2] - by[0]).max(by[3] - by[1]);
         if (size_x < FLAT && size_y < FLAT) || depth > 50 {
@@ -338,12 +383,18 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
         let ym = 0.5 * (yt0 + yt1);
         let (x0, x1) = bz_split(x, 0.5);
         let (y0, y1) = bz_split(y, 0.5);
-        recurse(&x0, xt0, xm, &y0, yt0, ym, depth + 1, out);
-        recurse(&x0, xt0, xm, &y1, ym, yt1, depth + 1, out);
-        recurse(&x1, xm, xt1, &y0, yt0, ym, depth + 1, out);
-        recurse(&x1, xm, xt1, &y1, ym, yt1, depth + 1, out);
+        recurse(&x0, xt0, xm, &y0, yt0, ym, depth + 1, budget, out);
+        recurse(&x0, xt0, xm, &y1, ym, yt1, depth + 1, budget, out);
+        recurse(&x1, xm, xt1, &y0, yt0, ym, depth + 1, budget, out);
+        recurse(&x1, xm, xt1, &y1, ym, yt1, depth + 1, budget, out);
     }
-    recurse(&ca, 0.0, 1.0, &cb, 0.0, 1.0, 0, &mut out);
+    recurse(&ca, 0.0, 1.0, &cb, 0.0, 1.0, 0, &mut budget, &mut out);
+    // Same policy as the >10 discard in intersect_curves: truncation can only
+    // happen for (near-)coincident carriers whose points are phantom split
+    // artifacts, so report nothing rather than a partial ring of fake hits.
+    if budget.truncated {
+        return vec![];
+    }
     out
 }
 
@@ -567,5 +618,48 @@ mod tests {
         let h = intersect_curves(&a, &b);
         assert_eq!(h.len(), 1);
         assert!(h[0].point[0].abs() < 1e-5 && h[0].point[1].abs() < 1e-5);
+    }
+
+    #[test]
+    fn bezier_bezier_three_crossings() {
+        // A wiggling spline through a straight-as-bezier segment crosses three
+        // times; none of those transversal hits may be lost to the recursion
+        // budget or its degenerate-overlap policy.
+        let a = Curve::Bezier { p0: [-3.0, 0.0], c1: [-1.0, 0.0], c2: [1.0, 0.0], p3: [3.0, 0.0] };
+        let b = Curve::Bezier { p0: [0.0, -2.0], c1: [4.0, 6.0], c2: [-4.0, -6.0], p3: [0.0, 2.0] };
+        let h = intersect_curves(&a, &b);
+        assert_eq!(h.len(), 3);
+        for hit in &h {
+            assert!(hit.point[1].abs() < 1e-6);
+            assert!((-3.0..=3.0).contains(&hit.point[0]));
+        }
+    }
+
+    #[test]
+    fn identical_beziers_terminate_and_report_nothing() {
+        // Pasting a spline onto itself used to explode the AABB subdivision:
+        // every split pair's boxes keep touching until the FLAT cutoff,
+        // pushing ~10^8 phantom leaves into an unbounded Vec on the wasm
+        // heap. It must now return promptly under the degenerate-overlap
+        // policy (no points), not hang or abort.
+        let bz = Curve::Bezier { p0: [0.0, 0.0], c1: [1.0, 2.0], c2: [2.0, -2.0], p3: [3.0, 0.0] };
+        let h = intersect_curves(&bz, &bz);
+        assert!(h.is_empty());
+    }
+
+    #[test]
+    fn heavily_overlapping_beziers_stay_bounded() {
+        // The same shape nudged past the control-polygon short-circuit: the
+        // search must stay inside its budget and its output inside the >10
+        // discard bound, whatever the exact crossing count turns out to be.
+        let a = Curve::Bezier { p0: [0.0, 0.0], c1: [1.0, 2.0], c2: [2.0, -2.0], p3: [3.0, 0.0] };
+        let b = Curve::Bezier {
+            p0: [0.005, 0.0],
+            c1: [1.005, 2.0],
+            c2: [2.005, -2.0],
+            p3: [3.005, 0.0],
+        };
+        let h = intersect_curves(&a, &b);
+        assert!(h.len() <= 10);
     }
 }
