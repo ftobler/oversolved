@@ -364,6 +364,56 @@ class TestProfile:
         )
         assert response.status_code == 200
 
+    def test_update_email_to_taken_address_returns_409(self, admin_client):
+        """Claiming another account's email is a conflict, not a 500."""
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "mailowner", "password": "password123",
+                "email": "mailowner@example.com"
+            }),
+            content_type="application/json",
+        )
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": "mailowner@example.com"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
+    def test_update_email_to_own_email_is_allowed(self, admin_client):
+        """Re-submitting the caller's own email is not a conflict."""
+        first = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": "keepmine@example.com"}),
+            content_type="application/json",
+        )
+        assert first.status_code == 200
+        second = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": "keepmine@example.com"}),
+            content_type="application/json",
+        )
+        assert second.status_code == 200
+
+    def test_update_username_non_string_is_rejected(self, admin_client):
+        """A numeric username must be a 400, not an unhandled 500 on .strip()."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"username": 123}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_update_email_non_string_is_rejected(self, admin_client):
+        """A numeric email must be a 400, not an unhandled 500 on .strip()."""
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": 42}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
     def test_change_password_requires_current(self, admin_client):
         """Supplying new_password without current_password is rejected."""
         response = admin_client.put(
@@ -543,6 +593,52 @@ class TestAdminCreateUserWithEmail:
         )
         assert response.status_code == 200
 
+    def test_admin_update_duplicate_email_returns_409(self, admin_client):
+        """An existing email on the update path conflicts like it does on create."""
+        admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "holder", "password": "password123",
+                "email": "holder@example.com"
+            }),
+            content_type="application/json",
+        )
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "retagger", "password": "password123",
+                "email": "retagger@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"email": "holder@example.com"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
+    def test_admin_update_same_email_is_allowed(self, admin_client):
+        """Submitting the user's unchanged email is not a conflict."""
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "sameemail", "password": "password123",
+                "email": "sameemail@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"email": "sameemail@example.com"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
     def test_admin_update_blank_username_is_rejected(self, admin_client):
         """Whitespace-only usernames are rejected the same way as null."""
         create_resp = admin_client.post(
@@ -621,6 +717,24 @@ class TestUserPreferences:
         )
         assert response.status_code == 400
         assert json.loads(response.data)["code"] == "INVALID_CONTENT_TYPE"
+
+    def test_update_preferences_null_value(self, admin_client):
+        """A null document_sort must be a 400, not an unhandled 500 on .strip()."""
+        response = admin_client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": None}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_update_preferences_non_string_value(self, admin_client):
+        """A numeric document_sort must be rejected as a client error."""
+        response = admin_client.put(
+            "/api/users/me/preferences",
+            data=json.dumps({"document_sort": 5}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
 
     def test_update_preferences_missing_value(self, admin_client):
         """An empty document_sort is rejected as required."""

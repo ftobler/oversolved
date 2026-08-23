@@ -1,5 +1,7 @@
 """User profile and preferences routes."""
 
+from typing import Any
+
 from flask import Blueprint, jsonify, request, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import UserStore
@@ -19,11 +21,18 @@ def update_profile():
     current_password = data.get("current_password", "")
     new_password = data.get("new_password", "")
 
+    # Non-string scalars would crash .strip() below; reject them as client errors.
+    if username is not None and not isinstance(username, str):
+        return api_error("Username must be a string", "BAD_REQUEST", 400)
+    if email is not None and not isinstance(email, str):
+        return api_error("Email must be a string", "BAD_REQUEST", 400)
+
     db = get_db()
     user_store = UserStore(db)
     user_id = g.current_user["id"]
 
-    updates = {}
+    # Annotated because mypy otherwise pins the value type from the first write.
+    updates: dict[str, Any] = {}
     if username and username.strip():
         new_username = username.strip()
         # Pre-check so a taken name answers 409 instead of an IntegrityError 500.
@@ -33,7 +42,12 @@ def update_profile():
         updates["username"] = new_username
 
     if email and email.strip():
-        updates["email"] = email.strip()
+        new_email = email.strip()
+        # Pre-check so a taken address answers 409 instead of an IntegrityError 500.
+        existing = user_store.find_by_email(new_email)
+        if existing is not None and existing["id"] != user_id:
+            return api_error("Email already exists", "CONFLICT", 409)
+        updates["email"] = new_email
 
     if new_password:
         pw_error = validate_password_strength(new_password)
@@ -74,7 +88,11 @@ def get_preferences():
 @auth_required(json=True)
 def update_preferences():
     data = request.get_json()
-    document_sort = data.get("document_sort", "").strip()
+    raw_sort = data.get("document_sort", "")
+    # A non-string scalar such as null would crash .strip(); reject it as client error.
+    if not isinstance(raw_sort, str):
+        return api_error("document_sort must be a string", "BAD_REQUEST", 400)
+    document_sort = raw_sort.strip()
     if not document_sort:
         return api_error("document_sort is required", "BAD_REQUEST", 400)
     if document_sort not in _VALID_SORT_PREFS:

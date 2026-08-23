@@ -102,7 +102,14 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
             return api_error("Username already exists", "CONFLICT", 409)
         updates["username"] = new_username
     if "email" in data:
-        updates["email"] = data["email"].strip() if data["email"] else None
+        new_email = data["email"].strip() if data["email"] else None
+        # Pre-check so a taken address answers 409 like create_user_admin instead of
+        # bubbling the unique-constraint IntegrityError out as a 500.
+        if new_email:
+            existing = user_store.find_by_email(new_email)
+            if existing is not None and existing["id"] != user_id:
+                return api_error("Email already exists", "CONFLICT", 409)
+        updates["email"] = new_email
     if "is_active" in data:
         updates["is_active"] = 1 if data["is_active"] else 0
     if "is_admin" in data:
