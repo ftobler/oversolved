@@ -197,7 +197,8 @@ export const CLICK_THRESHOLD_PX = 4
 export const ARC_SEGMENTS = 64
 export const VERTEX_RADIUS = 0.04
 
-// Debug and z-offset (re-exported from Sketch3D constants)
+// Pushes OriginMarker's hit-test proxy toward the camera (screen pixels,
+// scaled by p2w) so its hit target clears coplanar geometry at the origin.
 export const POINT_HIT_PIXELS_Z_OFFSET = 10
 
 // Tiny z-offset used to lift dimension labels, constraint icons, and entity

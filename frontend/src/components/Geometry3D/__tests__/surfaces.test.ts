@@ -156,8 +156,10 @@ describe('topology mesh click suppression during editing', () => {
     expect(sel.has('edge:feat1:?3;@feat1/lineA')).toBe(false)
   })
 
-  it('surface can be selected via R3F click in view mode (no active edit)', () => {
-    // In view mode (mode='view'), R3F mesh clicks ARE the selection mechanism
+  it('surface selection reflects an ID buffer pick (no active edit)', () => {
+    // In view mode (mode='view') a surface click still resolves through the
+    // ID buffer, not a native R3F mesh onClick; this simulates the resulting
+    // toggleNormalSelection call directly.
     useSketchEditorStore.getState().toggleNormalSelection('face:feat1:?3;@feat1/lineA')
 
     const sel = useSketchEditorStore.getState().normalSelection
