@@ -1,5 +1,5 @@
 import path from 'path'
-import { defineConfig, configDefaults } from 'vitest/config'
+import { defineConfig, configDefaults, type ViteUserConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // CI runners can run into problems (slow tests, heavy load), so tests are far
@@ -7,8 +7,14 @@ import react from '@vitejs/plugin-react'
 // snappy vitest defaults for fast feedback.
 const ci = !!process.env.CI
 
+// @vitejs/plugin-react is typed against the app's own vite install while
+// vitest/config resolves a nested one, so the identical plugin object fails
+// structural assignability across the two installs. Every test run exercises
+// it, so the cast only reconciles the two type views.
+const reactPlugin = react() as unknown as NonNullable<ViteUserConfig['plugins']>
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [reactPlugin],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
