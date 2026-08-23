@@ -36,6 +36,8 @@ export interface ExtractResult {
 
 const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
 
+const VERTEX_KEY_SET: ReadonlySet<string> = new Set(VERTEX_POINT_KEYS)
+
 /**
  * Resolve a constraint ref against the sketch's local entity ids. Accepts
  * the live `$entityId[point]` query-string form, the already-resolved
@@ -58,9 +60,13 @@ function resolveLocal(
   if (q && typeof q === 'object') {
     const obj = q as { entity?: unknown; point?: unknown }
     if (typeof obj.entity === 'string' && entityIds.has(obj.entity)) {
-      return typeof obj.point === 'string'
+      // Same vertex-key validation the $-form gets: an unvalidated name would
+      // lower to Sel.absent, which the solver reads as whole-curve locus,
+      // silently weakening an endpoint constraint. Absent point stays bare locus.
+      if (obj.point == null) return { entity: obj.entity }
+      return typeof obj.point === 'string' && VERTEX_KEY_SET.has(obj.point)
         ? { entity: obj.entity, point: obj.point }
-        : { entity: obj.entity }
+        : null
     }
     return null
   }

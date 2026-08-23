@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { PartFeature } from '@/types/cad'
+import type { PartFeature, PartConstraint } from '@/types/cad'
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { partDocToSketches } from './partDocToSketches'
 
 describe('partDocToSketches', () => {
@@ -233,6 +234,48 @@ describe('partDocToSketches', () => {
     const { sketches, skipped } = partDocToSketches(features)
     expect(skipped).toHaveLength(0)
     expect(sketches[0].sketch.constraints).toHaveLength(0)
+  })
+
+  it('drops a constraint whose dict ref carries a point name outside VERTEX_POINT_KEYS', () => {
+    // A typo'd dict point must not ride through: downstream lowering maps an
+    // unknown name to Sel.absent, which the Rust solver reads as whole-curve
+    // locus, quietly turning an endpoint-to-point coincident into
+    // point-on-curve. Dropped like any other unresolvable ref instead.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+        constraints: [
+          { id: 'keep', kind: 'horizontal', target: '$l1' },
+          { id: 'drop', kind: 'coincident', a: { entity: 'l1', point: 'strt' }, b: '@builtin_origin' } as unknown as PartConstraint,
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
+  })
+
+  it.each([...VERTEX_POINT_KEYS])('passes dict-ref point %s through unchanged', (pt) => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+        constraints: [
+          { id: 'c', kind: 'coincident', a: { entity: 'l1', point: pt }, b: '@builtin_origin' } as unknown as PartConstraint,
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches[0].sketch.constraints[0]).toMatchObject({
+      kind: 'coincident',
+      a: { entity: 'l1', point: pt },
+    })
   })
 
   it('ignores non-sketch features', () => {
