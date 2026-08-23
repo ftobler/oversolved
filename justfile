@@ -41,10 +41,6 @@ icons:
 
 
 [working-directory: "frontend"]
-frontend-install:
-    npm install
-
-[working-directory: "frontend"]
 frontend:
     just icons
     just frontend-lint
@@ -154,7 +150,7 @@ clean:
     rm -rf *.egg-info dist build
     rm -rf sketch-solver/pkg sketch-solver/pkg-node
     rm -rf mate-solver/pkg mate-solver/pkg-node
-    rm -rf frontend/dist frontend/public/wasm
+    rm -rf frontend/dist frontend/public/wasm frontend/public/occ
 
 # Remove everything above plus venv and node_modules
 deepclean:
@@ -168,5 +164,4 @@ run:
     trap 'kill 0' EXIT; \
     just run_front & \
     just run_back & \
-    just run_solver & \
     wait
