@@ -13,6 +13,8 @@ const sketch: Sketch = {
   A2: { center: [5, 0], radius: 1, angle_start: 0, angle_end: Math.PI / 2, start: [6, 0], end: [5, 1] },
   C1: { center: [0, 0], radius: 3 },
   C2: { center: [4, 0], radius: 2 },
+  SP1: { p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0] },
+  E1: { center: [0, 0], a: 4, b: 2, theta: 0 },  // major1=[4,0], minor1=[0,2]
 }
 
 const sel = (...ids: string[]) => new Set(ids)
@@ -536,6 +538,34 @@ describe('Measurement Selection and Evaluation', () => {
     it('still measures a sketch entity in a mixed selection that holds a whole-body pick', () => {
       const result = computeMeasurements(sel(entity('L1'), '@body_ex1'), sketch)
       expect(result).toEqual(['[LINE] 5.000 mm'])
+    })
+  })
+
+  describe('27. spline control-point vertex', () => {
+    // A spline stores its points as p1-p4, not fields named start/c1/c2/end,
+    // so a vertex pick must route through geomPoint's kind-aware mapping
+    // rather than a raw same-named property read.
+    it('resolves the c1 control point (p2), not the whole-entity fallback', () => {
+      const result = computeMeasurements(sel(vertex('SP1', 'c1'), vertex('L1', 'start')), sketch)
+      expect(result).toEqual(['dist: 1.414 mm'])  // dist([1,1], [0,0])
+    })
+    it('resolves start (p1) and end (p4)', () => {
+      const result = computeMeasurements(sel(vertex('SP1', 'start'), vertex('SP1', 'end')), sketch)
+      expect(result).toEqual(['dist: 3.000 mm'])  // dist([0,0], [3,0])
+    })
+  })
+
+  describe('28. ellipse axis-handle vertex', () => {
+    // An ellipse's axis handles (major1/major2/minor1/minor2) are computed from
+    // center/a/b/theta, not stored as same-named fields, so the same
+    // raw-property-read bug drops them too.
+    it('resolves the major1 axis handle, not the whole-entity fallback', () => {
+      const result = computeMeasurements(sel(vertex('E1', 'major1'), vertex('L1', 'start')), sketch)
+      expect(result).toEqual(['dist: 4.000 mm'])  // dist([4,0], [0,0])
+    })
+    it('resolves minor1 and minor2 across the center', () => {
+      const result = computeMeasurements(sel(vertex('E1', 'minor1'), vertex('E1', 'minor2')), sketch)
+      expect(result).toEqual(['dist: 4.000 mm'])  // dist([0,2], [0,-2])
     })
   })
 })

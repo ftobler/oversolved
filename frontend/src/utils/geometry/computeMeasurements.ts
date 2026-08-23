@@ -2,6 +2,7 @@ import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '
 import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '@/registry/measurementRegistry'
 import { getEntityKind } from '@/types/cad'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, parseSelectionId } from '@/utils/query/selectionId'
+import { geomPoint } from '@/utils/geometry/geometryMapping'
 
 /**
  * Compute the best measurement for a set of selected entities.
@@ -79,10 +80,14 @@ export function computeMeasurements(
     const entity = sketch[entityId]
     if (!entity) continue
 
-    // If this is a vertex selection, extract the actual point coordinates
+    // If this is a vertex selection, extract the actual point coordinates.
+    // Route through the canonical geomPoint resolver instead of a raw property
+    // read: a spline's point keys (start/c1/c2/end) map to p1-p4, and an
+    // ellipse's axis-handle keys (major1/major2/minor1/minor2) are computed
+    // from center/a/b/theta, neither of which exists as a same-named field on
+    // the entity, so a bare `entity[vertexRef]` silently drops both.
     if (vertexRef) {
-      const e = entity as unknown as Record<string, unknown>
-      const coords = e[vertexRef] as [number, number] | undefined
+      const coords = geomPoint(sketch, { entity: entityId, point: vertexRef })
       if (coords) {
         points.push({ x: coords[0], y: coords[1] })
         continue
