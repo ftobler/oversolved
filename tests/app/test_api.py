@@ -350,3 +350,44 @@ class TestDocumentAPI:
         )
         assert response.status_code == 400
         assert "Invalid image" in json.loads(response.data)["error"]
+
+    def test_preview_image_bad_base64_rejected_not_500(self, authed_client):
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "BadBase64Preview"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+
+        response = authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\n", "preview_image": "not-valid-base64!!!"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "Invalid image data" in json.loads(response.data)["error"]
+
+    def test_rejected_preview_image_does_not_store_content(self, authed_client):
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "PartialWriteDoc"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+        authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\noriginal: true\n"}),
+            content_type="application/json",
+        )
+
+        response = authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\noriginal: false\n", "preview_image": "not-valid-base64!!!"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+        data = json.loads(authed_client.get(f"/api/documents/{uuid}").data)
+        assert data["content"] == "version: 1\noriginal: true\n"

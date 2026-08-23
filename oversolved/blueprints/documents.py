@@ -75,17 +75,22 @@ def update_document(uuid):
     content = data["content"]
     if not isinstance(content, str):
         return api_error('"content" must be a string', "BAD_REQUEST", 400)
-    db = get_db()
-    doc_store = DocumentStore(db)
-    doc_store.store_content(uuid, content)
+    image_data = None
     if data.get("preview_image"):
-        image_data = base64.b64decode(data["preview_image"])
+        # Validated (and decoded) before any write, so a malformed image
+        # can't leave the content half of this request committed while the
+        # response reports failure.
         try:
+            image_data = base64.b64decode(data["preview_image"])
             img = Image.open(BytesIO(image_data))
             if img.width > 1024 or img.height > 1024:
                 return api_error("Invalid image", "BAD_REQUEST", 400)
         except Exception:
             return api_error("Invalid image data", "BAD_REQUEST", 400)
+    db = get_db()
+    doc_store = DocumentStore(db)
+    doc_store.store_content(uuid, content)
+    if image_data is not None:
         doc_store.store_preview_image(uuid, image_data)
     return jsonify({"uuid": uuid, "status": "stored"}), 200
 
