@@ -24,6 +24,7 @@ frozen files.
 """
 
 import json
+import os
 import pathlib
 import sys
 
@@ -33,9 +34,19 @@ MANIFEST = ROOT.parent / "src" / "wasm-kernel" / "corpus-manifest.json"
 PAYLOAD = ROOT / "corpus-regen.json"
 
 
+def atomic_write(path: pathlib.Path, text: str) -> None:
+    # Write to a sibling temp file and atomically rename over the target, so a
+    # crash mid-write (Ctrl-C, OOM, disk full) leaves the previous golden
+    # intact instead of a truncated JSON that breaks the parity gate. Same
+    # discipline regenCorpus.ts applies to its payload writes.
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
 def dump(obj, path: pathlib.Path) -> None:
     # No trailing newline: the original file (also produced by json.dump) has none.
-    path.write_text(json.dumps(obj, indent=2, sort_keys=True))
+    atomic_write(path, json.dumps(obj, indent=2, sort_keys=True))
 
 
 def case_record(case: dict) -> dict:
@@ -118,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
     manifest["summary"]["by_tier"] = by_tier
     # The manifest preserves its original key order (summary, coverage, cases);
     # sort_keys would reorder the top level and churn the whole file.
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    atomic_write(manifest_path, json.dumps(manifest, indent=2))
 
     print(f"baseline: {len(merged)} entries")
     print(f"manifest: {total} cases, {ok_count} ok, by_tier={json.dumps(by_tier)}")
