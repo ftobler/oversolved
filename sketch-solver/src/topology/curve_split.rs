@@ -27,7 +27,12 @@ pub fn split_bezier_at(c: &BezierCtrl, t: f64) -> (BezierCtrl, BezierCtrl) {
 /// Control points of the cubic Bezier restricted to [t0, t1] (0 <= t0 < t1 <= 1).
 /// Two de Casteljau cuts: trim the tail at t1, then trim the head of that piece.
 pub fn subdivide_bezier(c: &BezierCtrl, t0: f64, t1: f64) -> BezierCtrl {
-    debug_assert!(t1 > t0, "subdivide_bezier: need t0 < t1");
+    // Real assert, not debug_assert: this crate ships with debug-assertions off
+    // in release, and a silently-passed t0 >= t1 would produce a degenerate
+    // zero-length control net instead of surfacing the caller's bug. The only
+    // caller (`dcel.rs`) already skips t1 <= t0 pairs, so this should never
+    // actually fire; it exists to catch a future caller that doesn't.
+    assert!(t1 > t0, "subdivide_bezier: need t0 < t1");
     let (left, _) = split_bezier_at(c, t1); // curve over [0, t1]
     if t0 <= 0.0 {
         return left;
@@ -89,6 +94,13 @@ mod tests {
         let sub = subdivide_bezier(&c, 0.0, 0.5);
         let (left, _) = split_bezier_at(&c, 0.5);
         assert_eq!(sub, left);
+    }
+
+    #[test]
+    #[should_panic(expected = "need t0 < t1")]
+    fn subdivide_rejects_non_increasing_params() {
+        let c: BezierCtrl = [[0.0, 0.0], [1.0, 2.0], [2.0, -1.0], [3.0, 1.0]];
+        subdivide_bezier(&c, 0.5, 0.5);
     }
 
     #[test]
