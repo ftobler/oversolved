@@ -11,11 +11,18 @@ export class HttpError extends Error {
 
 // Turn a thrown request error into a user-facing message: prefer the server's
 // JSON `error` field on an HttpError, fall back to the given default, and
-// stringify anything else (network errors, etc.).
+// stringify anything else (network errors, etc.). A body that isn't valid JSON
+// (a proxy or load balancer returning an HTML error page instead of the app's
+// JSON error format) falls back too, rather than throwing out of the caller's
+// own catch block.
 export function parseHttpError(e: unknown, fallback: string): string {
   if (e instanceof HttpError) {
-    const parsed = JSON.parse(e.body || '{}') as { error?: string }
-    return parsed.error || fallback
+    try {
+      const parsed = JSON.parse(e.body || '{}') as { error?: string }
+      return parsed.error || fallback
+    } catch {
+      return fallback
+    }
   }
   return String(e)
 }
