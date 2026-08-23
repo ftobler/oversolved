@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
-import { HttpError } from '@/utils/core/httpClient'
+import { parseHttpError } from '@/utils/core/httpClient'
 import { type ShareInfo } from '@/adapters/sharing'
 import { backendBundle } from '@/adapters/backend'
 import './ShareDialog.css'
@@ -53,12 +53,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
       setShareUsername('')
       fetchShares()
     } catch (e) {
-      if (e instanceof HttpError) {
-        const parsed = JSON.parse(e.body || '{}') as { error?: string }
-        setError(parsed.error || 'Failed to share')
-      } else {
-        setError(String(e))
-      }
+      setError(parseHttpError(e, 'Failed to share'))
     } finally {
       setLoading(false)
     }
@@ -184,12 +179,7 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                               await backendBundle.sharing.share(documentUuid, { username: share.username ?? undefined, permission: e.target.value })
                               fetchShares()
                             } catch (err) {
-                              if (err instanceof HttpError) {
-                                const parsed = JSON.parse(err.body || '{}') as { error?: string }
-                                setError(parsed.error || 'Failed to update permission')
-                              } else {
-                                setError(String(err))
-                              }
+                              setError(parseHttpError(err, 'Failed to update permission'))
                             } finally {
                               setLoading(false)
                             }

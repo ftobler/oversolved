@@ -126,6 +126,52 @@ describe('ShareDialog', () => {
     })
   })
 
+  // A proxy/load balancer can return an HTML error page instead of the app's
+  // JSON error format; JSON.parse on that body must not throw out of the
+  // catch block itself (that would surface as an unhandled rejection instead
+  // of the fallback error text this test asserts).
+  it('shows a fallback error message when the share request fails with a non-JSON body', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/documents/doc-1/shares') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ shares: [] }),
+        } as Response)
+      }
+      if (url === '/api/documents/doc-1/share' && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 502,
+          text: () => Promise.resolve('<html>Bad Gateway</html>'),
+        } as unknown as Response)
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <ShareDialog
+        isOpen
+        documentUuid="doc-1"
+        documentName="TestDoc"
+        ownerUsername="TestUser"
+        isOwner
+        onClose={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Username')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'otheruser' } })
+    fireEvent.click(screen.getByText('Share'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to share')).toBeInTheDocument()
+    })
+  })
+
   it('displays existing shares with remove buttons', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/documents/doc-1/shares') {
