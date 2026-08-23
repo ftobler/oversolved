@@ -23,11 +23,20 @@ export async function captureThumbnail(
   // the one-off render we read the pixels from.
   await new Promise<void>(resolve => setTimeout(resolve, 0))
 
-  gl.setSize(smallWidth, smallHeight)
-  gl.render(scene, camera)
-  const dataUrl = gl.domElement.toDataURL('image/png')
-
-  gl.setSize(originalSize.width, originalSize.height)
+  // The resize-down, render and pixel read all touch the LIVE renderer shared
+  // with the on-screen Viewport, so a throw here (e.g. a WebGL context loss
+  // mid-render) must still restore the original size before it propagates.
+  // Otherwise the user is left staring at a permanently quarter-resolution
+  // viewport for an incidental thumbnail capture. The original error is
+  // rethrown after cleanup; callers (saveDoc) already catch around it.
+  let dataUrl: string
+  try {
+    gl.setSize(smallWidth, smallHeight)
+    gl.render(scene, camera)
+    dataUrl = gl.domElement.toDataURL('image/png')
+  } finally {
+    gl.setSize(originalSize.width, originalSize.height)
+  }
 
   const img = new Image()
   await new Promise<void>((resolve, reject) => {
