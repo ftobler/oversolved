@@ -81,6 +81,9 @@ When the user asks to plan a feature but mentions of making it light or quick:
 There is a knowledge base in `feature/knowledgebase.agent.md` and `feature/knowledgebase.user.md`.
 The user file is to be kept original accurate. There are MY statements as the user. They are to be put there by the agent.
 In the agent file the whole idea-knowledge-code flow comes together. Keep it detailed, put actual code references, codes and memory to remember in here.
+`feature/knowledgebase.agent.md` is living reference only: current architecture facts, models, decisions, hard rules.
+Shipped-feature post-mortems (root causes, traps, measurements) go to `feature/knowledgebase.history.md`, appended at the bottom, never edited afterwards.
+Deferred work and accepted limitations go to `feature/backlog.md` (sections: needs a decision / accepted limitations / resolved); items needing a review-pass decision stay in `feature/review-direction.md`.
 
 ## Tmporary Directory
 
