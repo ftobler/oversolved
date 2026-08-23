@@ -402,24 +402,29 @@ export default function Part() {
     // anything. Deciding per entry would mean re-resolving every selected query
     // against the restored doc on every undo, and a selection that survives one
     // undo but silently dies on the next is worse than one that always clears.
-    sketchStore.clearNormalSelection()
-    sketchStore.setActivePickField(null)  // also pops the matching 'pick' mode entry
-    sketchStore.closeDialog()
-    sketchStore.closeContextMenu()
-    // An undone doc has no place for a pending dimension gesture's projections;
-    // drop the bookkeeping without a compensating delete (the doc is already
-    // being replaced by the undo's own restore).
+    //
+    // Delegated to the store's canonical wipe instead of hand-listing actions
+    // here, so this list cannot drift from resetTransientState the way
+    // applyUndoRedo's hand-listed reset once did. It covers selection (with the
+    // pick field's 'pick' mode entry), dialogs, context menu, drag/pointer
+    // state, projection bookkeeping AND the hover residue none of the
+    // individual actions touched -- without which a stale hoveredFaceNormal
+    // could still feed buildContextMenu's "Normal to" item after its face is
+    // gone. The drag half matters even though a later setActiveFeatureId(null)
+    // would clear most of it: a mid-drag undo exits the edit that owns the
+    // gesture (editingFeatureId -> null above), unmounting
+    // DragPlane/FeatureHandles and dropping their window pointerup listener --
+    // so without it the residue either commits onto the restored doc's stale
+    // ids or gets stuck non-null forever. Mirrors the assembly editor's
+    // identical mid-drag-undo guard.
+    //
+    // clearBrepProjectionState stays explicit ahead of the reset: unlike the
+    // plain wipe it fires the R3F-side gesture-abort callback, and an undone
+    // doc has no place for a pending dimension gesture's projections anyway --
+    // dropped without a compensating delete, the doc being already replaced by
+    // the undo's own restore.
     sketchStore.clearBrepProjectionState()
-    // A live drag (sketch vertex/edge, dimension label, or a BREP feature
-    // handle) targets entities in the doc that is about to be replaced. Undo
-    // exits the edit that owns it (editingFeatureId -> null above), which
-    // unmounts DragPlane/FeatureHandles and drops their window pointerup
-    // listener -- so without this the drag/isPointerDown residue is never
-    // cleared and either commits onto the restored doc's stale ids on the
-    // next pointerup that IS still listening (an unrelated drag surface), or
-    // (if the listener really is gone) gets stuck non-null forever. Mirrors
-    // the assembly editor's identical mid-drag-undo guard.
-    sketchStore.clearDragState()
+    sketchStore.resetTransientState()
     setContextMenu(null)
     // The color preview is discarded rather than applied: undo brings its own
     // doc, and a popover left open would only be able to commit or revert

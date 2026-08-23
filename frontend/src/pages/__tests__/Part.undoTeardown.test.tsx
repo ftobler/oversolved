@@ -182,6 +182,46 @@ describe('Part - undo tears down transient editor state', () => {
     expect(sketchStore.alignmentSnapVertexId).toBeNull()
   })
 
+  // Hover state lives outside every action the teardown used to hand-list:
+  // replaying those six calls against a hover-populated store leaves all eight
+  // hover fields standing, and a stale hoveredFaceNormal can still feed
+  // buildContextMenu's "Normal to" item after the face is gone. This pins the
+  // delegation to the store's own wipe, which owns these too.
+  it('clears the hover residue along with the rest of the transient state', async () => {
+    vi.stubGlobal('fetch', partDocFetchMock())
+    renderPart()
+    await screen.findByTitle('Feature mode')
+
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
+    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+
+    act(() => {
+      useSketchEditorStore.setState({
+        hoveredSelectionId: '?01;deadbeef:face',
+        hoveredPickKey: 'p1',
+        hoveredVertexId: 'v1',
+        hoveredVertexPosition: [1, 2],
+        hoveredSnapKind: 'vertex',
+        hoveredConstraintEntityIds: new Set(['c1']),
+        hoveredFaceNormal: [0, 0, 1],
+        hoveredFaceCenter: [0.5, 0.5, 0],
+      })
+    })
+
+    await act(async () => { executeCommand('undo') })
+
+    const sketchStore = useSketchEditorStore.getState()
+    expect(sketchStore.hoveredSelectionId).toBeNull()
+    expect(sketchStore.hoveredPickKey).toBeNull()
+    expect(sketchStore.hoveredVertexId).toBeNull()
+    expect(sketchStore.hoveredVertexPosition).toBeNull()
+    expect(sketchStore.hoveredSnapKind).toBeNull()
+    expect(sketchStore.hoveredConstraintEntityIds.size).toBe(0)
+    expect(sketchStore.hoveredFaceNormal).toBeNull()
+    expect(sketchStore.hoveredFaceCenter).toBeNull()
+  })
+
   it('an undo with an empty stack tears nothing down', async () => {
     vi.stubGlobal('fetch', partDocFetchMock())
     renderPart()
