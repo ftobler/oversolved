@@ -368,7 +368,6 @@ interface SketchEditorState {
   // dim lands at the click point instead of the renderer's default offset.
   dimensionCursorWorld: [number, number] | null
   pendingDialog: DialogState | null
-  pendingProjectTarget: { sourceFeatureId: string; sourceEntityId: string } | null
   contextMenu: [number, number] | null
   activePickField: ActivePickField | null
   chipOwnedSelection: Set<string>
@@ -386,7 +385,6 @@ interface SketchEditorState {
   deleteSelected: () => void
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
-  setPendingProjectTarget: (target: { sourceFeatureId: string; sourceEntityId: string } | null) => void
   openContextMenu: (pos: [number, number]) => void
   closeContextMenu: () => void
   addDimensionPick: (pick: DimensionPick) => void
@@ -494,7 +492,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   pendingBrepProjectionIds: [],
   dimensionCursorWorld: null,
   pendingDialog: null,
-  pendingProjectTarget: null,
   contextMenu: null,
   modeStack: [],
   activePickField: null,
@@ -571,7 +568,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       pendingBrepProjectionIds: [],
       dimensionCursorWorld: null,
       pendingDialog: null,
-      pendingProjectTarget: null,
       contextMenu: null,
       modeStack: [],
       activePickField: null,
@@ -939,7 +935,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   openDialog: (opts) => set({ pendingDialog: opts }),
   closeDialog: () => set({ pendingDialog: null }),
-  setPendingProjectTarget: (target) => set({ pendingProjectTarget: target }),
   openContextMenu: (pos) => set({ contextMenu: pos }),
   closeContextMenu: () => set({ contextMenu: null }),
 
