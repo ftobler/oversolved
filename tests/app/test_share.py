@@ -279,6 +279,83 @@ class TestShareAPI:
         )
         assert response.status_code == 200
 
+    def test_remove_share_blank_username_rejected(self, app, authed_client):
+        """A present but blank username must 400 instead of unpublishing."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        response = authed_client.delete(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": ""}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "BAD_REQUEST"
+
+        doc_resp = authed_client.get(f"/api/documents/{uuid}")
+        assert json.loads(doc_resp.data)["is_public"] is True
+
+    def test_remove_share_null_username_rejected(self, app, authed_client):
+        """A null username must 400 and leave the document public."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        response = authed_client.delete(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": None}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "BAD_REQUEST"
+
+        doc_resp = authed_client.get(f"/api/documents/{uuid}")
+        assert json.loads(doc_resp.data)["is_public"] is True
+
+    def test_remove_share_absent_username_still_unpublishes(self, app, authed_client):
+        """Omitting the username key as owner remains an unpublish request."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        response = authed_client.delete(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        doc_resp = authed_client.get(f"/api/documents/{uuid}")
+        assert json.loads(doc_resp.data)["is_public"] is False
+
     def test_list_shares(self, app, authed_client):
         create_resp = authed_client.post(
             "/api/documents",

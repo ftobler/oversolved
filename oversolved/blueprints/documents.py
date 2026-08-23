@@ -227,6 +227,14 @@ def remove_share(uuid):
     doc_store = DocumentStore(db)
     doc = g.document
 
+    # Mirror of the create_share guard: an absent key keeps today's
+    # behavior, but a present yet blank username must fail loudly rather
+    # than silently unpublishing or self-unsharing.
+    if "username" in data and (
+        not isinstance(data["username"], str) or not data["username"].strip()
+    ):
+        return api_error("Username required", "BAD_REQUEST", 400)
+
     username = data.get("username")
     if username:
         user = UserStore(db).find_by_username(username)
