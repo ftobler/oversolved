@@ -324,13 +324,12 @@ mod tests {
 
     #[test]
     fn entity_with_overflowing_param_offset_takes_the_out_of_range_path() {
-        // The codec decodes a stale param_offset verbatim, so one near
-        // u32::MAX can arrive with a small param buffer. On wasm32 the old
-        // wrapping `offset + size` guards passed and the status pass indexed
-        // far out of bounds; it must take the same graceful absent path as
-        // any other past-the-buffer offset instead.
+        // The codec decodes a stale param_offset verbatim, so one far past
+        // the param buffer can arrive. usize::MAX scale makes `offset + size`
+        // overflow on every target width, so the guard path here is a real
+        // regression detector on 64-bit native CI too, not just wasm32.
         let inp = input(
-            vec![line(0), ent(Kind::Line, u32::MAX as usize)],
+            vec![line(0), ent(Kind::Line, usize::MAX)],
             vec![0.0, 0.0, 10.0, 1.0],
             vec![c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent)],
         );
@@ -346,10 +345,11 @@ mod tests {
     #[test]
     fn vertex_freedom_skips_entity_whose_offset_wraps_the_bounds_check() {
         // Line 0 carries the free DOF so a null-space column exists; the
-        // stale-offset line must not wrap `off + 1` into a passing bounds
-        // check and slice the eigenvector at ~4e9.
+        // stale-offset line (usize::MAX scale, overflowing on every width)
+        // must not wrap `off + 1` into a passing bounds check and slice the
+        // eigenvector far out of range.
         let inp = input(
-            vec![line(0), ent(Kind::Line, u32::MAX as usize)],
+            vec![line(0), ent(Kind::Line, usize::MAX)],
             vec![0.0, 0.0, 10.0, 1.0],
             vec![c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent)],
         );
@@ -367,7 +367,7 @@ mod tests {
         // pull, like any other out-of-range anchor block.
         let inp = Input {
             options: Options { drag_anchor_id: 1, ..Default::default() },
-            ..input(vec![line(0), ent(Kind::Line, u32::MAX as usize)], vec![0.0; 4], vec![])
+            ..input(vec![line(0), ent(Kind::Line, usize::MAX)], vec![0.0; 4], vec![])
         };
         let w = drag_reg_weights(&inp, 4);
         assert_eq!(w, vec![REG_WEIGHT_BASE; 4]);
