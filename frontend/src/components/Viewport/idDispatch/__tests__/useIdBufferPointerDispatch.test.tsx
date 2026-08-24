@@ -626,6 +626,41 @@ describe('useIdBufferPointerDispatch', () => {
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
+  it('warns and keeps processing moves when applying a hover hit throws', async () => {
+    // The former bare `.catch(() => {})` killed the apply silently: no trace,
+    // and an adapter bug was indistinguishable from a dead hover stream.
+    const onOver = vi.fn()
+      .mockImplementationOnce(() => { throw new Error('adapter exploded') })
+    const onOut = vi.fn()
+    registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onDoubleClick: () => {}, onPointerDown: () => {} })
+
+    const hit = { id: 1, layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1', distancePx: 0 }
+    pipeline.resolveAsync = vi.fn().mockResolvedValue(hit)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    expect(warn).toHaveBeenCalledWith('hover apply failed', expect.any(Error))
+
+    // The state machine must still be alive: the next frame's resolve applies.
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 60, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+
+    expect(onOver).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
   it('hover over sketchSurface layer sets hoveredSelectionId', async () => {
     pipeline.resolveAsync = vi.fn().mockResolvedValue({
       id: 1, layer: SKETCH_SURFACE_LAYER_NAME, entityKey: 'sk1/surf:face0', distancePx: 0,

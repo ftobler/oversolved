@@ -232,7 +232,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           if (epoch !== hoverEpoch) return
           applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
         })
-        .catch(() => {})
+        // Never silent: a swallowed apply error would kill the hover state
+        // machine with no trace. The warn keeps the control flow identical.
+        .catch(err => console.warn('hover apply failed', err))
     }
 
     // Tear the hover down AND make sure it cannot come back: cancels the

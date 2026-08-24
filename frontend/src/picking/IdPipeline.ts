@@ -229,6 +229,9 @@ export class IdPipeline {
     if (hasScissorApi) renderer.getScissor(prevScissor)
     const prevScissorTest = hasScissorApi ? renderer.getScissorTest() : false
     let completed = false
+    // Names of layers whose pass threw this cycle, consulted after the state
+    // restore to decide whether the buffer may be marked clean.
+    const failedLayers: string[] = []
     try {
       renderer.setRenderTarget(this.target.target)
       renderer.autoClear = false
@@ -267,6 +270,7 @@ export class IdPipeline {
           firstLayer = false
         } catch (err) {
           // Skip only the failing layer; keep the pipeline alive.
+          failedLayers.push(layer.name)
           console.warn(`ID layer render failed: ${layer.name}`, err)
         }
       }
@@ -284,7 +288,11 @@ export class IdPipeline {
     }
 
     if (completed) {
-      this.target.markClean()
+      // A failed layer leaves the buffer amputated: marking it clean would
+      // make every later resolve answer from a partial image. Stay dirty so
+      // the next frame retries; the caller's rAF loop already paces that at
+      // one attempt per frame, which bounds even a persistently failing layer.
+      if (failedLayers.length === 0) this.target.markClean()
       this.registry.bumpCycle()
       this.renderCount++
     }

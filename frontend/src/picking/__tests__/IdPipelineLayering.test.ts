@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import * as THREE from 'three'
 import { IdPipeline } from '../IdPipeline'
 import { FACE_LAYER_NAME } from '../FaceIdLayer'
 import { EDGE_LAYER_NAME } from '../EdgeIdLayer'
@@ -54,5 +55,66 @@ describe('IdPipeline layering', () => {
     expect(p.dimensionLabelLayer.bodyCount()).toBe(0)
     expect(p.featureHandleLayer.bodyCount()).toBe(0)
     expect(p.gizmoHandleLayer.bodyCount()).toBe(0)
+  })
+
+  // Minimal stand-in: only the surface render() touches. The viewport/scissor
+  // API is deliberately absent so those restore paths are skipped.
+  function fakeRenderer(failScene: THREE.Scene | null): THREE.WebGLRenderer {
+    return {
+      getRenderTarget: () => null,
+      setRenderTarget: () => {},
+      autoClear: true,
+      getClearColor: () => {},
+      getClearAlpha: () => 0,
+      setClearColor: () => {},
+      clear: () => {},
+      clearDepth: () => {},
+      render: (scene: THREE.Scene) => {
+        if (scene === failScene) throw new Error('layer render exploded')
+      },
+    } as unknown as THREE.WebGLRenderer
+  }
+
+  function registerOneFace(p: IdPipeline, bodyKey: string): void {
+    p.faceLayer.registerBody({
+      bodyKey,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      triangleToFace: new Uint32Array([0]),
+      faceQueries: ['face@q'],
+    })
+  }
+
+  describe('layer render failure', () => {
+    it('leaves the buffer dirty and warns with the failing layer name', () => {
+      const p = new IdPipeline({ width: 32, height: 32 })
+      registerOneFace(p, 'b1')
+      p.markDirty()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        p.render(fakeRenderer(p.faceLayer.scene), new THREE.Camera())
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(FACE_LAYER_NAME), expect.anything())
+        // Amputated buffer must not be treated as complete: stays dirty so
+        // the next frame retries instead of resolving from partial pixels.
+        expect(p.isDirty()).toBe(true)
+      } finally {
+        warn.mockRestore()
+        p.dispose()
+      }
+    })
+
+    it('marks clean again once a render completes without failures', () => {
+      const p = new IdPipeline({ width: 32, height: 32 })
+      registerOneFace(p, 'b1')
+      p.markDirty()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        p.render(fakeRenderer(null), new THREE.Camera())
+        expect(warn).not.toHaveBeenCalled()
+        expect(p.isDirty()).toBe(false)
+      } finally {
+        warn.mockRestore()
+        p.dispose()
+      }
+    })
   })
 })
