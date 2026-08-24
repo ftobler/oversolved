@@ -493,7 +493,8 @@ describe('useIdBufferPointerDispatch', () => {
     })
   })
 
-  it('hover stream calls onOver then onOut as the resolved key changes', async () => {    const onOver = vi.fn()
+  it('hover stream calls onOver then onOut as the resolved key changes', async () => {
+    const onOver = vi.fn()
     const onOut = vi.fn()
     registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onDoubleClick: () => {}, onPointerDown: () => {} })
 
