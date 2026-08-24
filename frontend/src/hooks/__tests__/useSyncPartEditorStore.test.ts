@@ -5,15 +5,29 @@
 // mirror gets its own suite.
 import { describe, it, expect } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useSyncPartEditorStore } from '@/hooks/useSyncPartEditorStore'
+import {
+  useSyncPartEditorStore,
+  MIRRORED_PART_EDITOR_FIELDS,
+  type MirroredPartEditorData,
+} from '@/hooks/useSyncPartEditorStore'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA, type PartEditorData } from '@/stores/partEditorStore'
 import type { Mutation } from '@/types/cad'
+
+// A PartEditorData field absent from the mirrored list fails the build here:
+// the list must stay an exhaustive partition of PartEditorData minus the
+// store-owned fields, or a future field silently stops reaching the store.
+const STORE_OWNED_FIELDS = ['rollbackPosition', 'pickBoundary', 'editingFeatureId'] as const
+
+type Assert<T extends true> = T
+export type MirroredFieldsAreExhaustive = Assert<
+  [Exclude<keyof PartEditorData, (typeof MIRRORED_PART_EDITOR_FIELDS)[number] | (typeof STORE_OWNED_FIELDS)[number]>] extends [never] ? true : false
+>
 
 const mutation = { type: 'add_sketch', featureId: 'sk1' } as Mutation
 
 // What setSnapshot is supposed to write: DEFAULT minus the three store-owned
 // fields (the mirror never passes them) with the stacks overridden.
-type MirroredData = Omit<PartEditorData, 'rollbackPosition' | 'pickBoundary' | 'editingFeatureId'>
+type MirroredData = MirroredPartEditorData
 
 function mirroredData(overrides: Partial<MirroredData> = {}): MirroredData {
   const { rollbackPosition: _rollbackPosition, pickBoundary: _pickBoundary, editingFeatureId: _editingFeatureId, ...rest } = DEFAULT_PART_EDITOR_DATA
@@ -59,5 +73,14 @@ describe('useSyncPartEditorStore', () => {
 
     expect(usePartEditorStore.getState().undoStack).toEqual(DEFAULT_PART_EDITOR_DATA.undoStack)
     expect(usePartEditorStore.getState().redoStack).toEqual(DEFAULT_PART_EDITOR_DATA.redoStack)
+  })
+
+  it('mirrors exactly the PartEditorData fields the store does not own', () => {
+    // The hook's hand-written dependency list is pinned by
+    // MIRRORED_PART_EDITOR_FIELDS; this keeps that constant in lockstep with
+    // PartEditorData itself, so a new field cannot silently skip the mirror.
+    const owned = new Set<string>(STORE_OWNED_FIELDS)
+    const expected = Object.keys(DEFAULT_PART_EDITOR_DATA).filter(k => !owned.has(k)).sort()
+    expect([...MIRRORED_PART_EDITOR_FIELDS].sort()).toEqual(expected)
   })
 })

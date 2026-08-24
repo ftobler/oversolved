@@ -5,10 +5,21 @@ import type { PartEditorData } from '@/stores/partEditorStore'
 // Mirrored slice: everything except the fields the store itself owns.
 // rollbackPosition, pickBoundary, and editingFeatureId are mutated via
 // their dedicated setters; setSnapshot preserves them.
-type MirroredPartEditorData = Omit<
+export type MirroredPartEditorData = Omit<
   PartEditorData,
   'rollbackPosition' | 'pickBoundary' | 'editingFeatureId'
 >
+
+// The mirrored field list as data, pinning the hand-written dependency array
+// below to the MirroredPartEditorData shape: a field added to PartEditorData
+// must join this list or the suite's exact-set assertion fails, and a renamed
+// one fails the satisfies check at build time.
+export const MIRRORED_PART_EDITOR_FIELDS = [
+  'features', 'doc', 'activeSketchFeatureId',
+  'visibleFeatures', 'visibleBodies', 'partLabels', 'solveResults', 'bodies', 'pickBodies',
+  'isRebuilding', 'featureTimings', 'validation', 'ghostMode', 'otherSketches',
+  'partColors', 'partStyle', 'undoStack', 'redoStack',
+] as const satisfies readonly (keyof MirroredPartEditorData)[]
 
 export function useSyncPartEditorStore(data: MirroredPartEditorData): void {
   const {
