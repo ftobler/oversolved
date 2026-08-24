@@ -165,4 +165,33 @@ describe('useUserPreferences', () => {
 
     expect(result.current.preferences.document_sort).toBe('date_oldest_first')
   })
+
+  it('a failed save reverts the optimistic value and warns about the reverted key', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // The GET load succeeds; every PUT fails (server unreachable), so the
+    // optimistic toggle must bounce back with a signal instead of silently.
+    const mockFetch = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return Promise.resolve({ ok: false, status: 503, text: () => Promise.resolve('') } as Response)
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ document_sort: 'date_newest_first' }),
+        text: () => Promise.resolve(JSON.stringify({ document_sort: 'date_newest_first' })),
+      } as Response)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { result } = renderHook(() => useUserPreferences())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.updatePreference('document_sort', 'alphabetical')
+    })
+
+    expect(result.current.preferences.document_sort).toBe('date_newest_first')  // reverted
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toContain('document_sort')
+    expect(String(warn.mock.calls[0][0])).toContain('reverted')
+  })
 })

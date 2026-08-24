@@ -57,6 +57,9 @@ export function useUserPreferences(signedIn = true) {
         const reverted = { ...preferencesRef.current, [key]: previous } as UserPreferences
         preferencesRef.current = reverted
         setPreferences(reverted)
+        // Fail loud enough for an offline user to diagnose: the toggle visibly
+        // bounced back, so say which key and why instead of reverting silently.
+        console.warn(`[useUserPreferences] saving '${key}' failed; reverted to '${previous}'`)
       }
     }
   }, [prefs])
