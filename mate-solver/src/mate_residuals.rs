@@ -1151,6 +1151,35 @@ fn twist_gradient(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> [f64; 4] 
     [dua * w[0], dua * w[1], dua * w[2], dub]
 }
 
+/// Relative factor for the SVD rank cutoff (see `singular_value_cutoff`).
+const RANK_REL_TOL: f64 = 1e-10;
+
+/// Rank cutoff for a Jacobian whose largest singular value is `smax`.
+///
+/// The naive form from the review, `1e-6 * smax`, does not work on THIS
+/// matrix and was rejected on measured spectra: the Jacobian mixes units, so
+/// grounded-body pins, quaternion-norm rows and translation columns stay
+/// dimensionless O(1) however small the model is drawn. `smax` therefore
+/// never shrinks with geometry, and `1e-6 * smax` can sit above the very
+/// singular values that must keep counting -- a 1e-7-scale triple spherical
+/// weld measured sigma = {2.3e-6, 2.0e-6, 1.2e-6} against a proposed cutoff
+/// of 2.6e-6, demoting it from rank 14 to rank 11 (the exact bug class this
+/// fix exists to remove). `1e-10 * smax` keeps the relative spirit with real
+/// margins on both sides: four-plus orders above the finite-difference noise
+/// of the roll/tangential filler rows (measured junk at ~1e-12 and below),
+/// and well below the smallest genuine geometric direction for any sane
+/// modelling scale down to nanometres (measured 1.2e-8 at 1e-9). A true zero
+/// direction (a hinge's free roll measured 6.5e-18) stays excluded. An
+/// all-zero spectrum falls back to the legacy absolute cutoff; every
+/// direction is rank-deficient there under any positive tolerance anyway.
+fn singular_value_cutoff(smax: f64) -> f64 {
+    if smax > 0.0 {
+        RANK_REL_TOL * smax
+    } else {
+        1e-6
+    }
+}
+
 /// `residual_norm` is an L2 norm over `m` residuals, so it grows with the
 /// number of mates even when every individual residual is converged to the
 /// same tolerance -- an absolute threshold here would flag a large,
@@ -1230,7 +1259,14 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
         0
     } else {
         let svd = lm_result.jacobian.svd(true, false);
-        let tol = 1e-6;
+        // The rank cutoff must scale with the drawing unit: an assembly laid
+        // out at 1e-9 m has exactly the same DOF as the same assembly at 1 m,
+        // but its geometry-proportional singular values shrink linearly with
+        // the unit and a fixed absolute cutoff misreads them as rank loss
+        // (measured: three spherical mates at 1e-9 reported 3 phantom DOF).
+        // See `singular_value_cutoff` for why the factor is what it is.
+        let smax = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+        let tol = singular_value_cutoff(smax);
         let rank = svd.singular_values.iter().filter(|&&s| s > tol).count();
         n.saturating_sub(rank)
     };
@@ -2852,5 +2888,79 @@ mod tests {
         let out = solve_mate(&input);
         assert!(out.diagnostics.residual_norm.is_finite());
     }
+
+    /// Three spherical mates between a grounded body and a free one pin all
+    /// six relative DOF. Their rotational constraint directions live in the
+    /// geometry-proportional Jacobian entries, which is what makes this the
+    /// sensitive fixture for rank-cutoff scaling: measured spectra were
+    /// sigma = {40, 28, 28, ...} at unit scale versus {2.3e-6, 2.0e-6,
+    /// 1.2e-6, ...} at 1e-7 and ~1e-8 values at 1e-9.
+    fn three_spherical_weld_input(scale: f64) -> MateInput {
+        let pt = |v: f64| v * scale;
+        MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                (5.0 * scale) as f32, scale as f32, (2.0 * scale) as f32, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Spherical,
+                    mate_ref(0, pt(10.0), 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, pt(10.0), 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, pt(10.0), 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, pt(10.0), 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+            ],
+        }
+    }
+
+    #[test]
+    fn rank_and_status_survive_tiny_scale_drawing_units() {
+        // Same weld at 1 m and at micrometre/nanometre drawing units must read
+        // identically. Under the old absolute 1e-6 cutoff the 1e-9 row here
+        // reported rank 11 / dof 3 / Underconstrained -- three phantom degrees
+        // of freedom purely from the drawing unit.
+        for scale in [1.0_f64, 1e-7, 1e-9] {
+            let out = solve_mate(&three_spherical_weld_input(scale));
+            assert_eq!(out.diagnostics.dof, 0, "scale {scale:e}: dof must not depend on units");
+            assert_eq!(
+                out.overall_status,
+                MateStatus::FullyConstrained.to_u8(),
+                "scale {scale:e}: status must not depend on units"
+            );
+        }
+    }
+
+    #[test]
+    fn singular_value_cutoff_is_relative_with_a_legacy_zero_spectrum_floor() {
+        // smax == 0 keeps the legacy absolute cutoff; anything else scales
+        // with it.
+        assert_eq!(singular_value_cutoff(0.0), 1e-6);
+        assert!((singular_value_cutoff(40.0) - 40.0 * RANK_REL_TOL).abs() < 1e-18);
+        assert!((singular_value_cutoff(2.558) - 2.558 * RANK_REL_TOL).abs() < 1e-18);
+    }
+
+    #[test]
+    fn cutoff_rescues_collapsed_geometry_values_but_not_true_zeros() {
+        // Spectra measured from real fixtures (see the scale-invariance test):
+        // a 1e-9-scale weld carries genuine constraints at ~1e-8, while a
+        // hinge's genuinely free roll direction reads ~1e-18. The cutoff must
+        // separate those two classes at comparable smax.
+        let tol = singular_value_cutoff(2.558);
+        let collapsed_weld = [2.6, 2.2, 2.3e-8, 2.0e-8, 1.2e-8];
+        assert_eq!(collapsed_weld.iter().filter(|&&s| s > tol).count(), 5);
+
+        let tol_hinge = singular_value_cutoff(2.921);
+        let hinge_free_roll = [2.9, 2.2, 6.5e-18];
+        assert_eq!(hinge_free_roll.iter().filter(|&&s| s > tol_hinge).count(), 2);
+    }
 }
+
 
