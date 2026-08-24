@@ -83,6 +83,28 @@ pub struct MateProblem {
 /// condition. See `rotation_damp_scale` and `lm::solve_lm_damped`.
 const ROT_DAMP_SCALE: f64 = 500.0;
 
+/// Cell ceiling on the dense Jacobian this solver will allocate.
+///
+/// The dense LM driver materialises the m*n Jacobian plus a J^T J of n*n and
+/// LU workspaces alongside it, so memory scales as several multiples of m*n
+/// f64s. A well-formed but oversized header (say 1000 bodies x 500k spherical
+/// mates) would otherwise trap the wasm heap mid-allocation, and the resulting
+/// OOM abort kills the worker outright instead of returning anything. Solves
+/// above the budget are refused up front with the failing status until the
+/// sparse-LM migration replaces the dense path; 2e8 cells (~1.6 GB of f64) sits
+/// far above every legitimate assembly yet far below what aborts the heap.
+const DENSE_CELL_BUDGET: usize = 200_000_000;
+
+/// The budget gate behind `solve_mate`, parameterised so tests can drive it
+/// with tiny numbers instead of reserving a real one. An m*n that overflows
+/// usize counts as over budget: wrapping it back under would defeat the check.
+fn dense_cells_over_budget(m: usize, n: usize, budget: usize) -> bool {
+    match m.checked_mul(n) {
+        Some(cells) => cells > budget,
+        None => true,
+    }
+}
+
 /// Residual count contributed by one mate of `kind`. A standalone function (not
 /// inlined into `MateProblem::new`) so `mate_residual_count_matches_actual_residuals_pushed`
 /// can drive it directly: a future arm that bumps this without bumping the
@@ -1158,9 +1180,34 @@ fn mate_status(residual_norm: f64, m: usize, dof: usize) -> MateStatus {
 
 /// Run the mate solver: build a Problem, call solve_lm, compute status, build output.
 pub fn solve_mate(input: &MateInput) -> MateOutput {
+    solve_mate_with_budget(input, DENSE_CELL_BUDGET)
+}
+
+/// `solve_mate` with the dense-cell ceiling injected (test hook; production
+/// always passes `DENSE_CELL_BUDGET`).
+fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
     let problem = MateProblem::new(input);
     let n = problem.n;
     let m = problem.m;
+
+    // Refuse before the first dense allocation: past this point every step
+    // reserves matrices proportional to m*n, and an OOM there aborts the
+    // worker instead of returning the failing status below.
+    if dense_cells_over_budget(m, n, budget) {
+        return MateOutput {
+            params_solved: input.params_initial.clone(),
+            overall_status: MateStatus::Overconstrained.to_u8(),
+            diagnostics: MateDiagnostics {
+                // Infinity reads as "no convergence measurement exists", which
+                // is exactly the truth for a solve that never ran.
+                residual_norm: f64::INFINITY,
+                rank: 0,
+                dof: 0,
+                iters: 0,
+                ms: 0.0,
+            },
+        };
+    }
 
     let x0_f64: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
 
@@ -2773,6 +2820,37 @@ mod tests {
             "expected finite params or an error status, got status={} params={:?}",
             out.overall_status, out.params_solved,
         );
+    }
+
+    #[test]
+    fn dense_cell_guard_flags_products_over_budget_and_overflow() {
+        // Tiny numbers stand in for the real 2e8-cell budget so the gate is
+        // exercisable in microseconds.
+        let tiny_budget = 100;
+        assert!(!dense_cells_over_budget(10, 10, tiny_budget));
+        assert!(dense_cells_over_budget(11, 11, tiny_budget));
+        // A count pair whose product cannot even be represented must read as
+        // over budget rather than wrapping back under the ceiling.
+        assert!(dense_cells_over_budget(usize::MAX, 2, tiny_budget));
+    }
+
+    #[test]
+    fn solve_mate_refuses_an_assembly_past_the_dense_budget_without_allocating() {
+        // The two-body fixture is 12x14 = 168 cells, so a budget of 100 refuses
+        // it before the first Jacobian allocation: the seed passes through
+        // untouched and the failing status comes back instead of the worker
+        // dying inside a dense factorization it can never finish.
+        let input = two_body_input();
+        let out = solve_mate_with_budget(&input, 100);
+        assert_eq!(out.overall_status, MateStatus::Overconstrained.to_u8());
+        assert_eq!(out.params_solved, input.params_initial);
+        assert_eq!(out.diagnostics.iters, 0);
+        assert_eq!(out.diagnostics.dof, 0);
+        assert!(out.diagnostics.residual_norm.is_infinite());
+
+        // The same assembly at the real budget still solves normally.
+        let out = solve_mate(&input);
+        assert!(out.diagnostics.residual_norm.is_finite());
     }
 }
 
