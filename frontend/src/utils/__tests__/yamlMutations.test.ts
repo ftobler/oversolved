@@ -55,6 +55,14 @@ describe('applyMoveVertex', () => {
     expect(doc.features![0].initial!.pt1).toEqual([9.5, 10.5])
   })
 
+  // A NaN drop position (broken pointer math upstream) must not be rounded into
+  // the document: round(NaN) is still NaN and poisons the sketch seed.
+  it('ignores a non-finite drop position instead of persisting NaN', () => {
+    const doc = makeSampleDoc()
+    applyMoveVertex(doc, 'Sketch1', 'line1', 'start', [NaN, 3])
+    expect(doc.features![0].initial!.line1).toEqual([0, 0, 10, 0])
+  })
+
   // arc1 = [cx, cy, r, angle_start, angle_end]; start/end are derived points,
   // not direct param pairs, so the drop position maps into radius + angle.
   const makeArcDoc = (params: number[] = [0, 0, 5, 0, 90]): PartDoc => ({
@@ -472,6 +480,12 @@ describe('applySetConstraintPos', () => {
     applySetConstraintPos(doc, 'NoSuchFeature', 'c_len', [1, 2])
     const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
     expect(c!.pos).toBeUndefined()
+  })
+
+  it('ignores a non-finite pos instead of persisting NaN into the document', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintPos(doc, 'Sketch1', 'c_len', [NaN, Infinity])
+    expect(doc.features![0].constraints!.find(c => c.id === 'c_len')!.pos).toBeUndefined()
   })
 })
 

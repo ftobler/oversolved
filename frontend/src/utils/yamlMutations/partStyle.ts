@@ -1,6 +1,6 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { findFeature } from './helpers'
+import { findFeature, warn } from './helpers'
 import { isValidVariableName } from '@/kernel/features/variable'
 
 // ─── Part Style ───
@@ -90,6 +90,12 @@ export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: n
 // written as the absence of the key rather than as features.length -- that
 // also keeps the field from going stale when features are appended later.
 export function applySetRollback(doc: PartDoc, position: number | null): void {
+  // Math.max(0, NaN) is NaN and a NaN bar would clamp nothing; a non-finite
+  // position is rejected whole, leaving an already-parked bar where it is.
+  if (position !== null && !Number.isFinite(position)) {
+    warn('applySetRollback: ignoring non-finite position', position)
+    return
+  }
   const featureCount = doc.features?.length ?? 0
   if (position === null || position >= featureCount) {
     delete doc.rollback

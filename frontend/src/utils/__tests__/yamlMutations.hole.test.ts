@@ -76,4 +76,18 @@ describe('hole setters', () => {
     expect(() => applySetHoleField(doc, 'nope', 'sketch', '@sk1')).not.toThrow()
     expect(() => applySetHoleField(doc, 'nope', 'diameter', 5)).not.toThrow()
   })
+
+  // setFeatureField guards numeric writes: a NaN diameter persisted into YAML
+  // poisons every later solve, while strings and selects must keep passing
+  // through untouched.
+  it('ignores a non-finite number but still accepts finite values and strings', () => {
+    const doc = emptyDoc()
+    applyAddHole(doc, 'h1')
+    applySetHoleField(doc, 'h1', 'diameter', NaN)
+    expect(doc.features![0].hole?.diameter).toBe(10)
+    applySetHoleField(doc, 'h1', 'diameter', 12.5)
+    expect(doc.features![0].hole?.diameter).toBe(12.5)
+    applySetHoleField(doc, 'h1', 'sketch', '@sk1')
+    expect(doc.features![0].hole?.sketch).toBe('@sk1')
+  })
 })

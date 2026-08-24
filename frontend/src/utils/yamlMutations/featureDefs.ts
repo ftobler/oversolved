@@ -68,9 +68,15 @@ export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof 
 function setFeatureField(obj: Record<string, unknown>, field: string, value: unknown): void {
   if (value === undefined || value === null || value === '') {
     delete obj[field]
-  } else {
-    obj[field] = value
+    return
   }
+  // Strings, selects and ref lists pass through; only a numeric write is
+  // boundary-checked, because a NaN stored in YAML poisons every later solve.
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    warn(`setFeatureField: refusing non-finite value for ${field}`)
+    return
+  }
+  obj[field] = value
 }
 
 // ─── Extrude ───

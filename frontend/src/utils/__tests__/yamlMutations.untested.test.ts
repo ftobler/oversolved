@@ -76,6 +76,13 @@ describe('applySetConstraintValue', () => {
     applySetConstraintValue(doc, 'NoSuchFeature', 'c_len', 99)
     expect(doc.features![0].constraints!.find(c => c.id === 'c_len')!.value).toBe(10)
   })
+
+  // round(NaN) is NaN: a non-finite value must be rejected, not persisted.
+  it('ignores a non-finite value instead of persisting NaN', () => {
+    const doc = makeSketchDoc()
+    applySetConstraintValue(doc, 'Sketch1', 'c_len', NaN)
+    expect(doc.features![0].constraints!.find(c => c.id === 'c_len')!.value).toBe(10)
+  })
 })
 
 describe('applyAddEntity', () => {

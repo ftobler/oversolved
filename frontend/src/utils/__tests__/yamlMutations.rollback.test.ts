@@ -53,6 +53,15 @@ describe('applySetRollback', () => {
     expect(doc.rollback).toBe(0)
   })
 
+  // Math.max(0, NaN) is NaN: a non-finite position must be rejected rather than
+  // persisted, and must not clear a rollback bar that is already parked.
+  it('ignores a non-finite position instead of persisting or clearing', () => {
+    const doc = makeDoc()
+    doc.rollback = 2
+    applySetRollback(doc, NaN)
+    expect(doc.rollback).toBe(2)
+  })
+
   it('treats an empty doc as having no room to roll back', () => {
     const doc: PartDoc = { version: 1, kind: 'part' }
     applySetRollback(doc, 0)

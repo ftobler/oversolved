@@ -217,6 +217,13 @@ export function applyMoveVertex(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.initial) return
+  // A non-finite drop position is broken pointer math upstream. round(NaN) is
+  // still NaN, so letting it through would persist the poison into the doc and
+  // into every later solve seeded from it.
+  if (!Number.isFinite(to[0]) || !Number.isFinite(to[1])) {
+    warn('applyMoveVertex: ignoring non-finite drop position', { featureId, entityId, vertexKey, to })
+    return
+  }
   // The adopted frame already carries the other vertices; this one is then
   // teleported onto the drop position below.
   adoptSolvedGeometry(feature.initial, solvedGeometry)
@@ -407,6 +414,12 @@ export function applySetConstraintValue(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.constraints) return
+  // A dimension value is persisted verbatim into the doc; a NaN/Inf must be
+  // rejected at the boundary rather than rounded into it.
+  if (!Number.isFinite(value)) {
+    warn('applySetConstraintValue: ignoring non-finite value', { featureId, constraintId, value })
+    return
+  }
   const c = feature.constraints.find(c => c.id === constraintId)
   if (c) c.value = Math.round(value * 1000) / 1000
 }
@@ -419,6 +432,12 @@ export function applySetConstraintPos(
 ): void {
   const feature = findFeature(doc, featureId)
   if (!feature?.constraints) return
+  // Same boundary as applySetConstraintValue: label positions are stored, not
+  // derived, so a non-finite coordinate would persist as-is.
+  if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) {
+    warn('applySetConstraintPos: ignoring non-finite position', { featureId, constraintId, pos })
+    return
+  }
   const c = feature.constraints.find(c => c.id === constraintId)
   if (c) c.pos = [round(pos[0]), round(pos[1])]
 }
