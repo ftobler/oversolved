@@ -483,6 +483,26 @@ describe('registerCommand collision warning', () => {
   })
 })
 
+// dispatchKey has already preventDefaulted by the time executeCommand runs, so
+// an unregistered command silently eats the keystroke. Dev mode must say so.
+describe('executeCommand unknown-command warning', () => {
+  it('warns in dev mode when no handler is registered for the command', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    executeCommand('__nonexistent__')
+    expect(warnSpy).toHaveBeenCalledOnce()
+    expect(warnSpy.mock.calls[0][0]).toContain('__nonexistent__')
+    warnSpy.mockRestore()
+  })
+
+  it('does not warn when a handler is registered', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    registerCommand('__known__', vi.fn())
+    executeCommand('__known__')
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+})
+
 // ─── clearAllHandlers ───
 
 describe('clearAllHandlers', () => {

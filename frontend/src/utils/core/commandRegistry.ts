@@ -86,7 +86,15 @@ export function clearAllHandlers(): void {
 }
 
 export function executeCommand(name: string): void {
-  handlers.get(name)?.()
+  const fn = handlers.get(name)
+  if (!fn) {
+    // dispatchKey has already preventDefaulted by the time we get here, so an
+    // unknown command would silently eat the keystroke. Dev-only diagnostic,
+    // mirroring the duplicate-registration warn in registerCommand.
+    if (import.meta.env.DEV) console.warn(`executeCommand: no handler registered for "${name}"`)
+    return
+  }
+  fn()
 }
 
 // ─── Key dispatch ───
