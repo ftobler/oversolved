@@ -34,6 +34,14 @@ import { useSolverStore } from '@/stores/solverStore'
 // else is a real failure the user should see.
 const BENIGN_ASSEMBLY_FAILURES = new Set(['assembly solve cancelled', 'anchor solver timed out'])
 
+// Monotonic id for non-live solves across EVERY hook instance, the assembly
+// flag's counterpart of drainSeq: a previous document's drain can resolve after
+// a new editor mounted and started its own solve, and per-instance refs die
+// with their owner, so only a module-level counter can prove ownership there.
+// Live ticks never bump it, so a drag superseding a full solve keeps today's
+// behaviour (the full solve still owns and clears the assembly flag).
+let fullSolveSeq = 0
+
 // A mate offset/angle authored as an expression string is not evaluated here;
 // expression binding arrives with the mate authoring UI (Stage 8).
 function numeric(v: NumberOrExpr | undefined): number | undefined {
@@ -183,6 +191,9 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     const version = solveVersion.current
     const current = docRef.current
     if (!current) return
+    // The full-solve id this run captures when it starts (0 for live ticks,
+    // which never own the assembly flag's clearing).
+    let myFullSolve = 0
     const store = useAssemblyStore.getState()
     // A manipulation whose handle names no instance in the current doc is residue
     // from an earlier document (a load raced the drag). Route it back to the
@@ -200,6 +211,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     const live = manip !== null
     const dragObjective = manip?.dragObjective ?? null
     if (!live) {
+      myFullSolve = ++fullSolveSeq
       store.setIsSolving(true)
       store.setSolveError(null)
       // Mirror into the solver store so LoadingOverlay (mounted in the assembly
@@ -319,7 +331,14 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       }
     } finally {
       if (!live) {
-        useAssemblyStore.getState().setIsSolving(false)
+        // Only the full solve that started LAST may clear the assembly flag:
+        // a stale hook instance from a previous document resolving late under
+        // a new mount's running solve must not drop the new mount's spinner.
+        // A superseding live tick does not bump the sequence, so within one
+        // mount the clear stays unconditional exactly as before.
+        if (myFullSolve === fullSolveSeq) {
+          useAssemblyStore.getState().setIsSolving(false)
+        }
         // Only the current solve owns the mirror: a superseded solve (a uuid
         // switch starts a new drain over the old one) must not clear it under
         // the newer solve still in flight. The live branch re-arms it off, so a
@@ -381,15 +400,16 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
 
   // Unmount cleanup: an in-flight solve must not paint into the shared store
   // after the editor is gone, and a remount starts with a fresh version and a
-  // clean queue (the shared store survives; the hook's refs do not). The mirror
-  // is cleared too: a hang that never reaches runSolve's finally (the worker
-  // never answers) would otherwise leave the shared solving flag up and the
-  // overlay stuck. The mount effect's cleanup already clears onCancelSolve.
+  // clean queue (the shared store survives; the hook's refs do not). Both
+  // solving flags are cleared: a hang that never reaches runSolve's finally
+  // (the worker never answers) would otherwise leave them up and the overlay
+  // stuck. The mount effect's cleanup already clears onCancelSolve.
   useEffect(() => {
     return () => {
       solveVersion.current += 1
       inFlight.current = false
       queued.current = false
+      useAssemblyStore.getState().setIsSolving(false)
       useSolverStore.getState().setIsSolving(false)
     }
   }, [])
