@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddImportStep, applyDeleteFeature, dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import {
+  applyRemoveExtrudeProfile, applyRemoveFilletEdge, applyRemoveDeleteBodyRef, applyRemoveTransformBody,
+} from '@/utils/yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -1036,5 +1039,81 @@ describe('dropDeadAxisConstraints', () => {
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(0)
     expect(doc.features![0].constraints).toHaveLength(1)
+  })
+})
+
+// One remover per shared splice site: the ref-list, edge-list and both body-list
+// removers each had their own unchecked splice. splice(-1, 1) drops the LAST
+// element, so an out-of-range index used to delete the wrong entry.
+describe('remove-by-index mutators refuse out-of-range indices', () => {
+  const cases: {
+    name: string
+    makeDoc: () => PartDoc
+    remove: (doc: PartDoc, index: number) => void
+    list: (doc: PartDoc) => string[] | undefined
+  }[] = [
+    {
+      name: 'applyRemoveExtrudeProfile',
+      makeDoc: () => ({
+        version: 1,
+        kind: 'part',
+        features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: ['a', 'b'], distance: 10 } }],
+      }),
+      remove: (doc, index) => applyRemoveExtrudeProfile(doc, 'ex1', index),
+      list: (doc) => doc.features![0].extrude!.sketch,
+    },
+    {
+      name: 'applyRemoveFilletEdge',
+      makeDoc: () => ({
+        version: 1,
+        kind: 'part',
+        features: [{ id: 'f1', kind: 'fillet', fillet: { edges: ['a', 'b'], radius: 2 } }],
+      }),
+      remove: (doc, index) => applyRemoveFilletEdge(doc, 'f1', index),
+      list: (doc) => doc.features![0].fillet!.edges,
+    },
+    {
+      name: 'applyRemoveDeleteBodyRef',
+      makeDoc: () => ({
+        version: 1,
+        kind: 'part',
+        features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: ['a', 'b'] } }],
+      }),
+      remove: (doc, index) => applyRemoveDeleteBodyRef(doc, 'db1', index),
+      list: (doc) => doc.features![0].delete_body!.bodies,
+    },
+    {
+      name: 'applyRemoveTransformBody',
+      makeDoc: () => ({
+        version: 1,
+        kind: 'part',
+        features: [{
+          id: 'xf1',
+          kind: 'transform',
+          transform: { bodies: ['a', 'b'], operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
+        }],
+      }),
+      remove: (doc, index) => applyRemoveTransformBody(doc, 'xf1', index),
+      list: (doc) => doc.features![0].transform!.bodies,
+    },
+  ]
+
+  it.each(cases.map(c => c.name))('%s is a silent no-op for index -1 and index 5', (name) => {
+    const c = cases.find(x => x.name === name)!
+    for (const index of [-1, 5]) {
+      const doc = c.makeDoc()
+      expect(() => c.remove(doc, index)).not.toThrow()
+      expect(c.list(doc)).toEqual(['a', 'b'])
+    }
+  })
+
+  it.each(cases.map(c => c.name))('%s still removes at valid indices 0 and 1', (name) => {
+    const c = cases.find(x => x.name === name)!
+    const doc0 = c.makeDoc()
+    c.remove(doc0, 0)
+    expect(c.list(doc0)).toEqual(['b'])
+    const doc1 = c.makeDoc()
+    c.remove(doc1, 1)
+    expect(c.list(doc1)).toEqual(['a'])
   })
 })

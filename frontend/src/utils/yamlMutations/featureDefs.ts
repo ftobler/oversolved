@@ -100,6 +100,16 @@ export function applyAddExtrude(
 // remove-by-index logic is identical across all of them; only the sub-feature
 // key and the field differ. `fn` keeps the public caller name in the warning so
 // it still points at the original entry point.
+// splice(-1, 1) removes the LAST element, so a stale or out-of-range index
+// reaching a remove-by-index mutator would silently delete the wrong ref.
+// Every remover below gates on this first: out of range is a silent no-op,
+// mirroring applyReorderPickField's explicit bounds check. A non-integer index
+// is refused for the same reason -- nothing valid produces one, and truncating
+// it would still hit an element the caller did not name.
+function removableIndex(arr: unknown[], index: number): boolean {
+  return Number.isInteger(index) && index >= 0 && index < arr.length
+}
+
 type RefListKind = 'extrude' | 'revolve' | 'sweep'
 type RefListField = 'sketch' | 'path'
 
@@ -129,6 +139,7 @@ function removeRefAt(doc: PartDoc, featureId: string, kind: RefListKind, field: 
   const sub = refListSub(doc, featureId, kind, fn)
   if (!sub) return
   const current = normalizeRefList(sub[field])
+  if (!removableIndex(current, index)) return
   current.splice(index, 1)
   sub[field] = current
 }
@@ -271,6 +282,7 @@ function removeEdgeAt(doc: PartDoc, featureId: string, index: number, kind: 'fil
     warn(`${fn}: feature ${featureId} has no ${kind}`)
     return
   }
+  if (!removableIndex(sub.edges, index)) return
   sub.edges.splice(index, 1)
 }
 
@@ -430,6 +442,7 @@ export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index:
   }
   // Same legacy-doc healing as applyAddDeleteBodyRef.
   sub.bodies ??= []
+  if (!removableIndex(sub.bodies, index)) return
   sub.bodies.splice(index, 1)
 }
 
@@ -491,6 +504,7 @@ export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index:
   }
   // Same legacy-doc healing as applyAddTransformBody.
   sub.bodies ??= []
+  if (!removableIndex(sub.bodies, index)) return
   sub.bodies.splice(index, 1)
 }
 
