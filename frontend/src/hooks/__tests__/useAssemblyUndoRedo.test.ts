@@ -53,6 +53,30 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  // The entry holds a snapshot, never a reference: every caller passes the
+  // live docRef object, so sharing it would let an unchecked in-place mutation
+  // silently rewrite what undo restores. Mirrors the part editor's pushUndo
+  // clone and applyUndoRedo's counterpart clone.
+  it('pushUndo stores a clone so a later in-place edit cannot rewrite history', () => {
+    const live = docWith(['a'])
+    const docRef = { current: live }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.pushUndo(docRef.current!, 'Add part') })
+
+    const entry = result.current.undoStack[0]
+    expect(entry.doc).not.toBe(live)
+    expect(entry.doc).toEqual(live)
+
+    // Mutate a nested field of the live doc IN PLACE, the way an unchecked
+    // code path would; the stored snapshot must not move with it.
+    const inst = live.features![0] as { instance: { handle: string } }
+    inst.instance.handle = 'mutated'
+    expect(result.current.undoStack[0].doc).toEqual(docWith(['a']))
+  })
+
   it('handleUndo restores the previous doc, mirrors the counterpart and re-solves', () => {
     const docA = docWith(['a'])
     const docB = docWith(['a', 'b'])
@@ -67,7 +91,11 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { result.current.handleUndo() })
 
     expect(setDoc).toHaveBeenCalledWith(docA)
-    expect(docRef.current).toBe(docA)
+    // The restored doc IS the stored snapshot: equal to docA but no longer the
+    // same object, because entries hold clones that must never alias the live
+    // document (see the pushUndo snapshot test above).
+    expect(docRef.current).toEqual(docA)
+    expect(docRef.current).not.toBe(docA)
     expect(requestSolve).toHaveBeenCalledTimes(1)  // the restore must re-solve
     expect(result.current.undoStack).toHaveLength(0)
     // The doc being left behind becomes the redo counterpart. The counterpart

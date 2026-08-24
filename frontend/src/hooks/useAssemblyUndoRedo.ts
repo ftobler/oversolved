@@ -30,7 +30,11 @@ export function useAssemblyUndoRedo(
   const redoStack = useAssemblyStore(s => s.redoStack)
 
   const pushUndo = useCallback((doc: AssemblyDoc, label: string) => {
-    const undo = [...useAssemblyStore.getState().undoStack, { doc, label }]
+    // The entry holds a snapshot, never a reference: every caller passes the
+    // live docRef object, and any path that mutates it in place would silently
+    // rewrite history if the stored object were shared. Mirrors applyUndoRedo's
+    // counterpart clone below.
+    const undo = [...useAssemblyStore.getState().undoStack, { doc: structuredClone(doc), label }]
     if (undo.length > MAX_UNDO_DEPTH) undo.shift()
     // A fresh edit invalidates any redo branch.
     useAssemblyStore.setState({ undoStack: undo, redoStack: [] })
