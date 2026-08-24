@@ -599,6 +599,19 @@ impl MateProblem {
             }
             _ => {
                 // General fallback: point-to-point distance minus radius(es).
+                //
+                // SILENT-CONSEQUENCE CAVEAT: this arm catches every anchor
+                // pair the formula arms above do not, i.e. every pair
+                // containing a Sphere, Line, Circle, Point or Torus on either
+                // side (those five against anything: each other, Point,
+                // Plane, Cylinder, Cone). For such pairs the point-to-point
+                // formula is geometrically WRONG unless both anchor points
+                // happen to be surface centres (a Sphere's centre, say): an
+                // anchor picked mid-line or on a circle's rim measures an
+                // unrelated distance, and nothing in the output status flags
+                // it -- the solve just quietly converges on whatever that
+                // number asks for. `mate.rs`'s AnchorKind doc documents the
+                // same gap from the type side.
                 let dist = (d0 * d0 + d1 * d1 + d2 * d2).sqrt();
                 dist - radius - offset
             }

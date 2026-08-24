@@ -107,11 +107,12 @@ impl MateKind {
 
 /// Anchor surface kinds used by the Tangential mate to select the
 /// correct signed-distance formula (plane-plane, plane-cylinder,
-/// cylinder-cylinder). `Torus` has no dedicated formula (a real
-/// torus/cylinder tangency formula is a solver research task, not asked
-/// for yet); it lands in `tangential_residual`'s point-to-point fallback,
-/// which is honest about the gap instead of silently reusing `Plane`'s
-/// formula (the TS-side `?? 0` coercion this variant replaces).
+/// cylinder-cylinder). Only Plane, Cylinder and Cone have dedicated
+/// formulas; every pair containing a Sphere, Line, Circle, Point or
+/// Torus lands in `tangential_residual`'s point-to-point fallback
+/// (see the caveat there: it is geometrically right only for centre
+/// anchors and reports no error otherwise), which replaces the
+/// TS-side `?? 0` coercion this enum was introduced for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorKind {
     Plane = 0,
