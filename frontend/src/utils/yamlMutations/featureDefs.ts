@@ -557,7 +557,9 @@ function sanitizeIdentifier(s: string): string {
 /** Return `base` sanitized if unused, else append `_2`, `_3`, ... so variable
  *  labels stay unique (the label IS the downstream reference name). */
 function uniqueVariableName(base: string, existingVars: PartFeature[]): string {
-  const name = sanitizeIdentifier(base) || 'var'
+  // sanitizeIdentifier already falls back to 'var' itself, so it never yields
+  // an empty string here.
+  const name = sanitizeIdentifier(base)
   const used = new Set(existingVars.map(f => f.label))
   if (!used.has(name)) return name
   let counter = 2
