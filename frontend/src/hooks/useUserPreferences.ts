@@ -21,7 +21,17 @@ export function useUserPreferences(signedIn = true) {
   // instead of racing on a stale closure.
   const preferencesRef = useRef(preferences)
   const cloudLoad = prefs.async && signedIn  // a guest skips the server round-trip
+  // The flag tracks the cloud-load lifecycle: up while the fetch runs, down
+  // once it settles, and down again when logout cancels it mid-flight (the
+  // finally's cancelled guard would otherwise leave it stuck). React's
+  // adjust-during-render idiom applies the cloudLoad edges here rather than
+  // via setState inside the effect body, which cascades renders.
   const [loading, setLoading] = useState(cloudLoad)
+  const [loadingFor, setLoadingFor] = useState(cloudLoad)
+  if (loadingFor !== cloudLoad) {
+    setLoadingFor(cloudLoad)
+    setLoading(cloudLoad)
+  }
 
   useEffect(() => {
     if (!cloudLoad) return  // guest or synchronous store: defaults already stand

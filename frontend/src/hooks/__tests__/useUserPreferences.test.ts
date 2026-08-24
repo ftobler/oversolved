@@ -103,6 +103,10 @@ describe('useUserPreferences', () => {
     // The user logs out before the fetch resolves; the page does not remount.
     rerender({ signedIn: false })
 
+    // The flag must drop with the cancelled fetch, not stay up forever: the
+    // guest library behind Documents.tsx only loads once prefsLoading clears.
+    expect(result.current.loading).toBe(false)
+
     // The stale response now lands, carrying the logged-out user's server prefs.
     await act(async () => {
       resolveFetch!({
@@ -115,6 +119,36 @@ describe('useUserPreferences', () => {
 
     // Must not have adopted the stale response; the guest default stands.
     expect(result.current.preferences.document_sort).toBe('date_newest_first')
+  })
+
+  it('raises loading during the cloud fetch when a guest signs in mid-session', async () => {
+    let resolveFetch: ((res: Response) => void) | undefined
+    const mockFetch = vi.fn(() => new Promise<Response>(resolve => { resolveFetch = resolve }))
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { result, rerender } = renderHook(
+      ({ signedIn }) => useUserPreferences(signedIn),
+      { initialProps: { signedIn: false } }
+    )
+    expect(result.current.loading).toBe(false)
+
+    // Signing in flips cloudLoad on without remounting the hook's owner, so
+    // the fetch now in flight must be covered by the loading flag.
+    rerender({ signedIn: true })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(result.current.loading).toBe(true)
+
+    await act(async () => {
+      resolveFetch!({
+        ok: true,
+        json: () => Promise.resolve({ document_sort: 'alphabetical' }),
+      } as Response)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(result.current.loading).toBe(false)
+    expect(result.current.preferences.document_sort).toBe('alphabetical')
   })
 
   it('does not let a stale revert stomp a later successful update (rapid toggles)', async () => {
