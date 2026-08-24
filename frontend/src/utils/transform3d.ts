@@ -183,7 +183,9 @@ export function relativeTransform(current: Transform3D, base: Transform3D): Tran
 // the negated quaternion -- a ring drag returning exactly to start composes a
 // full turn into -q, which used to manufacture spurious undo entries and
 // re-solves. |dot| >= 1 - eps^2 is the sameness test; translations stay
-// component-wise.
+// component-wise. Both operands are unit quaternions by construction
+// (makeTransform and the solver output both normalize), which the dot test
+// silently assumes -- a non-unit pair reads as "changed" even when parallel.
 export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boolean {
   const qa = transformQuat(a)
   const qb = transformQuat(b)
