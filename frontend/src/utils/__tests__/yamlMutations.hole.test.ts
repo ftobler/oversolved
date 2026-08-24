@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   applyAddHole,
   applySetHoleField,
 } from '@/utils/yamlMutations'
+import { applySetHoleSketch } from '@/utils/yamlMutations/featureDefs'
 import type { PartDoc } from '@/types/cad'
 
 function emptyDoc(): PartDoc { return { features: [] } }
@@ -89,5 +90,31 @@ describe('hole setters', () => {
     expect(doc.features![0].hole?.diameter).toBe(12.5)
     applySetHoleField(doc, 'h1', 'sketch', '@sk1')
     expect(doc.features![0].hole?.sketch).toBe('@sk1')
+  })
+
+  // The file's diagnostic convention (applySetSubFeatureField and friends): a
+  // missing sub-object warns instead of returning silently.
+  describe('on a feature without a hole sub-object', () => {
+    function holelessDoc(): PartDoc {
+      return { features: [{ id: 'h2', kind: 'extrude' }] }
+    }
+
+    it('applySetHoleField warns', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const doc = holelessDoc()
+      applySetHoleField(doc, 'h2', 'diameter', 5)
+      expect(warnSpy).toHaveBeenCalled()
+      expect(warnSpy.mock.calls[0][0]).toContain('has no hole')
+      warnSpy.mockRestore()
+    })
+
+    it('applySetHoleSketch warns', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const doc = holelessDoc()
+      applySetHoleSketch(doc, 'h2', '@sk1')
+      expect(warnSpy).toHaveBeenCalled()
+      expect(warnSpy.mock.calls[0][0]).toContain('has no hole')
+      warnSpy.mockRestore()
+    })
   })
 })

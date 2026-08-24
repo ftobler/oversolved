@@ -57,7 +57,10 @@ export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof
 
 export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
   const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
+  if (!f?.hole) {
+    warn(`applySetHoleField: feature ${featureId} has no hole`)
+    return
+  }
   if (field === 'sketch' && typeof value === 'string') {
     applySetHoleSketch(doc, featureId, value)
     return
@@ -463,7 +466,10 @@ export function applyAddHole(doc: PartDoc, featureId: string, label?: string): v
 
 export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: string): void {
   const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) return
+  if (!f?.hole) {
+    warn(`applySetHoleSketch: feature ${featureId} has no hole`)
+    return
+  }
   f.hole.sketch = sketch
 }
 
