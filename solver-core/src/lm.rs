@@ -60,6 +60,14 @@ fn norm2(v: &[f64]) -> f64 {
     v.iter().map(|&e| e * e).sum::<f64>().sqrt()
 }
 
+/// Defensive per-param damping read. A short `damp_scale` is a caller bug, but
+/// release wasm builds compile asserts out and this slice feeds per-param
+/// indexing mid-solve, so the missing entries degrade to undamped rather than
+/// panicking (or indexing out of bounds) inside the worker.
+fn damp_scale_at(damp_scale: &[f64], i: usize) -> f64 {
+    damp_scale.get(i).copied().unwrap_or(1.0)
+}
+
 /// Solve `min_x 0.5 * ||f(x)||²` from the seed `x0`. `jac(x)` returns the
 /// Jacobian of `f` at `x` (m rows x n cols); the caller supplies it analytically.
 pub fn solve_lm(
@@ -74,7 +82,9 @@ pub fn solve_lm(
 /// `i` (the `lambda·diag(JᵀJ)` term only). A scale above 1 shrinks that param's
 /// step, biasing the descent away from it where the constraints leave a choice;
 /// it never enters the residual or the convergence test, so the solution a fully
-/// constrained problem reaches is unchanged. `damp_scale` must have length `n`.
+/// constrained problem reaches is unchanged. `damp_scale` should have one
+/// entry per param; shorter slices degrade to undamped per missing entry
+/// instead of panicking mid-solve (see `damp_scale_at`).
 pub fn solve_lm_damped(
     x0: &[f64],
     f: &impl Fn(&[f64]) -> Vec<f64>,
@@ -82,7 +92,10 @@ pub fn solve_lm_damped(
     damp_scale: &[f64],
 ) -> LmResult {
     let n = x0.len();
-    debug_assert_eq!(damp_scale.len(), n, "damp_scale must have one entry per param");
+    // Length contract: one entry per param. Deliberately NOT debug_assert'ed:
+    // release wasm compiles asserts out anyway, and the defensive reads in
+    // `damp_scale_at` make a short slice degrade to undamped instead of
+    // trapping mid-solve -- which the regression test below pins.
     let mut x = x0.to_vec();
     let mut r = f(&x);
     let m = r.len();
@@ -130,11 +143,13 @@ pub fn solve_lm_damped(
     // rotation a mate actually constrains is unmoved.
     let mu = 2e-9 * max_diag;
     let x0v = DVector::from_column_slice(x0);
-    let scale_v = DVector::from_column_slice(damp_scale);
+    let scale_v = DVector::from_iterator(n, (0..n).map(|i| damp_scale_at(damp_scale, i)));
     // Augmented objective 0.5||r||² + 0.5·μ·||x - x0||² -- the gradient/damping and
     // the accept test must use the SAME cost or step acceptance is inconsistent.
     let anchor_cost = |xs: &[f64]| -> f64 {
-        0.5 * mu * (0..n).map(|i| damp_scale[i] * (xs[i] - x0[i]).powi(2)).sum::<f64>()
+        0.5 * mu * (0..n)
+            .map(|i| damp_scale_at(damp_scale, i) * (xs[i] - x0[i]).powi(2))
+            .sum::<f64>()
     };
     let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x);
 
@@ -158,7 +173,7 @@ pub fn solve_lm_damped(
                 // Marquardt scaling: damp proportional to each column's curvature
                 // (times the caller's per-param `damp_scale`), plus the absolute
                 // seed-anchor floor `mu` so flat (free) directions stay finite.
-                a[(i, i)] += (lambda * jtj[(i, i)].max(1e-12) + mu) * damp_scale[i];
+                a[(i, i)] += (lambda * jtj[(i, i)].max(1e-12) + mu) * damp_scale_at(damp_scale, i);
             }
             let Some(delta) = a.clone().lu().solve(&(-&g)) else {
                 lambda *= LAMBDA_UP;
@@ -373,6 +388,18 @@ mod tests {
         let r = solve_lm(&[], &f, &jac);
         assert_eq!(r.iters, 0);
         assert!(r.residual_norm - (1.0_f64 * 1.0 + 2.0 * 2.0).sqrt() < 1e-12);
+    }
+
+    #[test]
+    fn solve_lm_damped_with_short_damp_scale_degrades_to_undamped() {
+        // An empty scale over a 1-param problem: the missing entry must read
+        // as 1.0 and the solve must converge with defined behavior instead of
+        // panicking on the index.
+        let f = |x: &[f64]| vec![x[0] - 5.0];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 1, &[1.0]);
+        let r = solve_lm_damped(&[0.0], &f, &jac, &[]);
+        assert!((r.x[0] - 5.0).abs() < 1e-6, "x={}", r.x[0]);
+        assert!(r.residual_norm < 1e-4, "res={}", r.residual_norm);
     }
 
     #[test]
