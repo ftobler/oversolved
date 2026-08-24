@@ -211,11 +211,11 @@ impl Mate {
 }
 
 /// Description of a rigid body in the parameter vector.
-/// Each body occupies 7 consecutive params (tx, ty, tz, qx, qy, qz, qw).
+/// Each body occupies 7 consecutive params (tx, ty, tz, qx, qy, qz, qw); the
+/// body's block starts at `index * 7`, which every reader derives directly, so
+/// the struct carries no offset field of its own.
 #[derive(Debug, Clone)]
-pub struct RigidBody {
-    pub param_offset: usize,
-}
+pub struct RigidBody {}
 
 /// Input to the mate solver.
 #[derive(Debug, Clone)]
@@ -398,12 +398,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
 
     // `n_bodies` needs no cap of its own: the param-count check above ties it to
     // `n_params`, whose f32s have already been read out of the buffer.
-    let mut bodies = Vec::with_capacity(n_bodies);
-    for i in 0..n_bodies {
-        bodies.push(RigidBody {
-            param_offset: i * 7,
-        });
-    }
+    let bodies = vec![RigidBody {}; n_bodies];
 
     Ok(MateInput {
         bodies,
@@ -558,7 +553,7 @@ mod tests {
             angle: 0.0,
         };
         MateInput {
-            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            bodies: (0..2).map(|i| RigidBody {}).collect(),
             params_initial: params,
             fixed_mask: vec![0b0000_0001],
             mates: vec![mate],
@@ -711,7 +706,7 @@ mod tests {
     #[test]
     fn parallel_mate_with_flip_round_trips() {
         let input = MateInput {
-            bodies: vec![RigidBody { param_offset: 0 }, RigidBody { param_offset: 7 }],
+            bodies: vec![RigidBody {}, RigidBody {}],
             params_initial: vec![0.0; 14],
             fixed_mask: vec![0],
             mates: vec![Mate {
@@ -757,7 +752,7 @@ mod tests {
     #[test]
     fn offset_ratio_radius_round_trip() {
         let input = MateInput {
-            bodies: vec![RigidBody { param_offset: 0 }, RigidBody { param_offset: 7 }],
+            bodies: vec![RigidBody {}, RigidBody {}],
             params_initial: vec![0.0; 14],
             fixed_mask: vec![0],
             mates: vec![Mate {
@@ -836,7 +831,7 @@ mod tests {
     #[test]
     fn is_fixed_reads_mask() {
         let input = MateInput {
-            bodies: vec![RigidBody { param_offset: 0 }],
+            bodies: vec![RigidBody {}],
             params_initial: vec![0.0; 7],
             fixed_mask: vec![0b0000_0101],
             mates: vec![],

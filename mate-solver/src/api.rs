@@ -36,7 +36,7 @@ mod tests {
     #[test]
     fn solve_mate_bytes_round_trips_spherical() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            bodies: (0..2).map(|i| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -80,7 +80,7 @@ mod tests {
         // Worker must answer with a normal output rather than trapping: the
         // stale mate is ignored and the rest of the assembly still solves.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody { param_offset: i * 7 }).collect(),
+            bodies: (0..2).map(|i| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
