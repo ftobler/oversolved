@@ -101,7 +101,13 @@ export function assemblyStlMeshes(
     const mesh = body.mesh
     if (!mesh) continue
     const { vertices, faces } = mesh
-    if (!(vertices instanceof Float32Array) || !(faces instanceof Uint32Array)) continue
+    if (!(vertices instanceof Float32Array) || !(faces instanceof Uint32Array)) {
+      // Tuple form means the export would quietly miss bodies shown on screen.
+      // Never mis-encode them as a flat buffer; make the gap visible instead of
+      // handing the user an STL that is silently short a solid.
+      if (import.meta.env.DEV) console.warn(`assemblyStlMeshes: skipping body "${body.id}" whose mesh is tuple form, not typed arrays`)
+      continue
+    }
     out.push({ vertices, indices: faces })
   }
   return out

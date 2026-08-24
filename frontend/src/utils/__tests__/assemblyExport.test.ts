@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import {
@@ -124,6 +124,24 @@ describe('assemblyStlMeshes', () => {
       }),
     }
     expect(assemblyStlMeshes(tuples, [instance('t', 'doc_a')])).toEqual([])
+  })
+
+  // A quiet skip used to hand the user an STL missing bodies they can see on
+  // screen; the skip must at least name the body it drops.
+  it('warns once, naming the body, when a tuple-form mesh is skipped', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const mixed = {
+      'h1:body_0': body('h1:body_0', 'h1', TRI_MESH),
+      't:body_0': body('t:body_0', 't', {
+        vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+        faces: [[0, 1, 2]],
+      }),
+    }
+    const meshes = assemblyStlMeshes(mixed, [instance('h1', 'doc_a'), instance('t', 'doc_a')])
+    expect(meshes).toHaveLength(1)
+    expect(warnSpy).toHaveBeenCalledOnce()
+    expect(warnSpy.mock.calls[0][0]).toContain('t:body_0')
+    warnSpy.mockRestore()
   })
 })
 
