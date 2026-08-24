@@ -1181,6 +1181,14 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // than skip silently.
     deactivateTool(get, set, get().activeTool)
 
+    // Entering a pick abandons any in-flight brep dimension gesture, same as a
+    // tool switch: the projections it materialised were scratch work for that
+    // gesture, and leaving them armed would let the next unrelated mutation be
+    // swallowed as "the projection".
+    if (get().pendingBrepProjectionIds.length > 0) {
+      get().cancelBrepProjectionGesture()
+    }
+
     // Manual activate clears the existing normal selection so a stray prior
     // selection is not instantly consumed as a pick. `seed: true` (used by
     // auto-activate-on-insert) keeps it so it becomes the chip's initial picks.
