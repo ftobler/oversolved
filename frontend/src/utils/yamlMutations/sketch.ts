@@ -666,11 +666,19 @@ export function applyAddRect(
   p0: [number, number],
   p1: [number, number],
 ): void {
+  const [x0, y0] = p0
+  const [x1, y1] = p1
+  // The draw tool dispatches on the second click unconditionally, so a click on
+  // the starting corner arrives here. A zero-area rectangle is four zero-length
+  // lines plus eight constraints that can never solve: bail before anything,
+  // even container materialization, touches the document.
+  if (x0 === x1 && y0 === y1) {
+    warn('applyAddRect: degenerate rectangle skipped', { p0, p1 })
+    return
+  }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
-  const [x0, y0] = p0
-  const [x1, y1] = p1
   _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
 }
 
@@ -680,13 +688,18 @@ export function applyAddCenterRect(
   center: [number, number],
   corner: [number, number],
 ): void {
-  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
-  if (!feature) return
-
   const [cx, cy] = center
   const [x, y] = corner
   const dx = x - cx
   const dy = y - cy
+  // Same degenerate-click guard as applyAddRect; here it must also keep the
+  // center point and its two diagonal midpoint constraints from being authored.
+  if (dx === 0 && dy === 0) {
+    warn('applyAddCenterRect: degenerate rectangle skipped', { center, corner })
+    return
+  }
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
+  if (!feature) return
 
   // 4 corners of the rectangle (symmetric around center)
   const x0 = cx - dx, x1 = cx + dx

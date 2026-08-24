@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartEntityDef, PartFeature } from '@/types/cad'
 import {
   applyAddEntity, applyAddProjectedEntity, applyAddEntityWithConstraint, applyAddConstraint,
@@ -199,6 +199,34 @@ describe('sketch preamble: an unknown feature id is a silent no-op', () => {
     expect(applyAddPointAtIntersection(doc, 'gone', [0, 0], ['line1'])).toBeNull()
     expect(applyAddDock(doc, 'gone', [0, 0], 'c_len')).toBeNull()
     expect(doc.features).toHaveLength(1)
+  })
+})
+
+describe('degenerate rectangles author nothing', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  // drawLogic dispatches add_rect on the second click unconditionally, so a
+  // second click on the first corner reaches the mutation with p0 === p1.
+  // Four zero-length lines plus eight constraints can never solve: both rect
+  // entries bail before authoring anything.
+  it('applyAddRect with coincident corners leaves the document untouched', () => {
+    const doc = populatedDoc()
+    const before = JSON.stringify(doc)
+    applyAddRect(doc, 'Sketch1', [3, 4], [3, 4])
+    expect(JSON.stringify(doc)).toBe(before)
+    expect(warnSpy).toHaveBeenCalled()
+  })
+
+  it('applyAddCenterRect with the corner on the center leaves the document untouched', () => {
+    const doc = populatedDoc()
+    const before = JSON.stringify(doc)
+    applyAddCenterRect(doc, 'Sketch1', [3, 4], [3, 4])
+    expect(JSON.stringify(doc)).toBe(before)
+    expect(warnSpy).toHaveBeenCalled()
   })
 })
 
