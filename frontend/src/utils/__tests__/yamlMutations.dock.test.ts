@@ -149,4 +149,22 @@ describe('applyAddConstraint isect handle interception (free intersection)', () 
     expect(coincidents.length).toBe(3)
     expect(JSON.stringify(coincidents)).not.toContain('isect:')
   })
+
+  // parseFloat on a malformed token yields NaN, which round() used to carry
+  // straight into the materialized point's seed -- a NaN pose in the document.
+  it('a malformed isect: coordinate bails instead of seeding NaN', () => {
+    const doc = makeSketchDoc()
+    sketch(doc).entities!.push({ id: 'free', kind: 'point' })
+    sketch(doc).initial!['free'] = [3, 3]
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:free:xy',
+      'isect:Sketch1:abc:def',
+    ])
+    // Nothing materialized, and every stored param stayed finite.
+    expect(points(doc)).toHaveLength(1)
+    for (const params of Object.values(sketch(doc).initial!)) {
+      expect(params.every(Number.isFinite)).toBe(true)
+    }
+    expect(sketch(doc).initial!['free']).toEqual([3, 3])
+  })
 })

@@ -647,6 +647,11 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
       const parts = t.split(':')  // isect, fid, x, y, ...curveIds
       const fid = parts[1]
       const at: [number, number] = [parseFloat(parts[2]), parseFloat(parts[3])]
+      // A malformed handle parses to NaN, which round() carries straight into
+      // the materialized point's seed. Fail safe at the parse seam like
+      // edgeSampling and normalizeMateAngleDeg do: leave the target alone
+      // rather than author a NaN pose into the document.
+      if (!Number.isFinite(at[0]) || !Number.isFinite(at[1])) return t
       const curves = parts.slice(4)
       const pid = applyAddPointAtIntersection(doc, fid, at, curves)
       return pid ? `vertex:${fid}:${pid}:xy` : t
