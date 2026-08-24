@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useUnsavedChangesStore, confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 
 describe('confirmDiscardUnsavedChanges', () => {
@@ -36,5 +36,21 @@ describe('confirmDiscardUnsavedChanges', () => {
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     useUnsavedChangesStore.getState().dismissConfirm()
     expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
+  })
+
+  // Nav target A clicked, then B while the dialog is up: overwriting A's
+  // proceed would silently drop A's navigation when the user discards.
+  // First-requested navigation wins.
+  it('a second request keeps the existing callback instead of overwriting it', () => {
+    useUnsavedChangesStore.getState().setDirty(true)
+    const fnA = vi.fn()
+    const fnB = vi.fn()
+    expect(confirmDiscardUnsavedChanges(fnA)).toBe(false)
+    expect(confirmDiscardUnsavedChanges(fnB)).toBe(false)
+
+    const cb = useUnsavedChangesStore.getState().pendingCallback
+    cb!()
+    expect(fnA).toHaveBeenCalledTimes(1)
+    expect(fnB).not.toHaveBeenCalled()
   })
 })

@@ -30,9 +30,14 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set) => ({
 // current event (e.preventDefault etc.) while the user decides.
 export function confirmDiscardUnsavedChanges(onProceed?: () => void): boolean {
   if (!useUnsavedChangesStore.getState().dirty) return true
-  useUnsavedChangesStore.getState().requestConfirm(() => {
-    useUnsavedChangesStore.getState().setDirty(false)
-    onProceed?.()
-  })
+  // First-requested navigation wins: a second nav target clicked while the
+  // dialog is up must not overwrite the first one's proceed, or confirming
+  // would silently drop the navigation the user asked for first.
+  if (useUnsavedChangesStore.getState().pendingCallback === null) {
+    useUnsavedChangesStore.getState().requestConfirm(() => {
+      useUnsavedChangesStore.getState().setDirty(false)
+      onProceed?.()
+    })
+  }
   return false
 }
