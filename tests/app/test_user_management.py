@@ -738,6 +738,60 @@ class TestAdminCreateUserWithEmail:
         )
         assert response.status_code == 400
 
+    def test_create_user_numeric_password_is_rejected(self, admin_client):
+        """A numeric create password must be a 400, not an unhandled 500 on len()."""
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "numpwcreate", "password": 123,
+                "email": "numpwcreate@example.com"
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_bug_report_numeric_title_is_rejected(self, admin_client):
+        """A numeric bug-report title must be a 400, not an unhandled 500 on .strip()."""
+        response = admin_client.post(
+            "/api/bug-report",
+            data=json.dumps({"title": 5, "description": "text"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_bug_report_numeric_description_is_rejected(self, admin_client):
+        """A numeric bug-report description must be a 400, not an unhandled 500 on .strip()."""
+        response = admin_client.post(
+            "/api/bug-report",
+            data=json.dumps({"title": "valid title", "description": 9}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_bug_report_absent_fields_keep_semantics(self, admin_client, tmp_path, monkeypatch):
+        """Absent title stays a clean 'Title is required' 400 and absent description still saves."""
+        # Redirect report files into tmp_path instead of the repository root.
+        monkeypatch.setattr(
+            "oversolved.blueprints.admin.Path",
+            lambda *_: tmp_path / "depth1" / "depth2" / "depth3",
+        )
+        missing_title = admin_client.post(
+            "/api/bug-report",
+            data=json.dumps({"description": "orphan text"}),
+            content_type="application/json",
+        )
+        assert missing_title.status_code == 400
+
+        no_description = admin_client.post(
+            "/api/bug-report",
+            data=json.dumps({"title": "no description"}),
+            content_type="application/json",
+        )
+        assert no_description.status_code == 201
+        payload = json.loads(no_description.data)
+        assert payload["status"] == "saved"
+        assert (tmp_path / "bugreports" / payload["filename"]).exists()
+
     def test_admin_update_blank_username_is_rejected(self, admin_client):
         """Whitespace-only usernames are rejected the same way as null."""
         create_resp = admin_client.post(

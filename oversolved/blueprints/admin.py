@@ -52,6 +52,9 @@ def create_user_admin() -> ResponseReturnValue:
         return api_error("Username must be a string", "BAD_REQUEST", 400)
     if data.get("email") is not None and not isinstance(data.get("email"), str):
         return api_error("Email must be a string", "BAD_REQUEST", 400)
+    # A non-string password would crash len() inside validate_password_strength.
+    if data.get("password") is not None and not isinstance(data.get("password"), str):
+        return api_error("Password must be a string", "BAD_REQUEST", 400)
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
@@ -392,6 +395,12 @@ def submit_bug_report() -> ResponseReturnValue:
     data = request.get_json()
     if not data:
         return api_error("Empty request body", "BAD_REQUEST", 400)
+    # Non-string scalars would crash .strip() below; absent keys keep the
+    # optional-title/optional-description semantics.
+    if data.get("title") is not None and not isinstance(data.get("title"), str):
+        return api_error("Title must be a string", "BAD_REQUEST", 400)
+    if data.get("description") is not None and not isinstance(data.get("description"), str):
+        return api_error("Description must be a string", "BAD_REQUEST", 400)
     title = (data.get("title") or "").strip()
     description = (data.get("description") or "").strip()
     if not title:
