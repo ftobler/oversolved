@@ -438,8 +438,62 @@ describe('useIdBufferPointerDispatch', () => {
     })
   })
 
-  it('hover stream calls onOver then onOut as the resolved key changes', async () => {
-    const onOver = vi.fn()
+  // A stale-buffer miss (resolveSync null while the pipeline is dirty) is a
+  // transient transition, not empty space: it must not finalise a dimension
+  // placement, exactly as shouldClearSelectionOnBackplaneClick refuses to
+  // clear selection on the same click.
+  describe('dimension finalize vs stale buffer', () => {
+    const PICK = { isVertex: false, target: 'entity:feat1:l1' }
+
+    function setupDimensionGesture() {
+      useSketchEditorStore.setState({
+        activeTool: 'dimension',
+        activeFeatureId: 'feat1',
+        dimensionPicks: [PICK],
+      })
+      pipeline.resolveSync = vi.fn().mockReturnValue(null)
+      return vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('does not finalise when the miss came from a stale (dirty) buffer', async () => {
+      const spy = setupDimensionGesture()
+      // A fresh pipeline starts dirty; make the state explicit anyway.
+      pipeline.markDirty('test')
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([EDGE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      expect(spy).not.toHaveBeenCalled()
+    })
+
+    it('finalises on a clean empty-space click', async () => {
+      const spy = setupDimensionGesture()
+      pipeline.target.markClean()
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([EDGE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+      })
+
+      expect(spy).toHaveBeenCalledWith([100, 100])
+    })
+  })
+
+  it('hover stream calls onOver then onOut as the resolved key changes', async () => {    const onOver = vi.fn()
     const onOut = vi.fn()
     registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onDoubleClick: () => {}, onPointerDown: () => {} })
 

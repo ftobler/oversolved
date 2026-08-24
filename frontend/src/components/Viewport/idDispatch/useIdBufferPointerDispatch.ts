@@ -299,8 +299,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (!hit) {
         // Empty-space click during dimension placement -> finalise.
         // The store decides whether the current picks are enough to dispatch.
+        // A stale-buffer miss (id buffer mid-rebuild) is a transient
+        // transition, not empty space -- the same rule
+        // shouldClearSelectionOnBackplaneClick applies -- so it must not
+        // prematurely commit a dimension placement.
         const store = useSketchEditorStore.getState()
-        if (store.activeTool === 'dimension' && store.dimensionPicks.length > 0) {
+        if (!wasLastClickStaleResolve() && store.activeTool === 'dimension' && store.dimensionPicks.length > 0) {
           store.finalizeDimensionPlacement([e.clientX, e.clientY])
           setLastClickIdHit(true)
         }
