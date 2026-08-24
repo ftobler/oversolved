@@ -307,8 +307,11 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     // The layout fixes 7 params per body and every residual reads a body's block
     // as `body_index * 7`, so a header whose two counts disagree describes a
     // buffer nothing downstream can index safely. Reject it here rather than
-    // running off the end of `params_initial` mid-solve.
-    if n_params != n_bodies * 7 {
+    // running off the end of `params_initial` mid-solve. `checked_mul` because
+    // the counts come off the wire: on wasm32 an unchecked `n_bodies * 7`
+    // wraps, and a crafted pair like (613_566_757, 3) wraps back onto a match
+    // that would sail through this gate.
+    if n_bodies.checked_mul(7) != Some(n_params) {
         return Err(CodecError::ParamCountMismatch);
     }
 
@@ -658,6 +661,25 @@ mod tests {
         // a per-body loop read past the end of params_initial.
         let mut bytes = encode_mate_input(&sample_input());
         bytes[4..8].copy_from_slice(&3u32.to_le_bytes());
+        assert!(matches!(
+            decode_mate_input(&bytes),
+            Err(CodecError::ParamCountMismatch)
+        ));
+    }
+
+    #[test]
+    fn mate_input_body_count_that_wraps_seven_is_rejected_not_panic() {
+        // 613_566_757 * 7 = 4_294_967_299, which wraps to 3 in u32 arithmetic:
+        // the crafted pair would have passed the old unchecked multiply on
+        // wasm32 (and panicked on it in debug). The check must be overflow
+        // proof in both profiles; the header-only buffer is enough because the
+        // count gate fires before any body or param read.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&MATE_MAGIC.to_le_bytes());
+        bytes.extend_from_slice(&613_566_757u32.to_le_bytes()); // n_bodies
+        bytes.extend_from_slice(&3u32.to_le_bytes()); // n_params: wraps onto it
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // n_mates
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // n_fixed_bodies
         assert!(matches!(
             decode_mate_input(&bytes),
             Err(CodecError::ParamCountMismatch)
