@@ -66,6 +66,35 @@ describe('applyAddDock', () => {
 const coincidents = (doc: PartDoc) => (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')
 
 describe('applyAddConstraint dock interception (materialize-on-reference)', () => {
+  // Characterization of a degenerate corner: when the dock exists but its point
+  // id cannot be resolved (_dockPointId returns null because the wire ref names
+  // an entity that is gone), applyAddDock reuses nothing and returns null, and
+  // _resolveInferredTargets passes the raw handle through. The constraint is
+  // then authored with the handle as a literal dead `$dock:` ref. Pinned here so
+  // a future fix (skip authoring, or heal the dock) changes this deliberately.
+  it('an existing dock with an unresolvable point authors the handle as a dead literal ref', () => {
+    const doc = makeSketchDoc()
+    const host = hostId(doc)
+    sketch(doc).constraints!.push({
+      id: 'c_dock_stale', kind: 'dock', point: '$ghostxy', host,
+    } as never)
+    sketch(doc).entities!.push({ id: 'free', kind: 'point' })
+    sketch(doc).initial!['free'] = [9, 9]
+
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:free:xy',
+      `dock:Sketch1:${host}`,
+    ])
+
+    // No second dock, no materialized contact point.
+    expect(docks(doc)).toHaveLength(1)
+    expect(points(doc)).toHaveLength(1)
+    // But the coincident WAS authored, naming the unresolved handle verbatim.
+    const cs = coincidents(doc)
+    expect(cs).toHaveLength(1)
+    expect(JSON.stringify(cs[0])).toContain(`$dock:Sketch1:${host}`)
+  })
+
   it('a dock: handle target materializes the point and rewrites the constraint to it', () => {
     const doc = makeSketchDoc()
     sketch(doc).entities!.push({ id: 'free', kind: 'point' })

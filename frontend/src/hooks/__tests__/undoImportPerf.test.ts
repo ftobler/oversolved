@@ -148,6 +148,24 @@ describe('cloneDocForUndo', () => {
     // The two payloads stay distinct even though both are shared references.
     expect(clone.features![0].file_data).not.toBe(clone.features![1].file_data)
   })
+
+  // An import_step that has not been given its payload yet (typeof guard fails,
+  // so nothing is stripped): the feature must survive the detach/reattach cycle
+  // as an ordinary deep-cloned member, value-identical to the source.
+  it('handles an import_step feature lacking file_data', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'origin', kind: 'origin' },
+        { id: 'imp1', kind: 'import_step', label: 'pending.step' },
+      ],
+    }
+    const clone = cloneDocForUndo(doc)
+    expect(clone).toEqual(doc)
+    // Not payload-shared, so the clone owns a deep copy like any other feature.
+    expect(clone.features![1]).not.toBe(doc.features![1])
+  })
 })
 
 describe('undo/redo round-trip with a skipped payload', () => {
