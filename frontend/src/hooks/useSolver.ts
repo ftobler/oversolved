@@ -376,8 +376,12 @@ export function useSolver(
       })
       // A stale solve must exit before any setState: a newer reSolve owns the
       // banner and the spinner, so a stale null must not paint "Local solver
-      // unavailable" nor clear solving under the newer solve.
-      if (isStale()) return
+      // unavailable" nor clear solving under the newer solve. An unmounted hook
+      // must exit too: no newer reSolve ever bumps the request id, so only the
+      // cancelled flag can see the component is gone. StrictMode's remount
+      // resets cancelledRef before any live solve can start, so this cannot
+      // drop a solve that is still owned.
+      if (isStale() || cancelledRef.current) return
       if (!local) {
         const msg = 'Local solver unavailable (OCC.js failed to load)'
         setSolveError(msg)

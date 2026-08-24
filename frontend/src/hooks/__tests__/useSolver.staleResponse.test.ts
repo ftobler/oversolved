@@ -221,4 +221,33 @@ describe('useSolver stale-result guard', () => {
     await act(async () => { await result.current.reSolve(makeDoc()) })
     expect(result.current.solveError).toBe('Error: kernel boom')
   })
+
+  it('drops a worker reply that lands after unmount', async () => {
+    // Defends the cancelledRef half of the post-await guard: the request-id
+    // check cannot see an unmount (no newer reSolve ever bumps it), so without
+    // the cancelled flag the full application path (global pick clear, setDoc,
+    // setState on a dead component) still runs for a reply nobody can render.
+    const docRef = { current: makeDoc() }
+    const setDoc = vi.fn()
+    const modeRef = { current: 'feature' }
+    const onSolveApplied = vi.fn()
+
+    let release!: (v: unknown) => void
+    mockSolveLocally.mockReturnValue(new Promise(r => { release = r }))
+
+    const { result, unmount } = renderHook(() =>
+      useSolver(undefined, vi.fn(), modeRef, { onSolveApplied }, docRef, setDoc),
+    )
+    let p!: Promise<void>
+    act(() => { p = result.current.reSolve(makeDoc()) })
+
+    // The user leaves the page while the solve is still inside the worker.
+    unmount()
+    await act(async () => {
+      release({ solve_ms: 0, result: { feat1: { status: 'ok' } }, bodies: {}, _build_state: null, request_version: 1 })
+      await p
+    })
+
+    expect(onSolveApplied).not.toHaveBeenCalled()
+  })
 })
