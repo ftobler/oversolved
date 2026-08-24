@@ -332,11 +332,22 @@ export function applyAddConstraint(
     } else if (targets.length === 1) {
       c.target = pt(targets[0])
     }
-  } else if (kind === 'coincident' || targets.length >= 2) {
-    c.a = pt(targets[0])
-    c.b = pt(targets[1])
-  } else if (targets.length === 1) {
-    c.target = pt(targets[0])
+  } else {
+    // Generic kinds need operands: coincident pairs two refs, everything else
+    // at least one. An empty (or single-target coincident) pick used to fall
+    // through every branch and author an operand-less -- or half-authored --
+    // constraint the solver can only read as garbage.
+    const min = kind === 'coincident' ? 2 : 1
+    if (targets.length < min) {
+      warn(`applyAddConstraint: ${kind} needs ${min === 1 ? 'a target' : 'two targets'}, got`, targets)
+      return
+    }
+    if (targets.length >= 2) {
+      c.a = pt(targets[0])
+      c.b = pt(targets[1])
+    } else {
+      c.target = pt(targets[0])
+    }
   }
   if (value !== undefined) c.value = value
   if (pos !== undefined) c.pos = pos

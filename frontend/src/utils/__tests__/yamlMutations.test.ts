@@ -360,6 +360,59 @@ describe('applyAddConstraint midpoint', () => {
   })
 })
 
+// A generic kind used to fall through every branch when its target list was
+// empty (or a single pick for coincident), authoring an operand-less constraint.
+describe('applyAddConstraint operand guards', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  it('a generic kind with no targets adds nothing and warns', () => {
+    const doc = makeSampleDoc()
+    const countBefore = doc.features![0].constraints!.length
+    applyAddConstraint(doc, 'Sketch1', 'parallel', [])
+    expect(doc.features![0].constraints!.length).toBe(countBefore)
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('parallel'),
+      expect.anything(),
+    )
+  })
+
+  it('coincident with a single target is rejected rather than authored half-picked', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'coincident', ['entity:Sketch1:circ1'])
+    expect(doc.features![0].constraints!.find(c => c.kind === 'coincident')).toBeUndefined()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('coincident'),
+      expect.anything(),
+    )
+  })
+
+  it('a valid two-target coincident still adds', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'coincident', ['vertex:Sketch1:line1:end', 'vertex:Sketch1:circ1:center'])
+    const added = doc.features![0].constraints!.find(c => c.kind === 'coincident')
+    expect(added).toBeDefined()
+    expect(added!.a).toEqual('$line1end')
+    expect(added!.b).toEqual('$circ1center')
+  })
+
+  it('a single-target generic kind keeps its target form', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'length', ['entity:Sketch1:line1'], 42)
+    const added = doc.features![0].constraints!.find(c => c.kind === 'length')
+    expect(added).toBeDefined()
+    expect(added!.target).toBe('$line1')
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('move_vertex_with_constraint (combined applyMoveVertex + applyAddConstraint)', () => {
   it('moves vertex and adds constraint atomically', () => {
     const doc = makeSampleDoc()
