@@ -76,7 +76,11 @@ fn apply_damped(
 }
 
 /// Conjugate-gradient solve for (JᵀJ + λ·diag)·δ = b.
-/// Returns δ. Converges when `‖r‖ < tol` or `max_iters` is reached.
+/// Returns `(delta, truncated)`. Converges when `‖r‖ < tol` or `max_iters` is
+/// reached. `truncated` marks an indefinite system (`p'Ap <= 0` mid-run): CG's
+/// descent guarantee is void there, so the partial estimate may be meaningless
+/// and reporting it lets the caller decide -- the LM driver treats it like its
+/// dense-path LU failure and raises lambda for a retry.
 fn cg_solve(
     jac: &[SparseRow],
     lambda: f64,
@@ -85,10 +89,10 @@ fn cg_solve(
     n: usize,
     max_iters: usize,
     tol: f64,
-) -> Vec<f64> {
+) -> (Vec<f64>, bool) {
     let mut x = vec![0.0; n];
     if n == 0 {
-        return x;
+        return (x, false);
     }
 
     // r₀ = b - A·x₀ = b (since x₀ = 0)
@@ -97,6 +101,7 @@ fn cg_solve(
     let mut rsold = dot(&r, &r);
 
     let mut ap = vec![0.0; n];
+    let mut truncated = false;
 
     for _ in 0..max_iters {
         apply_damped(jac, lambda, diag, &p, &mut ap);
@@ -104,7 +109,9 @@ fn cg_solve(
         let p_ap = dot(&p, &ap);
         if p_ap <= 0.0 {
             // A is not positive-definite — should not happen with λ>0 unless
-            // numerical issues. Truncate and return current estimate.
+            // numerical issues. Stop, and say so: silently returning the
+            // current estimate would hand the caller a step nobody vetted.
+            truncated = true;
             break;
         }
 
@@ -126,16 +133,17 @@ fn cg_solve(
         rsold = rsnew;
     }
 
-    x
+    (x, truncated)
 }
 
 /// Precompute the damping diagonal and solve (JᵀJ + λ·diag)·δ = b via CG.
+/// Returns `(delta, truncated)`; see `cg_solve` for the truncation semantics.
 pub fn damped_solve(
     jac: &[SparseRow],
     lambda: f64,
     b: &[f64],
     n: usize,
-) -> Vec<f64> {
+) -> (Vec<f64>, bool) {
     let diag = jtj_diag(jac, n);
     // For small systems, more CG iterations are affordable.
     let max_iters = n * 2;
@@ -203,7 +211,8 @@ mod tests {
         let jac = vec![vec![(0, 1.0)]];
         let r = vec![3.0]; // residual
         let b = sparse_transpose_matvec(&jac, &r, 2);
-        let delta = damped_solve(&jac, 0.1, &b, 2);
+        let (delta, truncated) = damped_solve(&jac, 0.1, &b, 2);
+        assert!(!truncated, "damped healthy system is not truncation");
         assert!((delta[0] - 3.0 / 1.1).abs() < 1e-6, "δ₀={}", delta[0]);
         assert!(delta[1].abs() < 1e-12, "δ₁={}", delta[1]);
     }
@@ -219,38 +228,45 @@ mod tests {
             vec![(0, 1.0), (1, 2.0)],
         ];
         let b = vec![-3.0, -3.0];
-        let delta = cg_solve(&jac, 0.0, &[5.0, 5.0], &b, 2, 20, 1e-14);
+        let (delta, truncated) = cg_solve(&jac, 0.0, &[5.0, 5.0], &b, 2, 20, 1e-14);
+        assert!(!truncated);
         assert!((delta[0] + 1.0 / 3.0).abs() < 1e-6, "δ₀={}", delta[0]);
         assert!((delta[1] + 1.0 / 3.0).abs() < 1e-6, "δ₁={}", delta[1]);
     }
 
     #[test]
-    fn damped_solve_empty_jac_returns_zeros() {
-        // Zero rows: no equations, delta should be all zeros.
+    fn damped_solve_empty_jac_returns_a_reported_truncated_zero_step() {
+        // Zero rows: A is the zero operator, so the very first p'Ap reads 0 --
+        // CG has no descent direction and must SAY SO instead of handing back
+        // zeros dressed up as the solved system.
         let jac: Vec<SparseRow> = vec![];
         let b = vec![1.0, 2.0];
-        let delta = damped_solve(&jac, 0.1, &b, 2);
+        let (delta, truncated) = damped_solve(&jac, 0.1, &b, 2);
         assert_eq!(delta, vec![0.0, 0.0]);
+        assert!(truncated, "zero operator must be reported as truncated");
     }
 
     #[test]
     fn cg_solve_zero_columns_returns_empty() {
-        // n=0: no variables, returns empty delta.
+        // n=0: no variables, returns empty delta, nothing to truncate.
         let jac: Vec<SparseRow> = vec![vec![]];
-        let delta = cg_solve(&jac, 0.1, &[], &[], 0, 10, 1e-12);
+        let (delta, truncated) = cg_solve(&jac, 0.1, &[], &[], 0, 10, 1e-12);
         assert!(delta.is_empty());
+        assert!(!truncated);
     }
 
     #[test]
     fn cg_solve_zero_jacobian_without_damping_hits_divergence_path() {
         // J = [[0, 0]]: diag = [0, 0], lambda=0 => A = zero matrix.
-        // p_ap = dot(p, A·p) = 0, triggering the early break in cg_solve.
-        // The returned delta is the initial x (all zeros) regardless of b.
+        // p_ap = dot(p, A·p) = 0, triggering the indefinite break in cg_solve,
+        // now reported through the truncation flag instead of silently
+        // returning the initial zeros.
         let jac = vec![vec![]];
         let b = vec![5.0, 5.0];
         let diag = vec![0.0, 0.0];
-        let delta = cg_solve(&jac, 0.0, &diag, &b, 2, 10, 1e-12);
+        let (delta, truncated) = cg_solve(&jac, 0.0, &diag, &b, 2, 10, 1e-12);
         assert_eq!(delta, vec![0.0, 0.0], "singular system returns zeros");
+        assert!(truncated, "singular system must be reported");
     }
 
     #[test]
@@ -265,7 +281,8 @@ mod tests {
             vec![(0, 1.0), (1, 1.0)],
         ];
         let b = vec![2.0, 2.0];
-        let delta = damped_solve(&jac, 1.0, &b, 2);
+        let (delta, truncated) = damped_solve(&jac, 1.0, &b, 2);
+        assert!(!truncated, "damping restored positive-definiteness");
         assert!((delta[0] - 1.0 / 3.0).abs() < 1e-6, "δ₀={}", delta[0]);
         assert!((delta[1] - 1.0 / 3.0).abs() < 1e-6, "δ₁={}", delta[1]);
     }

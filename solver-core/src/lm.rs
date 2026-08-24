@@ -292,8 +292,16 @@ pub fn solve_lm_sparse(
 
         let mut accepted = false;
         for _ in 0..30 {
-            let delta =
+            let (delta, truncated) =
                 sparse::damped_solve(&jac, lambda, &g.iter().map(|&v| -v).collect::<Vec<_>>(), n);
+            if truncated {
+                // Same posture as the dense path's `LU.solve -> None`: CG met
+                // an indefinite direction, so this delta cannot be trusted.
+                // Raising lambda pushes the damped system back toward positive
+                // definite, so retry instead of accepting an unvetted step.
+                lambda *= LAMBDA_UP;
+                continue;
+            }
 
             let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
             let r_new = f(&x_new);
@@ -426,5 +434,18 @@ mod tests {
         let jac = |_: &[f64]| vec![vec![]];
         let r = solve_lm_sparse(&[], &f, &jac);
         assert_eq!(r.iters, 0);
+    }
+
+    #[test]
+    fn solve_lm_sparse_terminates_defined_on_a_degenerate_zero_jacobian() {
+        // Every Jacobian row empty: the gradient is zero, so LM stops at the
+        // seed without stepping. This pins the truncated-step plumbing in the
+        // CG path -- a zero operator is reported, never silently accepted --
+        // while the driver still returns a defined result.
+        let f = |x: &[f64]| vec![x[0] - 5.0];
+        let jac = |_: &[f64]| vec![vec![]];
+        let r = solve_lm_sparse(&[2.0], &f, &jac);
+        assert_eq!(r.x, vec![2.0]);
+        assert_eq!(r.iters, 1);
     }
 }
