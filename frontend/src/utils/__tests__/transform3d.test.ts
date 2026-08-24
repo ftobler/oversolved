@@ -166,6 +166,21 @@ describe('transformsEqual', () => {
     expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, tx: 1e-12 })).toBe(true)
     expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, tx: 0.5 })).toBe(false)
   })
+
+  // q and -q are the same rotation (double cover): a ring drag that returns
+  // exactly to start composes a full turn into the negated quaternion, and a
+  // component-wise compare used to read that as a phantom edit.
+  it('reads a negated quaternion as equal, since it is the same rotation', () => {
+    const t: Transform3D = makeTransform([1, 2, 3], quatFromAxisAngle(Z, Math.PI))
+    const negated = { ...t, qx: -t.qx, qw: -t.qw }
+    expect(transformsEqual(t, negated)).toBe(true)
+    // A genuinely different orientation must still be a change...
+    const turned = makeTransform([1, 2, 3], quatFromAxisAngle(Z, HALF_PI))
+    expect(transformsEqual(t, turned)).toBe(false)
+    // ...and so must a moved one with an unchanged orientation.
+    expect(transformsEqual(t, { ...t, ty: 4 })).toBe(false)
+    expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM })).toBe(true)
+  })
 })
 
 describe('compose / invert', () => {

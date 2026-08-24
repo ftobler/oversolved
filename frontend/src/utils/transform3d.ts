@@ -177,10 +177,19 @@ export function relativeTransform(current: Transform3D, base: Transform3D): Tran
   return composeTransforms(current, invertTransform(base))
 }
 
+// Orientation is compared rotation-aware: q and -q are the same physical
+// rotation (quaternion double cover), so component-wise equality would report
+// a phantom "changed" for a pose that merely arrived back at its start through
+// the negated quaternion -- a ring drag returning exactly to start composes a
+// full turn into -q, which used to manufacture spurious undo entries and
+// re-solves. |dot| >= 1 - eps^2 is the sameness test; translations stay
+// component-wise.
 export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boolean {
+  const qa = transformQuat(a)
+  const qb = transformQuat(b)
+  const dot = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3]
   return (
     Math.abs(a.tx - b.tx) <= eps && Math.abs(a.ty - b.ty) <= eps && Math.abs(a.tz - b.tz) <= eps &&
-    Math.abs(a.qx - b.qx) <= eps && Math.abs(a.qy - b.qy) <= eps &&
-    Math.abs(a.qz - b.qz) <= eps && Math.abs(a.qw - b.qw) <= eps
+    Math.abs(dot) >= 1 - eps * eps
   )
 }
