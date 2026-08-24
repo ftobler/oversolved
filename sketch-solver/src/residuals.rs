@@ -26,6 +26,28 @@ fn is_curve(k: Kind) -> bool {
     matches!(k, Kind::Circle | Kind::Arc)
 }
 
+/// Kind behind an entity ref; `None` for external refs, which carry their own
+/// coordinates and read nothing from the local param buffer.
+fn ref_kind(input: &Input, r: &Ref) -> Option<Kind> {
+    match r {
+        Ref::Entity { index, .. } => input.entities.get(*index as usize).map(|e| e.kind),
+        Ref::External { .. } => None,
+    }
+}
+
+/// True when a ref supplies at least `slots` local params. External refs
+/// trivially do (nothing local is read); absent optional roles never reach
+/// this helper (callers default them to eligible).
+fn ref_supplies_slots(input: &Input, r: &Ref, slots: usize) -> bool {
+    match r {
+        Ref::External { .. } => true,
+        Ref::Entity { index, .. } => input
+            .entities
+            .get(*index as usize)
+            .is_some_and(|e| e.kind.param_count() >= slots),
+    }
+}
+
 /// Point-on-ellipse conic residual. `ep` is the ellipse param block
 /// `[cx, cy, a, b, theta_deg]`; the result is 0 exactly on the curve, negative
 /// inside, positive outside. Mirrors the formula in `feature/ellipse-entity.md`.
@@ -139,8 +161,9 @@ pub struct Problem<'a> {
     /// `fixed` fallback and the pin rows.
     pub x0: Vec<f64>,
     /// Only the constraints whose every entity reference is addressable (see
-    /// `Input::entity_params_in_range`). Referentially stale constraints are
-    /// dropped at build time so no residual row can index off the end.
+    /// `Input::entity_params_in_range`) and whose operand kinds supply the
+    /// param slots their builder reads (see `operand_kinds_supply_slots`).
+    /// Dropped at build time so no residual row can index off the end.
     constraints: Vec<&'a Constraint>,
     pinned_indices: Vec<usize>,
     equality_pins: Vec<(usize, f64)>,
@@ -179,6 +202,11 @@ impl<'a> Problem<'a> {
                     Ref::External { .. } => true,
                 })
             })
+            // Same contract one level up: an operand whose KIND has no param at
+            // a slot its builder reads (a Length on a Point target) would also
+            // panic the worker mid-solve, so it is dropped whole here rather
+            // than guarded ad hoc per builder.
+            .filter(|c| Self::operand_kinds_supply_slots(input, c))
             .collect();
 
         let mut line_circle_coincident = HashMap::new();
@@ -235,6 +263,92 @@ impl<'a> Problem<'a> {
             pinned_indices,
             equality_pins,
             line_circle_coincident,
+        }
+    }
+
+    /// Kind-aware counterpart to the range filter above. A well-formed
+    /// constraint can still name an operand whose kind has no param at a slot
+    /// its builder indexes (a Length targeting a Point, say); `decode_input`
+    /// accepts such payloads verbatim from postMessage, and one slice-index
+    /// panic kills the whole worker. The constraint is dropped whole, exactly
+    /// like a stale reference, so residual and Jacobian row counts (analytic
+    /// and finite-difference alike) stay consistent automatically: both are
+    /// computed from this filtered list only. Slot requirements are
+    /// transcribed from each `r_*` builder; eligible kinds keep their exact
+    /// previous behavior.
+    fn operand_kinds_supply_slots(input: &Input, c: &Constraint) -> bool {
+        let Some(kind) = c.kind() else { return true };
+        // Absent optional roles default to eligible: their builders already
+        // contribute no rows for them.
+        let supplies = |role: RefRole, slots: usize| {
+            c.ref_for(role)
+                .is_none_or(|r| ref_supplies_slots(input, &r, slots))
+        };
+        match kind {
+            ConstraintKind::Horizontal | ConstraintKind::Vertical => {
+                // The a/b form compares points resolved through `point()` for
+                // every kind; only the bare-entity form reads endpoints
+                // straight out of the param block.
+                if c.ref_for(RefRole::A).is_some() && c.ref_for(RefRole::B).is_some() {
+                    true
+                } else {
+                    supplies(RefRole::Target, 4)
+                }
+            }
+            ConstraintKind::Length => supplies(RefRole::Target, 4),
+            ConstraintKind::Radius | ConstraintKind::Diameter => supplies(RefRole::Target, 3),
+            ConstraintKind::LineDistance => supplies(RefRole::A, 4),
+            ConstraintKind::Angle => supplies(RefRole::A, 4) && supplies(RefRole::B, 4),
+            ConstraintKind::Midpoint => supplies(RefRole::Line, 4),
+            ConstraintKind::Tangent => {
+                // Reproduce the builder's operand pairing: explicit line/arc
+                // roles win, otherwise the A/B pair ordered line-kind-first.
+                let pair = match (c.ref_for(RefRole::Line), c.ref_for(RefRole::Arc)) {
+                    (Some(lr), Some(ar)) => Some((lr, ar)),
+                    _ => match (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) {
+                        (Some(a), Some(b)) if ref_kind(input, &a) != Some(Kind::Line) => {
+                            Some((b, a))
+                        }
+                        (Some(a), Some(b)) => Some((a, b)),
+                        _ => None,
+                    },
+                };
+                match pair {
+                    // A leading line takes the endpoint-tangency paths, which
+                    // gate the second operand's kind themselves and never
+                    // index past it.
+                    Some((lr, _)) if ref_kind(input, &lr) == Some(Kind::Line) => true,
+                    // Otherwise both operands feed the centers/radii curve
+                    // branch, which reads each radius at slot 2.
+                    Some((lr, ar)) => {
+                        ref_supplies_slots(input, &lr, 3) && ref_supplies_slots(input, &ar, 3)
+                    }
+                    None => true,
+                }
+            }
+            ConstraintKind::Normal => {
+                let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
+                    return true;
+                };
+                let (ka, kb) = (ref_kind(input, &a), ref_kind(input, &b));
+                if ka == Some(Kind::Line) && kb == Some(Kind::Line) {
+                    return true;
+                }
+                // Mirror the builder's split: whichever operand plays the curve
+                // supplies the contact normal, center-only for a circle but
+                // from the start/end angle params for every other kind.
+                let (line_ref, arc_ref) = if ka == Some(Kind::Line) { (&a, &b) } else { (&b, &a) };
+                let arc_ok = match ref_kind(input, arc_ref) {
+                    None | Some(Kind::Circle) => true,
+                    _ => ref_supplies_slots(input, arc_ref, 5),
+                };
+                arc_ok && ref_supplies_slots(input, line_ref, 4)
+            }
+            // Parallel, equal-length and radius-difference gate their own
+            // kinds in their builders; coincident and the point-distance
+            // family resolve all operands through `point()` and are safe for
+            // every kind.
+            _ => true,
         }
     }
 
@@ -1361,7 +1475,7 @@ impl<'a> Problem<'a> {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use crate::{ConstraintKind, EqualityPin, Options};
+    use crate::{ConstraintKind, EqualityPin, Options, Status, solve_sketch};
 
     #[test]
     fn horizontal_and_length_residuals_on_known_line() {
@@ -1415,6 +1529,126 @@ mod tests {
         );
         let p = Problem::new(&inp);
         assert!(p.residuals(&p.x0).is_empty());
+    }
+
+    /// A well-formed but wrong-kind operand reaches the worker verbatim from
+    /// postMessage (decode_input does not kind-check). Each payload below made
+    /// its builder index past a short param block before the centralized
+    /// eligibility filter existed; each must now be dropped whole: no residual
+    /// rows and, because both analytic and finite-difference Jacobians are
+    /// built from the same filtered list, no Jacobian rows either.
+    #[test]
+    fn constraints_whose_operand_kind_lacks_the_read_slots_are_dropped() {
+        use RefRole::{Arc as ArcR, Line as LineR};
+        let absent = PointSelector::Absent;
+        // Shared fixture: point P0 [0..2], circle C1 [2..5], line L2 [5..9].
+        let entities = || {
+            vec![
+                ent(Kind::Point, 0),
+                ent(Kind::Circle, 2),
+                ent(Kind::Line, 5),
+            ]
+        };
+        let params = || vec![1.0, 2.0, 5.0, 5.0, 1.0, 0.0, 0.0, 4.0, 0.0];
+        let payloads: Vec<(&str, Constraint)> = vec![
+            (
+                "horizontal target point",
+                cons(ConstraintKind::Horizontal, vec![target(0, absent)]),
+            ),
+            (
+                "length target point",
+                cons_v(ConstraintKind::Length, vec![target(0, absent)], 3.0),
+            ),
+            (
+                "radius target point",
+                cons_v(ConstraintKind::Radius, vec![target(0, absent)], 1.0),
+            ),
+            (
+                "diameter target point",
+                cons_v(ConstraintKind::Diameter, vec![target(0, absent)], 2.0),
+            ),
+            (
+                "line_distance circle as line",
+                cons_v(
+                    ConstraintKind::LineDistance,
+                    ab(e_ref(1, absent), e_ref(0, PointSelector::Xy)),
+                    1.0,
+                ),
+            ),
+            (
+                "angle circle vs point",
+                cons_v(ConstraintKind::Angle, ab(e_ref(1, absent), e_ref(0, absent)), 30.0),
+            ),
+            (
+                "midpoint point in line role",
+                cons(
+                    ConstraintKind::Midpoint,
+                    vec![
+                        (LineR, e_ref(0, absent)),
+                        (RefRole::Point, e_ref(2, PointSelector::Start)),
+                    ],
+                ),
+            ),
+            // The reported trigger: A=Point is not a line, so dispatch falls
+            // through to curve/curve and reads the point's slot-2 radius.
+            (
+                "tangent point circle",
+                cons(ConstraintKind::Tangent, ab(e_ref(0, absent), e_ref(1, absent))),
+            ),
+            (
+                "tangent explicit roles on wrong kinds",
+                cons(
+                    ConstraintKind::Tangent,
+                    vec![(LineR, e_ref(1, absent)), (ArcR, e_ref(0, absent))],
+                ),
+            ),
+            (
+                "normal point line",
+                cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(2, absent))),
+            ),
+            (
+                "normal two circles",
+                cons(ConstraintKind::Normal, ab(e_ref(1, absent), e_ref(1, absent))),
+            ),
+        ];
+        for (name, c) in payloads {
+            let inp = input(entities(), params(), vec![c]);
+            let p = Problem::new(&inp);
+            let x = p.x0.clone();
+            let n = x.len();
+            assert!(
+                p.residuals(&x).is_empty(),
+                "{name}: wrong-kind operand must drop the whole constraint"
+            );
+            assert_eq!(
+                p.jacobian(&x, n).nrows(),
+                0,
+                "{name}: Jacobian rows must match the dropped residual"
+            );
+        }
+    }
+
+    /// The end-to-end shape of the bug: one postMessage carrying wrong-kind
+    /// operands must not trap the wasm worker; the sketch solves with those
+    /// constraints silently dropped.
+    #[test]
+    fn wrong_kind_payload_solves_instead_of_panicking() {
+        let absent = PointSelector::Absent;
+        let inp = input(
+            vec![ent(Kind::Point, 0), ent(Kind::Circle, 2), ent(Kind::Line, 5)],
+            vec![1.0, 2.0, 5.0, 5.0, 1.0, 0.0, 0.0, 4.0, 0.0],
+            vec![
+                cons(ConstraintKind::Tangent, ab(e_ref(0, absent), e_ref(1, absent))),
+                cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(2, absent))),
+                cons_v(ConstraintKind::Length, vec![target(0, absent)], 3.0),
+                cons_v(ConstraintKind::Angle, ab(e_ref(1, absent), e_ref(0, absent)), 30.0),
+            ],
+        );
+        let out = solve_sketch(&inp);
+        // Every constraint was dropped, so nothing is constrained at all and
+        // the stacked residual is exactly empty.
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        assert_eq!(out.diagnostics.residual_norm, 0.0);
     }
 
     #[test]
@@ -1571,6 +1805,32 @@ mod tests {
         assert_eq!(r.len(), 1);
         let expected = 7.0 / (10.0_f64).sqrt() - 2.5;
         assert!((r[0] - expected).abs() < 1e-12, "residual: {}, expected: {}", r[0], expected);
+    }
+
+    /// Normal between a line and a circle goes through `radius_dir` at the line
+    /// endpoint: the residual is the cross product of the line direction with
+    /// the unit radial direction there, and the FD-fallback Jacobian has a
+    /// matching row. No other test covers the mixed line/curve form.
+    #[test]
+    fn normal_between_line_and_circle_contributes_one_row() {
+        // Line along +x from origin to (4,0); circle center (8,8) r=2. Contact
+        // is the line end (4,0), radial direction (-4,-8)/sqrt(80), so the
+        // residual is 4 * (-8/sqrt(80)).
+        let absent = PointSelector::Absent;
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Circle, 4)],
+            vec![0.0, 0.0, 4.0, 0.0, 8.0, 8.0, 2.0],
+            vec![cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(1, absent)))],
+        );
+        let p = Problem::new(&inp);
+        let x = p.x0.clone();
+        let n = x.len();
+        let r = p.residuals(&x);
+        assert_eq!(r.len(), 1);
+        let expected = -32.0 / (80.0_f64).sqrt();
+        assert!((r[0] - expected).abs() < 1e-12, "normal line/circle: {}", r[0]);
+        // The FD fallback for this kind must mirror the row count.
+        assert_eq!(p.jacobian(&x, n).nrows(), 1);
     }
 
     // ─── line-arc tangent tests ───
