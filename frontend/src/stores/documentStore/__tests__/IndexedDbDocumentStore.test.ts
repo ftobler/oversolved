@@ -183,6 +183,32 @@ describe('IndexedDbDocumentStore', () => {
       await store.remove(uuid)
       expect((await trash.list())[0].deleted_at).toBe(first)
     })
+
+    // duplicate/clone read the raw record, so a tombstoned id would otherwise
+    // come back as a live copy: resurrecting a trashed doc behind load()'s and
+    // list()'s backs, which both reject/hide trashed records.
+    it('duplicate and clone reject a trashed id instead of resurrecting it', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Bracket')
+      await store.save(uuid, { content: 'body' })
+      await store.remove(uuid)
+      await expect(store.duplicate(uuid)).rejects.toThrow(/not found/i)
+      await expect(store.clone(uuid)).rejects.toThrow(/not found/i)
+      // No live copy may have been created under either call.
+      expect(await store.list()).toEqual([])
+    })
+
+    it('duplicating a live doc still works alongside the trashed-id rejection', async () => {
+      const store = new IndexedDbDocumentStore()
+      const live = await store.create('Original')
+      await store.save(live.uuid, { content: 'shape' })
+      const trashed = await store.create('Trashed')
+      await store.remove(trashed.uuid)
+
+      const dup = await store.duplicate(live.uuid)
+      expect((await store.load(dup.uuid)).content).toBe('shape')
+      expect(await store.list()).toHaveLength(2)  // original + copy; the trashed one stays hidden
+    })
   })
 
   describe('atomic read-modify-write (save/rename/remove/markSynced/recover)', () => {

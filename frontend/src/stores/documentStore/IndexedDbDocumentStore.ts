@@ -175,7 +175,10 @@ export class IndexedDbDocumentStore implements DocumentStore {
 
   private async copyInto(id: string, nameFor: (srcName: string) => string): Promise<{ uuid: string }> {
     const src = await idbGet<StoredDoc>(id)
-    if (!src) throw new Error(`Document not found: ${id}`)
+    // A tombstoned record is gone as far as the library is concerned: duplicating
+    // it would resurrect a trashed document as a live copy behind load()'s and
+    // list()'s backs, which reject/hide trashed records.
+    if (!src || src.deleted_at) throw new Error(`Document not found: ${id}`)
     const { uuid } = await this.create(nameFor(src.name), { is_public: src.is_public })
     await this.save(uuid, { content: src.content, preview_image: src.preview_image })
     return { uuid }
