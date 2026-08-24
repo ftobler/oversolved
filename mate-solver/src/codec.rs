@@ -18,6 +18,23 @@ pub enum CodecError {
     /// The header's `n_params` is not `n_bodies * 7`. Every per-body loop reads
     /// a fixed 7-param block, so a disagreeing header cannot be solved at all.
     ParamCountMismatch,
+    /// A NaN or Inf arrived on an input float field.
+    NonFinite,
+}
+
+/// Gate against non-finite floats on the wire.
+///
+/// A NaN or Inf that reaches the residual builders poisons the Jacobian, and
+/// nalgebra's SVD (the rank pass in `solve_mate`) never satisfies its
+/// convergence test on NaN: it loops forever inside the serialized worker
+/// actor, wedging every later solve with it. There is no other gate between
+/// the wire and the residuals, so every decoded f32 is checked here.
+pub(crate) fn finite(v: f32) -> Result<f32, CodecError> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(CodecError::NonFinite)
+    }
 }
 
 /// Lets `r.u32()?` inside a `Result<_, CodecError>` function convert the

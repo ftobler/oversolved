@@ -1135,6 +1135,15 @@ fn twist_gradient(qx: f64, qy: f64, qz: f64, qw: f64, w: &[f64; 3]) -> [f64; 4] 
 /// correctly-solved assembly as overconstrained. Scale to an RMS-per-residual
 /// figure so the threshold means the same thing regardless of problem size.
 fn mate_status(residual_norm: f64, m: usize, dof: usize) -> MateStatus {
+    // A non-finite norm means NaN reached the residuals (the wire codec gates
+    // its floats, but a host can still seed an in-memory MateInput with one).
+    // It must classify as the failing state and never as FullyConstrained:
+    // that would tell the editor the assembly is solved and lock the UI on
+    // garbage, while Underconstrained would invite dragging a pose the solver
+    // knows nothing about. Overconstrained is the enum's only error-ish state.
+    if !residual_norm.is_finite() {
+        return MateStatus::Overconstrained;
+    }
     let rms_residual = if m > 0 { residual_norm / (m as f64).sqrt() } else { 0.0 };
     if rms_residual > 1e-4 {
         MateStatus::Overconstrained
@@ -1165,8 +1174,12 @@ pub fn solve_mate(input: &MateInput) -> MateOutput {
     let damp_scale = problem.rotation_damp_scale();
     let lm_result = lm::solve_lm_damped(&x0_f64, &residuals_fn, &jacobian_fn, &damp_scale);
 
-    // Rank analysis via SVD.
-    let dof = if m == 0 || n == 0 {
+    // Rank analysis via SVD. Skipped when the residuals are poisoned:
+    // nalgebra's SVD convergence test never fires on NaN, so this call would
+    // spin forever and wedge the serialized worker. `mate_status` then reports
+    // the failure instead of a rank that cannot be trusted.
+    let poisoned = !lm_result.residual_norm.is_finite();
+    let dof = if m == 0 || n == 0 || poisoned {
         0
     } else {
         let svd = lm_result.jacobian.svd(true, false);
@@ -2736,6 +2749,30 @@ mod tests {
                 assert!((p[c] - want[c]).abs() < 1e-12, "canonical_perp({:?}) = {:?}, want {:?}", axis, p, want);
             }
         }
+    }
+
+    #[test]
+    fn nan_seed_reports_the_failing_status_never_fully_constrained() {
+        // The codec rejects non-finite floats on the wire, but solve_mate also
+        // accepts an in-memory MateInput a host can seed directly. A NaN seed
+        // poisons the Jacobian, and the rank pass must not run on it: this is
+        // the belt behind the codec's braces. Before the gate the solve either
+        // hung in nalgebra's SVD or classified NaN as FullyConstrained and
+        // locked the UI on garbage.
+        let mut input = two_body_input();
+        input.params_initial[7] = f32::NAN;
+        let out = solve_mate(&input);
+        assert_ne!(
+            out.overall_status,
+            MateStatus::FullyConstrained.to_u8(),
+            "a poisoned solve must never read as solved"
+        );
+        let all_finite = out.params_solved.iter().all(|p| p.is_finite());
+        assert!(
+            all_finite || out.overall_status == MateStatus::Overconstrained.to_u8(),
+            "expected finite params or an error status, got status={} params={:?}",
+            out.overall_status, out.params_solved,
+        );
     }
 }
 

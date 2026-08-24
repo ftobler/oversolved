@@ -55,7 +55,7 @@
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
-use crate::codec::{CodecError, Reader, Writer};
+use crate::codec::{finite, CodecError, Reader, Writer};
 
 pub const MATE_MAGIC: u32 = 0x5331_544D; // "MTS1" in LE
 pub const MATE_MAGIC_OUT: u32 = 0x5231_544D; // "MTR1" in LE
@@ -321,7 +321,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     // a fixed 84 bytes, a param a single f32.
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
-        params_initial.push(r.f32()?);
+        params_initial.push(finite(r.f32()?)?);
     }
 
     let mask_len = pinned_mask_bytes(n_bodies);
@@ -341,27 +341,31 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         let anchor_kind_b = AnchorKind::from_u8(ak_b)
             .ok_or(CodecError::BadKind(ak_b))?;
 
-        let px_a = r.f32()? as f64;
-        let py_a = r.f32()? as f64;
-        let pz_a = r.f32()? as f64;
-        let ax_a = r.f32()? as f64;
-        let ay_a = r.f32()? as f64;
-        let az_a = r.f32()? as f64;
+        let px_a = finite(r.f32()?)? as f64;
+        let py_a = finite(r.f32()?)? as f64;
+        let pz_a = finite(r.f32()?)? as f64;
+        let ax_a = finite(r.f32()?)? as f64;
+        let ay_a = finite(r.f32()?)? as f64;
+        let az_a = finite(r.f32()?)? as f64;
 
-        let px_b = r.f32()? as f64;
-        let py_b = r.f32()? as f64;
-        let pz_b = r.f32()? as f64;
-        let ax_b = r.f32()? as f64;
-        let ay_b = r.f32()? as f64;
-        let az_b = r.f32()? as f64;
+        let px_b = finite(r.f32()?)? as f64;
+        let py_b = finite(r.f32()?)? as f64;
+        let pz_b = finite(r.f32()?)? as f64;
+        let ax_b = finite(r.f32()?)? as f64;
+        let ay_b = finite(r.f32()?)? as f64;
+        let az_b = finite(r.f32()?)? as f64;
 
         let flags = r.u8()?;
         let flip = (flags & 0b001) != 0;
 
-        let offset = [r.f32()? as f64, r.f32()? as f64, r.f32()? as f64];
-        let ratio = r.f32()? as f64;
-        let radius = r.f32()? as f64;
-        let angle = r.f32()? as f64;
+        let offset = [
+            finite(r.f32()?)? as f64,
+            finite(r.f32()?)? as f64,
+            finite(r.f32()?)? as f64,
+        ];
+        let ratio = finite(r.f32()?)? as f64;
+        let radius = finite(r.f32()?)? as f64;
+        let angle = finite(r.f32()?)? as f64;
 
         mates.push(Mate {
             kind,
@@ -827,5 +831,67 @@ mod tests {
             let kind = MateKind::from_u8(code).unwrap();
             assert_eq!(kind.to_u8(), code);
         }
+    }
+
+    // Each float field class on the input wire is gated individually: one NaN
+    // row reaching the residuals poisons the Jacobian, and nalgebra's SVD (the
+    // rank pass) never converges on NaN -- it hangs the serialized worker for
+    // good -- so there is no "harmless" slot for a non-finite to hide in.
+    fn assert_nonfinite_rejected(field: &str, apply: impl Fn(&mut MateInput, f32)) {
+        for v in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut input = sample_input();
+            apply(&mut input, v);
+            assert!(
+                matches!(
+                    decode_mate_input(&encode_mate_input(&input)),
+                    Err(CodecError::NonFinite)
+                ),
+                "{field} accepted {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn nonfinite_param_seed_rejected() {
+        assert_nonfinite_rejected("params_initial", |input, v| input.params_initial[0] = v);
+    }
+
+    #[test]
+    fn nonfinite_anchor_point_rejected() {
+        for comp in 0..3 {
+            assert_nonfinite_rejected("point_a", move |input, v| {
+                input.mates[0].a.geometry.point[comp] = v as f64;
+            });
+            assert_nonfinite_rejected("point_b", move |input, v| {
+                input.mates[0].b.geometry.point[comp] = v as f64;
+            });
+        }
+    }
+
+    #[test]
+    fn nonfinite_anchor_axis_rejected() {
+        for comp in 0..3 {
+            assert_nonfinite_rejected("axis_a", move |input, v| {
+                input.mates[0].a.geometry.axis[comp] = v as f64;
+            });
+            assert_nonfinite_rejected("axis_b", move |input, v| {
+                input.mates[0].b.geometry.axis[comp] = v as f64;
+            });
+        }
+    }
+
+    #[test]
+    fn nonfinite_offset_component_rejected() {
+        // The offset is a full 3-vector on the wire; every component gates.
+        assert_nonfinite_rejected("offset.x", |input, v| input.mates[0].offset[0] = v as f64);
+        assert_nonfinite_rejected("offset.y", |input, v| input.mates[0].offset[1] = v as f64);
+        assert_nonfinite_rejected("offset.z", |input, v| input.mates[0].offset[2] = v as f64);
+    }
+
+    #[test]
+    fn nonfinite_ratio_radius_angle_rejected() {
+        assert_nonfinite_rejected("ratio", |input, v| input.mates[0].ratio = v as f64);
+        assert_nonfinite_rejected("radius", |input, v| input.mates[0].radius = v as f64);
+        assert_nonfinite_rejected("angle", |input, v| input.mates[0].angle = v as f64);
     }
 }
