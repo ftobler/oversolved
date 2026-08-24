@@ -1113,7 +1113,10 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
         features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: ['a', 'b'], distance: 10 } }],
       }),
       remove: (doc, index) => applyRemoveExtrudeProfile(doc, 'ex1', index),
-      list: (doc) => doc.features![0].extrude!.sketch,
+      list: (doc) => {
+        const sketch = doc.features![0].extrude!.sketch
+        return Array.isArray(sketch) ? sketch : undefined
+      },
     },
     {
       name: 'applyRemoveFilletEdge',
