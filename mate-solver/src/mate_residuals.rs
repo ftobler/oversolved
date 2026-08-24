@@ -491,7 +491,22 @@ impl MateProblem {
                     let twist_a = twist_angle(qx_a, qy_a, qz_a, qw_a, &seed_a_w);
                     let twist_b = twist_angle(qx_b, qy_b, qz_b, qw_b, &seed_b_w);
 
-                    r.push((twist_b - twist_b0) - mate.ratio * (twist_a - twist_a0));
+                    // Ratio 1 is a rigid roll link whose target lives on the
+                    // same circle `abs_roll_residual` wraps: `twist_angle`
+                    // spans (-2pi, 2pi], so driving the pair past +/-2pi (or a
+                    // quaternion sign flip) jumps the raw delta by a full turn
+                    // and stalls LM on the branch cut -- the same trap
+                    // `fill_roll_fd`'s wrap_to_pi(fp - fm) handles. Ratio != 1
+                    // stays unwrapped DELIBERATELY: its target manifold
+                    // repeats every 2*pi/ratio, so which representative is
+                    // "nearest" depends on a design decision this fix does not
+                    // make, and a silent wrap there would change behaviour
+                    // under a fixture that locks today's numbers.
+                    if mate.ratio == 1.0 {
+                        r.push(wrap_to_pi((twist_b - twist_b0) - (twist_a - twist_a0)));
+                    } else {
+                        r.push((twist_b - twist_b0) - mate.ratio * (twist_a - twist_a0));
+                    }
                 }
                 MateKind::ParallelPlaneDistance => {
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
@@ -2936,6 +2951,114 @@ mod tests {
                 "scale {scale:e}: status must not depend on units"
             );
         }
+    }
+
+    /// CopyRotation pair with both bodies seeded at zero roll about Z.
+    fn copy_rotation_input(ratio: f64, seed_a_deg: f64, seed_b_deg: f64) -> MateInput {
+        let q = |deg: f64| {
+            let half = deg.to_radians() / 2.0;
+            (half.sin() as f32, half.cos() as f32)
+        };
+        let (qza, qwa) = q(seed_a_deg);
+        let (qzb, qwb) = q(seed_b_deg);
+        MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, qza, qwa,
+                0.0, 0.0, 0.0, 0.0, 0.0, qzb, qwb,
+            ],
+            // A grounded so the driven-pose tests below cannot be satisfied by
+            // rotating the pair jointly; B must do the moving.
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::CopyRotation,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+                false, 0.0, ratio, 0.0)],
+        }
+    }
+
+    #[test]
+    fn copy_rotation_ratio_one_wraps_across_the_full_turn_branch_cut() {
+        // Hold A at its seed and drive B forward; the residual must read the
+        // SHORT way around once the raw twist passes 180 or 360 degrees. The
+        // old unwrapped value at 350 deg read +350-degree-equivalent (+6.11
+        // rad), a full-turn error that stalled descent on the cut.
+        let p = MateProblem::new(&copy_rotation_input(1.0, 0.0, 0.0));
+        let pose = |b_deg: f64| {
+            let half = b_deg.to_radians() / 2.0;
+            vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, half.sin(), half.cos(),
+            ]
+        };
+        let r_at = |deg: f64| p.residuals(&pose(deg))[0];
+
+        // Continuity across the former +/-pi jump: symmetric poses read as
+        // symmetric residuals of OPPOSITE sign.
+        assert!((r_at(190.0) + r_at(170.0)).abs() < 1e-9);
+        // 350 deg past the seed is a -10 degree error, not +350.
+        assert!((r_at(350.0) - (-10.0_f64).to_radians()).abs() < 1e-9);
+
+        // And therefore |residual| decreases monotonically along the forward
+        // path through the former branch cut -- the descent LM will follow.
+        let path = [340.0, 345.0, 350.0, 355.0, 359.0];
+        for w in path.windows(2) {
+            assert!(
+                r_at(w[1]).abs() < r_at(w[0]).abs(),
+                "|r| increased from {} to {} deg along the forward path",
+                w[0], w[1]
+            );
+        }
+    }
+
+    #[test]
+    fn copy_rotation_ratio_one_descends_the_short_way_through_a_full_turn() {
+        // Problem authored at zero/zero, but LM restarts from B parked 340 deg
+        // away (what a drag leaves behind when the solve reruns). The wrapped
+        // residual points B forward through the former branch cut to the
+        // nearest representative of its seed orientation; before the wrap the
+        // raw 340-degree-equivalent error dragged it the long way around.
+        let input = copy_rotation_input(1.0, 0.0, 0.0);
+        let p = MateProblem::new(&input);
+        let res = p.residuals_fn();
+        let jac = p.jacobian_fn();
+        let damp = p.rotation_damp_scale();
+        let half = 340.0_f64.to_radians() / 2.0;
+        let x_start = vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, half.sin(), half.cos(),
+        ];
+        let out = lm::solve_lm_damped(&x_start, &res, &jac, &damp);
+        assert!(out.residual_norm < 1e-3, "rn={}", out.residual_norm);
+        let qz = out.x[12];
+        let qw = out.x[13];
+        let roll_mod = (2.0 * qz.atan2(qw)).rem_euclid(2.0 * std::f64::consts::PI);
+        assert!(
+            roll_mod < 0.05 || roll_mod > 2.0 * std::f64::consts::PI - 0.05,
+            "B should land back on its seed orientation modulo a full turn, got {roll_mod} rad"
+        );
+    }
+
+    #[test]
+    fn copy_rotation_ratio_two_stays_raw_and_unwrapped() {
+        // Locks today's numbers for ratio != 1: seeds A=10/B=5 deg, driven to
+        // abs 30/abs 340 (deltas +20/+335). The raw formula reads exactly
+        // delta_b - ratio*delta_a with NO wrapping; a future silent wrap would
+        // turn this 5.15 rad into -1.13 rad and fail here. Both driven poses
+        // stay inside (0, 360) so the twist angles themselves are unambiguous.
+        let input = copy_rotation_input(2.0, 10.0, 5.0);
+        let p = MateProblem::new(&input);
+        let half_a = 30.0_f64.to_radians() / 2.0;
+        let half_b = 340.0_f64.to_radians() / 2.0;
+        let x = vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, half_a.sin(), half_a.cos(),
+            0.0, 0.0, 0.0, 0.0, 0.0, half_b.sin(), half_b.cos(),
+        ];
+        let r = p.residuals(&x)[0];
+        let expected = 335.0_f64.to_radians() - 2.0 * 20.0_f64.to_radians();
+        // 1e-6: the sin/cos/atan2 chain through the quaternion loses a few
+        // ulps; a wrapping regression would move r by 2*pi, not by this much.
+        assert!((r - expected).abs() < 1e-6, "r={r}, expected={expected}");
     }
 
     #[test]
