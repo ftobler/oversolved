@@ -142,6 +142,22 @@ describe('EdgeIdLayer', () => {
     expect(reg.size()).toBe(2)
   })
 
+  it('a zero-segment re-register replaces the old registration instead of keeping it stale', () => {
+    layer.registerBody(makeReg())
+    expect(layer.bodyCount()).toBe(1)
+    layer.registerBody({
+      bodyKey: 'b',
+      segmentPositions: new Float32Array(0),
+      segmentToEdge: new Uint32Array([]),
+      edgeQueries: [],
+    })
+    // The unregister pre-clear runs before the empty early exit, so nothing of
+    // the old body survives a replacement that has nothing to draw.
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
   it('excludes a segment whose edge has no query from the drawn geometry', () => {
     // jsdom has no GPU pass, so "no visible pixels" is pinned structurally:
     // the unnamed segment must not be part of the rasterised position buffer.

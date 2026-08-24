@@ -130,7 +130,6 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
       throw new Error(`EdgeIdLayer: segmentPositions length ${segmentPositions.length} is not a multiple of 6`)
     }
     const numSegments = segmentPositions.length / 6
-    if (numSegments === 0) return
     // Fail loud BEFORE touching scene or registry: an out-of-range read used to
     // fall through the `?? 0` default and silently attribute those segments to
     // edge 0.
@@ -139,6 +138,9 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     }
 
     this.unregisterBody(reg.bodyKey)
+    // A re-register with zero segments still replaces (not silently keeps) the
+    // old body's registration.
+    if (numSegments === 0) return
 
     // 2 vertices per segment (a line), 3 floats per vertex.
     const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
