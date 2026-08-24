@@ -1285,6 +1285,38 @@ describe('usePartDoc undo/redo integration', () => {
     }
   })
 
+  // A mid-gesture no-op must still fulfil "the next mutation" contract of an
+  // armed withhold (like the suppression branch does), or it strands the arm
+  // and the NEXT real mutation gets swallowed as the never-arriving projection.
+  it('a mid-gesture no-op rename consumes the brep withhold so a later edit pushes normally', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.beginBrepProjection() })
+    // An idempotent rename dispatching its current label changes nothing, so
+    // the guard returns early - but the gesture's arm must be consumed here.
+    act(() => { result.current.handleMutation(renameTo('first')) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    // The next REAL mutation pushes its own entry instead of being swallowed
+    // as "the projection".
+    act(() => { result.current.handleMutation(renameTo('second')) })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(labelOf()).toBe('second')
+  })
+
+  it('a fully no-op mutation group consumes the brep withhold so a later edit pushes normally', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    act(() => { result.current.beginBrepProjection() })
+    // A group whose handlers all no-op takes the group early return.
+    act(() => { result.current.commitMutationGroup([renameTo('first')]) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.handleMutation(renameTo('second')) })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(labelOf()).toBe('second')
+  })
+
   it('cancelling a brep dimension pick removes the projection and its entry', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))

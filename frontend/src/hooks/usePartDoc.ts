@@ -498,6 +498,14 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // mutation goes unrecorded.
       if (slice !== GUARD_BYPASS
         && JSON.stringify(slice) === JSON.stringify(noOpSliceFor(m, next))) {
+        // A no-op is still "the next mutation" as far as the gesture is
+        // concerned: consuming the arm here mirrors the suppression branch
+        // below, because leaving it armed would swallow the next unrelated
+        // mutation as "the projection".
+        const brep = brepWithholdRef.current
+        if (brep.armed) {
+          brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
+        }
         return
       }
     }
@@ -733,6 +741,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // not leave a dead entry or waste a solve, mirroring the single-mutation
     // guard in handleMutation.
     if (JSON.stringify(current) === JSON.stringify(next)) {
+      // Same withhold contract as handleMutation's no-op guard: the no-op
+      // group fulfils "the next mutation" and consumes the arm, or a later
+      // real mutation is swallowed as "the projection".
+      const brep = brepWithholdRef.current
+      if (brep.armed) {
+        brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
+      }
       return
     }
 
