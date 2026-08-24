@@ -1311,9 +1311,14 @@ describe('AssemblyEditor undo/redo', () => {
       'Add part', 'Add mate', 'Edit mate', 'Toggle visibility', 'Edit mate',
     ])
 
-    // No duplicate pre-docs: every entry captured a distinct doc.
+    // Every entry captured a real step: adjacent snapshots never collapse into
+    // the same document (no-op mutations are guarded away from pushUndo).
+    // Entries are cloned since pushUndo, so reference identity can no longer
+    // pin anything here.
     const docs = undoStack().map(e => e.doc)
-    expect(new Set(docs).size).toBe(docs.length)
+    for (let i = 1; i < docs.length; i++) {
+      expect(docs[i]).not.toEqual(docs[i - 1])
+    }
 
     // Undo 1 reverts only the second offset batch; the visibility stays off.
     act(() => { executeCommand('undo') })
