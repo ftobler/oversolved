@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '@/components/Geometry3D/bodyGeometry'
+import { buildBodyGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '@/components/Geometry3D/bodyGeometry'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 
@@ -185,6 +185,52 @@ describe('buildEdgeSegments NaN guard', () => {
       points: [[0, 0, 0], [1, NaN, 0], [2, 0, 0]],
     }])
     expect(result.length).toBe(0)
+  })
+})
+
+describe('buildEdgeSegmentGeometry segment -> edge map', () => {
+  // Regression lock for the misattribution bug: the former counts-based map
+  // counted skipped edges anyway, so every later segment landed on the
+  // previous edge's query and picked silently wrong.
+  it('maps the only built segment of [NaN line, valid line] to edge index 1', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [NaN, 0, 0] },
+      { kind: 'line', start: [1, 0, 0], end: [2, 0, 0] },
+    ]
+    const { positions, segmentToEdge } = buildEdgeSegmentGeometry(edges)
+    expect(positions.length).toBe(6)
+    expect([...segmentToEdge]).toEqual([1])
+  })
+
+  it('keeps positions and map in lockstep for mixed valid and skipped edges', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },          // built
+      { kind: 'line', start: [1, 0, 0], end: [Infinity, 0, 0] },   // skipped
+      { kind: 'spline', points: [[0, 0, 0], [1, NaN, 0]] },        // skipped (bad pair)
+      { kind: 'spline', points: [[2, 0, 0], [3, 0, 0], [4, 1, 0]] },  // 2 segments
+    ]
+    const { positions, segmentToEdge } = buildEdgeSegmentGeometry(edges)
+    expect(segmentToEdge.length * 6).toBe(positions.length)
+    expect([...segmentToEdge]).toEqual([0, 3, 3])
+    expect(buildEdgeSegments(edges)).toEqual(positions)
+  })
+
+  it('maps every arc segment of a valid circle to its own edge index', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },
+      {
+        kind: 'circle',
+        center: [0, 0, 0],
+        radius: 1,
+        axis: [0, 0, 1],
+        x_axis: [1, 0, 0],
+        angle_start: 0,
+        angle_end: 2 * Math.PI,
+      },
+    ]
+    const { positions, segmentToEdge } = buildEdgeSegmentGeometry(edges)
+    expect(positions.length).toBe((1 + ARC_SEGMENTS) * 6)
+    expect([...segmentToEdge]).toEqual([0, ...new Array(ARC_SEGMENTS).fill(1)])
   })
 })
 

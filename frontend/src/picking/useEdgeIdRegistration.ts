@@ -2,7 +2,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
 import { bodyKeyFor } from './pickKey'
 import type { EdgeData } from '@/types/cad'
-import { buildEdgeSegments, getEdgeSegmentCounts } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegmentGeometry } from '@/components/Geometry3D/bodyGeometry'
 
 /**
  * Hook used by Body3D to register a body's edges with the edge ID layer.
@@ -10,7 +10,9 @@ import { buildEdgeSegments, getEdgeSegmentCounts } from '@/components/Geometry3D
  *
  * Edges are flattened to line segments using the same helper that produces
  * the visible LineSegments geometry, so the ID-buffer ribbons sit exactly
- * where the user sees the edges.
+ * where the user sees the edges. Positions and segment map come from ONE
+ * traversal (buildEdgeSegmentGeometry), so a skipped edge can never shift
+ * every later segment onto the wrong edge query.
  */
 export function useEdgeIdRegistration(params: {
   featureId: string
@@ -26,15 +28,16 @@ export function useEdgeIdRegistration(params: {
   useRegisteredBody(pipeline, enabled, bodyKey,
     (p) => {
       if (!edges || edges.length === 0 || !edgeQueries || edgeQueries.length === 0) return false
-      const segmentPositions = buildEdgeSegments(edges)
+      const { positions: segmentPositions, segmentToEdge } = buildEdgeSegmentGeometry(edges)
       if (segmentPositions.length === 0) return false
-      const segCounts = getEdgeSegmentCounts(edges)
-      const totalSegments = segCounts.reduce((a, b) => a + b, 0)
-      const segmentToEdge = new Uint32Array(totalSegments)
-      let cursor = 0
-      for (let edgeIdx = 0; edgeIdx < segCounts.length; edgeIdx++) {
-        const count = segCounts[edgeIdx]
-        for (let i = 0; i < count; i++) segmentToEdge[cursor++] = edgeIdx
+      // Drift assert: positions and map come from one traversal, so any future
+      // refactor that lets them disagree must fail here, not as silent
+      // misattributed picks downstream (6 floats per segment).
+      if (segmentToEdge.length * 6 !== segmentPositions.length) {
+        throw new Error(
+          `useEdgeIdRegistration: segmentToEdge length ${segmentToEdge.length} does not match `
+          + `${segmentPositions.length / 6} built segments for ${bodyKey}`,
+        )
       }
       try {
         p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries, perPrimitivePickKeys: true })

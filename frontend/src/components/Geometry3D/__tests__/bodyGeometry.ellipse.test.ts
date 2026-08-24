@@ -2,7 +2,7 @@
 // Guards the ellipse arms of buildEdgeSegments / getEdgeSegmentCounts that the
 // circle/arc/spline arms previously did not cover.
 import { describe, it, expect } from 'vitest'
-import { buildEdgeSegments, getEdgeSegmentCounts } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegments, buildEdgeSegmentGeometry, getEdgeSegmentCounts } from '@/components/Geometry3D/bodyGeometry'
 import type { EdgeData } from '@/types/cad'
 
 describe('buildEdgeSegments ellipse', () => {
@@ -22,6 +22,9 @@ describe('buildEdgeSegments ellipse', () => {
     const count = getEdgeSegmentCounts([ellipse])[0]
     // 6 floats per segment.
     expect(segs.length).toBe(count * 6)
+    // The one-traversal map attributes every built segment to the ellipse edge.
+    const { segmentToEdge } = buildEdgeSegmentGeometry([ellipse])
+    expect([...segmentToEdge]).toEqual(new Array(count).fill(0))
     // First sample starts at center + a*x_axis (t=0).
     expect(segs[0]).toBeCloseTo(5)  // 1 + 4
     expect(segs[1]).toBeCloseTo(2)

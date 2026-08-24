@@ -284,15 +284,31 @@ function _isValidSegment(p: [number, number, number]): boolean {
   return Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2])
 }
 
-// Build a flat Float32Array of line segment endpoints from edge descriptors.
-// Each segment contributes 6 floats: [x0,y0,z0, x1,y1,z1].
-export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
-  const parts: number[] = []
+// Segment buffer plus the per-segment source-edge index, produced by ONE
+// traversal so the map can never disagree with the positions about which
+// edges were skipped.
+export interface EdgeSegmentGeometry {
+  // Flat segment endpoints, 6 floats per segment.
+  positions: Float32Array
+  // Per-segment edge index into the input `edges` array.
+  segmentToEdge: Uint32Array
+}
 
-  for (const edge of edges) {
+// Build the flat segment buffer and its segment -> edge map in one pass, with
+// the exact same skip conditions for both outputs. The former split
+// (buildEdgeSegments + getEdgeSegmentCounts) counted skipped edges anyway, so
+// every later segment was attributed to the previous edge and picked silently
+// wrong.
+export function buildEdgeSegmentGeometry(edges: EdgeData[]): EdgeSegmentGeometry {
+  const parts: number[] = []
+  const owners: number[] = []
+
+  for (let edgeIdx = 0; edgeIdx < edges.length; edgeIdx++) {
+    const edge = edges[edgeIdx]
     if (edge.kind === 'line') {
       if (_isValidSegment(edge.start) && _isValidSegment(edge.end)) {
         parts.push(...edge.start, ...edge.end)
+        owners.push(edgeIdx)
       }
     } else if (edge.kind === 'circle' || edge.kind === 'arc') {
       const { center, radius, x_axis, axis, angle_start, angle_end } = edge
@@ -325,6 +341,7 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
         const ny = cy + radius * (Math.cos(t) * uy + Math.sin(t) * vy)
         const nz = cz + radius * (Math.cos(t) * uz + Math.sin(t) * vz)
         parts.push(prevX, prevY, prevZ, nx, ny, nz)
+        owners.push(edgeIdx)
         prevX = nx; prevY = ny; prevZ = nz
       }
     } else if (edge.kind === 'spline') {
@@ -332,6 +349,7 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
       for (let i = 0; i < pts.length - 1; i++) {
         if (_isValidSegment(pts[i]) && _isValidSegment(pts[i + 1])) {
           parts.push(...pts[i], ...pts[i + 1])
+          owners.push(edgeIdx)
         }
       }
     } else if (edge.kind === 'ellipse') {
@@ -359,16 +377,26 @@ export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
       for (let i = 1; i <= segs; i++) {
         const cur = at(angle_start + sweep * (i / segs))
         parts.push(...prev, ...cur)
+        owners.push(edgeIdx)
         prev = cur
       }
     }
   }
 
-  return new Float32Array(parts)
+  return { positions: new Float32Array(parts), segmentToEdge: new Uint32Array(owners) }
+}
+
+// Build a flat Float32Array of line segment endpoints from edge descriptors.
+// Each segment contributes 6 floats: [x0,y0,z0, x1,y1,z1].
+export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
+  return buildEdgeSegmentGeometry(edges).positions
 }
 
 // Get the number of line segments each edge produces.
-// Used to map from raycasted segment index back to edge index.
+// Used to map from raycasted segment index back to edge index for the VISIBLE
+// line pass. Counts unconditionally, so it disagrees with the built positions
+// whenever an edge is skipped; ID registration must use buildEdgeSegmentGeometry,
+// whose map shares the builder's skip conditions.
 export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
   const counts: number[] = []
   for (const edge of edges) {
