@@ -64,4 +64,30 @@ describe('IdPipeline.resolveAsync ordering', () => {
     expect(p.getRenderCount()).toBe(before)
     p.dispose()
   })
+
+  // A read through a disposed target can only answer "nothing"; the throw
+  // mimics what a real renderer does reading through torn-down GL objects,
+  // so pre-fix these subscriber promises never settled at all.
+  function pipelineWhoseReadsThrow(): { p: IdPipeline; renderer: THREE.WebGLRenderer } {
+    const p = new IdPipeline({ width: 32, height: 32 })
+    p.resolveSync = (() => { throw new Error('read through disposed target') }) as unknown as typeof p.resolveSync
+    return { p, renderer: {} as unknown as THREE.WebGLRenderer }
+  }
+
+  it('settles every pending async resolve with null when disposed mid-flight', async () => {
+    const { p, renderer } = pipelineWhoseReadsThrow()
+
+    const first = p.resolveAsync(renderer, { x: 1, y: 1 })   // becomes the in-flight query
+    const second = p.resolveAsync(renderer, { x: 2, y: 2 })  // coalesces into the queued query
+    p.dispose()
+
+    await expect(first).resolves.toBeNull()
+    await expect(second).resolves.toBeNull()
+  })
+
+  it('resolveAsync after dispose resolves null instead of scheduling work', async () => {
+    const { p, renderer } = pipelineWhoseReadsThrow()
+    p.dispose()
+    await expect(p.resolveAsync(renderer, { x: 3, y: 3 })).resolves.toBeNull()
+  })
 })

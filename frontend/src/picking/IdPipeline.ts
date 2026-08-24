@@ -86,6 +86,7 @@ export class IdPipeline {
   pickDuringCameraMotion: boolean
   private nextAsync: PendingAsyncQuery | null = null
   private inFlightAsync: PendingAsyncQuery | null = null
+  private disposed = false
 
   constructor(opts: IdPipelineOptions) {
     this.registry = new IdRegistry()
@@ -410,6 +411,9 @@ export class IdPipeline {
     cursorPx: { x: number; y: number },
     opts?: ResolveOptions,
   ): Promise<ResolvedHit | null> {
+    // Post-dispose contract: a read over the dead target can only answer
+    // "nothing", so answer it directly instead of scheduling work.
+    if (this.disposed) return Promise.resolve(null)
     return new Promise<ResolvedHit | null>((resolve) => {
       // If a read is currently in flight, the caller will receive whatever
       // the NEXT scheduled read returns, i.e. the latest cursor wins.
@@ -475,6 +479,17 @@ export class IdPipeline {
   }
 
   dispose(): void {
+    // Settle every pending async-resolve subscriber with null, mirroring how a
+    // failed readback resolves null: leaving the promises pending would hang
+    // their callers and pin the closures forever. The deferred read microtask
+    // sees empty queues and bows out.
+    for (const query of [this.inFlightAsync, this.nextAsync]) {
+      if (!query) continue
+      for (const settle of query.subscribers) settle(null)
+    }
+    this.inFlightAsync = null
+    this.nextAsync = null
+    this.disposed = true
     for (const layer of this.layers) layer.dispose()
     this.target.dispose()
     this.registry.clear()
