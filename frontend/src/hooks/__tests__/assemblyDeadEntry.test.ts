@@ -80,7 +80,9 @@ describe('assembly dead undo entries', () => {
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
-    expect(docRef.current).toBe(docA)
+    // The dead toggle left the doc untouched: it is the snapshot undo restored,
+    // equal to docA but not the original object (entries hold clones).
+    expect(docRef.current).toEqual(docA)
 
     // A real flip still records its step and clears the redo branch.
     act(() => { funnelMutate('Toggle visibility', d => setInstanceVisible(d, 'a', false)) })
