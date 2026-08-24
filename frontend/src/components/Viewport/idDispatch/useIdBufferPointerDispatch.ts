@@ -172,8 +172,10 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     let attached: HTMLCanvasElement | null = null
     let raf = 0
     // The claimed hover frame, and the cursor waiting for it. See onPointerMove.
+    // The allowed set is deliberately NOT captured here: it is re-derived when
+    // the trailing frame flushes.
     let hoverFrame = 0
-    let queuedHover: { cursor: { x: number; y: number }; allowed: ReadonlySet<string> } | null = null
+    let queuedHover: { cursor: { x: number; y: number } } | null = null
     // Bumped by clearHover to invalidate any resolveAsync promise already in
     // flight: unlike the AssemblyViewport hover path (which defers the whole
     // GPU readback into the rAF callback), resolveHover here fires the async
@@ -272,7 +274,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       }
       const cursor = cursorFromEvent(e, attached)
       if (hoverFrame !== 0) {
-        queuedHover = { cursor, allowed }
+        queuedHover = { cursor }
         return
       }
       resolveHover(cursor, allowed)
@@ -280,7 +282,16 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         hoverFrame = 0
         const queued = queuedHover
         queuedHover = null
-        if (queued) resolveHover(queued.cursor, queued.allowed)
+        if (!queued) return
+        // Re-derive the allowed set at flush time: a tool switch within the
+        // frame must not replay the queue-time set, or a now-disallowed layer
+        // would hold a hover for one frame with no event left to remove it.
+        const flushedAllowed = computeAllowed()
+        if (flushedAllowed.size === 0) {
+          clearHover()
+          return
+        }
+        resolveHover(queued.cursor, flushedAllowed)
       })
     }
 

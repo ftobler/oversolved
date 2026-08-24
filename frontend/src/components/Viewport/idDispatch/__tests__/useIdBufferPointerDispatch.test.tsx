@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
-import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME } from '@/picking'
+import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
@@ -589,6 +589,41 @@ describe('useIdBufferPointerDispatch', () => {
     await flushHoverFrame()
 
     expect(resolved).toEqual([10])
+  })
+
+  it('recomputes the allowed set when a queued trailing hover flushes after a tool switch', async () => {
+    // The trailing resolve replays at the FRAME boundary, but the tool may have
+    // switched since the move was queued. Replaying the queue-time allowed set
+    // would apply (and leave stuck) a hover for a layer the new tool forbids.
+    const resolved: number[] = []
+    pipeline.resolveAsync = vi.fn().mockImplementation(async (_gl, cursor: { x: number; y: number }) => {
+      resolved.push(cursor.x)
+      return { id: 1, layer: FACE_LAYER_NAME, entityKey: '@feat1/face/0', distancePx: 0 }
+    }) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      // Idle select allows faces: first move resolves, second queues behind it.
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 10, clientY: 50 }))
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 20, clientY: 50 }))
+      await Promise.resolve()
+    })
+    expect(resolved).toEqual([10])
+
+    await act(async () => {
+      // Tool switch within the frame: 'line' forbids the face layer entirely.
+      useSketchEditorStore.setState({ activeTool: 'line' })
+    })
+
+    await flushHoverFrame()
+
+    // No trailing resolve fired and nothing leaked into the hover state.
+    expect(resolved).toEqual([10])
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
   it('hover over sketchSurface layer sets hoveredSelectionId', async () => {
