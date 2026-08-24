@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
 import { EdgeIdLayer, EDGE_LAYER_NAME } from '../EdgeIdLayer'
 import { rgbToId } from '../idEncoding'
@@ -110,6 +110,67 @@ describe('EdgeIdLayer', () => {
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['e'],
     })).toThrow()
+  })
+
+  // ─── Fail-loud validation (stale-pick hardening) ───
+
+  it('throws on a segmentToEdge shorter than the segment count and touches nothing', () => {
+    // The former `segmentToEdge[seg] ?? 0` fallback silently attributed the
+    // unmapped segments to edge 0, so picking them selected the wrong edge.
+    expect(() => layer.registerBody({
+      bodyKey: 'bad',
+      segmentPositions: new Float32Array(12),  // 2 segments
+      segmentToEdge: new Uint32Array([0]),     // one entry short
+      edgeQueries: ['e0', 'e1'],
+    })).toThrow(/segmentToEdge/)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
+  it('keeps an existing registration intact when a replacement fails validation', () => {
+    layer.registerBody(makeReg())
+    const before = layer.scene.children[0]
+    expect(() => layer.registerBody({
+      bodyKey: 'b',
+      segmentPositions: new Float32Array(12),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['edge@A', 'edge@B'],
+    })).toThrow()
+    // Validation runs BEFORE the unregister pre-clear, so the good geometry
+    // survives a bad re-register instead of vanishing with its ids freed.
+    expect(layer.scene.children[0]).toBe(before)
+    expect(reg.size()).toBe(2)
+  })
+
+  it('excludes a segment whose edge has no query from the drawn geometry', () => {
+    // jsdom has no GPU pass, so "no visible pixels" is pinned structurally:
+    // the unnamed segment must not be part of the rasterised position buffer.
+    layer.registerBody({
+      bodyKey: 'mixed',
+      segmentPositions: new Float32Array([
+        0, 0, 0, 1, 0, 0,   // seg 0 (edge 0, named)
+        0, 1, 0, 0, 2, 0,   // seg 1 (edge 5, out of query range)
+      ]),
+      segmentToEdge: new Uint32Array([0, 5]),
+      edgeQueries: ['edge@A'],
+    })
+    const seg = layer.scene.children[0] as import('three').LineSegments
+    expect(seg.geometry.getAttribute('position').count).toBe(2)  // only seg 0
+    expect(reg.size()).toBe(1)
+  })
+
+  it('frees ids allocated before a mid-loop allocation failure', () => {
+    const realAllocate = reg.allocate.bind(reg)
+    let calls = 0
+    const spy = vi.spyOn(reg, 'allocate').mockImplementation((layerName, entityKey, pickKey) => {
+      if (++calls > 1) throw new Error('IdRegistry: exhausted 24-bit ID space')
+      return realAllocate(layerName, entityKey, pickKey)
+    })
+    expect(() => layer.registerBody(makeReg())).toThrow(/exhausted/)
+    // Nothing leaked: the first id was freed back, and nothing is registered.
+    expect(reg.size()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    spy.mockRestore()
   })
 
   it('dispose clears every body and the materials', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
 import { FaceIdLayer, FACE_LAYER_NAME } from '../FaceIdLayer'
 import { rgbToId } from '../idEncoding'
@@ -130,5 +130,93 @@ describe('FaceIdLayer', () => {
       faceQueries: ['q0', 'q1'],
     })
     expect(reg.size()).toBe(0)
+  })
+
+  // ─── Fail-loud validation (stale-pick hardening) ───
+
+  it('throws on a triangleToFace shorter than the triangle count and touches nothing', () => {
+    // The former `triangleToFace[tri] ?? 0` fallback recolored the unmapped
+    // triangles with face 0's id, so picking them selected the wrong face.
+    expect(() => layer.registerBody({
+      bodyKey: 'bad',
+      positions: new Float32Array(18),  // 2 triangles
+      triangleToFace: new Uint32Array([0]),  // one entry short
+      faceQueries: ['q0', 'q1'],
+    })).toThrow(/triangleToFace/)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
+  it('keeps an existing registration intact when a replacement fails validation', () => {
+    layer.registerBody(makeRegistration())
+    const before = layer.scene.children[0]
+    expect(() => layer.registerBody({
+      bodyKey: 'feat1/body1',
+      positions: new Float32Array(18),
+      triangleToFace: new Uint32Array([0]),
+      faceQueries: ['face@feat1#0', 'face@feat1#1'],
+    })).toThrow()
+    // Validation runs BEFORE the unregister pre-clear, so the good geometry
+    // survives a bad re-register instead of vanishing with its ids freed.
+    expect(layer.scene.children[0]).toBe(before)
+    expect(reg.size()).toBe(2)
+  })
+
+  it('excludes an unnamed triangle from the drawn geometry so it cannot occlude', () => {
+    // jsdom has no GPU pass (see facePickParity.test.ts), so "no visible
+    // pixels" is pinned structurally: the unnamed triangle must not be part
+    // of the rasterised position buffer at all. Drawn black it decoded to
+    // EMPTY_ID while still writing depth, occluding whatever lay behind it --
+    // including at the buffer centre where both triangles overlap here.
+    const valid = [0, 0, 5, 10, 0, 5, 5, 10, 5]           // tri over the centre
+    const unnamed = [2, 2, 5, 8, 2, 5, 5, 6, 5]           // overlapping tri, face has no query
+    layer.registerBody({
+      bodyKey: 'mixed',
+      positions: new Float32Array([...valid, ...unnamed]),
+      triangleToFace: new Uint32Array([0, 7]),  // face 7 is out of query range
+      faceQueries: ['face@q0'],
+    })
+    const mesh = layer.scene.children[0] as import('three').Mesh
+    const posAttr = mesh.geometry.getAttribute('position')
+    expect(posAttr.count).toBe(3)  // only the named triangle remains
+    for (let i = 0; i < 9; i++) expect(posAttr.array[i]).toBe(valid[i])
+    // The face behind still decodes through the registry.
+    const colorAttr = mesh.geometry.getAttribute('color')
+    const id = rgbToId(
+      Math.round(colorAttr.getX(0) * 255),
+      Math.round(colorAttr.getY(0) * 255),
+      Math.round(colorAttr.getZ(0) * 255),
+    )
+    expect(reg.lookup(id)!.entityKey).toBe('face@q0')
+  })
+
+  it('excludes triangles with non-finite positions so they cannot occlude', () => {
+    // Collapsed tessellation output: unnameable AND unrasterisable garbage.
+    layer.registerBody({
+      bodyKey: 'nan-tri',
+      positions: new Float32Array([
+        0, 0, 0, 1, 0, 0, 0, 1, 0,
+        NaN, 0, 0, 1, 0, 0, 0, 1, 0,
+      ]),
+      triangleToFace: new Uint32Array([0, 0]),
+      faceQueries: ['face@q0'],
+    })
+    const mesh = layer.scene.children[0] as import('three').Mesh
+    expect((mesh.geometry.getAttribute('position')).count).toBe(3)
+    expect(reg.size()).toBe(1)
+  })
+
+  it('frees ids allocated before a mid-loop allocation failure', () => {
+    const realAllocate = reg.allocate.bind(reg)
+    let calls = 0
+    const spy = vi.spyOn(reg, 'allocate').mockImplementation((layer, entityKey, pickKey) => {
+      if (++calls > 1) throw new Error('IdRegistry: exhausted 24-bit ID space')
+      return realAllocate(layer, entityKey, pickKey)
+    })
+    expect(() => layer.registerBody(makeRegistration())).toThrow(/exhausted/)
+    // Nothing leaked: the first id was freed back, and nothing is registered.
+    expect(reg.size()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    spy.mockRestore()
   })
 })

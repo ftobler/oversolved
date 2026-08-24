@@ -124,7 +124,6 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
   isXrayEdges(): boolean { return this.xrayEnabled }
 
   registerBody(reg: EdgeBodyRegistration): void {
-    this.unregisterBody(reg.bodyKey)
     const { segmentPositions, segmentToEdge, edgeQueries } = reg
 
     if (segmentPositions.length % 6 !== 0) {
@@ -132,46 +131,69 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     }
     const numSegments = segmentPositions.length / 6
     if (numSegments === 0) return
-
-    // 2 vertices per segment (a line), 3 floats per vertex.
-    const positions = new Float32Array(numSegments * 2 * 3)
-    const colors    = new Float32Array(numSegments * 2 * 3)
-
-    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
-
-    for (let seg = 0; seg < numSegments; seg++) {
-      const baseSeg = seg * 6
-      const sx = segmentPositions[baseSeg]
-      const sy = segmentPositions[baseSeg + 1]
-      const sz = segmentPositions[baseSeg + 2]
-      const ex = segmentPositions[baseSeg + 3]
-      const ey = segmentPositions[baseSeg + 4]
-      const ez = segmentPositions[baseSeg + 5]
-
-      const edgeIdx = segmentToEdge[seg] ?? 0
-      const query = edgeQueries[edgeIdx]
-      if (query === undefined) continue
-
-      // Every segment of a polyline-approximated edge carries that edge's ID, so
-      // the allocator is asked per segment and answers from its memo after the first.
-      const rgb = ids.rgbFor(edgeIdx, query)
-
-      const base2 = seg * 6  // 2 vertices * 3 components
-      positions[base2]     = sx; positions[base2 + 1] = sy; positions[base2 + 2] = sz
-      positions[base2 + 3] = ex; positions[base2 + 4] = ey; positions[base2 + 5] = ez
-      colors[base2]     = rgb[0]; colors[base2 + 1] = rgb[1]; colors[base2 + 2] = rgb[2]
-      colors[base2 + 3] = rgb[0]; colors[base2 + 4] = rgb[1]; colors[base2 + 5] = rgb[2]
+    // Fail loud BEFORE touching scene or registry: an out-of-range read used to
+    // fall through the `?? 0` default and silently attribute those segments to
+    // edge 0.
+    if (segmentToEdge.length < numSegments) {
+      throw new Error(`EdgeIdLayer: segmentToEdge length ${segmentToEdge.length} is shorter than the ${numSegments} registered segments`)
     }
 
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    geometry.setAttribute('aColor',   new THREE.BufferAttribute(colors, 3))
+    this.unregisterBody(reg.bodyKey)
 
-    const mat = this.xrayEnabled ? this.xrayMaterial : this.material
-    const mesh = new THREE.LineSegments(geometry, mat)
-    mesh.frustumCulled = false
-    this.scene.add(mesh)
-    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
+    // 2 vertices per segment (a line), 3 floats per vertex.
+    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
+    try {
+      const drawable: number[] = []
+      for (let seg = 0; seg < numSegments; seg++) {
+        const baseSeg = seg * 6
+        let finite = true
+        for (let i = 0; i < 6; i++) {
+          if (!Number.isFinite(segmentPositions[baseSeg + i])) { finite = false; break }
+        }
+        // A segment that cannot be named (its edge has no stable query) or
+        // whose endpoints are non-finite is EXCLUDED from the drawn geometry:
+        // drawn black it would decode to EMPTY_ID while still rasterising over
+        // real picks.
+        if (finite && edgeQueries[segmentToEdge[seg]] !== undefined) drawable.push(seg)
+      }
+
+      const drawn = drawable.length
+      // Zero-copy fast path when every segment draws (the common case).
+      const outPositions = drawn === numSegments ? segmentPositions : new Float32Array(drawn * 6)
+      const colors = new Float32Array(drawn * 6)
+
+      for (let d = 0; d < drawn; d++) {
+        const seg = drawable[d]
+        const baseSeg = seg * 6
+        const edgeIdx = segmentToEdge[seg]
+        const query = edgeQueries[edgeIdx]
+
+        // Every segment of a polyline-approximated edge carries that edge's ID,
+        // so the allocator is asked per segment and answers from its memo after
+        // the first.
+        const rgb = ids.rgbFor(edgeIdx, query)
+
+        const dst = d * 6
+        if (outPositions !== segmentPositions) outPositions.set(segmentPositions.subarray(baseSeg, baseSeg + 6), dst)
+        colors[dst]     = rgb[0]; colors[dst + 1] = rgb[1]; colors[dst + 2] = rgb[2]
+        colors[dst + 3] = rgb[0]; colors[dst + 4] = rgb[1]; colors[dst + 5] = rgb[2]
+      }
+
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.BufferAttribute(outPositions, 3))
+      geometry.setAttribute('aColor',   new THREE.BufferAttribute(colors, 3))
+
+      const mat = this.xrayEnabled ? this.xrayMaterial : this.material
+      const mesh = new THREE.LineSegments(geometry, mat)
+      mesh.frustumCulled = false
+      this.scene.add(mesh)
+      this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
+    } catch (err) {
+      // A mid-loop allocation failure (24-bit ID exhaustion) must not leak the
+      // ids already taken for this pass.
+      for (const id of ids.allocatedIds) this.registry.free(id)
+      throw err
+    }
   }
 
   dispose(): void {
