@@ -127,7 +127,12 @@ fn mate_residual_count(kind: MateKind) -> usize {
 impl MateProblem {
     pub fn new(input: &MateInput) -> Self {
         let n_bodies = input.bodies.len();
-        let n = n_bodies * 7;
+        // Checked for symmetry with the codec gate: this constructor is only
+        // reached with wire-validated counts today, but an in-memory caller
+        // with a hostile length must overflow loudly instead of wrapping.
+        let n = n_bodies
+            .checked_mul(7)
+            .expect("n_bodies * 7 overflows usize");
         let grounded: Vec<bool> = (0..n_bodies).map(|i| input.is_fixed(i)).collect();
 
         let x0: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
@@ -3098,5 +3103,3 @@ mod tests {
         assert_eq!(hinge_free_roll.iter().filter(|&&s| s > tol_hinge).count(), 2);
     }
 }
-
-
