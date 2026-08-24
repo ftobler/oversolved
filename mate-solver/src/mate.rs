@@ -553,7 +553,7 @@ mod tests {
             angle: 0.0,
         };
         MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: params,
             fixed_mask: vec![0b0000_0001],
             mates: vec![mate],

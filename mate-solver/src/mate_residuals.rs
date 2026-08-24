@@ -1346,7 +1346,7 @@ mod tests {
     /// One spherical mate at (0,0,0) should pull body 1 to body 0.
     fn two_body_input() -> MateInput {
         MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: identity, grounded
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: translated +x
@@ -1376,7 +1376,7 @@ mod tests {
     #[test]
     fn spherical_fully_constrained_with_three_mates() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 1.0, 2.0, 0.1, 0.2, 0.3, 0.927,
@@ -1406,7 +1406,7 @@ mod tests {
     #[test]
     fn parallel_aligns_axes_parallel() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, -0.707, 0.0, 0.0, 0.707,
@@ -1428,7 +1428,7 @@ mod tests {
         let angle = 0.3;
         let half: f64 = angle / 2.0;
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, half.sin() as f32, 0.0, 0.0, half.cos() as f32,
@@ -1451,7 +1451,7 @@ mod tests {
     #[test]
     fn fixed_mate_pins_all_dof() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 3.0, 4.0, 5.0, 0.0, 0.707, 0.0, 0.707,
@@ -1485,7 +1485,7 @@ mod tests {
         // back. The absolute residual treats the 30 degrees as the error it is.
         let (qz, qw) = quat_roll_z(30.0);
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
                 0.0, 0.0, 0.0, 0.0, 0.0, qz, qw, // body 1: 30 deg about Z
@@ -1515,7 +1515,7 @@ mod tests {
     #[test]
     fn fixed_mate_solve_is_idempotent_under_reseed() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 3.0, 4.0, 5.0, 0.0, 0.707, 0.0, 0.707,
@@ -1565,7 +1565,7 @@ mod tests {
         // it and the combined system reports zero DOF with the roll held.
         let (qz, qw) = quat_roll_z(30.0);
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, 0.0, 0.0, qz, qw,
@@ -1603,7 +1603,7 @@ mod tests {
         // copy-paste into the wrong arm. A revolute joint's whole purpose is the
         // free roll.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -1622,7 +1622,7 @@ mod tests {
     #[test]
     fn underconstrained_assembly_status() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -1655,7 +1655,7 @@ mod tests {
     #[test]
     fn quaternion_stays_near_unit_in_mate_solve() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.2,
@@ -1698,7 +1698,7 @@ mod tests {
         // body 1's axis parallel and its anchor point onto body 0's axis,
         // but leave translation along Z free (Tikhonov keeps it near seed).
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
                 3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1 at (3,4,0), Z axis
@@ -1723,7 +1723,7 @@ mod tests {
         // Grounded body 0 at origin. Body 1's anchor point must stay
         // coincident with body 0's anchor, while axes align. Roll is free.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1 at (5,0,0)
@@ -1749,7 +1749,7 @@ mod tests {
         // Body 1 starts with X axis (after 90° about Y), body 0 has Z axis.
         // SlidingRotating constrains axes to be parallel.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: Z axis
                 0.0, 0.0, 0.0, 0.0, 0.707, 0.0, 0.707, // body 1: X axis (90° about Y)
@@ -1774,7 +1774,7 @@ mod tests {
         // Body 1's anchor should be offset by 5 units along body 0's normal.
         // Body 0 is grounded at origin.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
                 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0, // body 1 at (1,2,3)
@@ -1799,7 +1799,7 @@ mod tests {
         // Add a parallel mate to prevent the quaternion from cheating by
         // rotating the plane normal away from Z.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
                 1.0, 2.0, 10.0, 0.0, 0.0, 0.0, 1.0, // body 1 above the plane
@@ -1827,7 +1827,7 @@ mod tests {
         // Plane A at origin with normal +Z. Cylinder B should be tangent.
         // Point on cylinder is at B's anchor; distance from point to plane = radius.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: plane, grounded
                 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, // body 1: cylinder far away
@@ -1849,7 +1849,7 @@ mod tests {
     fn tangential_cylinder_cylinder_distance() {
         // Two cylinders with parallel axes. Distance between axes = 2*radius.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: cylinder at origin, Z axis, grounded
                 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: cylinder at (10,0,0), Z axis
@@ -1880,7 +1880,7 @@ mod tests {
         let half = 0.5_f64.sin(); // sin(0.5) for ~1 rad total
         let cos_half = 0.5_f64.cos();
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, half as f32, cos_half as f32, // body 0: ~1 rad about Z
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: no roll (identity)
@@ -1904,7 +1904,7 @@ mod tests {
         // Both bodies start at identity (zero seed-relative roll). angle = pi/2
         // should solve body 1 to exactly 90 degrees of roll about the shared axis.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -1931,7 +1931,7 @@ mod tests {
         // So p_b_w = p_a_w - offset * a_w. With p_a=(0,0,0) and a_w=(0,0,1):
         // p_b_w = (0,0,-10). Body 1's anchor at local origin, so tz = -10.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
                 5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0, // body 1
@@ -1956,7 +1956,7 @@ mod tests {
     #[test]
     fn scalar_offset_and_its_axial_vector_agree() {
         let build = |offset: [f64; 3]| MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0,
@@ -1980,7 +1980,7 @@ mod tests {
     #[test]
     fn fixed_with_off_axis_offset_vector() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0,
@@ -2008,7 +2008,7 @@ mod tests {
     fn fixed_offset_vector_rotates_with_body_a() {
         let (qz, qw) = quat_roll_z(90.0);
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, qz, qw,
                 5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0,
@@ -2033,7 +2033,7 @@ mod tests {
     #[test]
     fn parallel_plane_distance_ignores_the_in_plane_offset() {
         let build = |offset: [f64; 3]| MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
@@ -2093,7 +2093,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_fixed() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 3.0, 4.0, 5.0, 0.1, 0.2, 0.3, f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
@@ -2117,7 +2117,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_fixed_with_offset_vector() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.1, -0.2, 0.3, f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
                 3.0, 4.0, 5.0, 0.1, 0.2, 0.3, f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
@@ -2138,7 +2138,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_parallel() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, -0.5, 0.1, 0.2, f64::sqrt(1.0 - 0.25 - 0.01 - 0.04) as f32,
@@ -2159,7 +2159,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_sliding() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded
                 3.0, 2.0, 1.0, -0.3, 0.1, 0.4, f64::sqrt(1.0 - 0.09 - 0.01 - 0.16) as f32,
@@ -2180,7 +2180,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_rotating() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 2.0, 3.0, 4.0, 0.2, -0.1, 0.5, f64::sqrt(1.0 - 0.04 - 0.01 - 0.25) as f32,
@@ -2201,7 +2201,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_sliding_rotating() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, -0.5, 0.2, 0.1, f64::sqrt(1.0 - 0.25 - 0.04 - 0.01) as f32,
@@ -2222,7 +2222,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_parallel_plane_distance() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 1.0, 2.0, 7.0, 0.1, 0.3, 0.2, f64::sqrt(1.0 - 0.01 - 0.09 - 0.04) as f32,
@@ -2243,7 +2243,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_copy_rotation() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.9539, // body 0: some roll about Z
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.9949, // body 1: less roll about Z
@@ -2270,7 +2270,7 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_copy_rotation_away_from_seed() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.9539, // body 0: some roll about Z
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.9949, // body 1: less roll about Z
@@ -2303,7 +2303,7 @@ mod tests {
         let half_a = 20.0_f64.to_radians() / 2.0;
         let half_b = 50.0_f64.to_radians() / 2.0;
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, half_a.sin() as f32, half_a.cos() as f32,
                 0.0, 0.0, 0.0, 0.0, 0.0, half_b.sin() as f32, half_b.cos() as f32,
@@ -2337,7 +2337,7 @@ mod tests {
         let half_seed_a = 10.0_f64.to_radians() / 2.0;
         let half_seed_b = 5.0_f64.to_radians() / 2.0;
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, half_seed_a.sin() as f32, half_seed_a.cos() as f32,
                 0.0, 0.0, 0.0, 0.0, 0.0, half_seed_b.sin() as f32, half_seed_b.cos() as f32,
@@ -2385,7 +2385,7 @@ mod tests {
         // (previously axis-cross only), so it pulls B's anchor point onto A's
         // anchor axis. Cylindrical joint: slide + roll stay free -> dof == 2.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -2413,7 +2413,7 @@ mod tests {
         let seed_qz = half.sin();
         let seed_qw = half.cos();
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 3.0, 0.0, 0.0, seed_qz as f32, seed_qw as f32,
@@ -2438,7 +2438,7 @@ mod tests {
         // apart). flip=false -> parallel; the distance-along-axis residual is
         // unaffected by flip, so the offset holds regardless.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 1.0, 2.0, 7.0, 0.3, 0.1, 0.2, 0.9,
@@ -2461,7 +2461,7 @@ mod tests {
     #[test]
     fn parallel_plane_distance_flip_aligns_normals_anti_parallel() {
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 1.0, 2.0, 7.0, 0.3, 0.1, 0.2, 0.9,
@@ -2522,7 +2522,7 @@ mod tests {
         // Body index 5 in a two-body assembly: a stale mate the host never
         // pruned. It must contribute no rows instead of indexing off x.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -2551,7 +2551,7 @@ mod tests {
         // Two declared bodies but only one body's worth of params: body 1's
         // block is not in the buffer, so any mate touching it goes.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
             fixed_mask: vec![0],
             mates: vec![
@@ -2571,7 +2571,7 @@ mod tests {
         // rotation params of the free body and leave translation (and the whole
         // grounded body) at 1.0.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -2596,7 +2596,7 @@ mod tests {
         // pure-translation solution (q ~ identity) than to the 90 deg turn
         // (qz ~ -0.707), while still meeting the coincidence exactly.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded at origin
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1 free, seed identity
@@ -2641,7 +2641,7 @@ mod tests {
         // Aligned Z axes at seed, body 1 at identity. Author angle = 45 deg.
         // The solved roll of body 1 should be 45 deg about Z.
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: identity
@@ -2670,7 +2670,7 @@ mod tests {
         // here (roll free), so the weld "did not lock the angle".
         let h = 45.0_f64.to_radians().sin();
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
                 0.0, 0.0, 0.0, 0.0, h as f32, 0.0, h as f32, // body 1: 90 deg about Y
@@ -2694,7 +2694,7 @@ mod tests {
         // the shared axis, leaving zero DOF.
         let h = 45.0_f64.to_radians().sin();
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, 0.0, h as f32, 0.0, h as f32,
@@ -2727,7 +2727,7 @@ mod tests {
         // axes past perpendicular.
         let h = 90.0_f64.to_radians().sin(); // sin(90) = 1 -> 180 deg rotation quat
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, +Z axis
                 0.0, 0.0, 0.0, h as f32, 0.0, 0.0, 0.0, // body 1: 180 deg about X -> axis -Z
@@ -2762,7 +2762,7 @@ mod tests {
         // side a stable, user-visible property instead of a solver mood.
         let h = 87.5_f64.to_radians();
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 0.0, 0.0, 0.0, h.sin() as f32, 0.0, 0.0, h.cos() as f32,
@@ -2790,7 +2790,7 @@ mod tests {
         // sides were solutions, so which one the joint landed on was seed luck.
         let h = 90.0_f64.to_radians().sin();
         let input = MateInput {
-            bodies: (0..2).map(|i| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 1.0, 0.0, 0.0, h as f32, 0.0, 0.0, 0.0, // 180 deg about X -> axis -Z
