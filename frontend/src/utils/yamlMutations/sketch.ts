@@ -3,6 +3,7 @@ import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import {
   warn, round, findFeature, parseTarget, uniqueConstraintId, freshEntityIds, mintEntityId,
+  CONSTRAINT_REF_FIELDS, refMatchesEntity,
 } from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
@@ -77,23 +78,15 @@ function adoptSolvedGeometry(
 
 // ─── Internals ───
 
-const _REF_FIELDS: (keyof PartConstraint)[] = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b']
-
 function _refMatchesDeleted(ref: unknown, deletedIds: Set<string>): boolean {
-  if (typeof ref !== 'string' || !ref.startsWith('$')) return false
-  const bare = ref.slice(1)
   for (const eid of deletedIds) {
-    if (bare === eid) return true
-    if (bare.startsWith(eid)) {
-      const suffix = bare.slice(eid.length)
-      if ((VERTEX_POINT_KEYS as readonly string[]).includes(suffix)) return true
-    }
+    if (refMatchesEntity(ref, eid)) return true
   }
   return false
 }
 
 function _refsDeletedEntity(c: PartConstraint, deletedIds: Set<string>): boolean {
-  for (const field of _REF_FIELDS) {
+  for (const field of CONSTRAINT_REF_FIELDS) {
     if (_refMatchesDeleted(c[field], deletedIds)) return true
   }
   // N-ary refs (ngon sugar): GC the whole constraint if any member is deleted,

@@ -157,6 +157,50 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
   })
 })
 
+describe('cleanup ref matching (exact-or-vertex-suffix, not textual prefix)', () => {
+  // Human-readable ids make the old startsWith matcher bite: '$l10' shares a
+  // textual prefix with 'l1' but does not address it.
+  it('a constraint referencing l10 survives cleanup removing l1', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [
+          { id: 'l1', kind: 'line', source: '?edge;line' },
+          { id: 'l10', kind: 'line' },
+        ],
+        constraints: [
+          { id: 'c_keep', kind: 'horizontal', target: '$l10' },
+          { id: 'c_drop_bare', kind: 'length', target: '$l1' },
+        ],
+      }],
+    }
+    applyRemoveDanglingContent(doc, { sk1: { entities: ['l1'], constraints: [] } })
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    expect(feat.entities!.map(e => e.id)).toEqual(['l10'])
+    expect(feat.constraints!.map(c => c.id)).toEqual(['c_keep'])
+  })
+
+  it('vertex-ref wire forms of a removed entity still match ($eid + known suffix)', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [{ id: 'proj1', kind: 'ellipse', source: '?edge;ellipse' }],
+        constraints: [
+          { id: 'c_start', kind: 'coincident', a: '$otherstart', b: '$proj1start' },
+          { id: 'c_center', kind: 'concentric', a: '$proj1center', b: '$x' },
+        ],
+      }],
+    }
+    applyRemoveDanglingContent(doc, { sk1: { entities: ['proj1'], constraints: [] } })
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    expect(feat.constraints).toHaveLength(0)
+  })
+})
+
 describe('hasDanglingContentInDoc (cleanup plan still targets the doc)', () => {
   it('is true when a listed entity still exists with a source', () => {
     const doc = makeDoc()

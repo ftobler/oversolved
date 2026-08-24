@@ -1,22 +1,12 @@
 import type { PartDoc, PartConstraint } from '@/types/cad'
-
-const CONSTRAINT_TARGET_KEYS: (keyof PartConstraint)[] = [
-  'target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b',
-]
-
-// Check whether a stored wire-format ref (e.g. "$eid", "$eidstart") addresses entityId.
-// Local refs are "$eid[sub]" with no separator; a startsWith check is safe because
-// entity IDs are random base64url strings and never prefix each other in practice.
-function refAddressesEntity(raw: string, entityId: string): boolean {
-  return raw.startsWith('$' + entityId)
-}
+import { CONSTRAINT_REF_FIELDS, refMatchesEntity } from './helpers'
 
 function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boolean {
-  for (const key of CONSTRAINT_TARGET_KEYS) {
+  for (const key of CONSTRAINT_REF_FIELDS) {
     const raw = c[key]
     if (typeof raw === 'string') {
       for (const eid of removed) {
-        if (refAddressesEntity(raw, eid)) return true
+        if (refMatchesEntity(raw, eid)) return true
       }
     }
   }
@@ -24,7 +14,7 @@ function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boole
     for (const raw of c.refs) {
       if (typeof raw === 'string') {
         for (const eid of removed) {
-          if (refAddressesEntity(raw, eid)) return true
+          if (refMatchesEntity(raw, eid)) return true
         }
       }
     }

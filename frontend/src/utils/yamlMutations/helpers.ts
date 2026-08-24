@@ -1,4 +1,5 @@
 import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget } from '@/types/cad'
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 
@@ -72,4 +73,24 @@ export function mintEntityId(entities: PartEntityDef[], given?: string): string 
 export function normalizeRefList(ref: string | string[] | undefined): string[] {
   if (Array.isArray(ref)) return ref
   return ref ? [ref] : []
+}
+
+// Constraint fields that can carry an entity ref. Deletion GC (sketch.ts) and
+// solve-result cleanup (solveResult.ts) must agree on what names an entity, so
+// the key list lives here rather than as two hand-maintained copies.
+export const CONSTRAINT_REF_FIELDS: (keyof PartConstraint)[] = [
+  'target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b',
+]
+
+// True when a stored wire-format ref addresses entityId: either the bare form
+// `$<eid>` or a vertex sub-point `$<eid><vertexKey>`. Exact-or-known-suffix,
+// not startsWith -- ids are random base64url so prefixes never collide in
+// practice, but hand-authored YAML and human-readable fixture ids ($l10 vs $l1)
+// do. Cross-sketch `@` refs and non-ref strings never match.
+export function refMatchesEntity(ref: unknown, entityId: string): boolean {
+  if (typeof ref !== 'string' || !ref.startsWith('$')) return false
+  const bare = ref.slice(1)
+  if (bare === entityId) return true
+  if (!bare.startsWith(entityId)) return false
+  return (VERTEX_POINT_KEYS as readonly string[]).includes(bare.slice(entityId.length))
 }
