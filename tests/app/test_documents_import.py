@@ -61,6 +61,13 @@ def test_import_rejects_numeric_content(authed_client):
     assert resp.status_code == 400
 
 
+def test_import_rejects_non_string_name(authed_client):
+    """A numeric name must 400 before the strip() call, not 500."""
+    resp = _import(authed_client, {"name": 123, "content": "x"})
+    assert resp.status_code == 400
+    assert resp.get_json()["code"] == "BAD_REQUEST"
+
+
 def test_import_never_commits_an_empty_content_row(authed_client, pg_dsn, monkeypatch):
     """A failing content write must not leave a half-imported document behind.
 

@@ -99,6 +99,10 @@ def update_document(uuid):
 @auth_required(doc="owner", json=True)
 def rename_document(uuid):
     data = request.get_json()
+    # Same guard as import_document: a non-string name would crash strip()
+    # into a 500. Absent or null keeps the blank-name rejection below.
+    if data.get("name") is not None and not isinstance(data["name"], str):
+        return api_error('"name" must be a string', "BAD_REQUEST", 400)
     name = (data.get("name") or "").strip()
     if not name:
         return api_error("Document name required", "BAD_REQUEST", 400)
@@ -286,6 +290,10 @@ def rebuild_stats(doc_id):
 @auth_required(json=True)
 def import_document():
     data = request.get_json()
+    # Same guard as rename_document: a non-string name would crash strip()
+    # into a 500. Absent or null keeps the blank-name rejection below.
+    if data.get("name") is not None and not isinstance(data["name"], str):
+        return api_error('"name" must be a string', "BAD_REQUEST", 400)
     name = (data.get("name") or "").strip()
     content = data.get("content")
     if content is None:

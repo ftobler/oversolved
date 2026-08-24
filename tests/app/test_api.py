@@ -178,6 +178,41 @@ class TestDocumentAPI:
         doc = json.loads(authed_client.get(f"/api/documents/{uuid}").data)
         assert doc["name"] == "New"
 
+    def test_rename_rejects_non_string_name(self, authed_client):
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "Typed"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+
+        response = authed_client.patch(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"name": 123}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert json.loads(response.data)["code"] == "BAD_REQUEST"
+
+    def test_rename_missing_name_still_blank_rejection(self, authed_client):
+        """Absent or null name keeps the blank-name 400 instead of a 500."""
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "Untyped"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+
+        for payload in ({}, {"name": None}):
+            response = authed_client.patch(
+                f"/api/documents/{uuid}",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+            assert response.status_code == 400
+
     def test_delete_document(self, authed_client):
         uuid = json.loads(
             authed_client.post(
