@@ -129,6 +129,13 @@ export function dispatchKey(e: KeyboardEvent): boolean {
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
   const cmd = (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
   if (!cmd) return false
+  // A keymap entry with no registered handler is a registration gap, i.e. a
+  // bug: surface it and let the browser default apply rather than eating the
+  // keystroke silently. The registered path is unchanged.
+  if (!handlers.has(cmd)) {
+    if (import.meta.env.DEV) console.warn(`dispatchKey: no handler registered for "${cmd}"`)
+    return false
+  }
   e.preventDefault()
   executeCommand(cmd)
   return true

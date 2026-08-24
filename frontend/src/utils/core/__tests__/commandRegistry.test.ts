@@ -316,6 +316,30 @@ describe('dispatchKey', () => {
     expect(() => dispatchKey(e)).not.toThrow()
   })
 
+  // A keymap entry with no handler is a registration gap (a bug): the keystroke
+  // must pass through to the browser instead of being swallowed without signal.
+  it('returns false, does not preventDefault and warns for a mapped command with no handler', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const e = fakeKey('z', { ctrlKey: true })
+    expect(dispatchKey(e)).toBe(false)
+    expect(e.preventDefault).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledOnce()
+    expect(warnSpy.mock.calls[0][0]).toContain('undo')
+    warnSpy.mockRestore()
+  })
+
+  it('dispatches normally once the handler registers: no warning, handler ran', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    const e = fakeKey('z', { ctrlKey: true })
+    expect(dispatchKey(e)).toBe(true)
+    expect(fn).toHaveBeenCalledOnce()
+    expect(e.preventDefault).toHaveBeenCalledOnce()
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
   it('does not call preventDefault for an unrecognised key', () => {
     const e = fakeKey('`')
     dispatchKey(e)
