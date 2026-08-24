@@ -15,7 +15,7 @@ import { act, renderHook } from '@testing-library/react'
 import type * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { IdPipeline } from '@/picking/IdPipeline'
-import { setLivePipeline } from '@/picking/IdPipelineContext'
+import { getLivePipeline, setLivePipeline } from '@/picking/IdPipelineContext'
 import { FACE_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME } from '@/picking/layerNames'
 import { FEATURE_HANDLE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME } from '@/picking/layerNames'
 import { PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
@@ -100,6 +100,9 @@ function resetStore(): void {
 function sweepWith(gl: THREE.WebGLRenderer): void {
   const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
   const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+  // Production commits only ever run against a settled buffer: the picking
+  // driver re-renders the ID target every frame, so clean is the normal state.
+  getLivePipeline()?.target.markClean()
   act(() => {
     result.current.onPointerDown(pointerEvent(10, 10), false)
     result.current.onPointerMove(pointerEvent(40, 40))
@@ -229,6 +232,51 @@ describe('useRubberBandSelect replace semantics (Option A)', () => {
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('@feat1/face/0')).toBe(true)
       expect(s.selectedPicks.size).toBe(0)
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+})
+
+describe('useRubberBandSelect stale-buffer guard', () => {
+  // Manual drive, NOT sweepWith: that helper settles the buffer first, which
+  // is exactly the state under test here.
+  function rawSweep(entityId: number): void {
+    const { gl } = glForEntityId(entityId)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    act(() => {
+      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerMove(pointerEvent(40, 40))
+      result.current.onPointerUp()
+    })
+  }
+
+  it('commits nothing while the id buffer is dirty at pointer-up', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const bId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
+      useSketchEditorStore.getState().toggleNormalSelection('sk1/keep')
+      p.markDirty('edit')  // pixels predate the edit; a commit would read stale ids
+      rawSweep(bId)
+      expect(selectedKeys()).toEqual(['sk1/keep'])
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
+  it('commits the boxed entity once the buffer is clean again', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const bId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
+      p.markDirty('edit')
+      p.target.markClean()  // the driver's next-frame re-render
+      sweep(bId)
+      expect(selectedKeys()).toEqual(['sk1/eB'])
     } finally {
       setLivePipeline(null)
       p.dispose()

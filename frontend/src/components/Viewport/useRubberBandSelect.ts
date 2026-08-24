@@ -114,6 +114,19 @@ export function useRubberBandSelect(
       return
     }
 
+    // A dirty ID buffer holds pixels from before the last edit/undo, so a
+    // commit would select entities that may no longer exist (or miss ones
+    // that now do). Mirror the click path's resolvePickAtEvent guard: treat
+    // dirty as a transient transition -- close the box, keep the current
+    // selection, wait for the next drag.
+    if (pipeline.isDirty()) {
+      startRef.current = null
+      rectRef.current = null
+      draggingRef.current = false
+      setRect(null)
+      return
+    }
+
     committedRef.current = true
 
     // Determine tool-based layer filter.
