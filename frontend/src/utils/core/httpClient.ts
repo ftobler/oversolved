@@ -52,10 +52,13 @@ export const http = {
 
   async postJson<T>(url: string, body?: unknown, init?: RequestInit): Promise<T> {
     const res = await fetch(url, {
+      ...init,
       method: 'POST',
+      // init is spread FIRST and the merged headers set LAST: spreading init
+      // after the headers used to let a caller's `headers` replace the whole
+      // merged object, silently dropping the JSON Content-Type.
       headers: { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      ...init,
     }).then(checkResponse)
     const text = await res.text()
     return (text ? JSON.parse(text) : null) as T
@@ -68,10 +71,10 @@ export const http = {
 
   async putJson<T>(url: string, body: unknown, init?: RequestInit): Promise<T> {
     const res = await fetch(url, {
+      ...init,
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) },
       body: JSON.stringify(body),
-      ...init,
     }).then(checkResponse)
     const text = await res.text()
     return (text ? JSON.parse(text) : null) as T
@@ -79,10 +82,10 @@ export const http = {
 
   async patchJson<T>(url: string, body: unknown, init?: RequestInit): Promise<T> {
     const res = await fetch(url, {
+      ...init,
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) },
       body: JSON.stringify(body),
-      ...init,
     }).then(checkResponse)
     const text = await res.text()
     return (text ? JSON.parse(text) : null) as T
@@ -101,10 +104,10 @@ export const http = {
 
   async postBlob(url: string, body: unknown, init?: RequestInit): Promise<Blob> {
     const res = await fetch(url, {
+      ...init,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) },
       body: JSON.stringify(body),
-      ...init,
     }).then(checkResponse)
     return res.blob()
   },

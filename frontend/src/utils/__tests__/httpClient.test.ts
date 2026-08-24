@@ -95,6 +95,37 @@ describe('http.postJson', () => {
     expect(err.status).toBe(500)
     expect(err.body).toBe('server error')
   })
+
+  // Regression: init was spread AFTER the merged headers, so a caller passing
+  // `headers` replaced the whole object and silently dropped Content-Type --
+  // a JSON body arriving at the server as an unparseable payload.
+  it('merges caller headers with Content-Type instead of letting them replace it', async () => {
+    mockResponse(200, { ok: true })
+    await http.postJson('/api/x', {}, { headers: { 'X-A': '1' } })
+    const init = mockFetch.mock.calls[0][1] as RequestInit
+    expect(init.headers).toMatchObject({ 'Content-Type': 'application/json', 'X-A': '1' })
+    // method/body survive the merge too.
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe(JSON.stringify({}))
+  })
+
+  it.each([
+    ['putJson', 'PUT'],
+    ['patchJson', 'PATCH'],
+    ['postBlob', 'POST'],
+  ] as const)('http.%s keeps Content-Type when the caller passes headers', async (method, verb) => {
+    mockResponse(200, { ok: true })
+    await http[method]('/api/x', {})
+    const bare = mockFetch.mock.calls[0][1] as RequestInit
+    expect((bare.headers as Record<string, string>)['Content-Type']).toBe('application/json')
+
+    mockResponse(200, { ok: true })
+    await http[method]('/api/x', {}, { headers: { 'X-A': '1' } })
+    const merged = mockFetch.mock.calls[1][1] as RequestInit
+    expect(merged.headers).toMatchObject({ 'Content-Type': 'application/json', 'X-A': '1' })
+    expect(merged.method).toBe(verb)
+    expect(merged.body).toBe(JSON.stringify({}))
+  })
 })
 
 describe('http.postBlob', () => {
