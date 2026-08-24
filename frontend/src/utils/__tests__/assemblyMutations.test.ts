@@ -249,6 +249,47 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(instances(next)[0].fixed).toBe(true)
   })
 
+  // Same invariant as bakeSolvedTransforms: a fixed instance's seed is authored
+  // truth. Toggling one part must not bake the (possibly divergent) solver pose
+  // of every OTHER fixed part over its seed.
+  it('setInstanceFixedFromSolved does NOT overwrite an already-fixed instance seed except the toggled one', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
+    const [a, b] = instances(doc)
+    const seedA = { ...a.transform }
+    const divergent = { tx: 0.0001, ty: 0, tz: 0, qx: 0.01, qy: 0, qz: 0, qw: 0.99995 }
+    const poseB = { tx: 9, ty: 8, tz: 7, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    const next = setInstanceFixedFromSolved(doc, b.handle, true, {
+      [a.handle]: divergent,
+      [b.handle]: poseB,
+    })
+    const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
+    expect(map[a.handle].fixed).toBe(true)
+    expect(map[a.handle].transform).toEqual(seedA)  // fixed seed untouched
+    expect(map[b.handle].fixed).toBe(true)
+    expect(map[b.handle].transform).toEqual(poseB)  // free: baked
+    // Input doc is untouched.
+    expect(instances(doc)[1].fixed).toBeUndefined()
+    expect(instances(doc)[0].transform).toEqual(seedA)
+  })
+
+  // The toggled instance itself must still receive the solved transform even
+  // when it was already fixed: un-fixing (or re-fixing) it has to freeze the
+  // pose on screen into the seed, not leave a stale one behind.
+  it('setInstanceFixedFromSolved still bakes the toggled instance when it is fixed', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
+    const a = instances(doc)[0]
+    const divergent = { tx: 7, ty: 8, tz: 9, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    const next = setInstanceFixedFromSolved(doc, a.handle, true, { [a.handle]: divergent })
+    const inst = instances(next)[0]
+    expect(inst.fixed).toBe(true)
+    expect(inst.transform).toEqual(divergent)
+  })
+
   // The assembly frame's reserved MateRef handle must never be a value a real
   // instance can be minted with, or a part-anchor lookup would shadow the
   // assembly built-ins. randomId(8) is an 11-char base64url string; the

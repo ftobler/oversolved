@@ -161,6 +161,11 @@ export function setInstanceFixedFromSolved(
     features: features(doc).map(f => {
       if (f.kind !== 'part_instance' || !f.instance) return f
       const inst = f.instance
+      // A `fixed` instance's seed is authored truth, same rule as
+      // bakeSolvedTransforms below: baking solver output over it persists
+      // stale solver error into the document. The instance being toggled is
+      // the exception -- freezing its current pose is what this call is for.
+      if (inst.fixed && inst.handle !== handle) return f
       const solved = transforms[inst.handle]
       return {
         ...f,
