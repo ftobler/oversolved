@@ -9,8 +9,9 @@ export const STORE_DOCUMENTS = 'documents'
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+  const cached = dbPromise
+  if (cached) return cached
+  const opening = new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
@@ -18,10 +19,28 @@ function openDb(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_DOCUMENTS, { keyPath: 'uuid' })
       }
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      const db = req.result
+      // Yield to another tab's version upgrade instead of blocking it, and
+      // drop the cached connection so the next use reopens at the new version.
+      db.onversionchange = () => {
+        db.close()
+        if (dbPromise === opening) dbPromise = null
+      }
+      resolve(db)
+    }
+    // Never memoize a rejection: one transient failure must not poison local
+    // persistence for the whole session.
     req.onerror = () => reject(req.error)
   })
-  return dbPromise
+  dbPromise = opening
+  // Any rejection (including a synchronous open() throw, which never reaches
+  // the request handlers above) must drop the cached seam so the next call
+  // retries instead of replaying the failure for the rest of the session.
+  opening.catch(() => {
+    if (dbPromise === opening) dbPromise = null
+  })
+  return opening
 }
 
 // Drops the cached connection so a closed/deleted database is reopened on next

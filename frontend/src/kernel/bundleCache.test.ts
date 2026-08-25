@@ -4,6 +4,8 @@ import { IDBFactory } from 'fake-indexeddb'
 import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, bundleCacheGetStale, resetBundleDbConnection, MAX_DOCS } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 
+const DB_NAME = 'oversolved-bundles'
+
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
   resetBundleDbConnection()
@@ -286,5 +288,67 @@ describe('bundleCache', () => {
     // backfilled into the new `latest` index.
     await expect(bundleCacheGet('docA', 1)).resolves.toBeUndefined()
     await expect(bundleCacheLatestRev('docA')).resolves.toBeUndefined()
+  })
+
+  describe('openDb robustness', () => {
+    it('recovers on the next call after a failed open, without resetBundleDbConnection', async () => {
+      // A broken factory poisons the open once; the module must drop the
+      // rejected promise itself so later calls retry instead of replaying the
+      // failure for the rest of the session.
+      const real = globalThis.indexedDB
+      globalThis.indexedDB = { open: () => { throw new Error('storage unavailable') } } as unknown as IDBFactory
+      await expect(bundleCacheGet('docA', 1)).rejects.toThrow('storage unavailable')
+
+      globalThis.indexedDB = real
+      await bundleCachePut(fixtureBundle('docA', 1))
+      expect(await bundleCacheGet('docA', 1)).toBeDefined()
+    })
+
+    it('rejects fast while the upgrade is blocked by an older-version connection, then recovers once it closes', async () => {
+      // Stand-in for a pre-deploy background tab holding v1 open: the v2 open
+      // cannot proceed until that connection closes.
+      const blocker = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1)
+        req.onupgradeneeded = () => {
+          req.result.createObjectStore('bundles', { keyPath: 'key' })
+        }
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+
+      // The blocked open must REJECT (unstick whatever awaited it), not hang.
+      await expect(bundleCacheGet('nope', 1)).rejects.toThrow(/blocked/)
+
+      blocker.close()
+      await bundleCachePut(fixtureBundle('docA', 1))
+      expect(await bundleCacheGet('docA', 1)).toBeDefined()
+    })
+
+    it('closes its connection when another party upgrades, letting the upgrade proceed', async () => {
+      // Caches a live connection first.
+      await bundleCachePut(fixtureBundle('docA', 1))
+
+      // An upgrader stuck on `blocked` would never settle and fail this test
+      // on timeout; the module's onversionchange close must let it through.
+      await new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 3)
+        req.onupgradeneeded = () => {}
+        req.onsuccess = () => { req.result.close(); resolve() }
+        req.onerror = () => reject(req.error)
+        req.onblocked = () => reject(new Error('upgrade blocked: cached connection never closed'))
+      })
+
+      // The cached promise was dropped along with the closed connection, so
+      // the next use attempts a genuine reopen. Its pinned DB_VERSION is older
+      // than the upgraded database, which is exactly the VersionError a
+      // pre-upgrade tab should see; replaying the CLOSED connection instead
+      // would surface InvalidStateError forever.
+      try {
+        await bundleCacheGet('docA', 1)
+        expect.unreachable('expected a VersionError against the upgraded database')
+      } catch (e) {
+        expect((e as DOMException).name).toBe('VersionError')
+      }
+    })
   })
 })

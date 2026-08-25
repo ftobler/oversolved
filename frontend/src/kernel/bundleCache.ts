@@ -68,8 +68,9 @@ interface CachedBundleRecord {
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+  const cached = dbPromise
+  if (cached) return cached
+  const opening = new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = (event) => {
       const db = req.result
@@ -83,10 +84,33 @@ function openDb(): Promise<IDBDatabase> {
         db.createObjectStore(LATEST_STORE, { keyPath: 'doc_id' })
       }
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onblocked = () => {
+      // A tab running older code holds the previous DB_VERSION open. Rejecting
+      // unsticks the actor queue: the retry blocks again until that tab closes,
+      // failing fast instead of silently hanging every assembly solve behind
+      // the upgrade.
+      reject(new Error(`open of '${DB_NAME}' v${DB_VERSION} blocked by another connection holding an older version`))
+    }
+    req.onsuccess = () => {
+      const db = req.result
+      // Yield to another tab's version upgrade instead of blocking it, and
+      // drop the cached connection so the next use reopens at the new version.
+      db.onversionchange = () => {
+        db.close()
+        if (dbPromise === opening) dbPromise = null
+      }
+      resolve(db)
+    }
     req.onerror = () => reject(req.error)
   })
-  return dbPromise
+  dbPromise = opening
+  // Any rejection (including a synchronous open() throw, which never reaches
+  // the request handlers above) must drop the cached seam so the next call
+  // retries instead of replaying the failure for the rest of the session.
+  opening.catch(() => {
+    if (dbPromise === opening) dbPromise = null
+  })
+  return opening
 }
 
 function prom<T>(req: IDBRequest<T>): Promise<T> {
