@@ -89,6 +89,21 @@ class TestDocumentStoreSidebar:
         assert docs[0]["is_owner"] is True
         assert docs[0]["owner_username"] == "owner"
 
+    def test_list_by_filter_rows_carry_no_preview_blob(self, doc_store, user_store):
+        """Listing rows must not select the preview blob at all.
+
+        The list endpoint never served previews (they are fetched per
+        document), so selecting the column only dragged every stored image
+        through memory on each sidebar render.
+        """
+        owner_id = user_store.create("owner", "hash")
+        uuid = doc_store.create("Doc", owner_id)
+        doc_store.store_preview_image(uuid, b"fake-png-bytes")
+
+        docs = doc_store.list_by_filter(owner_id, filter_type="owned")
+        assert len(docs) == 1
+        assert "preview_image" not in docs[0]
+
 
 class TestDocumentsAPISidebar:
     """Tests for documents API sidebar endpoints."""

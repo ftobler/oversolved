@@ -295,6 +295,40 @@ class TestDocumentAPI:
         assert "uuid" in doc
         assert "name" in doc
 
+    def test_list_omits_preview_bytes_but_doc_get_keeps_them(self, authed_client):
+        """The list payload must never carry preview bytes; the per-document
+        GET still serves the stored preview."""
+        import base64
+        from io import BytesIO
+        from PIL import Image
+
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "ListPreviewSplit"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+
+        img = Image.new("RGB", (10, 10), color="blue")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+        authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\n", "preview_image": encoded}),
+            content_type="application/json",
+        )
+
+        list_resp = authed_client.get("/api/documents")
+        assert list_resp.status_code == 200
+        documents = json.loads(list_resp.data)["documents"]
+        listed = next(d for d in documents if d["uuid"] == uuid)
+        assert "preview_image" not in listed
+
+        detail = json.loads(authed_client.get(f"/api/documents/{uuid}").data)
+        assert detail["preview_image"] == encoded
+
     def test_large_document(self, authed_client):
         uuid = json.loads(
             authed_client.post(

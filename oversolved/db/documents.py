@@ -314,7 +314,7 @@ class DocumentStore:
         like = f"%{search}%" if search else None
 
         select = (
-            "SELECT d.uuid, d.name, d.preview_image, "
+            "SELECT d.uuid, d.name, "
             "d.created_at, d.updated_at, d.owner_id, u.username, d.is_public "
             "FROM documents d JOIN users u ON d.owner_id = u.id "
         )
@@ -323,8 +323,10 @@ class DocumentStore:
             where = "WHERE d.deleted_at IS NULL AND d.owner_id = ?"
             params: tuple = (user_id,)
         elif filter_type == "shared":
+            # No preview_image here either: listings are sidebar data, and the
+            # blob is only fetched by the per-document retrieve().
             select = (
-                "SELECT DISTINCT d.uuid, d.name, d.preview_image, "
+                "SELECT DISTINCT d.uuid, d.name, "
                 "d.created_at, d.updated_at, d.owner_id, u.username, d.is_public "
                 "FROM documents d JOIN users u ON d.owner_id = u.id "
                 "JOIN document_shares ds ON d.uuid = ds.document_uuid "
@@ -361,12 +363,11 @@ class DocumentStore:
             {
                 "uuid": row[0],
                 "name": row[1],
-                "preview_image": _to_bytes(row[2]),
-                "created_at": row[3],
-                "updated_at": row[4],
-                "is_owner": row[5] == user_id,
-                "owner_username": row[6],
-                "is_public": bool(row[7]),
+                "created_at": row[2],
+                "updated_at": row[3],
+                "is_owner": row[4] == user_id,
+                "owner_username": row[5],
+                "is_public": bool(row[6]),
             }
             for row in cursor.fetchall()
         ]

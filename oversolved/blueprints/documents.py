@@ -23,12 +23,11 @@ def list_documents():
     if not filter_type:
         filter_type = "all" if include_shared in ("", "true") else "owned"
 
+    # The listing query selects no preview column at all; previews are heavy
+    # blobs that are only ever served per document via GET /<uuid>.
     docs = DocumentStore(get_db()).list_by_filter(
         g.current_user["id"], filter_type, sort, search_query
     )
-    for doc in docs:
-        if doc.get("preview_image"):
-            del doc["preview_image"]
     return jsonify({"documents": docs})
 
 
