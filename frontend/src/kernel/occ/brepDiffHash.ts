@@ -91,10 +91,13 @@ export function brepDiffNewVertexHashes(
     for (const topoShape of edges) {
       try {
         const ad = scope.track(new oc.BRepAdaptor_Curve_2(topoShape as OccShape))
+        // Value() returns a fresh by-value gp_Pnt per endpoint: read, then drop.
         const p0 = ad.Value(ad.FirstParameter())
         const p1 = ad.Value(ad.LastParameter())
         const v0: Vec3 = [p0.X(), p0.Y(), p0.Z()]
         const v1: Vec3 = [p1.X(), p1.Y(), p1.Z()]
+        p0.delete()
+        p1.delete()
         into.add(vertexGeometryHash(v0))
         into.add(vertexGeometryHash(v1))
       } catch {

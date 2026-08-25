@@ -102,6 +102,10 @@ function readStep(
     const builder = scale !== 1.0
       ? transformBuilder(oc, scope, read, scale)
       : null
+    // On the scaled path the OneShape() result becomes an intermediate only
+    // the identity map reads; track it so the copy does not strand it on the
+    // heap (unscaled, it IS the returned shape and stays untracked).
+    if (builder !== null) scope.track(read)
     const shape = builder ? builder.Shape() : read
     // The reader (and with it the transfer map) is tracked in `scope`, but the
     // caller's scope may outlive this call by a lot -- read the map now.

@@ -56,11 +56,14 @@ export function computeFacePlane(oc: OccModule, scope: DisposeScope, face: OccSh
   if (adaptor.GetType().value !== oc.GeomAbs_SurfaceType.GeomAbs_Plane.value) {
     throw new Error('Only flat faces can be used as extrude profiles')
   }
-  const ax3 = adaptor.Plane().Position()
-  const loc = ax3.Location()
-  const xd = ax3.XDirection()
-  const yd = ax3.YDirection()
-  const nd = ax3.Direction()
+  // adaptor.Plane() and every frame accessor return by-value gp_* proxies
+  // owning WASM memory; the scope owns them for this read-only walk.
+  const pln = scope.track(adaptor.Plane())
+  const ax3 = scope.track(pln.Position())
+  const loc = scope.track(ax3.Location())
+  const xd = scope.track(ax3.XDirection())
+  const yd = scope.track(ax3.YDirection())
+  const nd = scope.track(ax3.Direction())
   return {
     origin: [loc.X(), loc.Y(), loc.Z()],
     x_axis: [xd.X(), xd.Y(), xd.Z()],
@@ -103,7 +106,9 @@ function buildLoopFromWire(
   const circleType = oc.GeomAbs_CurveType.GeomAbs_Circle.value
   const we = scope.track(new oc.BRepTools_WireExplorer_3(wire, face))
   for (; we.More(); we.Next()) {
-    const edge = we.Current()
+    // Current() hands back a fresh edge proxy per step; the reads below end
+    // inside the iteration, so it is dropped with it.
+    const edge = scope.track(we.Current())
     try {
       const c2d = scope.track(new oc.BRepAdaptor_Curve2d_2(edge, face))
       let first = c2d.FirstParameter()
@@ -116,7 +121,7 @@ function buildLoopFromWire(
       }
       if (c2d.GetType().value === circleType) {
         const circ = scope.track(c2d.Circle())
-        const center = circ.Location()
+        const center = scope.track(circ.Location())
         const radius = circ.Radius()
         const cx = center.X()
         const cy = center.Y()
@@ -132,8 +137,8 @@ function buildLoopFromWire(
             ccw: span >= 0,
           })
         } else {
-          const pStart = c2d.Value(first)
-          const pEnd = c2d.Value(last)
+          const pStart = scope.track(c2d.Value(first))
+          const pEnd = scope.track(c2d.Value(last))
           const a0 = Math.atan2(pStart.Y() - cy, pStart.X() - cx)
           const a1 = Math.atan2(pEnd.Y() - cy, pEnd.X() - cx)
           // Winding from the pcurve parameter span sign, same rule as the
@@ -151,8 +156,8 @@ function buildLoopFromWire(
       } else {
         // Non-circular pcurves reduce to their chord here; a true ellipse_arc
         // dict would need the parameter-frame work shared.ts documents.
-        const ps = c2d.Value(first)
-        const pe = c2d.Value(last)
+        const ps = scope.track(c2d.Value(first))
+        const pe = scope.track(c2d.Value(last))
         loop.push({ kind: 'line', start: [ps.X(), ps.Y()], end: [pe.X(), pe.Y()] })
       }
     } catch {
