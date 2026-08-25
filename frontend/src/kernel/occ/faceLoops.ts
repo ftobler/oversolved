@@ -15,7 +15,6 @@ import type { OccModule, OccShape, OccOrientedShape, OccSubShape } from './occTy
 import type { Frame3D } from '../types3d'
 import { faceCentroid, faceNormal, faceSurfaceType } from './primitives'
 import { faceSortKey, compareFaceSortKeys } from './shapes'
-import { pymod } from '../features/shared'
 
 const TWO_PI = 2 * Math.PI
 
@@ -137,17 +136,21 @@ function buildLoopFromWire(
           const pEnd = c2d.Value(last)
           const a0 = Math.atan2(pStart.Y() - cy, pStart.X() - cx)
           const a1 = Math.atan2(pEnd.Y() - cy, pEnd.X() - cx)
-          const spanCcw = pymod(a1 - a0 + 2 * Math.PI, TWO_PI)
+          // Winding from the pcurve parameter span sign, same rule as the
+          // full-circle branch above: a partial arc may legitimately sweep
+          // more than half a turn, which no endpoint pair distinguishes.
           loop.push({
             kind: 'arc',
             center: [cx, cy],
             radius,
             angle_start_deg: (a0 * 180) / Math.PI,
             angle_end_deg: (a1 * 180) / Math.PI,
-            ccw: spanCcw < Math.PI,
+            ccw: span >= 0,
           })
         }
       } else {
+        // Non-circular pcurves reduce to their chord here; a true ellipse_arc
+        // dict would need the parameter-frame work shared.ts documents.
         const ps = c2d.Value(first)
         const pe = c2d.Value(last)
         loop.push({ kind: 'line', start: [ps.X(), ps.Y()], end: [pe.X(), pe.Y()] })
