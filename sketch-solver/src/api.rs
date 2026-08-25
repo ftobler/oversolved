@@ -34,7 +34,7 @@ pub fn solve_bytes(input: &[u8]) -> Result<Vec<u8>, CodecError> {
 pub fn detect_topology_bytes(input: &[u8]) -> Result<Vec<u8>, TopologyCodecError> {
     let geometry = decode_topology_input(input)?;
     let out = detect_topology(&geometry);
-    Ok(encode_topology_output(&out))
+    encode_topology_output(&out)
 }
 
 #[cfg(test)]
