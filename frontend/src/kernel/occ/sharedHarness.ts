@@ -14,6 +14,7 @@ import {
   type BuildResponse,
   type BuildDeps,
   build,
+  RESTORE_OWNER,
 } from '../builder'
 import type { BuildState } from '../types3d'
 import { initGlobalRepo } from '../query'
@@ -90,8 +91,16 @@ export class SharedHarness {
         brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(this.oc, scope, b),
         brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(this.oc, scope, b),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
-        copyBodyShape: (h) => this.table.register(copyShape(this.oc, scope, this.table.get<OccShape>(h))),
-        releaseCheckpoint: (fid) => this.table.releaseOwner('cp:' + fid),
+        copyBodyShape: (h, owner) =>
+          this.table.register(copyShape(this.oc, scope, this.table.get<OccShape>(h)), owner),
+        // Mirrors the production wiring: a discarded generation loses BOTH its
+        // checkpoint retain and the base body registration, or superseded
+        // shapes strand at refcount 1 across an incremental test sequence.
+        releaseCheckpoint: (fid) => {
+          this.table.releaseOwner('cp:' + fid)
+          this.table.releaseOwner(fid)
+        },
+        releaseRestoreCopies: () => this.table.releaseOwner(RESTORE_OWNER),
       }
       return build(spec, {
         prevState: opts?.prevState ?? null,

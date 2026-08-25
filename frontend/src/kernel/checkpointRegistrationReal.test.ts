@@ -20,7 +20,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './occ/loadOcc'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { build, registerBodyBrepFromMeta, snapshotRepo, type BuildDeps, type BuildResponse } from './builder'
+import { build, registerBodyBrepFromMeta, snapshotRepo, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
 import { Repository, initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { postRegister } from './features/postRegister'
@@ -81,8 +81,13 @@ class Harness {
         brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
         brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
-        copyBodyShape: (h) => this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h))),
-        releaseCheckpoint: (fid) => this.table.releaseOwner('cp:' + fid),
+        copyBodyShape: (h, owner) =>
+          this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),
+        releaseCheckpoint: (fid) => {
+          this.table.releaseOwner('cp:' + fid)
+          this.table.releaseOwner(fid)
+        },
+        releaseRestoreCopies: () => this.table.releaseOwner(RESTORE_OWNER),
       }
       return build(spec, { prevState: null, pickBoundary: null, rollbackPosition: null }, deps)
     } finally {

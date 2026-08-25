@@ -7,7 +7,7 @@
  * When OCC.js is unavailable it returns ``null``.
  */
 
-import { build, type BuildDeps, type BuildResponse } from './builder'
+import { build, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
 import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver } from './features/sketch'
@@ -78,6 +78,12 @@ export function setSolveLocalsForTest(
   setOccLoader(loader)
   resetLocalSolveCache()
   solveInFlight = false
+}
+
+/** @internal test-only: the persistent cross-solve HandleTable, so leak-gate
+ *  tests can assert its live handle count stays bounded across solves. */
+export function persistentTableForTest(): HandleTable | null {
+  return persistentTable
 }
 
 /** Load (or return the already-loaded) OCC module. */
@@ -242,11 +248,19 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): Buil
     brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),
     // Cross-solve checkpoint cache: retain each checkpoint's shape so it
     // survives a downstream consume/free and into the next build; copy it on
-    // restore so the rebuilt tail consumes an independent shape; evict a
-    // discarded checkpoint's retained shapes by owner.
+    // restore so the rebuilt tail consumes an independent shape (registered
+    // under RESTORE_OWNER so the copy dies with its build); evict a discarded
+    // checkpoint's retained shapes by owner. The eviction also drops the base
+    // body registration (owner = creating feature id): the retain alone would
+    // leave every superseded shape stranded at refcount 1 forever, one per
+    // body per rebuild.
     retainCheckpointShape: (h, owner) => table.retain(h, owner),
-    copyBodyShape: (h) => table.register(copyShape(oc, scope, table.get<OccShape>(h))),
-    releaseCheckpoint: (fid) => table.releaseOwner('cp:' + fid),
+    copyBodyShape: (h, owner) => table.register(copyShape(oc, scope, table.get<OccShape>(h)), owner),
+    releaseCheckpoint: (fid) => {
+      table.releaseOwner('cp:' + fid)
+      table.releaseOwner(fid)
+    },
+    releaseRestoreCopies: () => table.releaseOwner(RESTORE_OWNER),
   }
 }
 
@@ -325,6 +339,16 @@ async function solveLocallyGuarded(
 
   try {
     const deps = buildDeps(oc, scope, table)
+
+    // bypassCache discards the whole previous build, so the builder sees no
+    // prevState and its eviction loop never runs: every checkpoint retain,
+    // base body registration and restore copy of the outgoing generation would
+    // strand in the persistent table. Release them here, where that cache
+    // lives, through the same wiring a normal incremental build uses.
+    if (options.bypassCache && lastBuildState) {
+      for (const fid of lastBuildState.feature_order) deps.releaseCheckpoint(fid)
+      deps.releaseRestoreCopies?.()
+    }
 
     const specForBuild = options.validate
       ? { ...spec, _validate: true }

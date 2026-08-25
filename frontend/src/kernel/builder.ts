@@ -87,11 +87,26 @@ export interface BuildDeps {
    *  handle, used only when restoring the clean prefix: the rebuilt tail may
    *  consume/free it, so it must be independent of the retained checkpoint copy
    *  that future rebuilds restore from again. When omitted (pure non-OCC tests)
-   *  the handle is aliased. */
-  copyBodyShape?: (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
+   *  the handle is aliased. The copy is registered under ``owner`` (the per-
+   *  build [[RESTORE_OWNER]] tag) so the next build's ``releaseRestoreCopies``
+   *  can free it once the live store has replaced it -- an untagged copy would
+   *  strand forever, invisible to every ``releaseOwner``. */
+  copyBodyShape?: (
+    shape: NonNullable<Body['shape']>,
+    owner?: string,
+  ) => NonNullable<Body['shape']>
   /** Evict every shape held by a checkpoint, by owner tag (``releaseOwner``).
-   *  Called for prev-state checkpoints that a new build discards. */
+   *  Called for prev-state checkpoints that a new build discards. The wiring
+   *  must drop BOTH the checkpoint retain (``'cp:' + fid``) and the base body
+   *  registration (owner = creating feature id): the retain alone leaves the
+   *  base ref of every superseded shape stranded at refcount 1 forever. */
   releaseCheckpoint?: (fid: string) => void
+  /** Release the previous build's clean-prefix restore copies (owner tag
+   *  [[RESTORE_OWNER]]). Called right before the restore mints fresh ones, so
+   *  exactly one generation of copies is ever alive; copies a surviving clean
+   *  checkpoint retained stay at its ``cp:*`` reference until that checkpoint
+   *  is itself evicted. */
+  releaseRestoreCopies?: () => void
 }
 
 export interface BuildOptions {
@@ -178,6 +193,16 @@ export function findFirstDirty(
 }
 
 // ─── Shape / body snapshot helpers ───
+
+/**
+ * Owner tag under which every clean-prefix restore copy of one build is
+ * registered. Released (``releaseRestoreCopies``) right before the next build
+ * overwrites the live store with fresh copies, so the deep ``copyBodyShape``
+ * copies cannot accumulate one per body per incremental solve. The tag cannot
+ * collide with a feature id (base64url), so it can never match a ``cp:*`` or
+ * created-by owner.
+ */
+export const RESTORE_OWNER = 'restore'
 
 // ``mapShape``, when provided, transforms the body's shape handle for the
 // snapshot: retain-in-place at checkpoint time, defensive-copy at restore time.
@@ -1018,11 +1043,14 @@ export function build(
   // reused by identity below and keeps its retained shapes). Deleted features
   // sit at or past firstDirty in the prev order, so they are covered too. Each
   // checkpoint owns its shapes exclusively (defensive copies), so releasing by
-  // owner frees exactly that checkpoint's copies.
+  // owner frees exactly that checkpoint's copies. The previous build's restore
+  // copies are released here too -- their replacement is minted in the restore
+  // below, and this is the only point where the outgoing generation is known.
   if (options.prevState && deps.releaseCheckpoint) {
     for (const fid of options.prevState.feature_order.slice(firstDirty)) {
       deps.releaseCheckpoint(fid)
     }
+    deps.releaseRestoreCopies?.()
   }
 
   const globalRepo = deps.initGlobalRepo()
@@ -1092,8 +1120,15 @@ export function build(
       Object.assign(globalRepo, repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>))
       // Copy the checkpoint's retained shapes into the live store: the rebuilt
       // tail may consume/free these, so they must be independent of the pristine
-      // checkpoint shapes that future rebuilds restore from again.
-      Object.assign(bodyStore, _snapshotBodies(checkpoint.body_store_snapshot, deps.copyBodyShape))
+      // checkpoint shapes that future rebuilds restore from again. Each copy is
+      // registered under RESTORE_OWNER so the next build's eviction frees it.
+      Object.assign(
+        bodyStore,
+        _snapshotBodies(
+          checkpoint.body_store_snapshot,
+          deps.copyBodyShape ? (shape) => deps.copyBodyShape!(shape, RESTORE_OWNER) : undefined,
+        ),
+      )
       for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
         result[fid] = options.prevState.checkpoints[fid].result
         newCheckpoints[fid] = options.prevState.checkpoints[fid]

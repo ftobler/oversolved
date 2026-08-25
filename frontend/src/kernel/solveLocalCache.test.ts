@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from './occ/loadOcc'
-import { solveLocally, setSolveLocalsForTest } from './solveLocally'
+import { solveLocally, setSolveLocalsForTest, persistentTableForTest } from './solveLocally'
 import { setSketchSolver, resetSketchSolver } from './features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 
@@ -119,5 +119,46 @@ describe.skipIf(!oc || !solveBytes)('solveLocally cross-solve cache (real OCC + 
     const r1b = await solveLocally({ ...docA, features: [...docA.features] })
     expect(checkpoints(r1b).ex1).not.toBe(checkpoints(r1).ex1)
     expect((r1b!.result as Record<string, { status?: string }>).ex1.status).toBe('ok')
+  })
+
+  it('keeps the persistent handle table bounded across repeated incremental edits', async () => {
+    // The leak gate for the clean-prefix restore copies and the superseded
+    // dirty-tail shapes: every incremental build used to strand one deep
+    // B-rep copy per clean-prefix body plus one registration per replaced
+    // body, forever. After the per-build restore owner and the dual-owner
+    // checkpoint eviction, the table returns to the same small steady state
+    // no matter how many times the feature is edited.
+    setSolveLocalsForTest(async () => oc)
+    const doc = {
+      id: 'docLeak',
+      features: [
+        rectSketch('skL', 10, 10),
+        extrude('skL', 'exBase', 5),
+        extrude('skL', 'exTop', 3, 'new'),
+      ],
+    }
+    await solveLocally(doc)
+
+    // Edit only the last feature; skL + exBase are the clean prefix whose
+    // body is deep-copied into each rebuild.
+    const docN = (distance: number) => ({
+      ...doc,
+      features: [doc.features[0], doc.features[1], extrude('skL', 'exTop', distance, 'new')],
+    })
+    let r = await solveLocally(docN(6))
+    const steady = persistentTableForTest()!.liveCount()
+    expect(steady).toBeGreaterThan(0)
+
+    for (let d = 7; d <= 11; d++) {
+      r = await solveLocally(docN(d))
+      expect((r!.result as Record<string, { status?: string }>).exTop.status).toBe('ok')
+      expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
+    }
+
+    // bypassCache nulls prevState, so the builder's own eviction loop cannot
+    // see the outgoing generation; the cache must still come back down rather
+    // than strand every retained handle.
+    await solveLocally(docN(12), { bypassCache: true })
+    expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
   })
 })
