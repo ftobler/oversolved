@@ -93,6 +93,15 @@ export class IndexedDbDocumentStore implements DocumentStore {
   // this write, or it would be silently overwritten by this one (lost update).
   async save(id: string, input: SaveInput): Promise<void> {
     await idbReadModifyWrite<StoredDoc>(id, existing => {
+      // No-op save: identical bytes must not churn meta.rev (the assembly
+      // bundle-cache key via currentRevs), restamp updatedAt, or re-flag a
+      // synced doc dirty. Skipping the whole write keeps those stable; a
+      // missing (or tombstoned) record still falls through to the write below.
+      if (
+        existing && !existing.deleted_at &&
+        existing.content === input.content &&
+        (input.preview_image ?? existing.preview_image) === existing.preview_image
+      ) return undefined
       const now = Date.now()
       const prevRev = existing?.meta.rev ?? 0
       // Sync-readiness rules: bump rev, stamp updatedAt, flag dirty. baseRev is

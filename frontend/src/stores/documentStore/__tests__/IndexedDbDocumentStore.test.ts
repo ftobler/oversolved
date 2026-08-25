@@ -96,6 +96,50 @@ describe('IndexedDbDocumentStore', () => {
       expect(s.meta?.baseRev).toBe(1)  // diverged: rev !== baseRev
     })
 
+    it('a save with identical bytes leaves meta untouched (no rev bump, no re-dirty)', async () => {
+      // meta.rev keys the assembly bundle cache (currentRevs): churning it on
+      // a no-op save (e.g. manual Save re-capturing the same screenshot)
+      // needlessly invalidates every cached part bundle.
+      const now = vi.spyOn(Date, 'now')
+      const store = new IndexedDbDocumentStore()
+      now.mockReturnValue(1000)
+      const { uuid } = await store.create('Doc')
+      await store.save(uuid, { content: 'a', preview_image: 'img' })
+      await store.markSynced(uuid)  // dirty=false, baseRev=1
+      const [before] = await store.list()
+      now.mockReturnValue(5000)
+
+      await store.save(uuid, { content: 'a', preview_image: 'img' })
+
+      const [after] = await store.list()
+      expect(after.meta?.rev).toBe(before.meta?.rev)
+      expect(after.meta?.dirty).toBe(false)  // no spurious push either
+      expect(after.meta?.updatedAt).toBe(before.meta?.updatedAt)
+      expect(after.updated_at).toBe(before.updated_at)
+      now.mockRestore()
+    })
+
+    it('a save omitting preview_image over identical bytes is also a no-op', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      await store.save(uuid, { content: 'a', preview_image: 'img' })  // rev 1
+
+      await store.save(uuid, { content: 'a' })  // preview omitted = keep existing
+
+      const [s] = await store.list()
+      expect(s.meta?.rev).toBe(1)
+      expect(s.preview_image).toBe('img')
+    })
+
+    it('changed preview bytes still bump rev (preview-only saves are real changes)', async () => {
+      const store = new IndexedDbDocumentStore()
+      const { uuid } = await store.create('Doc')
+      await store.save(uuid, { content: 'a', preview_image: 'img1' })
+      await store.save(uuid, { content: 'a', preview_image: 'img2' })
+      const [s] = await store.list()
+      expect(s.meta?.rev).toBe(2)
+    })
+
     it('thumbnailUrl is null (the grid uses the inline preview_image)', () => {
       expect(new IndexedDbDocumentStore().thumbnailUrl('any')).toBeNull()
     })
