@@ -82,8 +82,8 @@ def staticserve(args: argparse.Namespace) -> None:
     @app.route("/")
     @app.route("/<path:path>")
     def serve_static(path="index.html"):
-        requested = (public_path / path).resolve()
         try:
+            requested = (public_path / path).resolve()
             if not requested.is_relative_to(public_path):
                 return "", 404
         except (OSError, ValueError):
