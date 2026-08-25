@@ -33,6 +33,12 @@ function uniqueStem(counts: Map<string, number>, key: string, stem: string): str
   return `${stem}_${seen}`
 }
 
+// secureFilename strips every non-ASCII code point, so a Cyrillic/CJK document
+// name sanitizes to '' and would export as '<user>/.yaml', then import back as
+// a blank-name document no other path can reach. The store's own default name
+// is the fallback on both directions.
+const UNTITLED_DOC_NAME = 'Untitled'
+
 // Core producer: returns the raw zip bytes. Kept separate from `exportBundle`
 // so it is testable without a Blob (jsdom Blobs are opaque to binary reads).
 export async function buildBundleBytes(store: DocumentStore, ids: string[]): Promise<Uint8Array> {
@@ -41,7 +47,10 @@ export async function buildBundleBytes(store: DocumentStore, ids: string[]): Pro
   for (const id of ids) {
     const payload = await store.load(id)
     const owner = payload.owner_username || LOCAL_OWNER
-    const stem = uniqueStem(counts, `${owner}/${secureFilename(payload.name)}`, secureFilename(payload.name))
+    // Key and stem share the fallback so a literal 'Untitled' doc collides
+    // (and suffixes) with a stripped non-ASCII name instead of overwriting it.
+    const safe = secureFilename(payload.name) || UNTITLED_DOC_NAME
+    const stem = uniqueStem(counts, `${owner}/${safe}`, safe)
     zip.file(`${owner}/${stem}.yaml`, payload.content)
     if (payload.preview_image) {
       // preview_image is base64 (no data: prefix), matching the save body.
@@ -94,7 +103,7 @@ export async function importBundle(
       const slash = entry.name.lastIndexOf('/')
       const filename = slash >= 0 ? entry.name.slice(slash + 1) : entry.name
       const dir = slash >= 0 ? entry.name.slice(0, slash + 1) : ''
-      const docName = filename.slice(0, -'.yaml'.length)
+      const docName = filename.slice(0, -'.yaml'.length) || UNTITLED_DOC_NAME
 
       const { uuid } = await store.create(docName)
       ids.push(uuid)  // tracked before save so rollback covers a mid-entry failure
