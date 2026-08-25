@@ -74,8 +74,14 @@ describe.skipIf(!oc || !solveBytes)('pick identity corpus (real OCC + Rust solve
   }, 60_000)
 
   it('a re-picked edge of the fused body fillets', () => {
+    // Re-pick a straightedge on the up_to-face sketch's lineage: its
+    // neighbours are planar, so OCC can blend it. Edges bordering the corpus's
+    // own r=2 blends (the ArdV8SVWXjjg8-gP faces) genuinely refuse at the
+    // kernel level with build_failed, which since the swallowed-failure fix
+    // surfaces as a feature exception instead of a green ok that changed
+    // nothing.
     const picked = ((h.body(h.run(spec()), BODY).edge_queries as string[]) ?? [])
-      .filter((q) => q.endsWith(':straightedge'))
+      .filter((q) => q.endsWith(':straightedge') && q.includes('/pwfYD59xKWiSyQhm@'))
     expect(picked.length).toBeGreaterThan(0)
 
     const withFillet = spec()
