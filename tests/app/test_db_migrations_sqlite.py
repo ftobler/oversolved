@@ -114,6 +114,58 @@ class TestApplyMigrationRollback:
         assert calls, "rollback was not called on migration failure"
 
 
+    def test_failing_migration_leaves_no_partial_ddl_sqlite(self, tmp_path):
+        """SQLite DDL inside a failed migration must roll back, not autocommit."""
+        db_path = str(tmp_path / "partial.sqlite")
+
+        def halfway(db):
+            db.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+            db.execute("CREATE TABLE t2 (id INTEGER PRIMARY KEY)")
+            raise RuntimeError("halfway through")
+
+        first = Database(SQLiteConnection(db_path))
+        first.register_migration(1, "m001_halfway", halfway)
+        with pytest.raises(RuntimeError):
+            first.init()
+
+        names = [
+            row[0]
+            for row in first.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        ]
+        assert "t1" not in names and "t2" not in names
+        assert first.get_current_version() == 0
+        first.close()
+
+    def test_retry_after_failed_migration_succeeds_on_same_file(self, tmp_path):
+        """Reopening a db that saw a failed migration must migrate cleanly.
+
+        Without atomic DDL the partial table survives and init() boot-loops
+        on "table already exists".
+        """
+        db_path = str(tmp_path / "retry.sqlite")
+
+        def bad(db):
+            db.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+            raise RuntimeError("boom")
+
+        broken = Database(SQLiteConnection(db_path))
+        broken.register_migration(1, "m001_bad", bad)
+        with pytest.raises(RuntimeError):
+            broken.init()
+        broken.close()
+
+        def fixed(db):
+            db.execute("CREATE TABLE t1 (id INTEGER PRIMARY KEY)")
+
+        reopened = Database(SQLiteConnection(db_path))
+        reopened.register_migration(1, "m001_fixed", fixed)
+        reopened.init()
+        assert reopened.get_current_version() == 1
+        reopened.close()
+
+
 class TestToBytes:
     def test_none_returns_none(self):
         assert _to_bytes(None) is None

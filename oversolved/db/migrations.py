@@ -92,6 +92,13 @@ class Database:
         """Run a single migration and record it in schema_version."""
         self._ensure_schema_table()
         try:
+            if not isinstance(self.conn, PostgreSQLConnection):
+                # SQLite legacy isolation autocommits DDL outside explicit
+                # transactions, so a mid-migration failure would leave partial
+                # CREATE TABLEs committed while the version stays unrecorded;
+                # the next init() would then retry this migration and crash on
+                # "table already exists". An explicit BEGIN makes DDL atomic.
+                self.conn.execute("BEGIN")
             func(self)
             self.conn.execute(
                 "INSERT INTO schema_version (version, name) VALUES (?, ?)",
