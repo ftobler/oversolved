@@ -326,6 +326,38 @@ class TestSessionStore:
         # Oldest should be deleted
         assert session_store.find(tokens[0]) is None
 
+    def test_revoke_all_for_user_keeps_given_token(self, session_store, user_store):
+        """revocation spares exactly the one session named by keep_token."""
+        uid = user_store.create("revoker", "hash")
+        kept = session_store.create(uid)
+        stale = session_store.create(uid)
+
+        deleted = session_store.revoke_all_for_user(uid, keep_token=kept)
+
+        assert deleted == 1
+        assert session_store.find(kept) is not None
+        assert session_store.find(stale) is None
+
+    def test_revoke_all_for_user_clears_everything_without_keep(self, session_store, user_store):
+        """No keep_token means every session of the user goes."""
+        uid = user_store.create("wiper", "hash")
+        tokens = [session_store.create(uid) for _ in range(3)]
+
+        deleted = session_store.revoke_all_for_user(uid)
+
+        assert deleted == 3
+        for token in tokens:
+            assert session_store.find(token) is None
+
+    def test_revoke_all_for_user_leaves_other_users_alone(self, session_store, user_store):
+        uid_a = user_store.create("revokea", "hash")
+        uid_b = user_store.create("revokeb", "hash")
+        b_token = session_store.create(uid_b)
+
+        session_store.revoke_all_for_user(uid_a)
+
+        assert session_store.find(b_token) is not None
+
     @staticmethod
     def _insert_session(session_store, user_id, token, expires_at):
         """Insert a session row directly with a controlled expiry timestamp."""

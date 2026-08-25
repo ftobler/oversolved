@@ -78,3 +78,24 @@ class SessionStore:
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.db.transaction():
             self.db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+    def revoke_all_for_user(self, user_id: int, keep_token: str | None = None) -> int:
+        """Delete every session of user_id, optionally sparing keep_token's own.
+
+        Password changes must retire tokens issued under the old credential;
+        without this a copied token would keep authenticating for the full 30
+        day session lifetime. keep_token spares the caller's own session so it
+        is not logged out mid-request. Returns the number of deleted sessions.
+        """
+        with self.db.transaction():
+            if keep_token is None:
+                cursor = self.db.execute(
+                    "DELETE FROM sessions WHERE user_id = ?", (user_id,)
+                )
+            else:
+                keep_hash = hashlib.sha256(keep_token.encode()).hexdigest()
+                cursor = self.db.execute(
+                    "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+                    (user_id, keep_hash),
+                )
+            return cursor.rowcount

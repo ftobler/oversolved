@@ -4,7 +4,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request, g
 from werkzeug.security import generate_password_hash, check_password_hash
-from oversolved.db import UserStore
+from oversolved.db import UserStore, SessionStore
 from oversolved.blueprints import get_db, auth_required, validate_password_strength, api_error
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users/me")
@@ -73,6 +73,13 @@ def update_profile():
         success = user_store.update(user_id, **updates)
         if not success:
             return api_error("User not found", "NOT_FOUND", 404)
+        if "password_hash" in updates:
+            # A new hash alone does not stop old tokens from authenticating for
+            # the rest of their 30 day lifetime; revoke the account's other
+            # sessions while sparing the one that performed this change.
+            SessionStore(db).revoke_all_for_user(
+                user_id, keep_token=request.cookies.get("session_token")
+            )
 
     return jsonify({"status": "updated"})
 

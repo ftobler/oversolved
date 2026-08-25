@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, request, send_file
 from flask.typing import ResponseReturnValue
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
-from oversolved.db import Database, DocumentStore, UserStore, PeriodicTaskStore
+from oversolved.db import Database, DocumentStore, PeriodicTaskStore, SessionStore, UserStore
 from flask import g
 from oversolved.blueprints import auth_required, get_db, validate_password_strength, api_error
 
@@ -177,6 +177,12 @@ def admin_reset_password(user_id: int) -> ResponseReturnValue:
     success = user_store.change_password(user_id, generate_password_hash(new_password))
     if not success:
         return api_error("User not found", "NOT_FOUND", 404)
+    # Same rule as the self-service change: outstanding tokens for the target
+    # account die with the old password. When an admin resets their own
+    # password, keep_token spares the session performing the reset.
+    SessionStore(db).revoke_all_for_user(
+        user_id, keep_token=request.cookies.get("session_token")
+    )
     return jsonify({"status": "reset"})
 
 

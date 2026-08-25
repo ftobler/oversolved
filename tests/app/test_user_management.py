@@ -183,6 +183,40 @@ class TestAdminAPI:
         )
         assert login_resp.status_code == 200
 
+    def test_reset_password_revokes_target_sessions(self, app, admin_client):
+        """An admin reset kicks the target user out of existing sessions.
+
+        Same rule as the self-service change: tokens issued under the old
+        password must die with it. The admin's own session is untouched.
+        """
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "resetkick", "password": "oldpassword",
+                "email": "resetkick@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        victim = app.test_client()
+        login = victim.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "resetkick", "password": "oldpassword"}),
+            content_type="application/json",
+        )
+        assert login.status_code == 200
+
+        reset = admin_client.post(
+            f"/api/admin/users/{user_id}/reset",
+            data=json.dumps({"password": "newpassword"}),
+            content_type="application/json",
+        )
+        assert reset.status_code == 200
+
+        assert victim.get("/api/auth/me").status_code == 401
+        assert admin_client.get("/api/auth/me").status_code == 200
+
     def test_deactivated_user_cannot_login(self, admin_client, app):
         # Create a user and deactivate it
         create_resp = admin_client.post(
@@ -482,6 +516,35 @@ class TestProfile:
             content_type="application/json",
         )
         assert login.status_code == 200
+
+    def test_change_password_revokes_other_sessions(self, app, admin_client):
+        """Sessions issued before a password change must not keep authenticating.
+
+        Session tokens live 30 days, so without revocation a token copied before
+        the change would outlive the new credential. The session that performed
+        the change is spared so its caller is not logged out mid-request.
+        """
+        other = app.test_client()
+        login = other.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "admin"}),
+            content_type="application/json",
+        )
+        assert login.status_code == 200
+
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps(
+                {"current_password": "admin", "new_password": "newpassword123"}
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        me_caller = admin_client.get("/api/auth/me")
+        assert me_caller.status_code == 200
+        me_stale = other.get("/api/auth/me")
+        assert me_stale.status_code == 401
 
 
 class TestAdminCreateUserWithEmail:
