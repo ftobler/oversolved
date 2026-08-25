@@ -284,6 +284,34 @@ describe('useRubberBandSelect stale-buffer guard', () => {
   })
 })
 
+describe('useRubberBandSelect degenerate-rect exit', () => {
+  it('releases the drag flag when the scaled box rounds away at the buffer edge', () => {
+    // Browser zoom under 100% leaves the drawing buffer smaller than the CSS
+    // size, so a band starting ~1px inside the right edge scales to exactly
+    // the buffer width: rw rounds down to 0 and the commit exits early. That
+    // exit must still release isDraggingRef, or Viewport's onPointerMissed
+    // suppresses empty-space deselect for every later stationary click.
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const { gl } = glForEntityId(0)
+      ;(gl.domElement as unknown as { clientWidth: number }).clientWidth = PIPELINE_W * 2
+      const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+      const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+      getLivePipeline()?.target.markClean()
+      act(() => {
+        expect(result.current.onPointerDown(pointerEvent(199.5, 10), false)).toBe(true)
+        result.current.onPointerMove(pointerEvent(260, 40))
+        result.current.onPointerUp()
+      })
+      expect(result.current.state.isDraggingRef.current).toBe(false)
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+})
+
 describe('useRubberBandSelect honors the dispatcher swallow semantics', () => {
   it('a sweep over a featureHandle pixel with idle select collects nothing', () => {
     const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })

@@ -146,8 +146,12 @@ export function useRubberBandSelect(
     const rw = Math.min(w - x0, Math.ceil(currentRect.w * sx))
     const rh = Math.min(h - y0, Math.ceil(currentRect.h * sy))
     if (rw <= 0 || rh <= 0) {
+      // Same release discipline as every other exit: the box degenerated
+      // against the buffer edge (browser zoom under 100%), but the drag is
+      // over and a stuck flag would suppress empty-space deselects.
       startRef.current = null
       rectRef.current = null
+      draggingRef.current = false
       setRect(null)
       return
     }
