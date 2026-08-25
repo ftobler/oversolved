@@ -341,7 +341,11 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
     })
   }, [clearHover, resolveHitsAt])
 
-  useEffect(() => () => { if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current) }, [])
+  // Unmounting mid-hover leaves the store's anchor/highlight fields behind:
+  // they are module-level and only pointer events clear them, so a remount
+  // would redraw a pick nothing is under until one does. clearHover also
+  // cancels any readback still queued for the frame that never ran.
+  useEffect(() => () => { clearHover() }, [clearHover])
 
   // Ctrl narrows the hover scope, and the user may press or release it without
   // moving the mouse. Re-deriving from the hits already in hand keeps the drawn
