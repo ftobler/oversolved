@@ -108,11 +108,20 @@ export default function Documents() {
   // slow local IndexedDB read can land after a fast cloud fetch) must not
   // overwrite it. Only the latest request gets to set state.
   const listReqRef = useRef(0)
+  // The store behind the tiles currently on screen. A refetch from the SAME store
+  // (the preferences load landing after sign-in, a sort or search change) is only
+  // a revalidation and must keep the stale tiles mounted until the fresh list
+  // arrives -- flipping to the loading state there flashes an empty grid, which
+  // is the race the Documents.transfer suite kept losing. Only a DIFFERENT store
+  // (a domain switch) may blank the grid, since the old domain's tiles must not
+  // linger under the new one.
+  const listedFromRef = useRef<typeof activeStore | null>(null)
   const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
     const reqId = ++listReqRef.current
     activeStore.list({ sort: sortToApiParam(sortBy), filter, search })
       .then(documents => {
         if (reqId !== listReqRef.current) return
+        listedFromRef.current = activeStore
         setDocuments(documents)
         setError(null)
         setLoading(false)
@@ -135,9 +144,14 @@ export default function Documents() {
 
   useEffect(() => {
     if (prefsLoading) return
-    setLoading(true)
+    // Same-store revalidation keeps the previous list visible (see listedFromRef);
+    // a domain switch clears first so no cross-domain tiles are ever shown.
+    if (listedFromRef.current !== activeStore) {
+      setDocuments([])
+      setLoading(true)
+    }
     fetchDocuments(activeFilter, debouncedSearch)
-  }, [activeFilter, debouncedSearch, fetchDocuments, prefsLoading])
+  }, [activeFilter, debouncedSearch, fetchDocuments, prefsLoading, activeStore])
 
   const handleAddDocument = async () => {
     if (!newDocName.trim()) {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
 import { freshLocalDb, renderDocuments, gotoCloudDomain } from './documentsHarness'
 import { getLocalStore } from '@/stores/documentStore'
+import { backendBundle } from '@/adapters/backend'
 
 // doc-domain-move slice 4: the per-tile cross-domain copy verbs. Home is the
 // local IndexedDB library; the cloud domain is the HTTP store (backed here by the
@@ -62,6 +63,50 @@ describe('Documents cross-domain copy', () => {
 
     // The source local tile stays put (a copy, not a move).
     expect(screen.getByText('local/Bracket')).toBeInTheDocument()
+    expect((await local.load(uuid)).content).toBe('profile: square')
+  })
+
+  it('keeps the tile mounted while preferences revalidate the list', async () => {
+    const local = getLocalStore()
+    const { uuid } = await local.create('Bracket')
+    await local.save(uuid, { content: 'profile: square' })
+
+    // Hold the preferences response back so the session flips the page into its
+    // signed-in, prefs-pending state while the first list is already on screen;
+    // resolving it then forces the same-store refetch the flake raced on.
+    let resolvePrefs: (value: Response) => void = () => {}
+    const prefsDeferred = new Promise<Response>(resolve => { resolvePrefs = resolve })
+    const fetchMock = vi.fn((url: string): Promise<Response> => {
+      if (url === '/api/auth/me') return Promise.resolve(authOk)
+      if (url === '/api/users/me/preferences') return prefsDeferred
+      return Promise.resolve(res({ documents: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDocuments()
+    expect(await screen.findByText('local/Bracket')).toBeInTheDocument()
+
+    // Gate the NEXT local list so the same-store revalidation stays in flight
+    // while we look at the screen; otherwise it could resolve within one act
+    // flush and hide whether the stale tile was briefly unmounted.
+    const realList = backendBundle.documents.list.bind(backendBundle.documents)
+    let releaseList: () => void = () => {}
+    const gated = new Promise<void>(resolve => { releaseList = resolve })
+    const listSpy = vi.spyOn(backendBundle.documents, 'list').mockImplementationOnce(
+      () => gated.then(() => realList()),
+    )
+
+    resolvePrefs(prefsOk)
+
+    // The revalidation fires (a fresh local list request), and because it targets
+    // the SAME store the stale tile must stay mounted throughout -- the old code
+    // flipped to loading here and emptied the grid mid-refetch.
+    await waitFor(() => {
+      expect(listSpy).toHaveBeenCalled()
+    })
+    expect(screen.getByText('local/Bracket')).toBeInTheDocument()
+    releaseList()
+    expect(await screen.findByText('local/Bracket')).toBeInTheDocument()
     expect((await local.load(uuid)).content).toBe('profile: square')
   })
 
