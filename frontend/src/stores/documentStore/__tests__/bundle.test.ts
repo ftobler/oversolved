@@ -2,10 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { resetFakeIndexedDb } from './fakeIndexedDb'
 import JSZip from 'jszip'
 import { IndexedDbDocumentStore, LOCAL_OWNER } from '../IndexedDbDocumentStore'
-import { buildBundleBytes, importBundle } from '../bundle'
+import { buildBundleBytes, importBundle, MAX_BUNDLE_ENTRIES } from '../bundle'
 import { resetDbConnection } from '../idb'
 import { secureFilename } from '../secureFilename'
-
 beforeEach(() => {
   resetFakeIndexedDb()
   resetDbConnection()
@@ -110,6 +109,18 @@ describe('bundle export/import', () => {
     // Without compensation "One" would survive as a partial import; both
     // entries must be gone so a retry starts clean.
     expect(await store.list()).toHaveLength(0)
+  })
+
+  it('rejects an archive over the entry-count cap cleanly', async () => {
+    // Mirrors admin.py's zip-bomb entry cap; static builds have no server
+    // fallback, so this is the only guard.
+    const zip = new JSZip()
+    for (let i = 0; i <= MAX_BUNDLE_ENTRIES; i++) zip.file(`u/doc-${i}.yaml`, 'x')
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'STORE' })
+
+    const store = new IndexedDbDocumentStore()
+    await expect(importBundle(store, bytes)).rejects.toThrow(/too many files/i)
+    expect(await store.list()).toHaveLength(0)  // rejected before any document lands
   })
 
   it('secureFilename mirrors werkzeug for common cases', () => {

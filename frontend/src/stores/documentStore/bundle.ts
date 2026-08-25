@@ -56,6 +56,19 @@ export async function exportBundle(store: DocumentStore, ids: string[]): Promise
   return new Blob([bytes as BlobPart], { type: 'application/zip' })
 }
 
+// Zip-bomb guardrails for import, mirroring admin.py's import-backup path
+// (_MAX_ZIP_ENTRIES and its 100MB compressed request pre-check). Static builds
+// have no server in front of this code, so these caps are the only ones.
+//
+// Residual gap: admin.py also caps total DECOMPRESSED size via the central
+// directory's per-entry file_size. JSZip does not expose uncompressed sizes
+// through public API before decompression (its uncompressedSize field is
+// internal), so this port relies on the compressed-input cap plus the entry
+// cap; a highly-compressible archive under the input cap can still fan out
+// past what the server would admit.
+export const MAX_BUNDLE_ENTRIES = 10000
+export const MAX_BUNDLE_INPUT_BYTES = 100 * 1024 * 1024
+
 // Ingests a bundle into the active store. The per-user directory is irrelevant
 // locally (single user), so the username segment is dropped: every document is
 // created under the local store. Returns the ids written.
@@ -63,11 +76,15 @@ export async function importBundle(
   store: DocumentStore,
   data: Blob | ArrayBuffer | Uint8Array,
 ): Promise<string[]> {
+  // Blob.size is free; only non-Blob inputs are already bytes in memory.
+  const inputBytes = data instanceof Blob ? data.size : data.byteLength
+  if (inputBytes > MAX_BUNDLE_INPUT_BYTES) throw new Error('Bundle file too large')
   const zip = await JSZip.loadAsync(await toBytes(data))
   const ids: string[] = []
   // Index entries by their <user>/<file> path so a .yaml can find its sibling
   // .png by name.
   const entries = Object.values(zip.files).filter(f => !f.dir)
+  if (entries.length > MAX_BUNDLE_ENTRIES) throw new Error('Archive contains too many files')
   const byPath = new Map(entries.map(f => [f.name, f]))
 
   try {
