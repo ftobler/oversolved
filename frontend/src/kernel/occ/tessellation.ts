@@ -445,8 +445,11 @@ function vertexUuidsFromFaces(
     const vExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
     for (; vExp.More(); vExp.Next()) {
       const vertex = scope.track(oc.TopoDS.Vertex_1(vExp.Current()))
+      // Pnt() hands back a fresh by-value point per vertex (one per face
+      // corner): read it and drop it before the next iteration.
       const p = oc.BRep_Tool.Pnt(vertex)
       const pt = [p.X(), p.Y(), p.Z()]
+      p.delete()
       const vgh = vertexGeometryHash(pt)
       ;(adjacency[vgh] ??= new Set()).add(uuid)
       vertexPoints[vgh] ??= pt

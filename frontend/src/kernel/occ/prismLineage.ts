@@ -841,11 +841,18 @@ function tryCanonicalMergedProfile(
     let solid: OccShape = (
       scope.track(new oc.BRepPrimAPI_MakePrism_1(faces[0], vec, true, true)) as OccPrismBuilder
     ).Shape()
+    // Every solid here is an intermediate (the function returns a face off
+    // the final one), so each stays scope-owned: the prism results, the parts
+    // fused away, and every fuse output the next iteration replaces.
+    scope.track(solid)
     for (let i = 1; i < faces.length; i++) {
       const part = (
         scope.track(new oc.BRepPrimAPI_MakePrism_1(faces[i], vec, true, true)) as OccPrismBuilder
       ).Shape()
-      solid = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
+      const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
+      scope.track(part)
+      scope.track(fused)
+      solid = fused
     }
     // The pre-prism-union path only makes sense when the groups tile ONE
     // connected region (their prism-fuse collapses to a single solid). For
@@ -854,7 +861,9 @@ function tryCanonicalMergedProfile(
     // multi-body output the caller splits apart; bailing here preserves it.
     if (countSolids(oc, scope, solid) !== 1) return null
     try {
-      solid = cleanWithHistory(oc, scope, solid).shape
+      const cleaned = cleanWithHistory(oc, scope, solid).shape
+      scope.track(cleaned)
+      solid = cleaned
     } catch {
       // The prism-fuse-clean is the legacy path -- the only throw the
       // diagnostics pinned was the periodic-cylinder face merge (now avoided
@@ -977,6 +986,10 @@ function perGroupPrismWithLineage(
       ),
     ) as OccPrismBuilder
     const part = builder.Shape()
+    // Each group's prism and each fuse output is consumed by the next fuse
+    // except the survivor returned at the end; scope-own them all here and
+    // detach only that survivor, which the caller takes over.
+    scope.track(part)
     const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
     prefixLineageMaps(lineage, tokenPrefix)
     Object.assign(merged.faceNames, lineage.faceNames)
@@ -984,7 +997,13 @@ function perGroupPrismWithLineage(
     Object.assign(merged.faceAncestry, lineage.faceAncestry)
     Object.assign(merged.edgeAncestry, lineage.edgeAncestry)
 
-    solid = solid === null ? part : booleanWithHistory(oc, scope, solid, part, 'fuse').shape
+    if (solid === null) {
+      solid = part
+    } else {
+      const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
+      scope.track(fused)
+      solid = fused
+    }
   }
 
   if (solid === null) throw new Error('no loops to extrude')
@@ -995,12 +1014,14 @@ function perGroupPrismWithLineage(
     // reject the compound; keep the un-merged raw_solid in that rare case
     // rather than crash the feature -- the caller side splits multi-solids.
     try {
-      solid = cleanWithHistory(oc, scope, solid).shape
+      const cleaned = cleanWithHistory(oc, scope, solid).shape
+      scope.track(cleaned)
+      solid = cleaned
     } catch {
       // kept raw solid -- segmentation faces survive but the volume is intact.
     }
   }
-  return { solid, ...merged }
+  return { solid: scope.detach(solid), ...merged }
 }
 
 /**
