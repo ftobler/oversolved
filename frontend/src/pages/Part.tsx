@@ -763,9 +763,12 @@ export default function Part() {
   )
 
   const handleSave = async () => {
-    if (!uuid || !doc) return
+    if (!uuid || !doc) return false
     const success = await saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)  // screenshot is optional; save proceeds without Viewport
     if (success) setError(null)
+    // The toolbar flashes its saved check off this, so a failed save must
+    // resolve false rather than vanish into a void promise.
+    return success
   }
 
   const handleClone = () => {

@@ -14,7 +14,9 @@ interface PartToolbarProps {
   docName: string | null
   isCloudDoc: boolean
   onRename: (name: string) => Promise<boolean>
-  handleSave: () => void
+  // Resolves to whether the bytes actually landed, so a failed save can be
+  // told apart from a successful one.
+  handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
   onShare: () => void
 }
@@ -40,15 +42,30 @@ export default function PartToolbar({
   // unmount. Without this a stray timer fires setState after the component
   // (and, in tests, the whole jsdom environment) is gone.
   const saveResetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The save resolves after an await, so it can outlive this component; any
+  // state work past that await checks this ref. Re-armed in the effect body so
+  // StrictMode's mount/unmount/mount replay cannot leave it stuck false.
+  const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (saveResetTimeout.current !== null) clearTimeout(saveResetTimeout.current)
     }
   }, [])
 
-  const handleSaveClick = () => {
-    handleSave()
+  const handleSaveClick = async () => {
+    // A new attempt retires any previous success flash up front; only this
+    // save's own outcome may bring the check back.
+    setSaveState('idle')
+    // The green check means the bytes landed: only a resolved true may flash
+    // it. On a failure the plain save icon stays; the error banner beside the
+    // toolbar already reports why, so no second affordance is raised here.
+    const saved = await handleSave()
+    // A resolve after unmount must not schedule the reset timer: the cleanup
+    // already ran and nothing would ever clear it.
+    if (!saved || !mountedRef.current) return
     setSaveState('success')
     if (saveResetTimeout.current !== null) clearTimeout(saveResetTimeout.current)
     saveResetTimeout.current = setTimeout(() => setSaveState('idle'), 1500)

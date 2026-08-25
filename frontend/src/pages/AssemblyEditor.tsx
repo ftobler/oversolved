@@ -277,10 +277,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const openExport = useCallback(() => exportRef.current?.openExport(), [])
 
   const viewportRef = useRef<AssemblyViewportHandle>(null)
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     // Capture a thumbnail of the solved scene on save, like the part editor. The
     // capturer is optional: the save still proceeds when the viewport is absent.
-    if (uuid && doc) saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
+    // The boolean rides back to the toolbar so a failed save never flashes its
+    // saved check.
+    if (!uuid || !doc) return false
+    return saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
   }, [uuid, doc, saveDoc])
 
   const handleClone = useCallback(async () => {
