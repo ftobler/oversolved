@@ -427,26 +427,30 @@ impl<'a> Problem<'a> {
         }
     }
 
-    /// Unit radius direction at a contact point.
+    /// Unit radius direction at a contact point. Both circles and arcs measure
+    /// the radial from the centre to the ACTUAL contact: an arc's start/end
+    /// angle params describe its own endpoints, not wherever a pinned line foot
+    /// happens to sit, so keying the direction off them ignored the contact.
     fn radius_dir(&self, x: &[f64], arc_index: u32, arc_point: PointSelector, contact: P2) -> P2 {
         let ep = self.params(x, arc_index);
-        if self.kind_of(arc_index) == Kind::Circle {
-            let rv = [contact[0] - ep[0], contact[1] - ep[1]];
-            let rn = (rv[0] * rv[0] + rv[1] * rv[1]).sqrt();
-            if rn > 1e-10 {
-                [rv[0] / rn, rv[1] / rn]
-            } else {
-                [0.0, 0.0]
-            }
-        } else {
+        let rv = [contact[0] - ep[0], contact[1] - ep[1]];
+        let rn = (rv[0] * rv[0] + rv[1] * rv[1]).sqrt();
+        if rn > 1e-10 {
+            return [rv[0] / rn, rv[1] / rn];
+        }
+        // Degenerate fallback: the contact collapsed onto the centre. An arc
+        // can still name a parametric radial from its endpoint angles; a
+        // circle has no such params and degrades to a zero-direction row.
+        if self.kind_of(arc_index) == Kind::Arc {
             let a_deg = if arc_point == PointSelector::End {
                 ep[4]
             } else {
                 ep[3]
             };
             let a = a_deg.to_radians();
-            [a.cos(), a.sin()]
+            return [a.cos(), a.sin()];
         }
+        [0.0, 0.0]
     }
 
     /// Evaluate the full stacked residual vector for `x`: every constraint's
@@ -819,11 +823,13 @@ impl<'a> Problem<'a> {
             // Otherwise the line body is tangent to the circle: perpendicular
             // distance from the centre to the infinite line equals the radius.
             if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
-                let contact = if pinned_pt == PointSelector::End {
-                    [line_ep[0], line_ep[1]]
-                } else {
-                    [line_ep[2], line_ep[3]]
-                };
+                // Contact is whichever line endpoint the coincident constraint
+                // pinned onto the curve. Resolving through `point()` with the
+                // stored selector (not a hand-inverted copy of it) keeps this
+                // honest for both pin sides: reading the opposite foot measured
+                // tangency at a point the constraints never tied down, and a
+                // correctly-tangent sketch read ~-0.9 instead of 0.
+                let contact = self.point(x, Ref::Entity { index: line_idx, point: pinned_pt });
                 let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
                 r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
             } else {
@@ -1888,6 +1894,170 @@ mod tests {
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         assert!((r[0] - 1.0).abs() < 1e-12, "offset 1: {}", r[0]);
+    }
+
+    /// Pinned line-circle tangency must measure the radial at whichever line
+    /// endpoint the coincident constraint actually pinned. Here that is the END,
+    /// so a correctly-tangent seed reads exactly 0; the inverted-selector bug
+    /// read the START instead (-3/sqrt(34) ~ -0.51 here) and drove LM off a
+    /// feasible pose.
+    #[test]
+    fn line_circle_tangent_honors_the_pinned_end() {
+        // Circle at origin r=5; line from (5,-3) up to (5,0): its END sits on
+        // the circle and the direction is vertical, i.e. perpendicular to the
+        // radial at (5,0).
+        let absent = PointSelector::Absent;
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Circle, 4)],
+            vec![5.0, -3.0, 5.0, 0.0, 0.0, 0.0, 5.0],
+            vec![
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(e_ref(0, PointSelector::End), e_ref(1, absent)),
+                ),
+                cons(
+                    ConstraintKind::Tangent,
+                    vec![
+                        (RefRole::Line, e_ref(0, absent)),
+                        (RefRole::Arc, e_ref(1, absent)),
+                    ],
+                ),
+            ],
+        );
+        let p = Problem::new(&inp);
+        assert_eq!(p.line_circle_coincident.get(&(0, 1)), Some(&PointSelector::End));
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 2);
+        assert!(r[0].abs() < 1e-12, "coincident: {}", r[0]);
+        assert!(r[1].abs() < 1e-12, "tangent at pinned END: {}", r[1]);
+    }
+
+    /// The mirrored pin side: the START endpoint is the one tied to the circle.
+    /// Reading the opposite foot again produced a phantom -3/sqrt(34).
+    #[test]
+    fn line_circle_tangent_honors_the_pinned_start() {
+        // Same circle; the line runs DOWN from (5,0) so its START sits on it.
+        let absent = PointSelector::Absent;
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Circle, 4)],
+            vec![5.0, 0.0, 5.0, -3.0, 0.0, 0.0, 5.0],
+            vec![
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(e_ref(0, PointSelector::Start), e_ref(1, absent)),
+                ),
+                cons(
+                    ConstraintKind::Tangent,
+                    vec![
+                        (RefRole::Line, e_ref(0, absent)),
+                        (RefRole::Arc, e_ref(1, absent)),
+                    ],
+                ),
+            ],
+        );
+        let p = Problem::new(&inp);
+        assert_eq!(p.line_circle_coincident.get(&(0, 1)), Some(&PointSelector::Start));
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 2);
+        assert!(r[0].abs() < 1e-12, "coincident: {}", r[0]);
+        assert!(r[1].abs() < 1e-12, "tangent at pinned START: {}", r[1]);
+    }
+
+    /// Pinned line-arc tangency with the contact MID-SWEEP (45 deg of a 0..90
+    /// arc): the radial there comes from the contact itself. The old arc arm
+    /// keyed the direction off the arc's stored start angle instead, ignoring
+    /// the contact entirely and reading -sqrt(2)/2 for this exact geometry.
+    #[test]
+    fn line_arc_tangent_honors_the_pinned_contact_mid_sweep() {
+        let absent = PointSelector::Absent;
+        let (c45, s45) = (45.0_f64.to_radians().cos(), 45.0_f64.to_radians().sin());
+        // Arc centre origin r=5 sweeping 0..90 deg; the line's END is pinned at
+        // the 45 deg point and the line runs along the tangent there.
+        let end = [5.0 * c45, 5.0 * s45];
+        let start = [end[0] + 3.0 * s45, end[1] - 3.0 * c45];
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
+            vec![
+                start[0] as f32, start[1] as f32, end[0] as f32, end[1] as f32,
+                0.0, 0.0, 5.0, 0.0, 90.0,
+            ],
+            vec![
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(e_ref(0, PointSelector::End), e_ref(1, absent)),
+                ),
+                cons(
+                    ConstraintKind::Tangent,
+                    vec![
+                        (RefRole::Line, e_ref(0, absent)),
+                        (RefRole::Arc, e_ref(1, absent)),
+                    ],
+                ),
+            ],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 2);
+        // The 45 deg contact only survives the f32 param buffer to ~1e-9.
+        assert!(r[0].abs() < 1e-7, "coincident: {}", r[0]);
+        assert!(r[1].abs() < 1e-7, "tangent at mid-sweep contact: {}", r[1]);
+    }
+
+    /// End-to-end shape of the bug: a sketch already satisfying its pinned
+    /// tangency must solve as a no-op. Driving away (or reporting
+    /// Overconstrained from a phantom residual) locked a correct drawing.
+    #[test]
+    fn solve_from_a_pinned_tangent_seed_stays_put() {
+        let absent = PointSelector::Absent;
+        let mk = |line_params: [f32; 4], curve_params: Vec<f32>, curve: Kind| {
+            input(
+                vec![ent(Kind::Line, 0), ent(curve, 4)],
+                [line_params.as_slice(), &curve_params].concat(),
+                vec![
+                    cons(
+                        ConstraintKind::Coincident,
+                        ab(e_ref(0, PointSelector::End), e_ref(1, absent)),
+                    ),
+                    cons(
+                        ConstraintKind::Tangent,
+                        vec![
+                            (RefRole::Line, e_ref(0, absent)),
+                            (RefRole::Arc, e_ref(1, absent)),
+                        ],
+                    ),
+                ],
+            )
+        };
+        let circle_case = mk([5.0, -3.0, 5.0, 0.0], vec![0.0, 0.0, 5.0], Kind::Circle);
+        let arc_case = mk(
+            [
+                (5.0 * 45.0_f64.to_radians().cos() + 3.0 * 45.0_f64.to_radians().sin()) as f32,
+                (5.0 * 45.0_f64.to_radians().sin() - 3.0 * 45.0_f64.to_radians().cos()) as f32,
+                (5.0 * 45.0_f64.to_radians().cos()) as f32,
+                (5.0 * 45.0_f64.to_radians().sin()) as f32,
+            ],
+            vec![0.0, 0.0, 5.0, 0.0, 90.0],
+            Kind::Arc,
+        );
+        for (name, inp) in [("circle", circle_case), ("arc", arc_case)] {
+            let out = solve_sketch(&inp);
+            assert_ne!(
+                out.overall_status,
+                Status::Overconstrained.to_u8(),
+                "{name}: a tangent seed must not read overconstrained"
+            );
+            assert!(
+                out.diagnostics.residual_norm < 1e-6,
+                "{name}: residual {} at an already-feasible seed",
+                out.diagnostics.residual_norm
+            );
+            for (i, (got, want)) in out.params_solved.iter().zip(&inp.params_initial).enumerate() {
+                assert!(
+                    (*got as f64 - *want as f64).abs() < 1e-3,
+                    "{name}: param {i} moved from {want} to {got}"
+                );
+            }
+        }
     }
 
     #[test]
