@@ -563,7 +563,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       >
         <SceneController
           key="scene-ctrl"
-          canvasRef={canvasRef}
+          gizmoCanvasRef={canvasRef}
           pvRef={pvRef}
           hoverRef={hoverRef}
           snapRef={snapRef}

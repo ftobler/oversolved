@@ -17,7 +17,8 @@ testCamera.updateMatrixWorld()
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useFrame: () => {},
-  useThree: () => ({ camera: testCamera, gl: {}, scene: new THREE.Scene() }),
+  // domElement is real so SceneController's right-button remap can attach.
+  useThree: () => ({ camera: testCamera, gl: { domElement: document.createElement('canvas') }, scene: new THREE.Scene() }),
 }))
 
 vi.mock('@react-three/drei', () => ({

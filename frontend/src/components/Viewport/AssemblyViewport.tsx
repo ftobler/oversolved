@@ -557,7 +557,7 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
       >
         <SceneController
           key="scene-ctrl"
-          canvasRef={canvasRef}
+          gizmoCanvasRef={canvasRef}
           pvRef={pvRef}
           hoverRef={hoverRef}
           snapRef={snapRef}

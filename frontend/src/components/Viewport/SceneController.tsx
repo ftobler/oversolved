@@ -35,7 +35,12 @@ interface SavedOrbitState {
 }
 
 interface SceneControllerProps {
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  /**
+   * The gizmo overlay canvas: the 140x140 corner element CubeGizmoCanvas owns.
+   * Only used as the draw target for the cube; pointer capture lives on the
+   * renderer canvas (gl.domElement), never here.
+   */
+  gizmoCanvasRef: React.RefObject<HTMLCanvasElement | null>
   pvRef: React.MutableRefObject<Pv[]>
   hoverRef: React.MutableRefObject<Hit | null>
   snapRef: React.MutableRefObject<THREE.Vector3 | null>
@@ -48,8 +53,8 @@ interface SceneControllerProps {
   orbitEnabled?: boolean
 }
 
-export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled }: SceneControllerProps) {
-  const { camera } = useThree()
+export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled }: SceneControllerProps) {
+  const { camera, gl } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const cameraRefStable = useRef(camera)
   // Per-instance save slot: module scope would leak one viewport's saved
@@ -108,8 +113,13 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   cameraRef.current = camera
 
   // Right-button mapping: shift/ctrl/meta override the default rotate action.
+  // Bound to the renderer canvas, not the gizmo overlay: OrbitControls listens
+  // there, so a mapping attached to the 140x140 corner element would leave
+  // right-drags elsewhere unremapped and let one modifier press stick into
+  // every later plain right-drag. The handler re-evaluates on every press,
+  // which is what keeps the mapping non-sticky for press-and-hold gestures.
   useEffect(() => {
-    const canvas = canvasRef.current
+    const canvas = gl.domElement
     if (!canvas) return
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 2 || !ctrlRef.current) return
@@ -117,7 +127,7 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
     }
     canvas.addEventListener('pointerdown', onPointerDown, { capture: true })
     return () => canvas.removeEventListener('pointerdown', onPointerDown, { capture: true })
-  }, [canvasRef])
+  }, [gl])
 
   useFrame(() => {
     if (snapRef.current) {
@@ -125,8 +135,8 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
       snapRef.current = null
     }
 
-    if (canvasRef.current)
-      pvRef.current = drawCubeGizmo(canvasRef.current, camera, hoverRef.current)
+    if (gizmoCanvasRef.current)
+      pvRef.current = drawCubeGizmo(gizmoCanvasRef.current, camera, hoverRef.current)
   })
 
   const drag = useSketchEditorStore(s => s.drag)
