@@ -328,15 +328,23 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // entity / vertex drawing), which are not a parallel pick path, they
       // are the current tool acting. Pick chips are a consumer layer that
       // observes normalSelection downstream; they never branch the click.
-      // Swallow-only layers: resolved and consumed, but never toggled into
-      // normalSelection. A feature handle is a drag affordance, not a
-      // selectable entity: consume the click so it neither toggles selection
-      // nor clears it via the backplane, but dispatch nothing. A dimension
-      // label routes to its own adapter instead of a selection toggle.
+      // Swallow-only layers: resolved but never toggled into normalSelection.
+      // A feature handle is a drag affordance, not a selectable entity:
+      // consume the click so it neither toggles selection nor clears it via
+      // the backplane. A dimension label routes to its adapter and the
+      // verdict is honored: in the mount window between ID registration and
+      // registerDimCallbacks nothing is registered, so the unhandled click
+      // falls through unconsumed -- empty-space semantics (backplane /
+      // onPointerMissed) apply instead of eating a click the label never saw.
       if (SWALLOW_ONLY_PICK_LAYERS.has(hit.layer)) {
-        if (hit.layer === DIMENSION_LABEL_LAYER_NAME) {
-          dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
+        if (
+          hit.layer === FEATURE_HANDLE_LAYER_NAME
+          || (hit.layer === DIMENSION_LABEL_LAYER_NAME
+            && dimensionLabelAdapter.onClick(hit.entityKey, e.clientX, e.clientY))
+        ) {
+          setLastClickIdHit(true)
         }
+        return
       } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME) {
         sketchEntityAdapter.onClick(hit.entityKey, e.clientX, e.clientY)
       } else if (hit.layer === SKETCH_VERTEX_LAYER_NAME) {
