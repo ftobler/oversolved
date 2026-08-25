@@ -156,7 +156,7 @@
           "body_t"
         ],
         "hole_count": 1,
-        "exception": "hole: 1/2 point(s) skipped — no XY data for: p2"
+        "exception": "hole: 1/2 point(s) skipped, no XY data for: p2"
       },
       "volume": 3858.6283305884594
     }
