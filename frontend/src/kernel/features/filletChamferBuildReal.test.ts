@@ -216,10 +216,13 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r1 = h.run(spec)
     expect(h.res(r1, 'fillet1').status).toBe('ok')
 
-    // After fillet1, pick an edge that carries a construction UUID so the
-    // second fillet resolves through the @u| identity tier.
+    // After fillet1, pick an edge carrying a construction UUID so the second
+    // fillet resolves through the @u| identity tier. It must sit AWAY from the
+    // first blend's corner: OCC refuses to blend an edge that shares that
+    // corner (build_failed), and that refusal now surfaces as a feature
+    // exception instead of being swallowed into a green ok.
     const eqAfter = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
-    const resolvableEdge = eqAfter.find((q) => q.includes('@u|'))
+    const resolvableEdge = eqAfter.find((q) => q.includes('@u|') && q.includes('right@cls_xp'))
     expect(resolvableEdge).toBeDefined()
     spec.features.push({ id: 'fillet2', kind: 'fillet', edges: [resolvableEdge], radius: 0.5 })
     const r2 = h.run(spec)

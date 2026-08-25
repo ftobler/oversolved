@@ -146,16 +146,53 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     try {
       const bodyStore = makeBody(scope, table)
       const result = solveChamfer(
-        occ,
-        scope,
-        table,
+        occ, scope, table,
         { id: 'cha1', chamfer: { edges: ['?body_b:edge:0'], distance: 2 } },
-        new Repository(),
-        bodyStore,
+        new Repository(), bodyStore,
       )
       expect(result.status).toBe('ok')
       expect(bodyStore.body_b.modified_by).toEqual(['cha1'])
       expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))).toBeCloseTo(980, 1)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a radius past what the geometry admits fails loud and leaves body metadata untouched', () => {
+    // Regression: applyEdgeModifier reports {success:false} when OCC refuses the
+    // operation, but nothing read it -- the leaf re-registered the UNCHANGED
+    // shape as a fresh handle, pushed modified_by and overwrote brep_diff with
+    // an empty diff while the feature reported ok. A green feature that changed
+    // nothing also poisoned dirty detection.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBody(scope, table)
+      const body = bodyStore.body_b
+      const shapeBefore = body.shape
+      const faceNamesBefore = JSON.stringify(body.face_names)
+      const edgeNamesBefore = JSON.stringify(body.edge_names)
+
+      let threw: unknown = null
+      try {
+        solveFillet(
+          occ, scope, table,
+          { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 1000 } },
+          new Repository(), bodyStore,
+        )
+      } catch (e) {
+        threw = e
+      }
+      expect(threw).not.toBeNull()
+      expect((threw as Error).message).toContain('fillet')
+      expect((threw as Error).message).toContain('body_b')
+
+      // No resplit, no metadata writes: the body reads exactly as before.
+      expect(body.modified_by).toEqual([])
+      expect(body.brep_diff).toBeNull()
+      expect(body.shape).toBe(shapeBefore)
+      expect(JSON.stringify(body.face_names)).toBe(faceNamesBefore)
+      expect(JSON.stringify(body.edge_names)).toBe(edgeNamesBefore)
     } finally {
       scope.dispose()
     }

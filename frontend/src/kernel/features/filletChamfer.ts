@@ -406,6 +406,7 @@ function applyEdgeFeature(
   }
 
   const applied: string[] = []
+  const modifierFailures: string[] = []
   let handle: FeatureHandle | null = null
   for (const [bid, qlist] of groups) {
     let body: Body
@@ -454,6 +455,16 @@ function applyEdgeFeature(
         }
       : null
     const res = applyFn(oc, scope, oldShape, topoEdges, oldNames)
+    if (!res.success) {
+      // The OCC modifier refused the operation (a radius past what the geometry
+      // admits, a maker/build failure). res.shape is then the UNCHANGED input:
+      // resplitting it would re-register the same geometry as a fresh handle,
+      // push modified_by and overwrite brep_diff with an empty diff while the
+      // feature reports ok. Report the kernel reason and leave the body alone.
+      modifierFailures.push(`${bid}: ${res.reason ?? 'unknown failure'}`)
+      unresolved.push(...qlist)
+      continue
+    }
 
     if (res.names !== null) {
       body.face_names = res.names.faceNames
@@ -468,14 +479,24 @@ function applyEdgeFeature(
     body.modified_by.push(featureId)
   }
 
+  if (applied.length === 0 && modifierFailures.length > 0) {
+    // Nothing was applied because the kernel refused every group: a loud
+    // exception (the builder wraps it into status 'exception') beats a green
+    // feature that changed nothing.
+    throw new Error(`${featureKind}: ${modifierFailures.join('; ')}`)
+  }
+
   if (applied.length === 0) throw new Error(`${featureKind}: no edges resolved`)
 
-  if (unresolved.length > 0) {
+  if (unresolved.length > 0 || modifierFailures.length > 0) {
+    const parts: string[] = []
+    if (unresolved.length > 0) parts.push(`${unresolved.length} edge(s) could not be resolved`)
+    parts.push(...modifierFailures)
     return {
       status: 'partial',
       body_id: applied[0],
       body_ids: applied,
-      exception: `${featureKind}: ${unresolved.length} edge(s) could not be resolved`,
+      exception: `${featureKind}: ${parts.join('; ')}`,
       ...(handle !== null && { handle }),
     }
   }
