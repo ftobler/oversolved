@@ -155,14 +155,40 @@ fn has_param(spl: &[Split], p: f64) -> bool {
     spl.iter().any(|(s, _)| (s - p).abs() < SPLIT_EPS)
 }
 
-fn norm_arc_param(mut p: f64, a0: f64) -> f64 {
-    while p < a0 - SPLIT_EPS {
-        p += TWO_PI;
+// Largest |a0| for which the +-TWO_PI step walk still makes progress. Past
+// roughly 1e9 rad a full turn is smaller than the local ulp, so the decrement
+// loop's own threshold `a0 + TWO_PI - SPLIT_EPS` rounds back onto a0 and the
+// loop spins forever absorbing every step -- even for p == a0. Real sketch
+// angles (golden corpora live near +-2*pi) sit orders of magnitude below.
+const WALKABLE_A0: f64 = 1e9;
+
+fn norm_arc_param(p: f64, a0: f64) -> f64 {
+    // The step walks below are the bit-exact code path for anything they can
+    // finish: frozen golden payloads depend on that arithmetic. But their
+    // iteration count scales with |a0 - p| rather than geometry, and decoded
+    // arc angles are untrusted magnitude -- angle_start = 3e38 is finite,
+    // passes every solver gate, and would spin ~9e35 single-turn iterations,
+    // wedging the Worker permanently (its watchdog is Infinity). Anything the
+    // walk cannot finish (or even step through, see WALKABLE_A0) jumps
+    // straight to the same landing zone via modulo instead.
+    if (p - a0).abs() <= 4.0 * TWO_PI && a0.abs() <= WALKABLE_A0 {
+        let mut p = p;
+        while p < a0 - SPLIT_EPS {
+            p += TWO_PI;
+        }
+        while p >= a0 + TWO_PI - SPLIT_EPS {
+            p -= TWO_PI;
+        }
+        return p;
     }
-    while p >= a0 + TWO_PI - SPLIT_EPS {
-        p -= TWO_PI;
+    let q = pymod(p - a0, TWO_PI) + a0;
+    // Keep the walk's landing interval [a0 - SPLIT_EPS, a0 + TWO_PI - SPLIT_EPS)
+    // so split params stay comparable across both paths.
+    if q >= a0 + TWO_PI - SPLIT_EPS {
+        q - TWO_PI
+    } else {
+        q
     }
-    p
 }
 
 /// Sort splits by (param, vid), drop consecutive near-equal params.
@@ -1557,6 +1583,87 @@ mod tests {
         push_half_edge_pair(&mut hes, &mut he_eid, "bad", &v0, &v2, poisoned);
         // The result is meaningless geometry; the point is that it returns.
         let _ = trace_face_cycles(&hes, &he_eid, &verts);
+    }
+
+    #[test]
+    fn norm_arc_param_matches_the_reference_walk_for_sane_inputs() {
+        // Frozen golden payloads depend on the original +-2*pi step arithmetic,
+        // so the walk must stay the exact code path for every input it can
+        // finish in bounded time. Only magnitudes it could never walk may take
+        // a shortcut.
+        fn walk(mut p: f64, a0: f64) -> f64 {
+            while p < a0 - SPLIT_EPS {
+                p += TWO_PI;
+            }
+            while p >= a0 + TWO_PI - SPLIT_EPS {
+                p -= TWO_PI;
+            }
+            p
+        }
+        let cases = [
+            (-1.0, 0.0),
+            (0.0, 0.0),
+            (5.0, -1.0),
+            (-1.0, 1.0),
+            (TWO_PI, 0.0),
+            (0.0, TWO_PI),
+            (3.5, -2.5),
+        ];
+        for (p, a0) in cases {
+            assert_eq!(norm_arc_param(p, a0), walk(p, a0));
+        }
+    }
+
+    #[test]
+    fn norm_arc_param_lands_in_the_walk_window_for_huge_inputs() {
+        // Decoded arc angles are untrusted magnitude: 3e38 degrees is finite,
+        // passes every solver gate, and used to mean ~9e35 single-step loop
+        // iterations here (or an absorbed-step spin at equal angles: the walk's
+        // own threshold collapses onto p once a turn is below one ulp). At
+        // 3e38 the landing interval itself is degenerate below ulp(a0), so
+        // there only finiteness can be asserted; at 1e15 degrees the interval
+        // is representable and must hold exactly.
+        let a0 = radians(3e38);
+        for deg in [-3e38, -1e300, -1e15, 1e15, 1e150, 3e38] {
+            let p = norm_arc_param(radians(deg), a0);
+            assert!(p.is_finite(), "radians({deg}) must normalize finite");
+        }
+        let a0 = radians(1e15);
+        for deg in [-1e300, -720.0, 0.0, 720.0, 1e15, 1e150] {
+            let p = norm_arc_param(radians(deg), a0);
+            assert!(p.is_finite(), "radians({deg}) must normalize finite");
+            assert!(
+                p >= a0 - SPLIT_EPS && p < a0 + TWO_PI - SPLIT_EPS,
+                "radians({deg}) landed outside the split window"
+            );
+        }
+    }
+
+    fn arc(center: Vec2, r: f64, a0: f64, a1: f64) -> InputEntity {
+        InputEntity {
+            center: Some(center),
+            radius: Some(r),
+            start: Some([center[0] + r, center[1]]),
+            end: Some([center[0] - r, center[1]]),
+            angle_start: Some(a0),
+            angle_end: Some(a1),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn arc_with_huge_decoded_angles_completes_and_keeps_the_square_intact() {
+        // angle_start = 3e38 echoes through normalize_arcs_and_init_splits for
+        // an unconstrained arc whose seed survives LM. Normalization walked one
+        // 2*pi step per iteration (~9e35 steps): detect_topology effectively
+        // never returned and the Worker wedged. The square alongside must still
+        // resolve exactly as without the hostile arc.
+        let mut geom = square(2.0);
+        geom.push(("bad".into(), arc([50.0, 50.0], 1.0, 3e38, 3e38)));
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1);
+        assert_eq!(t.surfaces[0].boundary.len(), 4);
+        assert_eq!(t.edges.len(), 4);
     }
 
     #[test]
