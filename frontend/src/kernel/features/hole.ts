@@ -167,7 +167,7 @@ export function solveHole(
     hole_count: placed,
   }
   if (skippedCount > 0) {
-    result.exception = `hole: ${skippedCount}/${total} point(s) skipped — no XY data for: ${skippedEntityIds.join(', ')}`
+    result.exception = `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: ${skippedEntityIds.join(', ')}`
   }
   return result
 }
