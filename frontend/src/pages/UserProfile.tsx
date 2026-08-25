@@ -31,6 +31,11 @@ export default function UserProfile() {
   }, [user])
 
   useEffect(() => {
+    // Re-arm on every effect run: StrictMode's mount/unmount/mount replay runs
+    // the cleanup once without discarding the ref, so a once-initialized ref
+    // would stay false for the session and every guarded setState would be
+    // skipped, leaving the form stuck on its in-flight state.
+    mountedRef.current = true
     return () => { mountedRef.current = false }
   }, [])
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
@@ -242,6 +242,114 @@ describe('UserProfile', () => {
     // Now let the in-flight save resolve. Without the guard this would call
     // setUser on the (now torn down) UserProfile's behalf and the probe would
     // flip to 'newname'.
+    await act(async () => {
+      resolvePut()
+      await putPromise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId('probe-username').textContent).toBe('testuser')
+  })
+
+  // Regression test for the mountedRef unmount guard: StrictMode's
+  // mount/unmount/mount replay runs the cleanup once while keeping the ref
+  // object, so a ref that is only ever set false in the cleanup stays false for
+  // good and the guarded setLoading(false) after the save never runs. The app
+  // mounts under StrictMode (main.tsx), so the save must resolve there too.
+  it('resolves a save under StrictMode double-mount', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
+      if (url === '/api/users/me' && init?.method === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ status: 'updated' }),
+          text: () => Promise.resolve(JSON.stringify({ status: 'updated' })),
+        } as Response)
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    }))
+
+    render(
+      <StrictMode>
+        <BrowserRouter>
+          <AuthProvider>
+            <UserProfile />
+          </AuthProvider>
+        </BrowserRouter>
+      </StrictMode>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByDisplayValue('testuser'), { target: { value: 'newname' } })
+    fireEvent.click(screen.getByText('Save'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Profile updated successfully')).toBeInTheDocument()
+    })
+    // The loading state must have been cleared by the guarded path as well.
+    expect(screen.queryByText('Saving…')).not.toBeInTheDocument()
+  })
+
+  // The guard's original job survives the re-arm fix: an unmount during an in
+  // flight save still swallows the late response instead of painting it.
+  it('under StrictMode, keeps swallowing a late save response after unmount', async () => {
+    function Probe() {
+      const { user } = useAuth()
+      return <div data-testid="probe-username">{user?.username}</div>
+    }
+
+    function Harness() {
+      const [showProfile, setShowProfile] = useState(true)
+      return (
+        <StrictMode>
+          <BrowserRouter>
+            <AuthProvider>
+              <Probe />
+              {showProfile && <UserProfile />}
+              <button onClick={() => setShowProfile(false)}>hide profile</button>
+            </AuthProvider>
+          </BrowserRouter>
+        </StrictMode>
+      )
+    }
+
+    let resolvePut!: () => void
+    const putPromise = new Promise<void>(resolve => { resolvePut = resolve })
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
+      if (url === '/api/users/me' && init?.method === 'PUT') {
+        return putPromise.then(() => ({
+          ok: true,
+          json: () => Promise.resolve({ status: 'updated' }),
+          text: () => Promise.resolve(JSON.stringify({ status: 'updated' })),
+        } as Response))
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<Harness />)
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByDisplayValue('testuser'), { target: { value: 'newname' } })
+    fireEvent.click(screen.getByText('Save'))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/users/me', expect.objectContaining({ method: 'PUT' }))
+    })
+
+    fireEvent.click(screen.getByText('hide profile'))
+
     await act(async () => {
       resolvePut()
       await putPromise
