@@ -362,8 +362,9 @@ def import_backup() -> ResponseReturnValue:
                     try:
                         content = zip_file.read(yaml_path).decode('utf-8')
 
-                        uuid = doc_store.create(doc_name, user["id"])
-                        doc_store.store_content(uuid, content)
+                        # Atomic create+content insert: a mid-import failure must
+                        # not leave a committed empty-content document behind.
+                        uuid = doc_store.import_document(doc_name, user["id"], content)
 
                         png_name = f"{doc_name}.png"
                         if png_name in files:
