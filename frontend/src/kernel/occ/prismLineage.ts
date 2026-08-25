@@ -293,12 +293,18 @@ function entityForEdges(
   // Pre-read each OCC edge's endpoints + (for circles) center/radius.
   const endpoints = occEdges.map((e) => {
     const ad = scope.track(new oc.BRepAdaptor_Curve_2(e))
+    // The gp_Pnt proxies are by-value returns; only their coordinates
+    // survive this block, so delete them before anything can throw.
     const sp = ad.Value(ad.FirstParameter())
     const ep = ad.Value(ad.LastParameter())
+    const start: number[] = [sp.X(), sp.Y(), sp.Z()]
+    const end: number[] = [ep.X(), ep.Y(), ep.Z()]
+    sp.delete()
+    ep.delete()
     const { ed } = edgeToGeom(oc, scope, e)
     return {
-      sp: [sp.X(), sp.Y(), sp.Z()] as number[],
-      ep: [ep.X(), ep.Y(), ep.Z()] as number[],
+      sp: start,
+      ep: end,
       kind: ed.kind,
       center: (ed as { center?: number[] }).center,
       radius: (ed as { radius?: number }).radius,
@@ -738,9 +744,13 @@ function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape):
     }
   }
   const circ = frameCirc as OccCircle
+  // Five by-value proxies chain out of the circle here; read their
+  // coordinates first and delete before makeCircleEdge can throw.
   const loc = circ.Location()
-  const axDir = circ.Axis().Direction()
-  const xDir = circ.XAxis().Direction()
+  const axis = circ.Axis()
+  const axDir = axis.Direction()
+  const xax1 = circ.XAxis()
+  const xDir = xax1.Direction()
   const edge = makeCircleEdge(
     oc, scope,
     [loc.X(), loc.Y(), loc.Z()],
@@ -748,6 +758,11 @@ function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape):
     [xDir.X(), xDir.Y(), xDir.Z()],
     radius,
   )
+  loc.delete()
+  axis.delete()
+  axDir.delete()
+  xax1.delete()
+  xDir.delete()
   return makeWire(oc, scope, [edge])
 }
 
