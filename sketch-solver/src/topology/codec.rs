@@ -16,6 +16,14 @@ use super::profile_loops::{BoundaryEdge, EdgeGeom, Vec2};
 #[derive(Debug)]
 pub enum TopologyCodecError {
     Json(serde_json::Error),
+    /// A payload float decoded to NaN or +-infinity. Strict JSON has no
+    /// non-finite literals and serde_json 1.0.150 rejects overflowing ones
+    /// ("number out of range") at parse time, but other serde_json versions
+    /// and settings have mapped such literals to +-infinity instead -- a
+    /// drift like that must never hand the geometry pass a poisoned float
+    /// (NaN params wedged the arc normalization walk once already). This gate
+    /// mirrors the flat codec's `CodecError::NonFinite` as the backstop.
+    NonFinite,
 }
 
 impl From<serde_json::Error> for TopologyCodecError {
@@ -26,7 +34,7 @@ impl From<serde_json::Error> for TopologyCodecError {
 
 // ─── Input ───
 
-#[derive(Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 struct RawGeom {
     #[serde(default)]
     kind: Option<String>,
@@ -87,9 +95,32 @@ impl From<RawGeom> for InputEntity {
     }
 }
 
+/// Gate every f64 payload slot against NaN and +-infinity. The flat codec
+/// checks its floats at the byte reader; the JSON path needs the equivalent
+/// after deserialization as a backstop against serde_json versions or
+/// features that map overflowing literals to +-infinity instead of erroring.
+fn reject_non_finite(raw: &[(String, RawGeom)]) -> Result<(), TopologyCodecError> {
+    for (_, g) in raw {
+        let pts = [g.start, g.end, g.center, g.c1, g.c2];
+        if pts
+            .into_iter()
+            .flatten()
+            .any(|p| p.iter().any(|x| !x.is_finite()))
+        {
+            return Err(TopologyCodecError::NonFinite);
+        }
+        let scalars = [g.radius, g.angle_start, g.angle_end, g.a, g.b, g.theta];
+        if scalars.into_iter().flatten().any(|x| !x.is_finite()) {
+            return Err(TopologyCodecError::NonFinite);
+        }
+    }
+    Ok(())
+}
+
 /// Decode the ordered `[[eid, geom], ...]` payload into classified-ready input.
 pub fn decode_input(bytes: &[u8]) -> Result<Vec<(String, InputEntity)>, TopologyCodecError> {
     let raw: Vec<(String, RawGeom)> = serde_json::from_slice(bytes)?;
+    reject_non_finite(&raw)?;
     Ok(raw.into_iter().map(|(eid, g)| (eid, g.into())).collect())
 }
 
@@ -279,5 +310,59 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(decode_input(&[0, 1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn overflowing_float_literals_are_a_clean_decode_error() {
+        // An overflowing literal like 1e400 must surface as an explicit Err,
+        // never Ok with a poisoned float. serde_json 1.0.150 rejects the
+        // literal at parse time ("number out of range"); the NonFinite gate
+        // below stands behind that so a serde_json behavior drift toward
+        // mapping such literals to +-infinity cannot slip one through.
+        let raw = r#"[["e0", {"kind": "arc", "center": [0.0, 0.0], "radius": 1.0, "start": [1.0, 0.0], "end": [-1.0, 0.0], "angle_start": 1e400, "angle_end": 90.0}]]"#;
+        assert!(decode_input(raw.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn nonfinite_gate_rejects_every_payload_field() {
+        // One slot class per case: any single NaN or Inf reaching the geometry
+        // pass poisons angle params (and used to wedge the arc normalization
+        // walk), so there is no harmless field. Driven directly because strict
+        // JSON cannot carry these values past serde_json's own parse gate.
+        let g = RawGeom::default();
+        assert!(reject_non_finite(&[("e0".into(), g)]).is_ok());
+        type Setter = fn(&mut RawGeom);
+        let cases: Vec<(&str, Setter)> = vec![
+            ("start.x", |g: &mut RawGeom| {
+                g.start = Some([f64::INFINITY, 0.0])
+            }),
+            ("end.y", |g: &mut RawGeom| {
+                g.end = Some([0.0, f64::NEG_INFINITY])
+            }),
+            ("center.x", |g: &mut RawGeom| {
+                g.center = Some([f64::NAN, 0.0])
+            }),
+            ("radius", |g: &mut RawGeom| g.radius = Some(f64::INFINITY)),
+            ("angle_start", |g: &mut RawGeom| {
+                g.angle_start = Some(f64::NEG_INFINITY)
+            }),
+            ("angle_end", |g: &mut RawGeom| g.angle_end = Some(f64::NAN)),
+            ("a", |g: &mut RawGeom| g.a = Some(f64::INFINITY)),
+            ("b", |g: &mut RawGeom| g.b = Some(f64::NEG_INFINITY)),
+            ("theta", |g: &mut RawGeom| g.theta = Some(f64::NAN)),
+            ("c1.x", |g: &mut RawGeom| g.c1 = Some([f64::NAN, 1.0])),
+            ("c2.y", |g: &mut RawGeom| g.c2 = Some([1.0, f64::NAN])),
+        ];
+        for (name, set) in cases {
+            let mut g = RawGeom::default();
+            set(&mut g);
+            assert!(
+                matches!(
+                    reject_non_finite(&[("e0".into(), g)]),
+                    Err(TopologyCodecError::NonFinite)
+                ),
+                "{name} passed the non-finite gate"
+            );
+        }
     }
 }
