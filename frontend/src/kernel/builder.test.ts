@@ -148,6 +148,20 @@ describe('build with mock solvers', () => {
     expect(r.result.sk1).toEqual({ status: 'suppressed' })
   })
 
+  it('detects an in-place nested edit after a suppressed build (spec not aliased)', () => {
+    // The suppressed branch must deep-copy the spec like the solved branch:
+    // findFirstDirty hashes checkpoint spec content, so a shallow copy aliases
+    // the caller's doc and an in-place edit between builds mutates both sides
+    // of the comparison, reporting the changed feature clean.
+    const feature = { id: 'sk1', kind: 'sketch', params: { depth: 5 }, suppressed: true }
+    const r = build({ features: [feature] }, {}, makeDeps())
+    expect(findFirstDirty([feature], r._build_state)).toBe(1)
+    ;(feature.params as Record<string, unknown>).depth = 9
+    expect(r._build_state.checkpoints.sk1.spec).not.toBe(feature)
+    expect((r._build_state.checkpoints.sk1.spec as Record<string, unknown>).params).toEqual({ depth: 5 })
+    expect(findFirstDirty([feature], r._build_state)).toBe(0)
+  })
+
   it('reuses clean prefix from prev_state', () => {
     const deps = makeDeps({
       trySolveFeature: (feature): FeatureResult => ({ status: 'ok', solved: feature.id }),

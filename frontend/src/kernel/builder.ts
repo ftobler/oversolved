@@ -150,6 +150,13 @@ function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> 
 
 // ─── Dirty detection ───
 
+/** Checkpoints own a deep copy of the spec: findFirstDirty hashes checkpoint
+ *  spec content across builds, so aliasing the caller's doc would let an
+ *  in-place edit between builds slip past dirty detection on both sides. */
+function cloneSpec(feature: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(feature))
+}
+
 export function findFirstDirty(
   features: Array<Record<string, unknown>>,
   prevState: BuildState | null | undefined,
@@ -1150,7 +1157,7 @@ export function build(
     if (feature.suppressed) {
       const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
       newCheckpoints[fid] = {
-        spec: { ...feature },
+        spec: cloneSpec(feature),
         result: { status: 'suppressed' },
         repo_snapshot: snapshotRepo(globalRepo),
         body_store_snapshot: cpSnapshot,
@@ -1213,7 +1220,7 @@ export function build(
 
     const cpSnapshot = _snapshotBodies(bodyStore, retainForCheckpoint(fid))
     newCheckpoints[fid] = {
-      spec: JSON.parse(JSON.stringify(feature)),
+      spec: cloneSpec(feature),
       result: JSON.parse(JSON.stringify(result[fid])),
       repo_snapshot: snapshotRepo(globalRepo),
       body_store_snapshot: cpSnapshot,
