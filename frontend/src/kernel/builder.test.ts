@@ -1056,7 +1056,7 @@ describe('clean-prefix restore copies are owned per build', () => {
       { prevState: prev },
       makeRestoreTrackingDeps(events1),
     )
-    expect(r2.result.b.status).toBe('ok')
+    expect((r2.result as Record<string, FeatureResult>).b.status).toBe('ok')
     expect(events1.filter((e) => e.startsWith('copy:'))).toEqual([`copy:${RESTORE_OWNER}`])
     expect(events1.indexOf('releaseRestore')).toBeGreaterThanOrEqual(0)
     expect(events1.indexOf('releaseRestore')).toBeLessThan(events1.indexOf(`copy:${RESTORE_OWNER}`))
@@ -1071,7 +1071,7 @@ describe('clean-prefix restore copies are owned per build', () => {
       { prevState: r2._build_state as BuildState },
       makeRestoreTrackingDeps(events2),
     )
-    expect(r3.result.b.status).toBe('ok')
+    expect((r3.result as Record<string, FeatureResult>).b.status).toBe('ok')
     expect(events2.indexOf('releaseRestore')).toBeLessThan(events2.indexOf(`copy:${RESTORE_OWNER}`))
     expect(events2.filter((e) => e === `copy:${RESTORE_OWNER}`)).toHaveLength(1)
   })

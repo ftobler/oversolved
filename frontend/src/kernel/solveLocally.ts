@@ -346,7 +346,7 @@ async function solveLocallyGuarded(
     // strand in the persistent table. Release them here, where that cache
     // lives, through the same wiring a normal incremental build uses.
     if (options.bypassCache && lastBuildState) {
-      for (const fid of lastBuildState.feature_order) deps.releaseCheckpoint(fid)
+      for (const fid of lastBuildState.feature_order) deps.releaseCheckpoint?.(fid)
       deps.releaseRestoreCopies?.()
     }
 
