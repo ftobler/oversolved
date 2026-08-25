@@ -88,13 +88,6 @@ export default function SceneController({ canvasRef, pvRef, hoverRef, snapRef, c
   // its rAF gets cancelled by the key-bump re-render BEFORE any fresh
   // controls exists -- an early-consumed snapshot would be lost there, and a
   // closure-captured controls would be the hidden pre-show one.
-  // Restore camera pose onto whatever controls is live when the deferred rAF
-  // fires. The snapshot is consumed inside the callback, reading ctrlRef at
-  // fire time rather than capturing an instance at schedule time: on reveal
-  // this effect's first run lands in the same flush that bumps showSeq, so
-  // its rAF is cancelled by the key-bump re-render BEFORE any fresh controls
-  // exists -- an eagerly consumed snapshot would be lost there, and a closure
-  // captured controls would be the hidden pre-show one.
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
       const state = savedOrbitStateRef.current
