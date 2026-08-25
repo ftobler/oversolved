@@ -140,6 +140,50 @@ describe('drawCubeGizmo', () => {
     const hover = { type: 'vertex' as const, index: 6, snapDir }
     expect(drawCapturingFills(hover)).toContain('rgba(255,255,255,0.5)')
   })
+
+  it('draws every polygon the hit-test can return, including grazing slivers', () => {
+    // Orientations where the front-most polygon under the pointer has normal z
+    // in [-0.1, 0), the band where hit-test and draw pass used to disagree:
+    // the cursor turned to pointer and a click snapped the camera, but the
+    // element was never painted, so its hover highlight could not exist.
+    // Found by an orientation sweep and pinned numerically so a geometry
+    // retune cannot silently slide the cases out of the band again.
+    const grazingCases: Array<[number, number, number, number, number]> = [
+      // [eulerX, eulerY, eulerZ, pointerX, pointerY]
+      [4.116454, 1.915205, 3.974011, 111, 45],  // edge 6 wins the pixel
+      [6.257305, 4.269182, 4.229359, 30, 75],  // face 4 wins the pixel
+    ]
+
+    const fillsFor = (camera: THREE.Camera, hover: Parameters<typeof drawCubeGizmo>[2]): string[] => {
+      const fills: string[] = []
+      const ctx = {
+        save() {}, restore() {}, scale() {}, clearRect() {}, beginPath() {},
+        moveTo() {}, lineTo() {}, closePath() {}, translate() {}, transform() {},
+        fillText() {}, measureText: (t: string) => ({ width: t.length }),
+        fill() { fills.push(this.fillStyle as string) },
+        fillStyle: '', font: '', textAlign: '', textBaseline: '',
+      }
+      const canvas = { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement
+      drawCubeGizmo(canvas, camera, hover)
+      return fills
+    }
+
+    for (const [ex, ey, ez, px, py] of grazingCases) {
+      const cam = cameraWith(new THREE.Quaternion().setFromEuler(new THREE.Euler(ex, ey, ez)))
+      const hit = computeGizmoHit(px, py, [], cam)
+      expect(hit).not.toBeNull()
+
+      // The winner really is a grazing polygon, i.e. this case exercises the
+      // old disagreement rather than an ordinary front-facing hit.
+      const nz = hit!.snapDir.clone().applyQuaternion(cam.quaternion.clone().invert()).z
+      expect(nz).toBeLessThan(0)
+      expect(nz).toBeGreaterThanOrEqual(-0.1)
+
+      // Consistency contract: whatever the hit-test can return must be drawn,
+      // so the hover highlight it promises actually lights up.
+      expect(fillsFor(cam, hit)).toContain('rgba(255,255,255,0.5)')
+    }
+  })
 })
 
 // ─── Face label font ───

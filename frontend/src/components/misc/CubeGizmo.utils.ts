@@ -11,6 +11,15 @@ export const GIZMO_STYLE: React.CSSProperties = {
   cursor: 'default',
 }
 
+// Back-face cull threshold shared by the hit-test and the draw pass. It must
+// live in one place: when the two disagreed, polygons tilted just past the
+// silhouette (normal z in [-0.1, 0)) were clickable but never drawn or hover
+// highlighted, so the cursor promised a snap the eye could not see. The value
+// is deliberately looser than a strict nz < 0: it keeps the slightly-grazing
+// edge and corner polygons at the silhouette clickable, which is where a user
+// aims for an axis snap.
+export const GIZMO_CULL_NZ = -0.1
+
 // ─── Cube geometry ───
 
 const CV = [
@@ -326,7 +335,7 @@ export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE
   // Check from front to back
   for (let i = polys.length - 1; i >= 0; i--) {
     const poly = polys[i]
-    if (poly.nz < -0.1) continue  // Back-face cull roughly
+    if (poly.nz < GIZMO_CULL_NZ) continue  // Back-face cull, same rule as draw
     if (pointInPoly(mx, my, poly.pts)) {
       return { type: poly.type, index: poly.index, snapDir: poly.snapDir }
     }
@@ -366,7 +375,7 @@ export function drawCubeGizmo(
   const polys = getPolys(q, W, H)
 
   for (const poly of polys) {
-    if (poly.nz < 0) continue  // Back-face cull
+    if (poly.nz < GIZMO_CULL_NZ) continue  // Back-face cull, same rule as hit-test
 
     const isHover = hover?.type === poly.type && hover.index === poly.index
 
