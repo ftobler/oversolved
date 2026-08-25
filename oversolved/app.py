@@ -30,7 +30,7 @@ def _ensure_admin_user(db: Database, testing: bool = False) -> None:
                 "Refusing to start with default admin password. "
                 "Set OVERSOLVED_ADMIN_PASSWORD environment variable."
             )
-        logger.warning("Using default admin password 'admin' — INSECURE for production")
+        logger.warning("Using default admin password 'admin' - INSECURE for production")
     user_store = UserStore(db)
     admin = user_store.find_by_username("admin")
     if admin:
