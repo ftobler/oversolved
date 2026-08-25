@@ -80,8 +80,17 @@ with db.transaction():
 onClick={() => executeCommand('set_tool_line')}
 ```
 
-**Keymap construction:**
+**Keymap construction** (`frontend/src/utils/core/commandRegistry.ts`):
 ```ts
+// Core bindings are data so the Registry page can render them.
+export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
+  { key: 'ctrl+z', command: 'undo', label: 'Undo', description: '...' },
+]
+
+// Derived flat key->command record (module-private).
+const CORE_KEYMAP = Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b.command]))
+
+// Constraint shortcuts take precedence over core bindings (last wins).
 export const KEYMAP: Record<string, string> = {
   ...CORE_KEYMAP,
   ...Object.fromEntries(CONSTRAINT_SHORTCUTS),
@@ -177,16 +186,17 @@ drawall()  # Required at end
 - `stroke(ctx, width)` — stroke with current color
 - `ctx.fill()` — fill closed paths only
 
-**Rules:**
+**Rules:** (see `docs/icon_guidelines.md` for the full reference)
 - `viewBox="0 0 24 24"`
 - Size 24×24 px
-- `fill="none"` on paths, `fill="currentColor"` on filled shapes
-- Stroke width: 2 for primary, 1.5 for secondary
-- `stroke-linecap="round"`, `stroke-linejoin="round"`
-- Monochrome — never hardcode colors
+- Stroke style: `fill="none"` on stroked paths, filled shapes via `ctx.fill()`
+- Stroke width: 2 for primary, 1.5 for secondary, 1.0 for accent
+- Line joins round, line caps butt (both defaults of the Cairo helpers in
+  `oversolved/icon_cairo.py`)
+- Color: consistent hardcoded black from the Cairo helpers
 
 **Do not:**
-- Hardcode colors (use `currentColor`)
+- Set custom colors (the helpers emit black)
 - Draw SVG files manually
 - Use `ctx.fill()` on open paths
 
@@ -250,7 +260,7 @@ describe('buildKeyString', () => {
 
 ### Command Registry
 
-**Location:** `frontend/src/stores/commandRegistry.ts`
+**Location:** `frontend/src/utils/core/commandRegistry.ts`
 
 **Core API:**
 ```ts
@@ -293,7 +303,7 @@ def apply(database: Database) -> None:
 | Run frontend tests | `npx vitest run` | `frontend/` |
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `mypy oversolved/ tests/` | root |
-| Add new command | `registerCommand()` | `frontend/src/stores/commandRegistry.ts` |
+| Add new command | `registerCommand()` | `frontend/src/utils/core/commandRegistry.ts` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
 | Add new measurement | `frontend/src/registry/measurementRegistry.ts` | `frontend/src/registry/` |
