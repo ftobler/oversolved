@@ -46,9 +46,15 @@ export function FeatureEditor({
 
   const arrayFieldData: Record<string, (string | number)[]> = {}
   for (const f of schema.fields) {
-    if (f.type === 'number' && f.arrayField != null) {
-      const arr = data[f.arrayField]
-      arrayFieldData[f.arrayField] = Array.isArray(arr) ? arr as (string | number)[] : []
+    if (f.type === 'number' && f.arrayField != null && f.arrayIndex != null) {
+      const arr: (string | number)[] = Array.isArray(data[f.arrayField])
+        ? [...data[f.arrayField]] as (string | number)[]
+        : []
+      // Widgets splice their slot and persist the whole array, so a short or
+      // missing source array must be padded to dense length first: splicing a
+      // hole serializes as null and NaN-poisons downstream transform math.
+      while (arr.length <= f.arrayIndex) arr.push(f.default ?? 0)
+      arrayFieldData[f.arrayField] = arr
     }
   }
 

@@ -3,7 +3,7 @@
 // instead of replacing them, and it writes each ref verbatim, the same contract
 // DeleteBodyEditor.test.tsx pins for the other plural body field.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent, act } from '@testing-library/react'
+import { render, fireEvent, act, screen } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { TRANSFORM_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -125,5 +125,44 @@ describe('TransformEditor (via FeatureEditor)', () => {
       unmount()
       act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [] }) })
     }
+  })
+
+  // Commit a value into the number field carrying the given label.
+  function editField(label: string, text: string) {
+    const input = screen.getByLabelText(label)
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: text } })
+    fireEvent.blur(input)
+  }
+
+  it('editing Z on a translation-less def persists a dense [0,0,vZ] triple', () => {
+    // Hand-authored/legacy defs can lack the translation triple entirely;
+    // splicing slot 2 into [] would persist [null,null,vZ] while the UI shows
+    // 0 for the absent slots, and the kernel NaN-poisons on those nulls.
+    const onMutation = vi.fn()
+    const bare = {
+      id: 'tr1', kind: 'transform', label: 'Transform',
+      transform: { bodies: [], operation: 'new', rotation_angle: 0, scale: 1 },
+    } as unknown as PartFeature
+    render(<FeatureEditor feature={bare} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
+    editField('Z', '5')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_transform_field', featureId: 'tr1', field: 'translation', value: [0, 0, 5],
+    })
+  })
+
+  it('grows a short one-slot translation triple to dense length when editing Z', () => {
+    // Same hazard mid-array: splicing index 2 into [7] would leave a hole at
+    // slot 1; padding from the row default keeps the persisted triple dense.
+    const onMutation = vi.fn()
+    const short = {
+      id: 'tr1', kind: 'transform', label: 'Transform',
+      transform: { bodies: [], operation: 'new', translation: [7], rotation_angle: 0, scale: 1 },
+    } as unknown as PartFeature
+    render(<FeatureEditor feature={short} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
+    editField('Z', '5')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_transform_field', featureId: 'tr1', field: 'translation', value: [7, 0, 5],
+    })
   })
 })
