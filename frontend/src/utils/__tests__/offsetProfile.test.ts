@@ -185,8 +185,9 @@ describe('applyAddOffset connectivity', () => {
   it('line+arc tangent join carries over as a tangent between the clones', () => {
     const doc = sketchDoc()
     // A line meeting an arc at a fillet corner: line.end coincident arc.start.
+    // Degree slots: [-90, 0] puts the arc start exactly at (10, 0) = line.end.
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'ln')
-    applyAddEntity(doc, 'sk', 'arc', [10, 5, 5, -Math.PI / 2, 0], 'ar')
+    applyAddEntity(doc, 'sk', 'arc', [10, 5, 5, -90, 0], 'ar')
     applyAddConstraint(doc, 'sk', 'coincident', ['vertex:sk:ln:end', 'vertex:sk:ar:start'])
     applyAddOffset(doc, 'sk', ['ln', 'ar'], 2)
 

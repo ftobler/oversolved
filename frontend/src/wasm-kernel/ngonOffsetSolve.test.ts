@@ -150,7 +150,8 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
 
   it('arc offset is concentric with the offset radius', () => {
     const doc = emptySketch()
-    applyAddEntity(doc, 'sk', 'arc', [0, 0, 5, 0, Math.PI], 'src')
+    // Degree slots: a half circle, as the arc convention reads angles.
+    applyAddEntity(doc, 'sk', 'arc', [0, 0, 5, 0, 180], 'src')
     applyAddOffset(doc, 'sk', ['src'], 2)
     const dstId = doc.features![0].entities!.find((e) => e.id !== 'src')!.id
     const dst = solveFeature(doc)[dstId]
