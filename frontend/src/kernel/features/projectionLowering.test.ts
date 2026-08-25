@@ -164,7 +164,10 @@ describe('ellipse edge projection', () => {
 })
 
 describe('arc projection (3D body arc)', () => {
-  it('projects a quarter arc on the XY plane to 2D angles', () => {
+  it('projects a quarter arc on the XY plane to 2D DEGREE angles', () => {
+    // Regression: the lowering emitted raw atan2 RADIANS into the degree-
+    // convention angle slots, so even a coplanar quarter circle pinned at a
+    // ~1.57 degree sweep once it reached the solver or any consumer.
     const g = resolve3dGeometry(
       {
         type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
@@ -179,7 +182,53 @@ describe('arc projection (3D body arc)', () => {
     expect(cy).toBeCloseTo(0)
     expect(r).toBeCloseTo(5)
     expect(sa).toBeCloseTo(0)
-    expect(ea).toBeCloseTo(Math.PI / 2)
+    expect(ea).toBeCloseTo(90)
+    // Sweep direction preserved: no explicit ccw (consumers default to ccw).
+    expect(out.ccw).toBeUndefined()
+  })
+
+  it('marks an anti-parallel source axis as cw so consumers keep the same side', () => {
+    // Mirrored projection: the source sweeps 0 -> 90 deg around -Z, which on
+    // the sketch plane runs clockwise through the fourth quadrant.
+    const g = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+        axis: [0, 0, -1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+      },
+      '?e',
+    )!
+    const out = projectTo2d(g, XY)!
+    expect(out.kind).toBe('arc')
+    expect(out.ccw).toBe(false)
+    const [, , r, sa, ea] = out.params
+    expect(r).toBeCloseTo(5)
+    expect(sa).toBeCloseTo(0)
+    expect(ea).toBeCloseTo(-90)
+  })
+
+  it('lowers a tilted source arc to a sampled spline, not a fake circular arc', () => {
+    // A tilted circular arc projects to an elliptical arc; the old lowering
+    // rebuilt it as a single-radius circular arc whose radius came from one
+    // endpoint and whose side was arbitrary.
+    const phi = Math.PI / 3
+    const axis = [0, -Math.sin(phi), Math.cos(phi)]
+    const g = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+        axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+      },
+      '?e',
+    )!
+    const out = projectTo2d(g, XY)!
+    expect(out.kind).toBe('spline')
+    const p = out.params
+    expect(p).toHaveLength(8)
+    // Endpoints survive exactly: t=0 -> (5,0); t=pi/2 -> y-axis of the source
+    // frame is (0, cos phi, sin phi), projected to (0, 5 cos phi).
+    expect(p[0]).toBeCloseTo(5)
+    expect(p[1]).toBeCloseTo(0)
+    expect(p[6]).toBeCloseTo(0)
+    expect(p[7]).toBeCloseTo(5 * Math.cos(phi))
   })
 })
 

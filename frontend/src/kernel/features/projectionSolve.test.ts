@@ -206,6 +206,35 @@ describe('solveSketch projection lowering', () => {
     // Parallel circle stays a circle -> no kind change -> no resolved_kinds.
     expect(out.resolved_kinds).toBeUndefined()
   })
+
+  it('solves a projected quarter-circle arc pinned at its DEGREE angles', () => {
+    if (!solveBytes) return
+    // Regression for the projected-arc units: the lowering used to emit raw
+    // atan2 radians into the degree-convention angle slots, and because a
+    // projected entity's params are PINNED, even a coplanar quarter circle
+    // solved/pinned at ~1.57 degrees of sweep.
+    const projArc: Dict = {
+      type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+      axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+    }
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'a0', kind: 'arc', source: '?edge;arc' }],
+      initial: {},
+      constraints: [],
+    }
+    const out = solveSketch(feature, stubRepo(projArc), {} as Record<string, Body>)
+    expect(out.status).not.toBe('error')
+    const g = out.geometry?.a0
+    expect(g).toBeDefined()
+    expect(g).toHaveLength(5)
+    const [cx, cy, r, sa, ea] = g!
+    expect(cx).toBeCloseTo(0)
+    expect(cy).toBeCloseTo(0)
+    expect(r).toBeCloseTo(5)
+    expect(sa).toBeCloseTo(0)
+    expect(ea).toBeCloseTo(90, 1)
+  })
 })
 
 describe('solveSketch pins projected entities (fix-projected-entities-pinned)', () => {

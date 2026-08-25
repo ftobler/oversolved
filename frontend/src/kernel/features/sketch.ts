@@ -170,7 +170,15 @@ function lowerProjectedEntities(
               // spline: the resolved kind wins, and is surfaced so the doc
               // entity adopts it (its param count must match the geometry).
               if (projected.kind !== declaredKind) resolvedKinds[entId] = projected.kind
-              lowered = { ...ent, source: undefined, kind: projected.kind }
+              lowered = {
+                ...ent,
+                source: undefined,
+                kind: projected.kind,
+                // A mirrored projection sweeps clockwise; carry that onto the
+                // entity so arc consumers keep the correct side (they default
+                // to ccw when the field is absent).
+                ...(projected.ccw === false ? { ccw: false } : {}),
+              }
             }
           }
         }

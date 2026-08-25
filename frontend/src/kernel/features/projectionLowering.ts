@@ -28,10 +28,14 @@ export interface Resolved3dGeometry {
 }
 
 /** A lowered projection: the resolved entity kind plus its 2D params. The kind
- *  can differ from the declared kind (a tilted circle lowers to an ellipse). */
+ *  can differ from the declared kind (a tilted circle lowers to an ellipse).
+ *  ``ccw`` is emitted only when the projection MIRRORS the source sweep (an
+ *  anti-parallel source axis), because every arc consumer defaults to ccw and
+ *  a mirrored arc would otherwise be read as its complement. */
 interface ProjectedParams {
   kind: string
   params: number[]
+  ccw?: boolean
 }
 
 function len3(a: number[]): number {
@@ -289,32 +293,46 @@ export function projectTo2d(
     const a1 = data.angle_end as number
     if (!axis || !ax || a0 == null || a1 == null) return null
 
-    const axNorm = [ax[0], ax[1], ax[2]] as number[]
     const normal = axis
-    const y_axis = cross3(normal, axNorm)
+    const y_axis = cross3(normal, ax)
+    const pointAt = (t: number): number[] => {
+      const c = Math.cos(t)
+      const s = Math.sin(t)
+      return [
+        center[0] + radius * (c * ax[0] + s * y_axis[0]),
+        center[1] + radius * (c * ax[1] + s * y_axis[1]),
+        center[2] + radius * (c * ax[2] + s * y_axis[2]),
+      ]
+    }
 
-    const cos0 = Math.cos(a0)
-    const sin0 = Math.sin(a0)
-    const cos1 = Math.cos(a1)
-    const sin1 = Math.sin(a1)
-    const start3d = [
-      center[0] + radius * (cos0 * axNorm[0] + sin0 * y_axis[0]),
-      center[1] + radius * (cos0 * axNorm[1] + sin0 * y_axis[1]),
-      center[2] + radius * (cos0 * axNorm[2] + sin0 * y_axis[2]),
-    ]
-    const end3d = [
-      center[0] + radius * (cos1 * axNorm[0] + sin1 * y_axis[0]),
-      center[1] + radius * (cos1 * axNorm[1] + sin1 * y_axis[1]),
-      center[2] + radius * (cos1 * axNorm[2] + sin1 * y_axis[2]),
-    ]
+    if (!isParallelToPlane(axis, plane)) {
+      // A tilted source arc projects to an ELLIPTICAL arc. There is no 2D
+      // ellipse-arc entity, and a circular arc through the projected endpoints
+      // would invent a radius (the chord endpoints are at different distances
+      // from the projected center) and an arbitrary side. Sample and fit a
+      // cubic Bezier instead, mirroring the partial-ellipse branch above.
+      const N = 32
+      const pts2d: [number, number][] = []
+      for (let i = 0; i <= N; i++) {
+        pts2d.push(project3dTo2d(pointAt(a0 + (a1 - a0) * (i / N)), plane) as [number, number])
+      }
+      const params = fitCubicBezier(pts2d)
+      return params ? { kind: 'spline', params } : null
+    }
 
-    const s2d = project3dTo2d(start3d, plane)
-    const e2d = project3dTo2d(end3d, plane)
-
-    const sa = Math.atan2(s2d[1] - c2d[1], s2d[0] - c2d[0])
-    const ea = Math.atan2(e2d[1] - c2d[1], e2d[0] - c2d[0])
+    const s2d = project3dTo2d(pointAt(a0), plane)
+    const e2d = project3dTo2d(pointAt(a1), plane)
+    // Degree slots: the sketch arc convention is degrees everywhere (solver
+    // residuals apply to_radians, previews multiply by pi/180), so the atan2
+    // results must be converted -- raw radians pinned every projected arc at
+    // ~1.57 degrees of sweep.
+    const sa = Math.atan2(s2d[1] - c2d[1], s2d[0] - c2d[0]) * (180 / Math.PI)
+    const ea = Math.atan2(e2d[1] - c2d[1], e2d[0] - c2d[0]) * (180 / Math.PI)
     const r2d = len2d([s2d[0] - c2d[0], s2d[1] - c2d[1]])
-    return { kind: 'arc', params: [...c2d, r2d, sa, ea] }
+    // An anti-parallel source axis mirrors the arc onto the plane, so the 2D
+    // sweep runs clockwise; say so explicitly or consumers read the complement.
+    const ccw = dot3(normalize3(axis), normalize3(cross3(plane.x_axis, plane.y_axis))) > 0
+    return { kind: 'arc', params: [...c2d, r2d, sa, ea], ...(ccw ? {} : { ccw: false }) }
   }
   if (kindH === 'spline') {
     // Any sampled 3D curve (spline/NURBS) projects to 2D points, then a cubic
