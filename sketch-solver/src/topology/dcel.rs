@@ -155,11 +155,13 @@ fn has_param(spl: &[Split], p: f64) -> bool {
     spl.iter().any(|(s, _)| (s - p).abs() < SPLIT_EPS)
 }
 
-// Largest |a0| for which the +-TWO_PI step walk still makes progress. Past
-// roughly 1e9 rad a full turn is smaller than the local ulp, so the decrement
-// loop's own threshold `a0 + TWO_PI - SPLIT_EPS` rounds back onto a0 and the
-// loop spins forever absorbing every step -- even for p == a0. Real sketch
-// angles (golden corpora live near +-2*pi) sit orders of magnitude below.
+// Largest |a0| for which the +-TWO_PI step walk stays meaningful. Two floors
+// bite as |a0| grows: from ~2^56 rad on, a full turn is below one ulp of a0,
+// so `p += TWO_PI` rounds straight back onto p and the loops absorb every
+// step even for p == a0; long before that, SPLIT_EPS (1e-7) drops below
+// ulp(a0) (~1.2e-7 at 1e9), so the walk's epsilon comparisons stop
+// resolving. Real sketch angles (golden corpora live near +-2*pi) sit orders
+// of magnitude below.
 const WALKABLE_A0: f64 = 1e9;
 
 fn norm_arc_param(p: f64, a0: f64) -> f64 {
