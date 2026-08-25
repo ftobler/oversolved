@@ -77,13 +77,22 @@ export function useAssemblyDoc(uuid: string | undefined) {
 
   const saveDoc = useCallback(async (uuid: string, document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {
     try {
+      // Reference at entry: every mutation installs a fresh doc object (never
+      // edits in place), so identity still holding after the awaits below
+      // proves no edit landed while the save was in flight.
+      const savedRef = docRef.current
       const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
       if (screenshot) {
         const dataUrl = await screenshot()
         if (dataUrl) body.preview_image = dataUrl.split(',')[1]
       }
       await storeRef.current.save(uuid, body)
-      useUnsavedChangesStore.getState().setDirty(false)
+      // Same guard as the part editor's saveDoc: an edit during the save
+      // windows postdates the stored bytes, so its dirty flag must survive
+      // or a reload would silently drop those edits.
+      if (docRef.current === savedRef) {
+        useUnsavedChangesStore.getState().setDirty(false)
+      }
       return true
     } catch (e) {
       setError(parseHttpError(e, 'Failed to save document'))

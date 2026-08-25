@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
   return {
     make,
     loads: {} as Record<string, ReturnType<typeof make>>,
+    saveGates: [] as ReturnType<typeof make>[],
   }
 })
 
@@ -18,12 +19,20 @@ vi.mock('@/adapters/backend', () => ({
   backendBundle: {
     documents: {
       load: (uuid: string) => (h.loads[uuid] ??= h.make()).promise,
+      // Deferred like the loads: a manual save spends multiple awaits
+      // (screenshot, then the store), and tests need to hold it open.
+      save: () => {
+        const gate = h.make()
+        h.saveGates.push(gate)
+        return gate.promise
+      },
     },
   },
 }))
 
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
@@ -31,8 +40,10 @@ describe('useAssemblyDoc', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     h.loads = {}
+    h.saveGates = []
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+    useUnsavedChangesStore.getState().setDirty(false)
   })
 
   it('loads an assembly document with kind preserved', async () => {
@@ -123,5 +134,61 @@ describe('useAssemblyDoc', () => {
 
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
     expect(useAssemblyStore.getState().redoStack).toHaveLength(0)
+  })
+
+  // The manual save is the sole persistence point and beforeunload reads the
+  // dirty flag, so a save may only clear that flag when the document it
+  // serialized is still the current one: an edit landing inside the save's
+  // async windows postdates the stored bytes and must keep the warning alive.
+  it('keeps the dirty flag when an edit lands between the screenshot and the save resolving', async () => {
+    const { result } = renderHook(() => useAssemblyDoc('SA'))
+    await tick()
+    await act(async () => { h.loads.SA.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+
+    let releaseScreenshot!: (value: string | null) => void
+    const screenshotGate = new Promise<string | null>(resolve => { releaseScreenshot = resolve })
+    const screenshot = vi.fn(() => screenshotGate)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('SA', result.current.doc!, screenshot)
+    })
+    // The bytes were serialized synchronously; the save is parked on the shot.
+    expect(screenshot).toHaveBeenCalledTimes(1)
+    expect(h.saveGates).toHaveLength(0)
+    await act(async () => { releaseScreenshot(null) })
+    expect(h.saveGates).toHaveLength(1)
+
+    // What AssemblyEditor's mutate does during the real windows: installs a
+    // fresh doc object into docRef and re-flags dirty.
+    await act(async () => {
+      const edited = { ...result.current.doc! }
+      result.current.docRef.current = edited
+      result.current.setDoc(edited)
+      useUnsavedChangesStore.getState().setDirty(true)
+    })
+
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    const ok = await savePromise
+    expect(ok).toBe(true)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('clears the dirty flag when nothing was edited during the save', async () => {
+    const { result } = renderHook(() => useAssemblyDoc('SB'))
+    await tick()
+    await act(async () => { h.loads.SB.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('SB', result.current.doc!)
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    const ok = await savePromise
+    expect(ok).toBe(true)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })

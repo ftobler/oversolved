@@ -6,6 +6,34 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 const { loadMock } = vi.hoisted(() => ({ loadMock: vi.fn() }))
 vi.mock('@/adapters/documentLoad', () => ({ loadDocumentAnyDomain: loadMock }))
 
+// Deferred store save: a manual save spends multiple awaits (screenshot, then
+// the network), so tests need to hold the save open while an edit lands.
+const h = vi.hoisted(() => {
+  const makeGate = () => {
+    let resolve!: (v: unknown) => void
+    const promise = new Promise((res) => { resolve = res })
+    return { promise, resolve }
+  }
+  return {
+    makeGate,
+    saveGates: [] as ReturnType<typeof makeGate>[],
+  }
+})
+
+vi.mock('@/adapters/backend', () => ({
+  backendBundle: {
+    documents: {
+      save: () => {
+        const gate = h.makeGate()
+        h.saveGates.push(gate)
+        return gate.promise
+      },
+    },
+  },
+}))
+
+import { backendBundle } from '@/adapters/backend'
+
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
 describe('BUILTIN_FEATURE_DEFAULTS', () => {
@@ -97,5 +125,72 @@ features:
     const sub = result.current.doc!.features![0] as unknown as { delete_body: { bodies: string[]; body?: string } }
     expect(sub.delete_body.bodies).toEqual(['@body_ex1'])
     expect('body' in sub.delete_body).toBe(false)
+  })
+})
+
+// The manual save is the sole persistence point and beforeunload reads the dirty
+// flag, so a save must only clear that flag when the document it serialized is
+// still the current one: an edit landing inside the save's async windows
+// postdates the stored bytes and must keep the reload warning alive.
+describe('useDocumentState saveDoc vs concurrent edits', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    h.saveGates = []
+    useUnsavedChangesStore.getState().setDirty(false)
+  })
+
+  const loadSimpleDoc = async () => {
+    loadMock.mockResolvedValue({ data: { content: 'name: S', name: 'S' }, store: backendBundle.documents })
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
+    await tick()
+    return result
+  }
+
+  it('keeps the dirty flag when an edit lands between the screenshot and the save resolving', async () => {
+    const result = await loadSimpleDoc()
+
+    let releaseScreenshot!: (value: string | null) => void
+    const screenshotGate = new Promise<string | null>(resolve => { releaseScreenshot = resolve })
+    const screenshot = vi.fn(() => screenshotGate)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('S', result.current.doc!, screenshot)
+    })
+    // The bytes were serialized synchronously; the save is parked on the shot.
+    expect(screenshot).toHaveBeenCalledTimes(1)
+    expect(h.saveGates).toHaveLength(0)
+    await act(async () => { releaseScreenshot(null) })
+    expect(h.saveGates).toHaveLength(1)
+
+    // What handleMutation does during the real windows: installs a fresh doc
+    // object and re-flags dirty.
+    await act(async () => {
+      const edited = { ...result.current.doc! }
+      result.current.docRef.current = edited
+      result.current.setDoc(edited)
+      useUnsavedChangesStore.getState().setDirty(true)
+    })
+
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    const ok = await savePromise
+    expect(ok).toBe(true)
+    // The saved bytes predate the edit above, so the warning must survive.
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('clears the dirty flag when nothing was edited during the save', async () => {
+    const result = await loadSimpleDoc()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('S', result.current.doc!)
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    const ok = await savePromise
+    expect(ok).toBe(true)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })
