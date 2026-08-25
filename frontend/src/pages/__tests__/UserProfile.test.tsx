@@ -125,6 +125,46 @@ describe('UserProfile', () => {
     })
   })
 
+  // A password change with a blank current password is refused client-side:
+  // inline error, same validation UX as the mismatch check, and no PUT at all.
+  it('requires the current password before sending a password change', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())
+      if (url === '/api/users/me/preferences') return Promise.resolve(prefsResponse)
+      if (url === '/api/users/me' && init?.method === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ status: 'updated' }),
+          text: () => Promise.resolve(JSON.stringify({ status: 'updated' })),
+        } as Response)
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <BrowserRouter>
+        <AuthProvider>
+          <UserProfile />
+        </AuthProvider>
+      </BrowserRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('testuser')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'fresh-secret' } })
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'fresh-secret' } })
+    fireEvent.click(screen.getByText('Save'))
+
+    expect(screen.getByText('Current password is required')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/users/me',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+  })
+
   it('shows password change fields', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url === '/api/auth/me') return Promise.resolve(makeUserResponse())

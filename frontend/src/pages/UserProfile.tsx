@@ -53,6 +53,13 @@ export default function UserProfile() {
         body.email = email
       }
       if (newPassword) {
+        // Client-side required-check beside the match-check: a blank current
+        // password can never verify, so refuse it before any request goes out.
+        if (!currentPassword) {
+          setError('Current password is required')
+          setLoading(false)
+          return
+        }
         if (newPassword !== confirmPassword) {
           setError('Passwords do not match')
           setLoading(false)
