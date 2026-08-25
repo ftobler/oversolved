@@ -134,12 +134,16 @@ jobs:
       - name: Comment lint (lint.py)
         run: python lint.py frontend/src frontend/scripts
 
-      # The wasm-kernel/*.test.ts and *Real.test.ts solver-boundary tests self-skip
-      # when the Rust builds (pkg-node) are absent. Build BOTH crates here so
-      # `vitest run` actually exercises them instead of silently skipping (matches
-      # the local `just wasm` + `just frontend` flow): sketch-solver backs the
-      # sketch/topology tests, mate-solver backs solveAssemblyReal. The build is
-      # identical across the Node matrix.
+      # ~70 test files under src/kernel self-skip when their dependencies are
+      # absent: they gate on OCC.js being importable (describe.skipIf(!oc), or a
+      # local hasOcc helper) and most also need the Rust pkg-node builds. Without
+      # both, the whole B-rep layer silently passes as skipped. Install OCC.js
+      # and build BOTH crates here so `vitest run` actually exercises them
+      # (matches the local `just wasm` + `just frontend` flow): sketch-solver
+      # backs the sketch/topology tests, mate-solver backs solveAssemblyReal.
+      # fullDocParity.test.ts stays excluded from this default suite and runs in
+      # the parity job instead, so nothing runs twice. The build is identical
+      # across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -148,6 +152,10 @@ jobs:
           wasm-pack build --target nodejs --out-dir pkg-node --release
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
+
+      - name: Install OCC.js (opt-in, not a package.json dep)
+        run: npm run occ:install
+        working-directory: frontend
 
       - name: npm test (vitest)
         run: npx vitest run
