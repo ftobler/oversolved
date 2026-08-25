@@ -130,12 +130,19 @@ impl MateProblem {
         // Checked for symmetry with the codec gate: this constructor is only
         // reached with wire-validated counts today, but an in-memory caller
         // with a hostile length must overflow loudly instead of wrapping.
-        let n = n_bodies
-            .checked_mul(7)
-            .expect("n_bodies * 7 overflows usize");
+        n_bodies.checked_mul(7).expect("n_bodies * 7 overflows usize");
         let grounded: Vec<bool> = (0..n_bodies).map(|i| input.is_fixed(i)).collect();
 
         let x0: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
+        // The param dimension the solver optimizes IS the seed buffer: every
+        // LM-side slice (step vector, J^T J diagonal, damping scale) is sized
+        // from x0's length, so reporting bodies*7 here would desync the
+        // Jacobian's columns from the state vector and panic inside nalgebra.
+        // Well-formed inputs carry exactly bodies*7 entries; an in-memory
+        // caller can hand us fewer or more, and bodies whose block falls
+        // outside the buffer simply contribute no rows (same drop-don't-panic
+        // posture as the stale-mate filter below).
+        let n = x0.len();
 
         // Every mate residual and Jacobian row indexes `body_index * 7`, and the
         // index comes off the wire, so a stale mate (one authored against a body
@@ -154,7 +161,18 @@ impl MateProblem {
             .collect();
 
         let mate_residual_total: usize = mates.iter().map(|m| mate_residual_count(m.kind)).sum();
-        let m = mate_residual_total + n_bodies + 7 * grounded.iter().filter(|&&g| g).count();
+        // The per-body residual loops index body_index * 7 against x/x0, so a
+        // body whose full 7-param block is not in the seed buffer cannot
+        // contribute any row. The wire path validates the counts; an
+        // in-memory caller does not, and matching the stale-mate filter's
+        // drop-don't-panic posture above, the missing body is skipped here
+        // rather than indexed off the end mid-solve.
+        let block_present = |bi: usize| (bi + 1) * 7 <= x0.len();
+        let quat_rows = (0..n_bodies).filter(|&bi| block_present(bi)).count();
+        let grounded_rows = (0..n_bodies)
+            .filter(|&bi| grounded[bi] && block_present(bi))
+            .count();
+        let m = mate_residual_total + quat_rows + 7 * grounded_rows;
 
         // Precompute seed-frame world axes for CopyRotation mates plus each
         // body's twist at the seed pose about those axes, and the pose-free
@@ -235,7 +253,7 @@ impl MateProblem {
     fn rotation_damp_scale(&self) -> Vec<f64> {
         let mut scale = vec![1.0; self.n];
         for bi in 0..self.bodies.len() {
-            if self.grounded[bi] {
+            if self.grounded[bi] || !self.body_block_present(bi, self.n) {
                 continue;
             }
             let off = bi * 7;
@@ -354,6 +372,16 @@ impl MateProblem {
     fn get_quat(&self, x: &[f64], body_idx: usize) -> (f64, f64, f64, f64) {
         let off = body_idx * 7;
         (x[off + 3], x[off + 4], x[off + 5], x[off + 6])
+    }
+
+    /// True while body `bi`'s full 7-param block fits in the buffer. The two
+    /// global residual loops (quaternion norm, grounded pins) index
+    /// `bi * 7` unconditionally; a body past the buffer must contribute no
+    /// rows instead of panicking the worker. `m` was computed with exactly
+    /// this filter in `new`, so row counts stay consistent.
+    fn body_block_present(&self, bi: usize, len: usize) -> bool {
+        debug_assert_eq!(len, self.x0.len(), "param buffer drifted from the seed length");
+        (bi + 1) * 7 <= self.x0.len().min(len)
     }
 
     /// Compute the full residual vector at x.
@@ -536,15 +564,19 @@ impl MateProblem {
             }
         }
 
-        // Quaternion unit-norm soft residuals (one per body).
+        // Quaternion unit-norm soft residuals (one per body whose full block
+        // is in the buffer).
         for bi in 0..self.bodies.len() {
+            if !self.body_block_present(bi, x.len()) {
+                continue;
+            }
             let (qx, qy, qz, qw) = self.get_quat(x, bi);
             r.push(qx * qx + qy * qy + qz * qz + qw * qw - 1.0);
         }
 
         // Grounded-body pin residuals (pull each param to x0).
         for bi in 0..self.bodies.len() {
-            if self.grounded[bi] {
+            if self.grounded[bi] && self.body_block_present(bi, x.len()) {
                 let off = bi * 7;
                 for j in 0..7 {
                     r.push(x[off + j] - self.x0[off + j]);
@@ -757,8 +789,12 @@ impl MateProblem {
             }
         }
 
-        // Quaternion norm residuals (1 per body).
+        // Quaternion norm residuals (1 per body whose full block is in the
+        // buffer).
         for bi in 0..self.bodies.len() {
+            if !self.body_block_present(bi, x.len()) {
+                continue;
+            }
             let off = bi * 7;
             j[(row, off + 3)] = 2.0 * x[off + 3];
             j[(row, off + 4)] = 2.0 * x[off + 4];
@@ -767,9 +803,9 @@ impl MateProblem {
             row += 1;
         }
 
-        // Grounded-body pin residuals (7 per grounded body).
+        // Grounded-body pin residuals (7 per grounded body in the buffer).
         for bi in 0..self.bodies.len() {
-            if self.grounded[bi] {
+            if self.grounded[bi] && self.body_block_present(bi, x.len()) {
                 let off = bi * 7;
                 for jj in 0..7 {
                     j[(row, off + jj)] = 1.0;
@@ -2596,6 +2632,36 @@ mod tests {
         };
         let p = MateProblem::new(&input);
         assert!(p.mates.is_empty());
+
+        // The quaternion-norm loop used to panic right here: body 1's unit-
+        // norm row indexed its missing block off the end of x. The dropped
+        // body contributes no rows and m tracks exactly what survives (one
+        // row for body 0), so residuals, Jacobian and a full solve all stay
+        // panic-free.
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        assert_eq!(p.m, 1);
+        assert_eq!(p.residuals(&x).len(), p.m);
+        let j = p.jacobian(&x);
+        assert_eq!(j.nrows(), p.m);
+        let out = solve_mate(&input);
+        assert_eq!(out.params_solved.len(), input.params_initial.len());
+        assert_ne!(
+            out.overall_status,
+            MateStatus::Overconstrained.to_u8(),
+            "a truncated buffer is malformed input, not a failed constraint set"
+        );
+
+        // Same overrun with the MISSING body grounded: this is the path that
+        // panicked inside the grounded-pin loop (x[off + j] past the buffer).
+        // It must degrade identically.
+        let mut input = input;
+        input.fixed_mask = vec![0b0000_0010];
+        let p = MateProblem::new(&input);
+        assert_eq!(p.m, 1);
+        assert_eq!(p.residuals(&x).len(), p.m);
+        assert_eq!(p.jacobian(&x).nrows(), p.m);
+        let out = solve_mate(&input);
+        assert_eq!(out.params_solved.len(), input.params_initial.len());
     }
 
     #[test]
