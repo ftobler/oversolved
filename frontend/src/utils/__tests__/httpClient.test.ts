@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { http, HttpError } from '@/utils/core/httpClient'
+import { http, HttpError, isConnectionError } from '@/utils/core/httpClient'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -74,6 +74,27 @@ describe('http.getJson', () => {
     const init = { headers: { Authorization: 'Bearer token' } }
     await http.getJson('/api/test', init)
     expect(mockFetch).toHaveBeenCalledWith('/api/test', init)
+  })
+
+  // review-17 L18: a 200 whose body is not JSON (a proxy interstitial, a
+  // captive portal) must surface as an HttpError carrying the raw text.
+  // Escaping as a bare SyntaxError made isConnectionError classify it as
+  // "the cloud is unreachable" and silently flip the app into offline mode
+  // over what is really a misbehaving intermediary.
+  it('wraps a 200 non-JSON body as HttpError instead of a bare SyntaxError', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+      text: () => Promise.resolve('<html>proxy interstitial</html>'),
+    } as Response)
+
+    const err = await http.getJson('/api/test').catch(e => e) as HttpError
+    expect(err).toBeInstanceOf(HttpError)
+    expect(err.status).toBe(200)
+    expect(err.body).toBe('<html>proxy interstitial</html>')
+    expect(isConnectionError(err)).toBe(false)
   })
 })
 

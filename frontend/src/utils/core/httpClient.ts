@@ -44,10 +44,25 @@ async function checkResponse(res: Response): Promise<Response> {
   return res
 }
 
+// A 2xx body that is not JSON (a proxy interstitial, a captive portal) must
+// surface as an HttpError carrying the raw text rather than escape as a bare
+// SyntaxError: isConnectionError treats anything that is not an HttpError as
+// "the cloud is unreachable", so an unclassified parse failure silently flips
+// consumers like the document library into offline mode over what is really a
+// misbehaving intermediary.
+async function parseJsonBody<T>(res: Response): Promise<T> {
+  const text = await res.text().catch(() => '')
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new HttpError(res.status, text)
+  }
+}
+
 export const http = {
   async getJson<T>(url: string, init?: RequestInit): Promise<T> {
     const res = await (init ? fetch(url, init) : fetch(url)).then(checkResponse)
-    return res.json() as Promise<T>
+    return parseJsonBody<T>(res)
   },
 
   async postJson<T>(url: string, body?: unknown, init?: RequestInit): Promise<T> {
