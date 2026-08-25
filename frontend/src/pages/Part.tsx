@@ -1050,13 +1050,14 @@ export default function Part() {
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'F2' || e.code === 'F2') {
-        if (!user?.is_admin) {
-          e.preventDefault()
-          return
-        }
-        setDebugOpen(prev => !prev)
-      }
+      if (e.key !== 'F2' && e.code !== 'F2') return
+      // Same gate as the footer button's visibility: open to everyone on the
+      // static build, admin-only on the server build. An unhandled F2 must
+      // fall through untouched, so preventDefault fires only alongside an
+      // actual toggle.
+      if (!(debugToolsUnrestricted || user?.is_admin)) return
+      e.preventDefault()
+      setDebugOpen(prev => !prev)
     }
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
