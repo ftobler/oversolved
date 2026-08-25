@@ -84,6 +84,33 @@ def test_returned_connection_has_no_open_transaction(pg_dsn, monkeypatch):
     assert count == 0, "Uncommitted INSERT should have been rolled back on pool return"
 
 
+def test_teardown_returns_conn_to_pool_when_rollback_raises(pg_dsn, monkeypatch):
+    """A rollback failure on a broken conn must not leak the pool slot."""
+    app, pool = _make_app_and_close_pool(pg_dsn, monkeypatch, pool_max=1)
+
+    from flask import g
+    from oversolved.blueprints import get_db
+
+    with app.test_request_context("/"):
+        app.preprocess_request()
+        get_db()
+        raw = g._pool_conn[1]
+        # Closing the socket mimics a failover: rollback() now raises
+        # InterfaceError, which used to skip putconn entirely.
+        raw.close()
+        app.do_teardown_appcontext()
+
+    assert len(pool._used) == 0, "connection must return to the pool despite failed rollback"
+
+    # The slot is free again: a later request can borrow it.
+    conn = pool.getconn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1")
+        assert cur.fetchone()[0] == 1
+    pool.putconn(conn)
+    pool.closeall()
+
+
 def test_get_db_does_not_call_psycopg2_connect_per_request(pg_dsn, monkeypatch):
     """Requests reuse pool connections; psycopg2.connect call count stays bounded."""
     monkeypatch.setenv("OVERSOLVED_ADMIN_PASSWORD", "admin")

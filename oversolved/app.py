@@ -209,8 +209,15 @@ def create_app(config: dict | None = None) -> Flask:
         db = g.pop("db", None)
         if pool_info is not None:
             _pool, raw_conn = pool_info
-            raw_conn.rollback()
-            _pool.putconn(raw_conn)
+            try:
+                raw_conn.rollback()
+            except Exception:
+                # After a failover the broken connection cannot roll back, but
+                # it must still reach putconn or _used never decrements and
+                # the pool leaks until restart.
+                pass
+            finally:
+                _pool.putconn(raw_conn)
         elif db is not None:
             db.close()
 
