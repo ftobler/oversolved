@@ -437,6 +437,84 @@ class TestDocumentAPI:
         assert response.status_code == 400
         assert "Invalid image data" in json.loads(response.data)["error"]
 
+    def _store_preview_of_format(self, authed_client, name, fmt):
+        import base64
+        from io import BytesIO
+        from PIL import Image
+
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": name}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+        img = Image.new("RGB", (10, 10), color="red")
+        buf = BytesIO()
+        img.save(buf, format=fmt)
+        encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+        response = authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "version: 1\n", "preview_image": encoded}),
+            content_type="application/json",
+        )
+        return uuid, response
+
+    def test_preview_image_jpeg_rejected(self, authed_client):
+        """JPEG uploads are refused so stored previews stay servable as PNG.
+
+        The thumbnail route serves stored bytes with a hardcoded image/png
+        content type; any other codec stored here would be mislabelled.
+        """
+        _, response = self._store_preview_of_format(authed_client, "JpegPreview", "JPEG")
+        assert response.status_code == 400
+
+    def test_preview_image_webp_rejected(self, authed_client):
+        """webp uploads are refused for the same reason as JPEG."""
+        _, response = self._store_preview_of_format(authed_client, "WebpPreview", "WEBP")
+        assert response.status_code == 400
+
+    def test_rejected_non_png_preview_stores_nothing(self, authed_client):
+        """A format-rejected upload leaves neither thumbnail nor stale state."""
+        uuid, response = self._store_preview_of_format(authed_client, "NoStoreJpeg", "JPEG")
+        assert response.status_code == 400
+
+        thumb = authed_client.get(f"/api/documents/{uuid}/thumbnail")
+        assert thumb.status_code == 404
+
+    def test_thumbnail_serves_stored_bytes_as_png(self, authed_client):
+        """A stored preview round-trips through /thumbnail as image/png."""
+        import base64
+        from io import BytesIO
+        from PIL import Image
+
+        uuid = json.loads(
+            authed_client.post(
+                "/api/documents",
+                data=json.dumps({"name": "ThumbTypeDoc"}),
+                content_type="application/json",
+            ).data
+        )["uuid"]
+        img = Image.new("RGB", (10, 10), color="green")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        response = authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({
+                "content": "version: 1\n",
+                "preview_image": base64.b64encode(png_bytes).decode("utf-8"),
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        thumb = authed_client.get(f"/api/documents/{uuid}/thumbnail")
+        assert thumb.status_code == 200
+        assert thumb.content_type == "image/png"
+        assert thumb.data == png_bytes
+
     def test_rejected_preview_image_does_not_store_content(self, authed_client):
         uuid = json.loads(
             authed_client.post(

@@ -12,6 +12,21 @@ from oversolved.blueprints import get_db, auth_required, api_error
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
 
+def decode_png(image_data: bytes) -> Image.Image:
+    """Pillow-open thumbnail bytes and insist they really are PNG.
+
+    Both thumbnail write paths share this gate because GET /thumbnail serves
+    stored bytes with a hardcoded image/png content type; accepting JPEG or
+    webp bytes here would ship them mislabelled to browsers. Validation is
+    strict rather than re-encoding so stored previews stay byte-identical to
+    what the client sent.
+    """
+    img = Image.open(BytesIO(image_data))
+    if img.format != "PNG":
+        raise ValueError(f"expected PNG image data, got {img.format}")
+    return img
+
+
 @documents_bp.route("", methods=["GET"])
 @auth_required()
 def list_documents():
@@ -78,14 +93,16 @@ def update_document(uuid):
     if data.get("preview_image"):
         # Validated (and decoded) before any write, so a malformed image
         # can't leave the content half of this request committed while the
-        # response reports failure.
+        # response reports failure. PNG-only: see decode_png for why.
         try:
-            image_data = base64.b64decode(data["preview_image"])
-            img = Image.open(BytesIO(image_data))
-            if img.width > 1024 or img.height > 1024:
-                return api_error("Invalid image", "BAD_REQUEST", 400)
+            decoded = base64.b64decode(data["preview_image"])
+            img = decode_png(decoded)
+            oversized = img.width > 1024 or img.height > 1024
         except Exception:
             return api_error("Invalid image data", "BAD_REQUEST", 400)
+        if oversized:
+            return api_error("Invalid image", "BAD_REQUEST", 400)
+        image_data = decoded
     db = get_db()
     doc_store = DocumentStore(db)
     doc_store.store_content(uuid, content)

@@ -16,6 +16,7 @@ from werkzeug.security import generate_password_hash
 from oversolved.db import Database, DocumentStore, PeriodicTaskStore, SessionStore, UserStore
 from flask import g
 from oversolved.blueprints import auth_required, get_db, validate_password_strength, api_error
+from oversolved.blueprints.documents import decode_png
 
 logger = logging.getLogger(__name__)
 
@@ -362,14 +363,21 @@ def import_backup() -> ResponseReturnValue:
                     try:
                         content = zip_file.read(yaml_path).decode('utf-8')
 
+                        png_name = f"{doc_name}.png"
+                        preview_data = None
+                        if png_name in files:
+                            preview_data = zip_file.read(files[png_name])
+                            # Same PNG gate as update_document: these bytes are
+                            # served as image/png later. Validating before the
+                            # insert keeps a bad preview from half-importing
+                            # the entry.
+                            decode_png(preview_data)
+
                         # Atomic create+content insert: a mid-import failure must
                         # not leave a committed empty-content document behind.
                         uuid = doc_store.import_document(doc_name, user["id"], content)
 
-                        png_name = f"{doc_name}.png"
-                        if png_name in files:
-                            png_path = files[png_name]
-                            preview_data = zip_file.read(png_path)
+                        if preview_data is not None:
                             doc_store.store_preview_image(uuid, preview_data)
 
                         imported_count += 1

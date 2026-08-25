@@ -53,3 +53,67 @@ def test_failed_content_write_leaves_no_orphan_row(authed_client, pg_dsn, monkey
         assert cursor.fetchone()[0] == 0
     finally:
         db.close()
+
+
+def _image_bytes(fmt):
+    from io import BytesIO
+    from PIL import Image
+
+    img = Image.new("RGB", (10, 10), color="red")
+    buf = BytesIO()
+    img.save(buf, format=fmt)
+    return buf.getvalue()
+
+
+def test_restore_rejects_non_png_preview(authed_client, pg_dsn):
+    """A .png entry holding other codecs fails the entry before any write.
+
+    Thumbnails are served with a hardcoded image/png content type, so restored
+    bytes must pass the same PNG gate as the update route; validating before
+    the insert keeps a bad preview from half-importing the document.
+    """
+    payload = _zip_bytes([
+        ("admin/badpreview.yaml", "name: bad\n"),
+        ("admin/badpreview.png", _image_bytes("JPEG")),
+    ])
+    resp = authed_client.post(
+        "/api/admin/import-backup",
+        data={"file": (payload, "backup.zip")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = json.loads(resp.data)
+    assert body["imported_count"] == 0
+    assert body["skipped_count"] == 1
+
+    db = make_db(pg_dsn)
+    try:
+        cursor = db.execute("SELECT COUNT(*) FROM documents")
+        assert cursor.fetchone()[0] == 0
+    finally:
+        db.close()
+
+
+def test_restored_preview_is_servable_as_png(authed_client):
+    """A genuine PNG in the archive imports and serves as image/png."""
+    png_bytes = _image_bytes("PNG")
+    payload = _zip_bytes([
+        ("admin/goodpreview.yaml", "name: good\n"),
+        ("admin/goodpreview.png", png_bytes),
+    ])
+    resp = authed_client.post(
+        "/api/admin/import-backup",
+        data={"file": (payload, "backup.zip")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = json.loads(resp.data)
+    assert body["imported_count"] == 1
+
+    listing = authed_client.get("/api/documents").get_json()["documents"]
+    uuid = next(d["uuid"] for d in listing if d["name"] == "goodpreview")
+
+    thumb = authed_client.get(f"/api/documents/{uuid}/thumbnail")
+    assert thumb.status_code == 200
+    assert thumb.content_type == "image/png"
+    assert thumb.data == png_bytes
