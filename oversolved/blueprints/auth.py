@@ -58,6 +58,7 @@ def _user_response(user: dict) -> dict:
 
 
 @auth_bp.route("/login", methods=["POST"])
+@require_csrf
 @require_json
 def login():
     client_ip = request.remote_addr or "unknown"
