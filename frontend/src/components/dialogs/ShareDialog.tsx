@@ -14,6 +14,11 @@ interface ShareDialogProps {
   onClose: () => void
 }
 
+// A user-row must carry a username: per the adapter contract a falsy username
+// targets the document-wide LINK share, so a malformed row must surface an
+// error here instead of silently revoking/regrading link sharing.
+const NO_USERNAME_ERROR = 'Malformed share row: no username'
+
 export default function ShareDialog({ isOpen, documentUuid, documentName, ownerUsername, isOwner, onClose }: ShareDialogProps) {
   const [shareUsername, setShareUsername] = useState('')
   const [sharePermission, setSharePermission] = useState<'view' | 'edit'>('view')
@@ -61,6 +66,10 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
 
   const handleRemoveShare = async (username: string | null) => {
     if (!backendBundle.sharing) return
+    if (username == null) {
+      setError(NO_USERNAME_ERROR)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -173,6 +182,10 @@ export default function ShareDialog({ isOpen, documentUuid, documentName, ownerU
                           value={share.permission}
                           onChange={async e => {
                             if (!backendBundle.sharing) return
+                            if (share.username == null) {
+                              setError(NO_USERNAME_ERROR)
+                              return
+                            }
                             setLoading(true)
                             setError(null)
                             try {

@@ -256,4 +256,49 @@ describe('ShareDialog', () => {
       )
     })
   })
+
+  it('refuses to remove a user row with a null username and shows an error instead', async () => {
+    // The table filters on shared_with_user_id, not username, so a malformed
+    // user-row carrying a null username still renders a remove button. The
+    // adapter contract treats a falsy username as "revoke the LINK share",
+    // so dispatching that row would revoke document-wide sharing; it must
+    // surface an error and hit the API zero times instead.
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/documents/doc-1/shares') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            shares: [
+              { id: 1, username: null, permission: 'view', shared_with_user_id: 3 },
+            ],
+          }),
+        } as Response)
+      }
+      return Promise.resolve({ ok: false, status: 404 } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <ShareDialog
+        isOpen
+        documentUuid="doc-1"
+        documentName="TestDoc"
+        ownerUsername="TestUser"
+        isOwner
+        onClose={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Remove share')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTitle('Remove share'))
+
+    const unshareCalls = fetchMock.mock.calls.filter(
+      ([url]) => url === '/api/documents/doc-1/share',
+    )
+    expect(unshareCalls).toHaveLength(0)
+    expect(await screen.findByText('Malformed share row: no username')).toBeInTheDocument()
+  })
 })
