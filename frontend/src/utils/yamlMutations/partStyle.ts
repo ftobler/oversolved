@@ -221,6 +221,21 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
           feature.revolve.sketch = feature.revolve.sketch ? [feature.revolve.sketch] : []
         }
         arr = feature.revolve.sketch
+      } else if (feature.sweep?.sketch !== undefined) {
+        if (!Array.isArray(feature.sweep.sketch)) {
+          feature.sweep.sketch = feature.sweep.sketch ? [feature.sweep.sketch] : []
+        }
+        arr = feature.sweep.sketch
+      }
+      break
+    case 'path':
+      // Same normalize-in-place rationale as 'sketch' above: a sweep path may
+      // be stored as a bare string, and the splice needs a live array.
+      if (feature.sweep?.path !== undefined) {
+        if (!Array.isArray(feature.sweep.path)) {
+          feature.sweep.path = feature.sweep.path ? [feature.sweep.path] : []
+        }
+        arr = feature.sweep.path
       }
       break
     default:

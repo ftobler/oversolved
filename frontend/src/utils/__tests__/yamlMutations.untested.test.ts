@@ -514,6 +514,26 @@ describe('applyReorderPickField', () => {
     expect(doc.features![0].revolve!.sketch).toEqual(['s2', 's1'])
   })
 
+  it('reorders sweep profile sketches', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['s1', 's2', 's3'], path: ['p1'] } }] }
+    applyReorderPickField(doc, 'sw1', 'sketch', 0, 2)
+    expect(doc.features![0].sweep!.sketch).toEqual(['s2', 's3', 's1'])
+  })
+
+  it('reorders sweep paths', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'sw2', kind: 'sweep', sweep: { sketch: ['s1'], path: ['p1', 'p2', 'p3'] } }] }
+    applyReorderPickField(doc, 'sw2', 'path', 2, 0)
+    expect(doc.features![0].sweep!.path).toEqual(['p3', 'p1', 'p2'])
+  })
+
+  it('leaves sweep picks untouched when the requested order already holds', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'sw5', kind: 'sweep', sweep: { sketch: ['s1', 's2'], path: ['p1'] } }] }
+    applyReorderPickField(doc, 'sw5', 'sketch', 1, 1)
+    applyReorderPickField(doc, 'sw5', 'path', 0, 0)
+    expect(doc.features![0].sweep!.sketch).toEqual(['s1', 's2'])
+    expect(doc.features![0].sweep!.path).toEqual(['p1'])
+  })
+
   it('normalizes a bare-string extrude sketch onto the live document instead of a throwaway array', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext2', kind: 'extrude', extrude: { sketch: 's1', distance: 10, direction: 'normal' } }] }
     applyReorderPickField(doc, 'ext2', 'sketch', 0, 0)
@@ -524,6 +544,18 @@ describe('applyReorderPickField', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'rev2', kind: 'revolve', revolve: { sketch: 's1', angle: 90, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] } }] }
     applyReorderPickField(doc, 'rev2', 'sketch', 0, 0)
     expect(doc.features![0].revolve!.sketch).toEqual(['s1'])
+  })
+
+  it('normalizes a bare-string sweep sketch onto the live document instead of a throwaway array', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'sw3', kind: 'sweep', sweep: { sketch: 's1', path: ['p1'] } }] }
+    applyReorderPickField(doc, 'sw3', 'sketch', 0, 0)
+    expect(doc.features![0].sweep!.sketch).toEqual(['s1'])
+  })
+
+  it('normalizes a bare-string sweep path onto the live document instead of a throwaway array', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'sw4', kind: 'sweep', sweep: { sketch: ['s1'], path: 'p1' } }] }
+    applyReorderPickField(doc, 'sw4', 'path', 0, 0)
+    expect(doc.features![0].sweep!.path).toEqual(['p1'])
   })
 
   it('no-ops for unknown feature id', () => {
