@@ -263,8 +263,9 @@ export interface OccWireExplorer extends OccDisposable {
   Current(): OccShape
 }
 
-/** gp_Ax3 read accessors (a plane's coordinate frame). */
-export interface OccAx3 {
+/** gp_Ax3 read accessors (a plane's coordinate frame). By-value embind return:
+ *  each Position()/accessor proxy owns WASM memory and must be deleted. */
+export interface OccAx3 extends OccDisposable {
   Location(): OccXYZ
   XDirection(): OccXYZ
   YDirection(): OccXYZ
@@ -334,7 +335,9 @@ export interface OccSubShape extends OccDisposable {
   HashCode(upperBound: number): number
 }
 
-export interface OccAxisDir {
+/** gp_Ax1 read accessors (gp_Circle/gp_Ellipse .Axis()/.XAxis()). By-value
+ *  embind return: the proxy owns WASM memory and must be deleted. */
+export interface OccAxisDir extends OccDisposable {
   Direction(): OccXYZ
 }
 

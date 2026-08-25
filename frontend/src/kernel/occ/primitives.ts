@@ -246,7 +246,13 @@ function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]
   for (const e of edges) {
     const singleBuilder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
     singleBuilder.Add_1(e)
-    sfw.Load_1(singleBuilder.Wire())
+    // Wire() is a by-value shape the fixer copies on Load: drop it right after.
+    const w = singleBuilder.Wire()
+    try {
+      sfw.Load_1(w)
+    } finally {
+      w.delete()
+    }
   }
   sfw.SetPrecision(WIRE_HEAL_TOL)
   sfw.FixReorder_1()
@@ -407,7 +413,9 @@ export function faceCentroid(oc: OccModule, scope: DisposeScope, face: OccShape)
   const props = scope.track(new oc.GProp_GProps_1())
   oc.BRepGProp.SurfaceProperties_1(face, props, false, false)
   const c = props.CentreOfMass()
-  return [c.X(), c.Y(), c.Z()]
+  const out: Vec3 = [c.X(), c.Y(), c.Z()]
+  c.delete()
+  return out
 }
 
 export function faceArea(oc: OccModule, scope: DisposeScope, face: OccShape): number {
@@ -425,7 +433,9 @@ export function solidCentroid(oc: OccModule, scope: DisposeScope, solid: OccShap
   const props = scope.track(new oc.GProp_GProps_1())
   oc.BRepGProp.VolumeProperties_1(solid, props, true, false, false)
   const c = props.CentreOfMass()
-  return [c.X(), c.Y(), c.Z()]
+  const out: Vec3 = [c.X(), c.Y(), c.Z()]
+  c.delete()
+  return out
 }
 
 export function faceSurfaceType(oc: OccModule, scope: DisposeScope, face: OccShape): SurfaceType {
@@ -478,7 +488,9 @@ export function faceNormal(oc: OccModule, scope: DisposeScope, face: OccShape): 
   const props = scope.track(new oc.BRepLProp_SLProps_1(adaptor, u, v, 1, 1e-9))
   const n = props.Normal()
   const sign = isReversed(oc, face) ? -1 : 1
-  return [n.X() * sign, n.Y() * sign, n.Z() * sign]
+  const out: Vec3 = [n.X() * sign, n.Y() * sign, n.Z() * sign]
+  n.delete()
+  return out
 }
 
 /**
@@ -510,42 +522,69 @@ export function faceSurfaceFrame(oc: OccModule, scope: DisposeScope, face: OccSh
   const S = oc.GeomAbs_SurfaceType
   if (t === S.GeomAbs_Cylinder.value) {
     const cyl = scope.track(adaptor.Cylinder())
-    const axis = cyl.Axis().Direction()
-    const origin = cyl.Position().Location()
-    return {
-      axis: [axis.X(), axis.Y(), axis.Z()],
-      origin: [origin.X(), origin.Y(), origin.Z()],
+    // Every accessor below returns a fresh by-value gp_* proxy; read the
+    // components, drop the proxies, keep the numbers.
+    const axis = cyl.Axis()
+    const dir = axis.Direction()
+    const pos = cyl.Position()
+    const loc = pos.Location()
+    const out: SurfaceFrame = {
+      axis: [dir.X(), dir.Y(), dir.Z()],
+      origin: [loc.X(), loc.Y(), loc.Z()],
       radius: cyl.Radius(),
     }
+    loc.delete()
+    pos.delete()
+    dir.delete()
+    axis.delete()
+    return out
   }
   if (t === S.GeomAbs_Cone.value) {
     const cone = scope.track(adaptor.Cone())
-    const axis = cone.Axis().Direction()
-    const origin = cone.Position().Location()
-    return {
-      axis: [axis.X(), axis.Y(), axis.Z()],
-      origin: [origin.X(), origin.Y(), origin.Z()],
+    const axis = cone.Axis()
+    const dir = axis.Direction()
+    const pos = cone.Position()
+    const loc = pos.Location()
+    const out: SurfaceFrame = {
+      axis: [dir.X(), dir.Y(), dir.Z()],
+      origin: [loc.X(), loc.Y(), loc.Z()],
       radius: cone.RefRadius(),
     }
+    loc.delete()
+    pos.delete()
+    dir.delete()
+    axis.delete()
+    return out
   }
   if (t === S.GeomAbs_Sphere.value) {
     const sph = scope.track(adaptor.Sphere())
-    const origin = sph.Position().Location()
-    return {
+    const pos = sph.Position()
+    const loc = pos.Location()
+    const out: SurfaceFrame = {
       axis: [0, 0, 1],  // a sphere has no rotation axis; [0,0,1] is a convention only
-      origin: [origin.X(), origin.Y(), origin.Z()],
+      origin: [loc.X(), loc.Y(), loc.Z()],
       radius: sph.Radius(),
     }
+    loc.delete()
+    pos.delete()
+    return out
   }
   if (t === S.GeomAbs_Torus.value) {
     const tor = scope.track(adaptor.Torus())
-    const axis = tor.Axis().Direction()
-    const origin = tor.Position().Location()
-    return {
-      axis: [axis.X(), axis.Y(), axis.Z()],
-      origin: [origin.X(), origin.Y(), origin.Z()],
+    const axis = tor.Axis()
+    const dir = axis.Direction()
+    const pos = tor.Position()
+    const loc = pos.Location()
+    const out: SurfaceFrame = {
+      axis: [dir.X(), dir.Y(), dir.Z()],
+      origin: [loc.X(), loc.Y(), loc.Z()],
       radius: tor.MajorRadius(),
     }
+    loc.delete()
+    pos.delete()
+    dir.delete()
+    axis.delete()
+    return out
   }
   return null
 }
@@ -574,6 +613,8 @@ export function edgeToGeom(
     const ep = ad.Value(u1)
     const s: Vec3 = [sp.X(), sp.Y(), sp.Z()]
     const e: Vec3 = [ep.X(), ep.Y(), ep.Z()]
+    sp.delete()
+    ep.delete()
     // type_order 0 keeps straight edges before curved (fillet-arc-stable indices).
     return {
       ed: { kind: 'line', start: s, end: e },
@@ -583,13 +624,22 @@ export function edgeToGeom(
 
   if (t === oc.GeomAbs_CurveType.GeomAbs_Circle.value) {
     const circ = scope.track(ad.Circle())
+    // Location/Axis/XAxis each hand back a fresh by-value proxy: read the
+    // components, drop the proxies, keep the numbers.
     const c = circ.Location()
-    const axis = circ.Axis().Direction()
-    const xdir = circ.XAxis().Direction()
+    const ax1 = circ.Axis()
+    const axis = ax1.Direction()
+    const xax1 = circ.XAxis()
+    const xdir = xax1.Direction()
     const radius = circ.Radius()
     const center: Vec3 = [c.X(), c.Y(), c.Z()]
     const ax: Vec3 = [axis.X(), axis.Y(), axis.Z()]
     const xd: Vec3 = [xdir.X(), xdir.Y(), xdir.Z()]
+    axis.delete()
+    ax1.delete()
+    xdir.delete()
+    xax1.delete()
+    c.delete()
     const span = u1 - u0
     const isFull = Math.abs(Math.abs(span) - TWO_PI) < CIRCLE_TOL || Math.abs(span) < CIRCLE_TOL
     const kind: 'circle' | 'arc' = isFull ? 'circle' : 'arc'
@@ -607,13 +657,20 @@ export function edgeToGeom(
     // ancestry queries); see edgeGeomHashCoupling.test.ts.
     const el = scope.track(ad.Ellipse())
     const c = el.Location()
-    const axis = el.Axis().Direction()
-    const xdir = el.XAxis().Direction()
+    const ax1 = el.Axis()
+    const axis = ax1.Direction()
+    const xax1 = el.XAxis()
+    const xdir = xax1.Direction()
     const a = el.MajorRadius()
     const b = el.MinorRadius()
     const center: Vec3 = [c.X(), c.Y(), c.Z()]
     const ax: Vec3 = [axis.X(), axis.Y(), axis.Z()]
     const xd: Vec3 = [xdir.X(), xdir.Y(), xdir.Z()]
+    axis.delete()
+    ax1.delete()
+    xdir.delete()
+    xax1.delete()
+    c.delete()
     return {
       ed: { kind: 'ellipse', center, a, b, axis: ax, x_axis: xd, angle_start: u0, angle_end: u1 },
       // u0/u1 distinguish a partial elliptical arc from a full ellipse and keep
@@ -630,6 +687,7 @@ export function edgeToGeom(
     const u = u0 + ((u1 - u0) * i) / N
     const p = ad.Value(u)
     points.push([p.X(), p.Y(), p.Z()])
+    p.delete()
   }
   const mid = points[N / 2]
   return {
@@ -724,6 +782,7 @@ export function readSolidVertices(oc: OccModule, scope: DisposeScope, solid: Occ
     if (!dedup.add(v)) continue
     const p = oc.BRep_Tool.Pnt(v)
     out.push([p.X(), p.Y(), p.Z()])
+    p.delete()
   }
   return out
 }
@@ -758,6 +817,7 @@ export function readEdgeSamplePoints(
       const u = u0 + ((u1 - u0) * i) / segments
       const p = ad.Value(u)
       out.push([p.X(), p.Y(), p.Z()])
+      p.delete()
     }
   }
   return out
