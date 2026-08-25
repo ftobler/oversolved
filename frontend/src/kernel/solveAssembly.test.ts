@@ -14,18 +14,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } from './solveAssembly'
-import { bundleCachePut, bundleCacheGet, bundleCacheGetStale, resetBundleDbConnection } from './bundleCache'
+import { bundleCachePut, bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, resetBundleDbConnection } from './bundleCache'
 
-// Wraps the real bundleCacheGet/bundleCacheGetStale in spies (delegating to the
-// actual implementations) so the Stage F test below can assert call count
-// without disturbing the fake-indexeddb-backed behaviour every other test
-// relies on.
+// Wraps the real bundleCache functions in spies (delegating to the actual
+// implementations) so tests can assert call counts or force rejections without
+// disturbing the fake-indexeddb-backed behaviour every other test relies on.
 vi.mock('./bundleCache', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./bundleCache')>()
   return {
     ...actual,
     bundleCacheGet: vi.fn(actual.bundleCacheGet),
     bundleCacheGetStale: vi.fn(actual.bundleCacheGetStale),
+    bundleCacheLatestRev: vi.fn(actual.bundleCacheLatestRev),
+    bundleCachePut: vi.fn(actual.bundleCachePut),
   }
 })
 import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/assemblyBuiltins'
@@ -1002,6 +1003,74 @@ describe('solveAssembly', () => {
   })
 
   // ─── error handling ───
+
+  it('degrades a rejecting bundle cache read to the cold rebuild path and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { relay, partDocs } = makeRelay()
+      partDocs.set('doc-a', { kind: 'part', features: [] })
+      vi.mocked(bundleCacheGet).mockRejectedValueOnce(new Error('quota exceeded'))
+
+      const parts = [
+        { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      ]
+      const result = await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+
+      // The solve itself succeeds via the relayed rebuild; an IndexedDB
+      // failure must never surface as ok:false after that build was paid for.
+      expect(result.transforms['p1']).toEqual(identityTransform())
+      expect(result.bodies['p1']).toHaveLength(1)
+      expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, expect.any(Object))
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0][0])).toContain('degrading to a miss')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('keeps the solved assembly when the bundle cache write fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { relay, partDocs } = makeRelay()
+      partDocs.set('doc-a', { kind: 'part', features: [] })
+      vi.mocked(bundleCachePut).mockRejectedValueOnce(new Error('quota exceeded'))
+
+      const parts = [
+        { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      ]
+      const result = await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+
+      expect(result.transforms['p1']).toEqual(identityTransform())
+      expect(result.bodies['p1']).toHaveLength(1)
+      // The write failure costs one cold rebuild later, not this solve.
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0][0])).toContain('put failed')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('skips anchor migration without failing when the migration lookup rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { relay, partDocs } = makeRelay()
+      partDocs.set('doc-a', { kind: 'part', features: [] })
+      await bundleCachePut(makeDeterministicBundle('doc-a', 3))
+      vi.mocked(bundleCacheLatestRev).mockRejectedValueOnce(new Error('db closed'))
+
+      const parts = [
+        { handle: 'p1', doc_id: 'doc-a', doc_rev: 800, transform: identityTransform() },
+      ]
+      const result = await solveAssembly(parts, { 'doc-a': 800 }, [], relay, makeEchoSolver())
+
+      // No migration lookup ran; deterministic ids make the fresh build's
+      // anchors correct anyway.
+      expect(result.transforms['p1']).toEqual(identityTransform())
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
 
   it('returns seed transforms when solver is null', async () => {
     const { relay, partDocs } = makeRelay()

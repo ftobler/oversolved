@@ -327,6 +327,31 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
 
 // ─── Main orchestration ───
 
+// Cache chatter stays dev/test-only: a quota blip (private window, storage
+// pressure) is expected noise. A bundle is a derivable artifact, the cold
+// rebuild below is the cache-miss path anyway, so an IndexedDB failure must
+// degrade to that path, never fail a solve whose relayed build already paid.
+const WARN_CACHE_FAILURES = import.meta.env?.DEV || import.meta.env?.MODE === 'test'
+
+async function cachedOrUndefined<T>(what: string, op: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await op()
+  } catch (e) {
+    if (WARN_CACHE_FAILURES) console.warn(`bundle cache ${what} failed; degrading to a miss`, e)
+    return undefined
+  }
+}
+
+// Best effort like the late-relay salvage path: a failed write costs one cold
+// rebuild later, surfacing it as a solve failure would cost the whole solve.
+async function putBundleBestEffort(bundle: PartBundle): Promise<void> {
+  try {
+    await bundleCachePut(bundle)
+  } catch (e) {
+    if (WARN_CACHE_FAILURES) console.warn('bundle cache put failed; continuing uncached', e)
+  }
+}
+
 export async function solveAssembly(
   parts: { handle: string; doc_id: string; doc_rev: number; transform: Transform3D; fixed?: boolean }[],
   revs: Record<string, number>,
@@ -344,7 +369,7 @@ export async function solveAssembly(
     const currentRev = revs[part.doc_id] ?? part.doc_rev
 
     // Path 1: cache hit
-    let bundle = await bundleCacheGet(part.doc_id, currentRev)
+    let bundle = await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentRev))
     // A bundle cached before entityAnchors was introduced carries
     // no per-body entity anchor index; its vertices, edges and face mate refs
     // are all invisible to the assembly pick pass. Treat it as a miss so the
@@ -371,7 +396,7 @@ export async function solveAssembly(
     // get); it replaces a downward scan that used to issue up to
     // `currentRev - 1` separate `bundleCacheGet` transactions.
     let prevBundle: { anchors: Record<string, Anchor> } | undefined
-    const latestCachedRev = await bundleCacheLatestRev(part.doc_id)
+    const latestCachedRev = await cachedOrUndefined('latest-rev lookup', () => bundleCacheLatestRev(part.doc_id))
     if (latestCachedRev !== undefined && latestCachedRev <= currentRev) {
       // Read the newest cached bundle even when it reads back as a
       // schema/fingerprint miss (a cache wipe or schema bump turns the bundle
@@ -380,12 +405,12 @@ export async function solveAssembly(
       // source of the old random-id lineage the migration chain must preserve.
       // Deterministic anchor ids make this a no-op for new documents; it exists
       // for documents whose mate refs predate them.
-      const cached = await bundleCacheGetStale(part.doc_id, latestCachedRev)
+      const cached = await cachedOrUndefined('stale read', () => bundleCacheGetStale(part.doc_id, latestCachedRev))
       if (cached) prevBundle = { anchors: cached.anchors }
     }
     if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
 
-    await bundleCachePut(bundle)
+    await putBundleBestEffort(bundle)
     partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
     bodyMeshes.set(part.handle, bundle.bodies)
     handleIndex++
