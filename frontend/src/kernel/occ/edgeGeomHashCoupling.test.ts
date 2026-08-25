@@ -23,7 +23,8 @@ import { edgeGeometryHash } from '@/kernel/geomHash'
 import type { OccModule, OccShape } from '@/kernel/occ/occTypes'
 import type { DisposeScope } from '@/kernel/occ/disposeScope'
 
-const xyz = (x: number, y: number, z: number) => ({ X: () => x, Y: () => y, Z: () => z })
+// By-value gp_* proxies: edgeToGeom reads then deletes each one it gets back.
+const xyz = (x: number, y: number, z: number) => ({ X: () => x, Y: () => y, Z: () => z, delete: () => {} })
 
 const LINE = { value: 1 }
 const CIRCLE = { value: 2 }
@@ -42,13 +43,14 @@ function ellipseEdgeOcc(center: [number, number, number], a: number, b: number):
     Value: (u: number) => xyz(center[0] + a * Math.cos(u), center[1] + b * Math.sin(u), center[2]),
     Circle: () => { throw new Error('not a circle') },
     // Used only if an edgeToGeom ellipse arm is (re-)added; present so that path
-    // fails on the hash-collision assertion, not on a missing accessor.
+    // fails on the hash-collision assertion, not on a missing accessor. The
+    // frame accessors return by-value proxies too, hence their delete().
     Ellipse: () => ({
       Location: () => xyz(center[0], center[1], center[2]),
       MajorRadius: () => a,
       MinorRadius: () => b,
-      Axis: () => ({ Direction: () => xyz(0, 0, 1) }),
-      XAxis: () => ({ Direction: () => xyz(1, 0, 0) }),
+      Axis: () => ({ Direction: () => xyz(0, 0, 1), delete: () => {} }),
+      XAxis: () => ({ Direction: () => xyz(1, 0, 0), delete: () => {} }),
       dispose: () => {},
     }),
     dispose: () => {},

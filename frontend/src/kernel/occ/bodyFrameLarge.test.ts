@@ -66,7 +66,8 @@ function stubOcc(vertices: number, edges: number): { oc: OccModule; solid: OccSh
       Edge_1: (s: StubShape) => stubSub(s),
     },
     BRep_Tool: {
-      Pnt: (v: StubShape) => ({ X: () => v.pt[0], Y: () => v.pt[1], Z: () => v.pt[2] }),
+      // By-value gp_Pnt proxy: the reader deletes it after reading.
+      Pnt: (v: StubShape) => ({ X: () => v.pt[0], Y: () => v.pt[1], Z: () => v.pt[2], delete: (): void => {} }),
     },
     // Each edge runs one unit along +z from its base point, so the edge samples
     // own the z extent outright and never disturb the vertices' x/y box.
@@ -78,7 +79,7 @@ function stubOcc(vertices: number, edges: number): { oc: OccModule; solid: OccSh
       LastParameter(): number { return 1 }
       Value(u: number) {
         const p = this.e.pt
-        return { X: () => p[0], Y: () => p[1], Z: () => p[2] + u }
+        return { X: () => p[0], Y: () => p[1], Z: () => p[2] + u, delete: (): void => {} }
       }
       delete(): void {}
     },
