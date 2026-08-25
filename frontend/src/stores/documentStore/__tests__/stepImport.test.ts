@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { parse as parseYaml } from 'yaml'
-import { buildStepContent, importStepFile } from '../stepImport'
+import { buildStepContent, importStepFile, stepImportLimitError, MAX_STEP_IMPORT_BYTES } from '../stepImport'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
 import { resetFakeIndexedDb } from './fakeIndexedDb'
 import { resetDbConnection } from '../idb'
@@ -66,5 +66,25 @@ describe('importStepFile', () => {
     const file = new File(['ISO-10303-21;'], 'bracket.step')
     await expect(importStepFile(store, file)).rejects.toThrow(/quota/)
     expect(await store.list()).toHaveLength(0)
+  })
+
+  it('rejects a file over the size cap before any store call', async () => {
+    const store = new IndexedDbDocumentStore()
+    const createSpy = vi.spyOn(store, 'create')
+    const file = new File([new Uint8Array(MAX_STEP_IMPORT_BYTES + 1)], 'big.step')
+    await expect(importStepFile(store, file)).rejects.toThrow(/too large/)
+    // The guard fires before the expensive read, so nothing is created either.
+    expect(createSpy).not.toHaveBeenCalled()
+    expect(await store.list()).toHaveLength(0)
+  })
+})
+
+describe('stepImportLimitError', () => {
+  it('accepts a file exactly at the cap', () => {
+    expect(stepImportLimitError(MAX_STEP_IMPORT_BYTES)).toBeNull()
+  })
+
+  it('reports an oversized file with both sizes', () => {
+    expect(stepImportLimitError(MAX_STEP_IMPORT_BYTES + 1)).toMatch(/75\.0 MB/)
   })
 })

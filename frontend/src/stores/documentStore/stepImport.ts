@@ -11,6 +11,19 @@ import type { DocumentStore } from './types'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { applyAddImportStep, randomId } from '@/utils/yamlMutations'
 
+// Calibration: app.py caps HTTP bodies at MAX_CONTENT_LENGTH = 100MB. The STEP
+// bytes ride inside the document YAML as base64 (4/3 inflation), so a raw file
+// above 75MB would produce a document no cloud build could accept on push; the
+// cap also bounds the ~3-4x transient memory fan-out of read + encode + clone.
+export const MAX_STEP_IMPORT_BYTES = 75 * 1024 * 1024
+
+/** Human-readable reason a file of this size cannot be imported, or null if it fits. */
+export function stepImportLimitError(sizeBytes: number): string | null {
+  if (sizeBytes <= MAX_STEP_IMPORT_BYTES) return null
+  const mb = (n: number) => (n / (1024 * 1024)).toFixed(1)
+  return `STEP file is too large (${mb(sizeBytes)} MB); the limit is ${mb(MAX_STEP_IMPORT_BYTES)} MB`
+}
+
 /** Read a Blob/File as base64 (without the data: URL prefix). */
 function readFileAsBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -46,6 +59,10 @@ export function buildStepContent(
  * saving the import-step payload. Returns the new document uuid.
  */
 export async function importStepFile(store: DocumentStore, file: File): Promise<string> {
+  // Size gate before any read: a rejected import must not pay the base64
+  // encode or allocate its fan-out first.
+  const tooBig = stepImportLimitError(file.size)
+  if (tooBig) throw new Error(tooBig)
   const fileData = await readFileAsBase64(file)
   if (!fileData) throw new Error('STEP file is empty')
   const name = file.name.replace(/\.(step|stp)$/i, '')

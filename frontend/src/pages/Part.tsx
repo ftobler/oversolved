@@ -39,7 +39,7 @@ import measurementIcon from '@/assets/icons/measurement.svg'
 import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
 import RenameDialog from '@/components/dialogs/RenameDialog'
-import { suggestedCloneName } from '@/stores/documentStore'
+import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
@@ -651,6 +651,13 @@ export default function Part() {
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
+      // Same up-front cap as the library-level STEP import: reject before the
+      // read pays the base64 encode and its memory fan-out.
+      const tooBig = stepImportLimitError(file.size)
+      if (tooBig) {
+        setError(tooBig)
+        return
+      }
       // Read the STEP bytes in-browser and inline them as base64 file_data; the
       // WASM kernel (occ/stepIo) parses them directly, so import needs no server
       // round-trip and works identically offline.

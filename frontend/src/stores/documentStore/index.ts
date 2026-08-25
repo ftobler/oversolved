@@ -8,7 +8,7 @@ export type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions
 export { resolveBackend } from '@/config/capabilities'
 export { exportBundle, importBundle, buildBundleBytes } from './bundle'
 export { copyDocument, pushDocument, moveDocument, syncAllDocuments } from './transfer'
-export { buildStepContent, importStepFile } from './stepImport'
+export { buildStepContent, importStepFile, stepImportLimitError } from './stepImport'
 export { suggestedCloneName } from './cloneName'
 
 // The two-domain model (doc-domain-move). Home is ALWAYS the local IndexedDB
