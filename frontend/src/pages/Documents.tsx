@@ -388,6 +388,20 @@ export default function Documents() {
     }
   }
 
+  // Leaving a share is a normal store verb, so its failures surface exactly
+  // like the other tile actions: banner, server message, no silent swallow.
+  const handleUnshareConfirm = async () => {
+    const target = unshareTarget
+    if (!target) return
+    setUnshareTarget(null)
+    try {
+      await backendBundle.sharing?.leaveShare(target.uuid)
+      fetchDocuments(activeFilter, debouncedSearch)
+    } catch (e) {
+      setError(parseHttpError(e, 'Failed to remove shared document'))
+    }
+  }
+
   // One flat sidebar of items grouped under "Local" / "Cloud" dividers, replacing
   // the old Local/Cloud toggle: a click picks BOTH the domain and the view (a
   // filter, or the domain's Trash) in one go. The local home is identity-free, so
@@ -599,14 +613,7 @@ export default function Documents() {
             message={`Remove "${unshareTarget?.name}" from your shared documents?`}
             variant="info"
             onClose={() => setUnshareTarget(null)}
-            onConfirm={() => {
-              const u = unshareTarget
-              if (!u) return
-              setUnshareTarget(null)
-              backendBundle.sharing?.leaveShare(u.uuid)
-                .then(() => fetchDocuments(activeFilter, debouncedSearch))
-                .catch(() => undefined)
-            }}
+            onConfirm={handleUnshareConfirm}
             confirmLabel="Remove"
             cancelLabel="Cancel"
           />
