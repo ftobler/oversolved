@@ -3,6 +3,11 @@ import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Sketch, Entity } from '@/types/cad'
 import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
+// Static imports on purpose: a cold dynamic import of the EntityLines module
+// graph inside the first timed test intermittently exceeds the 5s testTimeout
+// when other forks load the machine (seen in full-suite runs).
+import { entityCenter } from '@/utils/geometry/sketchHelpers'
+import { ProjectedEntities } from '@/components/Geometry3D/EntityLines'
 
 vi.mock('@react-three/drei', () => ({
   Line: () => null,
@@ -42,20 +47,17 @@ function dotColor(container: HTMLElement): string | null {
 
 describe('entityCenter', () => {
   it('returns the center of the curves that have one', async () => {
-    const { entityCenter } = await import('@/utils/geometry/sketchHelpers')
     expect(entityCenter(PROJECTED_CIRCLE as unknown as Entity)).toEqual([3, 4])
     expect(entityCenter(PROJECTED_ARC as unknown as Entity)).toEqual([1, 2])
     expect(entityCenter(PROJECTED_ELLIPSE as unknown as Entity)).toEqual([5, 6])
   })
 
   it('returns null for curves with no center', async () => {
-    const { entityCenter } = await import('@/utils/geometry/sketchHelpers')
     expect(entityCenter(PROJECTED_LINE as unknown as Entity)).toBeNull()
     expect(entityCenter(PROJECTED_SPLINE as unknown as Entity)).toBeNull()
   })
 
   it('returns null when the center is not finite', async () => {
-    const { entityCenter } = await import('@/utils/geometry/sketchHelpers')
     const nan = { center: [NaN, 0], radius: 1, projected: true, source: '?c' }
     expect(entityCenter(nan as unknown as Entity)).toBeNull()
   })
@@ -65,7 +67,6 @@ describe('ProjectedEntities center dot', () => {
   it('draws a dot at the center of a projected circle', async () => {
     // Regression: the center was already a registered vertex (pickable and a
     // drag snap target) but nothing drew it, so it only appeared while dragging.
-    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
     const sketch = { c1: PROJECTED_CIRCLE } as unknown as Sketch
     const { container } = render(<ProjectedEntities sketch={sketch} featureId="sketch1" isEditing />)
 
@@ -73,7 +74,6 @@ describe('ProjectedEntities center dot', () => {
   })
 
   it('draws a dot at the center of a projected arc and ellipse', async () => {
-    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
     const sketch = { a1: PROJECTED_ARC, e1: PROJECTED_ELLIPSE } as unknown as Sketch
     const { container } = render(<ProjectedEntities sketch={sketch} featureId="sketch1" isEditing />)
 
@@ -81,7 +81,6 @@ describe('ProjectedEntities center dot', () => {
   })
 
   it('draws no dot for a projected line or spline', async () => {
-    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
     const sketch = { l1: PROJECTED_LINE, s1: PROJECTED_SPLINE } as unknown as Sketch
     const { container } = render(<ProjectedEntities sketch={sketch} featureId="sketch1" isEditing />)
 
@@ -89,7 +88,6 @@ describe('ProjectedEntities center dot', () => {
   })
 
   it('is the projected colour while editing and inactive grey otherwise', async () => {
-    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
     const sketch = { c1: PROJECTED_CIRCLE } as unknown as Sketch
 
     const editing = render(<ProjectedEntities sketch={sketch} featureId="sketch1" isEditing />)
@@ -103,7 +101,6 @@ describe('ProjectedEntities center dot', () => {
   it('hovers and selects on the vertex id the pick layer registers', async () => {
     // buildSketchVertices registers `vertex:<fid>:<eid>:center`, so the drawn dot
     // must answer to that id or render and pick disagree.
-    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
     const sketch = { c1: PROJECTED_CIRCLE } as unknown as Sketch
     const vertId = 'vertex:sketch1:c1:center'
 
