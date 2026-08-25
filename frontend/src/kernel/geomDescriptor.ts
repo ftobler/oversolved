@@ -133,6 +133,17 @@ function edgeAngle(edge: Record<string, unknown>, start: boolean): number {
   return 0
 }
 
+/** Midpoint parameter of an angular range. A normalized straddling range like
+ *  350deg..10deg must average across the seam to 0deg, not to the middle of the
+ *  complement arc; unwrap the end relative to the start using the entity's ccw
+ *  direction, mirroring topologyBoundary/profileLoops. Absent ccw means ccw
+ *  (the sibling default), so contiguous raw params stay untouched. */
+function midAngle(t0: number, t1: number, edge: Record<string, unknown>): number {
+  let end = t1
+  if ((edge["ccw"] as boolean | undefined) ?? true) { if (end < t0) end += 2 * Math.PI } else if (end > t0) end -= 2 * Math.PI
+  return (t0 + end) / 2
+}
+
 /** Point on a conic at parametric angle t: center + a*cos(t)*x + b*sin(t)*y. */
 function conicPoint(
   center: number[],
@@ -193,7 +204,7 @@ export function edgeDescriptorOf(edge: Record<string, unknown>): EdgeDescriptor 
     const xAxis = asVec(edge["x_axis"])
     if (xAxis === null) return null
     const yAxis = cross(axis, xAxis)
-    const mid = (edgeAngle(edge, true) + edgeAngle(edge, false)) / 2
+    const mid = midAngle(edgeAngle(edge, true), edgeAngle(edge, false), edge)
     return {
       kind: "edge",
       edgeKind: "arc",
@@ -224,7 +235,7 @@ export function edgeDescriptorOf(edge: Record<string, unknown>): EdgeDescriptor 
     if (!Number.isFinite(b)) return null
     const xAxis = asVec(edge["x_axis"])
     if (xAxis === null) return null
-    const point = conicPoint(center, xAxis, cross(axis, xAxis), a, b, (t0 + t1) / 2)
+    const point = conicPoint(center, xAxis, cross(axis, xAxis), a, b, midAngle(t0, t1, edge))
     return { kind: "edge", edgeKind: "ellipse", point, axis, scalar: a }
   }
   // Spline and anything else that carries sampled points: mean point + chord.

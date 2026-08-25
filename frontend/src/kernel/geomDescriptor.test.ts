@@ -76,6 +76,85 @@ describe("edgeDescriptorOf derivation", () => {
     expect(d?.scalar).toBe(2)
   })
 
+  it("contiguous arc keeps the raw-angle mean", () => {
+    // The producer edgeToGeom emits contiguous raw OCC params (u0 <= u1), so a
+    // plain range must anchor exactly where it did before seam handling: the
+    // naive mean of its endpoints.
+    const d30 = edgeDescriptorOf({
+      kind: "arc",
+      center: [0, 0, 0],
+      radius: 2,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start: (30 * Math.PI) / 180,
+      angle_end: (60 * Math.PI) / 180,
+    })
+    // Naive mean of 30..60deg is 45deg: (2*cos45, 2*sin45).
+    expect(d30?.point[0]).toBeCloseTo(Math.SQRT2, 9)
+    expect(d30?.point[1]).toBeCloseTo(Math.SQRT2, 9)
+  })
+
+  it("wrapped arc midpoint crosses the 2*pi seam (350deg..10deg anchors at 0deg)", () => {
+    // A normalized straddling range must average across the seam, not land on
+    // the middle (180deg) of the complement arc.
+    const d = edgeDescriptorOf({
+      kind: "arc",
+      center: [0, 0, 0],
+      radius: 2,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start: (350 * Math.PI) / 180,
+      angle_end: (10 * Math.PI) / 180,
+    })
+    expect(d?.point[0]).toBeCloseTo(2, 6)
+    expect(d?.point[1]).toBeCloseTo(0, 6)
+  })
+
+  it("wrapped degree-keyed arc and clockwise unwrap agree with sibling consumers", () => {
+    // Same straddle via angle_start_deg/angle_end_deg (ccw defaults true).
+    const degD = edgeDescriptorOf({
+      kind: "arc",
+      center: [0, 0, 0],
+      radius: 3,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start_deg: 350,
+      angle_end_deg: 10,
+    })
+    expect(degD?.point[0]).toBeCloseTo(3, 6)
+    expect(degD?.point[1]).toBeCloseTo(0, 6)
+    // ccw=false traverses 10deg down through 0deg to 350deg: the midpoint still
+    // sits at 0deg, which needs the backward unwrap.
+    const cwD = edgeDescriptorOf({
+      kind: "arc",
+      center: [0, 0, 0],
+      radius: 3,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start_deg: 10,
+      angle_end_deg: 350,
+      ccw: false,
+    })
+    expect(cwD?.point[0]).toBeCloseTo(3, 6)
+    expect(cwD?.point[1]).toBeCloseTo(0, 6)
+  })
+
+  it("partial ellipse midpoint crosses the seam too", () => {
+    const d = edgeDescriptorOf({
+      kind: "ellipse",
+      center: [0, 0, 0],
+      a: 4,
+      b: 2,
+      axis: [0, 0, 1],
+      x_axis: [1, 0, 0],
+      angle_start: (350 * Math.PI) / 180,
+      angle_end: (10 * Math.PI) / 180,
+    })
+    // Seam midpoint param 0: point = a*cos(0)*x_axis = (4, 0, 0).
+    expect(d?.point[0]).toBeCloseTo(4, 6)
+    expect(d?.point[1]).toBeCloseTo(0, 6)
+  })
+
   it("two arcs of one circle get different descriptors", () => {
     const base = { kind: "arc", center: [0, 0, 0], radius: 2, axis: [0, 0, 1], x_axis: [1, 0, 0] }
     const a = edgeDescriptorOf({ ...base, angle_start: 0, angle_end: Math.PI })
