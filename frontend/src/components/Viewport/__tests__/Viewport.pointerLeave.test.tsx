@@ -9,6 +9,7 @@ import Viewport from '@/components/Viewport'
 // WebGL renderer the jsdom test env does not have.
 const rubberBand = vi.hoisted(() => ({
   onPointerDown: vi.fn(),
+  onPointerCancel: vi.fn(),
 }))
 
 vi.mock('@/components/Viewport/useRubberBandSelect', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/components/Viewport/useRubberBandSelect', () => ({
     onPointerDown: (...args: unknown[]) => { rubberBand.onPointerDown(...args); return true },
     onPointerMove: () => {},
     onPointerUp: () => {},
+    onPointerCancel: (...args: unknown[]) => { rubberBand.onPointerCancel(...args) },
   }),
 }))
 
@@ -59,8 +61,17 @@ if (typeof window.PointerEvent !== 'function') {
   } as unknown as typeof PointerEvent
 }
 
+// jsdom has no notion of an active pointer, so its setPointerCapture throws
+// InvalidStateError from inside the listener. The Viewport only needs the
+// capture calls to exist; per-test spies below shadow these where asserted.
+const htmlProto = HTMLElement.prototype as unknown as Record<string, (pointerId: number) => unknown>
+htmlProto.setPointerCapture = () => {}
+htmlProto.releasePointerCapture = () => {}
+htmlProto.hasPointerCapture = () => false
+
 beforeEach(() => {
   rubberBand.onPointerDown.mockClear()
+  rubberBand.onPointerCancel.mockClear()
   usePartEditorStore.setState({
     features: [],
     bodies: {},
@@ -116,5 +127,61 @@ describe('Viewport pointer-leave hover clear', () => {
     fireEvent.pointerOut(container.firstChild as Element, { relatedTarget: null })
     fireEvent.pointerDown(container.firstChild as Element, { button: 0, isPrimary: true })
     expect(rubberBand.onPointerDown).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Instance-level stubs shadow whatever pointer-capture support the jsdom
+// element class has, so the assertions observe exactly what Viewport calls.
+function captureStubs(el: Element): {
+  set: ReturnType<typeof vi.fn>
+  release: ReturnType<typeof vi.fn>
+} {
+  const set = vi.fn()
+  const release = vi.fn()
+  ;(el as HTMLElement).setPointerCapture = set
+  ;(el as HTMLElement).releasePointerCapture = release
+  ;(el as HTMLElement).hasPointerCapture = vi.fn(() => false)
+  return { set, release }
+}
+
+describe('Viewport pointer capture for box drags', () => {
+  it('captures the pointer when a rubber-band starts so an off-pane release still lands', () => {
+    const { container } = render(<Viewport />)
+    const el = container.firstChild as Element
+    const { set } = captureStubs(el)
+
+    // A right-button press opens no band and must not capture.
+    fireEvent.pointerDown(el, { button: 2, isPrimary: true })
+    expect(set).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(el, { button: 0, isPrimary: true })
+    expect(set).toHaveBeenCalledWith(0)
+  })
+
+  it('pointercancel drops the band and the pending click gesture', () => {
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    fireEvent.pointerDown(el, { button: 0, isPrimary: true })
+    fireEvent.pointerCancel(el)
+    expect(rubberBand.onPointerCancel).toHaveBeenCalledTimes(1)
+
+    // The cancelled gesture owns nothing: its release must neither reopen the
+    // context menu nor pair with the gesture that never finished.
+    fireEvent.pointerUp(el, { button: 2, isPrimary: true })
+    expect(onRightClick).not.toHaveBeenCalled()
+  })
+
+  it('a completed right-click still opens the context menu', () => {
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    fireEvent.pointerDown(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
+    fireEvent.pointerUp(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
+    expect(onRightClick).toHaveBeenCalledWith([12, 34])
   })
 })

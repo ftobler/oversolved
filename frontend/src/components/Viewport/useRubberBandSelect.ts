@@ -43,6 +43,9 @@ export function useRubberBandSelect(
   onPointerMove: (e: React.PointerEvent) => void
   // Call on the root container's onPointerUp. Commits selection to the store.
   onPointerUp: () => void
+  // Call on the root container's onPointerCancel. Drops the band without
+  // committing, for gestures the browser tore away.
+  onPointerCancel: () => void
 } {
   const [rect, setRect] = useState<RubberBandRect | null>(null)
   const dragging = !!rect
@@ -51,6 +54,15 @@ export function useRubberBandSelect(
   const committedRef = useRef(false)
   const rectRef = useRef<RubberBandRect | null>(null)
   const draggingRef = useRef(false)
+
+  // The one exit every non-committing path shares: a stranded dragging flag
+  // suppresses empty-space deselects and blocks later drags until Escape.
+  const endDrag = useCallback(() => {
+    startRef.current = null
+    rectRef.current = null
+    draggingRef.current = false
+    setRect(null)
+  }, [])
 
   const onPointerDown = useCallback((e: React.PointerEvent, idBufferHitExists: boolean): boolean => {
     // Only left-click on empty space starts a box drag.
@@ -73,6 +85,13 @@ export function useRubberBandSelect(
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!startRef.current || committedRef.current) return
+    // A move with no button held means the release landed where we never saw
+    // it (capture lost, pre-capture strand): drop the band instead of letting
+    // the ghost resume under the free cursor.
+    if (e.buttons === 0) {
+      endDrag()
+      return
+    }
     const canvas = glRef.current?.domElement
     if (!canvas) return
     const canvasRect = canvas.getBoundingClientRect()
@@ -90,27 +109,21 @@ export function useRubberBandSelect(
     const nextRect = { x, y, w, h }
     rectRef.current = nextRect
     setRect(nextRect)
-  }, [glRef])
+  }, [glRef, endDrag])
 
   const onPointerUp = useCallback(() => {
     if (!startRef.current || committedRef.current) return
 
     const currentRect = rectRef.current
     if (!currentRect || (currentRect.w < 4 && currentRect.h < 4)) {
-      startRef.current = null
-      rectRef.current = null
-      draggingRef.current = false
-      setRect(null)
+      endDrag()
       return
     }
 
     const pipeline = getLivePipeline()
     const gl = glRef.current
     if (!pipeline || !gl) {
-      startRef.current = null
-      rectRef.current = null
-      draggingRef.current = false
-      setRect(null)
+      endDrag()
       return
     }
 
@@ -120,10 +133,7 @@ export function useRubberBandSelect(
     // dirty as a transient transition -- close the box, keep the current
     // selection, wait for the next drag.
     if (pipeline.isDirty()) {
-      startRef.current = null
-      rectRef.current = null
-      draggingRef.current = false
-      setRect(null)
+      endDrag()
       return
     }
 
@@ -149,10 +159,7 @@ export function useRubberBandSelect(
       // Same release discipline as every other exit: the box degenerated
       // against the buffer edge (browser zoom under 100%), but the drag is
       // over and a stuck flag would suppress empty-space deselects.
-      startRef.current = null
-      rectRef.current = null
-      draggingRef.current = false
-      setRect(null)
+      endDrag()
       return
     }
 
@@ -195,30 +202,34 @@ export function useRubberBandSelect(
       useSketchEditorStore.getState().setNormalSelection(new Set(keys))
     }
 
-    startRef.current = null
-    rectRef.current = null
-    draggingRef.current = false
-    setRect(null)
-  }, [glRef, consumedLayers])
+    endDrag()
+  }, [glRef, consumedLayers, endDrag])
+
+  // The browser tore the gesture away before any release reached us. Abandon
+  // the band: committing a rect the user never released on would select
+  // whatever happened to sit under the ghost box.
+  const onPointerCancel = useCallback(() => {
+    if (!startRef.current) return
+    endDrag()
+  }, [endDrag])
 
   // Clear drag on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && startRef.current) {
-        startRef.current = null
-        rectRef.current = null
-        draggingRef.current = false
-        setRect(null)
+        endDrag()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [endDrag])
 
   return {
     state: { dragging, rect, isDraggingRef: draggingRef },
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    onPointerCancel,
   }
 }
+

@@ -407,8 +407,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         // Only start rubber-band for non-drawing tools (null = idle select, drag, dimension).
         if (!currentTool || currentTool === 'drag' || currentTool === 'dimension') {
           const started = rubberBand.onPointerDown(e, false)
-          // If started (no hit), don't prevent default, let pointer-up determine click vs drag.
-          void started
+          // Capturing keeps a box drag alive when the cursor grazes the pane
+          // edge and delivers the release wherever it lands; without it an
+          // off-pane release strands the band (and this gesture) until Escape.
+          if (started) e.currentTarget.setPointerCapture(e.pointerId)
         }
       }
     }
@@ -416,6 +418,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     const hadDown = clickGesture.current.state.origin !== null
     const click = clickGesture.current.up(e.clientX, e.clientY)
     // A release with no matching press (the gesture started outside the pane)
@@ -431,6 +434,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       onRightClick([e.clientX, e.clientY])
     }
   }, [onRightClick, rubberBand])
+
+  // The browser tore the gesture away (a touch became a scroll, the pointer
+  // was lost): no pointer-up will follow, so drop the band and the click
+  // gesture here or a stale origin would pair with the NEXT release.
+  const handlePointerCancel = useCallback(() => {
+    clickGesture.current.reset()
+    rubberBand.onPointerCancel()
+  }, [rubberBand])
 
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
   const showFront  = isActive('Front',  features, rollbackPosition, visibleFeatures)
@@ -550,6 +561,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerMove={handlePointerMove}
+      onPointerCancel={handlePointerCancel}
       onPointerLeave={handlePointerLeave}
       onContextMenu={handleContextMenu}
     >

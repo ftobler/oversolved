@@ -81,8 +81,10 @@ function glForPaint(paint: (col: number, row: number) => number | null) {
   return { gl, readRenderTargetPixels }
 }
 
-function pointerEvent(x: number, y: number): React.PointerEvent {
-  return { clientX: x, clientY: y, button: 0 } as unknown as React.PointerEvent
+function pointerEvent(x: number, y: number, buttons = 1): React.PointerEvent {
+  // buttons defaults to pressed-left: the value every real pointermove while
+  // dragging carries. Tests pass 0 explicitly for the stranded-release case.
+  return { clientX: x, clientY: y, button: 0, buttons } as unknown as React.PointerEvent
 }
 
 function resetStore(): void {
@@ -305,6 +307,72 @@ describe('useRubberBandSelect degenerate-rect exit', () => {
         result.current.onPointerUp()
       })
       expect(result.current.state.isDraggingRef.current).toBe(false)
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+})
+
+describe('useRubberBandSelect off-pane release guards', () => {
+  // Manual drive, not sweepWith: these tests need the drag to be LIVE when
+  // the stranded move or the cancel arrives.
+  function liveDrag(entityId: number) {
+    const { gl } = glForEntityId(entityId)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const result = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS)).result
+    getLivePipeline()?.target.markClean()
+    return result
+  }
+
+  it('drops a stranded band when a move arrives with no button held', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const entityId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
+      useSketchEditorStore.getState().toggleNormalSelection('sk1/keep')
+      const result = liveDrag(entityId)
+      act(() => {
+        expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+        result.current.onPointerMove(pointerEvent(40, 40))
+        expect(result.current.state.isDraggingRef.current).toBe(true)
+        // The release landed outside the pane, so moves keep arriving with
+        // the pre-capture ghost box under the free cursor. That is the strand.
+        result.current.onPointerMove(pointerEvent(60, 60, 0))
+      })
+      expect(result.current.state.isDraggingRef.current).toBe(false)
+      expect(result.current.state.dragging).toBe(false)
+      // A late up after the drop must stay inert, and the old selection must
+      // have survived untouched.
+      act(() => { result.current.onPointerUp() })
+      expect(selectedKeys()).toEqual(['sk1/keep'])
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
+  it('onPointerCancel abandons the band without committing and frees the next drag', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const entityId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
+      const result = liveDrag(entityId)
+      act(() => {
+        expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+        result.current.onPointerMove(pointerEvent(40, 40))
+        result.current.onPointerCancel()
+      })
+      expect(result.current.state.isDraggingRef.current).toBe(false)
+      expect(selectedKeys()).toEqual([])
+      // The gesture the browser tore away must not wedge the hook: the next
+      // press starts a fresh band and commits normally.
+      act(() => {
+        expect(result.current.onPointerDown(pointerEvent(20, 20), false)).toBe(true)
+        result.current.onPointerMove(pointerEvent(60, 60))
+        result.current.onPointerUp()
+      })
+      expect(selectedKeys()).toEqual(['sk1/eB'])
     } finally {
       setLivePipeline(null)
       p.dispose()
