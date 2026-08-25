@@ -89,3 +89,15 @@ Deferred work and accepted limitations go to `feature/backlog.md` (sections: nee
 
 - if something needs temporary files do not use system wide `/tmp` but the project internal `tmp/`.
 - do not access anything outside the project directory.
+
+## Shell scope
+
+- Every command's scope must be obvious at a glance. Pass the explicit
+  working directory (the `workdir` parameter) instead of chaining
+  `cd x && … ; cd .. && …`. A `cd ..` mid-command reads like leaving the
+  project even when it does not, and has been rejected on sight before.
+- This applies to the orchestrator and to every subagent alike: subagents
+  must be told their worktree path up front and keep every call inside it.
+- The shell resets to the repo root between calls; nothing needs a trailing
+  `cd` back. Within one call, prefer two calls with explicit directories
+  over one chained line.
