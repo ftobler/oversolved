@@ -180,7 +180,14 @@ export class IndexedDbDocumentStore implements DocumentStore {
     // list()'s backs, which reject/hide trashed records.
     if (!src || src.deleted_at) throw new Error(`Document not found: ${id}`)
     const { uuid } = await this.create(nameFor(src.name), { is_public: src.is_public })
-    await this.save(uuid, { content: src.content, preview_image: src.preview_image })
+    try {
+      await this.save(uuid, { content: src.content, preview_image: src.preview_image })
+    } catch (err) {
+      // Compensating delete for the non-atomic create+save pair: without it a
+      // failed save strands an empty orphan copy in the library.
+      await this.remove(uuid).catch(() => undefined)
+      throw err
+    }
     return { uuid }
   }
 

@@ -52,6 +52,13 @@ export async function importStepFile(store: DocumentStore, file: File): Promise<
   if (!name) throw new Error('Invalid filename')
   const content = buildStepContent(fileData, randomId(18), file.name)
   const { uuid } = await store.create(name)
-  await store.save(uuid, { content })
+  try {
+    await store.save(uuid, { content })
+  } catch (err) {
+    // Compensating delete for the non-atomic create+save pair: without it a
+    // failed save strands an empty orphan document in the library.
+    await store.remove(uuid).catch(() => undefined)
+    throw err
+  }
   return uuid
 }

@@ -16,7 +16,16 @@ export async function copyDocument(
 ): Promise<{ uuid: string }> {
   const doc = await src.load(id)  // throws on a missing id, propagated to the caller
   const { uuid } = await dest.create(doc.name, { is_public: doc.is_public })
-  await dest.save(uuid, { content: doc.content, preview_image: doc.preview_image })
+  try {
+    await dest.save(uuid, { content: doc.content, preview_image: doc.preview_image })
+  } catch (err) {
+    // Compensating delete: create+save is two store calls, so a failed save
+    // (offline push, quota pressure) would strand an empty husk tile in the
+    // destination library and every retry would duplicate it. Best-effort
+    // rollback; the caller sees the original error, not a delete failure.
+    await dest.remove(uuid).catch(() => undefined)
+    throw err
+  }
   return { uuid }
 }
 

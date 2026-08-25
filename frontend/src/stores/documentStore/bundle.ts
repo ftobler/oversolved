@@ -70,20 +70,30 @@ export async function importBundle(
   const entries = Object.values(zip.files).filter(f => !f.dir)
   const byPath = new Map(entries.map(f => [f.name, f]))
 
-  for (const entry of entries) {
-    if (!entry.name.endsWith('.yaml')) continue
-    const content = await entry.async('string')
-    const slash = entry.name.lastIndexOf('/')
-    const filename = slash >= 0 ? entry.name.slice(slash + 1) : entry.name
-    const dir = slash >= 0 ? entry.name.slice(0, slash + 1) : ''
-    const docName = filename.slice(0, -'.yaml'.length)
+  try {
+    for (const entry of entries) {
+      if (!entry.name.endsWith('.yaml')) continue
+      const content = await entry.async('string')
+      const slash = entry.name.lastIndexOf('/')
+      const filename = slash >= 0 ? entry.name.slice(slash + 1) : entry.name
+      const dir = slash >= 0 ? entry.name.slice(0, slash + 1) : ''
+      const docName = filename.slice(0, -'.yaml'.length)
 
-    const { uuid } = await store.create(docName)
-    let preview_image: string | undefined
-    const png = byPath.get(`${dir}${docName}.png`)
-    if (png) preview_image = await png.async('base64')
-    await store.save(uuid, { content, preview_image })
-    ids.push(uuid)
+      const { uuid } = await store.create(docName)
+      ids.push(uuid)  // tracked before save so rollback covers a mid-entry failure
+      let preview_image: string | undefined
+      const png = byPath.get(`${dir}${docName}.png`)
+      if (png) preview_image = await png.async('base64')
+      await store.save(uuid, { content, preview_image })
+    }
+  } catch (err) {
+    // A multi-entry import is not atomic at the store level: a mid-loop failure
+    // (quota, offline) must not leave the earlier entries behind as a partial
+    // import that a retry would duplicate. Best-effort rollback of everything
+    // created so far, including the failing entry's own husk; the caller sees
+    // the original error.
+    for (const id of ids) await store.remove(id).catch(() => undefined)
+    throw err
   }
   return ids
 }

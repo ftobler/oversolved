@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { parse as parseYaml } from 'yaml'
 import { buildStepContent, importStepFile } from '../stepImport'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
@@ -58,5 +58,13 @@ describe('importStepFile', () => {
     const store = new IndexedDbDocumentStore()
     const file = new File([''], 'empty.step', { type: 'application/step' })
     await expect(importStepFile(store, file)).rejects.toThrow(/empty/)
+  })
+
+  it('leaves no orphan document when the save fails after create', async () => {
+    const store = new IndexedDbDocumentStore()
+    vi.spyOn(store, 'save').mockRejectedValue(new Error('quota exceeded'))
+    const file = new File(['ISO-10303-21;'], 'bracket.step')
+    await expect(importStepFile(store, file)).rejects.toThrow(/quota/)
+    expect(await store.list()).toHaveLength(0)
   })
 })

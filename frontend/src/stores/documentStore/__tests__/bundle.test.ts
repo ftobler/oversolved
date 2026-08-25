@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { resetFakeIndexedDb } from './fakeIndexedDb'
 import JSZip from 'jszip'
 import { IndexedDbDocumentStore, LOCAL_OWNER } from '../IndexedDbDocumentStore'
@@ -90,6 +90,26 @@ describe('bundle export/import', () => {
     expect(loaded.name).toBe('Box')
     expect(loaded.content).toBe('features: [server]')
     expect(loaded.preview_image).toBe(btoa('\x89PNG'))
+  })
+
+  it('rolls back every entry created so far when a mid-import save fails', async () => {
+    const zip = new JSZip()
+    zip.file('u/One.yaml', 'features: [1]')
+    zip.file('u/Two.yaml', 'features: [2]')
+    const bytes = await zip.generateAsync({ type: 'uint8array' })
+
+    const store = new IndexedDbDocumentStore()
+    let saves = 0
+    vi.spyOn(store, 'save').mockImplementation(async () => {
+      saves += 1
+      if (saves >= 2) throw new Error('quota exceeded')  // the second entry's save dies
+    })
+
+    await expect(importBundle(store, bytes)).rejects.toThrow(/quota/)
+
+    // Without compensation "One" would survive as a partial import; both
+    // entries must be gone so a retry starts clean.
+    expect(await store.list()).toHaveLength(0)
   })
 
   it('secureFilename mirrors werkzeug for common cases', () => {

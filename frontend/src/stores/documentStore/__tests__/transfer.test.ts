@@ -99,6 +99,30 @@ describe('copyDocument', () => {
   })
 })
 
+// A store whose saves fail (offline push, quota pressure): the compensating
+// delete must leave the destination without a stranded empty document.
+class FailingSaveStore extends FakeStore {
+  failSaves = true
+  async save(id: string, input: SaveInput): Promise<void> {
+    if (this.failSaves) throw new Error('quota exceeded')
+    return super.save(id, input)
+  }
+}
+
+describe('copyDocument failure rollback', () => {
+  it('deletes the created dest doc when its save fails (no orphan)', async () => {
+    const a = new FakeStore('a')
+    const b = new FailingSaveStore('b')
+    a.seed('a-doc', { content: 'profile: square', name: 'Bracket' })
+
+    await expect(copyDocument(a, b, 'a-doc')).rejects.toThrow(/quota/)
+
+    // The create landed, so without compensation an empty husk tile would sit
+    // in the destination library and every retry would duplicate it.
+    expect(await b.list()).toHaveLength(0)
+  })
+})
+
 // A local store that tracks the engine-facing markSynced primitive (as the real
 // IndexedDbDocumentStore does, but it is NOT on the DocumentStore contract).
 class SyncFakeStore extends FakeStore {
