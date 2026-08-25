@@ -24,7 +24,21 @@ pub enum TopologyCodecError {
     /// (NaN params wedged the arc normalization walk once already). This gate
     /// mirrors the flat codec's `CodecError::NonFinite` as the backstop.
     NonFinite,
+    /// More entities than `MAX_ENTITIES`. Mirrors the flat codec's capacity
+    /// philosophy: counts are untrusted, and here the cost of believing them
+    /// is quadratic downstream, so the refusal happens at decode.
+    TooManyEntities,
 }
+
+// Entity-count cap for one topology payload. Calibration: the Node bench
+// tops out at 100 lines, TS regression fixtures use single digits, and real
+// sketches live in the tens-to-low-hundreds -- while the passes below cost
+// O(N^2) pair dispatch plus an O(V) vertex rescan per point. 4096 keeps a
+// ~40x margin over the largest benchmarked sketch (worst case then a few
+// million pairs, seconds not hours) while never biting legitimate work; it
+// follows the same orders-of-magnitude-above-real-use house rule as
+// curve_intersect's NODE_BUDGET / HIT_CAP.
+pub const MAX_ENTITIES: usize = 4_096;
 
 impl From<serde_json::Error> for TopologyCodecError {
     fn from(e: serde_json::Error) -> Self {
@@ -120,6 +134,9 @@ fn reject_non_finite(raw: &[(String, RawGeom)]) -> Result<(), TopologyCodecError
 /// Decode the ordered `[[eid, geom], ...]` payload into classified-ready input.
 pub fn decode_input(bytes: &[u8]) -> Result<Vec<(String, InputEntity)>, TopologyCodecError> {
     let raw: Vec<(String, RawGeom)> = serde_json::from_slice(bytes)?;
+    if raw.len() > MAX_ENTITIES {
+        return Err(TopologyCodecError::TooManyEntities);
+    }
     reject_non_finite(&raw)?;
     Ok(raw.into_iter().map(|(eid, g)| (eid, g.into())).collect())
 }
@@ -310,6 +327,44 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(decode_input(&[0, 1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn entity_list_over_the_cap_is_a_clean_error() {
+        // The downstream passes cost at least O(N^2) in pair dispatch plus an
+        // O(V) vertex rescan per registered point, so a hostile document with
+        // tens of thousands of entities wedges the Worker for minutes to hours
+        // of uninterruptible CPU. Over the cap must decode to an explicit Err.
+        let doc: Vec<_> = (0..=MAX_ENTITIES)
+            .map(|i| {
+                (
+                    format!("e{i}"),
+                    serde_json::json!({"start": [0.0, 0.0], "end": [1.0, 0.0]}),
+                )
+            })
+            .collect();
+        let bytes = serde_json::to_vec(&doc).unwrap();
+        assert!(matches!(
+            decode_input(&bytes),
+            Err(TopologyCodecError::TooManyEntities)
+        ));
+    }
+
+    #[test]
+    fn entity_list_just_under_the_cap_still_decodes() {
+        // The cap sits far above any real sketch; a list at the boundary
+        // itself must pass cleanly so the limit never bites legitimate work.
+        let doc: Vec<_> = (0..MAX_ENTITIES)
+            .map(|i| {
+                (
+                    format!("e{i}"),
+                    serde_json::json!({"start": [0.0, 0.0], "end": [1.0, 0.0]}),
+                )
+            })
+            .collect();
+        let bytes = serde_json::to_vec(&doc).unwrap();
+        let decoded = decode_input(&bytes).expect("at-cap list must decode");
+        assert_eq!(decoded.len(), MAX_ENTITIES);
     }
 
     #[test]
