@@ -380,6 +380,120 @@ describe('useRubberBandSelect off-pane release guards', () => {
   })
 })
 
+describe('useRubberBandSelect commit readback equivalence', () => {
+  // A gl backed by a synthetic framebuffer in TARGET pixel coordinates
+  // (bottom-origin rows, matching readRenderTargetPixels), so a test can
+  // paint exact geometry and the hook's chunked reads slice it faithfully.
+  function glForFramebuffer(w: number, h: number, paint: (col: number, row: number) => number | null) {
+    const fb = new Uint8Array(w * h * 4)
+    for (let row = 0; row < h; row++) {
+      for (let col = 0; col < w; col++) {
+        const id = paint(col, row)
+        const i = (row * w + col) * 4
+        if (id !== null) {
+          fb[i] = (id >> 16) & 0xFF
+          fb[i + 1] = (id >> 8) & 0xFF
+          fb[i + 2] = id & 0xFF
+          fb[i + 3] = 255
+        }
+      }
+    }
+    const readRenderTargetPixels = vi.fn(
+      (_target: unknown, gx: number, gy: number, rw: number, rh: number, buf: Uint8Array) => {
+        for (let r = 0; r < rh; r++) {
+          for (let c = 0; c < rw; c++) {
+            const si = ((gy + r) * w + (gx + c)) * 4
+            const di = (r * rw + c) * 4
+            buf[di] = fb[si]
+            buf[di + 1] = fb[si + 1]
+            buf[di + 2] = fb[si + 2]
+            buf[di + 3] = fb[si + 3]
+          }
+        }
+      },
+    )
+    const canvas = {
+      clientWidth: w,
+      clientHeight: h,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: w, height: h }),
+    } as unknown as HTMLCanvasElement
+    return { gl: { domElement: canvas, readRenderTargetPixels } as unknown as THREE.WebGLRenderer, readRenderTargetPixels }
+  }
+
+  it('a small band selects exactly the entities its pixels touch', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const aId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/lineA')
+      const bId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/lineB')
+      const cId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/outside')
+      // A horizontal stroke and a vertical stroke crossing the band, plus a
+      // speck outside it that must stay unselected. Painted conditions are in
+      // top-origin canvas coords; `ty` converts from framebuffer rows.
+      const { gl } = glForFramebuffer(PIPELINE_W, PIPELINE_H, (col, row) => {
+        const ty = PIPELINE_H - 1 - row
+        if (ty === 20 && col >= 10 && col <= 60) return aId
+        if (col === 30 && ty >= 10 && ty <= 60) return bId
+        if (col >= 80 && col <= 82 && ty >= 80 && ty <= 82) return cId
+        return null
+      })
+      const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+      const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+      getLivePipeline()?.target.markClean()
+      act(() => {
+        result.current.onPointerDown(pointerEvent(10, 10), false)
+        result.current.onPointerMove(pointerEvent(60, 60))
+        result.current.onPointerUp()
+      })
+      expect(selectedKeys().sort()).toEqual(['sk1/lineA', 'sk1/lineB'])
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
+  it('a band over the read budget chunks its reads and still visits every pixel', () => {
+    // 1190x890 device px exceeds BAND_READ_BUDGET_PIXELS, so the commit runs
+    // through planBandReads' chunk path. The isolated 3x3 speck is exactly the
+    // content any strided subsampling would lose; equivalence here pins that
+    // chunking changed the working set only, never the selected set.
+    const W = 1200
+    const H = 900
+    const p = new IdPipeline({ width: W, height: H })
+    setLivePipeline(p)
+    try {
+      const aId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/wideLine')
+      const bId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/tallLine')
+      const cId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/speck')
+      const dId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/outside')
+      // Painted conditions are in top-origin canvas coords; `ty` converts
+      // from framebuffer rows. The band is css (5,5)-(1195,895).
+      const { gl, readRenderTargetPixels } = glForFramebuffer(W, H, (col, row) => {
+        const ty = H - 1 - row
+        if (ty === 450 && col >= 10 && col <= 1190) return aId
+        if (col === 600 && ty >= 10 && ty <= 890) return bId
+        if (col >= 900 && col <= 902 && ty >= 700 && ty <= 702) return cId
+        if (col <= 2 && ty <= 2) return dId
+        return null
+      })
+      const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+      const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+      getLivePipeline()?.target.markClean()
+      act(() => {
+        result.current.onPointerDown(pointerEvent(5, 5), false)
+        result.current.onPointerMove(pointerEvent(1195, 895))
+        result.current.onPointerUp()
+      })
+      expect(selectedKeys().sort()).toEqual(['sk1/speck', 'sk1/tallLine', 'sk1/wideLine'])
+      // The budget was actually exceeded: more than one read ran.
+      expect(readRenderTargetPixels.mock.calls.length).toBeGreaterThan(1)
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+})
+
 describe('useRubberBandSelect honors the dispatcher swallow semantics', () => {
   it('a sweep over a featureHandle pixel with idle select collects nothing', () => {
     const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })

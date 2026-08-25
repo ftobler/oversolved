@@ -5,6 +5,7 @@ import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 import { SWALLOW_ONLY_PICK_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { planBandReads } from '@/components/Viewport/bandReadPlan'
 
 interface RubberBandRect {
   x: number
@@ -62,6 +63,19 @@ export function useRubberBandSelect(
     rectRef.current = null
     draggingRef.current = false
     setRect(null)
+  }, [])
+
+  // Reused readback buffer, grown to the largest chunk seen. Committing a box
+  // used to allocate the full rect TWICE (read buffer plus row-flip copy);
+  // one persistent scratch keeps repeated sweeps off the GC.
+  const readScratchRef = useRef<Uint8Array | null>(null)
+  const scratchFor = useCallback((bytes: number): Uint8Array => {
+    let scratch = readScratchRef.current
+    if (!scratch || scratch.length < bytes) {
+      scratch = new Uint8Array(bytes)
+      readScratchRef.current = scratch
+    }
+    return scratch
   }, [])
 
   const onPointerDown = useCallback((e: React.PointerEvent, idBufferHitExists: boolean): boolean => {
@@ -165,20 +179,20 @@ export function useRubberBandSelect(
 
     // Crossing selection: any entity whose pixels touch the rect is selected.
     // (The former window mode is dead: a box is crossing in every direction.)
-    const buf = new Uint8Array(rw * rh * 4)
-    const readY = h - y0 - rh
-    gl.readRenderTargetPixels(pipeline.target.target, x0, Math.max(0, readY), rw, rh, buf)
-
-    // Flip rows: readRenderTargetPixels returns row 0 = bottom,
-    // collectEntitiesFromPixels expects row 0 = top.
-    const flipped = new Uint8Array(rw * rh * 4)
-    for (let row = 0; row < rh; row++) {
-      const srcBase = row * rw * 4
-      const dstBase = (rh - 1 - row) * rw * 4
-      flipped.set(buf.subarray(srcBase, srcBase + rw * 4), dstBase)
+    // Chunks are planned top-down inside the rect; readRenderTargetPixels
+    // wants a bottom-left origin, so each chunk converts its own. There is no
+    // row flip anywhere: collection yields a set of touched entities and is
+    // indifferent to orientation, which is what keeps the chunked reads
+    // equivalent to the old single flipped read.
+    const seen: { layer: string; entityKey: string }[] = []
+    for (const chunk of planBandReads(rw, rh)) {
+      const buf = scratchFor(chunk.w * chunk.h * 4)
+      const top = y0 + chunk.y
+      const gy = Math.max(0, Math.min(h - chunk.h, h - top - chunk.h))
+      gl.readRenderTargetPixels(pipeline.target.target, x0 + chunk.x, gy, chunk.w, chunk.h, buf)
+      seen.push(...collectEntitiesFromPixels(buf, chunk.w, chunk.h, pipeline.registry))
     }
-
-    const entities = collectEntitiesFromPixels(flipped, rw, rh, pipeline.registry)
+    const entities = seen
 
     // Commit only layers in the editor's consumed set, and only layers the
     // dispatcher would toggle into normalSelection on a click: feature handles
@@ -203,7 +217,7 @@ export function useRubberBandSelect(
     }
 
     endDrag()
-  }, [glRef, consumedLayers, endDrag])
+  }, [glRef, consumedLayers, endDrag, scratchFor])
 
   // The browser tore the gesture away before any release reached us. Abandon
   // the band: committing a rect the user never released on would select
