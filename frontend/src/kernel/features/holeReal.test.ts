@@ -14,8 +14,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox } from '../occ/primitives'
-import { volumeOf } from '../occ/booleans'
+import { makeBox, makeCylinder } from '../occ/primitives'
+import { volumeOf, booleanWithDiff } from '../occ/booleans'
 import { Repository } from '../query'
 import { solveHole } from './hole'
 import type { Body } from '../types3d'
@@ -155,6 +155,48 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeLessThan(1000)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('radial through-all hole fully pierces a cylinder', () => {
+      // A cylinder's B-rep vertices sit only on its seam, so a vertex-only AABB
+      // collapses radially: the span reads the height instead of the diameter
+      // and a radial through-all cutter under-penetrates, stopping short of
+      // the far wall while reporting ok. Sizing off the edge-sampled frame must
+      // drive the cut clean through; the result volume must match an
+      // independently built guaranteed-through cutter, and the body must stay
+      // in one piece.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [-15, 0, 10], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [-1, 0, 0] })
+        repo.register('sk/p1/xy', { external_xy: [0, 0] })
+        const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
+        const bodyStore: Record<string, Body> = {
+          body_t: {
+            id: 'body_t', created_by: 'ex_t', modified_by: [],
+            shape: table.register(scope.detach(cyl), 'ex_t'),
+            sketch_id: 'sk_t', brep_diff: null,
+            profile_queries: [],
+          },
+        }
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 6, depth_mode: 'through_all', direction: 'normal', target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.body_ids).toHaveLength(1)
+
+        const refBody = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
+        const refCutter = makeCylinder(occ, scope, [45, 0, 10], [-1, 0, 0], 3, 90)
+        const refCut = booleanWithDiff(occ, scope, refBody, refCutter, 'cut')
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(
+          volumeOf(occ, scope, refCut.shape),
+          3,
+        )
       } finally {
         scope.dispose()
       }

@@ -2,9 +2,12 @@
 // depth or through-all) and boolean-cuts it from the target body. Composite of the cut boolean
 // + cylinder primitive.
 //
-// through_all sizes the cylinder from the target's AABB. The stock OCC build has no Bnd_Box, so
-// the span comes from the solid's B-rep vertices; since the cylinder only needs to fully
-// penetrate the body, an exact silhouette extent is unnecessary and the cut result matches
+// through_all sizes the cylinder from the target's edge-sampled AABB (bodyFrame).
+// The stock OCC build has no Bnd_Box, and a vertex-only box is NOT a safe
+// stand-in for one: an OCCT cylinder carries just two seam vertices, so its
+// vertex box collapses radially and a radial through-hole sized from it
+// under-penetrates by roughly the full diameter, leaving the far wall intact.
+// Sampling the edges (the cap circles) recovers the true extent, matching
 // Python's Bnd_Box-sized cylinder.
 
 import type { DisposeScope } from '../occ/disposeScope'
@@ -13,7 +16,8 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { resolveBody } from './shared'
-import { makeCylinder, readSolidVertices, type Vec3 } from '../occ/primitives'
+import { makeCylinder, type Vec3 } from '../occ/primitives'
+import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import type { PlaneLike } from './shared'
@@ -28,23 +32,12 @@ interface HoleResult {
   hole_count: number
 }
 
-function aabbSpan(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
-  const verts = readSolidVertices(oc, scope, shape)
-  let xmin = Infinity
-  let ymin = Infinity
-  let zmin = Infinity
-  let xmax = -Infinity
-  let ymax = -Infinity
-  let zmax = -Infinity
-  for (const [x, y, z] of verts) {
-    xmin = Math.min(xmin, x)
-    ymin = Math.min(ymin, y)
-    zmin = Math.min(zmin, z)
-    xmax = Math.max(xmax, x)
-    ymax = Math.max(ymax, y)
-    zmax = Math.max(zmax, z)
-  }
-  return Math.max(xmax - xmin, ymax - ymin, zmax - zmin)
+/** Max-axis extent of the target's edge-sampled AABB: the length a through-all
+ *  cutter must clear. Vertices alone understate curved bodies (a cylinder's
+ *  only vertices sit on its seam), so the edge samples carry the silhouette. */
+function bodySpan(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const { half } = bodyFrame(oc, scope, shape)
+  return 2.0 * Math.max(half[0], half[1], half[2])
 }
 
 /** Solve a hole feature into the body store (mirrors `_solve_hole`). */
@@ -97,7 +90,7 @@ export function solveHole(
   let throughDepth = 0.0
   let throughBackOffset = 0.0
   if (depthMode === 'through_all') {
-    const span = aabbSpan(oc, scope, currentShape)
+    const span = bodySpan(oc, scope, currentShape)
     throughDepth = span * 3.0
     throughBackOffset = span
   }
