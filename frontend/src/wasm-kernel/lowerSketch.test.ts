@@ -96,6 +96,31 @@ describe('lowerSketch fails loud on malformed refs', () => {
       constraints: [{ kind: 'horizontal', target: { entity: 'l1' }, axis: 'diagonal' }],
     })).toThrow("lowerSketch: unknown axis 'diagonal'")
   })
+
+  it('rejects a raw query-string ref instead of hardcoding @builtin_origin to external [0,0]', () => {
+    // The old shortcut pinned the DOCUMENT origin at [0,0] in sketch-local
+    // coords, silently wrong for an offset plane. Resolution (and originLocal)
+    // belongs to partDocToSketches; a string reaching this layer is a bypassed
+    // resolver and must be loud, not a silent [0,0] pin.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ kind: 'coincident', a: { entity: 'l1', point: 'start' }, b: '@builtin_origin' }],
+    })).toThrow(/@builtin_origin/)
+  })
+
+  it('lowers an external_xy dict ref as external with its own coordinates', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ kind: 'coincident', a: { entity: 'l1', point: 'start' }, b: { external_xy: [3, -2] } }],
+    })
+    const coincident = input.constraints[0]
+    const b = coincident.refs.find(r => r.role === Role.b)!
+    expect(b.ref).toEqual({ kind: 'external', x: 3, y: -2 })
+  })
 })
 
 describe('pinnedMaskFor (projected-entity pinning)', () => {

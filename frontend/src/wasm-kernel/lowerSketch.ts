@@ -180,11 +180,20 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     const refs: FlatConstraint['refs'] = []
     for (const [key, role] of REF_KEYS) {
       const val = c[key]
-      if (typeof val === 'string' && val === '@builtin_origin') {
-        refs.push({ role, ref: { kind: 'external', x: 0, y: 0 } })
+      // Only resolved dict refs are accepted: partDocToSketches pre-transforms
+      // the live query strings ($line1, @builtin_origin) and owns originLocal.
+      // The former bare-'@builtin_origin' shortcut hardcoded external [0,0],
+      // silently wrong for an offset plane whose document origin is elsewhere.
+      if (isRefDict(val)) {
+        refs.push({ role, ref: lowerRef(val) })
         continue
       }
-      if (isRefDict(val)) refs.push({ role, ref: lowerRef(val) })
+      // Fail loud like the selector/axis guards: a string here means a caller
+      // bypassed the resolver, and silently dropping it would author a
+      // constraint with missing operands.
+      if (val !== undefined && val !== null) {
+        throw new Error(`lowerSketch: unresolved query-string ref '${String(val)}' in '${key}'; resolve refs via partDocToSketches before lowering`)
+      }
     }
     const out: FlatConstraint = { kind, refs }
     if (typeof c.value === 'number') out.value = c.value

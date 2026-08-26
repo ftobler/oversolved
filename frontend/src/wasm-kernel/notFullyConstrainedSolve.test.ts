@@ -24,7 +24,9 @@ describe.skipIf(!bytes)('not-fully-constrained detection', () => {
       entities: [{ id: 'L1', kind: 'line' }],
       initial: { L1: [0, 0, -9.858887672424316, -1.6740193367004395] },
       constraints: [
-        { kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: '@builtin_origin' },
+        // The dict form partDocToSketches resolves @builtin_origin into for a
+        // builtin plane (lowerSketch takes resolved refs only).
+        { kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: { external_xy: [0, 0] } },
         { kind: 'length', target: { entity: 'L1' }, value: 10 },
       ],
     })
@@ -43,7 +45,7 @@ describe.skipIf(!bytes)('not-fully-constrained detection', () => {
       entities: [{ id: 'L1', kind: 'line' }],
       initial: { L1: [0, 0, -9.858887672424316, -1.6740193367004395] },
       constraints: [
-        { kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: '@builtin_origin' },
+        { kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: { external_xy: [0, 0] } },
         { kind: 'length', target: { entity: 'L1' }, value: 10 },
         { kind: 'horizontal', target: { entity: 'L1' } },
       ],
