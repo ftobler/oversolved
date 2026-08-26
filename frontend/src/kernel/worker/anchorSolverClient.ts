@@ -99,13 +99,39 @@ let workerCrashAt = 0  // Date.now() of the last worker trap; 0 = no crash yet
 let relayHandlers: RelayHandlers | null = null
 
 /**
+ * Ownership stamp marking a bundle whose mesh buffers the main thread solely
+ * references, applied by setRelayHandlers to whatever the registered
+ * buildBundle handler resolves. Mirrors solverWorker's PACKED_FRESH: a symbol
+ * key so structured clone drops it at the wire (it can never be picked up by
+ * a clone crossing to or from a worker) and so it stays invisible to payload
+ * equality checks. Only stamped bundles may have their buffers transferred.
+ */
+export const BUNDLE_FRESH = Symbol('anchor_bundle_fresh')
+
+/**
  * Register the handlers that service the worker's relay requests. Single
  * consumer: only `useAssemblySolve` owns this slot, and it must pair every
  * call with `clearRelayHandlers` on unmount so a stale worker's relay requests
  * fail loudly instead of being serviced by a dead component.
+ *
+ * The buildBundle handler is wrapped rather than stored: every bundle it
+ * resolves gets the BUNDLE_FRESH ownership stamp, and the transfer collector
+ * refuses any bundle without it (see relayReplyTransferables). The stamp is
+ * what turns the documented handler contract -- return only bundles whose
+ * mesh buffers the main thread solely references -- into something machine
+ * checked instead of trusted on an untyped cast.
  */
 export function setRelayHandlers(handlers: RelayHandlers): void {
-  relayHandlers = handlers
+  relayHandlers = {
+    ...handlers,
+    buildBundle: async (doc_id, doc_rev, spec) => {
+      const payload = await handlers.buildBundle(doc_id, doc_rev, spec)
+      if (payload && typeof payload === 'object') {
+        Object.defineProperty(payload, BUNDLE_FRESH, { value: true })
+      }
+      return payload
+    },
+  }
 }
 
 /** Unregister the relay handlers; relay requests then fail loudly. */
@@ -157,13 +183,33 @@ async function handleRelay(msg: AnchorRelayRequest): Promise<AnchorRelayResponse
  * bundle's sole reference here - the relay handler returns the OCC worker's
  * reply straight into this post, and the solver client dropped its pending
  * entry on arrival. A bundle retained anywhere else must never be transferred.
+ *
+ * That ownership claim is enforced, not assumed: setRelayHandlers stamps every
+ * bundle its buildBundle handler resolves with BUNDLE_FRESH, and anything
+ * arriving without the stamp - a cached bundle, a hand-built object, a clone
+ * from another generation - is never treated as fresh. It falls back to no
+ * transfer (the post then structured-clones instead of detaching), which is
+ * always safe, just slower; a stamped-shape bundle that reaches here unmarked
+ * is logged so the missing stamp is loud.
+ *
+ * @internal test-only export: exercised directly by the stamp unit tests.
  */
-function relayReplyTransferables(subKind: AnchorRelayRequest['subKind'], res: AnchorRelayResponse): Transferable[] {
+export function relayReplyTransferables(subKind: AnchorRelayRequest['subKind'], res: AnchorRelayResponse): Transferable[] {
   if (subKind !== 'buildBundle' || !res.ok) return []
-  const bundle = res.payload as Partial<PartBundle> | null | undefined
-  if (!bundle || !Array.isArray(bundle.bodies)) return []
+  const bundle = res.payload as (Partial<PartBundle> & { [BUNDLE_FRESH]?: true }) | null | undefined
+  if (!bundle || bundle[BUNDLE_FRESH] !== true) {
+    // Structurally transferable but unmarked: refuse the detach and say why.
+    const looksTransferable = !!bundle && Array.isArray(bundle.bodies) &&
+      bundle.bodies.some(b => b?.mesh?.vertices instanceof Float32Array)
+    if (looksTransferable) {
+      console.warn('relay transfer: bundle carries no freshness stamp; cloning instead of transferring', bundle)
+    }
+    return []
+  }
+  const bodies = bundle.bodies
+  if (!bodies) return []  // stamped but empty: nothing to transfer
   const out: Transferable[] = []
-  for (const body of bundle.bodies) {
+  for (const body of bodies) {
     const m = body?.mesh
     if (m?.vertices instanceof Float32Array) out.push(m.vertices.buffer)
     if (m?.indices instanceof Uint32Array) out.push(m.indices.buffer)
@@ -186,7 +232,9 @@ function onMessage(e: { data: AssemblyWorkerResponse }): void {
       // (zero-copy) into the anchor worker's clone, detaching them on the main
       // thread. The main thread holds the bundle's only reference, so nothing
       // may read those buffers after this post - the transfer list is the
-      // last touch. Non-bundle replies (partDocContent, errors) pass no list.
+      // last touch. Non-bundle replies (partDocContent, errors) pass no list,
+      // and relayReplyTransferables refuses any bundle that arrived without
+      // the BUNDLE_FRESH stamp (it clones instead of detaching).
       const transfer = relayReplyTransferables(msg.subKind, res)
       sender?.postMessage(res, transfer.length > 0 ? transfer : undefined)
     })

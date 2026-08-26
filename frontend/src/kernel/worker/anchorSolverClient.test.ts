@@ -15,6 +15,8 @@ import {
   setAnchorSolverCrashBackoffForTest,
   cancelAssemblySolver,
   getPendingCount,
+  relayReplyTransferables,
+  BUNDLE_FRESH,
 } from './anchorSolverClient'
 import type {
   AnchorSolverWorkerLike,
@@ -511,7 +513,9 @@ describe('relay plumbing', () => {
       spec: { features: [] },
     })
 
-    await vi.waitFor(() => fakeWorker.posted.length > 1, { timeout: 1000 })
+    // waitForPosted throws until the reply lands: a bare boolean callback
+    // resolves vi.waitFor immediately (repo quirk, see its docstring).
+    await waitForPosted(fakeWorker, 'asr_relayRes')
     const relayRes = fakeWorker.posted.find(m => m.kind === 'asr_relayRes')
     expect(relayRes).toBeDefined()
     expect(handlers.buildBundle).toHaveBeenCalledWith('bundle-doc', 5, { features: [] })
@@ -773,5 +777,75 @@ describe('relay plumbing', () => {
     expect(Array.from(copyBundle.bodies[0].mesh.vertices)).toEqual(verts)
     expect(Array.from(copyBundle.bodies[0].mesh.indices)).toEqual(indices)
     expect(copyBundle.bodies[0].mesh.faceIdsPerTriangle.byteLength).toBeGreaterThan(0)
+  })
+
+  describe('BUNDLE_FRESH ownership stamp (review-17 L37)', () => {
+    // The collector is exercised directly: end to end, setRelayHandlers stamps
+    // everything its handlers resolve, so an unstamped bundle can only be
+    // observed at this seam - which is the point of the gate.
+    function okReply(payload: unknown): AnchorRelayOkResponse {
+      return { kind: 'asr_relayRes', requestId: 1, ok: true, payload } as AnchorRelayOkResponse
+    }
+
+    it('a stamped bundle yields its mesh buffers for transfer', () => {
+      const bundle = makeBundle()
+      Object.defineProperty(bundle, BUNDLE_FRESH, { value: true })
+      const transfer = relayReplyTransferables('buildBundle', okReply(bundle))
+      const mesh = bundle.bodies[0].mesh
+      expect(transfer).toContain(mesh.vertices.buffer)
+      expect(transfer).toContain(mesh.indices.buffer)
+      expect(transfer).toContain(mesh.faceIdsPerTriangle.buffer)
+    })
+
+    it('an unstamped but structurally valid bundle falls back to no transfer', () => {
+      // No stamp: exactly what a cached or foreign bundle looks like. The
+      // buffers must NOT be detached behind the holder's back.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        expect(relayReplyTransferables('buildBundle', okReply(makeBundle()))).toEqual([])
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('no freshness stamp'), expect.anything())
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('the stamp does not survive a structured clone and cannot be forged by one', () => {
+      // Symbols are dropped across postMessage: a clone of a stamped bundle
+      // arrives unstamped, so a recycled reply can never pass as fresh.
+      const bundle = makeBundle()
+      Object.defineProperty(bundle, BUNDLE_FRESH, { value: true })
+      const clone = structuredClone(bundle) as PartBundle
+      expect(relayReplyTransferables('buildBundle', okReply(clone))).toEqual([])
+    })
+
+    it('setRelayHandlers stamps what its buildBundle handler resolves', async () => {
+      const bundle = makeBundle()
+      setRelayHandlers({
+        partDocContent: vi.fn(),
+        buildBundle: vi.fn().mockResolvedValue(bundle),
+      })
+      await sendRelay({
+        kind: 'asr_relay',
+        requestId: 901,
+        subKind: 'buildBundle',
+        doc_id: 'bundle-doc',
+        doc_rev: 5,
+        spec: { features: [] },
+      })
+      await waitForPosted(fakeWorker, 'asr_relayRes')
+      // End-to-end proof of the stamped path: the reply went out with the
+      // bundle's real buffers in the transfer list.
+      const idx = relayReplyIndex()
+      expect(fakeWorker.transfers[idx]).toContain(bundle.bodies[0].mesh.vertices.buffer)
+      // And the stamp itself is on the payload, invisible to equality.
+      expect((bundle as { [BUNDLE_FRESH]?: true })[BUNDLE_FRESH]).toBe(true)
+    })
+
+    it('non-bundle replies never transfer regardless of stamping', () => {
+      const docPayload = { kind: 'part', features: [] }
+      Object.defineProperty(docPayload, BUNDLE_FRESH, { value: true })  // even a wrongly marked one
+      expect(relayReplyTransferables('partDocContent', okReply(docPayload))).toEqual([])
+      expect(relayReplyTransferables('buildBundle', { kind: 'asr_relayRes', requestId: 1, ok: false, error: 'x' } as AnchorRelayErrResponse)).toEqual([])
+    })
   })
 })
