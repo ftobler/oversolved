@@ -322,6 +322,13 @@ export function applyAddConstraint(
     // residual that is often already satisfied, so the line never turns vertical.
     // Reject that combination instead of authoring a dead constraint.
     // See bugreports/vertical_constraint_20260621_102915.md.
+    // Same min-guard as the generic branch below: an empty pick falls through
+    // both forms and would author an operand-less constraint the solver can
+    // only read as garbage.
+    if (targets.length < 1) {
+      warn(`applyAddConstraint: ${kind} needs a target`, targets)
+      return
+    }
     if (targets.length >= 2) {
       if (targets[0].startsWith('entity:') || targets[1].startsWith('entity:')) {
         warn(`applyAddConstraint: ${kind} needs one line or two points, got`, targets)

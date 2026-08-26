@@ -419,6 +419,26 @@ describe('applyAddConstraint operand guards', () => {
     expect(added!.target).toBe('$line1')
     expect(warnSpy).not.toHaveBeenCalled()
   })
+
+  // L19: the h/v branch had no min-guard of its own, so an empty pick fell
+  // through both the a/b and target forms and authored an operand-less
+  // constraint (latent behind the store's empty-selection gate). It must
+  // behave exactly like the generic kinds above.
+  it('an axis kind with no targets adds nothing and warns', () => {
+    const doc = makeSampleDoc()
+    const countBefore = doc.features![0].constraints!.length
+    applyAddConstraint(doc, 'Sketch1', 'horizontal', [])
+    applyAddConstraint(doc, 'Sketch1', 'vertical', [])
+    expect(doc.features![0].constraints!.length).toBe(countBefore)
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('horizontal'),
+      expect.anything(),
+    )
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('vertical'),
+      expect.anything(),
+    )
+  })
 })
 
 describe('move_vertex_with_constraint (combined applyMoveVertex + applyAddConstraint)', () => {
