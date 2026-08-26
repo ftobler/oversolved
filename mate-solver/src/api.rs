@@ -125,12 +125,12 @@ mod tests {
 
     #[test]
     fn solve_mate_bytes_rejects_sketch_magic() {
-        // The sketch input magic ("SKS1", sketch-solver/src/codec.rs MAGIC),
-        // spelled out rather than imported: the crates are deliberately
+        // The sketch input magic ("SKG2" in LE, sketch-solver/src/codec.rs
+        // MAGIC), spelled out rather than imported: the crates are deliberately
         // independent, and this guard is about the byte value on the wire. If
         // the sketch crate ever changes its magic, the two formats stay
         // mutually unreadable either way -- that is the property under test.
-        const SKETCH_MAGIC: u32 = 0x5347_4B53;
+        const SKETCH_MAGIC: u32 = 0x3247_4B53;
         let mut sketch_bytes = SKETCH_MAGIC.to_le_bytes().to_vec();
         sketch_bytes.extend_from_slice(&[0u8; 32]);  // plausible header padding
         assert!(solve_mate_bytes(&sketch_bytes).is_err());

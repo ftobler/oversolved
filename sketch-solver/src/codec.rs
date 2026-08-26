@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC ("SKS1")
+//!   u32  magic = MAGIC ("SKG2", little-endian on the wire)
 //!   u32  n_entities
 //!   u32  n_params            // f32 count of params_initial
 //!   u32  n_constraints
@@ -46,7 +46,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC_OUT ("SKR1")
+//!   u32  magic = MAGIC_OUT ("SKR2", little-endian on the wire)
 //!   u32  n_params
 //!   u32  n_entities_status   // 0 when skip_status_pass
 //!   u32  vertex_freedom_len  // f32 count
@@ -62,8 +62,23 @@ use solver_core::bytes::{Eof, Reader, Writer};
 use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
 use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
 
-pub const MAGIC: u32 = 0x5347_4B53; // "SKGS"-ish marker, stable wire value
-pub const MAGIC_OUT: u32 = 0x5347_4B52;
+// Rev 2 of the wire layout. The layout had already evolved once (the has_sign
+// flag bit + trailing sign f32 per constraint record, commit 9f81d31f) without
+// moving these values, so a stale js/wasm pairing decoded shifted offsets
+// instead of failing loudly. The magic IS the version handshake for a buffer
+// that is built and consumed within one process: bump BOTH sides of the
+// boundary (this file and frontend/src/wasm-kernel/codec.ts) on any layout
+// change. Invalidating old cached payloads is acceptable and safe post-wave-1:
+// bundle-cache reads of stale buffers degrade to cold rebuilds.
+pub const MAGIC: u32 = 0x3247_4B53; // "SKG2" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3252_4B53; // "SKR2" in LE memory order
+
+/// The rev 1 values. Kept only so tests can assert a stale pairing is
+/// rejected rather than silently misdecoded.
+#[cfg(test)]
+pub const MAGIC_REV1: u32 = 0x5347_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_REV1: u32 = 0x5347_4B52;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -663,6 +678,38 @@ mod tests {
         let mut bytes = encode_input(&sample_input());
         bytes[0] ^= 0xff;
         assert!(matches!(decode_input(&bytes), Err(CodecError::BadMagic)));
+    }
+
+    // The magic is the only version handshake on this wire (see its docs), so
+    // a buffer stamped with a superseded revision must be refused outright:
+    // accepting it would decode shifted constraint records as garbage instead
+    // of surfacing the stale js/wasm pairing.
+    #[test]
+    fn rev1_input_magic_rejected() {
+        let mut bytes = encode_input(&sample_input());
+        bytes[..4].copy_from_slice(&MAGIC_REV1.to_le_bytes());
+        assert!(matches!(decode_input(&bytes), Err(CodecError::BadMagic)));
+    }
+
+    #[test]
+    fn current_input_magic_accepted() {
+        let bytes = encode_input(&sample_input());
+        assert_eq!(&bytes[..4], &MAGIC.to_le_bytes());
+        assert!(decode_input(&bytes).is_ok());
+    }
+
+    #[test]
+    fn rev1_output_magic_rejected() {
+        let out = Output {
+            params_solved: vec![1.0],
+            entity_status: vec![0],
+            overall_status: 0,
+            vertex_freedom: Vec::new(),
+            diagnostics: Diagnostics::default(),
+        };
+        let mut bytes = encode_output(&out);
+        bytes[..4].copy_from_slice(&MAGIC_OUT_REV1.to_le_bytes());
+        assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
     }
 
     // The fixed-size input header (see module docs): magic, four counts, two

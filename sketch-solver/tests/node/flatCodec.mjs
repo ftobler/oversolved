@@ -2,8 +2,8 @@
 // bench), mirroring sketch-solver/src/codec.rs. The Rust crate is canonical;
 // this is the minimal JS counterpart the headless harness needs.
 
-export const MAGIC_IN = 0x5347_4b53
-export const MAGIC_OUT = 0x5347_4b52
+export const MAGIC_IN = 0x3247_4b53 // "SKG2": rev 2, mirrors sketch-solver/src/codec.rs
+export const MAGIC_OUT = 0x3252_4b53 // "SKR2"
 
 export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3 }
 export const CKind = {

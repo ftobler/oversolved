@@ -34,8 +34,8 @@ describeReal('wasm package split', () => {
 
   it('rejects a buffer carrying the other format\'s magic', () => {
     const solveMate = matePkg as (input: Uint8Array) => Uint8Array
-    // "SKS1", the sketch input magic, little-endian.
-    const sketchMagic = Uint8Array.from([0x53, 0x4b, 0x47, 0x53, ...new Array(32).fill(0)])
+    // The sketch input magic "SKG2" (rev 2), little-endian.
+    const sketchMagic = Uint8Array.from([0x53, 0x4b, 0x47, 0x32, ...new Array(32).fill(0)])
     expect(() => solveMate(sketchMagic)).toThrow()
   })
 })

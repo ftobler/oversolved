@@ -57,8 +57,14 @@ export const Status = { fully_constrained: 0, underconstrained: 1, overconstrain
 /** Index -> status string, the inverse of the Rust `Status::to_u8`. */
 export const STATUS_NAME = ['fully_constrained', 'underconstrained', 'overconstrained'] as const
 
-const MAGIC_IN = 0x53474b53
-const MAGIC_OUT = 0x53474b52
+// Rev 2 of the wire layout. The magic IS the version handshake: the layout
+// evolved once (has_sign flag + trailing sign f32) without moving these, so a
+// stale js/wasm pairing decoded shifted offsets instead of failing. Bump BOTH
+// sides (these two and sketch-solver/src/codec.rs) on any layout change.
+// Invalidating stale cached payloads is acceptable and safe post-wave-1:
+// bundle-cache reads degrade to cold rebuilds.
+const MAGIC_IN = 0x32474b53  // "SKG2", little-endian on the wire
+const MAGIC_OUT = 0x32524b53  // "SKR2"
 
 export interface FlatEntity {
   kind: number
