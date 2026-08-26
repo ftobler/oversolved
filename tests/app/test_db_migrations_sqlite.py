@@ -113,7 +113,6 @@ class TestApplyMigrationRollback:
             fresh_db.apply_migration(1, "boom", boom)
         assert calls, "rollback was not called on migration failure"
 
-
     def test_failing_migration_leaves_no_partial_ddl_sqlite(self, tmp_path):
         """SQLite DDL inside a failed migration must roll back, not autocommit."""
         db_path = str(tmp_path / "partial.sqlite")
