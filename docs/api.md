@@ -18,7 +18,7 @@ oversolved/
 ├── config.py               # OversolvedConfig (instance paths, upload dir)
 ├── rate_limit.py           # In-memory rate limiter used by login
 ├── db/                     # Database abstraction layer (connection, stores, migrations)
-├── migrations.py           # Migration discovery and registration
+├── migrations/             # Runtime data directory tracking applied migrations
 ├── cli.py                  # Unified CLI entry point (run_server / db / run_tasks)
 ├── periodic_tasks.py       # Scheduled cleanup tasks
 ├── icons.py                # SVG constraint icon generation
@@ -184,7 +184,7 @@ All routes require an admin session (plus CSRF on writes).
   request cap (413), max 10000 entries and max 500 MB decompressed (both 400).
   Creates documents for usernames that exist; unknown users and failed files
   are skipped and reported. Returns `{status: "imported", imported_count,
-  skipped_count, errors}`.
+  skipped_count, errors}` with `errors: null` when empty.
 
 ## Bug reports: `/api/bug-report`
 
