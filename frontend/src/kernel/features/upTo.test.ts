@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { resolveUpToPlane, upToDistance, orientToTarget, type CutPlane } from './upTo'
+import { AmbiguousQueryError } from '../query'
 import type { Repository } from '../query'
 import type { OccModule } from '../occ/occTypes'
 import type { DisposeScope } from '../occ/disposeScope'
@@ -33,6 +34,28 @@ describe('resolveUpToPlane', () => {
   it('returns null for an unresolved ref', () => {
     expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repoReturning(null), {})).toBeNull()
     expect(resolveUpToPlane(noOcc, noScope, noTable, '', [0, 0, 1], repoReturning({ normal: [0, 0, 1], origin: [0, 0, 1] }), {})).toBeNull()
+  })
+
+  it('rethrows ambiguity instead of reporting the pick as dangling', () => {
+    // An ambiguous ref matched SEVERAL elements; folding that into the null
+    // fallback made the extrude report "did not resolve", which is false.
+    const ambiguousRepo = {
+      query: () => {
+        throw new AmbiguousQueryError("query '?q' matched 3 elements")
+      },
+    } as unknown as Repository
+    expect(() =>
+      resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], ambiguousRepo, {}),
+    ).toThrow(AmbiguousQueryError)
+  })
+
+  it('still folds non-ambiguity query failures into the null fallback', () => {
+    const brokenRepo = {
+      query: () => {
+        throw new Error('repo offline')
+      },
+    } as unknown as Repository
+    expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], brokenRepo, {})).toBeNull()
   })
 
   it('normalizes the plane normal', () => {

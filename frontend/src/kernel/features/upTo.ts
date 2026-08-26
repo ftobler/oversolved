@@ -12,6 +12,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
+import { AmbiguousQueryError } from '../query'
 import type { Vec3 } from '../occ/primitives'
 import { makePrism } from '../occ/primitives'
 import { dot, cross } from './vec3'
@@ -46,7 +47,9 @@ function inPlaneAxes(normal: Vec3): [Vec3, Vec3] {
  * (origin + normal), planar body faces (body_id + face_index), and points
  * (point/position coordinate, plane normal = the extrude direction). Returns null
  * when the ref does not resolve (caller falls back to the blind distance).
- * Throws when a face target is non-planar, so a bad pick surfaces as an error.
+ * Rethrows AmbiguousQueryError so the caller can report ambiguity distinctly
+ * from a dangling pick. Throws when a face target is non-planar, so a bad pick
+ * surfaces as an error.
  */
 export function resolveUpToPlane(
   oc: OccModule,
@@ -61,7 +64,11 @@ export function resolveUpToPlane(
   let entry: Dict | null
   try {
     entry = globalRepo.query(upToRef, null, bodyStore) as Dict | null
-  } catch {
+  } catch (e) {
+    if (e instanceof AmbiguousQueryError) throw e
+    // A dangling pick falls back to the blind distance, but ambiguity must not
+    // pose as "did not resolve": the resolver DID match elements, several of
+    // them. Rethrow so the caller can name the ambiguity in its warning.
     entry = null
   }
   if (entry === null) return null

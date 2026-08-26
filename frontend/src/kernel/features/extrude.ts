@@ -187,8 +187,16 @@ export function solveExtrude(
           ? (faceNormal(oc, scope, cqFaces[0]).map((n) => -n) as Vec3)
           : (faceNormal(oc, scope, cqFaces[0]) as Vec3))
       : (resolveDirection((firstPt?.normal as number[]) ?? [0, 0, 1], firstPt as PlaneLike, direction, distance)[0] as Vec3)
-    cutPlane = resolveUpToPlane(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
-    if (cutPlane === null) {
+    try {
+      cutPlane = resolveUpToPlane(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
+    } catch (e) {
+      // The only error escaping resolveUpToPlane is ambiguity: the pick matched
+      // several elements. Warn about THAT, not "did not resolve", which claims
+      // the target was missing entirely.
+      result.solver_warning =
+        `extrude: up_to target '${upToRef}' matched several elements (${e instanceof Error ? e.message : String(e)}); used blind distance`
+    }
+    if (cutPlane === null && result.solver_warning === undefined) {
       result.solver_warning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
     }
   }

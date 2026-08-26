@@ -13,6 +13,7 @@ import { solidToEdges } from '../occ/tessellation'
 import { resolveProfileEdges, edgesToProfileFace } from './edgeProfile'
 import { trimAtPlane } from './upTo'
 import { solveExtrude } from './extrude'
+import { AmbiguousQueryError } from '../query'
 import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -181,6 +182,34 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       expect(result.solver_warning).toMatch(/did not resolve/)
       const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(300, 2)  // blind 100 * 3
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('warns about ambiguity, not missing resolution, when the up_to ref is ambiguous', () => {
+    // An ambiguous pick matched several elements; reporting "did not resolve"
+    // told the user the target was gone while it was actually over-matched.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const ambiguousRepo = {
+        query: (q: unknown) => {
+          if (q === 'amb_q') throw new AmbiguousQueryError("query 'amb_q' matched 2 elements")
+          return null
+        },
+        elements: new Map(),
+      } as unknown as Repository
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex3', extrude: { sketch: loop, distance: 3, termination: 'up_to', up_to: 'amb_q', operation: 'new' } },
+        ambiguousRepo, bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toMatch(/matched several elements/)
+      expect(result.solver_warning).not.toMatch(/did not resolve/)
     } finally {
       scope.dispose()
     }
