@@ -243,19 +243,19 @@ describe('IndexedDbDocumentStore', () => {
     })
 
     it('duplicate rolls back the copy when its save fails (no orphan)', async () => {
-    const store = new IndexedDbDocumentStore()
-    const a = await store.create('Original')
-    await store.save(a.uuid, { content: 'shape' })
-    vi.spyOn(store, 'save').mockRejectedValueOnce(new Error('quota exceeded'))
+      const store = new IndexedDbDocumentStore()
+      const a = await store.create('Original')
+      await store.save(a.uuid, { content: 'shape' })
+      vi.spyOn(store, 'save').mockRejectedValueOnce(new Error('quota exceeded'))
 
-    await expect(store.duplicate(a.uuid)).rejects.toThrow(/quota/)
+      await expect(store.duplicate(a.uuid)).rejects.toThrow(/quota/)
 
-    // The created copy must not strand as an empty husk tile next to the
-    // original.
-    expect(await store.list()).toHaveLength(1)
-  })
+      // The created copy must not strand as an empty husk tile next to the
+      // original.
+      expect(await store.list()).toHaveLength(1)
+    })
 
-  it('duplicating a live doc still works alongside the trashed-id rejection', async () => {
+    it('duplicating a live doc still works alongside the trashed-id rejection', async () => {
       const store = new IndexedDbDocumentStore()
       const live = await store.create('Original')
       await store.save(live.uuid, { content: 'shape' })

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { copyDocument, pushDocument, moveDocument, syncAllDocuments } from '../transfer'
 import type { DocumentStore, DocumentPayload, SaveInput, ListOptions, DocSummary, DocMeta } from '../types'
 
@@ -120,6 +120,17 @@ describe('copyDocument failure rollback', () => {
     // The create landed, so without compensation an empty husk tile would sit
     // in the destination library and every retry would duplicate it.
     expect(await b.list()).toHaveLength(0)
+  })
+
+  it('surfaces the original save error when the compensating delete fails too', async () => {
+    // The rollback is best-effort: a delete failure under quota pressure must
+    // not replace (or crash after) the save error the caller needs to see.
+    const a = new FakeStore('a')
+    const b = new FailingSaveStore('b')
+    vi.spyOn(b, 'remove').mockRejectedValue(new Error('delete failed'))
+    a.seed('a-doc', { content: 'profile: square', name: 'Bracket' })
+
+    await expect(copyDocument(a, b, 'a-doc')).rejects.toThrow(/quota/)
   })
 })
 
