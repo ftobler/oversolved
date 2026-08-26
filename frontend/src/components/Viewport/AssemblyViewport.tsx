@@ -491,7 +491,12 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
 
   // The browser tore the gesture away (a touch became a scroll, the pointer was
   // lost). Abandon it rather than commit a pose the user never released on.
+  // The pending click verdict goes with it: a stale origin left open here would
+  // pair with the NEXT release (or feed onPointerMissed a verdict from a
+  // gesture the browser cancelled), so the part editor's reset is mirrored
+  // rather than relying on an up always following a down.
   const handlePointerCancel = useCallback(() => {
+    clickGesture.current.reset()
     if (!adapter.isActive()) return
     adapter.cancel()
     setManipulating(false)
