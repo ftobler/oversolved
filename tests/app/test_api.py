@@ -227,6 +227,31 @@ class TestDocumentAPI:
         assert body["ok"] is False
         assert body["code"] == "NOT_FOUND"
 
+    def test_rename_rowcount_zero_returns_404(self, authed_client, monkeypatch):
+        """The rowcount branch must answer 404 even when the gate passed.
+
+        The decorator 404s before the view for a missing uuid, so this pins
+        the race where the row vanishes between the gate and the write.
+        """
+        from oversolved.blueprints import documents as documents_bp
+        monkeypatch.setattr(
+            documents_bp.DocumentStore, "rename", lambda self, uuid, name: False
+        )
+        created = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "Rename Race"}),
+            content_type="application/json",
+        )
+        existing = json.loads(created.data)["uuid"]
+        response = authed_client.patch(
+            f"/api/documents/{existing}",
+            data=json.dumps({"name": "Ghost"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 404
+        body = json.loads(response.data)
+        assert body["code"] == "NOT_FOUND"
+
     def test_rename_missing_uuid_by_other_user_returns_404(self, app, authed_client):
         import uuid as uuid_mod
 
