@@ -14,6 +14,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { buildArrayTransforms, buildCircularTransforms, solveArray, solveCircularArray } from './array'
 import { bareBody } from './shared'
+import { emptyBrepDiff } from '../types3d'
 
 // Recording trsf doubles: each builder leaves its translation or rotation on
 // the returned object so tests can assert the produced offsets/angles.
@@ -456,6 +457,26 @@ describe('array source body diagnosis', () => {
     const feature = { id: 'ar1', array: { source_body: '@nope' } }
     expect(() => solveArray(noOcc, scope, noTable, feature, noRepo, store()))
       .toThrow(/source body '@nope' not found/)
+  })
+})
+
+// A no-op array (include_source, zero transforms) never reaches a boolean, so
+// the hygiene path is drivable with the recording fake plus stub table.
+describe('array no-op hygiene', () => {
+  it('include_source with zero transforms leaves modified_by and brep_diff untouched', () => {
+    // count_x=1 with the source included copies nothing: pushing modified_by
+    // and nulling brep_diff raised a spurious dirty signal and destroyed the
+    // previous op's diff.
+    const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never, modified_by: ['prev'], brep_diff: emptyBrepDiff() }
+    const table = { get: () => null } as unknown as HandleTable
+    const r = solveArray(
+      makeFake(), scope, table,
+      { id: 'ar9', array: { source_body: 'body_ex1', mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx' } },
+      xyRepo, { body_ex1: body },
+    )
+    expect(r).toEqual({ status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1'], operation: 'add' })
+    expect(body.modified_by).toEqual(['prev'])
+    expect(body.brep_diff).not.toBeNull()
   })
 })
 

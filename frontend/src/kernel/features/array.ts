@@ -213,6 +213,12 @@ function applyArray(
   // operation === "add": fuse incrementally and rebuild construction names
   // after each union. The source instance keeps its original UUIDs; copied
   // instances get instance-specific UUIDs so the fused body has no collisions.
+  if (includeSource && transforms.length === 0) {
+    // include_source with zero instance transforms copies nothing: mutating
+    // modified_by or nulling brep_diff here faked a geometry change (spurious
+    // dirty signal) and destroyed the previous op's diff. Leave the body as-is.
+    return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'add' }
+  }
   const instances: OccShape[] = []
   const instanceNames: NameMaps[] = []
   if (includeSource) {
