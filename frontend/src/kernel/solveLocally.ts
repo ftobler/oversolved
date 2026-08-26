@@ -265,6 +265,23 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): Buil
       table.releaseOwner(fid)
     },
     releaseRestoreCopies: () => table.releaseOwner(RESTORE_OWNER),
+    // The _validate comparison build gets throwaway wiring (the exportLocally
+    // pattern): its BuildState is discarded the moment validation ends, so on
+    // the persistent table every inner shape would strand under cp:<fid> /
+    // <fid> owners no later eviction can name -- one full solid generation
+    // per validated solve. A fresh scope + table, both disposed after,
+    // contain that generation completely and cannot disturb outer accounting.
+    isolatedValidationDeps: () => {
+      const isoScope = new DisposeScope()
+      const isoTable = new HandleTable({ finalizerGuard: false })
+      return {
+        deps: buildDeps(oc, isoScope, isoTable),
+        dispose: () => {
+          isoScope.dispose()
+          isoTable.disposeAll()
+        },
+      }
+    },
   }
 }
 

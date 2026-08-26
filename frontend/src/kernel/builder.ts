@@ -110,6 +110,16 @@ export interface BuildDeps {
    *  checkpoint retained stay at its ``cp:*`` reference until that checkpoint
    *  is itself evicted. */
   releaseRestoreCopies?: () => void
+  /** Deps bound to a THROWAWAY scope + HandleTable plus its ``dispose()``,
+   *  used for the second full build behind ``spec._validate``. That comparison
+   *  build discards its BuildState when validation ends, so handed the
+   *  caller's deps it pins every inner shape in the persistent cache under
+   *  ``<fid>`` / ``'cp:'+fid`` owners that no later eviction can ever name --
+   *  one stranded solid generation per validated solve. Fresh wiring here
+   *  contains the inner generation completely: ``dispose()`` drops scope and
+   *  table wholesale once the diff is computed. When omitted (pure non-OCC
+   *  tests) validation runs on the caller's own deps. */
+  isolatedValidationDeps?: () => { deps: BuildDeps; dispose: () => void }
 }
 
 export interface BuildOptions {
@@ -1395,7 +1405,15 @@ export function build(
   }
 
   if (spec._validate) {
-    response._validation = validateIncremental(newState, result, spec, deps)
+    // The comparison build runs on the throwaway wiring when provided, and
+    // that wiring is disposed as soon as the diff is computed: it owns the
+    // whole inner generation.
+    const iso = deps.isolatedValidationDeps?.()
+    try {
+      response._validation = validateIncremental(newState, result, spec, iso ? iso.deps : deps)
+    } finally {
+      iso?.dispose()
+    }
   }
 
   return response

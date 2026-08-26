@@ -162,6 +162,80 @@ describe.skipIf(!oc || !solveBytes)('solveLocally cross-solve cache (real OCC + 
     expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
   })
 
+  it('returns the persistent table to baseline after a validated solve', async () => {
+    // Review-18 KE-H1: the _validate comparison build ran through the caller's
+    // deps, so its full second generation landed in THIS persistent table
+    // under owners (<fid>, 'cp:<fid>') that only the discarded inner
+    // BuildState could ever name -- one stranded generation per validated
+    // solve, and repeated alternating validates ratcheted it forever. The
+    // gate: against one persistent table, a validated solve must land back on
+    // the steady count, whether the rebuild was dirty or fully clean.
+    setSolveLocalsForTest(async () => oc)
+    const docN = (distance: number) => ({
+      id: 'docValidateLeak',
+      features: [
+        rectSketch('skV', 10, 10),
+        extrude('skV', 'exBase', 5),
+        extrude('skV', 'exTop', distance, 'new'),
+      ],
+    })
+    await solveLocally(docN(5))
+    let r = await solveLocally(docN(6))
+    const steady = persistentTableForTest()!.liveCount()
+    expect(steady).toBeGreaterThan(0)
+
+    // (a) A validated solve must land back on the non-validated steady count.
+    r = await solveLocally(docN(7), { validate: true })
+    expect(r!._validation?.passed).toBe(true)
+    expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
+
+    // A fully clean rebuild plateaus one step higher than a dirty one for
+    // reasons that predate validation: the restore pass re-copies from the
+    // carried final checkpoint while that checkpoint legitimately retains the
+    // outgoing handles until the next eviction. Warm it up once and pin it.
+    r = await solveLocally(docN(7), { validate: true })
+    const cleanSteady = persistentTableForTest()!.liveCount()
+
+    // (c) Repeated alternating validates (dirty / fully clean) must oscillate
+    // between the two pinned levels forever, never ratchet upward.
+    for (let d = 8; d <= 10; d++) {
+      // Dirty-tail validate: edit the last feature, compare against a full rebuild.
+      r = await solveLocally(docN(d), { validate: true })
+      expect((r!.result as Record<string, { status?: string }>).exTop.status).toBe('ok')
+      expect(r!._validation?.passed).toBe(true)
+      expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
+      // Fully clean validate: same doc again, nothing to rebuild.
+      r = await solveLocally(docN(d), { validate: true })
+      expect(r!._validation?.passed).toBe(true)
+      expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(cleanSteady)
+    }
+  })
+
+  it('returns the table to baseline after the toolbar Re-solve pairing (bypassCache + validate)', async () => {
+    // Part.tsx Re-solve always pairs bypassCache:true with the validate
+    // toggle, so the pre-fix hole paid DOUBLE per click: the superseded
+    // generation plus a full validation generation, both stranded here.
+    setSolveLocalsForTest(async () => oc)
+    const doc = {
+      id: 'docReSolveLeak',
+      features: [rectSketch('skR', 10, 10), extrude('skR', 'exR', 5)],
+    }
+    const r1 = await solveLocally(doc)
+    expect(r1).not.toBeNull()
+    const steady = persistentTableForTest()!.liveCount()
+    expect(steady).toBeGreaterThan(0)
+
+    const r2 = await solveLocally(doc, { bypassCache: true, validate: true })
+    expect(r2!._validation?.passed).toBe(true)
+    expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
+
+    // Repeated clicks keep landing on the same count rather than ratcheting.
+    for (let i = 0; i < 3; i++) {
+      await solveLocally(doc, { bypassCache: true, validate: true })
+      expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
+    }
+  })
+
   it('keeps the table bounded when a MODIFIER of another feature body is edited repeatedly', async () => {
     // The dominant editing pattern: a fillet/cut/hole replaces a shape that
     // some OTHER feature created, and resplitBody registers the replacement

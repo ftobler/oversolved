@@ -39,77 +39,99 @@ export class SharedHarness {
   ): BuildResponse {
     const scope = new DisposeScope()
     try {
-      const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(this.oc, scope, this.table),
-        postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
-          // The one-Body-one-solid gate, at the point every real-OCC build test
-          // already passes through: a leaf that produces a multi-solid body
-          // fails its own test rather than shipping one Parts row that is
-          // really N parts. See features/bodySplit.ts.
-          assertOneSolidPerBody(this.oc, scope, this.table, bodyStore)
-          const out: Record<string, Record<string, unknown>> = {}
-          for (const [, body] of Object.entries(bodyStore)) {
-            if (!body.shape) continue
-            try {
-              const mesh = solidToMesh(this.oc, this.table, body.shape, {
-                createdBy: body.created_by || '',
-                bodyId: body.id,
-                faceAncestry: body.face_ancestry ?? null,
-                faceNames: body.face_names ?? null,
-                profileQueries: body.profile_queries ?? [],
-              })
-              const edgeResult = solidToEdges(this.oc, this.table, body.shape, {
-                createdBy: body.created_by || '',
-                bodyId: body.id,
-                profileQueries: body.profile_queries ?? [],
-                edgeAncestry: body.edge_ancestry ?? null,
-                edgeNames: body.edge_names ?? null,
-              })
-              const vertexResult = solidToVertices(this.oc, this.table, body.shape, {
-                createdBy: body.created_by || '',
-                bodyId: body.id,
-                profileQueries: body.profile_queries ?? [],
-                faceNames: body.face_names ?? null,
-              })
-              out[body.id] = {
-                mesh,
-                edges: edgeResult.edges,
-                edge_queries: edgeResult.edge_queries,
-                vertices: vertexResult.vertices,
-                vertex_queries: vertexResult.vertex_queries,
-                vertex_uuids: vertexResult.vertex_uuids,
-              }
-            } catch {  /* non-fatal */ }
-          }
-          return out
-        },
-        // Wire the real production metadata extractor so the build-level tests
-        // exercise the mesh-free in-loop registration path (not the fallback).
-        extractBrepMetadata: (bodyStore) => extractBrepMetadata(this.oc, this.table, bodyStore),
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(this.oc, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(this.oc, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(this.oc, scope, b),
-        retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
-        copyBodyShape: (h, owner) =>
-          this.table.register(copyShape(this.oc, scope, this.table.get<OccShape>(h)), owner),
-        // Mirrors the production wiring: a discarded generation loses its
-        // checkpoint retain AND its base body registrations (bodySplit tags
-        // those with the producing feature id) -- or superseded solids strand
-        // across an incremental test sequence.
-        releaseCheckpoint: (fid) => {
-          this.table.releaseOwner('cp:' + fid)
-          this.table.releaseOwner(fid)
-        },
-        releaseRestoreCopies: () => this.table.releaseOwner(RESTORE_OWNER),
-      }
       return build(spec, {
         prevState: opts?.prevState ?? null,
         pickBoundary: opts?.pickBoundary ?? null,
         rollbackPosition: opts?.rollbackPosition ?? null,
-      }, deps)
+      }, this.makeDeps(scope, this.table))
     } finally {
       scope.dispose()
+    }
+  }
+
+  /**
+   * Wire the builder deps for one scope/table pair. Parameterized so the
+   * ``_validate`` comparison build can receive identical wiring bound to
+   * throwaway resources instead of the harness's persistent table -- mirroring
+   * the production ``buildDeps`` in solveLocally.
+   */
+  private makeDeps(scope: DisposeScope, table: HandleTable): BuildDeps {
+    return {
+      trySolveFeature: createFeatureSolver(this.oc, scope, table),
+      postRegister, initGlobalRepo,
+      tessellateBodies: (bodyStore) => {
+        // The one-Body-one-solid gate, at the point every real-OCC build test
+        // already passes through: a leaf that produces a multi-solid body
+        // fails its own test rather than shipping one Parts row that is
+        // really N parts. See features/bodySplit.ts.
+        assertOneSolidPerBody(this.oc, scope, table, bodyStore)
+        const out: Record<string, Record<string, unknown>> = {}
+        for (const [, body] of Object.entries(bodyStore)) {
+          if (!body.shape) continue
+          try {
+            const mesh = solidToMesh(this.oc, table, body.shape, {
+              createdBy: body.created_by || '',
+              bodyId: body.id,
+              faceAncestry: body.face_ancestry ?? null,
+              faceNames: body.face_names ?? null,
+              profileQueries: body.profile_queries ?? [],
+            })
+            const edgeResult = solidToEdges(this.oc, table, body.shape, {
+              createdBy: body.created_by || '',
+              bodyId: body.id,
+              profileQueries: body.profile_queries ?? [],
+              edgeAncestry: body.edge_ancestry ?? null,
+              edgeNames: body.edge_names ?? null,
+            })
+            const vertexResult = solidToVertices(this.oc, table, body.shape, {
+              createdBy: body.created_by || '',
+              bodyId: body.id,
+              profileQueries: body.profile_queries ?? [],
+              faceNames: body.face_names ?? null,
+            })
+            out[body.id] = {
+              mesh,
+              edges: edgeResult.edges,
+              edge_queries: edgeResult.edge_queries,
+              vertices: vertexResult.vertices,
+              vertex_queries: vertexResult.vertex_queries,
+              vertex_uuids: vertexResult.vertex_uuids,
+            }
+          } catch {  /* non-fatal */ }
+        }
+        return out
+      },
+      // Wire the real production metadata extractor so the build-level tests
+      // exercise the mesh-free in-loop registration path (not the fallback).
+      extractBrepMetadata: (bodyStore) => extractBrepMetadata(this.oc, table, bodyStore),
+      brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(this.oc, scope, b),
+      brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(this.oc, scope, b),
+      brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(this.oc, scope, b),
+      retainCheckpointShape: (h, owner) => table.retain(h, owner),
+      copyBodyShape: (h, owner) =>
+        table.register(copyShape(this.oc, scope, table.get<OccShape>(h)), owner),
+      // Mirrors the production wiring: a discarded generation loses its
+      // checkpoint retain AND its base body registrations (bodySplit tags
+      // those with the producing feature id) -- or superseded solids strand
+      // across an incremental test sequence.
+      releaseCheckpoint: (fid) => {
+        table.releaseOwner('cp:' + fid)
+        table.releaseOwner(fid)
+      },
+      releaseRestoreCopies: () => table.releaseOwner(RESTORE_OWNER),
+      // Production parity: the validation build owns a full second generation
+      // it discards afterwards, so it must not mint it into `table`.
+      isolatedValidationDeps: () => {
+        const isoScope = new DisposeScope()
+        const isoTable = new HandleTable({ finalizerGuard: false })
+        return {
+          deps: this.makeDeps(isoScope, isoTable),
+          dispose: () => {
+            isoScope.dispose()
+            isoTable.disposeAll()
+          },
+        }
+      },
     }
   }
 
