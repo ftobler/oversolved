@@ -93,9 +93,10 @@ export class SharedHarness {
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
         copyBodyShape: (h, owner) =>
           this.table.register(copyShape(this.oc, scope, this.table.get<OccShape>(h)), owner),
-        // Mirrors the production wiring: a discarded generation loses BOTH its
-        // checkpoint retain and the base body registration, or superseded
-        // shapes strand at refcount 1 across an incremental test sequence.
+        // Mirrors the production wiring: a discarded generation loses its
+        // checkpoint retain AND its base body registrations (bodySplit tags
+        // those with the producing feature id) -- or superseded solids strand
+        // across an incremental test sequence.
         releaseCheckpoint: (fid) => {
           this.table.releaseOwner('cp:' + fid)
           this.table.releaseOwner(fid)

@@ -156,6 +156,16 @@ export function splitSolids(oc: OccModule, scope: DisposeScope, shape: OccShape)
   return orderSolids(oc, scope, shape, exploreSolids(oc, scope, shape))
 }
 
+// The handle-table owner tag of a body shape is its PRODUCING feature -- the
+// feature whose solve minted this exact solid -- never `created_by`. The two
+// roles diverge the moment a modifier (fillet/cut/hole/...) replaces another
+// feature's shape: `releaseCheckpoint` drops the owner tag of the evicted
+// feature, so a replacement tagged with its still-clean creator would strand
+// one full solid per edit of the modifier. Tagging by producer groups every
+// shape a feature generated (new bodies AND replacements, including split
+// siblings) under the one tag that dies exactly when its checkpoint does.
+// `created_by` keeps its separate job: identity and ancestry attribution.
+
 /**
  * Register `shape` as one Body per solid and return the new ids (first id
  * first). The caller must not have detached `shape` yet: this takes ownership
@@ -247,7 +257,7 @@ export function resplitBody(
     // Nothing disconnected: register the solid itself when there is one, so a
     // compound wrapper never survives as a body shape and `countSolids === 1`
     // stays literally true.
-    body.shape = table.register(scope.detach(solids.length === 1 ? solids[0] : newShape), body.created_by)
+    body.shape = table.register(scope.detach(solids.length === 1 ? solids[0] : newShape), featureId)
     if (oldHandle !== null) table.release(oldHandle)
     return ids
   }
@@ -270,7 +280,7 @@ export function resplitBody(
   const history = last === featureId ? [...body.modified_by] : [...body.modified_by, featureId]
 
   const names0 = namesForSolid(oc, scope, solids[0], template)
-  body.shape = table.register(scope.detach(solids[0]), body.created_by)
+  body.shape = table.register(scope.detach(solids[0]), featureId)
   body.face_names = names0.faceNames
   body.edge_names = names0.edgeNames
   body.face_ancestry = names0.faceAncestry
@@ -284,7 +294,7 @@ export function resplitBody(
       id,
       created_by: body.created_by,
       modified_by: [...history],
-      shape: table.register(scope.detach(solids[i]), body.created_by),
+      shape: table.register(scope.detach(solids[i]), featureId),
       sketch_id: body.sketch_id,
       brep_diff: null,
       profile_queries: [...body.profile_queries],

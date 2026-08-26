@@ -250,10 +250,13 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): Buil
     // survives a downstream consume/free and into the next build; copy it on
     // restore so the rebuilt tail consumes an independent shape (registered
     // under RESTORE_OWNER so the copy dies with its build); evict a discarded
-    // checkpoint's retained shapes by owner. The eviction also drops the base
-    // body registration (owner = creating feature id): the retain alone would
-    // leave every superseded shape stranded at refcount 1 forever, one per
-    // body per rebuild.
+    // checkpoint's retained shapes by owner. The eviction drops BOTH remaining
+    // owners of the outgoing generation: the checkpoint retain, and the base
+    // body registration -- which bodySplit tags with the PRODUCING feature id,
+    // covering shapes the fid created AND replacements it made while modifying
+    // another feature's body. Without the second release every superseded
+    // shape strands forever: the retain alone leaves rc>=1, and for a modifier
+    // edit the leftover ref sits under a still-clean creator.
     retainCheckpointShape: (h, owner) => table.retain(h, owner),
     copyBodyShape: (h, owner) => table.register(copyShape(oc, scope, table.get<OccShape>(h)), owner),
     releaseCheckpoint: (fid) => {

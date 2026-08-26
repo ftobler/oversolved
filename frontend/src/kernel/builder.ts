@@ -95,11 +95,14 @@ export interface BuildDeps {
     shape: NonNullable<Body['shape']>,
     owner?: string,
   ) => NonNullable<Body['shape']>
-  /** Evict every shape held by a checkpoint, by owner tag (``releaseOwner``).
-   *  Called for prev-state checkpoints that a new build discards. The wiring
-   *  must drop BOTH the checkpoint retain (``'cp:' + fid``) and the base body
-   *  registration (owner = creating feature id): the retain alone leaves the
-   *  base ref of every superseded shape stranded at refcount 1 forever. */
+  /** Evict every shape a discarded checkpoint held, by owner tag. Called for
+   *  prev-state checkpoints that a new build discards. The wiring must drop
+   *  BOTH remaining owners of the outgoing generation: the checkpoint retain
+   *  (``'cp:' + fid``) and the base body registration (owner = the PRODUCING
+   *  feature id -- bodySplit tags new bodies and replacements alike with the
+   *  feature that minted them). The retain alone leaves rc>=1 on every
+   *  superseded shape; for a modifier edit the leftover ref sits under a
+   *  still-clean creator and strands one solid per edit. */
   releaseCheckpoint?: (fid: string) => void
   /** Release the previous build's clean-prefix restore copies (owner tag
    *  [[RESTORE_OWNER]]). Called right before the restore mints fresh ones, so

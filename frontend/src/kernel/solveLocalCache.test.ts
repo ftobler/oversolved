@@ -161,4 +161,33 @@ describe.skipIf(!oc || !solveBytes)('solveLocally cross-solve cache (real OCC + 
     await solveLocally(docN(12), { bypassCache: true })
     expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
   })
+
+  it('keeps the table bounded when a MODIFIER of another feature body is edited repeatedly', async () => {
+    // The dominant editing pattern: a fillet/cut/hole replaces a shape that
+    // some OTHER feature created, and resplitBody registers the replacement
+    // under body.created_by (the extrude), never under the modifier. Evicting
+    // the modifier's checkpoint therefore paid only its retain; the replaced
+    // solid stayed at rc=1 owned by the clean survivor until the document
+    // closed -- one full OCC solid stranded PER EDIT, forever.
+    setSolveLocalsForTest(async () => oc)
+    const modDoc = (radius: number) => ({
+      id: 'docModLeak',
+      features: [
+        rectSketch('skM', 10, 10),
+        extrude('skM', 'exBase', 5, 'new'),
+        { id: 'fiM', kind: 'fillet', edges: ['?body_exBase:edge:0'], radius },
+      ],
+    })
+    await solveLocally(modDoc(1))
+    let r = await solveLocally(modDoc(2))
+    expect((r!.result as Record<string, { status?: string }>).fiM.status).toBe('ok')
+    const steady = persistentTableForTest()!.liveCount()
+    expect(steady).toBeGreaterThan(0)
+
+    for (let radius = 3; radius <= 7; radius++) {
+      r = await solveLocally(modDoc(radius))
+      expect((r!.result as Record<string, { status?: string }>).fiM.status).toBe('ok')
+      expect(persistentTableForTest()!.liveCount()).toBeLessThanOrEqual(steady)
+    }
+  })
 })
