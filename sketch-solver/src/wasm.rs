@@ -22,6 +22,9 @@ pub fn solve_sketch_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
 /// independently. See `api::detect_topology_bytes`.
 #[wasm_bindgen]
 pub fn detect_topology_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
+    // "codec error", not "decode error": the topology encoder can also refuse
+    // the output (non-finite computed coordinates), so this failure is not
+    // necessarily about the buffer the host sent.
     crate::api::detect_topology_bytes(input)
-        .map_err(|e| JsError::new(&format!("topology decode error: {e:?}")))
+        .map_err(|e| JsError::new(&format!("topology codec error: {e:?}")))
 }

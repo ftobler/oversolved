@@ -650,6 +650,20 @@ mod tests {
         assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
     }
 
+    // The other overrun direction: bytes beyond the declared layout are
+    // surplus, not corruption. The reader consumes exactly the declared counts
+    // and never demands EOF (the cursor has no is-empty check), so padding
+    // after the last mate record decodes to the identical input.
+    #[test]
+    fn mate_input_trailing_bytes_beyond_the_declared_layout_are_ignored() {
+        let mut longer = encode_mate_input(&sample_input());
+        longer.extend_from_slice(&[0xABu8; 16]);
+        let decoded = decode_mate_input(&longer).expect("trailing bytes are surplus");
+        assert_eq!(decoded.mates.len(), 1);
+        assert_eq!(decoded.params_initial, sample_input().params_initial);
+        assert_eq!(decoded.mates[0].kind, sample_input().mates[0].kind);
+    }
+
     #[test]
     fn mate_input_param_count_must_match_body_count() {
         // n_bodies sits right after the magic. Claiming three bodies over a

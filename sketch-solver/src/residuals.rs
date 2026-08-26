@@ -1839,6 +1839,46 @@ mod tests {
         assert_eq!(p.jacobian(&x, n).nrows(), 1);
     }
 
+    /// Normal between a line and an ARC is keyed to the actual contact (the
+    /// line endpoint), not the arc's own angle params. Pinned at a
+    /// configuration where the two readings disagree on purpose: with start/end
+    /// angles 0..90deg an angle-keyed radial would be (1,0) and the residual a
+    /// false zero, while the contact-keyed radial is (0,-1).
+    #[test]
+    fn normal_between_line_and_arc_is_keyed_to_the_contact() {
+        // Line along +x ending at (4,0); arc centre (4,8). The radial from the
+        // centre to that contact is (0,-1), so cross(line_dir, radial) = -4.
+        let absent = PointSelector::Absent;
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
+            vec![0.0, 0.0, 4.0, 0.0, 4.0, 8.0, 2.0, 0.0, 90.0],
+            vec![cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(1, absent)))],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1);
+        assert!((r[0] - (-4.0)).abs() < 1e-12, "normal line/arc: {}", r[0]);
+    }
+
+    /// The contact collapsed onto the arc centre: `radius_dir` cannot divide,
+    /// so an arc falls back to the parametric radial named by its angle params.
+    /// With selector Absent that is the start angle; here 0deg means (1,0) and
+    /// the diagonal line direction gives cross = -5.
+    #[test]
+    fn normal_line_arc_degenerate_contact_uses_the_parametric_radial() {
+        let absent = PointSelector::Absent;
+        let inp = input(
+            vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
+            vec![0.0, 0.0, 5.0, 5.0, 5.0, 5.0, 2.0, 0.0, 90.0],
+            vec![cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(1, absent)))],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1);
+        assert!(r[0].is_finite(), "no NaN out of the degenerate contact");
+        assert!((r[0] - (-5.0)).abs() < 1e-12, "normal degenerate: {}", r[0]);
+    }
+
     // ─── line-arc tangent tests ───
 
     /// Unpinned line-arc tangent: the line is nowhere near the arc's start/end
