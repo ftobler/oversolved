@@ -49,12 +49,13 @@ async function checkResponse(res: Response): Promise<Response> {
 // SyntaxError: isConnectionError treats anything that is not an HttpError as
 // "the cloud is unreachable", so an unclassified parse failure silently flips
 // consumers like the document library into offline mode over what is really a
-// misbehaving intermediary.
+// misbehaving intermediary. json() is tried first and text() read only for the
+// error report, so a well-formed body pays nothing extra.
 async function parseJsonBody<T>(res: Response): Promise<T> {
-  const text = await res.text().catch(() => '')
   try {
-    return JSON.parse(text) as T
+    return (await res.json()) as T
   } catch {
+    const text = await res.text().catch(() => '')
     throw new HttpError(res.status, text)
   }
 }
