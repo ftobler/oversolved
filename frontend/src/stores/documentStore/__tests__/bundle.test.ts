@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { resetFakeIndexedDb } from './fakeIndexedDb'
 import JSZip from 'jszip'
 import { IndexedDbDocumentStore, LOCAL_OWNER } from '../IndexedDbDocumentStore'
-import { buildBundleBytes, importBundle, MAX_BUNDLE_ENTRIES } from '../bundle'
+import { buildBundleBytes, importBundle, MAX_BUNDLE_ENTRIES, MAX_BUNDLE_INPUT_BYTES } from '../bundle'
 import { resetDbConnection } from '../idb'
 import { secureFilename } from '../secureFilename'
 beforeEach(() => {
@@ -121,6 +121,17 @@ describe('bundle export/import', () => {
     const store = new IndexedDbDocumentStore()
     await expect(importBundle(store, bytes)).rejects.toThrow(/too many files/i)
     expect(await store.list()).toHaveLength(0)  // rejected before any document lands
+  })
+
+  it('rejects an input over the compressed-size cap before any zip parse', async () => {
+    // The input cap is checked on Blob.size before loadAsync, so the guard is
+    // free of parse work; a faked size keeps the test from allocating 100MB.
+    const oversized = Object.create(Blob.prototype) as Blob
+    Object.defineProperty(oversized, 'size', { value: MAX_BUNDLE_INPUT_BYTES + 1 })
+
+    const store = new IndexedDbDocumentStore()
+    await expect(importBundle(store, oversized)).rejects.toThrow(/too large/i)
+    expect(await store.list()).toHaveLength(0)
   })
 
   it('falls back to Untitled for names that strip to an empty stem', async () => {
