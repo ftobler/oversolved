@@ -12,6 +12,7 @@ import {
   getRelayHandlers,
   setAnchorSolverWorkerForTest,
   setAnchorSolverTimeoutForTest,
+  setAnchorSolverCrashBackoffForTest,
   cancelAssemblySolver,
   getPendingCount,
 } from './anchorSolverClient'
@@ -237,78 +238,193 @@ describe('solveAssemblyViaWorker', () => {
   })
 })
 
-describe('hang watchdog and cancel', () => {
-  afterEach(() => vi.useRealTimers())
+  // Respawn assertions below swap `fakeWorker` for a fresh instance rather
+  // than calling setAnchorSolverWorkerForTest: the reset would also clear a
+  // crash-armed cooldown, masking exactly the state these tests exercise.
+  function respawn(): FakeWorker {
+    fakeWorker = new FakeWorker()
+    return fakeWorker
+  }
 
-  it('is disabled by default: a never-replying worker is never killed without arming', async () => {
-    vi.useFakeTimers()
-    // No setAnchorSolverTimeoutForTest: this is the production ceiling (Infinity).
-    const p = solveAssemblyViaWorker('asm-1', [], {}, [])
-    vi.advanceTimersByTime(10 * 60 * 1000)
-    expect(fakeWorker.terminated).toBe(false)
-    // Still live: the request settles normally whenever the reply does arrive,
-    // and only cancelAssemblySolver() can end it early.
-    const req = fakeWorker.posted[0] as SolveAssemblyRequest
-    fakeWorker.reply({
+  async function settleNextSolve(worker: FakeWorker): Promise<void> {
+    const p = solveAssemblyViaWorker('asm-respawn', [], {}, [])
+    const req = worker.posted[0] as SolveAssemblyRequest
+    worker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
       payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
     })
     await expect(p).resolves.not.toBeNull()
-  })
+  }
 
-  it('terminates a hung worker and rejects the in-flight request when the watchdog fires', async () => {
-    vi.useFakeTimers()
-    setAnchorSolverTimeoutForTest(1000)
-    const p = solveAssemblyViaWorker('asm-1', [], {}, [])  // worker never replies
-    vi.advanceTimersByTime(1000)
-    await expect(p).rejects.toThrow('anchor solver timed out')
-    expect(fakeWorker.terminated).toBe(true)
-    expect(getPendingCount()).toBe(0)
-    // Dropped worker respawns fresh on the next solve.
-    const w2 = new FakeWorker()
-    setAnchorSolverWorkerForTest(() => w2)
-    const p2 = solveAssemblyViaWorker('asm-2', [], {}, [])
-    const req2 = w2.posted[0] as SolveAssemblyRequest
-    w2.reply({
-      id: req2.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
-    })
-    await expect(p2).resolves.not.toBeNull()
-  })
-
-  it('fails every in-flight request when one hangs (shared worker is killed)', async () => {
-    vi.useFakeTimers()
-    setAnchorSolverTimeoutForTest(1000)
-    const p1 = solveAssemblyViaWorker('asm-1', [], {}, [])
-    const p2 = solveAssemblyViaWorker('asm-2', [], {}, [])
-    vi.advanceTimersByTime(1000)
-    await expect(p1).rejects.toThrow('anchor solver timed out')
-    await expect(p2).rejects.toThrow('anchor solver timed out')
-    expect(getPendingCount()).toBe(0)
-  })
-
-  it('clears the watchdog on a normal reply so a settled request is never killed', async () => {
-    vi.useFakeTimers()
-    setAnchorSolverTimeoutForTest(1000)
+  it('rejects in-flight requests on a crash and respawns a fresh worker next solve', async () => {
+    // A single crash with no burst (cooldown disabled here) must respawn on
+    // the next solve exactly as before the cooldown existed. The burst case is
+    // the crash-cooldown suite below.
+    setAnchorSolverCrashBackoffForTest(0)
     const p = solveAssemblyViaWorker('asm-1', [], {}, [])
-    const req = fakeWorker.posted[0] as SolveAssemblyRequest
-    fakeWorker.reply({
-      id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
-    })
-    await expect(p).resolves.not.toBeNull()
-    vi.advanceTimersByTime(5000)  // past the ceiling: no spurious terminate
-    expect(fakeWorker.terminated).toBe(false)
+    fakeWorker.crash()
+    await expect(p).rejects.toThrow('anchor solver worker crashed')
+    expect(fakeWorker.terminated).toBe(true)
+    // Next solve spawns a new worker (the crashed one was dropped).
+    const w2 = respawn()
+    await settleNextSolve(w2)
   })
 
-  it('cancelAssemblySolver rejects the in-flight request with a benign cancel error', async () => {
-    const p = solveAssemblyViaWorker('asm-1', [], {}, [])
-    expect(getPendingCount()).toBe(1)
-    cancelAssemblySolver()
-    await expect(p).rejects.toThrow('assembly solve cancelled')
-    expect(fakeWorker.terminated).toBe(true)
-    expect(getPendingCount()).toBe(0)
+  describe('crash cooldown', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('collapses a crash burst into one respawn: the rest backoff-reject', async () => {
+      vi.useFakeTimers()
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      fakeWorker.crash()
+      await expect(p).rejects.toThrow('anchor solver worker crashed')
+      // Three immediate re-solves inside the window (the drag-tick shape over
+      // a trapping doc): none may spawn a fresh worker, all reject with the
+      // cooldown's own signal.
+      await expect(solveAssemblyViaWorker('asm-2', [], {}, [])).rejects.toThrow('anchor solver worker crashed (backoff)')
+      await expect(solveAssemblyViaWorker('asm-3', [], {}, [])).rejects.toThrow('anchor solver worker crashed (backoff)')
+      await expect(solveAssemblyViaWorker('asm-4', [], {}, [])).rejects.toThrow('anchor solver worker crashed (backoff)')
+      expect(getPendingCount()).toBe(0)
+      // Only the original post exists: no request of the burst reached a
+      // (re)spawned worker.
+      expect(fakeWorker.posted).toHaveLength(1)
+    })
+
+    it('after the cooldown elapses the next solve respawns a fresh worker', async () => {
+      vi.useFakeTimers()
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      fakeWorker.crash()
+      await expect(p).rejects.toThrow('anchor solver worker crashed')
+      vi.advanceTimersByTime(2001)  // past the 2000ms window
+      const w2 = respawn()
+      await settleNextSolve(w2)
+    })
+
+    it('a user cancel does not arm the cooldown', async () => {
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      cancelAssemblySolver()
+      await expect(p).rejects.toThrow('assembly solve cancelled')
+      expect(fakeWorker.terminated).toBe(true)
+      // A cancel is user-initiated, not a trap: the next solve spawns at once.
+      const w2 = respawn()
+      await settleNextSolve(w2)
+    })
+
+    it('a watchdog timeout does not arm the cooldown', async () => {
+      vi.useFakeTimers()
+      setAnchorSolverTimeoutForTest(1000)
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      vi.advanceTimersByTime(1000)
+      await expect(p).rejects.toThrow('anchor solver timed out')
+      // The watchdog already spaced the drops, so the next solve respawns at
+      // once instead of waiting out a cooldown.
+      const w2 = respawn()
+      await settleNextSolve(w2)
+    })
+
+    it('a user cancel clears a crash-armed cooldown so the next solve spawns at once', async () => {
+      // The clear is defensive: a backoff rejection is synchronous, so while
+      // the window is armed the overlay never paints a cancel button and no
+      // live user cancel can land here. The clear still matches documented
+      // intent (a deliberate drop lifts the cooldown), so pin that it works.
+      vi.useFakeTimers()
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      fakeWorker.crash()
+      await expect(p).rejects.toThrow('anchor solver worker crashed')
+      await expect(solveAssemblyViaWorker('asm-2', [], {}, [])).rejects.toThrow('anchor solver worker crashed (backoff)')
+      cancelAssemblySolver()
+      const w2 = respawn()
+      await settleNextSolve(w2)
+    })
+
+    it('setAnchorSolverCrashBackoffForTest overrides the window', async () => {
+      vi.useFakeTimers()
+      setAnchorSolverCrashBackoffForTest(500)
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      fakeWorker.crash()
+      await expect(p).rejects.toThrow('anchor solver worker crashed')
+      // Inside the shortened window: still backing off.
+      vi.advanceTimersByTime(250)
+      await expect(solveAssemblyViaWorker('asm-2', [], {}, [])).rejects.toThrow('anchor solver worker crashed (backoff)')
+      // Past it: respawns normally.
+      vi.advanceTimersByTime(251)
+      const w2 = respawn()
+      await settleNextSolve(w2)
+    })
   })
+
+  describe('hang watchdog and cancel', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('is disabled by default: a never-replying worker is never killed without arming', async () => {
+      vi.useFakeTimers()
+      // No setAnchorSolverTimeoutForTest: this is the production ceiling (Infinity).
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      vi.advanceTimersByTime(10 * 60 * 1000)
+      expect(fakeWorker.terminated).toBe(false)
+      // Still live: the request settles normally whenever the reply does arrive,
+      // and only cancelAssemblySolver() can end it early.
+      const req = fakeWorker.posted[0] as SolveAssemblyRequest
+      fakeWorker.reply({
+        id: req.id, kind: 'solveAssembly', ok: true,
+        payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+      })
+      await expect(p).resolves.not.toBeNull()
+    })
+
+    it('terminates a hung worker and rejects the in-flight request when the watchdog fires', async () => {
+      vi.useFakeTimers()
+      setAnchorSolverTimeoutForTest(1000)
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])  // worker never replies
+      vi.advanceTimersByTime(1000)
+      await expect(p).rejects.toThrow('anchor solver timed out')
+      expect(fakeWorker.terminated).toBe(true)
+      expect(getPendingCount()).toBe(0)
+      // Dropped worker respawns fresh on the next solve.
+      const w2 = new FakeWorker()
+      setAnchorSolverWorkerForTest(() => w2)
+      const p2 = solveAssemblyViaWorker('asm-2', [], {}, [])
+      const req2 = w2.posted[0] as SolveAssemblyRequest
+      w2.reply({
+        id: req2.id, kind: 'solveAssembly', ok: true,
+        payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+      })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('fails every in-flight request when one hangs (shared worker is killed)', async () => {
+      vi.useFakeTimers()
+      setAnchorSolverTimeoutForTest(1000)
+      const p1 = solveAssemblyViaWorker('asm-1', [], {}, [])
+      const p2 = solveAssemblyViaWorker('asm-2', [], {}, [])
+      vi.advanceTimersByTime(1000)
+      await expect(p1).rejects.toThrow('anchor solver timed out')
+      await expect(p2).rejects.toThrow('anchor solver timed out')
+      expect(getPendingCount()).toBe(0)
+    })
+
+    it('clears the watchdog on a normal reply so a settled request is never killed', async () => {
+      vi.useFakeTimers()
+      setAnchorSolverTimeoutForTest(1000)
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      const req = fakeWorker.posted[0] as SolveAssemblyRequest
+      fakeWorker.reply({
+        id: req.id, kind: 'solveAssembly', ok: true,
+        payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+      })
+      await expect(p).resolves.not.toBeNull()
+      vi.advanceTimersByTime(5000)  // past the ceiling: no spurious terminate
+      expect(fakeWorker.terminated).toBe(false)
+    })
+
+    it('cancelAssemblySolver rejects the in-flight request with a benign cancel error', async () => {
+      const p = solveAssemblyViaWorker('asm-1', [], {}, [])
+      expect(getPendingCount()).toBe(1)
+      cancelAssemblySolver()
+      await expect(p).rejects.toThrow('assembly solve cancelled')
+      expect(fakeWorker.terminated).toBe(true)
+      expect(getPendingCount()).toBe(0)
+    })
 })
 
 describe('relay plumbing', () => {

@@ -21,6 +21,12 @@
  * `solveTimeoutMs` (Infinity in production, lowered by
  * `setAnchorSolverTimeoutForTest`) so the drop-and-respawn path stays covered
  * by tests and can be re-armed by setting a ceiling.
+ *
+ * Crash handling mirrors the part solver too: a crash arms a short cooldown
+ * that suppresses respawns for CRASH_COOLDOWN_MS, so a drag burst over a
+ * deterministically trapping doc pays at most one respawn per window instead
+ * of one Worker per drag tick. The next request after the window respawns
+ * normally.
  */
 
 import type {
@@ -79,6 +85,16 @@ const pending = new Map<number, Pending>()
 // `setTimeout(fn, Infinity)` is spec-equivalent to `setTimeout(fn, 0)`, which
 // would kill every request immediately.
 let solveTimeoutMs = Infinity
+
+// Crash cooldown window: after a worker trap, refuse to respawn for this long
+// (mirrors solverClient.ts). Only a crash arms it; cancels and watchdog
+// timeouts clear one a crash armed earlier. A drag tick over a deterministically
+// trapping doc fires solveAssembly per tick; the gate below collapses that
+// burst to one respawn per window. Tests lower the window via
+// setAnchorSolverCrashBackoffForTest().
+const CRASH_COOLDOWN_MS = 2000
+let crashCooldownMs = CRASH_COOLDOWN_MS
+let workerCrashAt = 0  // Date.now() of the last worker trap; 0 = no crash yet
 
 let relayHandlers: RelayHandlers | null = null
 
@@ -203,18 +219,30 @@ function dropWorker(err: Error): void {
 }
 
 function onError(): void {
+  // A trap loses the worker's WASM state. Arm the respawn cooldown so a drag
+  // burst over the same trapping doc does not spawn one worker per tick.
+  workerCrashAt = Date.now()
   dropWorker(new Error('anchor solver worker crashed'))
 }
 
 function onTimeout(): void {
   // A request outran the watchdog: the Worker is presumed stuck in an
   // un-interruptible synchronous WASM loop. Killing it is the only recovery.
+  // The cooldown clear is defensive (a crash's dropWorker already cleared the
+  // watchdog timers, so no timeout can fire inside a crash-armed window); it
+  // stays to match solverClient's documented intent that only a crash sets
+  // the timestamp.
   dropWorker(new Error('anchor solver timed out'))
+  workerCrashAt = 0
 }
 
 /** User-initiated cancel: kill the Worker so any in-flight solve is rejected. */
 export function cancelAssemblySolver(): void {
+  // Same defensive clear as onTimeout: while the window is armed, reSolve
+  // rejects synchronously and no user cancel can land here, but a deliberate
+  // drop lifts the cooldown if one got armed.
   dropWorker(new Error('assembly solve cancelled'))
+  workerCrashAt = 0
 }
 
 function ensureWorker(): AnchorSolverWorkerLike | null {
@@ -240,6 +268,12 @@ export function solveAssemblyViaWorker(
   revs: Record<string, number>,
   mates: MateSpec[],
 ): Promise<AssemblySolveOkResponse | null> {
+  if (workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs) {
+    // The last trap is still inside the cooldown: spawning a fresh worker now
+    // just rebuilds and traps again. Reject instead so a drag burst over a
+    // trapping doc pays one respawn per window.
+    return Promise.reject(new Error('anchor solver worker crashed (backoff)'))
+  }
   const w = ensureWorker()
   if (!w) return Promise.resolve(null)
   const id = nextId++
@@ -283,12 +317,21 @@ export function setAnchorSolverWorkerForTest(
   // The production default, so a test that says nothing about the watchdog gets
   // production behaviour. The timeout suite opts in explicitly.
   solveTimeoutMs = Infinity
+  // Same for the crash cooldown: a fresh test starts with no crash recorded and
+  // the production window. The backoff suite opts in via the setter below.
+  workerCrashAt = 0
+  crashCooldownMs = CRASH_COOLDOWN_MS
   workerFactory = factory ?? defaultFactory
 }
 
 /** @internal test-only: override the watchdog ceiling (ms). */
 export function setAnchorSolverTimeoutForTest(ms: number): void {
   solveTimeoutMs = ms
+}
+
+/** @internal test-only: override the crash cooldown window (ms). */
+export function setAnchorSolverCrashBackoffForTest(ms: number): void {
+  crashCooldownMs = ms
 }
 
 /** @internal test-only: get the current relay handlers (for test assertions). */
