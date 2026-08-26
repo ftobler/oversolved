@@ -76,18 +76,19 @@ export function normalizedWorldKey(frame: NormalFrame, point: readonly number[])
 }
 
 /**
- * The world-space midpoint of an edge (line) or, for a circle/arc, the point at
- * the MID-PARAMETER of its trimmed angle range -- never the bare centre. Two
- * arcs of one circle would otherwise share the centre and produce byte-identical
- * keys: a permanent tie, always refused and both left unnamed, never a swap.
- * The mid-parameter point moves along the circle with the angle range, so
- * distinct arcs order instead. It still cancels under a uniform resize because
- * `normalizedWorldKey` divides by the parent span, and the point scales with
- * the radius exactly like the span. Returns NaN components on a geometry-read
- * failure so `orderSplitChildren` refuses the whole multiplicity group instead
- * of ordering by a fabricated point (the old `[0, 0, 0]` fallback could falsely
- * tie with a real edge at the origin). A circle/arc missing its angle fields
- * (defensive; `edgeToGeom` always fills them) falls back to the centre.
+ * The world-space midpoint of an edge (line) or, for a circle/arc/ellipse, the
+ * point at the MID-PARAMETER (eccentric angle for an ellipse) of its trimmed
+ * angle range -- never the bare centre. Two arcs of one conic would otherwise
+ * share the centre and produce byte-identical keys: a permanent tie, always
+ * refused and both left unnamed, never a swap. The mid-parameter point moves
+ * along the curve with the angle range, so distinct arcs order instead. It
+ * still cancels under a uniform resize because `normalizedWorldKey` divides by
+ * the parent span, and the point scales with the radii exactly like the span.
+ * Returns NaN components on a geometry-read failure so `orderSplitChildren`
+ * refuses the whole multiplicity group instead of ordering by a fabricated
+ * point (the old `[0, 0, 0]` fallback could falsely tie with a real edge at
+ * the origin). A conic missing its angle fields (defensive; `edgeToGeom` always
+ * fills them) falls back to the centre.
  */
 export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape): number[] {
   try {
@@ -100,17 +101,27 @@ export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape)
     }
     if (Array.isArray(c)) {
       const radius = (ed as { radius?: number }).radius
+      const a = (ed as { a?: number }).a
+      const b = (ed as { b?: number }).b
       const axis = (ed as { axis?: number[] }).axis
       const u = (ed as { x_axis?: number[] }).x_axis
       const a0 = (ed as { angle_start?: number }).angle_start
       const a1 = (ed as { angle_end?: number }).angle_end
       if (
-        typeof radius === 'number' && Number.isFinite(radius) &&
         Array.isArray(axis) && Array.isArray(u) &&
         typeof a0 === 'number' && typeof a1 === 'number'
       ) {
+        // A circle keys off its radius; an elliptical arc off its semi-major a
+        // along x_axis and semi-minor b along v. Without the a/b arm both
+        // halves of a split ellipse fell back to the shared centre: byte-equal
+        // keys, a permanent tie, and both edges went unnamed.
+        const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
+        const kCircle = finite(radius) ? radius : null
+        const kEllipse = finite(a) && finite(b) ? ([a, b] as const) : null
+        if (kCircle === null && kEllipse === null) return [...c]
         // v = axis x u makes a right-handed in-plane basis (bodyGeometry.ts
-        // uses the same convention); p(t) = center + radius*(cos t * u + sin t * v).
+        // uses the same convention); p(t) = center + kU*cos t*u + kV*sin t*v.
+        const [kU, kV] = kEllipse ?? [kCircle as number, kCircle as number]
         const t = (a0 + a1) / 2
         const v = [
           axis[1] * u[2] - axis[2] * u[1],
@@ -120,9 +131,9 @@ export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape)
         const ct = Math.cos(t)
         const st = Math.sin(t)
         return [
-          c[0] + radius * (ct * u[0] + st * v[0]),
-          c[1] + radius * (ct * u[1] + st * v[1]),
-          c[2] + radius * (ct * u[2] + st * v[2]),
+          c[0] + kU * ct * u[0] + kV * st * v[0],
+          c[1] + kU * ct * u[1] + kV * st * v[1],
+          c[2] + kU * ct * u[2] + kV * st * v[2],
         ]
       }
       return [...c]

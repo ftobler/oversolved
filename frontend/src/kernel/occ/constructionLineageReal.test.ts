@@ -20,6 +20,7 @@ import {
   makeBoxAt,
   makeCylinder,
   makeArcEdge,
+  makeEllipseEdge,
   faceCentroid,
   faceNormal,
   edgeToGeom,
@@ -350,6 +351,35 @@ describe.skipIf(!hasOcc)('edge multiplicity: a face pair sharing 2 edges', () =>
       expect(Math.hypot(m[0], m[1], m[2])).toBeCloseTo(5, 6)
       expect(Math.abs(m[0])).toBeCloseTo(0, 6)
       expect(m[1]).toBeCloseTo(5, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('two halves of a split ellipse get distinct non-centre keys, not a permanent centre tie', () => {
+    // An ellipse edge carries a/b instead of radius, so the old code missed the
+    // mid-parameter arm entirely and fell back to the shared centre: two split
+    // halves produced byte-identical keys, orderSplitChildren refused (a
+    // permanent tie), and both stayed unnamed. The eccentric-angle midpoint
+    // must move along the ellipse like the circle arm does.
+    const scope = new DisposeScope()
+    try {
+      const first = makeEllipseEdge(oc, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 6, 3, 0, Math.PI)
+      const second = makeEllipseEdge(oc, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 6, 3, Math.PI, 2 * Math.PI)
+      const k1 = edgeMidpoint(oc, scope, first)
+      const k2 = edgeMidpoint(oc, scope, second)
+      for (const k of [k1, k2]) expect(k.some(Number.isNaN)).toBe(false)
+      // Mid-eccentric-angle points pi/2 and 3pi/2: (0, b, 0) and (0, -b, 0),
+      // each ON the ellipse and neither at the centre.
+      for (const k of [k1, k2]) expect(Math.hypot(k[0], k[1], k[2])).toBeCloseTo(3, 6)
+      expect(k1, 'split halves must not collapse onto the ellipse centre').not.toEqual(k2)
+      expect(k2[1]).toBeCloseTo(-k1[1], 6)
+      const ordered = orderSplitChildren([
+        { item: 'first', key: k1 },
+        { item: 'second', key: k2 },
+      ])
+      expect(ordered, 'distinct half keys order instead of permanently refusing').not.toBeNull()
+      expect(new Set(ordered!).size).toBe(2)
     } finally {
       scope.dispose()
     }
