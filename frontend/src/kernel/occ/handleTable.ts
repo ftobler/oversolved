@@ -20,6 +20,7 @@
  */
 
 import type { Disposable } from './disposeScope'
+import { isDevBuild } from '../isDevBuild'
 
 /** Opaque, branded handle into a [[HandleTable]]. Never do arithmetic on it. */
 export type OccHandle = number & { readonly __occHandle: unique symbol }
@@ -47,14 +48,6 @@ export interface HandleTableOptions {
   finalizerGuard?: boolean
   // Sink for guard-detected leaks. Defaults to `console.warn`.
   onLeak?: (info: LeakInfo) => void
-}
-
-function isDevBuild(): boolean {
-  try {
-    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-  } catch {
-    return false
-  }
 }
 
 function defaultOnLeak(info: LeakInfo): void {

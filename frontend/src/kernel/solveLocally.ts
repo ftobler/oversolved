@@ -8,6 +8,7 @@
  */
 
 import { build, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
+import { isDevBuild } from './isDevBuild'
 import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver } from './features/sketch'
@@ -317,10 +318,12 @@ async function solveLocallyGuarded(
   // absent) is fine, sketch features then throw and the builder catches them.
   const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) {
-    console.log('[solveLocally] OCC.js not available, returning null')
+    // Dev-only diagnostics: this runs on every solve in the hot path, so prod
+    // builds stay silent (same gate as handleTable/loadOccWeb).
+    if (isDevBuild()) console.log('[solveLocally] OCC.js not available, returning null')
     return null
   }
-  console.log('[solveLocally] OCC.js loaded, running build()')
+  if (isDevBuild()) console.log('[solveLocally] OCC.js loaded, running build()')
 
   // A document switch invalidates every cached checkpoint handle: drop them
   // before solving the new doc so its handles do not pile up behind the old.

@@ -13,20 +13,11 @@
  */
 
 import type { OccModule } from './occTypes'
+import { isDevBuild } from '../isDevBuild'
 
 const DEFAULT_BASE = '/occ/'
 
 let cached: Promise<OccModule | null> | null = null
-
-// Same idiom as handleTable.ts's isDevBuild(): kept local rather than shared
-// since there is no common env util and the two modules are unrelated.
-function isDevBuild(): boolean {
-  try {
-    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-  } catch {
-    return false
-  }
-}
 
 export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | null> {
   if (cached) {
