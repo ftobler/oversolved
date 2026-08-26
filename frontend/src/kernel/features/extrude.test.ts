@@ -23,11 +23,28 @@ describe('solveExtrude guard paths', () => {
   })
 
   it('rejects a NaN distance the same way as a zero distance', () => {
-    // 'not-a-number' is truthy, so it survives the `||` default-chain and
+    // 'not-a-number' is truthy, so it survives the default-chain and
     // Number() coerces it to NaN, which `=== 0` alone would miss.
     const repo = new Repository()
     expect(() =>
       solveExtrude(oc, scope, table, { id: 'f1', extrude: { distance: 'not-a-number' } }, repo, {}),
+    ).toThrow(/distance must be non-zero/)
+  })
+
+  it('rejects an explicit zero distance instead of coercing the default', () => {
+    // 0 is falsy, so the old `||` chain swallowed it into the 1.0 default and
+    // the extrude silently succeeded at the wrong depth. Nullish coalescing
+    // keeps the explicit zero, which lands on the non-zero validation throw.
+    const repo = new Repository()
+    expect(() =>
+      solveExtrude(oc, scope, table, { id: 'f1', extrude: { distance: 0 } }, repo, {}),
+    ).toThrow(/distance must be non-zero/)
+  })
+
+  it('rejects an explicit zero depth alias the same way', () => {
+    const repo = new Repository()
+    expect(() =>
+      solveExtrude(oc, scope, table, { id: 'f1', extrude: { depth: 0 } }, repo, {}),
     ).toThrow(/distance must be non-zero/)
   })
 

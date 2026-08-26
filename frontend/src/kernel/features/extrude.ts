@@ -60,7 +60,11 @@ export function solveExtrude(
     : sketchRaw
       ? [sketchRaw as string]
       : []
-  const distance = Number((merged.distance as number) || (merged.depth as number) || 1.0)
+  // Nullish, not truthy: an explicit distance=0 must survive to the non-zero
+  // validation below instead of silently becoming the default depth.
+  const distance = Number(
+    (merged.distance as number | null | undefined) ?? (merged.depth as number | null | undefined) ?? 1.0,
+  )
 
   if (!Number.isFinite(distance) || distance === 0) throw new Error('extrude: distance must be non-zero')
   if (sketchRefs.length === 0) {

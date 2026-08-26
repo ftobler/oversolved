@@ -147,7 +147,9 @@ export function solveRevolve(
     : sketchRaw
       ? [sketchRaw as string]
       : []
-  const angle = Number((merged.angle as number) || 360.0)
+  // Nullish, not truthy: an explicit angle=0 must reach the non-zero validation
+  // below and fail the feature, not silently become a full turn.
+  const angle = Number((merged.angle as number | null | undefined) ?? 360.0)
 
   if (!Number.isFinite(angle) || angle === 0) throw new Error('revolve: angle must be non-zero')
   if (sketchRefs.length === 0) throw new Error('revolve: requires at least one profile reference')
