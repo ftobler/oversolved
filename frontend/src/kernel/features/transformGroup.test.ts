@@ -135,6 +135,36 @@ describe('transform / mirror guard paths', () => {
     ).toThrow(/no rotation axis specified/)
   })
 
+  it('transform: a non-finite rotation_angle fails loud instead of silently vanishing', () => {
+    // NaN is falsy: the old truthy checks let it skip BOTH the missing-axis
+    // error and the rotation itself. The guard must fire with or without an
+    // axis present.
+    expect(() =>
+      solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], rotation_angle: NaN } }, repo, {
+        body_s: { ...nullBody('body_s'), shape: 1 as never },
+      }),
+    ).toThrow(/rotation_angle must be a finite number/)
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't',
+        transform: { bodies: ['body_s'], rotation_angle: Infinity, rotation_axis_origin: [0, 0, 0], rotation_axis_direction: [0, 0, 1] },
+      }, repo, {
+        body_s: { ...nullBody('body_s'), shape: 1 as never },
+      }),
+    ).toThrow(/rotation_angle must be a finite number/)
+  })
+
+  it('transform: a non-finite scale fails before reaching the kernel', () => {
+    // NaN passes the `scale !== 1.0` gate and used to reach makeScaleTrsf.
+    for (const bad of [NaN, Infinity]) {
+      expect(() =>
+        solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], scale: bad } }, repo, {
+          body_s: { ...nullBody('body_s'), shape: 1 as never },
+        }),
+      ).toThrow(/scale must be a finite number/)
+    }
+  })
+
   it('mirror: plane is required', () => {
     expect(() =>
       solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'body_s' } }, repo, {

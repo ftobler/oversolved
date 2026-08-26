@@ -31,6 +31,11 @@ export function solveImportStep(
   const featureId = (feature.id as string) ?? ''
   const fileDataB64 = (feature.file_data as string) ?? ''
   const scale = Number(feature.scale ?? 1.0)
+  // A non-finite scale (hand-edited or expression-derived YAML) would flow
+  // unchecked into the placement identity computation.
+  if (!Number.isFinite(scale)) {
+    throw new Error(`import_step: scale must be a finite number, got ${feature.scale}`)
+  }
 
   if (!fileDataB64) throw new Error("import_step: requires 'file_data'")
 

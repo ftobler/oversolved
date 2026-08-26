@@ -94,6 +94,12 @@ export function solveTransform(
   }
 
   const rotationAngle = Number(cfg.rotation_angle ?? 0.0)
+  // NaN is falsy: without this guard a hand-edited NaN skipped BOTH the
+  // missing-axis error below and the rotation itself, silently solving a
+  // different transform than asked for.
+  if (!Number.isFinite(rotationAngle)) {
+    throw new Error(`transform: rotation_angle must be a finite number, got ${cfg.rotation_angle}`)
+  }
   let rotationAxisOrigin = (cfg.rotation_axis_origin as number[] | undefined) ?? null
   let rotationAxisDirection = (cfg.rotation_axis_direction as number[] | undefined) ?? null
   const axisQuery = cfg.rotation_axis as string | undefined
@@ -119,6 +125,10 @@ export function solveTransform(
   }
 
   const scale = Number(cfg.scale ?? 1.0)
+  // NaN passes the `scale !== 1.0` check and would reach makeScaleTrsf.
+  if (!Number.isFinite(scale)) {
+    throw new Error(`transform: scale must be a finite number, got ${cfg.scale}`)
+  }
   let scaleCenter = (cfg.scale_center as number[] | undefined) ?? null
   const scaleCenterQuery = cfg.scale_center_from as string | undefined
   if (scaleCenterQuery) {
