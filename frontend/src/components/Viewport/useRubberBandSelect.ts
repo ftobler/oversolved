@@ -5,6 +5,7 @@ import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 import { SWALLOW_ONLY_PICK_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { markBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { planBandReads } from '@/components/Viewport/bandReadPlan'
 
 interface RubberBandRect {
@@ -59,6 +60,16 @@ export function useRubberBandSelect(
   // The one exit every non-committing path shares: a stranded dragging flag
   // suppresses empty-space deselects and blocks later drags until Escape.
   const endDrag = useCallback(() => {
+    // A visibly-open band owns its gesture's trailing click: the browser fires
+    // click right after pointerup, and without this the dispatcher resolves
+    // the release pixel, toggling whatever sub-shape sits under the sweep's
+    // end cursor on top of the boxed selection (or finalizing pending
+    // dimension picks over empty space). Raised on EVERY open-gesture
+    // teardown, not only successful commits; rectRef is only ever set once a
+    // box passed the 4px threshold, so a plain stationary press keeps its
+    // normal click semantics. A teardown no click follows (cancel, strand)
+    // leaves the flag to the guard's pointer-down cleanup.
+    if (rectRef.current) markBandClickConsumed()
     startRef.current = null
     rectRef.current = null
     draggingRef.current = false

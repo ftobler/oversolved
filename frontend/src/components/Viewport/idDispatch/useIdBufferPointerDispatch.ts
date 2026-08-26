@@ -13,6 +13,7 @@ import { originAdapter } from './originAdapter'
 import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
+import { takeBandClickConsumed } from './bandClickGuard'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
@@ -305,6 +306,16 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // pointer-down and may have reset the tool to null since. Don't let the
       // click also toggle normal selection on the entity it just acted on.
       if (takeDrawToolClickConsumed()) {
+        setLastClickIdHit(true)
+        return
+      }
+      // A rubber-band release owns this click wherever it landed: the band
+      // just committed (or tore down) a box selection, and resolving the
+      // release pixel here would toggle whatever sub-shape sits under the
+      // sweep's end cursor on top of the boxed set, or finalize pending
+      // dimension picks when the sweep ended over empty space. Consumed also
+      // claims the click for onPointerMissed, so the committed box survives.
+      if (takeBandClickConsumed()) {
         setLastClickIdHit(true)
         return
       }
