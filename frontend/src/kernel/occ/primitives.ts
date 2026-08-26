@@ -291,11 +291,18 @@ export function makeFaceFromWire(
 ): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(outerWire, true))
   for (const hw of holeWires) builder.Add(hw)
+  // The pre-fix raw face is fully consumed by the ShapeFix pass (the fixed face
+  // shares its TShapes), so free it immediately instead of stranding one proxy
+  // per profile build on the heap.
   const raw = builder.Face()
-  const fixer = scope.track(new oc.ShapeFix_Face_2(raw))
-  fixer.FixOrientation_1()
-  fixer.Perform()
-  return fixer.Face()
+  try {
+    const fixer = scope.track(new oc.ShapeFix_Face_2(raw))
+    fixer.FixOrientation_1()
+    fixer.Perform()
+    return fixer.Face()
+  } finally {
+    raw.delete()
+  }
 }
 
 /** Linear extrusion of a face along direction * distance (ocp_make_prism, Copy=True). */

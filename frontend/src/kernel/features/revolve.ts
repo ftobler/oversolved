@@ -38,6 +38,34 @@ function fuse(oc: OccModule, scope: DisposeScope, a: OccShape, b: OccShape): Occ
   return booleanWithHistory(oc, scope, a, b, 'fuse').shape
 }
 
+// Track a freshly built revolve solid so a throw leaves it to dispose(); the
+// caller releases it once a fuse has consumed it (see fuseConsuming).
+function trackedRevolveFace(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  ao: Vec3,
+  ad: Vec3,
+  angleDeg: number,
+): OccShape {
+  return scope.track(revolveFace(oc, scope, face, ao, ad, angleDeg))
+}
+
+// Fuse `b` into tracked `a`, release both consumed inputs, return the tracked
+// fused result. Keeps repeated edits of one feature from stacking dead solids.
+function fuseConsuming(
+  oc: OccModule,
+  scope: DisposeScope,
+  a: OccShape,
+  b: OccShape,
+): OccShape {
+  const bt = scope.track(b)
+  const fused = scope.track(fuse(oc, scope, a, bt))
+  scope.release(a)
+  scope.release(bt)
+  return fused
+}
+
 /**
  * Resolve the revolve axis (mirrors the inline block in `_solve_revolve`). Starts
  * from the stored origin/direction; an `axis` query overrides them but is flipped
@@ -212,22 +240,26 @@ export function solveRevolve(
   } else if (cqFaces.length > 0 && allLoops.length === 0) {
     if (direction === 'symmetric') {
       const half = angle / 2.0
-      let tool = fuse(
-        oc,
-        scope,
-        revolveFace(oc, scope, cqFaces[0], ao, ad, half),
+      let tool = fuseConsuming(
+        oc, scope,
+        trackedRevolveFace(oc, scope, cqFaces[0], ao, ad, half),
         revolveFace(oc, scope, cqFaces[0], ao, ad, -half),
       )
       for (const f of cqFaces.slice(1)) {
-        const pos = revolveFace(oc, scope, f, ao, ad, half)
-        const neg = revolveFace(oc, scope, f, ao, ad, -half)
-        tool = fuse(oc, scope, tool, fuse(oc, scope, pos, neg))
+        const pair = fuseConsuming(
+          oc, scope,
+          trackedRevolveFace(oc, scope, f, ao, ad, half),
+          revolveFace(oc, scope, f, ao, ad, -half),
+        )
+        tool = fuseConsuming(oc, scope, tool, pair)
       }
       toolShape = tool
     } else {
       const eff = direction === 'reverse' ? -angle : angle
-      let tool = revolveFace(oc, scope, cqFaces[0], ao, ad, eff)
-      for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, revolveFace(oc, scope, f, ao, ad, eff))
+      let tool = trackedRevolveFace(oc, scope, cqFaces[0], ao, ad, eff)
+      for (const f of cqFaces.slice(1)) {
+        tool = fuseConsuming(oc, scope, tool, revolveFace(oc, scope, f, ao, ad, eff))
+      }
       toolShape = tool
     }
   } else {
@@ -238,11 +270,15 @@ export function solveRevolve(
       const half = angle / 2.0
       const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId)
       const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId)
-      toolShape = fuse(oc, scope, pos.solid, neg.solid)
+      const posT = scope.track(pos.solid)
+      const negT = scope.track(neg.solid)
+      toolShape = scope.track(fuse(oc, scope, posT, negT))
+      scope.release(posT)
+      scope.release(negT)
     } else {
       const eff = direction === 'reverse' ? -angle : angle
       const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId)
-      toolShape = lineage.solid
+      toolShape = scope.track(lineage.solid)
       Object.assign(faceNames, lineage.faceNames)
       Object.assign(edgeNames, lineage.edgeNames)
       Object.assign(faceAncestry, lineage.faceAncestry)

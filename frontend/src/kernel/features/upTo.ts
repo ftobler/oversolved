@@ -146,11 +146,19 @@ export function trimAtPlane(
   const poly = scope.track(new oc.BRepBuilderAPI_MakePolygon_1())
   for (const c of corners) poly.Add_1(scope.track(new oc.gp_Pnt_3(c[0], c[1], c[2])))
   poly.Close()
-  const faceBuilder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(scope.track(poly.Wire()), true))
-  const capFace = faceBuilder.Face()
+  const wire = scope.track(poly.Wire())
+  const faceBuilder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(wire, true))
+  const capFace = scope.track(faceBuilder.Face())
   // Sweep the cap back toward the profile (opposite the extrude direction) so the
   // box covers the keep side; depth exceeds the over-length prism.
   const keepDir: Vec3 = [-directionVec[0], -directionVec[1], -directionVec[2]]
-  const halfSpace = makePrism(oc, scope, capFace, keepDir, big + UP_TO_REACH)
-  return booleanWithHistory(oc, scope, solid, halfSpace, 'common').shape
+  // Cap and half-space are consumed by the Common below; release them so a
+  // re-solved up_to feature does not leave one of each behind per edit.
+  const halfSpace = scope.track(makePrism(oc, scope, capFace, keepDir, big + UP_TO_REACH))
+  try {
+    return booleanWithHistory(oc, scope, solid, halfSpace, 'common').shape
+  } finally {
+    scope.release(capFace)
+    scope.release(halfSpace)
+  }
 }

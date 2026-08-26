@@ -224,20 +224,30 @@ function snapLoopJoints(loop: LoopEdge[]): LoopEdge[] {
 function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop: LoopEdge[]): OccShape {
   const loop = snapLoopJoints(rawLoop)
   const circle = fullCircleOf(loop)
-  if (circle !== null) return makeWire(oc, scope, [buildArcEdge(oc, scope, plane, circle)])
+  // Every edge below is tracked at creation and released once makeWire has
+  // copied it into the wire, so a dirty feature's repeated rebuilds do not
+  // stack dead boundary edges on the heap. A throw from makeWire leaves them
+  // tracked: the caller's dispose() is then their owner.
+  const singleEdge = (edge: OccShape): OccShape => {
+    const tracked = scope.track(edge)
+    const wire = scope.track(makeWire(oc, scope, [tracked]))
+    scope.release(tracked)
+    return wire
+  }
+  if (circle !== null) return singleEdge(buildArcEdge(oc, scope, plane, circle))
   // A full ellipse is a single closed boundary edge -> one ellipse-edge wire.
   if (loop.length === 1 && (loop[0]['kind'] as string) === 'ellipse') {
-    return makeWire(oc, scope, [buildEllipseEdge(oc, scope, plane, loop[0])])
+    return singleEdge(buildEllipseEdge(oc, scope, plane, loop[0]))
   }
   const edges: OccShape[] = []
   for (const edge of loop) {
     const kind = edge['kind'] as string
     if (kind === 'arc') {
-      edges.push(buildArcEdge(oc, scope, plane, edge))
+      edges.push(scope.track(buildArcEdge(oc, scope, plane, edge)))
     } else if (kind === 'ellipse') {
-      edges.push(buildEllipseEdge(oc, scope, plane, edge))
+      edges.push(scope.track(buildEllipseEdge(oc, scope, plane, edge)))
     } else if (kind === 'ellipse_arc') {
-      edges.push(buildEllipseArcEdge(oc, scope, plane, edge))
+      edges.push(scope.track(buildEllipseArcEdge(oc, scope, plane, edge)))
     } else if (kind === 'spline') {
       // Cubic Bezier boundary: lift the 4-point control polygon to 3D.
       const poles = [
@@ -246,14 +256,16 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop
         uvTo3d(plane, edge['c2'] as number[]),
         uvTo3d(plane, edge['end'] as number[]),
       ]
-      edges.push(makeBezierEdge(oc, scope, poles))
+      edges.push(scope.track(makeBezierEdge(oc, scope, poles)))
     } else {
       const p1 = uvTo3d(plane, edge['start'] as number[])
       const p2 = uvTo3d(plane, edge['end'] as number[])
-      edges.push(makeLineEdge(oc, scope, p1, p2))
+      edges.push(scope.track(makeLineEdge(oc, scope, p1, p2)))
     }
   }
-  return makeWire(oc, scope, edges)
+  const wire = scope.track(makeWire(oc, scope, edges))
+  for (const e of edges) scope.release(e)
+  return wire
 }
 
 /**
@@ -270,7 +282,14 @@ export function sketchLoopsToFace(
 ): OccShape {
   const outerWire = buildWire(oc, scope, plane, loops[0])
   const holeWires = loops.slice(1).map((hole) => buildWire(oc, scope, plane, hole))
-  return makeFaceFromWire(oc, scope, outerWire, holeWires)
+  // The wires live only until makeFaceFromWire copies them into the face; the
+  // face keeps their curves alive via shared TShapes.
+  try {
+    return makeFaceFromWire(oc, scope, outerWire, holeWires)
+  } finally {
+    scope.release(outerWire)
+    for (const w of holeWires) scope.release(w)
+  }
 }
 
 // ─── entity map + prism lineage ───
@@ -751,19 +770,21 @@ function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape):
   const axDir = axis.Direction()
   const xax1 = circ.XAxis()
   const xDir = xax1.Direction()
-  const edge = makeCircleEdge(
+  const edge = scope.track(makeCircleEdge(
     oc, scope,
     [loc.X(), loc.Y(), loc.Z()],
     [axDir.X(), axDir.Y(), axDir.Z()],
     [xDir.X(), xDir.Y(), xDir.Z()],
     radius,
-  )
+  ))
   loc.delete()
   axis.delete()
   axDir.delete()
   xax1.delete()
   xDir.delete()
-  return makeWire(oc, scope, [edge])
+  const canonical = scope.track(makeWire(oc, scope, [edge]))
+  scope.release(edge)
+  return canonical
 }
 
 /**
@@ -815,7 +836,13 @@ export function canonicalizeFaceCirclesWith(
     }
   }
   if (!changed) return null
-  return makeFaceFromWire(oc, scope, outerWire, canonicalHoles)
+  // The rebuilt canonical wires are folded into the face; the caller's
+  // outer+holes are not ours to free.
+  try {
+    return makeFaceFromWire(oc, scope, outerWire, canonicalHoles)
+  } finally {
+    for (const cw of canonicalHoles) scope.release(cw)
+  }
 }
 
 /**
@@ -844,7 +871,7 @@ function tryCanonicalMergedProfile(
 ): OccShape | null {
   try {
     const faces = groups.map(([outer, holes]) =>
-      sketchLoopsToFace(oc, scope, [outer, ...holes], plane),
+      scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane)),
     )
     const vec = scope.track(
       new oc.gp_Vec_4(
@@ -853,21 +880,21 @@ function tryCanonicalMergedProfile(
         directionVec[2] * distance,
       ),
     )
-    let solid: OccShape = (
-      scope.track(new oc.BRepPrimAPI_MakePrism_1(faces[0], vec, true, true)) as OccPrismBuilder
-    ).Shape()
     // Every solid here is an intermediate (the function returns a face off
     // the final one), so each stays scope-owned: the prism results, the parts
-    // fused away, and every fuse output the next iteration replaces.
-    scope.track(solid)
+    // fused away, and every fuse output the next iteration replaces. Each
+    // group face is released once its prism has copied it.
+    const prismOf = (face: OccShape): OccShape =>
+      (scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder).Shape()
+    let solid: OccShape = scope.track(prismOf(faces[0]))
+    scope.release(faces[0])
     for (let i = 1; i < faces.length; i++) {
-      const part = (
-        scope.track(new oc.BRepPrimAPI_MakePrism_1(faces[i], vec, true, true)) as OccPrismBuilder
-      ).Shape()
+      const part = scope.track(prismOf(faces[i]))
       const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
-      scope.track(part)
       scope.track(fused)
       solid = fused
+      scope.release(part)
+      scope.release(faces[i])
     }
     // The pre-prism-union path only makes sense when the groups tile ONE
     // connected region (their prism-fuse collapses to a single solid). For
@@ -957,8 +984,12 @@ function prismFaceWithLineage(
     ),
   ) as OccPrismBuilder
   const solid = builder.Shape()
-  const lineage = buildPrismLineageMap(oc, scope, profileFace, builder, lineageLoops, plane, createdBy, sketchId)
+  // The profile face is read one last time here; afterwards the solid keeps
+  // the shared TShapes alive, so the proxy itself can go.
+  const face = scope.track(profileFace)
+  const lineage = buildPrismLineageMap(oc, scope, face, builder, lineageLoops, plane, createdBy, sketchId)
   prefixLineageMaps(lineage, tokenPrefix)
+  scope.release(face)
   return { solid, ...lineage }
 }
 
@@ -985,7 +1016,7 @@ function perGroupPrismWithLineage(
   const merged = emptyLineageMaps()
 
   for (const [outer, holes] of groups) {
-    const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const builder = scope.track(
       new oc.BRepPrimAPI_MakePrism_1(
         face,
@@ -1007,6 +1038,8 @@ function perGroupPrismWithLineage(
     scope.track(part)
     const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
     prefixLineageMaps(lineage, tokenPrefix)
+    // The profile face is dead once the lineage has been read off it.
+    scope.release(face)
     Object.assign(merged.faceNames, lineage.faceNames)
     Object.assign(merged.edgeNames, lineage.edgeNames)
     Object.assign(merged.faceAncestry, lineage.faceAncestry)
@@ -1137,15 +1170,16 @@ export function revolveProfileWithLineage(
   sketchId = '',
   createdBy = '',
 ): LineageResult {
-  const face = sketchLoopsToFace(oc, scope, loops, plane)
+  const face = scope.track(sketchLoopsToFace(oc, scope, loops, plane))
   const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
   const builder = scope.track(
     new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, (angleDeg * Math.PI) / 180, true),
   )
   const solid = builder.Shape()
   const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane, createdBy, sketchId)
-  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
-  prefixLineageMaps(lineage, tokenPrefix)
+  prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
+  // The profile face is dead once the lineage has been read off it.
+  scope.release(face)
   return { solid, ...lineage }
 }
 
@@ -1206,10 +1240,15 @@ export function sweepProfileWithLineage(
   if (loops.length === 0) throw new Error('sweep: no profile loops')
   if (spineEdges.length === 0) throw new Error('sweep: empty path')
 
-  const face = sketchLoopsToFace(oc, scope, loops, plane)
+  const face = scope.track(sketchLoopsToFace(oc, scope, loops, plane))
+  // The raw wire inputs are consumed by their heal pass; the healed wires are
+  // consumed by the pipe shell. All four would otherwise outlive the build.
+  const rawSpineWire = scope.track(makeWire(oc, scope, spineEdges))
+  const spineWire = scope.track(healWire(oc, scope, rawSpineWire))
   const rawOuterWire = scope.track(oc.BRepTools.OuterWire(face))
-  const spineWire = healWire(oc, scope, makeWire(oc, scope, spineEdges))
   const outerWire = scope.track(healWire(oc, scope, rawOuterWire))
+  scope.release(rawSpineWire)
+  scope.release(rawOuterWire)
 
   const modes = [
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner,
@@ -1222,9 +1261,12 @@ export function sweepProfileWithLineage(
   }
   if (result === null) throw new Error('sweep: could not build a solid from the swept shell')
   const { solid, pipeBuilder } = result
+  // The shell builder holds its own handles to both wires.
+  scope.release(spineWire)
+  scope.release(outerWire)
 
   const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder, loops, plane, createdBy, sketchId)
-  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
-  prefixLineageMaps(lineage, tokenPrefix)
+  prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
+  scope.release(face)
   return { solid, ...lineage }
 }

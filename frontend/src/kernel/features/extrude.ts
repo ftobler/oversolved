@@ -40,6 +40,29 @@ function fuse(oc: OccModule, scope: DisposeScope, a: OccShape, b: OccShape): Occ
   return booleanWithHistory(oc, scope, a, b, 'fuse').shape
 }
 
+/**
+ * Fuse a chain of prisms into one tool shape. Every consumed input (the
+ * running result and each newly added prism) is tracked so a throw leaves it
+ * to dispose(), and released once the next fuse has copied what it needs, so
+ * re-solving a dirty feature does not stack dead intermediates on the heap.
+ */
+function fuseChain(
+  oc: OccModule,
+  scope: DisposeScope,
+  first: OccShape,
+  rest: OccShape[],
+): OccShape {
+  let tool = scope.track(first)
+  for (const shape of rest) {
+    const next = scope.track(shape)
+    const fused = scope.track(fuse(oc, scope, tool, next))
+    scope.release(tool)
+    scope.release(next)
+    tool = fused
+  }
+  return tool
+}
+
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
 export function solveExtrude(
   oc: OccModule,
@@ -177,31 +200,47 @@ export function solveExtrude(
     if (cutPlane !== null) {
       const nominal = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
       const dirVec = orientToTarget(cutPlane, faceCentroid(oc, scope, cqFaces[0]), nominal)
-      let tool = makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH)
-      for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, dirVec, UP_TO_REACH))
-      toolShape = trimAtPlane(oc, scope, tool, cutPlane, dirVec)
+      const tool = fuseChain(
+        oc, scope,
+        makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH),
+        cqFaces.slice(1).map((f) => makePrism(oc, scope, f, dirVec, UP_TO_REACH)),
+      )
+      // The trim's Common consumes the over-length prism.
+      toolShape = scope.track(trimAtPlane(oc, scope, tool, cutPlane, dirVec))
+      scope.release(tool)
     } else if (direction === 'symmetric') {
       const half = distance / 2.0
-      let tool = fuse(
-        oc,
-        scope,
-        makePrism(oc, scope, cqFaces[0], faceNormalVec, half),
-        makePrism(oc, scope, cqFaces[0], reverseVec, half),
-      )
+      // Pair-first order preserved from the pre-disposal version: both halves
+      // of a face fuse together, then into the running tool.
+      const halfPair = (f: OccShape): OccShape => {
+        const pos = scope.track(makePrism(oc, scope, f, faceNormalVec, half))
+        const neg = scope.track(makePrism(oc, scope, f, reverseVec, half))
+        const pair = scope.track(fuse(oc, scope, pos, neg))
+        scope.release(pos)
+        scope.release(neg)
+        return pair
+      }
+      let tool = scope.track(halfPair(cqFaces[0]))
       for (const f of cqFaces.slice(1)) {
-        const pos = makePrism(oc, scope, f, faceNormalVec, half)
-        const neg = makePrism(oc, scope, f, reverseVec, half)
-        tool = fuse(oc, scope, tool, fuse(oc, scope, pos, neg))
+        const pair = scope.track(halfPair(f))
+        const fused = scope.track(fuse(oc, scope, tool, pair))
+        scope.release(tool)
+        scope.release(pair)
+        tool = fused
       }
       toolShape = tool
     } else if (direction === 'reverse') {
-      let tool = makePrism(oc, scope, cqFaces[0], reverseVec, distance)
-      for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, reverseVec, distance))
-      toolShape = tool
+      toolShape = fuseChain(
+        oc, scope,
+        makePrism(oc, scope, cqFaces[0], reverseVec, distance),
+        cqFaces.slice(1).map((f) => makePrism(oc, scope, f, reverseVec, distance)),
+      )
     } else {
-      let tool = makePrism(oc, scope, cqFaces[0], faceNormalVec, distance)
-      for (const f of cqFaces.slice(1)) tool = fuse(oc, scope, tool, makePrism(oc, scope, f, faceNormalVec, distance))
-      toolShape = tool
+      toolShape = fuseChain(
+        oc, scope,
+        makePrism(oc, scope, cqFaces[0], faceNormalVec, distance),
+        cqFaces.slice(1).map((f) => makePrism(oc, scope, f, faceNormalVec, distance)),
+      )
     }
   } else {
     const normal = (firstPt?.normal as number[]) ?? [0, 0, 1]
@@ -225,7 +264,17 @@ export function solveExtrude(
       firstSketchId,
       featureId,
     )
-    toolShape = cutPlane !== null ? trimAtPlane(oc, scope, lineage.solid, cutPlane, sweepDir) : lineage.solid
+    // The tool is scope-owned from here: applyBodyOperation detaches whatever
+    // becomes a body, and the leftover (an add/cut tool, a compound wrapper)
+    // frees at dispose instead of living for the worker session.
+    const swept = scope.track(lineage.solid)
+    if (cutPlane !== null) {
+      // The trim's Common consumes the over-length sweep.
+      toolShape = scope.track(trimAtPlane(oc, scope, swept, cutPlane, sweepDir))
+      scope.release(swept)
+    } else {
+      toolShape = swept
+    }
     Object.assign(faceNames, lineage.faceNames)
     Object.assign(edgeNames, lineage.edgeNames)
     Object.assign(faceAncestry, lineage.faceAncestry)

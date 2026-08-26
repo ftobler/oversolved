@@ -47,6 +47,28 @@ export class DisposeScope {
     return obj
   }
 
+  /**
+   * Delete an intermediate NOW and drop it from the scope, instead of letting
+   * it ride until dispose(). For consumed intermediates on repeated builds (a
+   * wire folded into a face, the previous tool of a fuse chain): tracked-only
+   * lifetimes still free them at dispose, but per-edit builds would stack one
+   * live proxy each for the whole worker session. Safe to call on an object
+   * tracked more than once or never: every tracking entry is dropped and a
+   * foreign object is simply deleted. Best-effort like dispose(); a failed
+   * early free must not break the build.
+   */
+  release<T extends Disposable>(obj: T): T {
+    for (let i = this.tracked.lastIndexOf(obj); i >= 0; i = this.tracked.lastIndexOf(obj)) {
+      this.tracked.splice(i, 1)
+    }
+    try {
+      if (!(obj.isDeleted?.() ?? false)) obj.delete()
+    } catch {
+      // best-effort: keep building with whatever memory was reclaimable
+    }
+    return obj
+  }
+
   // Number of objects still tracked (i.e. that dispose() would delete).
   size(): number {
     return this.tracked.length

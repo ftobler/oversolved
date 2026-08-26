@@ -114,6 +114,46 @@ describe('DisposeScope', () => {
 
 })
 
+describe('DisposeScope.release', () => {
+  it('deletes immediately and keeps dispose() from deleting again', () => {
+    const order: string[] = []
+    const obj = new FakeObj('x', order)
+    const scope = new DisposeScope()
+    scope.track(obj)
+    scope.release(obj)
+    expect(obj.deleted).toBe(1)
+    order.length = 0
+    scope.dispose()
+    expect(order).toEqual([])  // already released: nothing left to free
+  })
+
+  it('drops every tracking entry of an object tracked twice', () => {
+    const obj = new FakeObj('dup', [])
+    const scope = new DisposeScope()
+    scope.track(obj)
+    scope.track(obj)  // e.g. a face handed through two producers
+    expect(scope.size()).toBe(2)
+    scope.release(obj)
+    expect(scope.size()).toBe(0)
+    scope.dispose()
+    expect(obj.deleted).toBe(1)  // freed once, not per stale entry
+  })
+
+  it('still frees an object that was never tracked', () => {
+    const obj = new FakeObj('foreign', [])
+    const scope = new DisposeScope()
+    scope.release(obj)
+    expect(obj.deleted).toBe(1)
+  })
+
+  it('survives a failed native delete', () => {
+    const bad: Disposable = { delete() { throw new Error('native delete failed') } }
+    const scope = new DisposeScope()
+    scope.track(bad)
+    expect(() => scope.release(bad)).not.toThrow()
+  })
+})
+
 describe('drainList', () => {
   it('frees both the drained shapes and the list container itself', () => {
     const order: string[] = []
