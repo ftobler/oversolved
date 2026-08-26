@@ -120,8 +120,9 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
   }, [isOpen, activeListStore, activeFilter, debouncedSearch, selfUuid])
 
   const pick = (doc: DocSummary) => {
-    // Cloud summaries carry no sync meta (the server is the source of truth
-    // there), so their rev defaults to 0 -- same as the pre-browser picker.
+    // The store synthesizes meta.rev from the server updated_at (see
+    // HttpDocumentStore.list), so a cloud pick records a real bundle cache
+    // key; the 0 fallback only covers a stamp the store could not parse.
     onPick(doc.uuid, doc.meta?.rev ?? 0)
     onClose()
   }

@@ -10,8 +10,9 @@
 // Per-document modification tracking. Carried from day one so a future cloud
 // sync engine is purely additive: it reads `dirty` / compares `rev` vs
 // `baseRev`, pushes, and on ack sets `baseRev = rev`. The IDB-only build
-// maintains these fields; the HTTP build leaves them undefined (the server is
-// the source of truth there).
+// maintains these fields itself; the HTTP build synthesizes `rev`/`updatedAt`
+// from the server row's updated_at (its version field) with `dirty: false`,
+// so consumers like the assembly bundle cache see one uniform shape.
 export interface DocMeta {
   id: string
   rev: number          // monotonic local revision, bumped on every save

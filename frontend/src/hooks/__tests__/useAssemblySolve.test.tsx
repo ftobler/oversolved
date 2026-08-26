@@ -29,6 +29,8 @@ vi.mock('@/adapters/backend', () => ({
 }))
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentRevs } from '@/hooks/useAssemblySolve'
+import { HttpDocumentStore } from '@/stores/documentStore/HttpDocumentStore'
+import { mountFakeDocumentsServer } from '@/stores/documentStore/__tests__/fakeDocumentsServer'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
@@ -128,6 +130,33 @@ describe('currentRevs', () => {
   it('falls back to the recorded rev when the store is unreachable', async () => {
     h.list.mockRejectedValue(new Error('offline'))
     expect(await currentRevs(docWith(instance('p1')))).toEqual({ 'doc-p1': 1 })
+  })
+
+  it('moves the solve key of a cloud-only part after a server-side edit', async () => {
+    // PS-H1 end to end: a part picked from the cloud category has no local
+    // mirror, so its instance pins doc_rev 0 and only list()'s synthesized
+    // meta.rev can re-key `${doc_id}@${rev}` after the remote doc changes.
+    // h.list routes through the REAL HttpDocumentStore against the fake
+    // Flask server, so the synthesis under test is the shipped one.
+    const unmount = mountFakeDocumentsServer()
+    try {
+      const http = new HttpDocumentStore()
+      const { uuid } = await http.create('Bracket')
+      await http.save(uuid, { content: 'kind: part\nfeatures: []\n' })
+      h.list.mockImplementation(() => http.list())
+
+      const cloud = docWith(instance('p1', { doc_id: uuid, doc_rev: 0 }))
+      const before = await currentRevs(cloud)
+      expect(before[uuid]).toBeGreaterThan(0)
+
+      // Edit the part on the SERVER only (no local copy exists): the next
+      // solve must rebuild its bundle, not cache-hit the old key.
+      await http.save(uuid, { content: 'kind: part\nfeatures:\n  - id: b2\n    kind: box\n' })
+      const after = await currentRevs(cloud)
+      expect(after[uuid]).toBeGreaterThan(before[uuid])
+    } finally {
+      unmount()
+    }
   })
 })
 

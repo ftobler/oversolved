@@ -300,4 +300,29 @@ describe('unknown-id semantics and fake-server fidelity', () => {
       expect(await res.json()).toMatchObject({ ok: false, error: 'Document not found', code: 'NOT_FOUND' })
     }
   })
+
+  // ─── synthesized meta.rev (assembly bundle cache key) ───
+
+  it('HTTP list synthesizes meta.rev from the server updated_at and bumps it on edit', async () => {
+    // The server rows have no meta column; HttpDocumentStore.list maps
+    // updated_at into the local meta shape so cloud-picked parts get a real
+    // bundle cache key instead of pinning doc_rev 0 forever (review-18 PS-H1).
+    const store = new HttpDocumentStore()
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'v1' })
+
+    const first = (await store.list()).find(s => s.uuid === uuid)
+    expect(first?.meta).toEqual({
+      id: uuid,
+      rev: Date.parse(first!.updated_at),
+      updatedAt: Date.parse(first!.updated_at),
+      dirty: false,  // the server is the source of truth: nothing pending
+    })
+
+    await store.save(uuid, { content: 'v2' })
+    const second = (await store.list()).find(s => s.uuid === uuid)
+    expect(second!.meta!.rev).toBeGreaterThan(first!.meta!.rev)
+    // solveAssembly cache-hits `${doc_id}@${rev}`: this bump is exactly what
+    // forces a post-edit rebuild instead of serving stale geometry.
+  })
 })

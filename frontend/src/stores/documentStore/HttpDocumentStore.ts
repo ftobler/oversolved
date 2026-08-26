@@ -1,6 +1,23 @@
 import { http } from '@/utils/core/httpClient'
 import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions } from './types'
 
+// Cloud rows carry no sync meta of their own (the server has no meta column),
+// but meta.rev is the assembly bundle cache key: AssemblyPartPicker records it
+// at pick time and currentRevs refreshes it from list(), so a cloud-picked
+// part without one would pin doc_rev 0 forever and server-side edits would
+// never force its bundle rebuild. updated_at is the server's version field --
+// every content/rename/preview write bumps it -- so its epoch ms is mapped
+// into the exact local meta shape. A row without a parseable stamp keeps no
+// meta at all rather than poisoning the cache key with NaN.
+function withServerMeta(row: DocSummary): DocSummary {
+  const updatedAt = Date.parse(row.updated_at)
+  if (!Number.isFinite(updatedAt)) return row
+  return {
+    ...row,
+    meta: { id: row.uuid, rev: updatedAt, updatedAt, dirty: false },
+  }
+}
+
 // Wraps the existing `/api/documents` endpoints. This is the verbatim
 // extraction of the fetches that used to live inlined across the call sites;
 // behavior (URLs, methods, bodies) is preserved exactly so the refactor is a
@@ -16,7 +33,7 @@ export class HttpDocumentStore implements DocumentStore {
     const data = await http.getJson<{ documents: DocSummary[] }>(
       query ? `/api/documents?${query}` : '/api/documents',
     )
-    return data.documents || []
+    return (data.documents || []).map(withServerMeta)
   }
 
   async load(id: string): Promise<DocumentPayload> {

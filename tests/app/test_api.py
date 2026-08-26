@@ -334,6 +334,29 @@ class TestDocumentAPI:
         assert response.status_code == 200
         assert json.loads(response.data)["documents"] == []
 
+    def test_list_documents_carry_updated_at_version(self, authed_client):
+        """updated_at is the list row's version field: HttpDocumentStore
+        synthesizes DocSummary.meta.rev from it to key the assembly bundle
+        cache, so every row must carry a stamp that moves when content does."""
+        create = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "Versioned"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create.data)["uuid"]
+        rows = json.loads(authed_client.get("/api/documents").data)["documents"]
+        before = next(d for d in rows if d["uuid"] == uuid)
+        assert before["updated_at"]
+
+        authed_client.put(
+            f"/api/documents/{uuid}",
+            data=json.dumps({"content": "v2"}),
+            content_type="application/json",
+        )
+        rows = json.loads(authed_client.get("/api/documents").data)["documents"]
+        after = next(d for d in rows if d["uuid"] == uuid)
+        assert after["updated_at"] > before["updated_at"]
+
     def test_list_documents_includes_preview_image(self, authed_client):
         authed_client.post(
             "/api/documents",
