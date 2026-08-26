@@ -566,7 +566,9 @@ class TestDocumentStore:
         for d in docs:
             assert "uuid" in d
             assert "name" in d
-            assert "preview_image" in d
+            # Listing rows are summaries for clone name-uniquification; the
+            # preview blob must not be dragged along per row.
+            assert "preview_image" not in d
 
     def test_list_by_owner_empty(self, doc_store, user_id):
         assert doc_store.list_by_owner(user_id) == []
@@ -579,15 +581,20 @@ class TestDocumentStore:
         assert len(doc_store.list_by_owner(uid1)) == 1
         assert len(doc_store.list_by_owner(uid2)) == 1
 
-    def test_list_by_owner_preview_image_is_bytes(self, doc_store, user_id):
-        """Postgres hands back a memoryview; callers expect plain bytes like retrieve()."""
+    def test_list_by_owner_omits_preview_but_retrieve_keeps_bytes(self, doc_store, user_id):
+        """list_by_owner no longer selects preview_image: its only production
+        caller reads names only, so shipping every owner thumbnail was waste.
+        The old byte-normalization pin (Postgres memoryview -> bytes) moved
+        here onto retrieve(), which is the path that still serves blobs."""
         uuid = doc_store.create("With Image", user_id)
         image_data = b"\x89PNG\r\n\x1a\n"
         doc_store.store_preview_image(uuid, image_data)
 
-        docs = doc_store.list_by_owner(user_id)
-        assert type(docs[0]["preview_image"]) is bytes
-        assert docs[0]["preview_image"] == image_data
+        assert "preview_image" not in doc_store.list_by_owner(user_id)[0]
+        doc = doc_store.retrieve(uuid)
+        assert doc is not None
+        assert type(doc["preview_image"]) is bytes
+        assert doc["preview_image"] == image_data
 
     def test_store_and_retrieve_preview_image(self, doc_store, user_id):
         uuid = doc_store.create("Img Doc", user_id)

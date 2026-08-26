@@ -378,20 +378,26 @@ class DocumentStore:
         return self._execute_documents_query(filter_type, search, sort, user_id)
 
     def list_by_owner(self, owner_id: int, sort: str = "name") -> list[dict]:
-        """List all documents for an owner."""
+        """List all documents for an owner.
+
+        Deliberately selects no preview column: the production caller is clone
+        name-uniquification, which reads names only, so pulling every owner
+        thumbnail per call would transfer O(sum of blobs) for data that is
+        discarded. Previews stay reachable through retrieve().
+        """
         order = self._SORT_ORDERS.get(sort)
         if order is None:
             order = "d.name"
         cursor = self.db.execute(
-            f"SELECT d.uuid, d.name, d.preview_image, d.created_at, d.updated_at,"
+            f"SELECT d.uuid, d.name, d.created_at, d.updated_at,"
             f" d.is_public FROM documents d WHERE d.deleted_at IS NULL"
             f" AND d.owner_id = ? ORDER BY {order}",
             (owner_id,),
         )
         return [
             {
-                "uuid": row[0], "name": row[1], "preview_image": _to_bytes(row[2]),
-                "created_at": row[3], "updated_at": row[4], "is_public": bool(row[5]),
+                "uuid": row[0], "name": row[1],
+                "created_at": row[2], "updated_at": row[3], "is_public": bool(row[4]),
             }
             for row in cursor.fetchall()
         ]
