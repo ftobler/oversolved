@@ -56,7 +56,7 @@ function solveAndSlice(start: [number, number]): { surfaces: number; residual: n
       { kind: 'horizontal', a: { entity: 'e1', point: 'major1' }, b: { entity: 'e1', point: 'major2' } },
       { kind: 'point_distance', a: { entity: 'e1', point: 'major1' }, b: { entity: 'e1', point: 'major2' }, value: 10 },
       { kind: 'point_distance', a: { entity: 'e1', point: 'minor1' }, b: { entity: 'e1', point: 'minor2' }, value: 5 },
-      { kind: 'coincident', a: { entity: 'e1', point: 'center' }, b: '@builtin_origin' },
+      { kind: 'coincident', a: { entity: 'e1', point: 'center' }, b: { external_xy: [0, 0] } },
       { kind: 'coincident', a: { entity: 'l1', point: 'end' }, b: { entity: 'e1' } },
     ],
   }
