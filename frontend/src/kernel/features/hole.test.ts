@@ -63,6 +63,22 @@ describe('solveHole guard paths', () => {
   it('throws when all points have no XY data (ported to holeReal.test.ts)', () => {
   })
 
+  it('a zero-placed hole fails before touching modified_by', () => {
+    // The zero-placed branch leaves brep_diff stale on purpose; pushing
+    // modified_by before the throw made ancestry re-read that stale diff and
+    // re-attribute the previous op's sub-shapes to the failed hole.
+    const repo = new Repository()
+    repo.register('_pt_sk', PLANE)
+    const table = { get: () => null } as unknown as HandleTable
+    const body = { ...nullBody('body_t'), shape: 1 as never, modified_by: ['ex_t'] }
+    expect(() =>
+      solveHole(oc, scope, table, { id: 'h9', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
+        body_t: body,
+      }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
+    ).toThrow(/nothing to place/)
+    expect(body.modified_by).toEqual(['ex_t'])
+  })
+
   it('throws when target body does not exist', () => {
     // Non-existent target body raises.
     const repo = new Repository()

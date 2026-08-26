@@ -136,21 +136,24 @@ export function solveHole(
     cutAny = true
   }
 
+  const total = pointEntities.length
+  const placed = total - skippedCount
+  if (placed === 0) {
+    // Fail before any bookkeeping. This branch deliberately skips the brep_diff
+    // update, so pushing modified_by first would make ancestry re-read the
+    // stale diff and pin the PREVIOUS op's sub-shapes on this failed feature.
+    throw new Error(
+      `hole: all ${total} point(s) in sketch '${sketchRef}' have no XY data; nothing to place`,
+    )
+  }
+
   let bodyIds = [targetBody.id]
   if (cutAny) {
     // A hole is a cut, so it can sever the body: a through-hole wider than the
     // web between two features leaves two disconnected solids.
     bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string)
     targetBody.brep_diff = lastDiff
-  }
-
-  targetBody.modified_by.push(feature.id as string)
-  const total = pointEntities.length
-  const placed = total - skippedCount
-  if (placed === 0) {
-    throw new Error(
-      `hole: all ${total} point(s) in sketch '${sketchRef}' have no XY data; nothing to place`,
-    )
+    targetBody.modified_by.push(feature.id as string)
   }
 
   const result: HoleResult = {
