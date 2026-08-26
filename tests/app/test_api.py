@@ -213,6 +213,49 @@ class TestDocumentAPI:
             )
             assert response.status_code == 400
 
+    def test_rename_missing_uuid_returns_404(self, authed_client):
+        """A rename affecting no row must 404 like GET/PUT of a missing id."""
+        import uuid as uuid_mod
+        missing = "test-rename-" + uuid_mod.uuid4().hex
+        response = authed_client.patch(
+            f"/api/documents/{missing}",
+            data=json.dumps({"name": "Ghost"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 404
+        body = json.loads(response.data)
+        assert body["ok"] is False
+        assert body["code"] == "NOT_FOUND"
+
+    def test_rename_missing_uuid_by_other_user_returns_404(self, app, authed_client):
+        import uuid as uuid_mod
+
+        import psycopg2
+        from werkzeug.security import generate_password_hash
+        conn = psycopg2.connect(app.config["DB_DSN"])
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash, must_change_password) VALUES (%s, %s, 0)",
+                ("renamer2", generate_password_hash("renamepass")),
+            )
+        conn.close()
+        other = app.test_client()
+        login = other.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "renamer2", "password": "renamepass"}),
+            content_type="application/json",
+        )
+        assert login.status_code == 200
+
+        missing = "test-rename-" + uuid_mod.uuid4().hex
+        response = other.patch(
+            f"/api/documents/{missing}",
+            data=json.dumps({"name": "Ghost"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 404
+
     def test_delete_document(self, authed_client):
         uuid = json.loads(
             authed_client.post(

@@ -122,7 +122,12 @@ def rename_document(uuid):
     name = (data.get("name") or "").strip()
     if not name:
         return api_error("Document name required", "BAD_REQUEST", 400)
-    DocumentStore(get_db()).rename(uuid, name)
+    if not DocumentStore(get_db()).rename(uuid, name):
+        # The permission gate already 404s a missing document before this line;
+        # checking rowcount keeps that contract intact even when the row
+        # vanishes between the gate and the write, so a rename can never
+        # answer 200 without having renamed anything.
+        return api_error("Document not found", "NOT_FOUND", 404)
     return jsonify({"uuid": uuid, "name": name})
 
 
