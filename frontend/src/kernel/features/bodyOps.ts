@@ -126,7 +126,9 @@ export function applyBodyOperation(
           probe.dispose()
         }
       } catch {
-        continue
+        // A failed probe is not evidence of disjointness: skipping here reported
+        // "does not intersect" for cuts that would succeed. Fall through to the
+        // real cut and let its own failure surface instead.
       }
 
       const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
