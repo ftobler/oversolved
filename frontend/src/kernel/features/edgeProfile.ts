@@ -17,6 +17,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { bodyIdOf, parseAncestry } from '../query'
+import { makeWire } from '../occ/primitives'
 import { resolveFilletEdges } from './filletChamfer'
 
 /**
@@ -41,12 +42,11 @@ export function isEdgeProfileRef(refStr: string): boolean {
  */
 export function edgesToProfileFace(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   if (edges.length === 0) throw new Error('extrude: no edges to build a profile from')
-  const wireBuilder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
-  for (const e of edges) wireBuilder.Add_1(e)
-  if (!wireBuilder.IsDone()) {
-    throw new Error('extrude: selected edges do not form a single connected loop')
-  }
-  const wire = scope.track(wireBuilder.Wire())
+  // Route through makeWire so a joint gap beyond the kernel tolerance fails
+  // loud. A raw MakeWire silently drops the unconnectable edge and stays done,
+  // which used to build the face off a shortened loop (an open U of the
+  // remaining sides) with no error at all.
+  const wire = scope.track(makeWire(oc, scope, edges))
   // onlyPlane=true forces a planar surface; a non-coplanar wire leaves the
   // builder not-done instead of silently producing a curved/garbage face.
   const faceBuilder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(wire, true))

@@ -121,4 +121,28 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
       scope.dispose()
     }
   })
+
+  it('errors on a gapped coplanar loop instead of building a shortened face', () => {
+    // A raw MakeWire silently drops an edge whose joint gap exceeds its
+    // confusion tolerance and stays done, so the face used to be built off the
+    // surviving open U of edges with no error at all. The wire must fail loud
+    // (makeWire's connectivity guard) rather than extrude a short profile.
+    const scope = new DisposeScope()
+    try {
+      const GAP = 0.5
+      const pnt = (x: number, y: number) =>
+        scope.track(new occ.gp_Pnt_3(x, y, 0))
+      const edge = (aX: number, aY: number, bX: number, bY: number) =>
+        scope.track(new occ.BRepBuilderAPI_MakeEdge_3(pnt(aX, aY), pnt(bX, bY))).Edge()
+      const e1 = edge(0, 0, 1, 0)
+      const e2 = edge(1, 0, 1, 1)
+      // Deliberate gap: this edge starts at (1+GAP, 1) instead of (1, 1).
+      const e3 = edge(1 + GAP, 1, 0, 1)
+      const e4 = edge(0, 1, 0, 0)
+
+      expect(() => edgesToProfileFace(occ, scope, [e1, e2, e3, e4])).toThrow()
+    } finally {
+      scope.dispose()
+    }
+  })
 })
