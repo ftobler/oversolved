@@ -127,12 +127,13 @@ export function decodeOutput(buf) {
   for (let i = 0; i < nParams; i++) params.push(f32())
   const entityStatus = []
   for (let i = 0; i < nStatus; i++) entityStatus.push(u8())
-  const vertexFreedom = []
-  for (let i = 0; i < vfLen; i++) vertexFreedom.push(f32())
+  // vertexFreedom rides the wire but no harness script consumes it: read past
+  // it to keep the cursor aligned.
+  for (let i = 0; i < vfLen; i++) f32()
   const residualNorm = f64()
   const rank = u32()
   const dof = u32()
   const iters = u32()
   const ms = f64()
-  return { overallStatus, params, entityStatus, vertexFreedom, residualNorm, rank, dof, iters, ms }
+  return { overallStatus, params, entityStatus, residualNorm, rank, dof, iters, ms }
 }

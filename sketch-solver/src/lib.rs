@@ -18,7 +18,9 @@
 //!   - `equality_pins` carries `_residual_fixed` mode 3 (pin a param to an
 //!     explicit user (x, y) target that is constraint payload, not x0).
 //!   - `vertex_freedom` (per-entity null-space directions from the Jacobian
-//!     SVD) is emitted; the frontend drag math consumes it.
+//!     SVD) is emitted as the seed for the frontend drag math, which does not
+//!     consume it yet (see `solve::vertex_freedom`); the wire field stays so
+//!     the layout does not churn.
 //!   - `skip_status_pass` is the drag-mode escape hatch (no per-entity SVD).
 
 pub mod api;

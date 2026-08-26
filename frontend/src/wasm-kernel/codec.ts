@@ -102,7 +102,6 @@ export interface SolverOutput {
   paramsSolved: number[]
   entityStatus: number[]
   overallStatus: number
-  vertexFreedom: number[]
   diagnostics: { residualNorm: number; rank: number; dof: number; iters: number; ms: number }
 }
 
@@ -229,8 +228,10 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   for (let i = 0; i < nParams; i++) paramsSolved.push(r.f32())
   const entityStatus: number[] = []
   for (let i = 0; i < nStatus; i++) entityStatus.push(r.u8())
-  const vertexFreedom: number[] = []
-  for (let i = 0; i < vfLen; i++) vertexFreedom.push(r.f32())
+  // vertexFreedom rides the wire (the Rust side emits it) but nothing consumes
+  // it yet, so it is read past to keep the cursor aligned rather than decoded
+  // into a field nobody reads.
+  for (let i = 0; i < vfLen; i++) r.f32()
 
   const residualNorm = r.f64()
   const rank = r.u32()
@@ -242,7 +243,6 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
     paramsSolved,
     entityStatus,
     overallStatus,
-    vertexFreedom,
     diagnostics: { residualNorm, rank, dof, iters, ms },
   }
 }
