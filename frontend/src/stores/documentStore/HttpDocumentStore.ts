@@ -23,6 +23,12 @@ export class HttpDocumentStore implements DocumentStore {
     return http.getJson<DocumentPayload>(`/api/documents/${id}`)
   }
 
+  // Unknown-id semantics: the backend's require_doc_permission answers every
+  // verb on a missing uuid with 404 before the view runs, so save/rename/
+  // load/remove reject with `HttpError` here -- the typed error all the other
+  // methods already propagate. The local store deliberately diverges only for
+  // save() (it upserts; see contract.test.ts) while its rename throws, so
+  // callers must handle a not-found rejection from rename in both builds.
   async save(id: string, input: SaveInput): Promise<void> {
     const body: SaveInput = { content: input.content }
     if (input.preview_image) body.preview_image = input.preview_image

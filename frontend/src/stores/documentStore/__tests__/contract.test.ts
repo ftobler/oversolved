@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { resetFakeIndexedDb } from './fakeIndexedDb'
+import { mountFakeDocumentsServer } from './fakeDocumentsServer'
 import type { DocumentStore } from '../types'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
 import { HttpDocumentStore } from '../HttpDocumentStore'
+import { HttpError } from '@/utils/core/httpClient'
 import { resetDbConnection } from '../idb'
 import { suggestedCloneName } from '../cloneName'
 
@@ -14,134 +16,18 @@ import { suggestedCloneName } from '../cloneName'
 // Impl-specific concerns live in their own files: HttpDocumentStore.test.ts
 // locks the exact wire protocol (the real Flask contract), and
 // IndexedDbDocumentStore.test.ts covers the local-only sync `meta` envelope.
-
-// A faithful in-memory stand-in for the Flask `/api/documents` endpoints, just
-// complete enough to exercise the same observable behavior as the local store.
-// It is NOT the real backend -- the wire-shape tests guard that -- it only lets
-// the HTTP store run the same behavioral assertions as the IDB store.
-function mountFakeServer(): () => void {
-  interface Rec {
-    uuid: string
-    name: string
-    content: string
-    preview_image?: string
-    is_public: boolean
-    created_at: string
-    updated_at: string
-  }
-  const docs = new Map<string, Rec>()
-  let clock = 1000
-  const stamp = () => new Date(clock++).toISOString()
-  const original = globalThis.fetch
-
-  const respond = (status: number, body: unknown = {}) => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-    text: async () => (body === undefined ? '' : JSON.stringify(body)),
-  } as unknown as Response)
-
-  const toSummary = (r: Rec) => ({
-    uuid: r.uuid,
-    name: r.name,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-    is_owner: true,
-    owner_username: 'server-user',
-    is_public: r.is_public,
-  })
-
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const raw = typeof input === 'string' ? input : input.toString()
-    const url = new URL(raw, 'http://test')
-    const method = (init?.method ?? 'GET').toUpperCase()
-    const body = init?.body ? JSON.parse(init.body as string) : undefined
-    const path = url.pathname
-
-    if (path === '/api/documents') {
-      if (method === 'POST') {
-        const uuid = crypto.randomUUID()
-        docs.set(uuid, {
-          uuid, name: body.name, content: '',
-          is_public: body.is_public ?? false,
-          created_at: stamp(), updated_at: stamp(),
-        })
-        return respond(200, { uuid })
-      }
-      // GET list with server-side filter / search / sort.
-      let list = [...docs.values()]
-      const filter = url.searchParams.get('filter')
-      const search = url.searchParams.get('search')
-      const sort = url.searchParams.get('sort')
-      if (filter === 'public') list = list.filter(d => d.is_public)
-      else if (filter === 'shared') list = []
-      if (search) {
-        const needle = search.toLowerCase()
-        list = list.filter(d => d.name.toLowerCase().includes(needle))
-      }
-      if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name))
-      else list.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-      return respond(200, { documents: list.map(toSummary) })
-    }
-
-    const dup = path.match(/^\/api\/documents\/([^/]+)\/duplicate$/)
-    if (dup && method === 'POST') {
-      const src = docs.get(dup[1])
-      if (!src) return respond(404)
-      const uuid = crypto.randomUUID()
-      docs.set(uuid, {
-        ...src, uuid, name: `${src.name} (copy)`,
-        created_at: stamp(), updated_at: stamp(),
-      })
-      return respond(200, { uuid })
-    }
-
-    const clone = path.match(/^\/api\/documents\/([^/]+)\/clone$/)
-    if (clone && method === 'POST') {
-      const src = docs.get(clone[1])
-      if (!src) return respond(404)
-      const uuid = crypto.randomUUID()
-      docs.set(uuid, {
-        ...src, uuid, name: body?.name?.trim() || `${src.name} (Clone)`,
-        created_at: stamp(), updated_at: stamp(),
-      })
-      return respond(200, { uuid })
-    }
-
-    const one = path.match(/^\/api\/documents\/([^/]+)$/)
-    if (one) {
-      const id = one[1]
-      const rec = docs.get(id)
-      if (method === 'GET') {
-        if (!rec) return respond(404)
-        return respond(200, {
-          content: rec.content, name: rec.name,
-          owner_username: 'server-user', permission: 'owner',
-          is_public: rec.is_public, preview_image: rec.preview_image,
-        })
-      }
-      if (method === 'PUT') {
-        if (!rec) return respond(404)
-        rec.content = body.content
-        if (body.preview_image !== undefined) rec.preview_image = body.preview_image
-        rec.updated_at = stamp()
-        return respond(200, {})
-      }
-      if (method === 'PATCH') {
-        if (!rec) return respond(404)
-        rec.name = body.name
-        return respond(200, {})
-      }
-      if (method === 'DELETE') {
-        docs.delete(id)
-        return respond(200, {})
-      }
-    }
-    return respond(404)
-  }) as typeof fetch
-
-  return () => { globalThis.fetch = original }
-}
+//
+// Known accepted divergences (documented, not contracted):
+// - save() to an unknown id: the HTTP store 404s (require_doc_permission runs
+//   before update_document), while the local store deliberately upserts a
+//   phantom 'Untitled' record because a static build may save into an id that
+//   only exists in memory (a fresh doc whose create() raced the first save).
+//   Do NOT "fix" either side toward the other without revisiting that intent.
+// - load() after remove(): the local store rejects (its tombstone hides the
+//   record from every read), while the cloud keeps serving a trashed row to
+//   its owner over GET until purge (DocumentStore.retrieve has no deleted_at
+//   filter). Pinned per side: IndexedDbDocumentStore.test.ts for the local
+//   rejection, fakeDocumentsServer.ts + the drift pins below for the cloud.
 
 interface Adapter {
   name: string
@@ -171,7 +57,7 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
 
   beforeEach(() => {
     adapter.setup()
-    unmount = adapter.name === 'HttpDocumentStore' ? mountFakeServer() : () => {}
+    unmount = adapter.name === 'HttpDocumentStore' ? mountFakeDocumentsServer() : () => {}
     store = adapter.make()
   })
   afterEach(() => {
@@ -208,12 +94,26 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect((await store.load(uuid)).content).toBe('v2')
   })
 
-  it('remove drops the entry; load-after-remove rejects', async () => {
+  // Only list membership is contracted after remove: both backends hide a
+  // deleted document from listings, but they disagree on direct reads (see the
+  // divergence note in the file header), so load-after-remove is pinned per
+  // store, not here.
+  it('remove drops the entry from list', async () => {
     const { uuid } = await store.create('Doc')
     await store.save(uuid, { content: 'x' })
     await store.remove(uuid)
     expect(await store.list()).toEqual([])
-    await expect(store.load(uuid)).rejects.toThrow()
+  })
+
+  it('load of a missing id rejects', async () => {
+    await expect(store.load('no-such-doc')).rejects.toThrow()
+  })
+
+  // Unknown-id rename rejects everywhere: the backend answers 404 through
+  // require_doc_permission and the local store throws on its own (the
+  // canonical local semantic, see IndexedDbDocumentStore.rename).
+  it('rename of a missing id rejects', async () => {
+    await expect(store.rename('no-such-doc', 'New')).rejects.toThrow()
   })
 
   it('rename changes the name without touching content', async () => {
@@ -225,14 +125,17 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(loaded.content).toBe('body')
   })
 
-  it('duplicate clones content under a fresh id named "(copy)"', async () => {
+  // The suffix is matched case-insensitively on purpose: the backend spells it
+  // "(Copy)" and the local store still says "(copy)". The casing is cosmetic;
+  // what is contracted is the copy relationship.
+  it('duplicate clones content under a fresh id named after the source', async () => {
     const { uuid } = await store.create('Original')
     await store.save(uuid, { content: 'shape' })
     const { uuid: dupId } = await store.duplicate(uuid)
     expect(dupId).not.toBe(uuid)
     const dup = await store.load(dupId)
     expect(dup.content).toBe('shape')
-    expect(dup.name).toBe('Original (copy)')
+    expect(dup.name).toMatch(/^Original \(copy\)$/i)
     expect(await store.list()).toHaveLength(2)
   })
 
@@ -302,5 +205,99 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     await store.save(uuid, { content: partContent })
     const loaded = await store.load(uuid)
     expect(loaded.content).toBe(partContent)
+  })
+})
+
+// Per-store pins for behavior the shared contract cannot express: the error
+// SHAPE each store uses to reject unknown ids, and the fake server's fidelity
+// to the real blueprints (review-17 L12 drift items). If one of these fails,
+// fakeDocumentsServer.ts has drifted from oversolved/blueprints/documents.py.
+describe('unknown-id semantics and fake-server fidelity', () => {
+  let unmount: () => void
+  beforeEach(() => { unmount = mountFakeDocumentsServer() })
+  afterEach(() => { unmount() })
+
+  it('HTTP rename of a missing id surfaces the backend 404 as a typed HttpError', async () => {
+    const store = new HttpDocumentStore()
+    const err = await store.rename('no-such-doc', 'X').then(() => null, e => e)
+    expect(err).toBeInstanceOf(HttpError)
+    expect((err as HttpError).status).toBe(404)
+    // The body carries the unified api_error shape, so parseHttpError at the
+    // call site renders "Document not found" instead of a generic fallback.
+    expect(JSON.parse((err as HttpError).body)).toMatchObject({ error: 'Document not found', code: 'NOT_FOUND' })
+  })
+
+  it('local rename of a missing id throws not-found (canonical local semantic)', async () => {
+    resetFakeIndexedDb(); resetDbConnection()
+    const store = new IndexedDbDocumentStore()
+    await expect(store.rename('no-such-doc', 'X')).rejects.toThrow(/not found/i)
+    // Nothing may have been created by the failed rename.
+    expect(await store.list()).toEqual([])
+  })
+
+  // ─── fake-server drift pins vs documents.py ───
+
+  it('create/duplicate/clone return the real statuses (201) and duplicate uses "(Copy)" casing', async () => {
+    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Box' }) })
+    expect(created.status).toBe(201)
+    const { uuid } = await created.json()
+
+    const dup = await fetch(`/api/documents/${uuid}/duplicate`, { method: 'POST' })
+    expect(dup.status).toBe(201)
+    expect((await dup.json()).name).toBe('Box (Copy)')
+
+    const clone = await fetch(`/api/documents/${uuid}/clone`, { method: 'POST' })
+    expect(clone.status).toBe(201)
+
+    const put = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'x' }) })
+    expect(put.status).toBe(200)
+  })
+
+  it('clone uniquifies the suggested name with (Clone N); an explicit name is verbatim', async () => {
+    // clone_document uniquifies only the fallback suggestion, against the
+    // caller's existing names; a requested name is never touched.
+    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Bracket' }) })
+    const { uuid } = await created.json()
+    await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Bracket (Clone)' }) })
+
+    const first = await fetch(`/api/documents/${uuid}/clone`, { method: 'POST' })
+    expect((await first.json()).name).toBe('Bracket (Clone 1)')
+
+    const named = await fetch(`/api/documents/${uuid}/clone`, {
+      method: 'POST',
+      body: JSON.stringify({ name: '  Bracket (Clone)  ' }),
+    })
+    expect((await named.json()).name).toBe('Bracket (Clone)')  // trimmed, not uniquified
+  })
+
+  it('DELETE tombstones like the backend: hidden from list, still served by GET', async () => {
+    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Gone' }) })
+    const { uuid } = await created.json()
+    await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'body' }) })
+
+    const del = await fetch(`/api/documents/${uuid}`, { method: 'DELETE' })
+    expect(del.status).toBe(200)
+    expect(await del.json()).toMatchObject({ uuid, status: 'moved_to_trash' })
+
+    const list = await fetch('/api/documents')
+    expect((await list.json()).documents.map((d: { uuid: string }) => d.uuid)).not.toContain(uuid)
+
+    // retrieve() has no deleted_at filter: the row keeps serving GET.
+    const get = await fetch(`/api/documents/${uuid}`)
+    expect(get.status).toBe(200)
+    expect((await get.json()).content).toBe('body')
+  })
+
+  it('every per-document verb 404s a missing uuid with the unified error shape', async () => {
+    for (const [method, init] of [
+      ['GET', undefined],
+      ['PUT', { body: JSON.stringify({ content: '' }) }],
+      ['PATCH', { body: JSON.stringify({ name: 'X' }) }],
+      ['DELETE', undefined],
+    ] as const) {
+      const res = await fetch('/api/documents/no-such-doc', { method, ...init })
+      expect(res.status, method).toBe(404)
+      expect(await res.json()).toMatchObject({ ok: false, error: 'Document not found', code: 'NOT_FOUND' })
+    }
   })
 })

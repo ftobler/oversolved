@@ -154,6 +154,13 @@ export class IndexedDbDocumentStore implements DocumentStore {
     return { uuid }
   }
 
+  // Reject-on-missing is the canonical local unknown-id semantic (review-17
+  // L12): a rename of an id that does not exist must fail loudly rather than
+  // invent state, mirroring both the backend (require_doc_permission 404s
+  // before rename_document runs) and the local load()/duplicate paths.
+  // save()'s phantom-'Untitled' upsert below is the ONE deliberate exception,
+  // kept because a static build may save into an id whose create() raced the
+  // first save -- do not align these two without revisiting that intent.
   async rename(id: string, name: string): Promise<void> {
     const renamed = await idbReadModifyWrite<StoredDoc>(id, existing => {
       if (!existing) return undefined
