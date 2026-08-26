@@ -17,14 +17,16 @@ const h = vi.hoisted(() => {
   return {
     makeGate,
     saveGates: [] as ReturnType<typeof makeGate>[],
+    bodies: [] as string[],
   }
 })
 
 vi.mock('@/adapters/backend', () => ({
   backendBundle: {
     documents: {
-      save: () => {
+      save: (_uuid: string, input: { content: string }) => {
         const gate = h.makeGate()
+        h.bodies.push(input.content)
         h.saveGates.push(gate)
         return gate.promise
       },
@@ -136,6 +138,7 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     h.saveGates = []
+    h.bodies = []
     useUnsavedChangesStore.getState().setDirty(false)
   })
 
@@ -191,6 +194,56 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
     await act(async () => { h.saveGates[0].resolve(undefined) })
     const ok = await savePromise
     expect(ok).toBe(true)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('chains an overlapping save so the newer bytes land after the stale ones', async () => {
+    // The old-world failure (review-18 ST-M1): save 1 snapshots pre-edit
+    // bytes, save 2 carries the edited ones, and inverted completion let the
+    // STALE PUT land last under dirty=false. Single-flight chaining makes
+    // arrival order the landing order instead.
+    const result = await loadSimpleDoc()
+
+    let releaseShot!: (value: string | null) => void
+    const shotGate = new Promise<string | null>(resolve => { releaseShot = resolve })
+
+    let save1!: Promise<boolean>
+    await act(async () => {
+      save1 = result.current.saveDoc('S', result.current.doc!, vi.fn(() => shotGate))
+    })
+    expect(h.saveGates).toHaveLength(0)  // parked on the screenshot, no PUT yet
+
+    // The edit lands mid-flight and a second save fires while save 1 holds
+    // the slot.
+    let save2!: Promise<boolean>
+    await act(async () => {
+      const edited = { ...result.current.doc!, name: 'V2' }
+      result.current.docRef.current = edited
+      result.current.setDoc(edited)
+      useUnsavedChangesStore.getState().setDirty(true)
+      save2 = result.current.saveDoc('S', edited)
+    })
+    // The chained save must not reach the store while save 1 is in flight.
+    expect(h.saveGates).toHaveLength(0)
+    expect(h.bodies).toHaveLength(0)
+
+    await act(async () => { releaseShot(null) })
+    expect(h.saveGates).toHaveLength(1)
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    const ok1 = await save1
+    expect(ok1).toBe(true)
+    // Save 1 landed its PRE-EDIT bytes; the edit postdates them, so the dirty
+    // flag must survive this completion even though a newer save is queued.
+    expect(h.bodies[0]).not.toContain('V2')
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+
+    await act(async () => { h.saveGates[1].resolve(undefined) })
+    const ok2 = await save2
+    expect(ok2).toBe(true)
+    // Only now is the store holding the latest bytes AND memory current:
+    // exactly at this point may dirty end false.
+    expect(h.bodies).toHaveLength(2)
+    expect(h.bodies[1]).toContain('V2')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })

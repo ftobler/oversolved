@@ -81,30 +81,48 @@ export function useDocumentState(
     return () => { cancelled = true }
   }, [uuid, solveOnLoad, reSolveRef])
 
+  // Single-flight chain for saves. Bytes are serialized per call from the doc
+  // the caller hands over (the latest mutation's state), but a call landing
+  // while another save is in flight must not race it to the store: without
+  // gating, an older slow save can complete after a newer one and strand the
+  // newer edits on the server under dirty=false (review-18 ST-M1). Chaining
+  // makes arrival order the landing order, so the latest bytes always win,
+  // independent of the identity guard below.
+  const saveChain = useRef<Promise<void>>(Promise.resolve())
+
   const saveDoc = useCallback(async (uuid: string, document: PartDoc, screenshot?: () => Promise<string | null>) => {
+    const prior = saveChain.current
+    let release!: () => void
+    const mine = new Promise<void>(resolve => { release = resolve })
+    saveChain.current = mine
+    await prior
     try {
-      // Reference at entry: every mutation installs a fresh doc object (never
-      // edits in place), so identity still holding after the awaits below
-      // proves no edit landed while the save was in flight.
-      const savedRef = docRef.current
-      const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
-      if (screenshot) {
-        const dataUrl = await screenshot()
-        if (dataUrl) {
-          body.preview_image = dataUrl.split(',')[1]
+      try {
+        // Reference at entry: every mutation installs a fresh doc object (never
+        // edits in place), so identity still holding after the awaits below
+        // proves no edit landed while the save was in flight.
+        const savedRef = docRef.current
+        const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
+        if (screenshot) {
+          const dataUrl = await screenshot()
+          if (dataUrl) {
+            body.preview_image = dataUrl.split(',')[1]
+          }
         }
+        await storeRef.current.save(uuid, body)
+        // The store now holds the latest edits, so there is nothing to warn about.
+        // An edit during the save windows postdates the stored bytes though: its
+        // dirty flag must survive, or a reload would silently drop those edits.
+        if (docRef.current === savedRef) {
+          useUnsavedChangesStore.getState().setDirty(false)
+        }
+        return true
+      } catch (e) {
+        setError(parseHttpError(e, 'Failed to save document'))
+        return false
       }
-      await storeRef.current.save(uuid, body)
-      // The store now holds the latest edits, so there is nothing to warn about.
-      // An edit during the save windows postdates the stored bytes though: its
-      // dirty flag must survive, or a reload would silently drop those edits.
-      if (docRef.current === savedRef) {
-        useUnsavedChangesStore.getState().setDirty(false)
-      }
-      return true
-    } catch (e) {
-      setError(parseHttpError(e, 'Failed to save document'))
-      return false
+    } finally {
+      release()
     }
   }, [])
 
