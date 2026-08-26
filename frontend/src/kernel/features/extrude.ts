@@ -14,6 +14,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
+import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
@@ -190,9 +191,10 @@ export function solveExtrude(
     try {
       cutPlane = resolveUpToPlane(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
     } catch (e) {
-      // The only error escaping resolveUpToPlane is ambiguity: the pick matched
-      // several elements. Warn about THAT, not "did not resolve", which claims
-      // the target was missing entirely.
+      // Ambiguity degrades to blind distance with a warning naming it; every
+      // other error (non-planar target, kernel failures) stays a loud feature
+      // failure exactly as before.
+      if (!(e instanceof AmbiguousQueryError)) throw e
       result.solver_warning =
         `extrude: up_to target '${upToRef}' matched several elements (${e instanceof Error ? e.message : String(e)}); used blind distance`
     }
