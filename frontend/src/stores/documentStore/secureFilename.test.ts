@@ -65,6 +65,39 @@ describe('secureFilename', () => {
     expect(secureFilename('my-file.v1.2.yaml')).toBe('my-file.v1.2.yaml')
   })
 
+  it('matches werkzeug.secure_filename including the Windows device rule', () => {
+    // Expected values generated directly from werkzeug.utils.secure_filename
+    // (Werkzeug 3.1.8) via `unittest.mock.patch.object(os, 'name', 'nt')`:
+    // werkzeug gates the reserved-device-name underscore on running under
+    // Windows, and this port applies it unconditionally (see secureFilename.ts),
+    // so device rows must be generated with the nt patch while plain names are
+    // identical under either os.name.
+    const cases: [string, string][] = [
+      ['nul', '_nul'],
+      ['nul.txt', '_nul.txt'],
+      ['com1', '_com1'],
+      ['Com4.backup', '_Com4.backup'],
+      ['lpt9.yaml', '_lpt9.yaml'],
+      ['aux', '_aux'],
+      ['prn.tar.gz', '_prn.tar.gz'],
+      ['con', '_con'],
+      ['null', 'null'],
+      ['nul2', 'nul2'],
+      ['constant', 'constant'],
+      ['console', 'console'],
+      ['My Part', 'My_Part'],
+      ['box.stp', 'box.stp'],
+    ]
+    for (const [input, expected] of cases) {
+      expect(secureFilename(input)).toBe(expected)
+    }
+  })
+
+  it('stays idempotent across the device-name prefix', () => {
+    expect(secureFilename('_nul')).toBe('_nul')
+    expect(secureFilename('_com1.yaml')).toBe('_com1.yaml')
+  })
+
   it('returns empty string for whitespace-only input', () => {
     expect(secureFilename('   ')).toBe('')
   })
