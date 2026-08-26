@@ -167,6 +167,12 @@ class EmptyTrashTask(PeriodicTask):
         from oversolved.db import DocumentStore
 
         doc_store = DocumentStore(db)
+        # Cloud trash expires after 30 days by design. The browser's local
+        # IndexedDbDocumentStore trash deliberately never expires: local
+        # storage has no background task runner, and losing offline work to a
+        # silent timer would be worse than keeping it forever. This asymmetry
+        # in the otherwise mirrored store contract is a decision, not an
+        # oversight.
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
 
         # Find documents deleted before cutoff
