@@ -1,5 +1,6 @@
-//! Pure curve splitting for the area builder — Rust port of
-//! `frontend/src/kernel/curveSplit.ts`. Cut a carrier curve at the parameters
+//! Pure curve splitting for the area builder, ported from the former
+//! `frontend/src/kernel/curveSplit.ts` (deleted once this port reached
+//! parity). Cut a carrier curve at the parameters
 //! `curve_intersect` found into the sub-pieces the half-edge graph consumes.
 //!
 //! A cubic Bezier sub-segment stays a cubic (de Casteljau), so a sliced spline

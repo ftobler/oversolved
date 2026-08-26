@@ -1,5 +1,6 @@
-//! Profile-loop helpers — Rust port of the topology slice of
-//! `frontend/src/kernel/profileLoops.ts`: arc/spline/ellipse sampling, the
+//! Profile-loop helpers: the topology slice of the loop machinery that also
+//! lives (for SVG/3D consumers) in `frontend/src/kernel/profileLoops.ts`:
+//! arc/spline/ellipse sampling, the
 //! polygon point list, containment nesting, signed area and area-weighted
 //! centroid. Only what the slice topology needs is ported.
 //!
@@ -14,8 +15,9 @@ pub type Vec2 = [f64; 2];
 
 const CENTROID_ARC_SAMPLES: usize = 64;
 
-/// Geometry of one boundary/half-edge. Mirrors the stringly-typed geom dicts in
-/// `topology.ts` (`lineEg`/`arcEg`/`ellipseArcEg`/`splineEg`, plus the standalone
+/// Geometry of one boundary/half-edge. Mirrors the stringly-typed geom dicts
+/// the original `topology.ts` built (`lineEg`/`arcEg`/`ellipseArcEg`/`splineEg`,
+/// plus the standalone
 /// full-`Ellipse` boundary edge which carries no start/end).
 #[derive(Clone, Debug, PartialEq)]
 pub enum EdgeGeom {

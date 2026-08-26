@@ -1,5 +1,6 @@
-//! Post-solve surface detection — Rust port of the geometry pipeline in
-//! `frontend/src/kernel/topology.ts` (`detectTopology`). Pairwise intersections
+//! Post-solve surface detection, ported from the geometry pipeline of the
+//! former `frontend/src/kernel/topology.ts` (`detectTopology`, deleted once
+//! this port reached parity). Pairwise intersections
 //! -> entity splitting -> planar half-edge DCEL -> face-cycle traversal -> CCW
 //! bounded surfaces, plus standalone closed loops and hole nesting.
 //!

@@ -1,6 +1,7 @@
-//! Pure curve-curve intersection for the sketch area builder — Rust port of
-//! `frontend/src/kernel/curveIntersect.ts`. Plain numbers in, intersection
-//! points + per-curve parameters out. No topology / query dependencies.
+//! Pure curve-curve intersection for the sketch area builder, ported from the
+//! former `frontend/src/kernel/curveIntersect.ts` (deleted once this port
+//! reached parity). Plain numbers in, intersection points + per-curve
+//! parameters out. No topology / query dependencies.
 //!
 //! Parameter conventions returned in each `Hit` (`t_a` on curve a, `t_b` on b):
 //!   line     t in [0, 1]             along p0 -> p1
