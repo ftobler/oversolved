@@ -81,10 +81,17 @@ function glForPaint(paint: (col: number, row: number) => number | null) {
   return { gl, readRenderTargetPixels }
 }
 
-function pointerEvent(x: number, y: number, buttons = 1): React.PointerEvent {
+function pointerEvent(
+  x: number,
+  y: number,
+  buttons = 1,
+  pointerType: string = 'mouse',
+): React.PointerEvent {
   // buttons defaults to pressed-left: the value every real pointermove while
   // dragging carries. Tests pass 0 explicitly for the stranded-release case.
-  return { clientX: x, clientY: y, button: 0, buttons } as unknown as React.PointerEvent
+  // pointerType defaults to mouse: real mouse events always carry it, so the
+  // existing sweeps keep simulating ordinary mice.
+  return { clientX: x, clientY: y, button: 0, buttons, pointerType } as unknown as React.PointerEvent
 }
 
 function resetStore(): void {
@@ -158,6 +165,40 @@ describe('useRubberBandSelect band start gates', () => {
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+  })
+
+  // L27: band-start reads the async hover state as its geometry guard, and
+  // touch/pen first contact has no hover resolved yet -- a finger landing on a
+  // body would open a box over geometry instead of selecting it. Until a sync
+  // resolve is designed, only mouse pointers start a band.
+  it('does not start for touch contact', () => {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    expect(result.current.onPointerDown(pointerEvent(10, 10, 1, 'touch'), false)).toBe(false)
+    expect(result.current.state.isDraggingRef.current).toBe(false)
+  })
+
+  it('does not start for pen contact', () => {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    expect(result.current.onPointerDown(pointerEvent(10, 10, 1, 'pen'), false)).toBe(false)
+  })
+
+  it('a mouse press on empty space still starts and commits a band', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const entityId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
+      p.markDirty('edit')
+      p.target.markClean()  // the driver's next-frame re-render
+      sweep(entityId)  // helper events carry pointerType 'mouse'
+      expect(selectedKeys()).toEqual(['sk1/eB'])
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
   })
 })
 

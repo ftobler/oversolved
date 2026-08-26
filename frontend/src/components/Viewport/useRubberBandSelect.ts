@@ -82,6 +82,11 @@ export function useRubberBandSelect(
     // Only left-click on empty space starts a box drag.
     if (e.button !== 0) return false
     if (idBufferHitExists) return false
+    // Mouse only: band-start reads the async hover state as its geometry
+    // guard, and touch/pen first contact has no hover resolved yet, so a
+    // finger landing on a body would open a box over geometry instead of
+    // selecting it. Touch keeps tap gestures; revisit with a sync resolve.
+    if (e.pointerType !== 'mouse') return false
 
     // don't start during camera rotation or context
     const state = useSketchEditorStore.getState()
