@@ -416,11 +416,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         const canStartBand = !currentTool || currentTool === 'drag'
           || (currentTool === 'dimension' && s.dimensionPicks.length === 0)
         if (canStartBand) {
-          const started = rubberBand.onPointerDown(e, false)
-          // Capturing keeps a box drag alive when the cursor grazes the pane
-          // edge and delivers the release wherever it lands; without it an
-          // off-pane release strands the band (and this gesture) until Escape.
-          if (started) e.currentTarget.setPointerCapture(e.pointerId)
+          // Capture is NOT taken here. Everything interactive in this pane -- the R3F
+          // event source, the id-buffer canvas, the cube gizmo overlay -- is a
+          // descendant, so capturing on press retargets the whole gesture and its
+          // trailing click onto this div and starves all of them. A stationary press is
+          // an ordinary click and must keep its own target; the band takes capture on
+          // the move that first opens a box instead (handlePointerMove).
+          rubberBand.onPointerDown(e, false)
         }
       }
     }
@@ -448,7 +450,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // The browser tore the gesture away (a touch became a scroll, the pointer
   // was lost): no pointer-up will follow, so drop the band and the click
   // gesture here or a stale origin would pair with the NEXT release.
-  const handlePointerCancel = useCallback(() => {
+  const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     clickGesture.current.reset()
     rubberBand.onPointerCancel()
   }, [rubberBand])
@@ -526,7 +529,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // stationary click when only the two end points are compared.
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     clickGesture.current.move(e.clientX, e.clientY)
-    rubberBand.onPointerMove(e)
+    // The box just opened: from here on the gesture belongs to the band, and
+    // capture is what delivers its release even if it lands off-pane.
+    if (rubberBand.onPointerMove(e)) e.currentTarget.setPointerCapture(e.pointerId)
   }, [rubberBand])
 
   // Pointer-leave must tear the hover down: the id-buffer dispatch hook only

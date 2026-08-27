@@ -41,8 +41,10 @@ export function useRubberBandSelect(
   state: RubberBandState
   // Call on the root container's onPointerDown. Returns true if the box drag consumed the event.
   onPointerDown: (e: React.PointerEvent, idBufferHitExists: boolean) => boolean
-  // Call on the root container's onPointerMove.
-  onPointerMove: (e: React.PointerEvent) => void
+  // Call on the root container's onPointerMove. Returns true on the single move
+  // that first opens a visible box (so the pane can take pointer capture only
+  // then), false otherwise.
+  onPointerMove: (e: React.PointerEvent) => boolean
   // Call on the root container's onPointerUp. Commits selection to the store.
   onPointerUp: () => void
   // Call on the root container's onPointerCancel. Drops the band without
@@ -113,17 +115,17 @@ export function useRubberBandSelect(
     return true
   }, [glRef])
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!startRef.current || committedRef.current) return
+  const onPointerMove = useCallback((e: React.PointerEvent): boolean => {
+    if (!startRef.current || committedRef.current) return false
     // A move with no button held means the release landed where we never saw
     // it (capture lost, pre-capture strand): drop the band instead of letting
     // the ghost resume under the free cursor.
     if (e.buttons === 0) {
       endDrag()
-      return
+      return false
     }
     const canvas = glRef.current?.domElement
-    if (!canvas) return
+    if (!canvas) return false
     const canvasRect = canvas.getBoundingClientRect()
     const cx = e.clientX - canvasRect.left
     const cy = e.clientY - canvasRect.top
@@ -134,11 +136,16 @@ export function useRubberBandSelect(
     const h = Math.abs(cy - startRef.current[1])
 
     // Don't show a box until the user has dragged at least 4px.
-    if (w < 4 && h < 4) return
+    if (w < 4 && h < 4) return false
 
+    // Returns true on the one move that first opens a visible box. The pane uses
+    // that edge to take pointer capture: capture is what keeps an off-pane release
+    // reachable, and it is only wanted once there is a box to keep alive.
+    const becameVisible = rectRef.current === null
     const nextRect = { x, y, w, h }
     rectRef.current = nextRect
     setRect(nextRect)
+    return becameVisible
   }, [glRef, endDrag])
 
   const onPointerUp = useCallback(() => {

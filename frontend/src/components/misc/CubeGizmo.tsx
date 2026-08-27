@@ -45,7 +45,14 @@ export function CubeGizmoCanvas({ canvasRef, pvRef, hoverRef, snapRef, cameraRef
       style={GIZMO_STYLE}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
-      onClick={onClick}
+      // This canvas is stacked inside the viewport pane, whose container-level
+      // handlers open a rubber band and a click gesture on any left press. A press
+      // aimed at the cube belongs to the cube: letting it bubble opens a box drag
+      // from under the widget, and (before the capture was deferred) swallowed this
+      // canvas's own click outright. Same guard ContextMenuDialog applies.
+      onPointerDown={e => e.stopPropagation()}
+      onPointerUp={e => e.stopPropagation()}
+      onClick={e => { e.stopPropagation(); onClick(e) }}
     />
   )
 }
