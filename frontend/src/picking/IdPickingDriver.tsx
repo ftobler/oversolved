@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
-import { setLivePipeline } from './IdPipelineContext'
+import { useIdPipelineLifecycle } from './useIdPipelineLifecycle'
 import { cameraPoseChanged, snapshotCameraPose, type CameraPoseSnapshot } from './cameraPose'
+
 interface IdPickingDriverProps {
   // External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync.
   onReady?: (pipeline: IdPipeline) => void
@@ -33,6 +34,11 @@ function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: num
  * Camera change detection is deferred to id-buffer-perf.md (#264). For
  * this slice the pipeline marks dirty on geometry registration changes
  * only; callers can `pipeline.markDirty()` for camera moves until then.
+ *
+ * The pipeline instance is minted fresh on every Suspense hide/reveal by
+ * `useIdPipelineLifecycle`, so a disposed pipeline is never republished:
+ * the fixed ordering assumption (that the reveal happens before any
+ * geometry arrives) is removed rather than satisfied.
  */
 export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   const three = useThree()
@@ -40,54 +46,54 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   const sizeWidth = three.size?.width ?? 1
   const sizeHeight = three.size?.height ?? 1
 
-  // Pipeline is created once via useState lazy initializer. Subsequent size
-  // changes flow through resize() below, not by reconstructing the pipeline.
-  const [pipeline] = useState<IdPipeline>(() => {
+  // The factory captures the gl + size at effect time; the hook calls it inside
+  // its setup effect, so the very first size is used and later resizes flow
+  // through resize() below (exactly the previous useState-lazy behaviour).
+  const factory = useCallback(() => {
     const db = getRenderSize(gl, sizeWidth, sizeHeight)
     return new IdPipeline({
       width: db.width,
       height: db.height,
       pickDuringCameraMotion: true,
     })
-  })
+  }, [gl, sizeWidth, sizeHeight])
+
+  const { pipeline, tryRender } = useIdPipelineLifecycle(factory)
 
   const onReadyRef = useRef(onReady)
   useEffect(() => { onReadyRef.current = onReady }, [onReady])
-
   useEffect(() => {
-    setLivePipeline(pipeline)
-    onReadyRef.current?.(pipeline)
-    return () => {
-      // Guard against StrictMode (and any future double-mount): only clear
-      // the global if it still points at OUR pipeline. Without this, a
-      // remount that re-runs setLivePipeline before our cleanup runs would
-      // be wiped out by our unmount clearing the latest pointer.
-      setLivePipeline(null, pipeline)
-      pipeline.dispose()
-    }
+    if (pipeline) onReadyRef.current?.(pipeline)
   }, [pipeline])
 
-  useFrame(() => {
-    const db = getRenderSize(gl, sizeWidth, sizeHeight)
-    pipeline.resize(db.width, db.height)
-  })
-
-  // Camera-change detection. Compare the camera's world AND projection matrix
-  // every frame against the snapshot from the previous frame. The projection
-  // half is what catches an OrbitControls dolly on an orthographic camera:
-  // it only scales zoom, so matrixWorld alone misses it and the ID buffer
-  // went stale after a pure wheel-zoom. A change marks the pipeline dirty;
-  // when `pickDuringCameraMotion` is false (default) we additionally suppress
-  // the actual render while the camera is moving, so the ID buffer settles
-  // once after the camera stops.
-  const lastCamPose = useRef<CameraPoseSnapshot | null>(null)
-  const cameraMovedThisFrame = useRef(false)
-  const renderFailed = useRef(false)
+  // Camera-change state, keyed per pipeline. A fresh pipeline after a reveal
+  // must start with a clean pose slate, otherwise the stale previous pipeline's
+  // pose would suppress the first post-reveal dirty mark (and its render).
+  const camState = useRef<
+    Map<IdPipeline, { lastCamPose: CameraPoseSnapshot | null; cameraMoved: boolean }>
+  >(new Map())
 
   useFrame(({ camera }) => {
-    if (renderFailed.current) return
-    const changed = cameraPoseChanged(lastCamPose.current, camera)
-    lastCamPose.current = snapshotCameraPose(camera)
+    if (!pipeline) return
+    const db = getRenderSize(gl, sizeWidth, sizeHeight)
+    pipeline.resize(db.width, db.height)
+
+    let cs = camState.current.get(pipeline)
+    if (!cs) {
+      cs = { lastCamPose: null, cameraMoved: false }
+      camState.current.set(pipeline, cs)
+    }
+
+    // Camera-change detection. Compare the camera's world AND projection matrix
+    // every frame against the snapshot from the previous frame. The projection
+    // half is what catches an OrbitControls dolly on an orthographic camera:
+    // it only scales zoom, so matrixWorld alone misses it and the ID buffer
+    // went stale after a pure wheel-zoom. A change marks the pipeline dirty;
+    // when `pickDuringCameraMotion` is false (default) we additionally suppress
+    // the actual render while the camera is moving, so the ID buffer settles
+    // once after the camera stops.
+    const changed = cameraPoseChanged(cs.lastCamPose, camera)
+    cs.lastCamPose = snapshotCameraPose(camera)
 
     if (changed) {
       // Capture whether the pipeline was already dirty from a geometry
@@ -97,20 +103,14 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
       // the sole reason for dirtiness is this frame's camera motion.
       const hadGeometryDirty = pipeline.isDirty()
       pipeline.markDirty('camera-projection')
-      cameraMovedThisFrame.current = true
+      cs.cameraMoved = true
       if (!pipeline.pickDuringCameraMotion && !hadGeometryDirty) {
         return  // defer render until the camera settles
       }
     } else {
-      cameraMovedThisFrame.current = false
+      cs.cameraMoved = false
     }
-    try {
-      pipeline.renderIfDirty(gl, camera)
-    } catch (err) {
-      // Never let id-buffer failures take down visible rendering.
-      renderFailed.current = true
-      console.warn('ID pipeline render failed; disabling id-buffer picking for this session', err)
-    }
+    tryRender(gl, camera)
   })  // default priority: do not take over the render loop
 
   return null

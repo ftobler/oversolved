@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -622,7 +622,12 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
         {showDebugHit && <IdDebugOverlay />}
 
-        <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+        {/* Local boundary so the 1.47 MB HDR no longer hides and re-shows the
+            entire Canvas subtree (which destroys and recreates the IdPipeline on
+            every cold new-tab reveal). Mirrors PlaneVisual's <Text> boundary. */}
+        <Suspense fallback={null}>
+          <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+        </Suspense>
         <EnvLight />
 
         {showOrigin && <OriginMarker />}

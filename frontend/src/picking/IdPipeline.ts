@@ -203,6 +203,12 @@ export class IdPipeline {
     return this.target.isDirty()
   }
 
+  // Canary accessor for the publish invariant: a disposed pipeline must never
+  // reach the live slot, because its async resolve path is permanently deaf.
+  isDisposed(): boolean {
+    return this.disposed
+  }
+
   resize(width: number, height: number): void {
     this.target.resize(width, height)
   }

@@ -36,7 +36,7 @@ export function useRegisteredBody(
     if (!enabled || !pipeline) return
     const ok = register(pipeline)
     if (!ok) return
-    pipeline.markDirty()
+    pipeline.markDirty('registration')
     return () => {
       unregister(pipeline)
       pipeline.markDirty()

@@ -84,6 +84,13 @@ describe('IdPipeline layering', () => {
     })
   }
 
+  it('resolveAsync on a disposed pipeline answers null', async () => {
+    const p = new IdPipeline({ width: 32, height: 32 })
+    const renderer = {} as unknown as THREE.WebGLRenderer
+    p.dispose()
+    await expect(p.resolveAsync(renderer, { x: 1, y: 1 })).resolves.toBeNull()
+  })
+
   describe('layer render failure', () => {
     it('leaves the buffer dirty and warns with the failing layer name', () => {
       const p = new IdPipeline({ width: 32, height: 32 })

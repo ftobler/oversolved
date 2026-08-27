@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { IdPipeline } from './IdPipeline'
+import { failLoud } from '@/stores/stateInvariants'
 
 /**
  * Live IdPipeline accessor.
@@ -24,6 +25,14 @@ const listeners = new Set<() => void>()
  * teardown.
  */
 export function setLivePipeline(p: IdPipeline | null, expectedPrevious?: IdPipeline | null): void {
+  // A disposed pipeline is permanently deaf on the async resolve path, so
+  // republishing one (the Suspense hide/reveal "cleanup then setup" cycle)
+  // silently kills hover + click picking. The lifecycle hook is what makes this
+  // unreachable; this is the loud canary that proves it.
+  if (p && p.isDisposed()) {
+    failLoud('[invariant] setLivePipeline refused a disposed IdPipeline; the lifecycle must mint a fresh instance')
+    return
+  }
   if (expectedPrevious !== undefined && currentPipeline !== expectedPrevious) return
   currentPipeline = p
   for (const l of listeners) l()

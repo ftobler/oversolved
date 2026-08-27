@@ -11,7 +11,7 @@
 // utils/assemblyPointer.ts, and the anchor set under the cursor comes from
 // utils/anchorGizmos.ts, all viewport-free and unit-tested.
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -575,7 +575,9 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
         <AssemblyPickLayers bodies={pickGeometry} />
         {showPickDebug && <IdDebugOverlay />}
 
-        <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+        <Suspense fallback={null}>
+          <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+        </Suspense>
         <EnvLight />
 
         {builtins.map(b => <AssemblyBuiltin key={b.id} item={b} />)}
