@@ -409,8 +409,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         || s.hoveredConstraintEntityIds.size > 0
       if (!hasHover) {
         const currentTool = s.activeTool
-        // Only start rubber-band for non-drawing tools (null = idle select, drag, dimension).
-        if (!currentTool || currentTool === 'drag' || currentTool === 'dimension') {
+        // Only start rubber-band for non-drawing tools (null = idle select, drag).
+        // A dimension placement finalises on an empty-space click: if a band
+        // opened here, any drag while positioning the preview would mark the
+        // trailing click consumed and swallow the placement (605117dd's guard).
+        const canStartBand = !currentTool || currentTool === 'drag'
+          || (currentTool === 'dimension' && s.dimensionPicks.length === 0)
+        if (canStartBand) {
           const started = rubberBand.onPointerDown(e, false)
           // Capturing keeps a box drag alive when the cursor grazes the pane
           // edge and delivers the release wherever it lands; without it an
