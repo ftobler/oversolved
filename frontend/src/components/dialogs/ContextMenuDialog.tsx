@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useWheelStep } from '@/components/editors/widgets/useWheelStep'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import '@/components/dialogs/ContextMenuDialog.css'
@@ -10,6 +11,19 @@ export default function ContextMenuDialog() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [seenDialog, setSeenDialog] = useState(dialog)
+
+  // Hover wheel stepping on the dimension entry. The box is uncontrolled, so the
+  // wheel writes straight to the DOM value and leaves the confirm/Enter commit
+  // to own the mutation; no per-notch validation, matching the dialog's own
+  // confirm-time gate. The hook attaches to the existing `inputRef`.
+  const wheelRef = useWheelStep({
+    readText: () => inputRef.current?.value ?? '',
+    inputRef,
+    onStep: (next) => {
+      if (inputRef.current) inputRef.current.value = String(next)
+      if (error) setError(null)
+    },
+  })
 
   // Reset the validation error when a different dialog opens (render-phase
   // adjustment on prop change, per the React docs).
@@ -78,7 +92,7 @@ export default function ContextMenuDialog() {
       <span className="context-menu-label">{dialog.label}</span>
       <input
         key={dialog.defaultValue}
-        ref={inputRef}
+        ref={wheelRef}
         type="number"
         defaultValue={dialog.defaultValue ?? ''}
         onKeyDown={handleKeyDown}

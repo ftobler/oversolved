@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
+import { WheelNumberInput } from '@/components/editors/widgets/WheelNumberInput'
 import toolbarNgonIcon from '@/assets/icons/toolbar-ngon.svg'
 
 export default function NgonTool() {
@@ -30,18 +31,22 @@ export default function NgonTool() {
         active={isActive}
       />
       {/* Side-count control: only while the n-gon tool is active. Changing it
-          updates the live preview and the next polygon drawn. */}
+          updates the live preview and the next polygon drawn. The store clamps
+          to [3, 64], so a wheel step past a bound lands on the bound rather than
+          being refused (accepted: do not fight the store). */}
       {isActive && (
-        <input
-          type="number"
+        <WheelNumberInput
           min={3}
           max={64}
-          value={draft ?? ngonSides}
+          value={String(draft ?? ngonSides)}
+          ariaLabel="Number of sides"
           title="Number of sides"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={(e) => commit(e.target.value)}
+          onChange={(raw) => setDraft(raw)}
+          onStep={(n) => commit(String(n))}
+          onBlur={(e) => commit((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter') commit(e.currentTarget.value) }}
           onPointerDown={(e) => e.stopPropagation()}
+          className=""
           style={{ width: 40, height: 24, marginLeft: 2, textAlign: 'center' }}
         />
       )}

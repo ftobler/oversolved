@@ -17,6 +17,7 @@
 import { useState } from 'react'
 import type { PartInstance } from '@/types/cad'
 import { instanceRotation, type EulerDeg } from '@/utils/assemblyMutations'
+import { WheelNumberInput } from '@/components/editors/widgets/WheelNumberInput'
 
 interface PartInstanceEditorProps {
   instance: PartInstance
@@ -125,12 +126,11 @@ export function PartInstanceEditor({
           {AXES.map(axis => (
             <label key={axis} className="instance-axis">
               <span>{AXIS_LABELS[axis]}</span>
-              <input
-                type="number"
-                className="feature-field-input"
-                aria-label={`Position ${AXIS_LABELS[axis]}`}
+              <WheelNumberInput
+                ariaLabel={`Position ${AXIS_LABELS[axis]}`}
                 value={text[axis]}
-                onChange={e => commitAxis(axis, e.target.value)}
+                onChange={raw => commitAxis(axis, raw)}
+                onStep={n => commitAxis(axis, String(n))}
               />
             </label>
           ))}
@@ -142,12 +142,11 @@ export function PartInstanceEditor({
           {ROT_AXES.map(axis => (
             <label key={axis} className="instance-axis">
               <span>{ROT_LABELS[axis]}</span>
-              <input
-                type="number"
-                className="feature-field-input"
-                aria-label={`Rotation ${ROT_LABELS[axis]}`}
+              <WheelNumberInput
+                ariaLabel={`Rotation ${ROT_LABELS[axis]}`}
                 value={rotText[axis]}
-                onChange={e => commitRot(axis, e.target.value)}
+                onChange={raw => commitRot(axis, raw)}
+                onStep={n => commitRot(axis, String(n))}
               />
             </label>
           ))}

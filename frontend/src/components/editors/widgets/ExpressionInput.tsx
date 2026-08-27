@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { evalExpr } from '@/kernel/evalExpr'
+import { PLAIN_NUMBER } from './wheelStep'
+import { useWheelStep } from './useWheelStep'
 
 interface ExpressionInputProps {
   value: string | number  // raw stored value (number or expression string)
@@ -10,8 +12,6 @@ interface ExpressionInputProps {
   disabled?: boolean
   ariaLabel?: string
 }
-
-const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/
 
 /** A numeric field that accepts math expressions (`50+25`, `width*2`). The raw
  *  text is shown while editing; on commit it evaluates and stores either a plain
@@ -26,6 +26,19 @@ export function ExpressionInput({
   // null = idle (mirror external value); string = actively editing.
   const [draft, setDraft] = useState<string | null>(null)
   const raw = draft ?? String(value)
+
+  // Hover-only wheel stepping: a notch over the box (focused or not) commits
+  // value +/- 1 through the field's normal path. The editing branch keeps the
+  // open draft in sync so the 3D preview follows the wheel.
+  const wheelRef = useWheelStep({
+    readText: () => raw,
+    accept: validate,
+    enabled: !disabled,
+    onStep: (next) => {
+      onChange(next)
+      if (draft !== null) setDraft(String(next))
+    },
+  })
 
   const trimmed = raw.trim()
   const result = evalExpr(trimmed, context)
@@ -42,6 +55,7 @@ export function ExpressionInput({
   return (
     <>
       <input
+        ref={wheelRef}
         type="text"
         aria-label={ariaLabel}
         className={`feature-field-input${!valid && trimmed !== '' ? ' feature-field-input--error' : ''}`}

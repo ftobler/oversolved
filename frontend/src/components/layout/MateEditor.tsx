@@ -24,6 +24,7 @@ import {
   MATE_PARAM_LABELS, isMateRefEmpty, mateOffsetIsAxial, mateParams, mateRefLabel,
   normalizeMateAngleDeg, type MateParam,
 } from '@/utils/mateKinds'
+import { WheelNumberInput } from '@/components/editors/widgets/WheelNumberInput'
 
 interface MateEditorProps {
   featureId: string
@@ -171,19 +172,18 @@ export function MateEditor({
             <div className="feature-field-row mate-offset-row">
               <span className="feature-field-label">{MATE_PARAM_LABELS.offset}</span>
               <div className="instance-triple">
-                {OFFSET_AXES.map((axis, i) => (
-                  <label key={axis} className="instance-axis">
-                    <span>{axis.toUpperCase()}</span>
-                    <input
-                      type="number"
-                      className="feature-field-input"
-                      aria-label={`Offset ${axis.toUpperCase()}`}
-                      value={offsetText[i]}
-                      placeholder="0"
-                      onChange={e => commitOffsetAxis(i, e.target.value)}
-                    />
-                  </label>
-                ))}
+                  {OFFSET_AXES.map((axis, i) => (
+                    <label key={axis} className="instance-axis">
+                      <span>{axis.toUpperCase()}</span>
+                      <WheelNumberInput
+                        ariaLabel={`Offset ${axis.toUpperCase()}`}
+                        value={offsetText[i]}
+                        placeholder="0"
+                        onChange={raw => commitOffsetAxis(i, raw)}
+                        onStep={n => commitOffsetAxis(i, String(n))}
+                      />
+                    </label>
+                  ))}
               </div>
             </div>
             {/* A vector authored on a kind that reduces it to one distance: the
@@ -199,20 +199,16 @@ export function MateEditor({
       }
       return (
         <div key={param} className="mate-param-offset">
-          <label className="feature-field-row">
-            <span className="feature-field-label">{MATE_PARAM_LABELS.offset}</span>
-            <input
-              type="number"
-              className="feature-field-input"
-              aria-label={MATE_PARAM_LABELS.offset}
-              value={numericValue(mate.offset)}
-              placeholder="0"
-              onChange={e => {
-                const raw = e.target.value
-                onUpdate({ offset: raw === '' ? undefined : Number(raw) })
-              }}
-            />
-          </label>
+            <label className="feature-field-row">
+              <span className="feature-field-label">{MATE_PARAM_LABELS.offset}</span>
+              <WheelNumberInput
+                ariaLabel={MATE_PARAM_LABELS.offset}
+                value={numericValue(mate.offset)}
+                placeholder="0"
+                onChange={raw => onUpdate({ offset: raw === '' ? undefined : Number(raw) })}
+                onStep={n => onUpdate({ offset: n })}
+              />
+            </label>
           <span className="mate-param-hint">
             {legacyScalarOffset && !axialOnly
               ? 'Distance along A\'s axis. Clear the box to author X/Y/Z.'
@@ -225,39 +221,37 @@ export function MateEditor({
       const current = typeof mate.angle === 'number' ? mate.angle : 0
       return (
         <div key={param} className="mate-param-angle">
-          <label className="feature-field-row">
-            <span className="feature-field-label">{MATE_PARAM_LABELS.angle}</span>
-            <input
-              type="number"
-              className="feature-field-input"
-              aria-label={MATE_PARAM_LABELS.angle}
-              value={angleText}
-              placeholder="0"
-              onChange={e => {
-                const raw = e.target.value
-                setAngleText(raw)
-                if (raw === '') { onUpdate({ angle: undefined }); return }
-                const next = Number(raw)
-                // Committed unnormalised so a negative stays typeable; the roll
-                // residual wraps either way, so the document is never wrong in
-                // between, only unnormalised. Garbage commits nothing and stays
-                // on screen for the user to fix.
-                if (Number.isFinite(next)) onUpdate({ angle: next })
-              }}
-              // Entry is finished: fold whatever was typed into [0, 360). 270
-              // and -90 name the same roll (mate_residuals.rs wraps the
-              // difference), so this is a display normalisation, not a change
-              // of pose.
-              onBlur={() => {
-                if (angleText.trim() === '') return
-                const typed = Number(angleText)
-                if (!Number.isFinite(typed)) return
-                const normalized = normalizeMateAngleDeg(typed)
-                setAngleText(String(normalized))
-                if (normalized !== typed) onUpdate({ angle: normalized })
-              }}
-            />
-          </label>
+            <label className="feature-field-row">
+              <span className="feature-field-label">{MATE_PARAM_LABELS.angle}</span>
+              <WheelNumberInput
+                ariaLabel={MATE_PARAM_LABELS.angle}
+                value={angleText}
+                placeholder="0"
+                onChange={raw => {
+                  setAngleText(raw)
+                  if (raw === '') { onUpdate({ angle: undefined }); return }
+                  const next = Number(raw)
+                  // Committed unnormalised so a negative stays typeable; the roll
+                  // residual wraps either way, so the document is never wrong in
+                  // between, only unnormalised. Garbage commits nothing and stays
+                  // on screen for the user to fix.
+                  if (Number.isFinite(next)) onUpdate({ angle: next })
+                }}
+                onStep={n => onUpdate({ angle: n })}
+                // Entry is finished: fold whatever was typed into [0, 360). 270
+                // and -90 name the same roll (mate_residuals.rs wraps the
+                // difference), so this is a display normalisation, not a change
+                // of pose.
+                onBlur={() => {
+                  if (angleText.trim() === '') return
+                  const typed = Number(angleText)
+                  if (!Number.isFinite(typed)) return
+                  const normalized = normalizeMateAngleDeg(typed)
+                  setAngleText(String(normalized))
+                  if (normalized !== typed) onUpdate({ angle: normalized })
+                }}
+              />
+            </label>
           <div className="mate-angle-buttons">
             <button type="button" onClick={() => commitAngle(current + 90)}>
               +90&deg;
@@ -269,17 +263,15 @@ export function MateEditor({
     return (
       <label key={param} className="feature-field-row">
         <span className="feature-field-label">{MATE_PARAM_LABELS[param]}</span>
-        <input
-          type="number"
-          className="feature-field-input"
+        <WheelNumberInput
           value={numericValue(mate[param])}
           placeholder="0"
-          onChange={e => {
-            const raw = e.target.value
+          onChange={raw => {
             // An emptied box means "unset", not zero: the solver defaults these
             // itself, and writing 0 would pin an offset the user did not ask for.
             onUpdate({ [param]: raw === '' ? undefined : Number(raw) } as MateParamPatch)
           }}
+          onStep={n => onUpdate({ [param]: n } as MateParamPatch)}
         />
       </label>
     )
