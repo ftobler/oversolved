@@ -109,7 +109,7 @@ describe('computeDrawClick rejects a non-finite point', () => {
 })
 
 describe('computeDrawClick - point tool', () => {
-  it('emits add_entity immediately with clearTool=true', () => {
+  it('emits add_entity immediately with gestureComplete=true', () => {
     const result = computeDrawClick('point', [], [3, 4], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_entity')
@@ -117,7 +117,7 @@ describe('computeDrawClick - point tool', () => {
       expect(result.mutations[0].kind).toBe('point')
       expect(result.mutations[0].params).toEqual([3, 4])
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
     expect(result.nextDrawPoints).toBeNull()
   })
 })
@@ -127,7 +127,7 @@ describe('computeDrawClick - line tool', () => {
     const result = computeDrawClick('line', [], [1, 2], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
     expect(result.nextDrawPoints).toEqual([[1, 2]])
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('first click with vertex snap records drawSnap', () => {
@@ -147,7 +147,7 @@ describe('computeDrawClick - line tool', () => {
       expect(result.mutations[0].params).toEqual([0, 0, 5, 5])
     }
     // The just-drawn endpoint becomes the next start; the tool does not clear.
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
     expect(result.nextDrawPoints).toEqual([[0, 0], [5, 5]])
   })
 
@@ -159,7 +159,7 @@ describe('computeDrawClick - line tool', () => {
       // Segment runs from the previous endpoint (5,5) to the new click.
       expect(result.mutations[0].params).toEqual([5, 5, 9, 2])
     }
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
     expect(result.nextDrawPoints).toEqual([[0, 0], [5, 5], [9, 2]])
   })
 
@@ -171,7 +171,7 @@ describe('computeDrawClick - line tool', () => {
       // Closing segment runs from the last vertex back to the first.
       expect(result.mutations[0].params).toEqual([5, 5, 0, 0])
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('second click with start vertex snap emits add_entity_with_constraint', () => {
@@ -237,7 +237,7 @@ describe('computeDrawClick - line tool', () => {
     const result = computeDrawClick('line', [[0, 0]], [10, 0], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_entity')
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('a single-snapped (start only) line still works as before', () => {
@@ -256,7 +256,7 @@ describe('computeDrawClick - circle tool', () => {
     const result = computeDrawClick('circle', [], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
     expect(result.nextDrawPoints).toEqual([[5, 5]])
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('second click emits add_entity circle with correct radius', () => {
@@ -267,13 +267,13 @@ describe('computeDrawClick - circle tool', () => {
       // radius should be hypot(3,4) = 5
       expect(result.mutations[0].params[2]).toBeCloseTo(5)
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('second click with zero radius returns no mutation', () => {
     const result = computeDrawClick('circle', [[5, 5]], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 })
 
@@ -282,7 +282,7 @@ describe('computeDrawClick - ellipse tool', () => {
     const result = computeDrawClick('ellipse', [], [2, 2], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
     expect(result.nextDrawPoints).toEqual([[2, 2]])
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('second click emits add_entity ellipse with a, b=a*0.618 and theta', () => {
@@ -299,13 +299,13 @@ describe('computeDrawClick - ellipse tool', () => {
       expect(m.params[3]).toBeCloseTo(5 * ELLIPSE_MINOR_RATIO)  // b = a * golden ratio
       expect(m.params[4]).toBeCloseTo(Math.atan2(4, 3) * (180 / Math.PI))  // theta deg
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('second click with zero major axis returns no mutation', () => {
     const result = computeDrawClick('ellipse', [[5, 5]], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('snaps the center to a hovered vertex via add_entity_with_constraint', () => {
@@ -328,7 +328,7 @@ describe('computeDrawClick - spline tool', () => {
     const c1 = computeDrawClick('spline', [], [0, 0], emptySnap(), FEATURE, newId)
     expect(c1.mutations).toHaveLength(0)
     expect(c1.nextDrawPoints).toEqual([[0, 0]])
-    expect(c1.clearTool).toBe(false)
+    expect(c1.gestureComplete).toBe(false)
 
     const c2 = computeDrawClick('spline', [[0, 0]], [1, 3], emptySnap(), FEATURE, newId)
     expect(c2.mutations).toHaveLength(0)
@@ -337,7 +337,7 @@ describe('computeDrawClick - spline tool', () => {
     const c3 = computeDrawClick('spline', [[0, 0], [1, 3]], [3, 3], emptySnap(), FEATURE, newId)
     expect(c3.mutations).toHaveLength(0)
     expect(c3.nextDrawPoints).toEqual([[0, 0], [1, 3], [3, 3]])
-    expect(c3.clearTool).toBe(false)
+    expect(c3.gestureComplete).toBe(false)
   })
 
   it('fourth click emits add_entity spline with 8 control-point params', () => {
@@ -349,7 +349,7 @@ describe('computeDrawClick - spline tool', () => {
       expect(m.kind).toBe('spline')
       expect(m.params).toEqual([0, 0, 1, 3, 3, 3, 4, 0])
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('snaps the start point to a hovered vertex via add_entity_with_constraint', () => {
@@ -459,13 +459,13 @@ describe('computeDrawClick - arc tool', () => {
       expect(result.mutations[0].kind).toBe('arc')
       expect(result.mutations[0].params).toHaveLength(5)
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('three collinear points returns no mutation', () => {
     const result = computeDrawClick('arc', [[0, 0], [5, 0]], [10, 0], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 })
 
@@ -484,7 +484,7 @@ describe('computeDrawClick - rect tool', () => {
       expect(result.mutations[0].p0).toEqual([0, 0])
       expect(result.mutations[0].p1).toEqual([5, 3])
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('second click ignores alignment snap (would collapse rectangle)', () => {
@@ -523,7 +523,7 @@ describe('computeDrawClick - center_rect tool', () => {
       expect(result.mutations[0].center).toEqual([0, 0])
       expect(result.mutations[0].corner).toEqual([3, 3])
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('second click ignores alignment snap (would collapse rectangle)', () => {
@@ -554,7 +554,7 @@ describe('computeDrawClick - ngon tool', () => {
       expect(result.mutations[0].corner).toEqual([10, 0])
       expect(result.mutations[0].sides).toBe(6)
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('honors the side count from snap state', () => {
@@ -592,7 +592,7 @@ describe('computeDrawClick - project tool', () => {
   it('returns nothing when no entity is hovered', () => {
     const result = computeDrawClick('project', [], [0, 0], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(0)
-    expect(result.clearTool).toBe(false)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('returns nothing when hovered entity is in same feature', () => {
@@ -611,7 +611,7 @@ describe('computeDrawClick - project tool', () => {
     if (result.mutations[0].type === 'add_projected_entity') {
       expect(result.mutations[0].source).toBe('@S2/L1')
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('emits add_projected_entity for edge ancestry query pick', () => {
@@ -625,7 +625,7 @@ describe('computeDrawClick - project tool', () => {
       expect(result.mutations[0].source).toBe(ancQuery)
       expect(result.mutations[0].kind).toBe('line')
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('emits projected_circle for a circular body edge pick', () => {
@@ -701,7 +701,7 @@ describe('computeDrawClick - project tool', () => {
     expect(result.mutations.every(m => m.type === 'add_projected_entity')).toBe(true)
     const kinds = result.mutations.map(m => (m.type === 'add_projected_entity' ? m.kind : ''))
     expect(kinds).toEqual(['line', 'circle', 'line'])
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('falls back to a single point projection for a face with no boundary edges', () => {
@@ -726,7 +726,7 @@ describe('computeDrawClick - project tool', () => {
       expect(result.mutations[0].source).toBe(ancQuery)
       expect(result.mutations[0].kind).toBe('point')
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('emits add_projected_entity for vertex ancestry query pick (no type restriction)', () => {
@@ -740,7 +740,7 @@ describe('computeDrawClick - project tool', () => {
       expect(result.mutations[0].source).toBe(ancQuery)
       expect(result.mutations[0].kind).toBe('point')
     }
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 
   it('returns nothing for malformed ancestry query in project tool', () => {
@@ -750,6 +750,6 @@ describe('computeDrawClick - project tool', () => {
     // Malformed ancestry queries still emit (they fall back to projected_point with the raw string as source)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_projected_entity')
-    expect(result.clearTool).toBe(true)
+    expect(result.gestureComplete).toBe(true)
   })
 })

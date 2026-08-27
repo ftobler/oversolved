@@ -34,14 +34,16 @@ export interface DrawSnapState {
 export interface DrawClickResult {
   mutations: Mutation[]
   /**
-   * null  -- leave draw points unchanged (adapter calls clearDraw on clearTool=true)
+   * null  -- leave draw points unchanged
    * array -- replace draw points with this array (intermediate clicks, arc 2nd click)
    */
   nextDrawPoints: [number, number][] | null
   // null means leave draw snap unchanged; a string replaces the vertexId.
   nextDrawSnap: { vertexId: string | null } | null
-  // When true the adapter must call clearDraw() + setActiveTool(null).
-  clearTool: boolean
+  // true when this click completed the gesture and produced its entity; the
+  // adapter clears the draw buffer and consults the tool's
+  // `staysArmedAfterCommit` policy to decide whether to keep the tool armed.
+  gestureComplete: boolean
 }
 
 // Click positions that agree within this distance are the same vertex, used by
@@ -103,7 +105,7 @@ export function computeDrawClick(
   const [px, py] = resolveSnapPoint(rawPoint, snap)
   const pts = drawPoints
 
-  const nothing: DrawClickResult = { mutations: [], nextDrawPoints: null, nextDrawSnap: null, clearTool: false }
+  const nothing: DrawClickResult = { mutations: [], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: false }
 
   // Last gate before a number becomes a mutation. A snap source that published
   // a broken position (or a caller that skipped the abstraction layer) must not
@@ -120,7 +122,7 @@ export function computeDrawClick(
       mutations: [{ type: 'add_entity', featureId, kind: 'point', params: [px, py] }],
       nextDrawPoints: null,
       nextDrawSnap: null,
-      clearTool: true,
+      gestureComplete: true,
     }
   }
 
@@ -129,7 +131,7 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
 
     // A polyline closes when the click lands back on the first vertex; the rest
@@ -154,7 +156,7 @@ export function computeDrawClick(
       const last = pts[pts.length - 1]
       mutations.push({ type: 'add_entity', featureId, kind: 'line',
         params: [last[0], last[1], startPoint[0], startPoint[1]] })
-      return { mutations, nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+      return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
     }
 
     const segStart = pts[pts.length - 1]
@@ -184,7 +186,7 @@ export function computeDrawClick(
     // segment's start snap from the vertex this endpoint landed on (if any),
     // mirroring a fresh first click so continuation still snaps.
     const nextDrawSnap = endVertexId ? { vertexId: endVertexId } : null
-    return { mutations, nextDrawPoints: [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]], nextDrawSnap, clearTool: false }
+    return { mutations, nextDrawPoints: [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]], nextDrawSnap, gestureComplete: false }
   }
 
   if (t === 'circle') {
@@ -192,7 +194,7 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
 
     const r = Math.hypot(px - pts[0][0], py - pts[0][1])
@@ -206,7 +208,7 @@ export function computeDrawClick(
       mutation = { type: 'add_entity', featureId, kind: 'circle',
         params: [pts[0][0], pts[0][1], r] }
     }
-    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   if (t === 'ellipse') {
@@ -214,7 +216,7 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
 
     // Second click sets the major axis: `a` is the cursor distance, the major
@@ -234,18 +236,18 @@ export function computeDrawClick(
     } else {
       mutation = { type: 'add_entity', featureId, kind: 'ellipse', params }
     }
-    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   if (t === 'spline') {
     // 4-click cubic Bezier: P1 (start), P2/P3 (control handles), P4 (end).
     if (pts.length === 0) {
       const drawSnap = snap.hoveredVertexId ? { vertexId: snap.hoveredVertexId } : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     if (pts.length < 3) {
       const next: [number, number][] = [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]]
-      return { mutations: [], nextDrawPoints: next, nextDrawSnap: null, clearTool: false }
+      return { mutations: [], nextDrawPoints: next, nextDrawSnap: null, gestureComplete: false }
     }
     // Fourth click closes the curve.
     const params = [pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], px, py]
@@ -257,7 +259,7 @@ export function computeDrawClick(
     } else {
       mutation = { type: 'add_entity', featureId, kind: 'spline', params }
     }
-    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   if (t === 'arc') {
@@ -265,11 +267,11 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     if (pts.length === 1) {
       // Append second point; preserve first (use explicit tuple copy to satisfy types)
-      return { mutations: [], nextDrawPoints: [[pts[0][0], pts[0][1]], [px, py]], nextDrawSnap: null, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[pts[0][0], pts[0][1]], [px, py]], nextDrawSnap: null, gestureComplete: false }
     }
 
     // Third click: compute arc from 3 points
@@ -281,7 +283,7 @@ export function computeDrawClick(
         params: [cc.cx, cc.cy, cc.r, aStart, aEnd] }],
       nextDrawPoints: null,
       nextDrawSnap: null,
-      clearTool: true,
+      gestureComplete: true,
     }
   }
 
@@ -291,14 +293,14 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     // Second corner uses raw point, alignment snap would collapse the rectangle
     return {
       mutations: [{ type: 'add_rect', featureId, p0: pts[0], p1: [rawPoint[0], rawPoint[1]] }],
       nextDrawPoints: null,
       nextDrawSnap: null,
-      clearTool: true,
+      gestureComplete: true,
     }
   }
 
@@ -307,14 +309,14 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     // Second corner uses raw point, alignment snap would collapse the rectangle
     return {
       mutations: [{ type: 'add_center_rect', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]] }],
       nextDrawPoints: null,
       nextDrawSnap: null,
-      clearTool: true,
+      gestureComplete: true,
     }
   }
 
@@ -323,7 +325,7 @@ export function computeDrawClick(
       const drawSnap = snap.hoveredVertexId
         ? { vertexId: snap.hoveredVertexId }
         : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, clearTool: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     // Second click sets a vertex (circumradius + start angle). Raw point: an
     // alignment snap would distort the polygon's orientation.
@@ -332,7 +334,7 @@ export function computeDrawClick(
       mutations: [{ type: 'add_ngon', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]], sides }],
       nextDrawPoints: null,
       nextDrawSnap: null,
-      clearTool: true,
+      gestureComplete: true,
     }
   }
 
@@ -351,7 +353,7 @@ export function computeDrawClick(
       faceEdges: () => snap.hoveredFaceEdges ?? null,
     })
     if (mutations.length === 0) return nothing
-    return { mutations, nextDrawPoints: null, nextDrawSnap: null, clearTool: true }
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   return nothing
