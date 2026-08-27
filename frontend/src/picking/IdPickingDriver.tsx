@@ -66,6 +66,16 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     if (pipeline) onReadyRef.current?.(pipeline)
   }, [pipeline])
 
+  // Prune the per-pipeline camera-state entry when this pipeline is disposed
+  // (reveal/unmount). Without this the Map grows by one stale entry per
+  // Suspense reveal over a long session.
+  useEffect(() => {
+    const table = camState.current
+    return () => {
+      if (pipeline) table.delete(pipeline)
+    }
+  }, [pipeline])
+
   // Camera-change state, keyed per pipeline. A fresh pipeline after a reveal
   // must start with a clean pose slate, otherwise the stale previous pipeline's
   // pose would suppress the first post-reveal dirty mark (and its render).
