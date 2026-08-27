@@ -343,6 +343,13 @@ interface SketchEditorState {
   // TOOL / SESSION STATE
   activeTool: ActiveTool
   activeFeatureId: string | null
+  // The document origin (0,0,0) expressed in the ACTIVE sketch's local 2D frame.
+  // [0,0] for the builtin planes, nonzero for a sketch on an offset or projected
+  // face. Mirrors the kernel's `originLocal` so the origin snap can place a draw
+  // click at the document origin instead of the plane-frame origin (a different
+  // 3D point on a face-based plane). See wasm-kernel/partDocToSketches.ts.
+  activeOriginLocal: [number, number]
+  setActiveOriginLocal: (p: [number, number]) => void
   showDebugHit: boolean
   showConstraintTiles: boolean
   ngonSides: number  // side count for the two-click n-gon draw tool
@@ -485,6 +492,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   hoveredSnapKind: null,
   activeTool: null,
   activeFeatureId: null,
+  activeOriginLocal: [0, 0],
   drawPoints: [],
   drawHover: null,
   drawSnapVertexId: null,
@@ -798,14 +806,19 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       get().clearDragState()
     }
     set(state => {
-      if (state.activeFeatureId !== null && id === null) {
-        return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null }
-      }
+    if (state.activeFeatureId !== null && id === null) {
+         return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null, activeOriginLocal: [0, 0] }
+       }
       return { activeFeatureId: id }
     })
   },
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
+
+  // Reflects the document origin in the active sketch's local frame. Published by
+  // Geometry3D while its feature is being edited, and cleared back to [0,0] when
+  // the sketch is left so a stale plane origin can never outlive its sketch.
+  setActiveOriginLocal: (p) => set({ activeOriginLocal: p }),
 
   // Both hover setters return the state object untouched when nothing changes,
   // which makes zustand skip the notification entirely. Load-bearing for pointer

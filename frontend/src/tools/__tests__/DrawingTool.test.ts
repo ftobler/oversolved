@@ -440,4 +440,29 @@ describe('DrawingTool', () => {
       expect(setDrawPoints).toHaveBeenCalledWith([[0, 0], [10, 10]])
     })
   })
+
+  describe('non-finite / origin snap passthrough', () => {
+    it('a non-finite worldPt emits no mutation', () => {
+      const onMutation = vi.fn()
+      const onMutationBatch = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'circle', paramCount: 3 })
+      const context = createMockContext({ onMutation, onMutationBatch, drawPoints: [] })
+      // test mode failLoud throws; production warn-and-drop. Either way nothing is emitted.
+      expect(() => tool.handlers.onPointerDown!({} as PointerEvent, [NaN, 5], context)).toThrow()
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(onMutationBatch).not.toHaveBeenCalled()
+    })
+
+    it('the origin snap position reaches computeDrawClick unchanged', () => {
+      const tool = createDrawingTool({ entityKind: 'circle', paramCount: 3 })
+      const context = createMockContext({
+        hoveredVertexPosition: [-37.5, 12.25],
+        drawPoints: [],
+      })
+      tool.handlers.onPointerDown!({} as PointerEvent, [1, 1], context)
+      // The first circle click records the snapped point; it must be the origin's
+      // real local position, not the raw [1,1] nor a hard-coded [0,0].
+      expect(context.drawPoints).toEqual([[-37.5, 12.25]])
+    })
+  })
 })

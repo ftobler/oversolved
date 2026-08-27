@@ -7,6 +7,8 @@ import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { projectionMutationsForId } from '@/tools/projectionMutations'
 import { circumcircle, arcAnglesFromRadiusPoint, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
+import { isFiniteSketchPoint } from '@/components/Geometry3D/pointerAbstraction'
+import { failLoud } from '@/stores/stateInvariants'
 
 export interface DrawSnapState {
   hoveredVertexId: string | null
@@ -102,6 +104,15 @@ export function computeDrawClick(
   const pts = drawPoints
 
   const nothing: DrawClickResult = { mutations: [], nextDrawPoints: null, nextDrawSnap: null, clearTool: false }
+
+  // Last gate before a number becomes a mutation. A snap source that published
+  // a broken position (or a caller that skipped the abstraction layer) must not
+  // be able to write NaN/Infinity into the document: fail loud and commit
+  // nothing. The project prefers a dropped click over a poisoned sketch.
+  if (!isFiniteSketchPoint([px, py])) {
+    failLoud(`[computeDrawClick] ${tool}: non-finite resolved point [${px}, ${py}]; click dropped`)
+    return nothing
+  }
 
   const t: string = tool  // prevent type narrowing across branches
   if (t === 'point') {

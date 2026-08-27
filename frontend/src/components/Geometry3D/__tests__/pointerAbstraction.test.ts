@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { makeSanitizedEvent, screenPixelDistance, isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
+import { makeSanitizedEvent, isFiniteSketchPoint, screenPixelDistance, isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 
 describe('makeSanitizedEvent', () => {
   it('returns event when local z is within plane (|z| <= 1)', () => {
@@ -28,6 +28,37 @@ describe('makeSanitizedEvent', () => {
   it('discards z component in localPoint', () => {
     const result = makeSanitizedEvent([7, 8, 0.1], [50, 60])
     expect(result?.localPoint).toEqual([7, 8])
+  })
+
+  it('rejects a NaN x', () => {
+    expect(makeSanitizedEvent([NaN, 4, 0], [0, 0])).toBeNull()
+  })
+
+  it('rejects an Infinity y', () => {
+    expect(makeSanitizedEvent([3, Infinity, 0], [0, 0])).toBeNull()
+  })
+
+  it('rejects a NaN z (the off-plane comparison silently accepts NaN today)', () => {
+    // Math.abs(NaN) > 1 is false, so the old guard would have admitted NaN; the
+    // finiteness gate must reject it.
+    expect(makeSanitizedEvent([3, 4, NaN], [0, 0])).toBeNull()
+  })
+
+  it('still rejects a far off-plane z', () => {
+    expect(makeSanitizedEvent([3, 4, 5], [0, 0])).toBeNull()
+  })
+
+  it('accepts a point on the plane', () => {
+    expect(makeSanitizedEvent([3, 4, 0.2], [0, 0])).not.toBeNull()
+  })
+})
+
+describe('isFiniteSketchPoint', () => {
+  it('table', () => {
+    expect(isFiniteSketchPoint([0, 0])).toBe(true)
+    expect(isFiniteSketchPoint([NaN, 0])).toBe(false)
+    expect(isFiniteSketchPoint([0, Infinity])).toBe(false)
+    expect(isFiniteSketchPoint([-Infinity, 0])).toBe(false)
   })
 })
 

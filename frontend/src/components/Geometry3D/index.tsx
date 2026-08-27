@@ -86,8 +86,9 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // Document origin (0,0,0) expressed in this sketch's local 2D frame: the hard
   // solve computes this from the resolved plane; the solve result carries it so
   // the drag preview pins @builtin_origin to the exact same point -- no round-
-  // trip through plane_transform, no divergence possible.
-  const dragOrigin = originLocal ?? [0, 0]
+  // trip through plane_transform, no divergence possible. Memoised so the
+  // fall-back [0,0] keeps a stable identity across renders.
+  const dragOrigin = useMemo<[number, number]>(() => originLocal ?? [0, 0], [originLocal])
 
   // WASM drag solve for vertex drags (runs the real solver per frame with
   // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
@@ -179,6 +180,16 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   const isEditing = featureId === activeFeatureId
 
   const setEntityKindMap = useSketchEditorStore(s => s.setEntityKindMap)
+  const setActiveOriginLocal = useSketchEditorStore(s => s.setActiveOriginLocal)
+  // Publish the document origin in this sketch's local frame while it is the
+  // active edit target, so the origin snap can land a draw click on the document
+  // origin rather than the plane-frame origin (a different 3D point on a
+  // face-based plane). Cleared on exit so a stale plane origin cannot survive.
+  useEffect(() => {
+    if (!isEditing) return
+    setActiveOriginLocal(dragOrigin)
+    return () => setActiveOriginLocal([0, 0])
+  }, [isEditing, dragOrigin, setActiveOriginLocal])
   useEffect(() => {
     if (!isEditing) return
     const compositeMap: Record<string, string> = {}

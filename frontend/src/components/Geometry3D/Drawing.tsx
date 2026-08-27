@@ -10,6 +10,7 @@ import { Dot } from '@/components/Geometry3D/VertexDots'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { COLOR_PREVIEW } from '@/components/Geometry3D/constants'
 import { useAlignmentSnapEffect } from '@/components/interaction/useAlignmentSnapEffect'
+import { failLoud } from '@/stores/stateInvariants'
 import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
@@ -158,8 +159,28 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
       position={[0, 0, -0.002]}
       onPointerDown={e => {
         e.stopPropagation()
-        const sanitized = sanitizePointerEvent(e, resolvedGroupRef)
-        if (!sanitized) return
+        const group = resolvedGroupRef.current
+        if (!group) return
+        // The commit click resolves against the sketch PLANE, not against
+        // whatever mesh R3F's raycast landed on. Same seam as the draw hover
+        // above and the drag move in Dragging.tsx: no scene mesh takes part, so
+        // no geometry in front of the plane can influence where the point goes.
+        const rect = gl.domElement.getBoundingClientRect()
+        const ndcX = ((e.nativeEvent.clientX - rect.left) / rect.width) * 2 - 1
+        const ndcY = -((e.nativeEvent.clientY - rect.top) / rect.height) * 2 + 1
+        const worldPt = projectCursorToSketchPlane(camera, group, { x: ndcX, y: ndcY })
+        if (!worldPt) {
+          failLoud('[DrawPlane] cursor ray does not meet the sketch plane; click dropped')
+          return
+        }
+        const sanitized = sanitizePointerEvent(
+          { point: worldPt, clientX: e.nativeEvent.clientX, clientY: e.nativeEvent.clientY },
+          resolvedGroupRef,
+        )
+        if (!sanitized) {
+          failLoud('[DrawPlane] plane intersection did not sanitize to a sketch point; click dropped')
+          return
+        }
         const [x, y] = sanitized.localPoint
 
         const tool = toolRegistry.get(effectiveTool)

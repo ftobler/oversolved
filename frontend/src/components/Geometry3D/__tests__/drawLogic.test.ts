@@ -50,6 +50,64 @@ describe('resolveSnapPoint', () => {
   })
 })
 
+// The four reported click cases: a draw click must land where the cursor ray met
+// the sketch plane, whatever the ID buffer resolved under the cursor.
+describe('resolveSnapPoint - draw click plane placement', () => {
+  it('a click on empty sketch background keeps the plane-resolved point', () => {
+    expect(resolveSnapPoint([3, 4], emptySnap())).toEqual([3, 4])
+  })
+
+  it('a click on a B-rep face keeps the plane-resolved point', () => {
+    // A drawing tool resolves no B-rep layer, so the snap state is empty even
+    // though a face was under the cursor; the raw plane point must survive.
+    const snap = emptySnap()
+    snap.hoveredSelectionId = '?4,4;@bxx@fyy:flatface'
+    expect(resolveSnapPoint([3, 4], snap)).toEqual([3, 4])
+  })
+
+  it('a click on a filled sketch area keeps the plane-resolved point', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = 'entity:S1:surface'
+    snap.hoveredVertexPosition = null
+    expect(resolveSnapPoint([3, 4], snap)).toEqual([3, 4])
+  })
+
+  it('an origin hover on an offset plane snaps to originLocal, not [0,0]', () => {
+    const snap = emptySnap()
+    snap.hoveredVertexPosition = [-37.5, 12.25]
+    const result = resolveSnapPoint([3, 4], snap)
+    expect(result).toEqual([-37.5, 12.25])
+    expect(result).not.toEqual([0, 0])
+  })
+
+  it('an origin hover on a builtin plane still snaps to [0,0]', () => {
+    const snap = emptySnap()
+    snap.hoveredVertexPosition = [0, 0]
+    expect(resolveSnapPoint([3, 4], snap)).toEqual([0, 0])
+  })
+})
+
+describe('computeDrawClick rejects a non-finite point', () => {
+  it('circle first click with a NaN x commits nothing', () => {
+    expect(() => computeDrawClick('circle', [], [NaN, 5], emptySnap(), FEATURE, newId)).toThrow()
+  })
+
+  it('line first click with an Infinity y commits nothing', () => {
+    expect(() => computeDrawClick('line', [], [3, Infinity], emptySnap(), FEATURE, newId)).toThrow()
+  })
+
+  it('a non-finite snap position is rejected even when the raw point is finite', () => {
+    const snap = emptySnap()
+    snap.hoveredVertexPosition = [NaN, 0]
+    expect(() => computeDrawClick('circle', [], [3, 4], snap, FEATURE, newId)).toThrow()
+  })
+
+  it('a finite point still commits', () => {
+    const result = computeDrawClick('circle', [], [3, 4], emptySnap(), FEATURE, newId)
+    expect(result.nextDrawPoints).toEqual([[3, 4]])
+  })
+})
+
 describe('computeDrawClick - point tool', () => {
   it('emits add_entity immediately with clearTool=true', () => {
     const result = computeDrawClick('point', [], [3, 4], emptySnap(), FEATURE, newId)
