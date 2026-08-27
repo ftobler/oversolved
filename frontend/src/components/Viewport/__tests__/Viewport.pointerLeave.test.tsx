@@ -216,4 +216,36 @@ describe('Viewport pointer capture for box drags', () => {
     fireEvent.pointerUp(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
     expect(onRightClick).toHaveBeenCalledWith([12, 34])
   })
+
+  it('a press with a dimension placement pending never opens a rubber band', () => {
+    const { container } = render(<Viewport />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+    useSketchEditorStore.setState({
+      activeTool: 'dimension',
+      activeFeatureId: 'feat1',
+      dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+    })
+
+    // A pending dimension pick means the next empty-space click finalises the
+    // dimension; the pane must not pre-empt it with a box sweep.
+    fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 })
+    expect(rubberBand.onPointerDown).not.toHaveBeenCalled()
+  })
+
+  it('a press with the dimension tool and no picks still opens a rubber band', () => {
+    const { container } = render(<Viewport />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+    useSketchEditorStore.setState({
+      activeTool: 'dimension',
+      activeFeatureId: 'feat1',
+      dimensionPicks: [],
+    })
+
+    // Zero picks: the placement has not started, so a box sweep is still allowed
+    // (conservative reading of the band-eligible set). Change B must not over-reach.
+    fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 })
+    expect(rubberBand.onPointerDown).toHaveBeenCalledTimes(1)
+  })
 })

@@ -36,6 +36,7 @@ import {
 } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { clearAllHover } from '@/components/Viewport/idDispatch/brepAdapters'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
+import { shouldOpenRubberBand } from '@/components/Viewport/bandStartPolicy'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import { DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/clickGesture'
@@ -409,26 +410,26 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // 268: attempt rubber-band on left-click in empty space.
     if (e.button === 0) {
       const s = useSketchEditorStore.getState()
-      const hasHover = s.hoveredSelectionId
+      const hasHover = !!(s.hoveredSelectionId
         || s.hoveredVertexId
-        || s.hoveredConstraintEntityIds.size > 0
-      if (!hasHover) {
-        const currentTool = s.activeTool
-        // Only start rubber-band for non-drawing tools (null = idle select, drag).
-        // A dimension placement finalises on an empty-space click: if a band
-        // opened here, any drag while positioning the preview would mark the
-        // trailing click consumed and swallow the placement (605117dd's guard).
-        const canStartBand = !currentTool || currentTool === 'drag'
-          || (currentTool === 'dimension' && s.dimensionPicks.length === 0)
-        if (canStartBand) {
-          // Capture is NOT taken here. Everything interactive in this pane -- the R3F
-          // event source, the id-buffer canvas, the cube gizmo overlay -- is a
-          // descendant, so capturing on press retargets the whole gesture and its
-          // trailing click onto this div and starves all of them. A stationary press is
-          // an ordinary click and must keep its own target; the band takes capture on
-          // the move that first opens a box instead (handlePointerMove).
-          rubberBand.onPointerDown(e, false)
-        }
+        || s.hoveredConstraintEntityIds.size > 0)
+      // The band gate is a pure decision (bandStartPolicy) so the dimension
+      // placement case is unit tested away from the Viewport. A pending
+      // dimension pick means the next empty-space click finalises the
+      // dimension; opening a box there would swallow that click (bandClickGuard)
+      // and replace the selection, so the pane must not start a band then.
+      if (shouldOpenRubberBand({
+        activeTool: s.activeTool,
+        dimensionPickCount: s.dimensionPicks.length,
+        hasHover,
+      })) {
+        // Capture is NOT taken here. Everything interactive in this pane -- the R3F
+        // event source, the id-buffer canvas, the cube gizmo overlay -- is a
+        // descendant, so capturing on press retargets the whole gesture and its
+        // trailing click onto this div and starves all of them. A stationary press is
+        // an ordinary click and must keep its own target; the band takes capture on
+        // the move that first opens a box instead (handlePointerMove).
+        rubberBand.onPointerDown(e, false)
       }
     }
   }, [closeContextMenu, rubberBand])

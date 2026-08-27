@@ -143,6 +143,12 @@ describe('band release vs the trailing native click (VP-M1)', () => {
   })
 
   it('a sweep ending over empty space does not finalize pending dimension picks', async () => {
+    // This case drives the band hook directly, so it bypasses the pane policy
+    // (bandStartPolicy): in production Change B means the pane can no longer
+    // open a band out of a pending dimension placement, so this exact state is
+    // unreachable from the Viewport. It now pins the dispatcher's defence in
+    // depth: should a band flag ever be raised over a pending placement, the
+    // trailing click must still be swallowed rather than finalizing the dim.
     const h = await setup('sk1/painted')
     pipeline = h.pipeline
     useSketchEditorStore.setState({
@@ -251,6 +257,32 @@ describe('band release vs the trailing native click (VP-M1)', () => {
 
     expect(pipeline.resolveSync).toHaveBeenCalledTimes(1)
     expect(useSketchEditorStore.getState().normalSelection.has('sk1/clickPick')).toBe(true)
+  })
+
+  it('a stationary press with the dimension tool armed keeps its finalize click', async () => {
+    // The same "never drew a box" rule, but with the dimension tool active and a
+    // pick pending: the empty-space release is the placement click, and the
+    // band never opened (policy declines for a pending pick), so the trailing
+    // click resolves empty and finalizes. This is the regression's pinned seam.
+    const h = await setup('sk1/painted')
+    pipeline = h.pipeline
+    useSketchEditorStore.setState({
+      activeTool: 'dimension',
+      activeFeatureId: 'feat1',
+      dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+    })
+    const spy = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
+
+    await act(async () => {
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      h.result.current.onPointerUp()  // no move: rectRef stays null, no band flag
+    })
+
+    pipeline.resolveSync = vi.fn().mockReturnValue(null)
+    await h.fireClick(10, 10)
+
+    expect(pipeline.resolveSync).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith([10, 10])
   })
 
   it('an opened box raises the band flag, a stationary press still does not, after the capture move', async () => {
