@@ -5,6 +5,32 @@ import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
+// The four ordered outcomes of the Escape key in the sketch editor. The first
+// matching rule wins, so this is the single source of truth the `cancel_draw`
+// command body and its tests both read from:
+//   - 'modal'          a modal or the sketch value dialog owns Escape; do nothing.
+//   - 'pick'           a pick field is open; clear the draw and drop the field.
+//   - 'cancel_gesture' something is mid-draw (draw points or dimension picks);
+//                      cancel just that, keep the armed tool so the next click
+//                      starts a fresh entity.
+//   - 'disarm'         nothing in progress; clear the draw and disarm the tool.
+export type EscapeStage = 'modal' | 'pick' | 'cancel_gesture' | 'disarm'
+
+export function escapeStage(fields: {
+  modalOwns: boolean
+  pendingDialog: unknown
+  activePickField: unknown
+  // drawPoints array from the store; length > 0 means an entity is half-placed.
+  drawPoints: { length: number }
+  // dimensionPicks array from the store; length > 0 means a dim is half-built.
+  dimensionPicks: { length: number }
+}): EscapeStage {
+  if (fields.modalOwns || fields.pendingDialog !== null) return 'modal'
+  if (fields.activePickField !== null) return 'pick'
+  if (fields.drawPoints.length > 0 || fields.dimensionPicks.length > 0) return 'cancel_gesture'
+  return 'disarm'
+}
+
 export interface ShowMessagePayload {
   title: string
   message: string
@@ -90,12 +116,45 @@ export function buildCommandEntries(
         // see the same keystroke: without standing down, dismissing a message box
         // would also throw away the draw and the armed tool behind it. Each
         // dialog closes itself, so Escape still does exactly one thing.
-        if (modalOwnsEscape() || getState().pendingDialog !== null) return
-        getState().clearDraw()
-        // Pick first, tool second: on a desynced stack with 'pick' on top the
-        // tool's deactivate hook would otherwise pop the pick's entry.
-        getState().setActivePickField(null)
-        getState().setActiveTool(null)
+        const st = getState()
+        switch (escapeStage({
+          modalOwns: modalOwnsEscape(),
+          pendingDialog: st.pendingDialog,
+          activePickField: st.activePickField,
+          drawPoints: st.drawPoints,
+          dimensionPicks: st.dimensionPicks,
+        })) {
+          // A modal or the sketch value dialog owns Escape: leave everything as is.
+          case 'modal':
+            return
+          // A pick field is open (invariant: activeTool is null here, so there is
+          // no tool to keep). Clear both, pick before tool to satisfy the mode
+          // stack ordering invariant.
+          case 'pick':
+            st.clearDraw()
+            st.setActivePickField(null)
+            st.setActiveTool(null)
+            return
+          // Something is mid-gesture under the armed tool: cancel just that,
+          // leaving the tool armed so the next click starts a fresh entity. The
+          // dimension branch also drops the scratch projections the gesture
+          // materialised, mirroring what setActiveTool does on a real tool switch.
+          case 'cancel_gesture':
+            st.clearDraw()
+            if (st.dimensionPicks.length > 0) {
+              st.cancelBrepProjectionGesture()
+              st.clearDimensionPicks()
+            }
+            return
+          // Nothing in progress: the historical Escape, clear the draw and
+          // disarm. Pick first, tool second: on a desynced stack with 'pick' on
+          // top the tool's deactivate hook would otherwise pop the pick's entry.
+          case 'disarm':
+            st.clearDraw()
+            st.setActivePickField(null)
+            st.setActiveTool(null)
+            return
+        }
     }},
     { name: 'set_tool_mirror', fn: () => {
       showMessage({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })

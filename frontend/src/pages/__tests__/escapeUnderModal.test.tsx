@@ -71,9 +71,11 @@ describe('Escape under a modal does not cancel the sketch gesture', () => {
 
     pressEscape()
 
-    expect(useSketchEditorStore.getState().activeTool).toBeNull()
+    // With the claim released, Escape now cancels the in-progress entity but,
+    // under sticky tools, leaves the tool armed for the next one.
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
     expect(useSketchEditorStore.getState().drawPoints).toHaveLength(0)
-    expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:line'])
   })
 
   it('a busy dialog still holds Escape even though it refuses to close', () => {
@@ -93,13 +95,15 @@ describe('Escape under a modal does not cancel the sketch gesture', () => {
     expect(useSketchEditorStore.getState().drawPoints).toHaveLength(1)
   })
 
-  it('with no dialog mounted, Escape cancels the gesture as before', () => {
+  it('with no dialog mounted, Escape cancels the in-progress entity but keeps the tool armed', () => {
     useSketchEditorStore.getState().setActiveTool('line')
     useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 10]] })
 
     pressEscape()
 
-    expect(useSketchEditorStore.getState().activeTool).toBeNull()
+    // The gesture is cancelled, the tool stays armed (sticky) for the next one.
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
     expect(useSketchEditorStore.getState().drawPoints).toHaveLength(0)
+    expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:line'])
   })
 })

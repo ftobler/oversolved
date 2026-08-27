@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { buildCommandEntries, constraintCommandFn } from '@/pages/commandEntries'
+import { buildCommandEntries, constraintCommandFn, escapeStage } from '@/pages/commandEntries'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
 import type { ConstraintDef } from '@/registry'
@@ -157,6 +157,132 @@ describe('command callbacks that drive the sketch editor store', () => {
   })
 })
 
+// The staged Escape handler: cancel_mid-gesture keeps the tool armed, a second
+// press (nothing in progress) disarms. Driven against the real store so the
+// mode-stack invariants hold.
+describe('cancel_draw staged disarm', () => {
+  beforeAll(() => { initializeTools() })
+
+  beforeEach(() => {
+    resetModalEscape()
+    useSketchEditorStore.setState({ pendingDialog: null, activePickField: null, modeStack: [] })
+    useSketchEditorStore.getState().setActiveTool(null)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    useSketchEditorStore.getState().setActiveTool(null)
+    useSketchEditorStore.setState({ dimensionPicks: [], drawPoints: [] })
+  })
+
+  it('with nothing in progress clears the draw, the pick field and disarms the tool', () => {
+    const store = useSketchEditorStore.getState()
+    const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+    const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
+
+    entry('cancel_draw').fn()
+
+    expect(clearDraw).toHaveBeenCalledOnce()
+    expect(setActiveTool).toHaveBeenCalledWith(null)
+    expect(setActivePickField).toHaveBeenCalledWith(null)
+    // Order is load-bearing: the tool's deactivate hook pops the mode stack, so
+    // on a desynced stack with 'pick' on top it would eat the pick's entry.
+    expect(setActivePickField.mock.invocationCallOrder[0])
+      .toBeLessThan(setActiveTool.mock.invocationCallOrder[0])
+  })
+
+  it('with draw points in progress clears the draw and keeps the tool', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 0]] })
+
+    const store = useSketchEditorStore.getState()
+    const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+
+    entry('cancel_draw').fn()
+
+    expect(clearDraw).toHaveBeenCalledOnce()
+    expect(setActiveTool).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+  })
+
+  it('a second cancel_draw with nothing in progress then disarms the tool', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 0]] })
+
+    // First press cancels the in-progress entity but keeps the tool armed.
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+    // The real clearDraw wiped the buffer, so the second press has nothing in progress.
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+
+    // Second press: nothing in progress, so it disarms the tool.
+    entry('cancel_draw').fn()
+    expect(useSketchEditorStore.getState().activeTool).toBeNull()
+    expect(useSketchEditorStore.getState().modeStack).toEqual([])
+  })
+
+  it('with dimension picks clears the picks and keeps the dimension tool', () => {
+    useSketchEditorStore.getState().setActiveTool('dimension')
+    useSketchEditorStore.setState({
+      dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+    })
+
+    const store = useSketchEditorStore.getState()
+    const cancelBrep = vi.spyOn(store, 'cancelBrepProjectionGesture').mockImplementation(noop)
+    const clearDimensionPicks = vi.spyOn(store, 'clearDimensionPicks').mockImplementation(noop)
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+
+    entry('cancel_draw').fn()
+
+    expect(cancelBrep).toHaveBeenCalledOnce()
+    expect(clearDimensionPicks).toHaveBeenCalledOnce()
+    expect(setActiveTool).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
+  })
+
+  it('with an open pick field clears the field before the tool', () => {
+    useSketchEditorStore.getState().setActivePickField({ featureId: 'sketch1', field: 'plane' })
+
+    const store = useSketchEditorStore.getState()
+    const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+
+    entry('cancel_draw').fn()
+
+    expect(setActivePickField).toHaveBeenCalledWith(null)
+    expect(setActiveTool).toHaveBeenCalledWith(null)
+    expect(setActivePickField.mock.invocationCallOrder[0])
+      .toBeLessThan(setActiveTool.mock.invocationCallOrder[0])
+  })
+})
+
+describe('escapeStage pure helper', () => {
+  const base = {
+    modalOwns: false,
+    pendingDialog: null,
+    activePickField: null,
+    drawPoints: { length: 0 },
+    dimensionPicks: { length: 0 },
+  }
+  it("returns 'modal' when a modal or pending dialog owns Escape", () => {
+    expect(escapeStage({ ...base, modalOwns: true })).toBe('modal')
+    expect(escapeStage({ ...base, pendingDialog: { label: 'x' } })).toBe('modal')
+  })
+  it("returns 'pick' when a pick field is open", () => {
+    expect(escapeStage({ ...base, activePickField: { featureId: 's', field: 'p' } })).toBe('pick')
+  })
+  it("returns 'cancel_gesture' when draw points or dimension picks are in progress", () => {
+    expect(escapeStage({ ...base, drawPoints: { length: 2 } })).toBe('cancel_gesture')
+    expect(escapeStage({ ...base, dimensionPicks: { length: 1 } })).toBe('cancel_gesture')
+  })
+  it("returns 'disarm' when nothing is in progress", () => {
+    expect(escapeStage(base)).toBe('disarm')
+    expect(escapeStage({ ...base, drawPoints: { length: 0 }, dimensionPicks: { length: 0 }, activePickField: null })).toBe('disarm')
+  })
+})
+
 // Escape has more than one owner: every modal on the Dialog shell binds its own
 // window listener, the sketch value dialog binds one too, and the global
 // dispatchKey listener routes the same keystroke to cancel_draw. Without a guard
@@ -193,6 +319,20 @@ describe('cancel_draw stands down while a dialog is open', () => {
     expect(clearDraw).not.toHaveBeenCalled()
     expect(setActiveTool).not.toHaveBeenCalled()
     expect(setActivePickField).not.toHaveBeenCalled()
+  })
+
+  it('does not clear an in-progress draw while a dialog owns Escape', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    useSketchEditorStore.setState({ pendingDialog: openDialog, drawPoints: [[0, 0], [10, 0]] })
+    const store = useSketchEditorStore.getState()
+    const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
+    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+
+    entry('cancel_draw').fn()
+
+    expect(clearDraw).not.toHaveBeenCalled()
+    expect(setActiveTool).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([[0, 0], [10, 0]])
   })
 
   it('keeps the armed tool armed with a dialog open, and disarms it once closed', () => {

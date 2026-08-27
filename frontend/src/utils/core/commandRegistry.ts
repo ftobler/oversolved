@@ -34,7 +34,7 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'y',            command: 'toggle_sketch_plane_visibility', label: 'Toggle sketches/planes', description: 'Hide or show all sketch and plane features' },
   { key: 'e',            command: 'add_extrude',          label: 'Add Extrude',         description: 'Add a new extrude feature (feature mode only)' },
   { key: 'p',            command: 'toggle_plane_visibility', label: 'Toggle planes',    description: 'Hide or show all plane features' },
-  { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel active draw or return to select tool' },
+  { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel the entity being drawn, or release the tool when nothing is in progress' },
 ]
 
 // Derive the flat key→command record from CORE_KEYBINDINGS.
