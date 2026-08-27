@@ -806,9 +806,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       get().clearDragState()
     }
     set(state => {
-    if (state.activeFeatureId !== null && id === null) {
-         return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null, activeOriginLocal: [0, 0] }
-       }
+      if (state.activeFeatureId !== null && id === null) {
+        return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null, activeOriginLocal: [0, 0] }
+      }
       return { activeFeatureId: id }
     })
   },
