@@ -3,11 +3,12 @@ import { useEffect } from 'react'
 /**
  * One-shot guard coordinating a single click between two listeners.
  *
- * A sketch drawing tool (notably `project`) commits on pointer-down and resets
- * the active tool synchronously (`clearTool`). The canvas-level click listener
- * fires AFTER pointer-up, by which point the tool reads as `null` and would
- * wrongly toggle normal selection on the entity the tool just consumed (e.g.
- * the body edge that was just projected).
+ * A sketch drawing tool commits on pointer-down and the tool may stay armed
+ * afterwards (a sticky draw tool, or the line tool mid-polyline). The
+ * canvas-level click listener fires AFTER pointer-up, and on a tool with no
+ * `onClick` handler `dispatchSketchClick` falls through to
+ * `toggleNormalSelection`, which would wrongly toggle normal selection on the
+ * entity the tool just consumed (e.g. the body edge that was just projected).
  *
  * The drawing-tool pointer-down marks the gesture as its own; the click
  * listener reads-and-clears the flag and skips its own handling. pointer-down

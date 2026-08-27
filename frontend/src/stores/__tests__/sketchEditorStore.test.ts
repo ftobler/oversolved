@@ -912,6 +912,60 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('sticky draw tools', () => {
+    beforeEach(() => {
+      useSketchEditorStore.setState({ activeFeatureId: 'S1' })
+    })
+
+    it('committing an entity leaves activeTool set and the mode stack intact', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 0]] })
+
+      // clearDraw is what DrawingTool calls after a committed gesture; the tool's
+      // arming policy lives in the adapter, so clearing the buffer must not touch
+      // the tool or its mode entry.
+      useSketchEditorStore.getState().clearDraw()
+
+      expect(useSketchEditorStore.getState().activeTool).toBe('line')
+      expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:line'])
+    })
+
+    it('an armed tool with an empty draw buffer passes validateSketchEditorState', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      // The resting sticky state: tool armed, nothing in progress.
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+      expect(() => useSketchEditorStore.getState().clearDraw()).not.toThrow()
+      expect(useSketchEditorStore.getState().activeTool).toBe('line')
+    })
+
+    it('switching tools while armed still disarms the previous tool', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setActiveTool('rect')
+
+      expect(useSketchEditorStore.getState().activeTool).toBe('rect')
+      expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:rect'])
+    })
+
+    it('leaving the sketch while armed disarms the tool', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.setState({ activeFeatureId: 'S1' })
+      useSketchEditorStore.getState().setActiveFeatureId(null)
+
+      expect(useSketchEditorStore.getState().activeTool).toBeNull()
+      expect(useSketchEditorStore.getState().modeStack).toEqual([])
+    })
+
+    it('opening a pick field while armed disarms the tool', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'S1', field: 'plane' })
+
+      // The tool is disarmed and its 'tool:line' mode entry is gone (replaced by
+      // 'pick'), so a sticky tool cannot leak its mode entry across enter/exit.
+      expect(useSketchEditorStore.getState().activeTool).toBeNull()
+      expect(useSketchEditorStore.getState().modeStack).not.toContain('tool:line')
+    })
+  })
+
   describe('contextMenu', () => {
     it('starts as null', () => {
       expect(useSketchEditorStore.getState().contextMenu).toBeNull()
