@@ -14,6 +14,7 @@ import { getToolAllowedLayers } from '@/registry/toolPickConfig'
 import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
+import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
@@ -50,11 +51,24 @@ export const SWALLOW_ONLY_PICK_LAYERS: ReadonlySet<string> = new Set([
  */
 let lastClickIdHit = false
 let lastClickWasStale = false
+// The other two halves of the shared "miss clears" predicate. The backplane
+// clear path (Drawing.tsx) has no access to the Viewport's click-gesture or
+// rubber-band refs, so the Viewport publishes them here at gesture end. The
+// Canvas `onPointerMissed` path reads the live refs instead; both must feed the
+// identical predicate so the two clear paths cannot drift.
+let lastClickStationaryPrimary = false
+let lastClickBandDragging = false
 
 function setLastClickIdHit(v: boolean): void { lastClickIdHit = v }
 export function wasLastClickConsumedByIdDispatch(): boolean { return lastClickIdHit }
 
 export function wasLastClickStaleResolve(): boolean { return lastClickWasStale }
+
+export function setLastClickStationaryPrimary(v: boolean): void { lastClickStationaryPrimary = v }
+export function wasLastClickStationaryPrimary(): boolean { return lastClickStationaryPrimary }
+
+export function setLastClickBandDragging(v: boolean): void { lastClickBandDragging = v }
+export function wasLastClickBandDragging(): boolean { return lastClickBandDragging }
 
 /**
  * Whether a click that fell through to the DrawPlane backplane should clear the
@@ -69,9 +83,12 @@ export function wasLastClickStaleResolve(): boolean { return lastClickWasStale }
  * R3F's synthesized click, so both flags are fresh by the time this is read.
  */
 export function shouldClearSelectionOnBackplaneClick(): boolean {
-  if (wasLastClickConsumedByIdDispatch()) return false
-  if (wasLastClickStaleResolve()) return false
-  return true
+  return missClearsNormalSelection({
+    clickConsumedByIdDispatch: wasLastClickConsumedByIdDispatch(),
+    clickWasStaleResolve: wasLastClickStaleResolve(),
+    bandDragging: wasLastClickBandDragging(),
+    stationaryPrimaryClick: wasLastClickStationaryPrimary(),
+  })
 }
 
 interface DispatchParams {

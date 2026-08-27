@@ -19,6 +19,7 @@ import { getLivePipeline, setLivePipeline } from '@/picking/IdPipelineContext'
 import { FACE_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME } from '@/picking/layerNames'
 import { FEATURE_HANDLE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME } from '@/picking/layerNames'
 import { PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { takeBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { useRubberBandSelect } from '../useRubberBandSelect'
 
 const PIPELINE_W = 100
@@ -645,7 +646,7 @@ describe('band visibility transition drives capture', () => {
     })
   })
 
-  it('a move with no button held drops the band and reports no transition', () => {
+   it('a move with no button held drops the band and reports no transition', () => {
     const result = liveHook()
     act(() => {
       expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
@@ -658,3 +659,48 @@ describe('band visibility transition drives capture', () => {
     expect(result.current.state.isDraggingRef.current).toBe(false)
   })
 })
+
+// Pin that the band click guard is raised ONLY for a visibly-open box, never
+// for a plain or sub-threshold press. The guard is what stops a sweep's trailing
+// click from toggling the sub-shape under its end cursor, but it must stay
+// silent for a stationary empty click or that click's deselect is eaten.
+describe('the band flag and a plain click', () => {
+  beforeEach(() => { takeBandClickConsumed() })
+
+  it('a stationary press does not raise the band click guard', () => {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    act(() => {
+      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerUp()
+    })
+    expect(takeBandClickConsumed()).toBe(false)
+  })
+
+  it('a 3px press does not raise the band click guard', () => {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    act(() => {
+      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerMove(pointerEvent(13, 10))
+      result.current.onPointerUp()
+    })
+    expect(takeBandClickConsumed()).toBe(false)
+  })
+
+  it('an opened box still raises the band click guard', () => {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    getLivePipeline()?.target.markClean()
+    act(() => {
+      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerMove(pointerEvent(70, 70))
+      result.current.onPointerUp()
+    })
+    expect(takeBandClickConsumed()).toBe(true)
+  })
+})
+

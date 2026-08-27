@@ -3,6 +3,8 @@ import { renderHook, act } from '@testing-library/react'
 import {
   useIdBufferPointerDispatch,
   shouldClearSelectionOnBackplaneClick,
+  setLastClickStationaryPrimary,
+  setLastClickBandDragging,
 } from '../useIdBufferPointerDispatch'
 import { IdPipeline, SKETCH_VERTEX_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
@@ -49,6 +51,10 @@ describe('shouldClearSelectionOnBackplaneClick (backplane clear guard)', () => {
     glRef = { current: new StubRenderer(canvas) }
     useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
     takeDrawToolClickConsumed()  // clear any flag leaked from a prior test
+    // The two halves of the miss-clear predicate the Viewport publishes at
+    // gesture end; no Viewport is rendered here, so pin them between cases.
+    setLastClickStationaryPrimary(false)
+    setLastClickBandDragging(false)
   })
   afterEach(() => {
     setLivePipeline(null)
@@ -87,7 +93,7 @@ describe('shouldClearSelectionOnBackplaneClick (backplane clear guard)', () => {
     expect(shouldClearSelectionOnBackplaneClick()).toBe(false)
   })
 
-  it('DOES clear after a click on empty space (no hit)', async () => {
+  it('DOES clear after a stationary click on empty space inside a sketch', async () => {
     pipeline.resolveSync = () => null
     renderHook(() => useIdBufferPointerDispatch({
       glRef: glRef as { current: import('three').WebGLRenderer | null },
@@ -95,7 +101,38 @@ describe('shouldClearSelectionOnBackplaneClick (backplane clear guard)', () => {
     }))
 
     await act(async () => { fireClick() })
+    // The backplane clear path cannot read the Viewport's gesture ref, so it
+    // depends on the published stationary-primary verdict: a stationary left
+    // press is a deselect.
+    setLastClickStationaryPrimary(true)
 
     expect(shouldClearSelectionOnBackplaneClick()).toBe(true)
+  })
+
+  it('does NOT clear when the gesture travelled past the click threshold', async () => {
+    pipeline.resolveSync = () => null
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+    }))
+
+    await act(async () => { fireClick() })
+    setLastClickStationaryPrimary(false)
+
+    expect(shouldClearSelectionOnBackplaneClick()).toBe(false)
+  })
+
+  it('does NOT clear while a rubber band is open', async () => {
+    pipeline.resolveSync = () => null
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+    }))
+
+    await act(async () => { fireClick() })
+    setLastClickStationaryPrimary(true)
+    setLastClickBandDragging(true)
+
+    expect(shouldClearSelectionOnBackplaneClick()).toBe(false)
   })
 })

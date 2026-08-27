@@ -31,9 +31,12 @@ import {
   useIdBufferPointerDispatch,
   wasLastClickConsumedByIdDispatch,
   wasLastClickStaleResolve,
+  setLastClickStationaryPrimary,
+  setLastClickBandDragging,
 } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { clearAllHover } from '@/components/Viewport/idDispatch/brepAdapters'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
+import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import { DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/clickGesture'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
@@ -388,10 +391,12 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const rubberBand = useRubberBandSelect(glRef, consumedLayers)
 
   const onPointerMissed = useCallback(() => {
-    if (wasLastClickConsumedByIdDispatch()) return
-    if (wasLastClickStaleResolve()) return
-    if (rubberBand.state.isDraggingRef.current) return
-    if (isStationaryPrimaryClick(clickGesture.current.state)) {
+    if (missClearsNormalSelection({
+      clickConsumedByIdDispatch: wasLastClickConsumedByIdDispatch(),
+      clickWasStaleResolve: wasLastClickStaleResolve(),
+      bandDragging: rubberBand.state.isDraggingRef.current,
+      stationaryPrimaryClick: isStationaryPrimaryClick(clickGesture.current.state),
+    })) {
       useSketchEditorStore.getState().clearNormalSelection()
     }
   }, [rubberBand])
@@ -440,6 +445,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // Always commit or cancel the rubber-band so it never stays sticky after release.
     rubberBand.onPointerUp()
 
+    // Publish the two halves of the miss-clear predicate the backplane path
+    // cannot read for itself. The Canvas `onPointerMissed` path reads these same
+    // facts from live refs; both paths must reach the identical predicate so a
+    // click that clears in one clears in the other.
+    setLastClickStationaryPrimary(isStationaryPrimaryClick(click))
+    setLastClickBandDragging(rubberBand.state.isDraggingRef.current)
+
     if (click.wasDrag) return
 
     if (e.button === 2 && onRightClick) {
@@ -454,6 +466,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     clickGesture.current.reset()
     rubberBand.onPointerCancel()
+    // No click follows a cancel: the backplane must not treat a lost gesture as
+    // empty-space deselect.
+    setLastClickStationaryPrimary(false)
+    setLastClickBandDragging(false)
   }, [rubberBand])
 
   const showOrigin = isActive('Origin', features, rollbackPosition, visibleFeatures)
