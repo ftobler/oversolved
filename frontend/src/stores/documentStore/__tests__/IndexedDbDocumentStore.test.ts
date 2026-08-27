@@ -359,4 +359,39 @@ describe('IndexedDbDocumentStore', () => {
       expect(s.preview_image).toBe('img1')
     })
   })
+
+  // Regression: create() must not throw when crypto.randomUUID is absent (plain
+  // http, no secure context). The fallback must still mint a valid RFC-4122 v4 uuid.
+  describe('uuid generation without crypto.randomUUID', () => {
+    const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+    it('create() produces a valid uuid when crypto.randomUUID is missing', async () => {
+      const original = (globalThis.crypto as { randomUUID?: unknown }).randomUUID
+      ;(globalThis.crypto as { randomUUID?: unknown }).randomUUID = undefined
+      try {
+        const store = new IndexedDbDocumentStore()
+        const { uuid } = await store.create('LanDoc')
+        expect(uuid).toMatch(UUID_V4)
+        const [s] = await store.list()
+        expect(s.uuid).toBe(uuid)
+      } finally {
+        ;(globalThis.crypto as { randomUUID?: unknown }).randomUUID = original
+      }
+    })
+
+    it('duplicate() still works without crypto.randomUUID', async () => {
+      const original = (globalThis.crypto as { randomUUID?: unknown }).randomUUID
+      ;(globalThis.crypto as { randomUUID?: unknown }).randomUUID = undefined
+      try {
+        const store = new IndexedDbDocumentStore()
+        const { uuid } = await store.create('Src')
+        await store.save(uuid, { content: 'hi' })
+        const { uuid: copy } = await store.duplicate(uuid)
+        expect(copy).toMatch(UUID_V4)
+        expect(copy).not.toBe(uuid)
+      } finally {
+        ;(globalThis.crypto as { randomUUID?: unknown }).randomUUID = original
+      }
+    })
+  })
 })

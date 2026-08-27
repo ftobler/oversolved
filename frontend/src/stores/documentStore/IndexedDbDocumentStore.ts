@@ -2,6 +2,7 @@ import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions
 import type { TrashAdapter, TrashDoc } from '@/adapters/trash'
 import { idbGet, idbGetAll, idbPut, idbDelete, idbReadModifyWrite } from './idb'
 import { suggestedCloneName } from './cloneName'
+import { randomUuid } from '@/utils/randomUuid'
 
 // In a fully local, single-user build there is no account system. Documents are
 // all owned by this browser; the owner label is cosmetic (the documents grid
@@ -27,7 +28,7 @@ interface StoredDoc {
 }
 
 function newUuid(): string {
-  return crypto.randomUUID()
+  return randomUuid()
 }
 
 function toSummary(rec: StoredDoc): DocSummary {
