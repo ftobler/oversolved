@@ -29,6 +29,7 @@ import { solveTopology, reconcileMaterializedContacts, type TopologyBytes } from
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
+import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from '@/components/Geometry3D/circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 
@@ -325,6 +326,11 @@ export interface DragContext {
   entityParamOffset: number
   // All [xIndex, yIndex] coordinate pair offsets within the entity's param block.
   entityCoordPairs: [number, number][]
+  /** Param index of the dragged entity's size parameter (radius for a circle),
+   *  or undefined when the kind has no size param (line, point, spline). Set on
+   *  the edge-drag branch only for kinds that expose one; it is what lets the
+   *  drag probe fall back from translate to radius when the centre is pinned. */
+  sizeIndex?: number
   /** Set for an arc start/end drag. The endpoint is derived (center + radius at
    *  an angle), not a direct param pair, so the cursor XY must be mapped into
    *  the arc's radius and angle params each frame instead of written directly. */
@@ -472,6 +478,10 @@ export function prepareDragContext(
       isEdgeDrag: true,
       entityParamOffset: ent.offset,
       entityCoordPairs: coordPairs as [number, number][],
+      // A circle exposes a size param (radius) at offset+2; pinning the centre
+      // then makes the rim drag fall back to resizing it. Other kinds have no
+      // size param, so sizeIndex stays undefined and the edge drag is translate.
+      sizeIndex: ent.kind === 'circle' ? ent.offset + 2 : undefined,
     }
   } catch {
     return null
@@ -552,6 +562,7 @@ export function solveSketchDrag(
   warmStartParams: number[],
   cursorWorld: [number, number],
   edgeDelta?: [number, number],
+  edgeMode?: 'translate' | 'radius',
 ): DragSolveResult | null {
   if (!solverBytes) return null
 
@@ -572,6 +583,19 @@ export function solveSketchDrag(
       input.params[offset + xi] += edgeDelta[0]
       input.params[offset + yi] += edgeDelta[1]
     }
+  } else if (ctx.isEdgeDrag && edgeMode === 'radius' && ctx.sizeIndex !== undefined) {
+    // Radius drag (the circle-rim fallback when the centre is pinned): each
+    // frame seeds from params0 and sets the size param to the cursor distance
+    // from the seed centre. The centre is immovable (that is why we are here),
+    // so params0's centre is the correct pivot; the rim follows the cursor as a
+    // radius change. No warm start, so no drift.
+    const n = input.params.length
+    for (let i = 0; i < n; i++) {
+      input.params[i] = ctx.params0[i]
+    }
+    const cx = ctx.params0[ctx.entityParamOffset]
+    const cy = ctx.params0[ctx.entityParamOffset + 1]
+    input.params[ctx.sizeIndex] = Math.hypot(cursorWorld[0] - cx, cursorWorld[1] - cy)
   } else {
     // Vertex drag: warm-start from the previous frame, then pin the dragged
     // vertex to the cursor position. The firm REG_WEIGHT_DRAG on the anchor
@@ -623,4 +647,78 @@ export function solveSketchDrag(
   const status = STATUS_NAME[out.overallStatus]
   const { sketch, geometry } = paramsToPreview(out.paramsSolved, layout)
   return { sketch, geometry, params: out.paramsSolved, status }
+}
+
+/** Fractional response of one solve: how far the anchor entity's centre moved
+ *  relative to the probe step. Returns 0 when the solve failed or the entity is
+ *  absent, so a pinned centre reads as immobile rather than as a probe error. */
+function translateResponse(
+  res: DragSolveResult | null,
+  anchorId: string,
+  cx0: number,
+  cy0: number,
+  h: number,
+): number {
+  if (!res) return 0
+  const g = res.geometry[anchorId]
+  if (!g) return 0
+  return Math.hypot(g[0] - cx0, g[1] - cy0) / h
+}
+
+/** Fractional response of the radius probe: how far the solved radius moved
+ *  relative to the seeded radius step. Returns 0 when the solve failed. */
+function radiusResponse(
+  res: DragSolveResult | null,
+  anchorId: string,
+  r0: number,
+  rTarget: number,
+): number {
+  if (!res) return 0
+  const g = res.geometry[anchorId]
+  if (!g || g.length < 3) return 0
+  return Math.abs(g[2] - r0) / (rTarget - r0)
+}
+
+/**
+ * Probe the real drag solver at drag activation to decide what a circle rim drag
+ * should do. Runs the identical solve the rAF loop will run every frame, so the
+ * predicted mode matches what the user sees. Three rounds:
+ *   1. translate probe along +X, 2. translate probe along +Y, 3. radius probe.
+ * A responsive centre (max of the two orthogonal responses) wins translate; a
+ * pinned centre but responsive radius wins resize; both pinned wins locked.
+ *
+ * Must not touch dragSolveRegistry (the hook owns that) and must leave
+ * ctx.params0 and ctx.layout untouched (solveSketchDrag re-seeds from params0
+ * each call, so the probe never mutates the seed).
+ */
+export function probeCircleDragMode(ctx: DragContext): CircleDragMode {
+  // Only circles expose a size param today; the mechanism is generic over
+  // sizeIndex, so other kinds can register later. A non-edge or size-less drag
+  // is always translate.
+  if (!ctx.isEdgeDrag || ctx.sizeIndex === undefined) return 'translate'
+
+  const anchor = ctx.layout.find((l) => l.offset === ctx.entityParamOffset)
+  if (!anchor) return 'translate'
+  const anchorId = anchor.id
+
+  const off = ctx.entityParamOffset
+  const cx0 = ctx.params0[off]
+  const cy0 = ctx.params0[off + 1]
+  const r0 = ctx.params0[ctx.sizeIndex]
+  const h = PROBE_STEP_REL * Math.max(r0, 1)
+
+  const probeX = solveSketchDrag(ctx, ctx.params0, [cx0 + h, cy0], [h, 0])
+  const probeY = solveSketchDrag(ctx, ctx.params0, [cx0, cy0 + h], [0, h])
+  const tx = translateResponse(probeX, anchorId, cx0, cy0, h)
+  const ty = translateResponse(probeY, anchorId, cx0, cy0, h)
+
+  const rTarget = r0 * (1 + PROBE_STEP_REL)
+  const probeR = solveSketchDrag(ctx, ctx.params0, [cx0 + rTarget, cy0], undefined, 'radius')
+  const rr = radiusResponse(probeR, anchorId, r0, rTarget)
+
+  // Delegate the numeric verdict to the pure policy module so the thresholds stay
+  // testable without WASM. The max of the two orthogonal translate responses wins,
+  // so a centre free along only one axis still reads as mobile (the 1-DOF
+  // misclassification guard).
+  return resolveDragMode({ translateX: tx, translateY: ty, radius: rr })
 }

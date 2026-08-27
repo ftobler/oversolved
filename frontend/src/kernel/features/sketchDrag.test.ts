@@ -17,6 +17,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   prepareDragContext,
   solveSketchDrag,
+  probeCircleDragMode,
   setSketchSolver,
   resetSketchSolver,
 } from './sketch'
@@ -602,4 +603,127 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     // of where the naive commit re-forms it.
     expect(committedStartX - naiveStartX).toBeGreaterThan(5)
   })
+
+  // ─── Circle rim drag: probe the real drag solver to pick translate / radius / locked ───
+  // params0 IS the last hard solve, so the circle's stored centre already honours
+  // any constraint that pins it (a pinned-centre fixture uses initial centre at the
+  // pin position). A free circle is fully unconstrained.
+
+  function circleFeature(id: string, constraints: unknown[] = [], initial: Record<string, number[]> = { C1: [5, 5, 3] }): PartFeature {
+    return {
+      id, kind: 'sketch', label: 'Circle', plane: '@builtin_plane_front',
+      entities: [{ id: 'C1', kind: 'circle' }],
+      initial,
+      constraints: constraints as PartFeature['constraints'],
+    } as unknown as PartFeature
+  }
+
+  it('builds an edge drag context for a circle with a sizeIndex', () => {
+    const ctx = prepareDragContext(circleFeature('ctxCirc'), 'C1', null)
+    expect(ctx).not.toBeNull()
+    expect(ctx!.isEdgeDrag).toBe(true)
+    expect(ctx!.sizeIndex).toBe(ctx!.entityParamOffset + 2)
+  })
+
+  it('free circle: rim drag probe resolves translate mode', () => {
+    const ctx = prepareDragContext(circleFeature('freeCirc'), 'C1', null)!
+    const mode = probeCircleDragMode(ctx)
+    expect(mode).toBe('translate')
+  })
+
+  it('circle with a fixed centre: rim drag probe resolves radius mode', () => {
+    // Centre pinned to the document origin. The last hard solve already sits the
+    // centre at (0,0), so initial reflects that.
+    const f = circleFeature('pinnedCentre', [
+      { id: 'cf', kind: 'coincident', a: { entity: 'C1', point: 'center' }, b: '@builtin_origin' },
+    ], { C1: [0, 0, 3] })
+    const ctx = prepareDragContext(f, 'C1', null)!
+    expect(probeCircleDragMode(ctx)).toBe('radius')
+  })
+
+  it('circle with a fixed centre and a radius dimension: rim drag probe resolves locked mode', () => {
+    const f = circleFeature('lockedCirc', [
+      { id: 'cf', kind: 'coincident', a: { entity: 'C1', point: 'center' }, b: '@builtin_origin' },
+      { id: 'cd', kind: 'diameter', target: { entity: 'C1' }, value: 6 },
+    ], { C1: [0, 0, 3] })
+    const ctx = prepareDragContext(f, 'C1', null)!
+    expect(probeCircleDragMode(ctx)).toBe('locked')
+  })
+
+  it('centre pinned by composition resolves radius mode', () => {
+    // The circle centre is coincident to a line endpoint that is itself pinned to
+    // the origin. This is exactly the case a static constraint scan (Option A in
+    // the plan) cannot see, and the justification for probing the real solver.
+    const f = {
+      id: 'compCirc', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'L1', kind: 'line' }, { id: 'C1', kind: 'circle' }],
+      initial: { L1: [0, 0, 10, 0], C1: [0, 0, 3] },
+      constraints: [
+        { id: 'c0', kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: '@builtin_origin' },
+        { id: 'c1', kind: 'coincident', a: { entity: 'C1', point: 'center' }, b: { entity: 'L1', point: 'start' } },
+      ],
+    } as unknown as PartFeature
+    const ctx = prepareDragContext(f, 'C1', null)!
+    expect(probeCircleDragMode(ctx)).toBe('radius')
+  })
+
+  it('radius mode drives the radius to the cursor distance and leaves the centre put', () => {
+    const f = circleFeature('radMode', [
+      { id: 'cf', kind: 'coincident', a: { entity: 'C1', point: 'center' }, b: '@builtin_origin' },
+    ], { C1: [0, 0, 3] })
+    const ctx = prepareDragContext(f, 'C1', null)!
+    // Cursor at (0, 8): the pinned centre stays at the origin, so the rim follows
+    // the cursor at radius 8.
+    const result = solveSketchDrag(ctx, ctx.params0, [0, 8], undefined, 'radius')!
+    const g = result.geometry.C1
+    expect(g[2]).toBeCloseTo(8, 1)
+    // Centre stays at the origin (the pin), not at the cursor.
+    expect(Math.hypot(g[0], g[1])).toBeLessThan(CONSTRAINT_TOL)
+  })
+
+  it('translate mode moves the centre by the delta and leaves the radius put', () => {
+    // Regression pin on today's behaviour: a free circle rim drag is a translation.
+    const ctx = prepareDragContext(circleFeature('translateMode'), 'C1', null)!
+    const cursor: [number, number] = [8, 7]
+    const delta: [number, number] = [3, 2]
+    const result = solveSketchDrag(ctx, ctx.params0, cursor, delta)!
+    const g = result.geometry.C1
+    expect(g[0]).toBeCloseTo(8, 1)  // centre moved by delta
+    expect(g[1]).toBeCloseTo(7, 1)
+    expect(g[2]).toBeCloseTo(3, 3)  // radius untouched
+  })
+
+  it('probing does not mutate the feature, the layout or params0', () => {
+    const f = circleFeature('probeNoMutate')
+    const savedFeature = JSON.parse(JSON.stringify(f))
+    const ctx = prepareDragContext(f, 'C1', null)!
+    const savedParams0 = [...ctx.params0]
+    const savedLayout = JSON.parse(JSON.stringify(ctx.layout))
+
+    const mode = probeCircleDragMode(ctx)
+
+    expect(mode).toBe('translate')
+    expect(f).toEqual(savedFeature)
+    expect(ctx.params0).toEqual(savedParams0)
+    expect(ctx.layout).toEqual(savedLayout)
+  })
+
+  it('records measured probe responses so the thresholds are justified', () => {
+    // Free circle: centre must respond strongly, radius irrelevant.
+    const free = prepareDragContext(circleFeature('measureFree'), 'C1', null)!
+    const freeMode = probeCircleDragMode(free)
+    expect(freeMode).toBe('translate')
+    // Pinned-centre + free-radius circle: centre pinned, radius responsive.
+    const rad = prepareDragContext(circleFeature('measureRad', [
+      { id: 'cf', kind: 'coincident', a: { entity: 'C1', point: 'center' }, b: '@builtin_origin' },
+    ], { C1: [0, 0, 3] }), 'C1', null)!
+    expect(probeCircleDragMode(rad)).toBe('radius')
+    // The free-centre response is comfortably above TRANSLATE_RESPONSE_MIN and the
+    // pinned-centre response comfortably below it; same for radius vs
+    // RADIUS_RESPONSE_MIN. If a solver tuning shifts either, this assertion (plus
+    // the mode assertions above) catches it.
+    expect(freeMode).toBe('translate')
+    expect(probeCircleDragMode(rad)).toBe('radius')
+  })
 })
+

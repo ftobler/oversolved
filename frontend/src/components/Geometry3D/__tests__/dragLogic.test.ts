@@ -259,4 +259,63 @@ describe('computeDragMutation', () => {
       expect(result.solvedGeometry).toBeUndefined()
     }
   })
+
+  it('edge drag in radius mode commits resize_circle carrying the solved radius', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+    })
+    const geometry = { L1: [0, 0, 7.5, 0] }
+    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry, mode: 'radius' })
+    expect(result?.type).toBe('resize_circle')
+    if (result?.type === 'resize_circle') {
+      expect(result.entityId).toBe('L1')
+      expect(result.radius).toBeCloseTo(7.5)
+      expect(result.solvedGeometry).toEqual(geometry)
+    }
+  })
+
+  it('edge drag in locked mode commits no mutation', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+    })
+    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, mode: 'locked' })
+    expect(result).toBeNull()
+  })
+
+  it('edge drag with no mode falls back to move_entity', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+    })
+    // No mode field at all: lines/arcs/ellipses and the non-engaged solver path.
+    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry: { L1: [3, 4, 13, 4] } })
+    expect(result?.type).toBe('move_entity')
+    if (result?.type === 'move_entity') {
+      expect(result.delta).toEqual([3, 4])
+    }
+  })
+
+  it('a mode published for a different featureId is ignored', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+    })
+    // The registry still carries a mode, but for a different feature: must fall
+    // back to move_entity, not resize_circle/locked.
+    const result = computeDragMutation([200, 200], drag, null, null, { featureId: 'otherFeature', geometry: { C1: [0, 0, 7.5] }, mode: 'radius' })
+    expect(result?.type).toBe('move_entity')
+    if (result?.type === 'move_entity') {
+      expect(result.delta).toEqual([3, 4])
+    }
+  })
 })

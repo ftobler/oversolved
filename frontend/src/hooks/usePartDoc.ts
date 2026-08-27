@@ -566,7 +566,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     docRef.current = next
     setDoc(next)
     const dragAnchor =
-      m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint' || m.type === 'move_entity'
+      m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint' || m.type === 'move_entity' || m.type === 'resize_circle'
         ? { featureId: m.featureId, entityId: m.entityId }
         : undefined
     // Bypass the checkpoint cache for exactly the edits dirty detection cannot

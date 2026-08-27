@@ -5,11 +5,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-const { mockInit, mockReady, mockPrepare, mockSolve } = vi.hoisted(() => ({
+const { mockInit, mockReady, mockPrepare, mockSolve, mockProbe } = vi.hoisted(() => ({
   mockInit: vi.fn().mockResolvedValue(null),
   mockReady: vi.fn().mockReturnValue(true),
   mockPrepare: vi.fn(),
   mockSolve: vi.fn(),
+  mockProbe: vi.fn(),
 }))
 
 // Spread the actual module: the global test-setup uses its setSketchTopology.
@@ -21,6 +22,7 @@ vi.mock('@/kernel/features/sketch', async (importOriginal) => {
     isSketchSolverReady: mockReady,
     prepareDragContext: mockPrepare,
     solveSketchDrag: mockSolve,
+    probeCircleDragMode: mockProbe,
   }
 })
 
@@ -58,6 +60,15 @@ const fakeEdgeCtx = {
   ...fakeCtx,
   isEdgeDrag: true,
   entityCoordPairs: [[0, 1], [2, 3]] as [number, number][],
+}
+
+// A circle rim drag: edge drag with a sizeIndex (radius param) so the hook
+// resolves a mode via the probe.
+const fakeCircleEdgeCtx = {
+  ...fakeCtx,
+  isEdgeDrag: true,
+  entityCoordPairs: [[0, 1]] as [number, number][],
+  sizeIndex: 2,
 }
 
 function edgeDrag(currentWorld: [number, number], startWorld: [number, number] = [0, 0]): DragState {
@@ -102,6 +113,7 @@ beforeEach(() => {
   mockPrepare.mockReset().mockReturnValue(fakeCtx)
   mockSolve.mockReset().mockReturnValue(solveResult([1, 1, 10, 0]))
   mockReady.mockReset().mockReturnValue(true)
+  mockProbe.mockReset()
   setLastDragSolve(null)
 })
 
@@ -278,6 +290,76 @@ describe('useWasmDragSolve', () => {
     rerender({ drag: null, dragging: false })
     expect(result.current.engaged).toBe(false)
     expect(result.current.sketch).toBeNull()
+    expect(getLastDragSolve()).toBeNull()
+  })
+
+  // ─── Circle-rim drag mode resolution ───
+
+  it('the mode is probed once at drag start and not re-probed per frame', () => {
+    mockPrepare.mockReturnValue(fakeCircleEdgeCtx)
+    mockProbe.mockReturnValue('translate')
+    mockSolve.mockReturnValue(solveResult([1, 1, 10, 0]))
+    const { rerender } = renderHook(
+      ({ drag }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: true }),
+      { initialProps: { drag: edgeDrag([1, 1]) } },
+    )
+    // Probe runs during the first render (synchronous with the memo).
+    expect(mockProbe).toHaveBeenCalledTimes(1)
+    for (let i = 2; i <= 6; i++) {
+      rerender({ drag: edgeDrag([i, i]) })
+      pump()
+    }
+    // Many rAF ticks, still exactly one probe: the mode is latched.
+    expect(mockProbe).toHaveBeenCalledTimes(1)
+  })
+
+  it('the mode does not flip when the cursor returns across the drag origin', () => {
+    mockPrepare.mockReturnValue(fakeCircleEdgeCtx)
+    mockProbe.mockReturnValue('radius')
+    mockSolve.mockReturnValue(solveResult([1, 1, 10, 0]))
+    const { result, rerender } = renderHook(
+      ({ drag }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: true }),
+      { initialProps: { drag: edgeDrag([1, 1]) } },
+    )
+    expect(result.current.mode).toBe('radius')
+    rerender({ drag: edgeDrag([10, 10]) }); pump()
+    rerender({ drag: edgeDrag([0, 0]) }); pump()
+    rerender({ drag: edgeDrag([10, 10]) }); pump()
+    // Sticky: the mode is the latched value, independent of cursor travel.
+    expect(result.current.mode).toBe('radius')
+    expect(mockProbe).toHaveBeenCalledTimes(1)
+  })
+
+  it('locked mode runs no per-frame solve and publishes no geometry', () => {
+    mockPrepare.mockReturnValue(fakeCircleEdgeCtx)
+    mockProbe.mockReturnValue('locked')
+    const { rerender } = renderHook(
+      ({ drag }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: true }),
+      { initialProps: { drag: edgeDrag([1, 1]) } },
+    )
+    pump()
+    rerender({ drag: edgeDrag([5, 5]) }); pump()
+    rerender({ drag: edgeDrag([9, 9]) }); pump()
+    // No solve runs in locked mode.
+    expect(mockSolve).not.toHaveBeenCalled()
+    const entry = getLastDragSolve()
+    expect(entry?.featureId).toBe('S1')
+    expect(entry?.mode).toBe('locked')
+    expect(entry?.geometry).toBeUndefined()
+  })
+
+  it('clears the mode from the registry when a circle drag ends', () => {
+    mockPrepare.mockReturnValue(fakeCircleEdgeCtx)
+    mockProbe.mockReturnValue('radius')
+    const { result, rerender } = renderHook(
+      ({ drag, dragging }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: dragging }),
+      { initialProps: { drag: edgeDrag([1, 1]) as DragState | null, dragging: true } },
+    )
+    pump()
+    expect(getLastDragSolve()?.mode).toBe('radius')
+    rerender({ drag: null, dragging: false })
+    expect(result.current.engaged).toBe(false)
+    expect(result.current.mode).toBeUndefined()
     expect(getLastDragSolve()).toBeNull()
   })
 })

@@ -67,6 +67,29 @@ describe('DragTool', () => {
       }))
     })
 
+    it('an edge pending drag on a circle is unchanged at pointer-down', () => {
+      // The tool stays solver-free: the mode (translate / radius / locked) is
+      // resolved downstream by the WASM drag probe, not here. Pointer-down only
+      // records a pending edge drag.
+      const setDragPending = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        setDragPending,
+        activeFeatureId: 'S1',
+        hoveredVertexId: 'entity:S1:C1',
+      })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
+
+      expect(setDragPending).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'edge',
+        vertexId: 'entity:S1:C1',
+        featureId: 'S1',
+        entityId: 'C1',
+        vertexKey: '',
+      }))
+    })
+
     it('returns null when no hovered id', () => {
       const tool = createDragTool()
       const context = createMockContext({ hoveredVertexId: null })

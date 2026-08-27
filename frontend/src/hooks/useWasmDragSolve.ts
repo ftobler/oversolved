@@ -30,8 +30,10 @@ import {
   isSketchSolverReady,
   prepareDragContext,
   solveSketchDrag,
+  probeCircleDragMode,
 } from '@/kernel/features/sketch'
 import { setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
+import type { CircleDragMode } from '@/components/Geometry3D/circleDragMode'
 
 interface UseWasmDragSolveInput {
   featureId: string
@@ -53,8 +55,12 @@ interface WasmDragSolveResult {
   sketch: Sketch | null
   /** True when the WASM path owns this drag (context built + solver loaded).
     *  The caller must NOT show a fallback preview then -- a one-frame stale preview that
-   *  disagrees with the first WASM frame produces a visible jump. */
+    *  disagrees with the first WASM frame produces a visible jump. */
   engaged: boolean
+  /** The circle-rim drag mode resolved at activation ('translate' | 'radius' |
+    *  'locked'), or undefined for vertex drags and non-circle edge drags (which
+    *  behave as translate). Sticky for the whole gesture. */
+  mode?: CircleDragMode
 }
 
 export function useWasmDragSolve(
@@ -101,6 +107,19 @@ export function useWasmDragSolve(
     return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY])
   }, [featureDef, dragEntityId, dragVertexKey, originX, originY])
 
+  // ─── Resolve the circle-rim drag mode once per edge drag ───
+  // The mode is decided at activation by probing the real drag solver, then stays
+  // sticky for the whole gesture: the memo is keyed on the drag identity (the same
+  // key that builds ctx, which is stable across pointermove updates), so it runs
+  // exactly once per gesture and can never flip mid-drag. A pinned centre read as
+  // "resize" one frame and "locked" the next would be a fight, so the latch is the
+  // memo stability itself. Non-circle edge drags have no size param, so the mode
+  // stays undefined and the commit falls back to today's translate behaviour.
+  const dragMode = useMemo(() => {
+    if (!ctx || !isEdgeDragHere || ctx.sizeIndex === undefined) return undefined
+    return probeCircleDragMode(ctx)
+  }, [ctx, isEdgeDragHere])
+
   // ─── Track the latest cursor and edge-drag startWorld ───
   // Mark dirty only when the cursor actually moved.
   useEffect(() => {
@@ -143,18 +162,35 @@ export function useWasmDragSolve(
         dirtyRef.current = false
 
         if (ctx.isEdgeDrag && startWorldRef.current) {
-          // Edge drag: compute cursor delta and pass to the solver.
-          // Each frame seeds from params0 + delta (not warm-start) so the
-          // solver always starts from a valid solved state.
           const cursor = latestCursorRef.current
-          const delta: [number, number] = [
-            cursor[0] - startWorldRef.current[0],
-            cursor[1] - startWorldRef.current[1],
-          ]
-          const result = solveSketchDrag(ctx, ctx.params0, cursor, delta)
-          if (result && result.status !== 'overconstrained') {
-            setLastDragSolve({ featureId, geometry: result.geometry })
-            setPreview(result.sketch)
+          if (dragMode === 'locked') {
+            // Neither the centre nor the radius can move. Solve nothing and publish
+            // a mode-only entry so the pointer-up commit returns null (no mutation,
+            // no undo entry). The display falls through to `solved` because no
+            // preview is published.
+            setLastDragSolve({ featureId, mode: 'locked' })
+          } else if (dragMode === 'radius') {
+            // Centre pinned: the rim drag resizes the circle. Each frame seeds
+            // from params0 and sets the radius to the cursor distance from centre.
+            const result = solveSketchDrag(ctx, ctx.params0, cursor, undefined, 'radius')
+            if (result && result.status !== 'overconstrained') {
+              setLastDragSolve({ featureId, geometry: result.geometry, mode: 'radius' })
+              setPreview(result.sketch)
+            }
+          } else {
+            // Translate (mode 'translate' or absent for non-circle edge drags):
+            // compute cursor delta and pass to the solver. Each frame seeds from
+            // params0 + delta (not warm-start) so the solver always starts from a
+            // valid solved state.
+            const delta: [number, number] = [
+              cursor[0] - startWorldRef.current[0],
+              cursor[1] - startWorldRef.current[1],
+            ]
+            const result = solveSketchDrag(ctx, ctx.params0, cursor, delta)
+            if (result && result.status !== 'overconstrained') {
+              setLastDragSolve({ featureId, geometry: result.geometry, mode: dragMode })
+              setPreview(result.sketch)
+            }
           }
         } else {
           // Vertex drag: warm-start from the previous frame's solved params.
@@ -177,7 +213,7 @@ export function useWasmDragSolve(
       // drag on the same feature would commit this drag's stale geometry.
       setLastDragSolve(null)
     }
-  }, [ctx, featureId, isDragHere])
+  }, [ctx, featureId, isDragHere, dragMode])
 
-  return { sketch: preview, engaged: !!ctx && isDragHere }
+  return { sketch: preview, engaged: !!ctx && isDragHere, mode: dragMode }
 }

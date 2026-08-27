@@ -291,6 +291,38 @@ export function applyMoveEntity(
   }
 }
 
+/** Drag commit for a circle whose centre is pinned: the rim drag changed the
+  *  radius instead of translating. Adopts the last WASM drag frame first (so the
+  *  other entities reflect the on-screen solve), rejects a non-finite or
+  *  non-positive radius the way applyMoveVertex rejects a non-finite drop, then
+  *  writes params[2] = radius. Only acts on a circle; a non-circle entity is left
+  *  untouched. */
+export function applyResizeCircle(
+  doc: PartDoc,
+  featureId: string,
+  entityId: string,
+  radius: number,
+  solvedGeometry?: Record<string, number[]>,
+): void {
+  const feature = findFeature(doc, featureId)
+  if (!feature?.initial) return
+  // A non-finite or non-positive radius is broken pointer math upstream, or an
+  // attempt to invert the circle. round(NaN) is still NaN, so letting it through
+  // would poison the doc and every later solve seeded from it.
+  if (!Number.isFinite(radius) || radius <= 0) {
+    warn('applyResizeCircle: ignoring non-finite or non-positive radius', { featureId, entityId, radius })
+    return
+  }
+  // The adopted frame already carries the on-screen solve; only the radius is
+  // then pinned onto it below.
+  adoptSolvedGeometry(feature.initial, solvedGeometry)
+  const params = feature.initial[entityId]
+  if (!params) return
+  const kind = feature.entities?.find(e => e.id === entityId)?.kind
+  if (kind !== 'circle') return
+  params[2] = round(radius)
+}
+
 export function applyAddConstraint(
   doc: PartDoc,
   featureId: string,

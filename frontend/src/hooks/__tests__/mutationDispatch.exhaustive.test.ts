@@ -85,6 +85,7 @@ export const ALL_MUTATION_TYPES = [
   'edit_session',
   'preview_commit',
   'remove_dangling_content',
+  'resize_circle',
 ]
 
 describe('mutationDispatch', () => {

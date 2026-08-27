@@ -2,6 +2,7 @@ import type { PartDoc, Mutation } from '@/types/cad'
 import {
   applyMoveVertex,
   applyMoveEntity,
+  applyResizeCircle,
   applyAddConstraint,
   applyDeleteElements,
   applyAddEntity,
@@ -98,6 +99,8 @@ export const mutationHandlers: MutationHandlers = {
   },
   move_entity: (next, m) =>
     applyMoveEntity(next, m.featureId, m.entityId, m.delta, m.solvedGeometry),
+  resize_circle: (next, m) =>
+    applyResizeCircle(next, m.featureId, m.entityId, m.radius, m.solvedGeometry),
   add_constraint: (next, m) =>
     applyAddConstraint(next, m.featureId, m.kind, m.targets, m.value, m.pos, m.sign),
   set_constraint_value: (next, m) =>

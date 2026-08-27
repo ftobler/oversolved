@@ -4,6 +4,7 @@
 import type { Mutation } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/components/Geometry3D/snapDetection'
+import type { CircleDragMode } from '@/components/Geometry3D/circleDragMode'
 import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/components/Geometry3D/snapDetection'
 import { isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from '@/components/Geometry3D/constants'
@@ -180,7 +181,7 @@ export function computeDragMutation(
   drag: VertexOrEdgeDrag,
   snapTarget: SnapTarget | null,
   _alignmentSnap: { point: [number, number]; kind: string; vertexId: string } | null,
-  lastDragSolve?: { featureId: string; geometry: Record<string, number[]> } | null,
+  lastDragSolve?: { featureId: string; geometry?: Record<string, number[]>; mode?: CircleDragMode } | null,
 ): Mutation | null {
   // Click-vs-drag: pixel distance from pointer-down to pointer-up
   if (isPureClick(drag.startClient, endClient)) return null
@@ -191,6 +192,29 @@ export function computeDragMutation(
       : undefined
 
   if (drag.type === 'edge') {
+    // The mode is resolved once at drag activation and latched for the gesture;
+    // it rides along on the last drag-solve entry published by the rAF loop.
+    // A mode published for a different feature (stale registry) is ignored, as
+    // the absent-mode case below is -- the guard is the featureId match.
+    const lastForFeature =
+      lastDragSolve && lastDragSolve.featureId === drag.featureId ? lastDragSolve : undefined
+
+    // Locked: neither the centre nor the radius can move. Emit nothing, so no
+    // mutation commits and no undo entry is recorded (closes the junk-undo bug
+    // for a fully constrained circle drag).
+    if (lastForFeature?.mode === 'locked') return null
+
+    // Radius (centre pinned): resize the circle to the solved radius. The radius
+    // is read from the last drag frame's solved geometry, which already reflects
+    // the rim-follows-cursor solve.
+    if (lastForFeature?.mode === 'radius') {
+      const radius = solvedGeometry ? solvedGeometry[drag.entityId]?.[2] : undefined
+      if (radius === undefined) return null
+      return { type: 'resize_circle', featureId: drag.featureId, entityId: drag.entityId, radius, solvedGeometry }
+    }
+
+    // Translate (mode 'translate' or absent, the default for every other kind):
+    // translate the whole entity by the cursor delta.
     const delta: [number, number] = [
       drag.currentWorld[0] - drag.startWorld[0],
       drag.currentWorld[1] - drag.startWorld[1],

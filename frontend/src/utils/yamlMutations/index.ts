@@ -7,6 +7,7 @@ export { migrateLegacyBodyPicks } from '../yamlMigrations'
 export {
   applyMoveVertex,
   applyMoveEntity,
+  applyResizeCircle,
   applyAddConstraint,
   applyToggleConstruction,
   applyDeleteElements,
