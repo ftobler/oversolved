@@ -7,10 +7,10 @@ import {
 
 /**
  * The complete, typed interaction policy for a tool. Every field that a tool
- * could vary about picking/selection lives here so the set is in one place and
- * is reset by construction: the active tool's config fully replaces the previous
- * one, so there is no per-knob "set on activate, forget to reset on deactivate"
- * hazard. Switching tools switches the whole record atomically.
+ * could vary about picking/selection/arming lives here so the set is in one
+ * place and is reset by construction: the active tool's config fully replaces
+ * the previous one, so there is no per-knob "set on activate, forget to reset
+ * on deactivate" hazard. Switching tools switches the whole record atomically.
  *
  * The forcing functions this design buys (see TOOL_PICK_CONFIG below):
  *   - add a field here  -> every preset / entry fails to compile until it
@@ -36,6 +36,12 @@ export interface ToolPickConfig {
    * pre-existing selection.
    */
   clearsSelectionOnEnter: boolean
+  /**
+   * Whether committing a gesture leaves the tool armed for the next one. false
+   * disarms back to idle select, the historical one-shot behaviour. The flag
+   * owns the decision, not the tool: the adapter consults it after a commit.
+   */
+  staysArmedAfterCommit: boolean
 }
 
 // Sketch-plane pick layers shared by every sketch tool: the sketch's own
@@ -61,14 +67,14 @@ const BREP_PICK_LAYERS = [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME] a
 // strokes) and the B-rep layers (so a body face under the cursor is never
 // selected mid-stroke). The project tool adds the B-rep layers back so the user
 // can pick 3D geometry to project onto the sketch plane.
-const FULL_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: false }
-const DIMENSION_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: true }
+const FULL_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false }
+const DIMENSION_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: true, staysArmedAfterCommit: true }
 const SKETCH_DRAW: ToolPickConfig = {
-  allowedLayers: new Set(SKETCH_PICK_LAYERS), clearsSelectionOnEnter: false,
+  allowedLayers: new Set(SKETCH_PICK_LAYERS), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
 }
 const PROJECT_PICK: ToolPickConfig = {
   allowedLayers: new Set([...BREP_PICK_LAYERS, ...SKETCH_PICK_LAYERS]),
-  clearsSelectionOnEnter: false,
+  clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
 }
 
 /**

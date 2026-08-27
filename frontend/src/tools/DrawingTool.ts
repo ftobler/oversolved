@@ -4,6 +4,7 @@ import { ENTITY_BY_ACTIVE_TOOL } from '@/registry'
 import type { SnapKind } from '@/registry'
 import { computeDrawClick } from '@/components/Geometry3D/drawLogic'
 import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
+import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { randomId } from '@/utils/yamlMutations'
 import { toolModeHandlers } from '@/tools/toolMode'
 import { devOnly } from '@/stores/stateInvariants'
@@ -96,9 +97,14 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         context.setDrawPoints(result.nextDrawPoints)
       }
 
-      if (result.clearTool) {
+      if (result.gestureComplete) {
         context.clearDraw()
-        context.setActiveTool(null)
+        // The tool's arming policy owns the disarm decision, not this adapter:
+        // a sticky tool (e.g. line) stays armed so the next click starts a fresh
+        // entity of the same kind; only one-shot tools reset to select.
+        if (!getToolPickConfig(config.entityKind).staysArmedAfterCommit) {
+          context.setActiveTool(null)
+        }
       }
 
       return null

@@ -69,7 +69,29 @@ describe('getToolPickConfig is total', () => {
       const cfg = getToolPickConfig(t)
       expect(cfg).toBeDefined()
       expect(typeof cfg.clearsSelectionOnEnter).toBe('boolean')
+      expect(typeof cfg.staysArmedAfterCommit).toBe('boolean')
       expect(cfg.allowedLayers === null || cfg.allowedLayers instanceof Set).toBe(true)
     }
+  })
+})
+
+describe('getToolPickConfig.staysArmedAfterCommit', () => {
+  it('is true for every SKETCH_DRAW tool', () => {
+    const drawTools = ['line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse',
+      'spline', 'point', 'ngon', 'mirror'] as const
+    for (const t of drawTools) {
+      expect(getToolPickConfig(t).staysArmedAfterCommit, t).toBe(true)
+    }
+  })
+
+  it('is true for dimension and project', () => {
+    expect(getToolPickConfig('dimension').staysArmedAfterCommit).toBe(true)
+    expect(getToolPickConfig('project').staysArmedAfterCommit).toBe(true)
+  })
+
+  it('is false for drag, offset and idle select (null)', () => {
+    expect(getToolPickConfig('drag').staysArmedAfterCommit).toBe(false)
+    expect(getToolPickConfig('offset').staysArmedAfterCommit).toBe(false)
+    expect(getToolPickConfig(null).staysArmedAfterCommit).toBe(false)
   })
 })

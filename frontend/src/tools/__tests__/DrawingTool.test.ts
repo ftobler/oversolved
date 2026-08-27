@@ -81,9 +81,10 @@ describe('DrawingTool', () => {
       tool.handlers.onPointerDown!({} as PointerEvent, [10, 0], context)
       expect(setActiveTool).not.toHaveBeenCalled()
 
-      // Closing click on the first vertex terminates the polyline.
+      // Closing click on the first vertex terminates the polyline. The line
+      // tool is sticky, so the tool stays armed for the next polyline.
       tool.handlers.onPointerDown!({} as PointerEvent, [0, 0], context)
-      expect(setActiveTool).toHaveBeenCalledWith(null)
+      expect(setActiveTool).not.toHaveBeenCalled()
     })
 
     it('adds point when not enough points', () => {
@@ -168,7 +169,7 @@ describe('DrawingTool', () => {
         p1: [5, 6],
       })
       expect(clearDraw).toHaveBeenCalled()
-      expect(setActiveTool).toHaveBeenCalledWith(null)
+      expect(setActiveTool).not.toHaveBeenCalled()
     })
   })
 
@@ -200,7 +201,7 @@ describe('DrawingTool', () => {
         corner: [3, 4],
       })
       expect(clearDraw).toHaveBeenCalled()
-      expect(setActiveTool).toHaveBeenCalledWith(null)
+      expect(setActiveTool).not.toHaveBeenCalled()
     })
   })
 
@@ -236,7 +237,7 @@ describe('DrawingTool', () => {
         sides: 5,
       })
       expect(clearDraw).toHaveBeenCalled()
-      expect(setActiveTool).toHaveBeenCalledWith(null)
+      expect(setActiveTool).not.toHaveBeenCalled()
     })
   })
 
@@ -262,7 +263,7 @@ describe('DrawingTool', () => {
         source: '@S2/L1',
       })
       expect(clearDraw).toHaveBeenCalled()
-      expect(setActiveTool).toHaveBeenCalledWith(null)
+      expect(setActiveTool).not.toHaveBeenCalled()
     })
 
     it('resolves the projected kind from the source sketch, not a hardcoded line', () => {
@@ -463,6 +464,99 @@ describe('DrawingTool', () => {
       // The first circle click records the snapped point; it must be the origin's
       // real local position, not the raw [1,1] nor a hard-coded [0,0].
       expect(context.drawPoints).toEqual([[-37.5, 12.25]])
+    })
+  })
+
+  describe('sticky arming', () => {
+    // The mock's clearDraw is a no-op, so override it to reset drawPoints the
+    // way the real store does, letting a committed shape leave a clean buffer
+    // for the next entity of the same tool.
+    function stickyContext(overrides: Partial<DrawingToolContext> = {}): DrawingToolContext {
+      const ctx = createMockContext(overrides)
+      ctx.clearDraw = vi.fn(() => { ctx.drawPoints = [] })
+      return ctx
+    }
+
+    it('circle stays armed after committing and draws a second circle', () => {
+      const onMutation = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'circle', paramCount: 3 })
+      const context = stickyContext({ onMutation, setActiveTool, drawPoints: [] })
+
+      // Two clicks commit the first circle.
+      tool.handlers.onPointerDown!({} as PointerEvent, [1, 1], context)
+      tool.handlers.onPointerDown!({} as PointerEvent, [4, 1], context)
+
+      // The tool never disarmed after the first commit.
+      expect(setActiveTool).not.toHaveBeenCalled()
+
+      // With the buffer cleared by clearDraw, two more clicks commit a second
+      // circle of the same kind - the user's literal ask.
+      tool.handlers.onPointerDown!({} as PointerEvent, [5, 5], context)
+      tool.handlers.onPointerDown!({} as PointerEvent, [8, 5], context)
+
+      expect(onMutation).toHaveBeenCalledTimes(2)
+      expect(onMutation.mock.calls[1][0]).toMatchObject({ type: 'add_entity', kind: 'circle' })
+    })
+
+    it('rect stays armed after committing', () => {
+      const onMutation = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'rect', paramCount: 0 })
+      const context = stickyContext({ onMutation, setActiveTool, drawPoints: [] })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [1, 2], context)
+      tool.handlers.onPointerDown!({} as PointerEvent, [5, 6], context)
+
+      expect(context.clearDraw).toHaveBeenCalled()
+      expect(setActiveTool).not.toHaveBeenCalled()
+    })
+
+    it('point stays armed after its single-click commit', () => {
+      const onMutation = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'point', paramCount: 2 })
+      const context = stickyContext({ onMutation, setActiveTool, drawPoints: [] })
+
+      // The point tool commits on the very first click.
+      tool.handlers.onPointerDown!({} as PointerEvent, [3, 3], context)
+
+      expect(onMutation).toHaveBeenCalledTimes(1)
+      expect(setActiveTool).not.toHaveBeenCalled()
+    })
+
+    it('clears the draw buffer on every commit even while staying armed', () => {
+      const onMutation = vi.fn()
+      const setActiveTool = vi.fn()
+      const tool = createDrawingTool({ entityKind: 'circle', paramCount: 3 })
+      const context = stickyContext({ onMutation, setActiveTool, drawPoints: [] })
+
+      tool.handlers.onPointerDown!({} as PointerEvent, [1, 1], context)
+      tool.handlers.onPointerDown!({} as PointerEvent, [4, 1], context)
+
+      // One clearDraw per commit: no stale point leaks into the next entity.
+      expect(context.clearDraw).toHaveBeenCalledTimes(1)
+    })
+
+    it('a tool declared staysArmedAfterCommit=false still disarms', async () => {
+      const toolPickConfig = await import('@/registry/toolPickConfig')
+      const spy = vi.spyOn(toolPickConfig, 'getToolPickConfig').mockReturnValue({
+        allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false,
+      })
+      try {
+        const onMutation = vi.fn()
+        const setActiveTool = vi.fn()
+        const tool = createDrawingTool({ entityKind: 'circle', paramCount: 3 })
+        const context = stickyContext({ onMutation, setActiveTool, drawPoints: [] })
+
+        tool.handlers.onPointerDown!({} as PointerEvent, [1, 1], context)
+        tool.handlers.onPointerDown!({} as PointerEvent, [4, 1], context)
+
+        // The branch itself disarms regardless of the current table values.
+        expect(setActiveTool).toHaveBeenCalledWith(null)
+      } finally {
+        spy.mockRestore()
+      }
     })
   })
 })
