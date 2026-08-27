@@ -10,6 +10,9 @@ interface WheelNumberInputProps {
   max?: number
   title?: string
   style?: React.CSSProperties
+  // The field's own validation; when provided and rejecting a candidate value
+  // the wheel notch is swallowed (no commit) so the wheel holds at the boundary.
+  accept?: (next: number) => boolean
   onChange: (raw: string) => void
   onStep: (next: number) => void
   onBlur?: React.FocusEventHandler<HTMLInputElement>
@@ -22,11 +25,12 @@ interface WheelNumberInputProps {
  *  text for the step, so an in-progress edit is respected and a half-typed value
  *  is left alone. Commits through the caller's normal `onStep` path. */
 export function WheelNumberInput({
-  value, ariaLabel, className = 'feature-field-input', placeholder, disabled, min, max, title, style, onChange, onStep,
+  value, ariaLabel, className = 'feature-field-input', placeholder, disabled, min, max, title, style, accept, onChange, onStep,
   onBlur, onKeyDown, onPointerDown,
 }: WheelNumberInputProps) {
   const ref = useWheelStep({
     readText: () => ref.current?.value ?? '',
+    accept,
     enabled: !disabled,
     onStep,
   })

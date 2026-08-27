@@ -32,12 +32,13 @@ export default function NgonTool() {
       />
       {/* Side-count control: only while the n-gon tool is active. Changing it
           updates the live preview and the next polygon drawn. The store clamps
-          to [3, 64], so a wheel step past a bound lands on the bound rather than
-          being refused (accepted: do not fight the store). */}
+          to [3, 64]; the wheel refuses at those bounds via `accept` so stepping
+          past one does not re-commit the (already clamped) value. */}
       {isActive && (
         <WheelNumberInput
           min={3}
           max={64}
+          accept={(n) => n >= 3 && n <= 64}
           value={String(draft ?? ngonSides)}
           ariaLabel="Number of sides"
           title="Number of sides"
