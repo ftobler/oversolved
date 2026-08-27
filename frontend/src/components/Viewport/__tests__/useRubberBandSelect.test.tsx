@@ -588,3 +588,73 @@ describe('useRubberBandSelect honors the dispatcher swallow semantics', () => {
     }
   })
 })
+
+// The visible-box transition is the capture trigger. A press that never becomes
+// a box must keep its own click target (the gizmo, the empty-space deselect),
+// so onPointerMove only reports the transition once, exactly when the box opens.
+describe('band visibility transition drives capture', () => {
+  function liveHook() {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    return result
+  }
+
+  it('onPointerMove returns false while the box is still under the 4px threshold', () => {
+    const result = liveHook()
+    act(() => {
+      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      // A 3px nudge is below the box threshold: still an ordinary click.
+      expect(result.current.onPointerMove(pointerEvent(12, 11))).toBe(false)
+      expect(result.current.onPointerMove(pointerEvent(13, 12))).toBe(false)
+    })
+  })
+
+  it('onPointerMove returns true exactly once, on the move that first opens the box', () => {
+    const result = liveHook()
+    act(() => {
+      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerMove(pointerEvent(12, 11))).toBe(false)
+      // Crossing 4px opens the box: this move is the one transition.
+      expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
+    })
+  })
+
+  it('onPointerMove keeps returning false for every later move of the same box', () => {
+    const result = liveHook()
+    act(() => {
+      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
+      expect(result.current.onPointerMove(pointerEvent(30, 30))).toBe(false)
+      expect(result.current.onPointerMove(pointerEvent(40, 40))).toBe(false)
+    })
+  })
+
+  it('a fresh gesture after endDrag reports the transition again', () => {
+    const result = liveHook()
+    act(() => {
+      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
+      result.current.onPointerUp()
+    })
+    act(() => {
+      // A second drag must report its own open transition; a latched flag
+      // surviving endDrag would hide it.
+      expect(result.current.onPointerDown(pointerEvent(50, 50), false)).toBe(true)
+      expect(result.current.onPointerMove(pointerEvent(60, 52))).toBe(true)
+    })
+  })
+
+  it('a move with no button held drops the band and reports no transition', () => {
+    const result = liveHook()
+    act(() => {
+      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
+    })
+    act(() => {
+      // The release landed outside the pane; the next move carries no button.
+      expect(result.current.onPointerMove(pointerEvent(60, 60, 0))).toBe(false)
+    })
+    expect(result.current.state.isDraggingRef.current).toBe(false)
+  })
+})

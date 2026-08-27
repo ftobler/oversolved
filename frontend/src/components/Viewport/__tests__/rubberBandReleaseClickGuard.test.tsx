@@ -252,4 +252,28 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     expect(pipeline.resolveSync).toHaveBeenCalledTimes(1)
     expect(useSketchEditorStore.getState().normalSelection.has('sk1/clickPick')).toBe(true)
   })
+
+  it('an opened box raises the band flag, a stationary press still does not, after the capture move', async () => {
+    // The pane now takes capture on the move that first opens a box, so the
+    // trailing-click guard it raises must stay coupled to that transition: a box
+    // raises the flag, a stationary press (no move past 4px) must not.
+    const h = await setup('sk1/painted')
+    pipeline = h.pipeline
+
+    await act(async () => {
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerMove(pointerEvent(60, 60))).toBe(true)
+      h.result.current.onPointerUp()
+    })
+    // The visible-box open raised the band flag so the trailing click is swallowed.
+    expect(takeBandClickConsumed()).toBe(true)
+
+    await act(async () => {
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerMove(pointerEvent(11, 10))).toBe(false)  // under 4px
+      h.result.current.onPointerUp()
+    })
+    // A stationary press raises no flag.
+    expect(takeBandClickConsumed()).toBe(false)
+  })
 })

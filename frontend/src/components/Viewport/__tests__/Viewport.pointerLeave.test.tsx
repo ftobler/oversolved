@@ -9,6 +9,7 @@ import Viewport from '@/components/Viewport'
 // WebGL renderer the jsdom test env does not have.
 const rubberBand = vi.hoisted(() => ({
   onPointerDown: vi.fn(),
+  onPointerMove: vi.fn(),
   onPointerCancel: vi.fn(),
 }))
 
@@ -16,7 +17,7 @@ vi.mock('@/components/Viewport/useRubberBandSelect', () => ({
   useRubberBandSelect: () => ({
     state: { dragging: false, rect: null, isDraggingRef: { current: false } },
     onPointerDown: (...args: unknown[]) => { rubberBand.onPointerDown(...args); return true },
-    onPointerMove: () => {},
+    onPointerMove: (...args: unknown[]) => rubberBand.onPointerMove(...args),
     onPointerUp: () => {},
     onPointerCancel: (...args: unknown[]) => { rubberBand.onPointerCancel(...args) },
   }),
@@ -71,6 +72,7 @@ htmlProto.hasPointerCapture = () => false
 
 beforeEach(() => {
   rubberBand.onPointerDown.mockClear()
+  rubberBand.onPointerMove.mockClear()
   rubberBand.onPointerCancel.mockClear()
   usePartEditorStore.setState({
     features: [],
@@ -140,12 +142,12 @@ function captureStubs(el: Element): {
   const release = vi.fn()
   ;(el as HTMLElement).setPointerCapture = set
   ;(el as HTMLElement).releasePointerCapture = release
-  ;(el as HTMLElement).hasPointerCapture = vi.fn(() => false)
+  ;(el as HTMLElement).hasPointerCapture = vi.fn(() => true)
   return { set, release }
 }
 
 describe('Viewport pointer capture for box drags', () => {
-  it('captures the pointer when a rubber-band starts so an off-pane release still lands', () => {
+  it('does not capture the pointer on a press that has not opened a box', () => {
     const { container } = render(<Viewport />)
     const el = container.firstChild as Element
     const { set } = captureStubs(el)
@@ -154,19 +156,49 @@ describe('Viewport pointer capture for box drags', () => {
     fireEvent.pointerDown(el, { button: 2, isPrimary: true })
     expect(set).not.toHaveBeenCalled()
 
+    // A plain left press is still a stationary click until a box opens.
     fireEvent.pointerDown(el, { button: 0, isPrimary: true })
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('captures the pointer on the move that opens the box', () => {
+    const { container } = render(<Viewport />)
+    const el = container.firstChild as Element
+    const { set } = captureStubs(el)
+    rubberBand.onPointerMove.mockReturnValue(true)
+
+    fireEvent.pointerDown(el, { button: 0, isPrimary: true })
+    expect(set).not.toHaveBeenCalled()
+    fireEvent.pointerMove(el, { clientX: 40, clientY: 40, isPrimary: true })
     expect(set).toHaveBeenCalledWith(0)
+  })
+
+  it('does not capture again on later moves of the same box', () => {
+    const { container } = render(<Viewport />)
+    const el = container.firstChild as Element
+    const { set } = captureStubs(el)
+    rubberBand.onPointerMove.mockReturnValueOnce(true).mockReturnValue(false)
+
+    fireEvent.pointerDown(el, { button: 0, isPrimary: true })
+    fireEvent.pointerMove(el, { clientX: 40, clientY: 40, isPrimary: true })
+    expect(set).toHaveBeenCalledTimes(1)
+    fireEvent.pointerMove(el, { clientX: 60, clientY: 60, isPrimary: true })
+    expect(set).toHaveBeenCalledTimes(1)
   })
 
   it('pointercancel drops the band and the pending click gesture', () => {
     const onRightClick = vi.fn()
     const { container } = render(<Viewport onRightClick={onRightClick} />)
     const el = container.firstChild as Element
-    captureStubs(el)
+    const { release } = captureStubs(el)
+    rubberBand.onPointerMove.mockReturnValue(true)
 
     fireEvent.pointerDown(el, { button: 0, isPrimary: true })
+    fireEvent.pointerMove(el, { clientX: 40, clientY: 40, isPrimary: true })
     fireEvent.pointerCancel(el)
     expect(rubberBand.onPointerCancel).toHaveBeenCalledTimes(1)
+    // The box had captured; cancel must release it.
+    expect(release).toHaveBeenCalledWith(0)
 
     // The cancelled gesture owns nothing: its release must neither reopen the
     // context menu nor pair with the gesture that never finished.
