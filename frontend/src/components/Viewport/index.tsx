@@ -442,6 +442,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // owns neither the rubber band nor the context menu.
     if (!hadDown) return
 
+    // Read the rubber-band drag flag BEFORE teardown: onPointerUp runs endDrag
+    // synchronously and clears the ref, so reading after it would always be false.
+    const bandWasDragging = rubberBand.state.isDraggingRef.current
+
     // Always commit or cancel the rubber-band so it never stays sticky after release.
     rubberBand.onPointerUp()
 
@@ -450,7 +454,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // facts from live refs; both paths must reach the identical predicate so a
     // click that clears in one clears in the other.
     setLastClickStationaryPrimary(isStationaryPrimaryClick(click))
-    setLastClickBandDragging(rubberBand.state.isDraggingRef.current)
+    setLastClickBandDragging(bandWasDragging)
 
     if (click.wasDrag) return
 

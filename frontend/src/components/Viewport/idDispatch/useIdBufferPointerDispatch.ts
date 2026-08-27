@@ -53,9 +53,11 @@ let lastClickIdHit = false
 let lastClickWasStale = false
 // The other two halves of the shared "miss clears" predicate. The backplane
 // clear path (Drawing.tsx) has no access to the Viewport's click-gesture or
-// rubber-band refs, so the Viewport publishes them here at gesture end. The
-// Canvas `onPointerMissed` path reads the live refs instead; both must feed the
-// identical predicate so the two clear paths cannot drift.
+// rubber-band refs, so the Viewport publishes them here at gesture end, reading
+// the rubber-band flag before its own teardown so a just-finished sweep does not
+// clear the selection it was building. The Canvas `onPointerMissed` path reads
+// the live refs instead; both must feed the identical predicate so the two clear
+// paths cannot drift.
 let lastClickStationaryPrimary = false
 let lastClickBandDragging = false
 
