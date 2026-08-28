@@ -847,7 +847,7 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().setDragSnap({ kind: 'vertex', constraintKind: 'coincident', vertexId: 'vertex:S0:L1:start', position: [3, 4] })
       useSketchEditorStore.getState().setIsPointerDown(true)
       useSketchEditorStore.getState().setIsRotating(true)
-      useSketchEditorStore.getState().setAlignmentSnap([1, 2], 'kinda_horizontal', 'vertex:S0:L2:end')
+      useSketchEditorStore.getState().setAlignmentSnap([1, 2], 'kinda_horizontal')
 
       useSketchEditorStore.getState().setActiveFeatureId('S1')
 
@@ -860,7 +860,6 @@ describe('sketchEditorStore', () => {
       expect(s.isRotating).toBe(false)
       expect(s.alignmentSnapPoint).toBeNull()
       expect(s.alignmentSnapKind).toBeNull()
-      expect(s.alignmentSnapVertexId).toBeNull()
     })
   })
 

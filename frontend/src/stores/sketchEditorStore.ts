@@ -307,12 +307,11 @@ interface SketchEditorState {
   dragSnap: SnapTarget | null
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
-  alignmentSnapVertexId: string | null
   setDrag: (drag: DragState | null) => void
   setDragStartClient: (pos: [number, number] | null) => void
   setDragPending: (pending: DragPendingState | null) => void
   setDragSnap: (snap: SnapTarget | null) => void
-  setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null, vertexId: string | null) => void
+  setAlignmentSnap: (point: [number, number] | null, kind: 'kinda_horizontal' | 'kinda_vertical' | null) => void
   // Drops a live drag gesture (sketch vertex/edge, dimension label, or feature
   // handle) and its pointer/alignment residue WITHOUT touching the doc: used
   // where the doc is already being replaced (undo), so a pointer-up that
@@ -474,7 +473,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   isPointerDown: false,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
-  alignmentSnapVertexId: null,
   drag: null,
   dragStartClient: null,
   dragPending: null,
@@ -671,7 +669,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       }
     }),
 
-  setAlignmentSnap: (point, kind, vertexId) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind, alignmentSnapVertexId: vertexId }),
+  setAlignmentSnap: (point, kind) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind }),
 
   setDrag: (drag) => set({ drag }),
   setDragStartClient: (pos) => set({ dragStartClient: pos }),
@@ -685,7 +683,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     dragSnap: null,
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
-    alignmentSnapVertexId: null,
     isPointerDown: false,
     isRotating: false,
   }),

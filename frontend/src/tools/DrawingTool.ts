@@ -25,8 +25,7 @@ export interface DrawingToolContext extends ToolContext {
   hoveredSourceKind?: string | null
   hoveredFaceEdges?: { source: string; kind: string }[] | null
   alignmentSnapPoint: Point | null
-  alignmentSnapKind: string | null
-  alignmentSnapVertexId: string | null
+  alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
   setDrawSnap: (vertexId: string | null) => void
   sketch?: Record<string, Entity>
   otherSketches?: Record<string, Record<string, Entity>>
@@ -60,7 +59,6 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         drawSnapVertexId: context.drawSnapVertexId,
         alignmentSnapPoint: context.alignmentSnapPoint,
         alignmentSnapKind: context.alignmentSnapKind,
-        alignmentSnapVertexId: context.alignmentSnapVertexId,
         ngonSides: context.ngonSides,
       }
 

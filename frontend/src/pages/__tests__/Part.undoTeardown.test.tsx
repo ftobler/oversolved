@@ -54,7 +54,6 @@ describe('Part - undo tears down transient editor state', () => {
       isRotating: false,
       alignmentSnapPoint: null,
       alignmentSnapKind: null,
-      alignmentSnapVertexId: null,
     })
   })
 
@@ -164,7 +163,6 @@ describe('Part - undo tears down transient editor state', () => {
         isRotating: true,
         alignmentSnapPoint: [1, 1],
         alignmentSnapKind: 'kinda_horizontal',
-        alignmentSnapVertexId: 'v2',
       })
     })
 
@@ -179,7 +177,6 @@ describe('Part - undo tears down transient editor state', () => {
     expect(sketchStore.isRotating).toBe(false)
     expect(sketchStore.alignmentSnapPoint).toBeNull()
     expect(sketchStore.alignmentSnapKind).toBeNull()
-    expect(sketchStore.alignmentSnapVertexId).toBeNull()
   })
 
   // Hover state lives outside every action the teardown used to hand-list:

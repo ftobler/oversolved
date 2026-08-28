@@ -7,7 +7,6 @@ import { p2w } from '@/utils/geometry/sketchHelpers'
 interface DrawAlignmentResult {
   kind: 'kinda_horizontal' | 'kinda_vertical'
   point: [number, number]
-  vertexId: 'draw:last'
 }
 
 export function isAlignmentSnap(
@@ -42,7 +41,9 @@ export function detectDrawAlignment(
   const dy = currentPosition[1] - drawLastPoint[1]
   const kind = isAlignmentSnap(dx, dy, normalToleranceWorld)
   if (!kind) return null
-  return { kind, point: drawLastPoint, vertexId: 'draw:last' }
+  // No vertex id: the reference IS the segment's own start, so the constraint
+  // this snap authors names the line, not a second point.
+  return { kind, point: drawLastPoint }
 }
 
 /**
@@ -59,16 +60,16 @@ export function useAlignmentSnapEffect(
 
   useEffect(() => {
     if (!currentPosition || !drawLastPoint) {
-      setAlignmentSnap(null, null, null)
+      setAlignmentSnap(null, null)
       return
     }
 
     const normalToleranceWorld = ALIGNMENT_TOLERANCE_DIST * p2w(camera)
     const alignment = detectDrawAlignment(currentPosition, drawLastPoint, normalToleranceWorld)
     if (alignment) {
-      setAlignmentSnap(alignment.point, alignment.kind, alignment.vertexId)
+      setAlignmentSnap(alignment.point, alignment.kind)
     } else {
-      setAlignmentSnap(null, null, null)
+      setAlignmentSnap(null, null)
     }
   }, [currentPosition, drawLastPoint, setAlignmentSnap, camera])
 }

@@ -57,7 +57,6 @@ const emptySnap = (): DrawSnapState => ({
   drawSnapVertexId: null,
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
-  alignmentSnapVertexId: null,
 })
 
 let idCounter = 0

@@ -14,7 +14,6 @@ describe('detectDrawAlignment', () => {
     const result = detectDrawAlignment([5, 0.1], LAST, TOL)
     expect(result?.kind).toBe('kinda_horizontal')
     expect(result?.point).toEqual(LAST)
-    expect(result?.vertexId).toBe('draw:last')
   })
 
   it('returns kinda_horizontal for a nearly horizontal cursor (small negative dy)', () => {

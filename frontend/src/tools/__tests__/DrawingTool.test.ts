@@ -26,7 +26,6 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     setActiveTool: vi.fn(),
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
-    alignmentSnapVertexId: null,
     setDrawSnap: vi.fn(),
     ngonSides: 6,
     ...overrides,
@@ -56,6 +55,9 @@ describe('DrawingTool', () => {
         featureId: 'S1',
         kind: 'line',
         params: expect.any(Array),
+        // Every segment is named, so the next click can constrain its start to
+        // this one's end vertex.
+        entityId: expect.any(String),
       })
       // The chain continues: the draw is not cleared and the tool stays armed.
       expect(clearDraw).not.toHaveBeenCalled()
@@ -342,6 +344,9 @@ describe('DrawingTool', () => {
         featureId: 'S1',
         kind: 'line',
         params: expect.any(Array),
+        // Every segment is named, so the next click can constrain its start to
+        // this one's end vertex.
+        entityId: expect.any(String),
       })
     })
   })

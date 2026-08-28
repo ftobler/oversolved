@@ -8,7 +8,6 @@ describe('alignment snap for draw tool', () => {
     useSketchEditorStore.setState({
       alignmentSnapPoint: null,
       alignmentSnapKind: null,
-      alignmentSnapVertexId: null,
       drawPoints: [],
     })
   })
@@ -93,12 +92,13 @@ describe('alignment snap for draw tool', () => {
   describe('detectDrawAlignment', () => {
     const TOL = 20
 
-    it('wraps isAlignmentSnap into a result with point and vertexId', () => {
+    it('wraps isAlignmentSnap into a result carrying only kind and reference point', () => {
+      // No vertex id: the reference is the segment's own start, so this snap
+      // names a line to make axis-aligned, never a second point to merge with.
       const result = detectDrawAlignment([60, 20], [10, 20], TOL)
       expect(result).toEqual({
         kind: 'kinda_horizontal',
         point: [10, 20],
-        vertexId: 'draw:last',
       })
     })
 
@@ -111,23 +111,21 @@ describe('alignment snap for draw tool', () => {
   describe('store alignment snap state', () => {
     it('setAlignmentSnap updates store state', () => {
       const setAlignmentSnap = useSketchEditorStore.getState().setAlignmentSnap
-      setAlignmentSnap([0, 0], 'kinda_horizontal', 'draw:last')
+      setAlignmentSnap([0, 0], 'kinda_horizontal')
 
       const state = useSketchEditorStore.getState()
       expect(state.alignmentSnapPoint).toEqual([0, 0])
       expect(state.alignmentSnapKind).toBe('kinda_horizontal')
-      expect(state.alignmentSnapVertexId).toBe('draw:last')
     })
 
     it('clear alignment snap by setting to null', () => {
       const setAlignmentSnap = useSketchEditorStore.getState().setAlignmentSnap
-      setAlignmentSnap([0, 0], 'kinda_horizontal', 'draw:last')
-      setAlignmentSnap(null, null, null)
+      setAlignmentSnap([0, 0], 'kinda_horizontal')
+      setAlignmentSnap(null, null)
 
       const state = useSketchEditorStore.getState()
       expect(state.alignmentSnapPoint).toBeNull()
       expect(state.alignmentSnapKind).toBeNull()
-      expect(state.alignmentSnapVertexId).toBeNull()
     })
   })
 })

@@ -250,7 +250,6 @@ describe('ToolRegistry', () => {
         setActiveTool: vi.fn(),
         alignmentSnapPoint: null,
         alignmentSnapKind: null,
-        alignmentSnapVertexId: null,
         setDrawSnap: vi.fn(),
         setDrawPoints,
       }
@@ -287,7 +286,6 @@ describe('ToolRegistry', () => {
         setActiveTool: vi.fn(),
         alignmentSnapPoint: null as [number, number] | null,
         alignmentSnapKind: null,
-        alignmentSnapVertexId: null,
         setDrawSnap: vi.fn(),
       }
       registry.get('rect')!.handlers.onPointerDown!({} as PointerEvent, [5, 6], context)
@@ -324,7 +322,6 @@ describe('ToolRegistry', () => {
         setActiveTool: vi.fn(),
         alignmentSnapPoint: null as [number, number] | null,
         alignmentSnapKind: null,
-        alignmentSnapVertexId: null,
         setDrawSnap: vi.fn(),
       }
       registry.get('center_rect')!.handlers.onPointerDown!({} as PointerEvent, [3, 4], context)

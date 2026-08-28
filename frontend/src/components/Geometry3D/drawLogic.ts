@@ -25,8 +25,9 @@ export interface DrawSnapState {
   hoveredFaceEdges?: { source: string; kind: string }[] | null
   drawSnapVertexId: string | null
   alignmentSnapPoint: [number, number] | null
-  alignmentSnapKind: string | null
-  alignmentSnapVertexId: string | null
+  // An alignment snap is measured against the last draw point, i.e. the segment's
+  // own start. It names no second vertex, which is why there is no id here.
+  alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
   // Side count for the two-click n-gon tool. Defaults to 6 when absent.
   ngonSides?: number
 }
@@ -50,25 +51,39 @@ export interface DrawClickResult {
 // the line tool to detect a closing click on the open polyline endpoint.
 const SNAP_EPS = 1e-6
 
-/** Resolve the actual end-vertex id the click snapped to, mirroring the signal
- *  resolveSnapPoint consumed rather than a separate, sometimes-stale, hover
- *  gate. Alignment snaps win, then a vertex-hover whose resolved point equals
- *  the click, then the legacy hoveredVertexId/hoveredSnapKind pair. */
-function resolveEndSnapVertexId(
-  snap: DrawSnapState,
-  px: number,
-  py: number,
-): string | null {
-  if (snap.alignmentSnapPoint && snap.alignmentSnapKind && snap.alignmentSnapVertexId) {
-    return snap.alignmentSnapVertexId
+/** What the snap under a segment's end click asks the document to record.
+ *
+ *  The two snaps that can resolve one click are not the same kind of statement
+ *  and must not collapse into one. Landing on an existing vertex says "these two
+ *  points are the same point": a coincident between a point pair. An alignment
+ *  snap says "this segment runs along an axis"; it is measured against the last
+ *  draw point, which is the segment's OWN start, so it constrains the line and
+ *  names no second vertex at all. Treating the alignment case as a vertex snap
+ *  is what used to author `coincident` against the alignment reference. */
+type EndSnap =
+  | { kind: 'coincident'; vertexId: string }
+  | { kind: 'horizontal' | 'vertical' }
+
+/** Resolve the end snap from the same signals resolveSnapPoint consumed, rather
+ *  than from a separate, sometimes-stale, hover gate. Alignment wins (it is what
+ *  moved the point), then a vertex-hover whose resolved point equals the click,
+ *  then the legacy hoveredVertexId/hoveredSnapKind pair. */
+function resolveEndSnap(snap: DrawSnapState, px: number, py: number): EndSnap | null {
+  if (snap.alignmentSnapPoint && snap.alignmentSnapKind) {
+    const kind = suggestConstraint('vertex', snap.alignmentSnapKind)
+    // The registry owns the snap -> constraint mapping; anything but the two
+    // axis constraints means an alignment kind grew a meaning this branch does
+    // not implement, and authoring a guess would poison the sketch.
+    if (kind === 'horizontal' || kind === 'vertical') return { kind }
+    return null
   }
   if (snap.hoveredVertexPosition &&
       Math.abs(px - snap.hoveredVertexPosition[0]) < SNAP_EPS &&
       Math.abs(py - snap.hoveredVertexPosition[1]) < SNAP_EPS) {
-    return snap.hoveredVertexId
+    return snap.hoveredVertexId ? { kind: 'coincident', vertexId: snap.hoveredVertexId } : null
   }
   if (snap.hoveredVertexId && snap.hoveredSnapKind) {
-    return snap.hoveredVertexId
+    return { kind: 'coincident', vertexId: snap.hoveredVertexId }
   }
   return null
 }
@@ -135,7 +150,10 @@ export function computeDrawClick(
     }
 
     // A polyline closes when the click lands back on the first vertex; the rest
-    // of the chain then becomes a single closed loop.
+    // of the chain then becomes a single closed loop. Closing decides the
+    // segment's endpoint and ends the gesture, nothing more: the constraints
+    // below are authored on the same path as any other segment, because a
+    // closing click snaps to an old point exactly like every other click does.
     const startPoint = pts[0]
     const closesChain = pts.length >= 2 &&
       Math.abs(px - startPoint[0]) < SNAP_EPS &&
@@ -144,49 +162,54 @@ export function computeDrawClick(
     const lineId = newEntityIdFn()
     const mutations: Mutation[] = []
     const startVertexId = snap.drawSnapVertexId
-    const hasStartSnap = !!startVertexId
-    // The end snaps when the resolved click coincides with an existing vertex.
-    const endVertexId = resolveEndSnapVertexId(snap, px, py)
-    const hasEndSnap = !!endVertexId
-    // Both ends on the SAME vertex make a zero-length line: drop the constraint
+    const endSnap = resolveEndSnap(snap, px, py)
+    const endVertexId = endSnap?.kind === 'coincident' ? endSnap.vertexId : null
+    // Both ends on the SAME vertex make a zero-length line: drop the constraints
     // and fall back to a free line so the kernel does not silently discard it.
-    const sameVertex = hasStartSnap && hasEndSnap && startVertexId === endVertexId
+    const sameVertex = !!startVertexId && startVertexId === endVertexId
+
+    const segStart = pts[pts.length - 1]
+    // Take the closing endpoint from the chain's own first point rather than the
+    // resolved click, so a loop closes on the exact coordinate it opened at.
+    const segEnd = closesChain ? startPoint : [px, py]
+    const params = [segStart[0], segStart[1], segEnd[0], segEnd[1]]
+
+    if (startVertexId && !sameVertex) {
+      mutations.push({ type: 'add_entity_with_constraint', featureId, kind: 'line',
+        params, vertexKey: 'start',
+        snapVertexId: startVertexId, constraintKind: 'coincident', entityId: lineId })
+    } else {
+      mutations.push({ type: 'add_entity', featureId, kind: 'line', params, entityId: lineId })
+    }
+
+    if (endSnap && !sameVertex) {
+      if (endSnap.kind === 'coincident') {
+        mutations.push({ type: 'add_constraint', featureId, kind: 'coincident',
+          targets: [`vertex:${featureId}:${lineId}:end`, endSnap.vertexId] })
+      } else {
+        // An axis alignment describes the whole segment, so it takes the
+        // single-target form of horizontal/vertical, not a point pair.
+        mutations.push({ type: 'add_constraint', featureId, kind: endSnap.kind,
+          targets: [`entity:${featureId}:${lineId}`] })
+      }
+    }
 
     if (closesChain) {
-      const last = pts[pts.length - 1]
-      mutations.push({ type: 'add_entity', featureId, kind: 'line',
-        params: [last[0], last[1], startPoint[0], startPoint[1]] })
       return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
     }
 
-    const segStart = pts[pts.length - 1]
-    if ((hasStartSnap || hasEndSnap) && !sameVertex) {
-      if (startVertexId) {
-        mutations.push({ type: 'add_entity_with_constraint', featureId, kind: 'line',
-          params: [segStart[0], segStart[1], px, py], vertexKey: 'start',
-          snapVertexId: startVertexId, constraintKind: 'coincident', entityId: lineId })
-      } else {
-        mutations.push({ type: 'add_entity', featureId, kind: 'line',
-          params: [segStart[0], segStart[1], px, py], entityId: lineId })
-      }
-
-      if (endVertexId) {
-        // hoveredSnapKind may be absent on a position-resolved end snap, so fall
-        // back to a coincident constraint rather than narrowing away the null.
-        const constraintKind = suggestConstraint('vertex', snap.hoveredSnapKind ?? 'vertex') ?? 'coincident'
-        mutations.push({ type: 'add_constraint', featureId, kind: constraintKind,
-          targets: [`vertex:${featureId}:${lineId}:end`, endVertexId] })
-      }
-    } else {
-      mutations.push({ type: 'add_entity', featureId, kind: 'line',
-        params: [segStart[0], segStart[1], px, py] })
-    }
-
     // Chain: the just-drawn endpoint becomes the next start. Seed the next
-    // segment's start snap from the vertex this endpoint landed on (if any),
-    // mirroring a fresh first click so continuation still snaps.
-    const nextDrawSnap = endVertexId ? { vertexId: endVertexId } : null
-    return { mutations, nextDrawPoints: [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]], nextDrawSnap, gestureComplete: false }
+    // segment from the vertex that endpoint IS -- the old point the next click
+    // will snap to -- so consecutive segments are joined by a real coincident
+    // instead of merely agreeing on coordinates. An end that landed on someone
+    // else's vertex hands that vertex over instead, so the chain continues from
+    // the point the user actually snapped to.
+    return {
+      mutations,
+      nextDrawPoints: [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]],
+      nextDrawSnap: { vertexId: endVertexId ?? `vertex:${featureId}:${lineId}:end` },
+      gestureComplete: false,
+    }
   }
 
   if (t === 'circle') {

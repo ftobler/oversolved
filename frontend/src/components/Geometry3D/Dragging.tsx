@@ -163,7 +163,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
       )
 
       setDragSnap(result.snapTarget)
-      setAlignmentSnap(null, null, null)
+      setAlignmentSnap(null, null)
     }
 
     // Use raw localPoint for ALL drag types so vertex and edge drags
