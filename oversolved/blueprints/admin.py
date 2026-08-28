@@ -15,8 +15,12 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, DocumentStore, PeriodicTaskStore, SessionStore, UserStore
 from flask import g
-from oversolved.blueprints import auth_required, get_db, validate_password_strength, api_error
+from oversolved.auth import AuthOk, authenticate_token
+from oversolved.blueprints import (
+    auth_required, get_db, require_csrf, require_json, validate_password_strength, api_error,
+)
 from oversolved.blueprints.documents import decode_png
+from oversolved.rate_limit import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -403,10 +407,37 @@ def import_backup() -> ResponseReturnValue:
 
 # ─── Bug Report ───
 
+# The header's bug button sits on every page for every visitor, signed-out
+# guests included: 27e88e8c promoted the reporter out of the admin-gated F2
+# drawer precisely because "any user hits bugs". The endpoint kept the admin
+# gate it had inside that drawer, so the button answered 401 to everyone it was
+# promoted for. Auth is optional here on purpose; what bounds the abuse an open
+# endpoint invites is the same-origin CSRF check plus an IP rate limit, because
+# every accepted report writes a file to disk.
+_BUG_REPORT_RATE_LIMIT = 5
+_BUG_REPORT_RATE_WINDOW = 600
+
+_bug_report_limiter = RateLimiter(
+    window_s=_BUG_REPORT_RATE_WINDOW, max_events=_BUG_REPORT_RATE_LIMIT
+)
+
+
+def _reporter_label() -> str:
+    """Name the submitter in the report file, without requiring a session."""
+    result = authenticate_token(get_db(), request.cookies.get("session_token"))
+    if isinstance(result, AuthOk):
+        return f"{result.user['username']} <{result.user.get('email') or 'no email'}>"
+    return "guest (not signed in)"
+
 
 @admin_bp.route("/api/bug-report", methods=["POST"])
-@auth_required(admin=True, json=True)
+@require_csrf
+@require_json
 def submit_bug_report() -> ResponseReturnValue:
+    client_ip = request.remote_addr or "unknown"
+    if _bug_report_limiter.is_exceeded(client_ip):
+        return api_error("Too many bug reports, please try again later", "RATE_LIMITED", 429)
+
     data = request.get_json()
     if not data:
         return api_error("Empty request body", "BAD_REQUEST", 400)
@@ -440,6 +471,8 @@ def submit_bug_report() -> ResponseReturnValue:
 
     markdown = f"""# Bug Report: {title}
 
+*Reported by {_reporter_label()}*
+
 ## Description
 
 {description}
@@ -469,6 +502,9 @@ def submit_bug_report() -> ResponseReturnValue:
 
     try:
         filepath.write_text(markdown, encoding="utf-8")
-        return jsonify({"status": "saved", "filename": filename}), 201
     except Exception as e:
         return api_error(f"Failed to save report: {e}", "INTERNAL_SERVER_ERROR", 500)
+    # Only a report that reached the disk counts against the limit; a rejected
+    # body costs nothing to serve and must not lock a real reporter out.
+    _bug_report_limiter.record(client_ip)
+    return jsonify({"status": "saved", "filename": filename}), 201

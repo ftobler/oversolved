@@ -188,10 +188,13 @@ All routes require an admin session (plus CSRF on writes).
 
 ## Bug reports: `/api/bug-report`
 
-- `POST /api/bug-report` - admin only, JSON body. Required `title`; optional
-  `description`, `ast`, `selection`, `history`. Writes a markdown report into
-  the repository-level `bugreports/` directory and returns 201
-  `{status: "saved", filename}`.
+- `POST /api/bug-report` - no session required, JSON body. The reporter is a
+  header button on every page, so a signed-out guest may submit; the report
+  records who sent it. Same-origin CSRF applies and an IP rate limit of 5
+  saved reports per 10 minutes returns 429 `RATE_LIMITED` beyond that.
+  Required `title`; optional `description`, `ast`, `selection`, `history`.
+  Writes a markdown report into the repository-level `bugreports/` directory
+  and returns 201 `{status: "saved", filename}`.
 
 ## Static frontend serving
 
