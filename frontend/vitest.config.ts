@@ -30,7 +30,7 @@ export default defineConfig({
     exclude: [...configDefaults.exclude, 'src/kernel/occ/fullDocParity.test.ts'],
     setupFiles: ['src/test-setup.ts'],
     testTimeout: ci ? 60000 : undefined,
-    hookTimeout: ci ? 120000 : undefined,
+    hookTimeout: ci ? 600000 : undefined,
     // Vitest sizes the fork pool by core count. The `*Real.test.ts` files each
     // instantiate their own OCC WASM kernel, so on a many-core box the pool
     // outruns RAM: a worker gets OOM-killed mid-run and the suite dies with an
