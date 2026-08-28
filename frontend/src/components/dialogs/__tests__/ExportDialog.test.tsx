@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import ExportDialog from '@/components/dialogs/ExportDialog'
+import { backdropClick } from '@/components/dialogs/__tests__/backdropGesture'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -152,7 +153,7 @@ describe('ExportDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     await screen.findByRole('button', { name: /Generating/ })
 
-    fireEvent.click(container.querySelector('.dialog-component-overlay') as Element)
+    backdropClick(container.querySelector('.dialog-component-overlay') as Element)
     expect(onCancel).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -160,7 +161,7 @@ describe('ExportDialog', () => {
       await gate.promise
     })
 
-    fireEvent.click(container.querySelector('.dialog-component-overlay') as Element)
+    backdropClick(container.querySelector('.dialog-component-overlay') as Element)
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 

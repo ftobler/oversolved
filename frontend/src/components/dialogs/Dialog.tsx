@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ReactNode } from 'react'
+import type { PointerEvent, ReactNode } from 'react'
 import { acquireModalEscape } from '@/utils/core/modalEscape'
 
 interface DialogProps {
@@ -36,6 +36,8 @@ export default function Dialog({
   autoFocusConfirm = false,
 }: DialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const pressedBackdropRef = useRef(false)
+  const releasedBackdropRef = useRef(false)
 
   // `busy` seals every exit: an operation already handed to a worker cannot be
   // recalled, so a close would only desync the caller's state. The owner still
@@ -73,8 +75,33 @@ export default function Dialog({
     if (!busy) onClose()
   }
 
+  // A backdrop dismiss has to be a click ON the backdrop, and `click` alone
+  // does not say that: the browser fires it at the nearest common ancestor of
+  // press and release, so selecting text in a field and releasing past the
+  // dialog edge targets the overlay and used to throw the dialog away mid-edit.
+  // Both ends of the gesture must therefore land on the backdrop itself. The
+  // latches are refs, not state: they steer the event that follows them in the
+  // same gesture and must never schedule a render.
+  const handleOverlayPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    pressedBackdropRef.current = e.target === e.currentTarget
+  }
+  const handleOverlayPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    releasedBackdropRef.current = e.target === e.currentTarget
+  }
+  const handleOverlayClick = () => {
+    const dismiss = pressedBackdropRef.current && releasedBackdropRef.current
+    pressedBackdropRef.current = false
+    releasedBackdropRef.current = false
+    if (dismiss) handleClose()
+  }
+
   return (
-    <div className="dialog-component-overlay" onClick={handleClose}>
+    <div
+      className="dialog-component-overlay"
+      onPointerDown={handleOverlayPointerDown}
+      onPointerUp={handleOverlayPointerUp}
+      onClick={handleOverlayClick}
+    >
       <div
         className={`dialog-component${className ? ` ${className}` : ''}`}
         onClick={e => e.stopPropagation()}

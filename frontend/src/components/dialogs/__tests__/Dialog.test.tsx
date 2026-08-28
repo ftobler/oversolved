@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import Dialog from '@/components/dialogs/Dialog'
+import { backdropClick } from '@/components/dialogs/__tests__/backdropGesture'
 
 describe('Dialog', () => {
   it('renders when isOpen is true', () => {
@@ -30,7 +31,59 @@ describe('Dialog', () => {
       </Dialog>
     )
     const overlay = container.querySelector('.dialog-component-overlay')
-    fireEvent.click(overlay!)
+    backdropClick(overlay!)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays open when a drag that started inside is released on the overlay', () => {
+    // The reported bug: selecting text in a field and letting go past the
+    // dialog edge fires `click` on the overlay, which used to discard the form.
+    const onClose = vi.fn()
+    const { container } = render(
+      <Dialog isOpen title="Test Dialog" onClose={onClose}>
+        <input aria-label="Title" defaultValue="half typed" />
+      </Dialog>
+    )
+    const overlay = container.querySelector('.dialog-component-overlay')!
+
+    fireEvent.pointerDown(screen.getByLabelText('Title'))
+    fireEvent.pointerUp(overlay)
+    fireEvent.click(overlay)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('stays open when a drag that started on the overlay is released inside', () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <Dialog isOpen title="Test Dialog" onClose={onClose}>
+        <p>Dialog content</p>
+      </Dialog>
+    )
+    const overlay = container.querySelector('.dialog-component-overlay')!
+
+    fireEvent.pointerDown(overlay)
+    fireEvent.pointerUp(screen.getByText('Dialog content'))
+    fireEvent.click(overlay)
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('does not carry a refused gesture over into the next backdrop click', () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <Dialog isOpen title="Test Dialog" onClose={onClose}>
+        <p>Dialog content</p>
+      </Dialog>
+    )
+    const overlay = container.querySelector('.dialog-component-overlay')!
+
+    fireEvent.pointerDown(screen.getByText('Dialog content'))
+    fireEvent.pointerUp(overlay)
+    fireEvent.click(overlay)
+    expect(onClose).not.toHaveBeenCalled()
+
+    backdropClick(overlay)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
@@ -73,7 +126,7 @@ describe('Dialog', () => {
       </Dialog>
     )
 
-    fireEvent.click(container.querySelector('.dialog-component-overlay')!)
+    backdropClick(container.querySelector('.dialog-component-overlay')!)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     fireEvent.click(screen.getByRole('button', { name: /close/i }))
     expect(onClose).not.toHaveBeenCalled()
