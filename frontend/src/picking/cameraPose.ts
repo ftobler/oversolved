@@ -30,6 +30,18 @@ export function snapshotCameraPose(camera: THREE.Camera): CameraPoseSnapshot {
   }
 }
 
+// Allocates the two-element pose buffer once; the per-frame path copies into it
+// in place (recordCameraPoseInto) so the camera-change check stops minting a
+// fresh 32 floats every frame.
+export function createCameraPose(): CameraPoseSnapshot {
+  return { matrixWorld: new Float32Array(ELEMENTS), projectionMatrix: new Float32Array(ELEMENTS) }
+}
+
+export function recordCameraPoseInto(prev: CameraPoseSnapshot, camera: THREE.Camera): void {
+  prev.matrixWorld.set(camera.matrixWorld.elements)
+  prev.projectionMatrix.set(camera.projectionMatrix.elements)
+}
+
 /**
  * True when either matrix moved since `prev` was captured. A null prev (first
  * frame) counts as unchanged: mounting the driver must not itself dirty the

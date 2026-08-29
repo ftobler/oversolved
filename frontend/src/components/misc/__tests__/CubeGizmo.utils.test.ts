@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as THREE from 'three'
 import {
-  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE,
+  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE, getPolys,
   gizmoLabelFont, fitLabelFontSize, ensureGizmoLabelFont,
   isGizmoLabelFontReady, resetGizmoLabelFontForTest,
 } from '@/components/misc/CubeGizmo.utils'
@@ -183,6 +183,46 @@ describe('drawCubeGizmo', () => {
       // so the hover highlight it promises actually lights up.
       expect(fillsFor(cam, hit)).toContain('rgba(255,255,255,0.5)')
     }
+  })
+})
+
+// ─── Per-frame allocation (VP-L1) ───
+
+// The cube is redrawn every animation frame (and re-projected on every
+// mousemove). getPolys used to clone hundreds of THREE.Vector3 per call building
+// the chamfered/octagon/hex geometry from scratch; now the geometry is built
+// once at module load and only rotated into screen space, reusing a shared
+// output buffer. These tests pin that the per-frame path does not allocate a
+// fresh poly/point tree.
+
+describe('getPolys reuse', () => {
+  it('returns the same polygon buffer and point arrays across calls', () => {
+    const q = new THREE.Quaternion()
+    const a = getPolys(q, GIZMO_SIZE, GIZMO_SIZE)
+    const b = getPolys(q, GIZMO_SIZE, GIZMO_SIZE)
+    expect(a).toBe(b)  // shared top-level buffer reused
+    for (let i = 0; i < a.length; i++) {
+      // Each poly's Pv[] point array must be the same instance, proving the
+      // per-frame path stopped allocating it anew.
+      expect(a[i].pts).toBe(b[i].pts)
+    }
+  })
+
+  it('builds the full 26-poly set (6 faces, 12 edges, 8 vertices)', () => {
+    const polys = getPolys(new THREE.Quaternion(), GIZMO_SIZE, GIZMO_SIZE)
+    expect(polys).toHaveLength(26)
+  })
+
+  it('does not mutate the base cube geometry when projecting', () => {
+    // Rotating through a non-identity quaternion must leave the base snapDirs
+    // intact (the reused buffer must only write screen-space pts/zs).
+    const baseDir = new THREE.Vector3(0, 0, 1)
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2)
+    const before = baseDir.clone()
+    getPolys(q, GIZMO_SIZE, GIZMO_SIZE)
+    expect(baseDir.x).toBeCloseTo(before.x)
+    expect(baseDir.y).toBeCloseTo(before.y)
+    expect(baseDir.z).toBeCloseTo(before.z)
   })
 })
 

@@ -198,32 +198,44 @@ function pointInPoly(px: number, py: number, poly: Pv[]): boolean {
   return inside
 }
 
-function project(v: THREE.Vector3, q: THREE.Quaternion, cx: number, cy: number, s: number): Pv {
-  const t = v.clone().applyQuaternion(q)
-  return { sx: cx + t.x * s, sy: cy - t.y * s, z: t.z }
+// Reused across every getPolys call (per frame via drawCubeGizmo, plus per
+// mousemove via computeGizmoHit). The cube geometry is fixed, so its chamfered
+// octagons / edge quads / vertex hexes are built once in cube-local space below
+// and only rotated + projected into screen space here, never re-cloned.
+const _rotVec = new THREE.Vector3()
+const _projVec = new THREE.Vector3()
+const _projQuat = new THREE.Quaternion()
+const _labelX = new THREE.Vector3()
+const _labelY = new THREE.Vector3()
+
+type BasePoly = {
+  type: 'face' | 'edge' | 'vertex'
+  index: number
+  pts: THREE.Vector3[]
+  normal: THREE.Vector3
+  snapDir: THREE.Vector3
+  fill: string
+  label?: string
+  axes?: { x: THREE.Vector3; y: THREE.Vector3 }
 }
 
-function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
-  const cx = W / 2, cy = H / 2, s = W * 0.27
-
-  // 1. Inset points for each face
+// Builds the cube polygons in cube-local coordinates. Everything here depends
+// only on the constant corner table and inset/chamfer ratios, so it runs once
+// at module load instead of hundreds of times per second.
+function buildBasePolys(): BasePoly[] {
   const faceInsetPoints = CUBE_FACES.map(f => {
-    const center = f.normal.clone()
+    const center = f.normal
     return f.verts.map(vi => {
-      const v = CV[vi].clone()
-      return v.add(center.clone().sub(v).multiplyScalar(BEVEL_INSET))
+      const v = CV[vi]
+      return v.clone().add(center.clone().sub(v).multiplyScalar(BEVEL_INSET))
     })
   })
 
-  const polys: GizmoPoly[] = []
+  const polys: BasePoly[] = []
 
-  // Faces (chamfered, each corner cut to form an octagon)
   CUBE_FACES.forEach((f, fi) => {
-    const center = f.normal.clone()
-    const raw = faceInsetPoints[fi].map(p => {
-      return p.clone().add(center.clone().sub(p).multiplyScalar(EXTRA_INSET))
-    })
-    // Build 8-point polygon: on each edge place two points inset from the ends
+    const center = f.normal
+    const raw = faceInsetPoints[fi].map(p => p.clone().add(center.clone().sub(p).multiplyScalar(EXTRA_INSET)))
     const chamfered: THREE.Vector3[] = []
     const n = raw.length
     for (let i = 0; i < n; i++) {
@@ -232,22 +244,18 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
       chamfered.push(a.clone().lerp(b, CHAMFER))
       chamfered.push(b.clone().lerp(a, CHAMFER))
     }
-    const pts = chamfered.map(p => project(p, q, cx, cy, s))
-    const nz = f.normal.clone().applyQuaternion(q).z
     polys.push({
       type: 'face',
       index: fi,
-      pts,
-      cz: pts.reduce((sum, p) => sum + p.z, 0) / pts.length,
-      nz,
+      pts: chamfered,
+      normal: f.normal.clone(),
       snapDir: f.normal.clone(),
       fill: COLOR_FACE,
       label: f.label,
-      axes: FACE_AXES[fi]
+      axes: FACE_AXES[fi],
     })
   })
 
-  // Edges
   CUBE_EDGES.forEach(([v1, v2], ei) => {
     const adjFaces = CUBE_FACES.map((f, i) => ({ f, i })).filter(x => x.f.verts.includes(v1) && x.f.verts.includes(v2))
     if (adjFaces.length !== 2) return
@@ -258,7 +266,6 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
     const p1_v2 = faceInsetPoints[f1][CUBE_FACES[f1].verts.indexOf(v2)]
     const p1_v1 = faceInsetPoints[f1][CUBE_FACES[f1].verts.indexOf(v1)]
 
-    // Trim to chamfer boundary so edge meets the face octagon exactly
     const chamfered = [
       p0_v1.clone().lerp(p0_v2, CHAMFER),
       p0_v2.clone().lerp(p0_v1, CHAMFER),
@@ -266,26 +273,12 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
       p1_v1.clone().lerp(p1_v2, CHAMFER),
     ]
     const edgeCenter = chamfered[0].clone().add(chamfered[1]).add(chamfered[2]).add(chamfered[3]).multiplyScalar(0.25)
-
-    const pts = chamfered.map(p => {
-      const p2 = p.clone().add(edgeCenter.clone().sub(p).multiplyScalar(EXTRA_INSET))
-      return project(p2, q, cx, cy, s)
-    })
+    const pts = chamfered.map(p => p.clone().add(edgeCenter.clone().sub(p).multiplyScalar(EXTRA_INSET)))
     const normal = CV[v1].clone().add(CV[v2]).normalize()
-    const nz = normal.clone().applyQuaternion(q).z
 
-    polys.push({
-      type: 'edge',
-      index: ei,
-      pts,
-      cz: pts.reduce((sum, p) => sum + p.z, 0) / pts.length,
-      nz,
-      snapDir: normal,
-      fill: COLOR_EDGE
-    })
+    polys.push({ type: 'edge', index: ei, pts, normal, snapDir: normal, fill: COLOR_EDGE })
   })
 
-  // Vertices (hexagon meeting chamfered face corners)
   CV.forEach((v, vi) => {
     const adjFaces = CUBE_FACES.map((f, i) => ({ f, i })).filter(x => x.f.verts.includes(vi))
 
@@ -297,11 +290,10 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
       return {
         cpPrev: p_vi.clone().lerp(faceInsetPoints[face.i][(idx - 1 + 4) % 4], CHAMFER),
         cpNext: p_vi.clone().lerp(faceInsetPoints[face.i][(idx + 1) % 4], CHAMFER),
-        vPrev, vNext
+        vPrev, vNext,
       }
     })
 
-    // Order as a hexagon: for each adjacent-face pair, connect their chamfer points on the shared edge
     const hexPts: THREE.Vector3[] = []
     for (let i = 0; i < faceData.length; i++) {
       const d0 = faceData[i]
@@ -310,27 +302,65 @@ function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
       hexPts.push(d0.vPrev === sharedV ? d0.cpPrev : d0.cpNext)
       hexPts.push(d1.vPrev === sharedV ? d1.cpPrev : d1.cpNext)
     }
-    const pts = hexPts.map(p => project(p, q, cx, cy, s))
     const normal = v.clone().normalize()
-    const nz = normal.clone().applyQuaternion(q).z
-
-    polys.push({
-      type: 'vertex',
-      index: vi,
-      pts,
-      cz: pts.reduce((sum, p) => sum + p.z, 0) / pts.length,
-      nz,
-      snapDir: normal,
-      fill: COLOR_VERT
-    })
+    polys.push({ type: 'vertex', index: vi, pts: hexPts, normal, snapDir: normal, fill: COLOR_VERT })
   })
 
-  return polys.sort((a, b) => a.cz - b.cz)
+  return polys
+}
+
+const BASE_POLYS = buildBasePolys()
+
+// Screen-space output buffer, one GizmoPoly (with reused Pv[] pts) per base
+// poly. Reused across calls so the per-frame and per-mousemove paths stop
+// allocating a fresh poly/point tree sixty-odd times a second. getPolys is only
+// ever consumed synchronously (draw, then hit-test), so a shared buffer is safe.
+const POLY_BUFFER: GizmoPoly[] = BASE_POLYS.map(bp => ({
+  type: bp.type,
+  index: bp.index,
+  pts: bp.pts.map(() => ({ sx: 0, sy: 0, z: 0 })),
+  cz: 0,
+  nz: 0,
+  snapDir: bp.snapDir,
+  fill: bp.fill,
+  label: bp.label,
+  axes: bp.axes,
+}))
+
+const LEGACY_PV: Pv[] = CV.map(() => ({ sx: 0, sy: 0, z: 0 }))
+
+// View of POLY_BUFFER in depth-sorted order. Kept separate from POLY_BUFFER so
+// the per-frame sort reorders references here without disturbing the
+// BASE_POLYS[i] <-> POLY_BUFFER[i] alignment that getPolys writes by index.
+const SORTED_BUFFER: GizmoPoly[] = POLY_BUFFER.slice()
+
+export function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[] {
+  const cx = W / 2, cy = H / 2, s = W * 0.27
+
+  for (let i = 0; i < BASE_POLYS.length; i++) {
+    const bp = BASE_POLYS[i]
+    const out = POLY_BUFFER[i]
+    out.nz = _rotVec.copy(bp.normal).applyQuaternion(q).z
+    let czSum = 0
+    for (let j = 0; j < bp.pts.length; j++) {
+      _projVec.copy(bp.pts[j]).applyQuaternion(q)
+      const p = out.pts[j]
+      p.sx = cx + _projVec.x * s
+      p.sy = cy - _projVec.y * s
+      p.z = _projVec.z
+      czSum += p.z
+    }
+    out.cz = czSum / bp.pts.length
+  }
+
+  // Reorder the view buffer by depth each call; POLY_BUFFER stays aligned to
+  // BASE_POLYS so the next call can still write by index.
+  return SORTED_BUFFER.sort((a, b) => a.cz - b.cz)
 }
 
 export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE.Camera): Hit | null {
   const W = GIZMO_SIZE, H = GIZMO_SIZE
-  const q = camera.quaternion.clone().invert()
+  const q = _projQuat.copy(camera.quaternion).invert()
 
   const polys = getPolys(q, W, H)
   // Check from front to back
@@ -371,7 +401,7 @@ export function drawCubeGizmo(
   ctx.scale(dpr, dpr)
 
   const W = GIZMO_SIZE, H = GIZMO_SIZE
-  const q = camera.quaternion.clone().invert()
+  const q = _projQuat.copy(camera.quaternion).invert()
   const s = W * 0.27
   const polys = getPolys(q, W, H)
 
@@ -397,8 +427,8 @@ export function drawCubeGizmo(
       const fcx = poly.pts.reduce((sum, p) => sum + p.sx, 0) / poly.pts.length
       const fcy = poly.pts.reduce((sum, p) => sum + p.sy, 0) / poly.pts.length
 
-      const ux = poly.axes.x.clone().applyQuaternion(q)
-      const uy = poly.axes.y.clone().applyQuaternion(q)
+      const ux = _labelX.copy(poly.axes.x).applyQuaternion(q)
+      const uy = _labelY.copy(poly.axes.y).applyQuaternion(q)
 
       // We want the text to be flat. ux and uy are the projected basis vectors.
       // Canvas transform: [ m11 m12 m21 m22 dx dy ]
@@ -435,8 +465,16 @@ export function drawCubeGizmo(
 
   ctx.restore()
 
-  // Return original vertices for any other legacy use, though projectVerts might be better
+  // Return original vertices for any other legacy use; reused buffer so the
+  // per-frame call does not allocate a fresh 8-element Pv tree.
   const cx = W / 2, cy = H / 2
-  return CV.map(v => project(v, q, cx, cy, s))
+  for (let i = 0; i < CV.length; i++) {
+    _projVec.copy(CV[i]).applyQuaternion(q)
+    const p = LEGACY_PV[i]
+    p.sx = cx + _projVec.x * s
+    p.sy = cy - _projVec.y * s
+    p.z = _projVec.z
+  }
+  return LEGACY_PV
 }
 

@@ -3,7 +3,12 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
 import { useIdPipelineLifecycle } from './useIdPipelineLifecycle'
-import { cameraPoseChanged, snapshotCameraPose, type CameraPoseSnapshot } from './cameraPose'
+import { cameraPoseChanged, createCameraPose, recordCameraPoseInto, type CameraPoseSnapshot } from './cameraPose'
+
+// Reused across getRenderSize calls (per-frame resize poll). getDrawingBufferSize
+// only writes into the vector it is handed, so one module-scope instance avoids a
+// fresh allocation every frame.
+const RENDER_SIZE_SCRATCH = new THREE.Vector2()
 
 interface IdPickingDriverProps {
   // External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync.
@@ -12,7 +17,7 @@ interface IdPickingDriverProps {
 
 function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: number): { width: number; height: number } {
   if (typeof gl.getDrawingBufferSize === 'function') {
-    const db = gl.getDrawingBufferSize(new THREE.Vector2())
+    const db = gl.getDrawingBufferSize(RENDER_SIZE_SCRATCH)
     return { width: Math.max(1, Math.floor(db.x)), height: Math.max(1, Math.floor(db.y)) }
   }
   return {
@@ -102,8 +107,11 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     // when `pickDuringCameraMotion` is false (default) we additionally suppress
     // the actual render while the camera is moving, so the ID buffer settles
     // once after the camera stops.
+    if (!cs.lastCamPose) cs.lastCamPose = createCameraPose()
     const changed = cameraPoseChanged(cs.lastCamPose, camera)
-    cs.lastCamPose = snapshotCameraPose(camera)
+    // Copy the current pose in place: the reused buffer is what next frame's
+    // comparison reads, so no Float32Array is minted per frame.
+    recordCameraPoseInto(cs.lastCamPose, camera)
 
     if (changed) {
       // Capture whether the pipeline was already dirty from a geometry

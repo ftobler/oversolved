@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { cameraPoseChanged, snapshotCameraPose } from '../cameraPose'
+import { cameraPoseChanged, snapshotCameraPose, createCameraPose, recordCameraPoseInto } from '../cameraPose'
 
 // Both viewports mount Canvas orthographic, so the dolly-zoom regression this
 // guards lives entirely in projectionMatrix (zoom), never in matrixWorld.
@@ -55,5 +55,37 @@ describe('cameraPoseChanged', () => {
 
   it('treats the first frame (null snapshot) as unchanged', () => {
     expect(cameraPoseChanged(null, orthoCamera(1))).toBe(false)
+  })
+})
+
+// ─── Per-frame allocation (VP-L2) ───
+
+// IdPickingDriver's useFrame compares the camera pose every frame. The old path
+// called snapshotCameraPose (two fresh Float32Arrays) on each frame; now it
+// copies into a reused buffer (createCameraPose + recordCameraPoseInto) so the
+// camera-change check stops allocating 32 floats per frame.
+
+describe('camera pose reuse', () => {
+  it('reuses the same Float32Array instances across frames', () => {
+    const pose = createCameraPose()
+    const cam = orthoCamera(1)
+    recordCameraPoseInto(pose, cam)
+    const mw = pose.matrixWorld
+    const pm = pose.projectionMatrix
+
+    // Next frame writes in place; the buffers must be the same objects.
+    recordCameraPoseInto(pose, orthoCamera(2))
+    expect(pose.matrixWorld).toBe(mw)
+    expect(pose.projectionMatrix).toBe(pm)
+  })
+
+  it('still detects a change after in-place reuse', () => {
+    const pose = createCameraPose()
+    recordCameraPoseInto(pose, orthoCamera(1))
+    // Same value this frame: unchanged.
+    expect(cameraPoseChanged(pose, orthoCamera(1))).toBe(false)
+    recordCameraPoseInto(pose, orthoCamera(1))
+    // Zoom moved next frame: changed, proving the reused buffer is compared.
+    expect(cameraPoseChanged(pose, orthoCamera(4))).toBe(true)
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { canDuplicateDocument } from '@/pages/Documents'
+import { canDuplicateDocument } from '@/pages/documentsGuards'
 import type { DocSummary } from '@/stores/documentStore'
 
 // PS-L3: the duplicate action is server-gated on document ownership, so the
