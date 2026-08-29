@@ -81,6 +81,19 @@ export function useEditFeature({
     store.setRollbackPosition(docRef.current?.rollback ?? null)
   }, [docRef, clearPlaneSelection])
 
+  // A sketch edit owns the panel mode: enterEditSketch switches to Sketch mode,
+  // so every way back out switches to Feature mode. Otherwise the sketch
+  // toolbar stays up over a document with no sketch open, and the feature
+  // buttons the user needs next are behind a toggle they have to find.
+  // Keyed on the edit being CLOSED, and skipped when the edit replacing it is
+  // itself a sketch -- enterEditSketch already set the mode for that one.
+  const leaveSketchMode = useCallback((nextFeatureId: string | null) => {
+    const closing = usePartEditorStore.getState().editingFeatureId
+    if (!closing || !features.some(f => f.id === closing && f.kind === 'sketch')) return
+    if (nextFeatureId && features.some(f => f.id === nextFeatureId && f.kind === 'sketch')) return
+    setMode('feature')
+  }, [features, setMode])
+
   // One-open-editor discipline (the same rule assembly-session-hygiene enforces
   // for the assembly editor, `AssemblyEditor.tsx`'s closeOpenEditor): every
   // caller that asks to open a feature's edit session while a DIFFERENT one is
@@ -94,6 +107,9 @@ export function useEditFeature({
     const feature = features[idx]
     const activeEditingId = usePartEditorStore.getState().editingFeatureId
     if (activeEditingId !== null && activeEditingId !== featureId) {
+      // Switching straight from a sketch edit to another feature's leaves the
+      // sketch behind just as much as closing it does.
+      leaveSketchMode(featureId)
       commitEditSession()
       // activePickField can already be targeting the feature we are about to
       // open below (plane-on-face arms it on the newly-created sketch before
@@ -119,7 +135,7 @@ export function useEditFeature({
     store.setEditingFeatureId(featureId)
     setEditForcedVisible(new Set([featureId]))
     if (docRef.current) reSolve(docRef.current)
-  }, [features, builtInIds, startEditSession, commitEditSession, resetEditState, docRef, reSolve])
+  }, [features, builtInIds, startEditSession, commitEditSession, resetEditState, docRef, reSolve, leaveSketchMode])
 
   const _exitEditCleanup = useCallback(() => {
     resetEditState()
@@ -127,17 +143,19 @@ export function useEditFeature({
   }, [resetEditState, docRef, reSolve])
 
   const commitEditFeature = useCallback(() => {
+    leaveSketchMode(null)
     commitEditSession()
     _exitEditCleanup()
-  }, [commitEditSession, _exitEditCleanup])
+  }, [commitEditSession, _exitEditCleanup, leaveSketchMode])
 
   // Reset before cancelling: cancelEditSession re-solves the snapshot it
   // restores, and the edit-mode rollback/pick_boundary would truncate that
   // payload to the edited feature.
   const cancelEditFeature = useCallback(() => {
+    leaveSketchMode(null)
     resetEditState()
     cancelEditSession()
-  }, [cancelEditSession, resetEditState])
+  }, [cancelEditSession, resetEditState, leaveSketchMode])
 
   const exitEditFeature = useCallback(() => {
     commitEditFeature()
