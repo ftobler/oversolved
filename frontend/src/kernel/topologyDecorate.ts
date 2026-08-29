@@ -11,6 +11,7 @@
 
 import { makeAncestryQuery, emitWire, absolute, parseAncestry } from "./query"
 import { loopCentroid } from "./profileLoops"
+import { validateSketchArea } from "./profileDiagnostics"
 
 const EPS = 1e-9
 
@@ -129,6 +130,37 @@ export function decorateTopology(structural: StructuralTopology, featureId: stri
     vertices: structural.vertices,
     edges,
     surfaces,
+  }
+}
+
+/**
+ * Stamp each surface with whether it can actually become a profile, before
+ * anything advertises it. The viewport fills every surface and the picker offers
+ * every surface, so an area the loop chainer will drop reads to the user as
+ * extrudable right up to the moment the feature goes red.
+ *
+ * Kept OUT of `decorateTopology` on purpose: that function is pinned
+ * byte-for-byte against the frozen Python-parity golden (occ/__fixtures__/
+ * topology.json, key-exact), so a new TS-side decoration key belongs in its own
+ * pass on the way to the feature result. Cheap and conservative -- it runs in
+ * the solver worker where OCC is not loaded, so `buildable: true` means "nothing
+ * here is provably wrong", never "the kernel will accept it".
+ *
+ * Pure: returns a new dict, surfaces copied.
+ */
+export function stampAreaBuildability(topology: TopologyDict): TopologyDict {
+  return {
+    ...topology,
+    surfaces: topology.surfaces.map((s) => {
+      const validation = validateSketchArea(s)
+      const out: Geom = { ...s, buildable: validation.buildable }
+      // Both are stamped: the prose is what a human reads in the feature error,
+      // the code is what survives being persisted in `_topo_<fid>` and reworded
+      // prose later.
+      if (validation.reason !== undefined) out["reason"] = validation.reason
+      if (validation.reasonCode !== undefined) out["reason_code"] = validation.reasonCode
+      return out
+    }),
   }
 }
 

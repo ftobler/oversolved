@@ -748,6 +748,15 @@ export interface TopologySurface {
   boundary: TopologyEdge[]  // the outer loop
   holes?: TopologyEdge[][]  // inner loops, one per hole -- maps to OCC face holes (orientation fixed by the face builder)
   query: string
+  // Cheap pre-OCC verdict stamped by topologyDecorate (kernel/profileDiagnostics
+  // validateSketchArea): false when this area provably cannot become a profile.
+  // Necessary, not sufficient -- true does not promise the kernel will accept it.
+  buildable?: boolean
+  reason?: string  // why `buildable` is false, phrased for the user
+  // Stable token for the same fact. This dict is persisted inside
+  // `_topo_<featureId>` in every checkpoint snapshot, so a reader needs
+  // something the prose above is allowed to outgrow. See AreaReasonCode.
+  reason_code?: string
 }
 
 export interface TopologyEdgeQuery {

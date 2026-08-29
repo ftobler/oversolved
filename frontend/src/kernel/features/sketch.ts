@@ -25,7 +25,7 @@ import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSk
 import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
-import { solveTopology, reconcileMaterializedContacts, type TopologyBytes } from '../topologyDecorate'
+import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
@@ -277,10 +277,10 @@ export function solveSketch(
   // Topology + plane transform: what postRegister registers as _topo_/_pt_ so
   // downstream features can resolve this sketch's profile. A crossing already
   // owned by a materialized point yields to that point's identity.
-  const topology = reconcileMaterializedContacts(
+  const topology = stampAreaBuildability(reconcileMaterializedContacts(
     solveTopology(richGeom, featureId, topologyBytes),
     pointPositions,
-  )
+  ))
   const plane_transform = frameToPlaneTransform(plane as Frame3D)
 
   return {

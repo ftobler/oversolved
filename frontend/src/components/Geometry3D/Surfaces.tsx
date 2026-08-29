@@ -3,10 +3,10 @@ import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Topology, TopologySurface } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER } from '@/components/Geometry3D/constants'
+import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_ERROR } from '@/components/Geometry3D/constants'
 import { tessellateBoundary } from '@/kernel/topologyBoundary'
 
-type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string }
+type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string; buildable: boolean }
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
@@ -27,7 +27,9 @@ export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
       path.closePath()
       shape.holes.push(path)
     }
-    return [{ shape, pts, query: surface.query }]
+    // Absent stamp = an older/hand-built topology that never ran the gate;
+    // treat it as buildable so nothing pre-existing suddenly reads as broken.
+    return [{ shape, pts, query: surface.query, buildable: surface.buildable !== false }]
   })
 }
 
@@ -40,22 +42,34 @@ interface SurfaceMeshProps {
   shape: THREE.Shape
   query: string
   mode: TopologyMode
+  buildable?: boolean
 }
 
 // Fill color/opacity for a sketch area, given selection/hover state. Selection
 // wins over hover; hover is suppressed while another sketch is being edited
 // ('inactive'). Selection still shows when inactive so a picked area stays lit.
+//
+// An area the kernel provably cannot build from (buildable === false, stamped by
+// topologyDecorate) takes COLOR_ERROR -- the hue this viewport already uses for
+// "this will not solve" -- and sits ABOVE the normal white fill in opacity. It
+// has to: the point of the mark is to reach the eye before the user picks the
+// area as a profile, and a broken area drawn fainter than a working one inverts
+// exactly the affordance it exists to provide. It stays under hover (0.20) so
+// pointing at it still reads as a state change, and it ranks below selection,
+// hover and the inactive dimming, which answer the more urgent "what am I
+// acting on". The area stays pickable either way.
 // eslint-disable-next-line react-refresh/only-export-components
 export function surfaceFillStyle(
-  mode: TopologyMode, isSelected: boolean, isHovered: boolean,
+  mode: TopologyMode, isSelected: boolean, isHovered: boolean, buildable = true,
 ): { color: string; opacity: number } {
   if (isSelected) return { color: COLOR_SELECTED, opacity: 0.30 }
   if (isHovered && mode !== 'inactive') return { color: COLOR_HOVER, opacity: 0.20 }
   if (mode === 'inactive') return { color: COLOR_INACTIVE, opacity: 0.10 }
+  if (!buildable) return { color: COLOR_ERROR, opacity: 0.18 }
   return { color: 'white', opacity: 0.10 }
 }
 
-export function SurfaceMesh({ shape, query, mode }: SurfaceMeshProps) {
+export function SurfaceMesh({ shape, query, mode, buildable = true }: SurfaceMeshProps) {
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
 
@@ -63,7 +77,7 @@ export function SurfaceMesh({ shape, query, mode }: SurfaceMeshProps) {
   // collision-id buffer stores (no wrapping) -- same convention as B-rep faces.
   const isSelected = normalSelection.has(query)
   const isHovered = hoveredSelectionId === query
-  const { color, opacity } = surfaceFillStyle(mode, isSelected, isHovered)
+  const { color, opacity } = surfaceFillStyle(mode, isSelected, isHovered, buildable)
 
   // Decoration only -- never a selection path. The collision-id render pass is
   // the single selection source: a surface click routes through
@@ -103,6 +117,7 @@ export function TopologySurfaces({ topology, isEditing, activeFeatureId }: Topol
           shape={s.shape}
           query={s.query}
           mode={mode}
+          buildable={s.buildable}
         />
       ))}
     </>

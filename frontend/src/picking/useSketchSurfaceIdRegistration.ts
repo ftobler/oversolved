@@ -15,6 +15,13 @@ import { tessellateBoundary } from '@/kernel/topologyBoundary'
  *
  * The plane transform is applied so surface vertices land at the same
  * world-space positions as the visible SurfaceMesh geometry.
+ *
+ * Every surface is registered, INCLUDING one topologyDecorate stamped
+ * `buildable: false`. Filtering those out would make an area that the viewport
+ * still draws unclickable, which reads as a dead spot rather than as a problem:
+ * the user has to be able to pick it to find out why it will not extrude. The
+ * muted fill in Surfaces.tsx carries the warning; the `reason` string rides on
+ * the surface for whatever consumes the pick.
  */
 
 function buildSurfaceShapes(topology: Topology): { shape: THREE.Shape; query: string }[] {

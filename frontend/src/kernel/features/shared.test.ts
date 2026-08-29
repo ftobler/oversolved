@@ -18,8 +18,11 @@ import {
   resolveDirectionQuery,
   resolveAxisQuery,
   surfaceEntityIds,
+  unbuildableAreaReasons,
   type PlaneLike,
 } from './shared'
+import { describeProfile, validateSketchArea } from '../profileDiagnostics'
+import { TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '../solverConstants'
 
 const TOL = 1e-9
 
@@ -99,6 +102,137 @@ describe('extractProfileLoops parity', () => {
     const loops = extractProfileLoops(surfaces as Record<string, unknown>[])
     expect(loops).toHaveLength(1)
     expect(loops[0].length).toBe(2)
+  })
+})
+
+// The two definitions of "closed" the profile handoff straddles. The area
+// builder closes a face by merged vertex id at TOL_TOPOLOGY_MERGE (1e-5);
+// extractProfileLoops re-derives the same loop by chaining COORDINATES at
+// TOL_LOOP_CLOSURE (1e-6). Anything in between is an area the user can see and
+// pick that never becomes a profile. These pin where that boundary sits today
+// and, above all, that it is now REPORTED rather than silently dropped.
+describe('extractProfileLoops at the tolerance boundary', () => {
+  const gappedSquare = (gap: number, sharedVertices: boolean): Record<string, unknown> => ({
+    boundary: [
+      { kind: 'line', start: [0, 0], end: [10, gap], ...(sharedVertices ? { start_vertex: '_v0', end_vertex: '_v1' } : {}) },
+      { kind: 'line', start: [10, 0], end: [10, 10], ...(sharedVertices ? { start_vertex: '_v1', end_vertex: '_v2' } : {}) },
+      { kind: 'line', start: [10, 10], end: [0, 10], ...(sharedVertices ? { start_vertex: '_v2', end_vertex: '_v3' } : {}) },
+      { kind: 'line', start: [0, 10], end: [0, 0], ...(sharedVertices ? { start_vertex: '_v3', end_vertex: '_v0' } : {}) },
+    ],
+    query: '?x',
+  })
+
+  it('a joint between TOL_LOOP_CLOSURE and TOL_TOPOLOGY_MERGE is dropped, but no longer silently', () => {
+    const gap = 5e-6
+    expect(gap).toBeGreaterThan(TOL_LOOP_CLOSURE)
+    expect(gap).toBeLessThan(TOL_TOPOLOGY_MERGE)
+    const surface = gappedSquare(gap, true)
+    // Today the coordinate chainer drops it. F2 (chain by vertex id) will make
+    // this loop survive instead; when it lands, flip the first assertion and
+    // keep the second, which is the part that must never regress.
+    expect(extractProfileLoops([surface])).toHaveLength(0)
+    const v = validateSketchArea(surface)
+    expect(v.buildable).toBe(false)
+    expect(v.reason).toContain('TOL_LOOP_CLOSURE')
+    expect(v.reason).toContain('TOL_TOPOLOGY_MERGE')
+    // The dump names the joint and confirms both sides claim one merged vertex.
+    const report = describeProfile([surface.boundary as Record<string, unknown>[]])
+    expect(report.loops[0].joints[0].aEndVertex).toBe('_v1')
+    expect(report.loops[0].joints[0].bStartVertex).toBe('_v1')
+    expect(report.worstJointGap).toBeCloseTo(gap, 12)
+  })
+
+  it('a joint beyond TOL_TOPOLOGY_MERGE is reported, never advertised as a face', () => {
+    const surface = gappedSquare(1e-3, false)
+    expect(extractProfileLoops([surface])).toHaveLength(0)
+    const v = validateSketchArea(surface)
+    expect(v.buildable).toBe(false)
+    expect(v.reason).toContain('TOL_TOPOLOGY_MERGE')
+  })
+
+  it('a joint inside TOL_LOOP_CLOSURE still chains, and the area stays buildable', () => {
+    const surface = gappedSquare(5e-7, true)
+    expect(extractProfileLoops([surface])).toHaveLength(1)
+    expect(validateSketchArea(surface)).toEqual({ buildable: true })
+  })
+})
+
+describe('extractProfileLoops on a nested sketch', () => {
+  const ring = (): Record<string, unknown> => ({
+    boundary: [
+      { kind: 'line', start: [0, 0], end: [10, 0] },
+      { kind: 'line', start: [10, 0], end: [10, 10] },
+      { kind: 'line', start: [10, 10], end: [0, 10] },
+      { kind: 'line', start: [0, 10], end: [0, 0] },
+    ],
+    holes: [[
+      { kind: 'line', start: [3, 3], end: [7, 3] },
+      { kind: 'line', start: [7, 3], end: [7, 7] },
+      { kind: 'line', start: [7, 7], end: [3, 7] },
+      { kind: 'line', start: [3, 7], end: [3, 3] },
+    ]],
+    query: '?ring',
+  })
+  const disk = (): Record<string, unknown> => ({
+    boundary: (ring().holes as Record<string, unknown>[][])[0].map((e) => ({ ...e })),
+    query: '?disk',
+  })
+
+  // C1: nest_surfaces keeps every loop as its own surface AND copies each
+  // nested loop into its container's holes, so extruding the whole sketch feeds
+  // the inner loop to the face builder twice. Not fixed here (that is F1); what
+  // IS in place is the dump that names it. Update this when F1 lands.
+  it('emits the inner loop twice, and the dump flags the duplicate', () => {
+    const loops = extractProfileLoops([ring(), disk()])
+    expect(loops).toHaveLength(3)
+    const report = describeProfile(loops)
+    expect(report.loops[2].duplicateOf).toBe(1)
+    expect(report.verdict).toBe('suspect')
+    // The face builder would receive one outer with TWO coincident hole wires.
+    expect(report.groups).toEqual([{ outer: 0, holes: [1, 2] }])
+  })
+
+  // A single nested surface is fine: boundary + its own holes are distinct
+  // loops, so the per-area gate must not refuse a plain ring.
+  it('leaves a single ring surface buildable', () => {
+    expect(validateSketchArea(ring())).toEqual({ buildable: true })
+  })
+})
+
+// The gate stamps `buildable`/`reason` in the solver worker, but the moment the
+// user needs the sentence is when they picked that area as a profile and the
+// feature refused. This is the collector the extrude/revolve leaves fold into
+// their "no closed profile found" error.
+describe('unbuildableAreaReasons', () => {
+  it('returns nothing when every area is buildable', () => {
+    expect(unbuildableAreaReasons([
+      { buildable: true, query: '?a' },
+      { buildable: true, reason: 'stale', query: '?b' },
+    ])).toEqual([])
+  })
+
+  it('treats an unstamped surface as buildable', () => {
+    // A topology stored before the gate existed must not read as broken.
+    expect(unbuildableAreaReasons([{ query: '?a' }])).toEqual([])
+  })
+
+  it('collects the reason of each unbuildable area', () => {
+    expect(unbuildableAreaReasons([
+      { buildable: false, reason: 'joint too wide', query: '?a' },
+      { buildable: true, query: '?b' },
+      { buildable: false, reason: 'degenerate edge', query: '?c' },
+    ])).toEqual(['joint too wide', 'degenerate edge'])
+  })
+
+  it('deduplicates: one sentence per distinct problem, not per area', () => {
+    expect(unbuildableAreaReasons([
+      { buildable: false, reason: 'joint too wide', query: '?a' },
+      { buildable: false, reason: 'joint too wide', query: '?b' },
+    ])).toEqual(['joint too wide'])
+  })
+
+  it('still reports an area marked unbuildable with no reason recorded', () => {
+    expect(unbuildableAreaReasons([{ buildable: false, query: '?a' }])).toEqual(['no reason recorded'])
   })
 })
 

@@ -18,7 +18,7 @@ import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, surfaceEntityIds, sketchToWorld2d, type PlaneLike } from './shared'
+import { resolveDirection, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, type PlaneLike } from './shared'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -108,6 +108,7 @@ export function solveExtrude(
   let firstSketchId = ''
   const profileErrors: string[] = []
   const profileQueries: string[] = []
+  const unbuildableReasons: string[] = []
   const faceNames: Record<string, string> = {}
   const edgeNames: Record<string, string> = {}
   const faceAncestry: Lineage = {}
@@ -136,6 +137,10 @@ export function solveExtrude(
       allLoops.push(...resolved.loops)
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
+    // Why an area the user could see and pick will not build. Collected here
+    // because this is the one place the sketch's areas are in hand; used only if
+    // the profile ends up empty below.
+    unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }
@@ -168,7 +173,11 @@ export function solveExtrude(
     // extrude (surfaced as a red feature), not a silent ok. (profileErrors are
     // already empty here -- a non-empty set threw above.)
     result.status = 'error'
-    result.exception = 'extrude: no closed profile found in the referenced sketch; no part created'
+    // Name the areas that failed the pre-flight gate. "no closed profile found"
+    // is true but tells the user nothing they can act on; the stamped reason
+    // names the joint and how wide it is.
+    const why = unbuildableReasons.length ? ` (${unbuildableReasons.join('; ')})` : ''
+    result.exception = `extrude: no closed profile found in the referenced sketch${why}; no part created`
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
   }

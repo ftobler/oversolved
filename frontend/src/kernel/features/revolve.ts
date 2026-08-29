@@ -17,7 +17,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { sketchToWorld2d, surfaceEntityIds, type PlaneLike } from './shared'
+import { sketchToWorld2d, surfaceEntityIds, unbuildableAreaReasons, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
@@ -227,6 +227,7 @@ export function solveRevolve(
   let firstSketchId = ''
   const profileErrors: string[] = []
   const profileQueries: string[] = []
+  const unbuildableReasons: string[] = []
   const faceNames: Record<string, string> = {}
   const edgeNames: Record<string, string> = {}
   const faceAncestry: Lineage = {}
@@ -246,6 +247,10 @@ export function solveRevolve(
       allLoops.push(...resolved.loops)
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
+    // Why an area the user could see and pick will not build. Collected here
+    // because this is the one place the sketch's areas are in hand; used only if
+    // the profile ends up empty below.
+    unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }
@@ -268,7 +273,10 @@ export function solveRevolve(
     // the axis guard below: with neither input, the missing profile is the
     // more basic complaint.
     result.status = 'error'
-    result.exception = 'revolve: no closed profile found in the referenced sketch; no part created'
+    // Same as extrude: the stamped reason turns "nothing to revolve" into a
+    // sentence the user can act on.
+    const why = unbuildableReasons.length ? ` (${unbuildableReasons.join('; ')})` : ''
+    result.exception = `revolve: no closed profile found in the referenced sketch${why}; no part created`
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
   }

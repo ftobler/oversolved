@@ -135,6 +135,26 @@ export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
   return allLoops
 }
 
+/**
+ * The stamped reason of every area in `surfaces` that will not build.
+ *
+ * This is what makes the `buildable`/`reason` stamp reach a human. The gate runs
+ * in the solver worker and marks the area in the viewport, but the moment the
+ * user actually needs the sentence is when they picked that area as a profile
+ * and the feature refused: "no closed profile found" answers what happened and
+ * not why. Reusing the existing red-feature message costs one line at each leaf
+ * and needs no new UI surface.
+ */
+export function unbuildableAreaReasons(surfaces: Dict[]): string[] {
+  const out: string[] = []
+  for (const surface of surfaces) {
+    if (surface.buildable !== false) continue
+    const reason = typeof surface.reason === 'string' ? surface.reason : 'no reason recorded'
+    if (!out.includes(reason)) out.push(reason)
+  }
+  return out
+}
+
 // ─── Top-face registration ───
 
 /**

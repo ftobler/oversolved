@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { buildSurfaceShapes, surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
-import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE } from '@/utils/core/partColors'
+import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE, COLOR_ERROR } from '@/utils/core/partColors'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Topology } from '@/types/cad'
 
@@ -24,6 +24,52 @@ describe('surfaceFillStyle', () => {
   it('plain areas are white in view mode, dimmed when inactive', () => {
     expect(surfaceFillStyle('view', false, false).color).toBe('white')
     expect(surfaceFillStyle('inactive', false, false).color).toBe(COLOR_INACTIVE)
+  })
+
+  // An area topologyDecorate could not validate must not look like a normal
+  // fill: it is offered to the picker and it will not extrude.
+  it('an unbuildable area takes the error hue, MORE visible than the normal fill', () => {
+    const bad = surfaceFillStyle('view', false, false, false)
+    const good = surfaceFillStyle('view', false, false, true)
+    expect(bad.color).toBe(COLOR_ERROR)
+    // The mark has to arrive before the pick does; fainter than normal would
+    // invert the affordance.
+    expect(bad.opacity).toBeGreaterThan(good.opacity)
+    // ...but never louder than hover, which is a live state change.
+    expect(bad.opacity).toBeLessThan(surfaceFillStyle('view', false, true).opacity)
+  })
+
+  it('selection, hover and the inactive dimming all outrank the unbuildable mark', () => {
+    expect(surfaceFillStyle('view', true, false, false).color).toBe(COLOR_SELECTED)
+    expect(surfaceFillStyle('view', false, true, false).color).toBe(COLOR_HOVER)
+    expect(surfaceFillStyle('inactive', false, false, false).color).toBe(COLOR_INACTIVE)
+  })
+
+})
+
+// The stamp is optional on TopologySurface, so buildSurfaceShapes decides what
+// an unstamped surface means. It must mean buildable: a topology stored before
+// the gate existed (or hand-built in a test) must not suddenly read as broken.
+describe('buildSurfaceShapes carries the buildable stamp', () => {
+  const squareBoundary = [
+    { kind: 'line', start: [0, 0], end: [4, 0] },
+    { kind: 'line', start: [4, 0], end: [4, 4] },
+    { kind: 'line', start: [4, 4], end: [0, 4] },
+    { kind: 'line', start: [0, 4], end: [0, 0] },
+  ]
+  const topo = (extra: Record<string, unknown>): Topology =>
+    ({ surfaces: [{ boundary: squareBoundary, query: '?a', ...extra }] } as unknown as Topology)
+
+  it('treats an unstamped surface as buildable', () => {
+    expect(buildSurfaceShapes(topo({}))[0].buildable).toBe(true)
+  })
+
+  it('passes an explicit true through', () => {
+    expect(buildSurfaceShapes(topo({ buildable: true }))[0].buildable).toBe(true)
+  })
+
+  it('passes an explicit false through', () => {
+    expect(buildSurfaceShapes(topo({ buildable: false }))[0].buildable).toBe(false)
   })
 })
 

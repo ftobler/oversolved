@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { decorateTopology } from "./topologyDecorate"
+import { decorateTopology, stampAreaBuildability } from "./topologyDecorate"
 
 // A unit square traced CCW out of four line edges, centroid at (cx, cy).
 // `divId` labels the bottom edge so two stacked squares can share the same
@@ -116,5 +116,42 @@ describe("decorateTopology", () => {
 
     // the attached tokens are folded back into the surface query
     for (const tok of upper) expect(out.surfaces[0].query as string).toContain(tok)
+  })
+})
+
+describe("stampAreaBuildability", () => {
+  const closedSquare = squareBoundary(0, 0, 4, 4, "d", 0, "a")
+  const base = { intersection_points: {}, vertices: {}, edges: [] }
+
+  it("marks a closed area buildable and carries no reason", () => {
+    const out = stampAreaBuildability({
+      ...base,
+      surfaces: [{ boundary: closedSquare, query: "?a" }],
+    })
+    expect(out.surfaces[0].buildable).toBe(true)
+    expect(out.surfaces[0]).not.toHaveProperty("reason")
+    expect(out.surfaces[0]).not.toHaveProperty("reason_code")
+  })
+
+  it("marks an area the loop chainer would drop unbuildable, with a reason", () => {
+    // 5e-6: merged by the area builder at 1e-5, refused by the chainer at 1e-6.
+    const gapped = closedSquare.map((e) => ({ ...e }))
+    gapped[0].end = [4, 5e-6]
+    const out = stampAreaBuildability({ ...base, surfaces: [{ boundary: gapped, query: "?a" }] })
+    expect(out.surfaces[0].buildable).toBe(false)
+    expect(out.surfaces[0].reason as string).toContain("TOL_LOOP_CLOSURE")
+    // The prose may be reworded; this dict is persisted in _topo_<fid>, so the
+    // token is what a later reader switches on.
+    expect(out.surfaces[0].reason_code).toBe("loop_not_chained")
+  })
+
+  it("leaves the input untouched and passes every other key through", () => {
+    const surface = { boundary: closedSquare, query: "?a", normal: [0, 0, 1] }
+    const input = { ...base, surfaces: [surface] }
+    const out = stampAreaBuildability(input)
+    expect(surface).not.toHaveProperty("buildable")
+    expect(out.surfaces[0].normal).toEqual([0, 0, 1])
+    expect(out.surfaces[0].query).toBe("?a")
+    expect(out.edges).toBe(input.edges)
   })
 })
