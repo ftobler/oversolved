@@ -140,5 +140,63 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         scope.dispose()
       }
     })
+
+    it('subtract of a disjoint tool keeps the tool instead of consuming it (KE-M2)', () => {
+      // A subtract whose tool does not overlap the target must not silently eat
+      // the tool body; it is skipped and a solver warning names the miss.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
+        }
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+
+        const result = solveBoolean(
+          occ, scope, table,
+          { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
+          new Repository(),
+          bodyStore,
+        )
+        expect(result.status).toBe('ok')
+        // The missed tool is preserved (the old code consumed it anyway).
+        expect('body_u0' in bodyStore).toBe(true)
+        // Target is unchanged because nothing was subtracted.
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
+        expect(result.solver_warning).toContain('does not intersect')
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('intersect of disjoint bodies keeps the target and warns instead of an empty compound (KE-M2)', () => {
+      // A common/ of two disjoint solids yields an empty compound; the leaf must
+      // not report that as a successful boolean but skip the disjoint tool.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
+        }
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+
+        const result = solveBoolean(
+          occ, scope, table,
+          { id: 'bool1', boolean: { operation: 'intersect', target: 'body_t', tools: ['body_u0'] } },
+          new Repository(),
+          bodyStore,
+        )
+        expect(result.status).toBe('ok')
+        // The disjoint tool is preserved (not consumed by an empty common).
+        expect('body_u0' in bodyStore).toBe(true)
+        // Target volume is unchanged (no empty compound replaced it).
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
+        expect(result.solver_warning).toContain('does not intersect')
+      } finally {
+        scope.dispose()
+      }
+    })
   })
 })

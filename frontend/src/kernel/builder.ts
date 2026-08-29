@@ -563,7 +563,11 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
     const key = canonical(ancestorIds)
     const entry = globalRepo.ancestral.get(key)
     const existingIds = entry ? entry.eids : []
-    if (existingIds.some((eid) => stableJson(globalRepo.elements.get(eid)) === stableJson(payload))) {
+    // Hoist the payload serialization out of the dedup scan: the entry can hold
+    // many elements, and recomputing stableJson(payload) per comparison is the
+    // O(n) repeat the edge/vertex paths already avoid.
+    const payloadJson = stableJson(payload)
+    if (existingIds.some((eid) => stableJson(globalRepo.elements.get(eid)) === payloadJson)) {
       continue
     }
     const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))

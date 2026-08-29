@@ -223,3 +223,46 @@ describe.skipIf(!oc)('canonicalizeFaceCirclesWith (real OCC)', () => {
     }
   })
 })
+
+/**
+ * The multi-group extrude path (perGroupPrismWithLineage) fuses one prism per
+ * profile group; each fuse replaces the running `solid` with its output, so the
+ * prior running solid must be released or it strands one dead solid per
+ * group-boundary. This builds two DISJOINT rectangles (which force the legacy
+ * per-group fuse path rather than the single-connected pre-prism union) and
+ * asserts the fused body is one valid solid whose volume is the sum of the two
+ * prisms -- a regression guard for the running-solid release fix.
+ */
+describe.skipIf(!oc)('extrudeProfileWithLineage multi-group (real OCC)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  const plane: PlaneLike = {
+    origin: [0, 0, 0],
+    x_axis: [1, 0, 0],
+    y_axis: [0, 1, 0],
+    normal: [0, 0, 1],
+  }
+
+  const rect = (prefix: string, x0: number, y0: number, w: number, h: number): LoopEdge[] => [
+    { id: `${prefix}e1`, kind: 'line', start: [x0, y0], end: [x0 + w, y0] },
+    { id: `${prefix}e2`, kind: 'line', start: [x0 + w, y0], end: [x0 + w, y0 + h] },
+    { id: `${prefix}e3`, kind: 'line', start: [x0 + w, y0 + h], end: [x0, y0 + h] },
+    { id: `${prefix}e4`, kind: 'line', start: [x0, y0 + h], end: [x0, y0] },
+  ]
+
+  it('fuses two disjoint groups into one solid of summed prism volume', () => {
+    const scope = new DisposeScope()
+    try {
+      const loops: LoopEdge[][] = [rect('a', 0, 0, 2, 2), rect('b', 10, 0, 2, 2)]
+      const { solid } = extrudeProfileWithLineage(occ, scope, loops, plane, [0, 0, 1], 5, 'sk', 'feat')
+      // Two 2x2 prisms of height 5 -> 2 * (4 * 5) = 40.
+      expect(volumeOf(occ, scope, solid)).toBeCloseTo(40, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
+})

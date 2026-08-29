@@ -15,13 +15,13 @@
 // face the boolean reshaped, and every edge around them with it. Only the LAST tool's brep_diff
 // is retained.
 
-import type { DisposeScope } from '../occ/disposeScope'
+import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared'
-import { booleanWithDiff } from '../occ/booleans'
+import { resolveBody, brepDiffIsEmpty } from './shared'
+import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 
@@ -32,6 +32,7 @@ interface BooleanResult {
   body_id: string
   body_ids: string[]
   operation: string
+  solver_warning?: string
 }
 
 const OP_MAP: Record<string, 'fuse' | 'cut' | 'common'> = {
@@ -68,17 +69,44 @@ export function solveBoolean(
   let resultShape: OccShape = table.get<OccShape>(targetBody.shape)
   const consumedKeys: string[] = []
   let lastDiff: BrepDiff | null = null
+  let foldedAny = false
   // Folded across the tools: each step's output names are the next step's target
   // names, so a face keeps its identity through a multi-tool boolean.
   let faceNames = targetBody.face_names ?? {}
   let faceAncestry = targetBody.face_ancestry ?? {}
   let edgeNames = targetBody.edge_names ?? {}
   let edgeAncestry = targetBody.edge_ancestry ?? {}
+  const result: BooleanResult = { status: 'ok', body_id: targetBody.id, body_ids: [], operation }
 
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)
     if (toolBody.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
     const toolShape = table.get<OccShape>(toolBody.shape)
+
+    // Mirror the implicit cut/add guards (bodyOps.applyBodyOperation): probe the
+    // overlap before folding so a disjoint tool is neither consumed nor left
+    // silent. A subtract of a non-overlapping tool would otherwise eat the body
+    // with no visible effect; an intersect of disjoint bodies yields an empty
+    // compound that must not be reported as 'ok'.
+    if (op === 'cut' || op === 'common') {
+      const probe = new DisposeScope()
+      let intersects = true
+      try {
+        const { shape: inter } = booleanWithDiff(oc, probe, resultShape, toolShape, 'common')
+        if (volumeOf(oc, probe, inter) < 1e-10) intersects = false
+      } catch {
+        // A failed probe is not evidence of disjointness: let the real boolean
+        // run and surface its own failure rather than skipping the tool.
+        intersects = true
+      } finally {
+        probe.dispose()
+      }
+      if (!intersects) {
+        result.solver_warning = `${operation}: tool '${toolRef}' does not intersect the target; skipped`
+        continue
+      }
+    }
+
     const res = booleanWithDiff(oc, scope, resultShape, toolShape, op)
     resultShape = scope.track(res.shape)
     const names = transferBooleanNames(oc, scope, {
@@ -94,6 +122,7 @@ export function solveBoolean(
     edgeNames = names.edge_names
     edgeAncestry = names.edge_ancestry
     lastDiff = res.diff
+    foldedAny = true
     if (!keepTools) consumedKeys.push(toolBody.id)
   }
 
@@ -103,6 +132,28 @@ export function solveBoolean(
   targetBody.face_ancestry = faceAncestry
   targetBody.edge_names = edgeNames
   targetBody.edge_ancestry = edgeAncestry
+
+  // Mirror the implicit cut/add warning: a boolean that consumed a tool but left
+  // the target's brep_diff untouched produced no real geometry change.
+  if (foldedAny && lastDiff !== null && brepDiffIsEmpty(lastDiff)) {
+    const msg = `${operation}: operation produced no geometry change`
+    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+  }
+
+  // An intersect of disjoint bodies yields an empty compound; name it so the
+  // empty result is not silently reported as a successful boolean.
+  if (op === 'common' && foldedAny && result.solver_warning === undefined) {
+    const probe = new DisposeScope()
+    try {
+      if (volumeOf(oc, probe, resultShape) < 1e-10) {
+        result.solver_warning = `${operation}: operation produced no overlapping geometry (empty result)`
+      }
+    } catch {
+      // Volume probe failed; leave without the warning.
+    } finally {
+      probe.dispose()
+    }
+  }
 
   const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
 
@@ -116,5 +167,6 @@ export function solveBoolean(
     }
   }
 
-  return { status: 'ok', body_id: targetBody.id, body_ids: bodyIds, operation }
+  result.body_ids = bodyIds
+  return result
 }

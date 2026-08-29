@@ -844,24 +844,23 @@ function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape):
   }
   const circ = frameCirc as OccCircle
   // Five by-value proxies chain out of the circle here; read their
-  // coordinates first and delete before makeCircleEdge can throw.
+  // coordinates into plain arrays and delete the proxies BEFORE makeCircleEdge
+  // runs, so a throw from makeCircleEdge cannot strand the proxies (the
+  // previous delete-after call left them leaking on the throw path).
   const loc = circ.Location()
   const axis = circ.Axis()
   const axDir = axis.Direction()
   const xax1 = circ.XAxis()
   const xDir = xax1.Direction()
-  const edge = scope.track(makeCircleEdge(
-    oc, scope,
-    [loc.X(), loc.Y(), loc.Z()],
-    [axDir.X(), axDir.Y(), axDir.Z()],
-    [xDir.X(), xDir.Y(), xDir.Z()],
-    radius,
-  ))
+  const locCoords: Vec3 = [loc.X(), loc.Y(), loc.Z()]
+  const axDirCoords: Vec3 = [axDir.X(), axDir.Y(), axDir.Z()]
+  const xDirCoords: Vec3 = [xDir.X(), xDir.Y(), xDir.Z()]
   loc.delete()
   axis.delete()
   axDir.delete()
   xax1.delete()
   xDir.delete()
+  const edge = scope.track(makeCircleEdge(oc, scope, locCoords, axDirCoords, xDirCoords, radius))
   const canonical = scope.track(makeWire(oc, scope, [edge]))
   scope.release(edge)
   return canonical
@@ -961,9 +960,11 @@ function tryCanonicalMergedProfile(
       ),
     )
     // Every solid here is an intermediate (the function returns a face off
-    // the final one), so each stays scope-owned: the prism results, the parts
-    // fused away, and every fuse output the next iteration replaces. Each
-    // group face is released once its prism has copied it.
+    // the final one). Each group face is released once its prism has copied
+    // it. The running `solid` is consumed by the next fuse/clean, so release
+    // the prior running solid the moment a replacement is tracked -- leaving
+    // the old one scope-owned strands one dead solid per group-boundary per
+    // edit until the whole scope drains.
     const prismOf = (face: OccShape): OccShape =>
       (scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder).Shape()
     let solid: OccShape = scope.track(prismOf(faces[0]))
@@ -972,6 +973,7 @@ function tryCanonicalMergedProfile(
       const part = scope.track(prismOf(faces[i]))
       const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
       scope.track(fused)
+      scope.release(solid)  // the previous running solid is consumed by the fuse
       solid = fused
       scope.release(part)
       scope.release(faces[i])
@@ -981,10 +983,11 @@ function tryCanonicalMergedProfile(
     // disjoint groups (e.g. two non-adjacent rects) the fuse stays a
     // compound of N solids -- the legacy path must keep them as the
     // multi-body output the caller splits apart; bailing here preserves it.
-    if (countSolids(oc, scope, solid) !== 1) return null
+    if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return null }
     try {
       const cleaned = cleanWithHistory(oc, scope, solid).shape
       scope.track(cleaned)
+      scope.release(solid)  // the previous running solid is consumed by the clean
       solid = cleaned
     } catch {
       // The prism-fuse-clean is the legacy path -- the only throw the
@@ -1024,8 +1027,13 @@ function tryCanonicalMergedProfile(
       entrance = f
       break
     }
-    if (entrance === null) return null
-    return canonicalizeFaceCircles(oc, scope, entrance)
+    if (entrance === null) { scope.release(solid); return null }
+    // The rebuilt body was only the source of the entrance cap face; its
+    // shapes are no longer referenced, so drop it instead of letting a dead
+    // solid ride the scope to the end of the build.
+    const out = canonicalizeFaceCircles(oc, scope, entrance)
+    scope.release(solid)
+    return out
   } catch {
     return null
   }
@@ -1130,6 +1138,7 @@ function perGroupPrismWithLineage(
     } else {
       const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
       scope.track(fused)
+      scope.release(solid)  // the previous running solid is consumed by the fuse
       solid = fused
     }
   }
@@ -1144,6 +1153,7 @@ function perGroupPrismWithLineage(
     try {
       const cleaned = cleanWithHistory(oc, scope, solid).shape
       scope.track(cleaned)
+      scope.release(solid)  // the previous running solid is consumed by the clean
       solid = cleaned
     } catch {
       // kept raw solid -- segmentation faces survive but the volume is intact.

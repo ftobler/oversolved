@@ -309,6 +309,9 @@ function edgeHandleGeometry(
   const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
   const mid = ad.Value((ad.FirstParameter() + ad.LastParameter()) / 2)
   const anchor: Vec3 = [mid.X(), mid.Y(), mid.Z()]
+  // `mid` is a heap gp_Pnt the curve returns by value: drop it now that the
+  // coordinates are read, or every edge handle leaks one proxy.
+  mid.delete()
 
   const normals: Vec3[] = []
   for (const face of exploreFaces(oc, scope, shape)) {
