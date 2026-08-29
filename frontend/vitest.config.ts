@@ -4,8 +4,11 @@ import { defineConfig, configDefaults, type ViteUserConfig } from 'vitest/config
 import react from '@vitejs/plugin-react'
 
 // CI runners can run into problems (slow tests, heavy load), so tests are far
-// slower than wall-clock under load. Bump timeouts in CI only; local keeps the
-// snappy vitest defaults for fast feedback.
+// slower than wall-clock under load. The self-hosted arm64 runner is a
+// Raspberry Pi 5: a single OCC solve there costs several times what it does on
+// a hosted x86 runner, and every fork is competing for four small cores, so an
+// individual test has to be allowed minutes rather than seconds. Bump timeouts
+// in CI only; local keeps the snappy vitest defaults for fast feedback.
 const ci = !!process.env.CI
 
 // Vitest sizes the fork pool by core count. The `*Real.test.ts` files each
@@ -18,28 +21,33 @@ const ci = !!process.env.CI
 // rejection as a worker is OOM-killed rather than with a test failure. Raising
 // the timeouts does not fix that; it only lengthens the thrash.
 //
-// So bound the pool by memory rather than by cores. The per-fork budget is
-// deliberately above the measured figure, and a fork's worth is held back for
-// the OS and the runner agent, because overshooting costs a swap death spiral
-// while undershooting only costs wall-clock (6 -> 2 forks is ~2x).
-//
-// `os.totalmem()` reads the cgroup limit under lxcfs, so a memory-capped
-// container sizes itself correctly. It cannot see siblings, though: several
-// runners sharing one host each read the same total and each claim the maximum.
-// Set VITEST_MAX_FORKS per runner where that is the case.
+// So the pool is bounded by CPU *and* by memory, whichever is lower. Neither
+// alone is enough: a 4-core/16 GB box would over-subscribe cores, and a
+// 16-core/4 GB box would OOM.
+
 const GIB = 1024 ** 3
+
+// Cores. `os.availableParallelism()` follows the CPU affinity mask, so a
+// cpuset-limited container (`docker --cpuset-cpus`, an LXC pinned to cores,
+// `taskset`) is seen correctly. A CFS bandwidth quota (`docker --cpus`, a k8s
+// CPU limit) is deliberately *not* read out of the cgroup: it is invisible to
+// the affinity mask, so cap a runner with a cpuset rather than a quota, or set
+// VITEST_MAX_FORKS below.
+const cpuForks = os.availableParallelism()
+
+// Memory. The per-fork budget is deliberately above the measured figure, and a
+// fork's worth is held back for the OS and the runner agent, because
+// overshooting costs a swap death spiral while undershooting only costs
+// wall-clock (6 -> 2 forks is ~2x). `os.totalmem()` reads the cgroup limit
+// under lxcfs, so a memory-capped container sizes itself correctly.
 const FORK_BUDGET_GIB = 1.0
 const RESERVE_GIB = 1.5
-const maxForks =
-  Number(process.env.VITEST_MAX_FORKS) ||
-  Math.max(
-    1,
-    Math.min(
-      6,
-      os.availableParallelism(),
-      Math.floor((os.totalmem() / GIB - RESERVE_GIB) / FORK_BUDGET_GIB),
-    ),
-  )
+const memForks = Math.floor((os.totalmem() / GIB - RESERVE_GIB) / FORK_BUDGET_GIB)
+
+// Neither cap can see sibling runners on the same host: several of them each
+// read the same totals and each claim the maximum. Set VITEST_MAX_FORKS per
+// runner where that is the case.
+const maxForks = Number(process.env.VITEST_MAX_FORKS) || Math.max(1, Math.min(6, cpuForks, memForks))
 
 // @vitejs/plugin-react is typed against the app's own vite install while
 // vitest/config resolves a nested one, so the identical plugin object fails
@@ -63,8 +71,8 @@ export default defineConfig({
     // (`just parity` / vitest.parity.config.ts), not the fast default suite.
     exclude: [...configDefaults.exclude, 'src/kernel/occ/fullDocParity.test.ts'],
     setupFiles: ['src/test-setup.ts'],
-    testTimeout: ci ? 60000 : undefined,
-    hookTimeout: ci ? 240000 : undefined,
+    testTimeout: ci ? 180000 : undefined,
+    hookTimeout: ci ? 300000 : undefined,
     // Isolation is what bounds the memory above: it tears each file's OCC
     // kernel down with its module registry. Running with `isolate: false` lets
     // those heaps accumulate per worker without limit until the host OOMs, so
