@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { hasBackend } from '@/config/capabilities'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import BugReportDialog from '@/components/dialogs/BugReportDialog'
 import '@/components/layout/AppHeader.css'
@@ -11,6 +12,9 @@ import '@/components/layout/AppHeader.css'
 // The copyright note rides on the logo's tooltip rather than a footer bar: it
 // is a credit, not a control, and the editors need the vertical space.
 const COPYRIGHT = 'Copyright 2026 - Oversolved'
+
+// Where the burger has nowhere to go, because this IS the documents overview.
+const OVERVIEW_PATHS = new Set(['/', '/documents'])
 
 interface AppHeaderProps {
   title?: string
@@ -20,6 +24,7 @@ interface AppHeaderProps {
 
 export default function AppHeader({ title, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, online, logout } = useAuth()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
@@ -57,11 +62,29 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
     }
   }
 
+  // On the documents overview the burger points at the page it is already on,
+  // so it opens the about notice instead of navigating nowhere.
+  const isOverview = OVERVIEW_PATHS.has(location.pathname)
+
+  const handleBurger = (e: MouseEvent) => {
+    if (!isOverview) {
+      guardLink(e)
+      return
+    }
+    e.preventDefault()
+    useAboutDialogStore.getState().openAbout()
+  }
+
   return (
     <>
     <header className="app-header">
       <div className="app-header-left">
-        <Link to="/documents" className="toolbar-btn burger" title="Documents" onClick={guardLink}>
+        <Link
+          to="/documents"
+          className="toolbar-btn burger"
+          title={isOverview ? 'About Oversolved' : 'Documents'}
+          onClick={handleBurger}
+        >
           <span className="material-icons-outlined">menu</span>
         </Link>
         <Link to="/" className="logo" title={COPYRIGHT} onClick={guardLink}>

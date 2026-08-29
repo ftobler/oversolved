@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
 import { hasAcknowledgedDisclaimer, acknowledgeDisclaimer } from '@/components/dialogs/disclaimerConsent'
+import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 
 function clearDisclaimerCookie() {
   document.cookie = 'oversolved_disclaimer_ack=; max-age=0; path=/'
@@ -10,6 +11,7 @@ function clearDisclaimerCookie() {
 describe('DisclaimerDialog', () => {
   beforeEach(() => {
     clearDisclaimerCookie()
+    useAboutDialogStore.getState().closeAbout()
   })
 
   it('shows the welcome disclaimer when not yet acknowledged', () => {
@@ -50,5 +52,21 @@ describe('DisclaimerDialog', () => {
   it('shows no cancel button, only OK', () => {
     render(<DisclaimerDialog />)
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument()
+  })
+
+  // The same notice doubles as the app's about box (the documents-overview
+  // burger opens it), so an acknowledged disclaimer must still be re-openable.
+  it('reopens on request even after it was acknowledged', () => {
+    acknowledgeDisclaimer()
+    render(<DisclaimerDialog />)
+    expect(screen.queryByText('Welcome to Oversolved')).not.toBeInTheDocument()
+
+    act(() => { useAboutDialogStore.getState().openAbout() })
+    expect(screen.getByText('Welcome to Oversolved')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTitle('Close'))
+    expect(screen.queryByText('Welcome to Oversolved')).not.toBeInTheDocument()
+    // Closing must clear the request, or the dialog would latch open forever.
+    expect(useAboutDialogStore.getState().open).toBe(false)
   })
 })

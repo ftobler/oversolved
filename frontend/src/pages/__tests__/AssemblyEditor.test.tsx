@@ -10,6 +10,9 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', () => ({
+  // AppHeader reads the path to decide whether its burger navigates or opens
+  // the about notice; these assembly routes are never the documents overview.
+  useLocation: () => ({ pathname: '/documents/test-uuid' }),
   useNavigate: () => navigateSpy,
   // AppHeader (rendered via AssemblyToolbar) navigates with <Link>; a plain
   // anchor is enough for these tests, which assert on useNavigate instead.

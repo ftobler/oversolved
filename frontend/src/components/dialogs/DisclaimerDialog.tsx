@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MessageDialog from './MessageDialog'
+import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 import { hasAcknowledgedDisclaimer, acknowledgeDisclaimer } from './disclaimerConsent'
 import './DisclaimerDialog.css'
 
@@ -23,12 +24,24 @@ const DISCLAIMER_MESSAGE = (
 // Shown on every page. Only OK (or Enter) sets the 48h snooze cookie; the
 // close button, overlay and Escape just hide it for this mount, so it comes
 // back on the next page load until it is properly acknowledged.
+//
+// Doubles as the app's about box: the same notice is what the documents-overview
+// burger reopens, through the store (aboutDialogStore). The greeting and the
+// on-demand open are tracked apart so dismissing one cannot leave the other
+// latched open.
 export default function DisclaimerDialog() {
-  const [isOpen, setIsOpen] = useState(() => !hasAcknowledgedDisclaimer())
+  const [greeting, setGreeting] = useState(() => !hasAcknowledgedDisclaimer())
+  const requested = useAboutDialogStore(s => s.open)
+  const isOpen = greeting || requested
+
+  const close = () => {
+    setGreeting(false)
+    useAboutDialogStore.getState().closeAbout()
+  }
 
   const acknowledge = () => {
     acknowledgeDisclaimer()
-    setIsOpen(false)
+    close()
   }
 
   return (
@@ -41,7 +54,7 @@ export default function DisclaimerDialog() {
       onConfirm={acknowledge}
       confirmLabel="OK"
       showCancel={false}
-      onClose={() => setIsOpen(false)}
+      onClose={close}
     />
   )
 }

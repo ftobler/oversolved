@@ -5,6 +5,9 @@ import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assembl
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 vi.mock('react-router-dom', () => ({
+  // AppHeader reads the path to decide whether its burger navigates or opens
+  // the about notice; these assembly routes are never the documents overview.
+  useLocation: () => ({ pathname: '/documents/test-uuid' }),
   useNavigate: () => vi.fn(),
   Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
     <a href={to} {...props}>{children}</a>,
