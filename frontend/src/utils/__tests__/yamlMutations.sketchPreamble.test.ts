@@ -228,6 +228,43 @@ describe('degenerate rectangles author nothing', () => {
     expect(JSON.stringify(doc)).toBe(before)
     expect(warnSpy).toHaveBeenCalled()
   })
+
+  // Only ONE axis has to collapse for the rectangle to be degenerate: dragging
+  // along a row or a column authors two zero-length lines (lA/lC or lB/lD) on
+  // top of each other, plus coincidents pinning them together. That is the
+  // silent document pollution -- nothing on screen, four entities in the YAML.
+  it.each([
+    ['zero width (corners share x)',  [3, 4] as [number, number], [3, 9] as [number, number]],
+    ['zero height (corners share y)', [3, 4] as [number, number], [9, 4] as [number, number]],
+    ['a non-finite corner',           [3, 4] as [number, number], [NaN, 9] as [number, number]],
+    ['an infinite corner',            [3, 4] as [number, number], [9, Infinity] as [number, number]],
+  ])('applyAddRect rejects %s', (_name, p0, p1) => {
+    const doc = populatedDoc()
+    const before = JSON.stringify(doc)
+    applyAddRect(doc, 'Sketch1', p0, p1)
+    expect(JSON.stringify(doc)).toBe(before)
+    expect(warnSpy).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a corner on the center column', [3, 4] as [number, number], [3, 9] as [number, number]],
+    ['a corner on the center row',    [3, 4] as [number, number], [9, 4] as [number, number]],
+    ['a non-finite corner',           [3, 4] as [number, number], [NaN, 9] as [number, number]],
+    ['a non-finite center',           [NaN, 4] as [number, number], [9, 9] as [number, number]],
+  ])('applyAddCenterRect rejects %s', (_name, center, corner) => {
+    const doc = populatedDoc()
+    const before = JSON.stringify(doc)
+    applyAddCenterRect(doc, 'Sketch1', center, corner)
+    expect(JSON.stringify(doc)).toBe(before)
+    expect(warnSpy).toHaveBeenCalled()
+  })
+
+  // The guard must not have gone the other way: a real rectangle still lands.
+  it('still authors a proper rectangle', () => {
+    const doc = populatedDoc()
+    applyAddRect(doc, 'Sketch1', [0, 0], [10, 5])
+    expect(sketch(doc).entities!.filter(e => e.kind === 'line')).toHaveLength(5)  // line1 + 4
+  })
 })
 
 describe('entity id minting', () => {

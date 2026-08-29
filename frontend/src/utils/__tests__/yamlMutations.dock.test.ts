@@ -61,6 +61,48 @@ describe('applyAddDock', () => {
     expect(points(doc)).toHaveLength(0)
     expect(docks(doc)).toHaveLength(0)
   })
+
+  // A dock's `point` survives a solve round-trip as the resolved `{entity, point}`
+  // dict rather than the `$<eid>xy` wire string. Both forms name an entity id and
+  // both can outlive it (the point deleted, the dock's own GC missed), so the
+  // membership check has to cover the dict too -- otherwise the reuse path hands
+  // back a dead id and the caller rewrites a constraint onto an entity that is
+  // not in the sketch. Same rejection as the string form: null.
+  it.each([
+    ['dict form',   { entity: 'ghost', point: 'xy' }],
+    ['string form', '$ghostxy'],
+  ])('rejects an existing dock whose %s point names an unknown entity', (_name, point) => {
+    const doc = makeSketchDoc()
+    const host = hostId(doc)
+    sketch(doc).constraints!.push({ id: 'c_dock_stale', kind: 'dock', point, host } as never)
+
+    expect(applyAddDock(doc, 'Sketch1', [5, 0], host)).toBeNull()
+    // The stale dock is reused-or-nothing: no second dock, no orphan point.
+    expect(docks(doc)).toHaveLength(1)
+    expect(points(doc)).toHaveLength(0)
+  })
+
+  it('reuses a dict-form point that DOES name a live entity', () => {
+    const doc = makeSketchDoc()
+    const host = hostId(doc)
+    sketch(doc).entities!.push({ id: 'live', kind: 'point' })
+    sketch(doc).initial!['live'] = [5, 0]
+    sketch(doc).constraints!.push({
+      id: 'c_dock_live', kind: 'dock', point: { entity: 'live', point: 'xy' }, host,
+    } as never)
+
+    expect(applyAddDock(doc, 'Sketch1', [5, 0], host)).toBe('live')
+    expect(points(doc)).toHaveLength(1)
+  })
+
+  // The seed is persisted verbatim, so a degenerate host location must not reach
+  // feature.initial as a NaN pose.
+  it('refuses a non-finite contact location', () => {
+    const doc = makeSketchDoc()
+    expect(applyAddDock(doc, 'Sketch1', [NaN, 0], hostId(doc))).toBeNull()
+    expect(points(doc)).toHaveLength(0)
+    expect(docks(doc)).toHaveLength(0)
+  })
 })
 
 const coincidents = (doc: PartDoc) => (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')

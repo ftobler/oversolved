@@ -112,6 +112,14 @@ export function applyAddExtrude(
   sketchQuery: string,
   distance: number,
 ): void {
+  // The distance is persisted verbatim into the doc. round(NaN) is still NaN,
+  // so a non-finite distance would seed a broken extrude. Refuse before the
+  // feature is pushed (and before the profile sketch is hidden), or a refused
+  // feature would still hide the sketch it was meant to consume.
+  if (!Number.isFinite(distance)) {
+    warn('applyAddExtrude: ignoring non-finite distance', { featureId, distance })
+    return
+  }
   const feature: PartFeature = {
     id: featureId,
     kind: 'extrude',
@@ -196,6 +204,14 @@ export function applyAddRevolve(
   sketchQuery: string,
   angle: number,
 ): void {
+  // The angle is persisted verbatim into the doc. round(NaN) is still NaN, so a
+  // non-finite angle would seed a broken revolve. Refuse before the feature is
+  // pushed (and before the profile sketch is hidden), or a refused feature would
+  // still hide the sketch it was meant to consume.
+  if (!Number.isFinite(angle)) {
+    warn('applyAddRevolve: ignoring non-finite angle', { featureId, angle })
+    return
+  }
   const feature: PartFeature = {
     id: featureId,
     kind: 'revolve',

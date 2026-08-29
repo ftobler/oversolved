@@ -7,6 +7,12 @@ export const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(.
 
 export const round = (v: number) => Math.round(v * 1e6) / 1e6
 
+/** Boundary gate for every coordinate tuple a mutation persists. round(NaN) is
+ *  still NaN and Math.min/max propagate it, so the clamps and rounds downstream
+ *  are not gates themselves: a non-finite number has to be refused where it
+ *  enters the document, or it survives into the YAML and every later solve. */
+export const allFinite = (vs: readonly number[]) => vs.every(v => Number.isFinite(v))
+
 export function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
   return doc.features?.find(f => f.id === featureId)
 }

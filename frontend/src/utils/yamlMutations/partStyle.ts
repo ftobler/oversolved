@@ -30,6 +30,14 @@ export function applySetPartColor(doc: PartDoc, bodyId: string, color: string): 
 type ClampedStyleField = 'transparency' | 'metalness' | 'roughness' | 'transmission'
 
 function setClampedStyleField(doc: PartDoc, bodyId: string, field: ClampedStyleField, value: number): void {
+  // A non-finite opacity/metalness/roughness/transmission is not a slider
+  // output; clamping NaN or Infinity would still persist an invalid material
+  // value into the doc and survive every reload. Refuse the write and leave any
+  // prior value untouched.
+  if (!Number.isFinite(value)) {
+    warn(`setClampedStyleField: refusing non-finite ${field}`, { bodyId, value })
+    return
+  }
   const clamped = Math.max(0, Math.min(1, value))
   if (!doc.part_style) doc.part_style = {}
   const current = doc.part_style[bodyId] ?? {}
@@ -191,6 +199,12 @@ export function applySetPlaneDefinitionField(
   const feature = findFeature(doc, featureId)
   if (!feature) return
   if (!feature.definition) feature.definition = {}
+  // A numeric plane field is persisted verbatim; a non-finite value would seed
+  // NaN into the document and survive every reload, so reject it at the gate.
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    warn('applySetPlaneDefinitionField: ignoring non-finite value', { featureId, field, value })
+    return
+  }
   ;(feature.definition as Record<string, string | number>)[field] = value
 }
 

@@ -2,8 +2,8 @@ import type { PartDoc, PartEntityDef, PartFeature, PartConstraint, PartTarget } 
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import {
-  warn, round, findFeature, parseTarget, uniqueConstraintId, freshEntityIds, mintEntityId,
-  CONSTRAINT_REF_FIELDS, refMatchesEntity,
+  warn, round, allFinite, findFeature, parseTarget, uniqueConstraintId, freshEntityIds,
+  mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
 } from './helpers'
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
@@ -273,6 +273,15 @@ export function applyMoveEntity(
   const [dx, dy] = delta
   const feature = findFeature(doc, featureId)
   if (!feature?.initial) return
+  // A non-finite delta is broken pointer math upstream (a drag frame divided by
+  // a zero extent, or an empty numeric input parsed). round(NaN) is still NaN,
+  // so the translate would persist the poison into the doc and every later
+  // solve. Refuse before adopting any solved frame: a bad delta must not also
+  // half-commit by adopting the frame it arrived with.
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    warn('applyMoveEntity: ignoring non-finite delta', { featureId, entityId, delta })
+    return
+  }
 
   // The adopted frame already reflects the translated position, so `delta` must
   // not be applied on top of it (that would translate twice).
@@ -388,9 +397,12 @@ export function applyAddConstraint(
       c.target = pt(targets[0])
     }
   }
-  if (value !== undefined) c.value = value
-  if (pos !== undefined) c.pos = pos
-  if (sign !== undefined) c.sign = sign
+  // A dimension value, label position, or sign is persisted verbatim into the
+  // doc. A non-finite one would round into the document and poison every later
+  // solve, so each is gated here exactly like applySetConstraintValue/Pos.
+  if (value !== undefined && Number.isFinite(value)) c.value = value
+  if (pos !== undefined && Number.isFinite(pos[0]) && Number.isFinite(pos[1])) c.pos = pos
+  if (sign !== undefined && Number.isFinite(sign)) c.sign = sign
   feature.constraints.push(c)
 }
 
@@ -504,6 +516,13 @@ export function applyAddEntity(
 ): void {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return
+  // The seed params are persisted verbatim into the doc. round(NaN) is still
+  // NaN, so a non-finite coordinate would survive into the YAML and every later
+  // solve seeded from it.
+  if (!allFinite(params)) {
+    warn('applyAddEntity: ignoring non-finite seed params', { featureId, kind, params })
+    return
+  }
   const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
@@ -534,6 +553,13 @@ export function applyAddEntityWithConstraint(
 ): void {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
+  // Seed params are persisted verbatim (same gate as applyAddEntity); refusing
+  // here keeps the snap constraint from being authored against an entity that
+  // was never created.
+  if (!allFinite(params)) {
+    warn('applyAddEntityWithConstraint: ignoring non-finite seed params', { featureId, kind, params })
+    return
+  }
   const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
@@ -579,6 +605,13 @@ export function applyAddPointAtIntersection(
 ): string | null {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return null
+  // The contact location is persisted verbatim as the point's seed. A malformed
+  // `isect:` handle parses to NaN upstream, so the gate lives here rather than
+  // at the one call seam: null tells the caller nothing was materialized.
+  if (!allFinite(at)) {
+    warn('applyAddPointAtIntersection: ignoring non-finite location', { featureId, at })
+    return null
+  }
 
   // Usable loci: distinct, existing, non-point curves. A point entity has no
   // locus to lie on; construction curves are allowed (a construction tangency is
@@ -632,9 +665,17 @@ export function applyAddDock(
   const host = feature.constraints.find(c => c.id === hostConstraintId)
   if (!host) return null  // nothing to dock to
 
-  // Idempotent: reuse the point of an existing dock on the same host.
+  // Idempotent: reuse the point of an existing dock on the same host. The seed
+  // is unused on this path, so it is gated only below where it is persisted.
   const existingDock = feature.constraints.find(c => c.kind === 'dock' && c.host === hostConstraintId)
   if (existingDock) return _dockPointId(existingDock, new Set(feature.entities.map(e => e.id)))
+
+  // The contact seed is written verbatim. dockLocationOf can hand back a
+  // non-finite pair for a degenerate host, so gate before the point is minted.
+  if (!allFinite(at)) {
+    warn('applyAddDock: ignoring non-finite contact location', { featureId, hostConstraintId, at })
+    return null
+  }
 
   const eid = mintEntityId(feature.entities)
   feature.entities.push({ id: eid, kind: 'point' })
@@ -656,7 +697,10 @@ function _dockPointId(dock: PartConstraint, knownIds: Set<string>): string | nul
   const ref = dock.point
   if (ref && typeof ref === 'object') {
     const e = (ref as { entity?: unknown }).entity
-    return typeof e === 'string' ? e : null
+    // Membership matters as much here as on the wire form below: a dict ref left
+    // behind by a deleted point would hand the caller a dead id, and the
+    // idempotence reuse in applyAddDock would rewrite a constraint onto it.
+    return typeof e === 'string' && knownIds.has(e) ? e : null
   }
   if (typeof ref === 'string' && ref.startsWith('$')) {
     const bare = ref.slice(1)
@@ -697,18 +741,26 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
     if (t.startsWith('isect:')) {
       const parts = t.split(':')  // isect, fid, x, y, ...curveIds
       const fid = parts[1]
+      // A malformed handle parses to NaN; applyAddPointAtIntersection gates on
+      // that itself and returns null, so the target is left alone below rather
+      // than rewritten to a NaN pose.
       const at: [number, number] = [parseFloat(parts[2]), parseFloat(parts[3])]
-      // A malformed handle parses to NaN, which round() carries straight into
-      // the materialized point's seed. Fail safe at the parse seam like
-      // edgeSampling and normalizeMateAngleDeg do: leave the target alone
-      // rather than author a NaN pose into the document.
-      if (!Number.isFinite(at[0]) || !Number.isFinite(at[1])) return t
       const curves = parts.slice(4)
       const pid = applyAddPointAtIntersection(doc, fid, at, curves)
       return pid ? `vertex:${fid}:${pid}:xy` : t
     }
     return t
   })
+}
+
+/** A rectangle needs a real extent on BOTH axes. Collapsing one axis is already
+ *  degenerate: an axis-aligned "rectangle" is two zero-length lines plus a
+ *  coincident pair on top of each other, which pollutes the document with
+ *  geometry that can never solve. Non-finite corners are broken pointer math
+ *  upstream and round() would carry the NaN straight into the seed. Shared by
+ *  the corner and center rect entries so both bail on the same condition. */
+function isProperRect(x0: number, y0: number, x1: number, y1: number): boolean {
+  return allFinite([x0, y0, x1, y1]) && x0 !== x1 && y0 !== y1
 }
 
 export function applyAddRect(
@@ -720,10 +772,9 @@ export function applyAddRect(
   const [x0, y0] = p0
   const [x1, y1] = p1
   // The draw tool dispatches on the second click unconditionally, so a click on
-  // the starting corner arrives here. A zero-area rectangle is four zero-length
-  // lines plus eight constraints that can never solve: bail before anything,
-  // even container materialization, touches the document.
-  if (x0 === x1 && y0 === y1) {
+  // the starting corner -- or anywhere on its row or column -- arrives here.
+  // Bail before anything, even container materialization, touches the document.
+  if (!isProperRect(x0, y0, x1, y1)) {
     warn('applyAddRect: degenerate rectangle skipped', { p0, p1 })
     return
   }
@@ -743,18 +794,18 @@ export function applyAddCenterRect(
   const [x, y] = corner
   const dx = x - cx
   const dy = y - cy
-  // Same degenerate-click guard as applyAddRect; here it must also keep the
-  // center point and its two diagonal midpoint constraints from being authored.
-  if (dx === 0 && dy === 0) {
+  // 4 corners of the rectangle (symmetric around center)
+  const x0 = cx - dx, x1 = cx + dx
+  const y0 = cy - dy, y1 = cy + dy
+  // Same guard as applyAddRect, on the derived corners so one collapsed axis is
+  // caught too; here it must also keep the center point and its two diagonal
+  // midpoint constraints from being authored.
+  if (!isProperRect(x0, y0, x1, y1)) {
     warn('applyAddCenterRect: degenerate rectangle skipped', { center, corner })
     return
   }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-
-  // 4 corners of the rectangle (symmetric around center)
-  const x0 = cx - dx, x1 = cx + dx
-  const y0 = cy - dy, y1 = cy + dy
 
   const [lA, lB, lC, lD] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
 
@@ -796,8 +847,16 @@ export function applyAddNgon(
   const n = Math.max(3, Math.floor(sides))
   const [cx, cy] = center
   const [vx, vy] = corner
+  // A non-finite center, corner, or side count is broken pointer math upstream.
+  // round(NaN) is still NaN, so a bad corner would seed NaN vertices for every
+  // side, and a NaN side count collapses the push loop. Refuse before anything
+  // is authored, so no orphan `ngon` constraint is left behind with no lines.
+  if (!allFinite([cx, cy, vx, vy]) || !Number.isFinite(sides)) {
+    warn('applyAddNgon: ignoring non-finite geometry', { featureId, center, corner, sides })
+    return
+  }
   const radius = Math.hypot(vx - cx, vy - cy)
-  if (radius <= 0) return
+  if (radius <= 0) return  // degenerate: a point, not a polygon
   const angle0 = Math.atan2(vy - cy, vx - cx)
 
   const lineIds = freshEntityIds(feature.entities, n)
@@ -938,6 +997,13 @@ export function applyAddOffset(
 ): void {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
+  // The distance is persisted verbatim into every clone's seed. round(NaN) is
+  // still NaN, so a non-finite distance would seed NaN clones (plus their miter
+  // reconnections) across the whole selection.
+  if (!Number.isFinite(distance)) {
+    warn('applyAddOffset: ignoring non-finite distance', { featureId, sourceIds, distance })
+    return
+  }
 
   const cloneOf = new Map<string, string>()  // source id -> clone id
   const kindOf = new Map<string, string>()   // source id -> entity kind
