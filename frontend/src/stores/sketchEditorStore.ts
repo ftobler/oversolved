@@ -1185,19 +1185,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       return
     }
 
+    // Entering a pick abandons any in-flight brep dimension gesture, same as a
+    // tool switch: the projections it materialised were scratch work for that
+    // gesture, and leaving them armed would let the next unrelated mutation be
+    // swallowed as "the projection". Cancel it before deactivating the tool so
+    // the pending bookkeeping is empty when popMode re-validates the store.
+    if (get().pendingBrepProjectionIds.length > 0) {
+      get().cancelBrepProjectionGesture()
+    }
+
     // Entering a pick: deactivate any active tool first. Unguarded, like every
     // other deactivate path: an armed tool always owns the top of the stack (the
     // invariant says so), and a desync is a bug we want popMode to report rather
     // than skip silently.
     deactivateTool(get, set, get().activeTool)
-
-    // Entering a pick abandons any in-flight brep dimension gesture, same as a
-    // tool switch: the projections it materialised were scratch work for that
-    // gesture, and leaving them armed would let the next unrelated mutation be
-    // swallowed as "the projection".
-    if (get().pendingBrepProjectionIds.length > 0) {
-      get().cancelBrepProjectionGesture()
-    }
 
     // Manual activate clears the existing normal selection so a stray prior
     // selection is not instantly consumed as a pick. `seed: true` (used by

@@ -640,7 +640,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     if (!doc || !callbacks) return
     if (selectedMateId) {
       callbacks.mutateDoc('Delete mate', d => removeMate(bakeSolvedTransforms(d, transforms), selectedMateId))
-      set({ selectedMateId: null })
+      // Route through the setter, not a bare `set`, so the mate field this
+      // selection may have armed is disarmed too: a delete that leaves the
+      // armed field pointing at the just-deleted mate strands a dangling
+      // reference and an owed solve that never lands.
+      get().setSelectedMateId(null)
       callbacks.requestSolve()
       return
     }

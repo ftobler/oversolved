@@ -236,8 +236,17 @@ export function useSolver(
       }
     }
     setFeatureTimings(timings)
-    setDoc(cloned)
-    docRef.current = cloned
+    // A solve only re-derives geometry from the authored spec, so when nothing
+    // in the doc actually changed the write-back must not mint a fresh doc
+    // object: every user edit installs a new doc and the save identity guard
+    // (useDocumentState / useAssemblyDoc) clears the dirty flag only while
+    // docRef identity is untouched. A re-solve that bakes identical geometry
+    // keeps the prior object, so a save overlapping it still clears dirty
+    // instead of being defeated by an unrelated re-solve.
+    if (!(docRef.current !== null && JSON.stringify(cloned) === JSON.stringify(docRef.current))) {
+      setDoc(cloned)
+      docRef.current = cloned
+    }
     // The result dump only feeds the code tab's read-only pane. Serialize it
     // lazily (and as JSON, the native shape of the JS result object) only when
     // that tab is open, instead of on every solve. The document codeText stays

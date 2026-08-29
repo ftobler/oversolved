@@ -28,6 +28,10 @@ function defaultState(): SketchEditorInvariantState {
     drawHover: null,
     pendingDialog: null,
     modeStack: [],
+    drag: null,
+    dragPending: null,
+    dragSnap: null,
+    pendingBrepProjectionIds: [],
   }
 }
 
@@ -585,6 +589,55 @@ describe('validateSketchEditorState', () => {
   describe('drawing-tool set vs registry', () => {
     it('DRAWING_TOOLS matches the registered drawing tools', () => {
       expect(DRAWING_TOOLS()).toEqual(new Set(Array.from(toolRegistry.drawingIds())))
+    })
+  })
+
+  describe('drag/snap/pending coupling invariants', () => {
+    it('throws when a drag is set while a drawing tool is active', () => {
+      const state = { ...defaultState(), drag: { type: 'vertex' }, ...withTool('line') }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] drag state')
+    })
+
+    it('throws when dragSnap is set while a drawing tool is active', () => {
+      const state = { ...defaultState(), dragSnap: { point: [0, 0] }, ...withTool('circle') }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] drag state')
+    })
+
+    it('throws when dragPending is set while a drawing tool is active', () => {
+      const state = { ...defaultState(), dragPending: { vertexId: 'v' }, ...withTool('line') }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] drag state')
+    })
+
+    for (const tool of DRAWING_TOOLS()) {
+      it(`passes for drawing tool '${tool}' with no drag state`, () => {
+        const state = { ...defaultState(), ...withTool(tool) }
+        expect(() => validateSketchEditorState(state)).not.toThrow()
+      })
+    }
+
+    it('passes for the drag tool carrying a live drag', () => {
+      const state = { ...defaultState(), drag: { type: 'vertex' }, ...withTool('drag') }
+      expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+
+    it('passes with a drag while no tool is armed (drag fallback)', () => {
+      const state = { ...defaultState(), drag: { type: 'vertex' }, activeTool: null }
+      expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+
+    it('throws when pendingBrepProjectionIds is non-empty outside the dimension tool', () => {
+      const state = { ...defaultState(), ...withTool('drag'), pendingBrepProjectionIds: ['e1'] }
+      expect(() => validateSketchEditorState(state)).toThrow('[invariant] pendingBrepProjectionIds')
+    })
+
+    it('passes when pendingBrepProjectionIds is non-empty during the dimension tool', () => {
+      const state = { ...defaultState(), ...withTool('dimension'), pendingBrepProjectionIds: ['e1'] }
+      expect(() => validateSketchEditorState(state)).not.toThrow()
+    })
+
+    it('passes when pendingBrepProjectionIds is empty while a drawing tool is active', () => {
+      const state = { ...defaultState(), pendingBrepProjectionIds: [], ...withTool('line') }
+      expect(() => validateSketchEditorState(state)).not.toThrow()
     })
   })
 

@@ -117,4 +117,21 @@ describe('assemblyStore deleteSelected', () => {
     expect(host.doc).toEqual(sampleDoc())
     expect(requestSolve).not.toHaveBeenCalled()
   })
+
+  it('routes a mate delete through setSelectedMateId, clearing a dangling armed field', () => {
+    const { host, requestSolve } = mountHost(sampleDoc())
+    useAssemblyStore.getState().setSelectedMateId('fm1')
+    // A mate field is armed against the very mate now selected for deletion.
+    useAssemblyStore.getState().setActiveMateField({ featureId: 'fm1', field: 'ref_a' })
+    expect(useAssemblyStore.getState().activeMateField).not.toBeNull()
+
+    useAssemblyStore.getState().deleteSelected()
+
+    expect(ids(host.doc, 'mate')).toEqual([])
+    // The delete must not bypass setSelectedMateId: the armed field that
+    // pointed at the deleted mate would otherwise be left dangling.
+    expect(useAssemblyStore.getState().selectedMateId).toBeNull()
+    expect(useAssemblyStore.getState().activeMateField).toBeNull()
+    expect(requestSolve).toHaveBeenCalled()
+  })
 })

@@ -318,6 +318,18 @@ export interface SketchEditorInvariantState extends SelectionInvariantState {
   drawHover: unknown
   pendingDialog: unknown
   modeStack: readonly string[]
+  // Drag-tool transient state. Only the (effective) drag tool may carry a live
+  // or pending drag; a drawing tool arms its own transient state and must never
+  // inherit drag residue from the previous tool. Typed loosely on purpose: this
+  // module stays free of the store's DragState/SnapTarget imports.
+  drag: unknown
+  dragPending: unknown
+  dragSnap: unknown
+  // Brep-projection bookkeeping: ids of projected entities a dimension gesture
+  // created on the active sketch. They live only while that gesture is open, so
+  // outside the dimension tool the list must be empty or the orphaned ids would
+  // outlive the gesture that made them.
+  pendingBrepProjectionIds: unknown
 }
 
 export function validateSketchEditorState(state: SketchEditorInvariantState): void {
@@ -377,6 +389,27 @@ export function validateSketchEditorState(state: SketchEditorInvariantState): vo
   if (state.activeTool === null && state.activePickField === null && state.modeStack.length > 0) {
     failLoud(
       `[invariant] modeStack is [${state.modeStack.join(', ')}] but no tool or pick field is active`,
+    )
+  }
+
+  // Drag/snap coupling. Drawing tools place points by click, so a live or
+  // pending drag left in their state is stuck residue from a lost gesture (a
+  // tool switch does not clear drag state). The dimension and drag tools may
+  // legitimately carry a drag (a dimension label or vertex is draggable), so
+  // only drawing tools are forbidden from holding one.
+  if (state.activeTool !== null && isDrawingTool(state.activeTool)
+      && (state.drag !== null || state.dragPending !== null || state.dragSnap !== null)) {
+    failLoud(
+      `[invariant] drag state (drag/dragPending/dragSnap) is set but activeTool is drawing tool '${state.activeTool}'`,
+    )
+  }
+
+  // Brep-projection bookkeeping is owned by the dimension gesture. Elsewhere an
+  // entry means a projection was materialised but never committed or cancelled.
+  const pending = state.pendingBrepProjectionIds as unknown as unknown[]
+  if (state.activeTool !== 'dimension' && pending.length > 0) {
+    failLoud(
+      `[invariant] pendingBrepProjectionIds has ${pending.length} entries but activeTool is '${state.activeTool}', expected 'dimension'`,
     )
   }
 }
