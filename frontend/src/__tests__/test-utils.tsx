@@ -98,7 +98,7 @@ export function partDocFetchMock({
 export function viewportMockModule(handle: Record<string, unknown> = {}) {
   return {
     __esModule: true,
-    default: forwardRef(function MockViewport(_props: Record<string, unknown>, ref: React.Ref<unknown>) {
+    default: forwardRef(function MockViewport(props: Record<string, unknown>, ref: React.Ref<unknown>) {
       useImperativeHandle(ref, () => ({
         autoZoomToFit: vi.fn(),
         captureScreenshot: vi.fn(),
@@ -107,7 +107,10 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
         alignCameraToFace: vi.fn(),
         ...handle,
       }))
-      return null
+      // The real viewport hosts the bottom-right HUD (orientation cube plus the
+      // measurement readout); render the slot so a page test can assert what
+      // was handed into it.
+      return <div data-testid="viewport-hud">{props.hud as ReactNode}</div>
     }),
   }
 }

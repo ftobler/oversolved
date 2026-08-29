@@ -31,8 +31,11 @@ vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule())
 
 vi.mock('../../components/Toolbar/SketchToolbar', () => ({ default: () => null }))
-vi.mock('../../components/layout/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
-vi.mock('../../components/layout/FooterMeasurementDisplay', () => ({ default: () => null }))
+vi.mock('../../components/layout/AppHeader', () => ({
+  default: ({ children, rightContent }: { children: ReactNode; rightContent?: ReactNode }) =>
+    <div>{children}{rightContent}</div>,
+}))
+vi.mock('../../components/layout/MeasurementDisplay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
@@ -66,9 +69,9 @@ function pressF2(target?: Element) {
   return prevented
 }
 
-// Scoped by title: the footer also holds an unconditional collision-render
+// Scoped by title: the header also holds an unconditional collision-render
 // button with the same class, and only this one reflects debugOpen.
-const footerButton = () => document.querySelector('button[title="Toggle debug panel (F2)"]')
+const headerButton = () => document.querySelector('button[title="Toggle debug panel (F2)"]')
 
 describe('Part F2 debug toggle (http build)', () => {
   beforeEach(() => {
@@ -92,7 +95,7 @@ describe('Part F2 debug toggle (http build)', () => {
     authState.user = ADMIN
     renderPage()
 
-    const button = footerButton()
+    const button = headerButton()
     expect(button).toBeTruthy()
     expect(pressF2()).toHaveBeenCalled()
 
@@ -106,7 +109,7 @@ describe('Part F2 debug toggle (http build)', () => {
     renderPage(true)
 
     expect(pressF2(screen.getByTestId('field'))).toHaveBeenCalled()
-    expect(footerButton()!.classList.contains('active')).toBe(true)
+    expect(headerButton()!.classList.contains('active')).toBe(true)
   })
 
   it('a non-admin gets the key passed through untouched', () => {
@@ -115,8 +118,8 @@ describe('Part F2 debug toggle (http build)', () => {
 
     // The debug-panel button stays hidden for a non-admin on this build, and
     // the keydown is left alone rather than eaten by a dead handler.
-    expect(footerButton()).toBeNull()
+    expect(headerButton()).toBeNull()
     expect(pressF2(screen.getByTestId('field'))).not.toHaveBeenCalled()
-    expect(footerButton()).toBeNull()
+    expect(headerButton()).toBeNull()
   })
 })

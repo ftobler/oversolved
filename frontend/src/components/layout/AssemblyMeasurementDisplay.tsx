@@ -1,6 +1,6 @@
-// The assembly footer's measurement readout. Mirrors FooterMeasurementDisplay
-// (the part editor's), but reads the assembly's own selection and measures it
-// off the solved anchor table rather than sketch geometry.
+// The assembly viewport's measurement readout. Mirrors MeasurementDisplay (the
+// part editor's), but reads the assembly's own selection and measures it off
+// the solved anchor table rather than sketch geometry.
 
 import { useMemo } from 'react'
 import { useAssemblyStore } from '@/stores/assemblyStore'

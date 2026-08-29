@@ -1,0 +1,48 @@
+/* The viewport's bottom-right overlay stack: the orientation cube on top, the
+   measurement readout directly under it, both right-aligned against the
+   viewport edge. The column is click-through so it never steals a drag from
+   the scene; the cube opts back in (GIZMO_STYLE). */
+.viewport-hud {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+
+/* Reserved even when empty: a readout that appeared with the selection would
+   otherwise shove the cube up and down as the user picks. */
+.viewport-hud-readout {
+  min-height: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.measurement-display {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-family: var(--sans);  /* reads as prose ("plane distance 4.000mm"), not tabular data */
+  font-size: 12px;
+  color: #cccccc;
+  text-align: right;
+  /* The readout floats over the 3D scene now, not over a solid footer bar. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.measurement-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.measurement-icon {
+  width: 12px;
+  height: 12px;
+  filter: brightness(0) invert(0.8);
+}

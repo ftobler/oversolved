@@ -12,11 +12,13 @@
 // utils/anchorGizmos.ts, all viewport-free and unit-tested.
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, Suspense } from 'react'
+import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
+import '@/components/Viewport/ViewportHud.css'
 import type { Hit, Pv } from '@/components/misc/CubeGizmo.utils'
 import SceneController from '@/components/Viewport/SceneController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -86,7 +88,13 @@ export interface AssemblyViewportHandle {
   captureScreenshotForSaving: () => Promise<string | null>
 }
 
-export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewport(_props, ref) {
+export interface AssemblyViewportProps {
+  // Bottom-right overlay content, stacked under the orientation cube. Mirrors
+  // the part viewport's `hud`.
+  hud?: ReactNode
+}
+
+export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(function AssemblyViewport({ hud }, ref) {
   const doc = useAssemblyStore(s => s.doc)
   const mates = useAssemblyStore(s => s.mates)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
@@ -623,13 +631,16 @@ export default forwardRef<AssemblyViewportHandle, object>(function AssemblyViewp
         )}
       </Canvas>
 
-      <CubeGizmoCanvas
-        canvasRef={canvasRef}
-        pvRef={pvRef}
-        hoverRef={hoverRef}
-        snapRef={snapRef}
-        cameraRef={cameraRef}
-      />
+      <div className="viewport-hud">
+        <CubeGizmoCanvas
+          canvasRef={canvasRef}
+          pvRef={pvRef}
+          hoverRef={hoverRef}
+          snapRef={snapRef}
+          cameraRef={cameraRef}
+        />
+        <div className="viewport-hud-readout">{hud}</div>
+      </div>
     </div>
   )
 })

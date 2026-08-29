@@ -1,10 +1,11 @@
 import * as THREE from 'three'
 
 export const GIZMO_SIZE = 140
+// Placement is the viewport HUD column's job (ViewportHud.css): the cube is the
+// top item of a bottom-right stack that the measurement readout sits under, so
+// the widget itself only declares its size and that it still takes clicks --
+// the column around it is click-through.
 export const GIZMO_STYLE: React.CSSProperties = {
-  position: 'absolute',
-  bottom: 12,
-  right: 12,
   width: GIZMO_SIZE,
   height: GIZMO_SIZE,
   pointerEvents: 'auto',

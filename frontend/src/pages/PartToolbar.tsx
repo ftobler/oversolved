@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import type { Mutation } from '@/types/cad'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
@@ -19,6 +20,9 @@ interface PartToolbarProps {
   handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
   onShare: () => void
+  // Header-right slot (the page's debug toggles). The header owns the layout;
+  // the page owns the state behind the buttons.
+  rightContent?: ReactNode
 }
 
 export default function PartToolbar({
@@ -30,6 +34,7 @@ export default function PartToolbar({
   handleSave,
   handleClone,
   onShare,
+  rightContent,
 }: PartToolbarProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
   const redoStack = usePartEditorStore(s => s.redoStack) as StackEntry[]
@@ -86,7 +91,7 @@ export default function PartToolbar({
   }
 
   return (
-    <AppHeader>
+    <AppHeader rightContent={rightContent}>
       <div className="undo-redo-btn-group">
         <button
           className="toolbar-btn"

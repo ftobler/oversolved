@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import AppHeader from '@/components/layout/AppHeader'
@@ -11,6 +12,8 @@ interface AssemblyToolbarProps {
   // told apart from a successful one.
   handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
+  // Header-right slot (the page's debug toggles). Mirrors PartToolbar.
+  rightContent?: ReactNode
 }
 
 // Assembly counterpart to PartToolbar: the same AppHeader shell (logo, burger,
@@ -23,6 +26,7 @@ export default function AssemblyToolbar({
   onRename,
   handleSave,
   handleClone,
+  rightContent,
 }: AssemblyToolbarProps) {
   const undoStack = useAssemblyStore(s => s.undoStack) as AssemblyUndoEntry[]
   const redoStack = useAssemblyStore(s => s.redoStack) as AssemblyUndoEntry[]
@@ -80,7 +84,7 @@ export default function AssemblyToolbar({
   }
 
   return (
-    <AppHeader>
+    <AppHeader rightContent={rightContent}>
       <div className="undo-redo-btn-group">
         <button
           className="toolbar-btn"

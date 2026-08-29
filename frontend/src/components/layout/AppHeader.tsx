@@ -8,6 +8,10 @@ import MessageDialog from '@/components/dialogs/MessageDialog'
 import BugReportDialog from '@/components/dialogs/BugReportDialog'
 import '@/components/layout/AppHeader.css'
 
+// The copyright note rides on the logo's tooltip rather than a footer bar: it
+// is a credit, not a control, and the editors need the vertical space.
+const COPYRIGHT = 'Copyright 2026 - Oversolved'
+
 interface AppHeaderProps {
   title?: string
   children?: ReactNode
@@ -60,7 +64,7 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         <Link to="/documents" className="toolbar-btn burger" title="Documents" onClick={guardLink}>
           <span className="material-icons-outlined">menu</span>
         </Link>
-        <Link to="/" className="logo" onClick={guardLink}>
+        <Link to="/" className="logo" title={COPYRIGHT} onClick={guardLink}>
           Oversolved
         </Link>
         {title && <h2 className="doc-name">{title}</h2>}

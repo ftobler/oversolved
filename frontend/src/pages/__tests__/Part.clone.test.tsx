@@ -20,8 +20,11 @@ vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule())
 
 vi.mock('../../components/Toolbar/SketchToolbar', () => ({ default: () => null }))
-vi.mock('../../components/layout/AppHeader', () => ({ default: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
-vi.mock('../../components/layout/FooterMeasurementDisplay', () => ({ default: () => null }))
+vi.mock('../../components/layout/AppHeader', () => ({
+  default: ({ children, rightContent }: { children: ReactNode; rightContent?: ReactNode }) =>
+    <div>{children}{rightContent}</div>,
+}))
+vi.mock('../../components/layout/MeasurementDisplay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))

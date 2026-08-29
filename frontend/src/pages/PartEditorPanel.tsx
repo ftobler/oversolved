@@ -51,6 +51,8 @@ interface PartEditorPanelProps {
   handleExportStep: () => void
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string) => void
+  // Bottom-right in-viewport overlay (the measurement readout).
+  viewportHud?: ReactNode
 }
 
 export default function PartEditorPanel({
@@ -72,6 +74,7 @@ export default function PartEditorPanel({
   handleExportStep,
   viewportRef,
   handleRightClick,
+  viewportHud,
 }: PartEditorPanelProps) {
   return (
     <div className="doc-container">
@@ -153,7 +156,7 @@ export default function PartEditorPanel({
             Unmounting would remount it on return and re-arm its auto-fit, which
             reframes/re-scales the camera. We only want the first-solve fit. */}
         <div style={{ position: 'relative', width: '100%', flex: 1, display: mode === 'code' ? 'none' : undefined }}>
-          <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} />
+          <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
           <LoadingOverlay isDocumentLoading={loading} />
         </div>
       </div>

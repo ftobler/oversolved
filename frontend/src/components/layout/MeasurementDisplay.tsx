@@ -3,19 +3,21 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { computeMeasurements } from '@/utils/geometry/computeMeasurements'
 import type { Sketch, BodyResult } from '@/types/cad'
 
-interface FooterMeasurementDisplayProps {
+interface MeasurementDisplayProps {
   sketch: Sketch
   measurementIcon?: string
   solveResults?: Record<string, unknown>
   bodies?: Record<string, BodyResult>
 }
 
-export default function FooterMeasurementDisplay({
+// The part editor's measurement readout for the current selection. Lives in
+// the viewport's bottom-right HUD, under the orientation cube.
+export default function MeasurementDisplay({
   sketch,
   measurementIcon,
   solveResults,
   bodies,
-}: FooterMeasurementDisplayProps) {
+}: MeasurementDisplayProps) {
   const selection = useSketchEditorStore(s => s.normalSelection)
 
   // Compute measurements for current selection

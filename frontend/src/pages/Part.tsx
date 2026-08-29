@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { Sidebar } from '@/components/layout/Sidebar'
-import FooterMeasurementDisplay from '@/components/layout/FooterMeasurementDisplay'
+import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
 import { useSyncPartEditorStore } from '@/hooks/useSyncPartEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
@@ -1112,6 +1112,28 @@ export default function Part() {
         handleSave={handleSave}
         handleClone={handleClone}
         onShare={() => exportImportRef.current?.openShare()}
+        rightContent={
+          <>
+            {(debugToolsUnrestricted || user?.is_admin) && (
+              <button
+                className={`toolbar-btn ${debugOpen ? 'active' : ''}`}
+                aria-label="Toggle debug panel"
+                title="Toggle debug panel (F2)"
+                onClick={() => setDebugOpen(v => !v)}
+              >
+                <span className="material-icons-outlined">bug_report</span>
+              </button>
+            )}
+            <button
+              className="toolbar-btn"
+              aria-label="Toggle debug collision rendering"
+              title={showDebugHit ? 'Hide debug collision rendering' : 'Show debug collision rendering'}
+              onClick={() => setShowDebugHit(!showDebugHit)}
+            >
+              <span className="material-icons-outlined">{showDebugHit ? 'visibility' : 'visibility_off'}</span>
+            </button>
+          </>
+        }
       />
 
       <PartEditorPanel
@@ -1136,6 +1158,9 @@ export default function Part() {
         handleExportStep={handleExportStep}
         viewportRef={viewportRef}
         handleRightClick={handleRightClick}
+        viewportHud={
+          <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
+        }
         rightPanel={
           <PartDebugPanel
             debugOpen={debugOpen && (debugToolsUnrestricted || !!user?.is_admin)}
@@ -1147,32 +1172,6 @@ export default function Part() {
         </PartEditorProvider>
       </PartEditorPanel>
 
-      <footer className="doc-footer">
-        <p>Copyright 2026 - Oversolved</p>
-        <FooterMeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
-        <div className="debug-buttons">
-          {(debugToolsUnrestricted || user?.is_admin) && (
-            <button
-              className={`footer-debug-btn ${debugOpen ? 'active' : ''}`}
-              title="Toggle debug panel (F2)"
-              onClick={() => setDebugOpen(v => !v)}
-            >
-              <span className="material-icons-outlined">bug_report</span>
-            </button>
-          )}
-          <button
-            className="footer-debug-btn"
-            title={showDebugHit ? "Hide debug collision rendering" : "Show debug collision rendering"}
-            onClick={() => setShowDebugHit(!showDebugHit)}
-          >
-            {showDebugHit ? (
-              <span className="material-icons-outlined">visibility</span>
-            ) : (
-              <span className="material-icons-outlined">visibility_off</span>
-            )}
-          </button>
-        </div>
-      </footer>
       {contextMenu && (
         <RightClickMenu
           items={contextMenu.items}

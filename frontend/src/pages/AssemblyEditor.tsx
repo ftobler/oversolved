@@ -219,6 +219,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   useUnsavedChangesGuard()
 
+
   // The store owns the drag/gizmo state machine but not the document; give it
   // the doc mutators and the one-solve-per-pointer-up trigger. Drag commits and
   // [Delete] deletes are one-shot, ref picks fold into the open edit session.
@@ -707,6 +708,16 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
         onRename={handleRename}
         handleSave={handleSave}
         handleClone={handleClone}
+        rightContent={
+          <button
+            className="toolbar-btn"
+            aria-label="Toggle debug collision rendering"
+            title={showPickDebug ? 'Hide debug collision rendering' : 'Show debug collision rendering'}
+            onClick={() => useAssemblyStore.getState().setShowPickDebug(!showPickDebug)}
+          >
+            <span className="material-icons-outlined">{showPickDebug ? 'visibility' : 'visibility_off'}</span>
+          </button>
+        }
       />
       <div className="doc-container">
         <aside className="doc-sidebar">
@@ -777,7 +788,10 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             </button>
           </div>
           <div className="assembly-viewport-host">
-            <AssemblyViewport ref={viewportRef} />
+            <AssemblyViewport
+              ref={viewportRef}
+              hud={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
+            />
             {/* The assembly solve mirrors useSolverStore.isSolving and claims its
                 onCancelSolve slot, so the shared overlay renders the spinner and
                 cancel for a full (non-live) solve; it is opacity-0 when idle. */}
@@ -797,23 +811,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
           </div>
         </div>
       </div>
-      <footer className="doc-footer">
-        <p>Copyright 2026 - Oversolved</p>
-        <AssemblyMeasurementDisplay measurementIcon={measurementIcon} />
-        <div className="debug-buttons">
-          <button
-            className="footer-debug-btn"
-            title={showPickDebug ? 'Hide debug collision rendering' : 'Show debug collision rendering'}
-            onClick={() => useAssemblyStore.getState().setShowPickDebug(!showPickDebug)}
-          >
-            {showPickDebug ? (
-              <span className="material-icons-outlined">visibility</span>
-            ) : (
-              <span className="material-icons-outlined">visibility_off</span>
-            )}
-          </button>
-        </div>
-      </footer>
       <AssemblyPartPicker
         isOpen={pickerOpen}
         selfUuid={uuid}

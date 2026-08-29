@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, Suspense } from 'react'
+import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -7,6 +8,7 @@ import type { Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '@/types
 import { unflattenGeometry, deriveConstraints } from '@/utils/geometry/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
+import '@/components/Viewport/ViewportHud.css'
 import { type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -67,6 +69,10 @@ const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 
 
 export interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void
+  // Bottom-right overlay content, stacked under the orientation cube (the
+  // measurement readout). A node rather than a fixed component so the part and
+  // assembly editors can each hand in their own readout.
+  hud?: ReactNode
 }
 
 function isActive(
@@ -227,6 +233,7 @@ export interface ViewportHandle {
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   onRightClick,
+  hud,
 }: ViewportProps, ref) {
   const features = usePartEditorStore(s => s.features) as Feature[]
   const doc = usePartEditorStore(s => s.doc)
@@ -745,13 +752,16 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         })()} />
       )}
 
-      <CubeGizmoCanvas
-        canvasRef={canvasRef}
-        pvRef={pvRef}
-        hoverRef={hoverRef}
-        snapRef={snapRef}
-        cameraRef={cameraRef}
-      />
+      <div className="viewport-hud">
+        <CubeGizmoCanvas
+          canvasRef={canvasRef}
+          pvRef={pvRef}
+          hoverRef={hoverRef}
+          snapRef={snapRef}
+          cameraRef={cameraRef}
+        />
+        <div className="viewport-hud-readout">{hud}</div>
+      </div>
       <ContextMenuDialog />
     </div>
   )
