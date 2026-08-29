@@ -84,11 +84,47 @@ describe('solveRevolve guard paths', () => {
 // instead of getting a fail-wrong result. Mirrors transformMirror's
 // `rotation_axis not found` guard.
 describe('resolveRevolveAxis fail-loud guards', () => {
-  it('keeps the stored default when no axis query is set', () => {
+  it('throws when neither an axis query nor a stored axis is given', () => {
+    // The silent [0,0,0]/[0,0,1] fallback revolved about world Z whenever the
+    // user never picked an axis -- a wrong solid that looked plausible.
     const repo = new Repository()
-    const [origin, direction] = resolveRevolveAxis({}, repo, {})
+    expect(() => resolveRevolveAxis({}, repo, {})).toThrow(/axis is required/)
+  })
+
+  it('throws when only an axis origin is stored (no direction, no query)', () => {
+    const repo = new Repository()
+    expect(() =>
+      resolveRevolveAxis({ axis_origin: [1, 2, 3] }, repo, {}),
+    ).toThrow(/axis is required/)
+  })
+
+  it('throws on a zero-length stored axis direction', () => {
+    const repo = new Repository()
+    expect(() =>
+      resolveRevolveAxis({ axis_direction: [0, 0, 0] }, repo, {}),
+    ).toThrow(/axis_direction must be a non-zero vector/)
+  })
+
+  it('throws on a malformed stored axis vector instead of passing it to OCC', () => {
+    const repo = new Repository()
+    expect(() =>
+      resolveRevolveAxis({ axis_direction: [0, 1] }, repo, {}),
+    ).toThrow(/axis_direction must be three finite numbers/)
+    expect(() =>
+      resolveRevolveAxis({ axis_origin: [0, 'x', 0], axis_direction: [0, 0, 1] }, repo, {}),
+    ).toThrow(/axis_origin must be three finite numbers/)
+  })
+
+  it('accepts a stored direction alone as that axis through the world origin', () => {
+    const repo = new Repository()
+    const [origin, direction] = resolveRevolveAxis({ axis_direction: [0, 1, 0] }, repo, {})
     expect(origin).toEqual([0, 0, 0])
-    expect(direction).toEqual([0, 0, 1])
+    expect(direction).toEqual([0, 1, 0])
+  })
+
+  it('treats an empty axis query as no axis at all', () => {
+    const repo = new Repository()
+    expect(() => resolveRevolveAxis({ axis: '' }, repo, {})).toThrow(/axis is required/)
   })
 
   it('throws when the axis query does not resolve (stale pick)', () => {

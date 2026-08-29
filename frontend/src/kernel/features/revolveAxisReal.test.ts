@@ -151,6 +151,20 @@ describe.skipIf(!oc || !solveBytes)('revolve axis from query (real OCC + Rust so
     a5.forEach((v, i) => expect(v).toBeCloseTo(a8[i], 6))
   })
 
+  it('an axis-less revolve fails the feature instead of sweeping about world Z', () => {
+    // The end-to-end half of resolveRevolveAxis's required-axis guard: a
+    // profile with no `axis` pick and no stored axis_direction used to build a
+    // silent world-Z solid. It must surface as a red feature instead.
+    const spec = { features: [
+      rectSketch('sk1', 1, 1, 5, 1),
+      { id: 'rev1', kind: 'revolve', label: 'Revolve',
+        revolve: { sketch: ['$sk1'], angle: 360, operation: 'new' } },
+    ]}
+    const r = h.run(spec)
+    expect(h.res(r, 'rev1').status).toBe('exception')
+    expect(String(h.res(r, 'rev1').exception)).toMatch(/axis is required/)
+  })
+
   it('revolve axis resolves from a sketch line entity query', () => {
     // The entity-pick path: picking a sketch line in the viewport stores
     // `@<sketchId>/<entityId>` (resolveAxisQuery's entity: branch). Branch B

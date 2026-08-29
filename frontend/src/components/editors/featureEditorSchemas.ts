@@ -69,7 +69,10 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
       showWhen: showMergeTarget, transform: resolveBodyPickRef, removeValue: undefined,
       emptyText: '(all bodies)' },
-    { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery },
+    // An axis pick is required: a revolve has no default axis, so an unpicked
+    // one is a solve error rather than a silent sweep about world Z.
+    { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
+      emptyText: '(pick edge or face, required)' },
   ],
 }
 

@@ -1,7 +1,8 @@
 // The revolve leaf, analogous to extrude but sweeping each profile around an axis. It resolves
-// each profile to 2D loops (or a body face), resolves the revolve axis (a stored
-// origin/direction plus an optional `axis` query that flips to agree with the stored
-// direction), builds the tool solid with per-entity lineage, and applies the body operation.
+// each profile to 2D loops (or a body face), resolves the revolve axis (an `axis` query and/or a
+// stored origin/direction, the query flipped to agree with the stored direction), builds the tool
+// solid with per-entity lineage, and applies the body operation. An axis-less revolve is a solve
+// error, never a revolve about world Z -- see resolveRevolveAxis.
 //
 // The axis logic here is revolve-specific and does NOT go through shared.ts's resolveAxisQuery:
 // _solve_revolve flips the queried axis to match the feature's stored direction (so re-solving
@@ -67,30 +68,68 @@ function fuseConsuming(
 }
 
 /**
+ * Read one stored axis vector, or null when the field is absent. A present but
+ * malformed vector (wrong arity, NaN, a string) is a throw, not a silent
+ * fallback: it would otherwise reach OCC as a garbage `Vec3`.
+ */
+function readAxisVector(raw: unknown, field: string): number[] | null {
+  if (raw === undefined || raw === null) return null
+  const vec = Array.isArray(raw) ? raw.map(Number) : []
+  if (vec.length !== 3 || vec.some((c) => !Number.isFinite(c))) {
+    throw new Error(`revolve: ${field} must be three finite numbers, got ${JSON.stringify(raw)}`)
+  }
+  return vec
+}
+
+/**
  * Resolve the revolve axis (mirrors the inline block in `_solve_revolve`). Starts
  * from the stored origin/direction; an `axis` query overrides them but is flipped
  * (origin becomes the line's far end, direction negated) when it points opposite
  * the stored direction.
+ *
+ * The axis is REQUIRED. With neither an `axis` query nor a stored
+ * `axis_direction` the resolver throws rather than revolving about world Z at
+ * the world origin: a revolve has no meaningful default axis, and the arbitrary
+ * one silently produced a plausible-looking wrong solid. Same contract as the
+ * circular-array leaf (`circular_array: axis is required`) and the array
+ * direction picks. A stored `axis_direction` without an `axis_origin` is
+ * accepted as that direction through the world origin -- the direction was
+ * stated deliberately, only the anchor is conventional.
  *
  * Fail-loud guards: when an `axis` query is set but the registry returns null
  * (stale pick -- the body rebuild minted new ancestry tokens, the edge was
  * deleted, or the sketch line was removed), OR when the resolved payload carries
  * no usable axis geometry (a degenerate line, a missing sketch plane, or an
  * unrecognised shape), the resolver throws instead of silently falling back to
- * the default [0,0,0]/[0,0,1] axis. A silent fallback there produces a wrong
- * (squished) solid the user can't diagnose; a thrown error surfaces the revolve
- * as a red feature so the user re-picks the axis. Mirrors the rotation-axis
- * guard in transformMirror (`transform: rotation_axis not found`).
+ * the stored/default axis. A silent fallback there produces a wrong (squished)
+ * solid the user can't diagnose; a thrown error surfaces the revolve as a red
+ * feature so the user re-picks the axis. Mirrors the rotation-axis guard in
+ * transformMirror (`transform: rotation_axis not found`).
  */
 export function resolveRevolveAxis(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): [number[], number[]] {
-  let axisOrigin = (feature.axis_origin as number[]) ?? [0, 0, 0]
-  let axisDirection = (feature.axis_direction as number[]) ?? [0, 0, 1]
+  const axisQuery = (feature.axis as string | undefined) || undefined
+  const storedOrigin = readAxisVector(feature.axis_origin, 'axis_origin')
+  const storedDir = readAxisVector(feature.axis_direction, 'axis_direction')
+  if (storedDir && Math.hypot(storedDir[0], storedDir[1], storedDir[2]) <= 1e-12) {
+    throw new Error(`revolve: axis_direction must be a non-zero vector, got ${JSON.stringify(feature.axis_direction)}`)
+  }
+  if (!axisQuery && !storedDir) {
+    throw new Error(
+      'revolve: axis is required; pick an edge, sketch entity, or face ' +
+        '(or store axis_origin + axis_direction)',
+    )
+  }
+
+  let axisOrigin = storedOrigin ?? [0, 0, 0]
+  // Only reachable with an `axis` query in hand (the guard above rejects the
+  // axis-less case), where it is the sign reference the query is flipped to
+  // agree with -- never the axis the revolve is built about.
+  let axisDirection = storedDir ?? [0, 0, 1]
   const storedDirection = [...axisDirection]
-  const axisQuery = feature.axis as string | undefined
   if (!axisQuery) return [axisOrigin, axisDirection]
 
   const axisData = globalRepo.query(axisQuery, null, bodyStore) as Dict | null
@@ -220,24 +259,30 @@ export function solveRevolve(
     throw new Error(profileErrors.join('; '))
   }
 
-  const [axisOrigin, axisDirection] = resolveRevolveAxis(merged, globalRepo, bodyStore)
-  const ao = axisOrigin as Vec3
-  const ad = axisDirection as Vec3
-
   const bodyId = 'body_' + featureId
   const result: RevolveResult = { status: 'ok', body_id: bodyId }
-  const operation = ((merged.operation as string) ?? 'add') as BodyOperation
-  const direction = (merged.direction as string) ?? 'normal'
 
-  let toolShape: OccShape
   if (cqFaces.length === 0 && allLoops.length === 0) {
     // No profile geometry resolved -> no part. A part-less revolve is a failed
-    // revolve (surfaced as a red feature), not a silent ok.
+    // revolve (surfaced as a red feature), not a silent ok. Reported ahead of
+    // the axis guard below: with neither input, the missing profile is the
+    // more basic complaint.
     result.status = 'error'
     result.exception = 'revolve: no closed profile found in the referenced sketch; no part created'
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
-  } else if (cqFaces.length > 0 && allLoops.length === 0) {
+  }
+
+  // Throws when no axis was picked or stored -- never a sweep about world Z.
+  const [axisOrigin, axisDirection] = resolveRevolveAxis(merged, globalRepo, bodyStore)
+  const ao = axisOrigin as Vec3
+  const ad = axisDirection as Vec3
+
+  const operation = ((merged.operation as string) ?? 'add') as BodyOperation
+  const direction = (merged.direction as string) ?? 'normal'
+
+  let toolShape: OccShape
+  if (allLoops.length === 0) {
     if (direction === 'symmetric') {
       const half = angle / 2.0
       let tool = fuseConsuming(

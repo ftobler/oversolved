@@ -215,9 +215,13 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
         occ, scope, fx.table,
         // A body-face slash ref resolves straight to an OCC profile face, so
         // this drives the cqFaces fuse chain (revolveFace + fuses). Face 0 of
-        // the box revolves cleanly around the default z axis; face 2 is
-        // degenerate for that axis.
-        { id: 'ex9', revolve: { sketch: '@body_b/face/0', angle: 120, direction: 'symmetric', operation: 'new' } },
+        // the box revolves cleanly around the world z axis; face 2 is
+        // degenerate for that axis. The axis is spelled out because the leaf
+        // rejects an axis-less revolve rather than defaulting to z.
+        { id: 'ex9', revolve: {
+          sketch: '@body_b/face/0', angle: 120, direction: 'symmetric', operation: 'new',
+          axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+        } },
         nullRepo, fx.bodyStore,
       )
       expect(result.status).toBe('ok')

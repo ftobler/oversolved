@@ -177,11 +177,13 @@ export function applyAddRevolve(
     id: featureId,
     kind: 'revolve',
     label: label ?? 'Revolve',
+    // Deliberately NO axis default. Pre-filling [0,0,0]/[0,0,1] made every new
+    // revolve solve about world Z, so a user who never picked an axis got a
+    // plausible-looking wrong solid instead of a red feature asking for the
+    // pick. Same contract as circular_array, which also ships axis-less.
     revolve: {
       sketch: sketchQuery ? [sketchQuery] : [],
       angle,
-      axis_origin: [0, 0, 0],
-      axis_direction: [0, 0, 1],
     },
   }
   pushFeature(doc, feature)

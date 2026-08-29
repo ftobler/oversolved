@@ -40,11 +40,14 @@ describe('add_revolve', () => {
     expect(doc.features![0].label).toBe('Revolve')
   })
 
-  it('defaults axis_origin and axis_direction', () => {
+  it('writes no axis default, so the revolve fails until an axis is picked', () => {
+    // A pre-filled [0,0,0]/[0,0,1] axis made a never-picked axis solve about
+    // world Z; the revolve leaf now rejects an axis-less feature instead.
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
-    expect(doc.features![0].revolve!.axis_origin).toEqual([0, 0, 0])
-    expect(doc.features![0].revolve!.axis_direction).toEqual([0, 0, 1])
+    expect(doc.features![0].revolve!.axis_origin).toBeUndefined()
+    expect(doc.features![0].revolve!.axis_direction).toBeUndefined()
+    expect(doc.features![0].revolve!.axis).toBeUndefined()
   })
 })
 
