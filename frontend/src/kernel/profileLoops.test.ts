@@ -2,7 +2,7 @@
 // extrude leaf: loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
-import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, arcSamplePoints, ellipseArcSamplePoints, loopPts, type LoopEdge } from './profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, arcSamplePoints, ellipseArcSamplePoints, loopPts, CENTROID_ARC_SAMPLES, type LoopEdge } from './profileLoops'
 import { extractProfileLoops } from './features/shared'
 
 const square = (s: number): LoopEdge[] => [
@@ -659,5 +659,71 @@ describe('loopCentroid: curved boundaries', () => {
     // hole containment / nesting decisions in classifyLoops).
     expect(area).toBeLessThan(exact)
     expect(area).toBeGreaterThan(exact * 0.95)
+  })
+})
+
+// C4: containment polygonises an arc at ONE interior point while the centroid it
+// compares against uses 64, and the viewport tessellates at 64 as well. So the
+// nesting math runs on a shape neither the user nor the centroid ever sees.
+describe('loopContainment arc sampling', () => {
+  const arc = (cx: number, cy: number, r: number, a0: number, a1: number): LoopEdge => ({
+    kind: 'arc',
+    center: [cx, cy],
+    radius: r,
+    angle_start_deg: a0,
+    angle_end_deg: a1,
+    ccw: true,
+    start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
+    end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
+  })
+  // A circle the way the area builder emits one: two 180 degree arcs.
+  const circle = (cx: number, cy: number, r: number): LoopEdge[] => [
+    arc(cx, cy, r, 0, 180),
+    arc(cx, cy, r, 180, 360),
+  ]
+
+  it('nests a small circle sitting near the outer circle chord only at 64 samples', () => {
+    // (5.5, 5.5) is inside a radius-10 circle (7.78 < 10) but outside the
+    // 1-sample diamond through (10,0),(0,10),(-10,0),(0,-10).
+    const loops = [circle(0, 0, 10), circle(5.5, 5.5, 1)]
+    expect(loopContainment(loops).container[1]).toBe(-1)
+    expect(loopContainment(loops, CENTROID_ARC_SAMPLES).container[1]).toBe(0)
+    // classifyLoops runs the coarse pass, so the hole is lost there today. F4
+    // moves the default to CENTROID_ARC_SAMPLES; flip this when it lands.
+    expect(classifyLoops(loops).map((g) => g[1].length)).toEqual([0, 0])
+  })
+
+  it('agrees at both samplings when the inner loop sits in the middle', () => {
+    const loops = [circle(0, 0, 10), circle(0, 0, 1)]
+    expect(loopContainment(loops).container[1]).toBe(0)
+    expect(loopContainment(loops, CENTROID_ARC_SAMPLES).container[1]).toBe(0)
+  })
+})
+
+describe('classifyLoops with a duplicated hole', () => {
+  const box = (x0: number, y0: number, x1: number, y1: number): LoopEdge[] => [
+    { kind: 'line', start: [x0, y0], end: [x1, y0] },
+    { kind: 'line', start: [x1, y0], end: [x1, y1] },
+    { kind: 'line', start: [x1, y1], end: [x0, y1] },
+    { kind: 'line', start: [x0, y1], end: [x0, y0] },
+  ]
+
+  // C1 at the classifier level: two copies of one inner loop have equal area,
+  // and the depth test is a STRICT area comparison, so neither encloses the
+  // other and both attach to the same container. sketchLoopsToFace then adds two
+  // coincident hole wires to one face. Not fixed here (F1); pinned so the fix
+  // has something to flip.
+  it('attaches an identical hole twice', () => {
+    const loops = [box(0, 0, 10, 10), box(3, 3, 7, 7), box(3, 3, 7, 7)]
+    const groups = classifyLoops(loops)
+    expect(groups).toHaveLength(1)
+    expect(groups[0][1]).toHaveLength(2)
+  })
+
+  it('attaches a genuinely distinct hole once each', () => {
+    const loops = [box(0, 0, 10, 10), box(1, 1, 3, 3), box(6, 6, 9, 9)]
+    const groups = classifyLoops(loops)
+    expect(groups).toHaveLength(1)
+    expect(groups[0][1]).toHaveLength(2)
   })
 })

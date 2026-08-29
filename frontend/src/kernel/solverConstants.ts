@@ -15,6 +15,15 @@ export const TOL_TOPOLOGY_EPS = 1e-9
 // sketch-solver/src/topology/mod.rs.
 export const TOL_TOPOLOGY_MERGE = 1e-5
 export const TOL_TOPOLOGY_SPLIT = 1e-7
+// OCC's Precision::Confusion(), the tolerance BRepBuilderAPI_MakeWire uses to
+// decide whether two edge endpoints are the same point. It is not ours to
+// choose: it is compiled into opencascade.js@1.1.1 (OCC 7.5). Mirrored here so
+// the tolerance ladder the profile handoff depends on --
+// OCC_CONFUSION < TOL_LOOP_CLOSURE <= TOL_TOPOLOGY_MERGE -- is stated in one
+// place and testable (solverConstants.test.ts). Deliberately NOT a TOL_* name:
+// the Rust mirror test parses `TOL_*` out of sketch-solver and asserts an exact
+// count, and this constant has no Rust twin.
+export const OCC_CONFUSION = 1e-7
 
 export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
   builtin_plane_front: {

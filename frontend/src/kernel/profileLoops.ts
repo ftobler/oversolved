@@ -3,7 +3,12 @@
 
 import { TOL_NEAR_ZERO_AREA } from "./solverConstants"
 
-const CENTROID_ARC_SAMPLES = 64
+// Sample count that makes a curved loop read as its true shape rather than as
+// its chord polygon: the centroid uses it, the viewport tessellates boundaries
+// at the same 64 (Geometry3D/constants ARC_SEGMENTS), and the profile dump
+// re-runs containment at it to measure how far the coarse 1-sample polygon has
+// drifted from what the user sees.
+export const CENTROID_ARC_SAMPLES = 64
 
 export type LoopEdge = Record<string, unknown>
 
@@ -131,9 +136,11 @@ export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
   return pts
 }
 
-/** Signed 2D area via the shoelace formula. Positive = CCW. */
-export function loopSignedArea(loop: LoopEdge[]): number {
-  const pts = loopPts(loop)
+/** Signed 2D area via the shoelace formula. Positive = CCW. `arcSamples` is the
+ *  arc/spline sampling the polygon is built from; the default 1 is the coarse
+ *  polygon every existing caller has always used. */
+export function loopSignedArea(loop: LoopEdge[], arcSamples = 1): number {
+  const pts = loopPts(loop, arcSamples)
   const n = pts.length
   if (n < 3) return 0.0
   let acc = 0.0
@@ -144,11 +151,12 @@ export function loopSignedArea(loop: LoopEdge[]): number {
   return acc / 2.0
 }
 
-/** Ray-casting point-in-polygon test against a 2D loop. */
-export function pointInLoop(pt: number[], loop: LoopEdge[]): boolean {
+/** Ray-casting point-in-polygon test against a 2D loop, at the same sampling
+ *  the caller measured the areas with. */
+export function pointInLoop(pt: number[], loop: LoopEdge[], arcSamples = 1): boolean {
   const x = pt[0]
   const y = pt[1]
-  const pts = loopPts(loop)
+  const pts = loopPts(loop, arcSamples)
   const n = pts.length
   let inside = false
   let j = n - 1
@@ -169,10 +177,20 @@ export function pointInLoop(pt: number[], loop: LoopEdge[]): boolean {
  * Containment analysis: for each loop, its nesting `depth` (how many other
  * loops enclose it) and its immediate `container` (the smallest strictly larger
  * loop that encloses it, or -1 if none).
+ *
+ * `arcSamples` controls how finely a curved loop is polygonised for the area and
+ * point-in-loop tests. The default 1 is what classifyLoops/subdivideLoops have
+ * always used (and what the Rust mirror in profile_loops.rs uses); it is a
+ * parameter so the profile dump can re-run the same containment at
+ * CENTROID_ARC_SAMPLES and report the divergence. Changing the DEFAULT moves
+ * hole nesting and therefore frozen goldens -- see F4 in the fix plan.
  */
-function loopContainment(loops: LoopEdge[][]): { depth: number[]; container: number[] } {
+export function loopContainment(
+  loops: LoopEdge[][],
+  arcSamples = 1,
+): { depth: number[]; container: number[] } {
   const n = loops.length
-  const areas = loops.map((loop) => Math.abs(loopSignedArea(loop)))
+  const areas = loops.map((loop) => Math.abs(loopSignedArea(loop, arcSamples)))
   const cents = loops.map((loop) => loopCentroid(loop))
 
   const depth: number[] = new Array(n).fill(0)
@@ -181,7 +199,7 @@ function loopContainment(loops: LoopEdge[][]): { depth: number[]; container: num
     let bestArea = Infinity
     for (let j = 0; j < n; j++) {
       if (i === j) continue
-      if (areas[j] > areas[i] && pointInLoop(cents[i], loops[j])) {
+      if (areas[j] > areas[i] && pointInLoop(cents[i], loops[j], arcSamples)) {
         depth[i] += 1
         if (areas[j] < bestArea) {
           bestArea = areas[j]
