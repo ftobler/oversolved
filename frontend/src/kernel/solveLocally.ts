@@ -340,7 +340,6 @@ async function solveLocallyGuarded(
     if (isDevBuild()) console.log('[solveLocally] OCC.js not available, returning null')
     return null
   }
-  if (isDevBuild()) console.log('[solveLocally] OCC.js loaded, running build()')
 
   // A document switch invalidates every cached checkpoint handle: drop them
   // before solving the new doc so its handles do not pile up behind the old.
