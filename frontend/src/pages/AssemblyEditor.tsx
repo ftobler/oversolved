@@ -217,8 +217,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useUnsavedChangesStore.getState().setDirty(true)
   }, [setDoc, docRef, pushUndo, commitSession])
 
-  useUnsavedChangesGuard()
-
 
   // The store owns the drag/gizmo state machine but not the document; give it
   // the doc mutators and the one-solve-per-pointer-up trigger. Drag commits and
@@ -286,6 +284,10 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (!uuid || !doc) return false
     return saveDoc(uuid, doc, viewportRef.current?.captureScreenshotForSaving)
   }, [uuid, doc, saveDoc])
+
+  // Declared after handleSave so the header's "Save & Exit" gets the real
+  // function rather than a temporal-dead-zone reference.
+  useUnsavedChangesGuard(handleSave)
 
   const handleClone = useCallback(async () => {
     if (!uuid) return

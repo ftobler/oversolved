@@ -756,7 +756,6 @@ export default function Part() {
     useSolverStore.getState().setIsSolving(solving)
   }, [solving])
 
-  useUnsavedChangesGuard()
 
   // Undo/redo must never move the camera. Disarm any pending (deferred) fit
   // first so the doc/body change they trigger cannot reframe the viewport.
@@ -787,6 +786,10 @@ export default function Part() {
     // resolve false rather than vanish into a void promise.
     return success
   }
+
+  // Declared after handleSave so the header's "Save & Exit" gets the real
+  // function rather than a temporal-dead-zone reference.
+  useUnsavedChangesGuard(handleSave)
 
   const handleClone = () => {
     if (!uuid) return

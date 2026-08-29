@@ -213,4 +213,30 @@ describe('Dialog', () => {
     expect(screen.queryByText('Confirm')).not.toBeInTheDocument()
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument()
   })
+
+  // The third choice, for dialogs whose decision is not binary (leaving with
+  // unsaved edits: save, discard, or stay).
+  it('renders an extra action beside confirm and cancel', () => {
+    const extra = vi.fn()
+    render(
+      <Dialog isOpen title="Test Dialog" onClose={vi.fn()} onConfirm={vi.fn()}
+              extraAction={{ label: 'Third', onClick: extra }}>
+        <p>Dialog content</p>
+      </Dialog>
+    )
+    fireEvent.click(screen.getByText('Third'))
+    expect(extra).toHaveBeenCalled()
+    expect(screen.getByText('Confirm')).toBeInTheDocument()
+    expect(screen.getByText('Cancel')).toBeInTheDocument()
+  })
+
+  it('omits the extra action when none is given', () => {
+    render(
+      <Dialog isOpen title="Test Dialog" onClose={vi.fn()} onConfirm={vi.fn()}>
+        <p>Dialog content</p>
+      </Dialog>
+    )
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+    expect(document.querySelectorAll('.dialog-component-buttons button')).toHaveLength(2)
+  })
 })

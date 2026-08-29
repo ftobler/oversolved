@@ -16,6 +16,7 @@ interface MessageDialogProps {
   cancelLabel?: string
   showCancel?: boolean  // confirm-only mode: keep onConfirm semantics but drop the cancel button
   className?: string  // extra class on the content box so callers can restyle
+  extraAction?: { label: string; onClick: () => void; disabled?: boolean }  // third choice, see Dialog
 }
 
 const ICON: Record<MessageVariant, string> = {
@@ -28,7 +29,7 @@ const ICON: Record<MessageVariant, string> = {
 // the variant tint, Enter-to-acknowledge, and an OK-only mode for dialogs that
 // carry no decision. The tint rides in on the shell's className passthrough: the
 // shell's own icon is deliberately untinted, since a topic icon is not a signal.
-export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', showCancel = true, className }: MessageDialogProps) {
+export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', showCancel = true, className, extraAction }: MessageDialogProps) {
   // Escape comes from the shell. Enter stays here: it is only safe because a
   // message box holds no field a newline could belong to.
   useEffect(() => {
@@ -61,6 +62,7 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
       confirmLabel={isAcknowledgement ? 'OK' : confirmLabel}
       cancelLabel={cancelLabel}
       showCancel={!isAcknowledgement && showCancel}
+      extraAction={extraAction}
       autoFocusConfirm
     >
       {/* div, not p: rich messages may contain their own paragraphs */}

@@ -10,7 +10,13 @@ import { create } from 'zustand'
 interface UnsavedChangesState {
   dirty: boolean
   pendingCallback: (() => void) | null
+  // How to write the open document, registered by whichever editor owns it, so
+  // the shared header can offer "Save & Exit" instead of only "Discard". Null
+  // on pages that have nothing to save; resolves to whether the bytes landed,
+  // so a failed save can hold the user in the dialog.
+  saveHandler: (() => boolean | Promise<boolean>) | null
   setDirty: (dirty: boolean) => void
+  setSaveHandler: (handler: (() => boolean | Promise<boolean>) | null) => void
   requestConfirm: (onDiscard: () => void) => void
   dismissConfirm: () => void
 }
@@ -18,7 +24,11 @@ interface UnsavedChangesState {
 export const useUnsavedChangesStore = create<UnsavedChangesState>((set) => ({
   dirty: false,
   pendingCallback: null,
+  saveHandler: null,
   setDirty: (dirty) => set({ dirty }),
+  // Stored behind an updater: zustand would otherwise call a bare function
+  // argument as a state updater instead of storing it.
+  setSaveHandler: (handler) => set({ saveHandler: handler }),
   requestConfirm: (onDiscard) => set({ pendingCallback: onDiscard }),
   dismissConfirm: () => set({ pendingCallback: null }),
 }))

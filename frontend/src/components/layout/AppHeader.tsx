@@ -28,11 +28,32 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   const { user, online, logout } = useAuth()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
+  const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
   const [bugReportOpen, setBugReportOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const handleUnsavedConfirm = () => {
     const cb = useUnsavedChangesStore.getState().pendingCallback
     if (!cb) return
+    cb()
+    dismissConfirm()
+  }
+
+  // The third way out of the unsaved-changes dialog: write the document, then
+  // do what the user was trying to do. A save that fails holds the dialog open
+  // -- proceeding anyway would drop the very edits the save was meant to keep;
+  // the editor's own error banner says why it failed.
+  const handleSaveAndExit = async () => {
+    const { pendingCallback: cb, saveHandler: save } = useUnsavedChangesStore.getState()
+    if (!cb || !save || saving) return
+    setSaving(true)
+    let saved = false
+    try {
+      saved = await save()
+    } finally {
+      setSaving(false)
+    }
+    if (!saved) return
     cb()
     dismissConfirm()
   }
@@ -141,14 +162,20 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
       </div>
     </header>
 
+    {/* Save & Exit takes the confirm slot where an editor registered a save:
+        it is the safe answer, and confirm is what Enter and the initial focus
+        reach. Discarding is still one click away, just no longer the default.
+        With no save handler (a page with nothing to save) the dialog keeps its
+        original two-button shape. */}
     <MessageDialog
       isOpen={pendingCallback != null}
       title="Unsaved Changes"
       message="You have unsaved changes that will be lost. Leave without saving?"
       variant="error"
       onClose={dismissConfirm}
-      onConfirm={handleUnsavedConfirm}
-      confirmLabel="Discard"
+      onConfirm={saveHandler ? handleSaveAndExit : handleUnsavedConfirm}
+      confirmLabel={saveHandler ? (saving ? 'Saving...' : 'Save & Exit') : 'Discard'}
+      extraAction={saveHandler ? { label: 'Discard', onClick: handleUnsavedConfirm, disabled: saving } : undefined}
       cancelLabel="Stay"
     />
 

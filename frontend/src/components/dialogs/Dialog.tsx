@@ -18,6 +18,11 @@ interface DialogProps {
   className?: string
   showCancel?: boolean  // confirm-only mode: keep the onConfirm semantics but drop the cancel button
   autoFocusConfirm?: boolean  // for dialogs the user only acknowledges; leave off where a field should take focus
+  // A third choice beside confirm/cancel, for the dialogs where the decision is
+  // not binary (leaving with unsaved edits: save, discard, or stay). Rendered
+  // as a secondary button between them; omitted when absent, so every other
+  // dialog keeps its two-button shape.
+  extraAction?: { label: string; onClick: () => void; disabled?: boolean }
 }
 
 export default function Dialog({
@@ -34,6 +39,7 @@ export default function Dialog({
   className,
   showCancel = true,
   autoFocusConfirm = false,
+  extraAction,
 }: DialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null)
   const pressedBackdropRef = useRef(false)
@@ -131,6 +137,15 @@ export default function Dialog({
             >
               {confirmLabel}
             </button>
+            {extraAction && (
+              <button
+                className="btn btn-secondary"
+                onClick={extraAction.onClick}
+                disabled={extraAction.disabled || busy}
+              >
+                {extraAction.label}
+              </button>
+            )}
             {showCancel && (
               <button className="btn btn-secondary" onClick={handleClose} disabled={busy}>
                 {cancelLabel}
