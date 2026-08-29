@@ -1,5 +1,26 @@
 import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
+import { sketchIdsInQuery } from '@/utils/query/consumedSketches'
+
+/**
+ * A solid feature consumes the sketch it is built from: once the body exists,
+ * the profile wires inside it are clutter, so picking a profile hides the
+ * sketch that owns it and the viewport cleans itself up. The feature list stays
+ * linear -- "consumed" is a visibility flag, not a tree edge.
+ *
+ * Hides on the add half of a pick only. Un-picking a profile leaves visibility
+ * where it is: by then the flag is the user's own setting, and a pick that
+ * silently un-hides would fight whoever turned it off. The consumer's own
+ * editor forces its profiles back on screen while it is open (Part.tsx), so
+ * this never hides geometry the user is still picking from.
+ */
+function hideConsumedSketches(doc: PartDoc, query: string): void {
+  const features = doc.features ?? []
+  for (const id of sketchIdsInQuery(query, features)) {
+    const sketch = features.find(f => f.id === id)
+    if (sketch) sketch.visible = false
+  }
+}
 
 /** Append a feature, lazily initializing the features array. */
 function pushFeature(doc: PartDoc, feature: PartFeature): void {
@@ -102,6 +123,7 @@ export function applyAddExtrude(
     },
   }
   pushFeature(doc, feature)
+  hideConsumedSketches(doc, sketchQuery)
 }
 
 // extrude/revolve/sweep each store their profile (and the sweep its path) as a
@@ -140,6 +162,7 @@ function toggleRef(doc: PartDoc, featureId: string, kind: RefListKind, field: Re
     current.splice(idx, 1)
   } else {
     current.push(query)
+    hideConsumedSketches(doc, query)
   }
   sub[field] = current
 }
@@ -187,6 +210,7 @@ export function applyAddRevolve(
     },
   }
   pushFeature(doc, feature)
+  hideConsumedSketches(doc, sketchQuery)
 }
 
 export const applyAddRevolveProfile = makeAddRefToggle('revolve', 'sketch', 'applyAddRevolveProfile')
@@ -215,6 +239,8 @@ export function applyAddSweep(
     },
   }
   pushFeature(doc, feature)
+  hideConsumedSketches(doc, sketchQuery)
+  hideConsumedSketches(doc, pathQuery)
 }
 
 export const applyAddSweepProfile = makeAddRefToggle('sweep', 'sketch', 'applyAddSweepProfile')
@@ -473,6 +499,7 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
     return
   }
   f.hole.sketch = sketch
+  hideConsumedSketches(doc, sketch)
 }
 
 // ─── Transform ───

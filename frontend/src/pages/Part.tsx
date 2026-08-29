@@ -5,6 +5,7 @@ import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery } from '@/utils/query/selectionId'
+import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useAuth } from '@/contexts/AuthContext'
@@ -441,11 +442,20 @@ export default function Part() {
   }, [registerUndoTeardown, tearDownEditorState])
 
   const visibleFeaturesWithEdit = useMemo(
-    () => new Set([
-      ...features.filter(f => f.visible !== false).map(f => f.id),
-      ...editForcedVisible,
-    ]),
-    [features, editForcedVisible]
+    () => {
+      // A sketch a feature consumes is hidden in the document (the auto-cleanup
+      // in hideConsumedSketches), but its consumer's own editor has to keep it
+      // on screen: the pick that hid it would otherwise make the next profile
+      // pick from the same sketch impossible, and the profile being edited
+      // would vanish from under the user.
+      const edited = features.find(f => f.id === editingFeatureId)
+      return new Set([
+        ...features.filter(f => f.visible !== false).map(f => f.id),
+        ...editForcedVisible,
+        ...(edited ? consumedSketchIds(edited, features) : []),
+      ])
+    },
+    [features, editForcedVisible, editingFeatureId]
   )
 
   const effectiveVisibleBodies = useMemo(
