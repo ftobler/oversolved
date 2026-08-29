@@ -1226,3 +1226,42 @@ class TestAuthSecurity:
         assert resp.status_code == 200
         set_cookie = resp.headers.get("Set-Cookie", "")
         assert "Secure" in set_cookie
+
+
+class TestProfileEmailClearing:
+    """PS-L4: clearing the profile email must survive a reload, not resurrect."""
+
+    def _email_from_me(self, client) -> str:
+        resp = client.get("/api/auth/me")
+        assert resp.status_code == 200
+        return json.loads(resp.data)["user"]["email"]
+
+    def test_clearing_email_persists(self, regular_client):
+        # The server once skipped a falsy email, so a cleared field resurrected
+        # on the next /me. An explicit empty string must now clear it.
+        resp = regular_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": ""}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert self._email_from_me(regular_client) == ""
+
+    def test_absent_email_key_leaves_email_untouched(self, regular_client):
+        # Distinct from clearing: leaving the key out must not wipe an address.
+        resp = regular_client.put(
+            "/api/users/me",
+            data=json.dumps({"username": "regular"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert self._email_from_me(regular_client) == "regular@example.com"
+
+    def test_setting_email_still_works(self, regular_client):
+        resp = regular_client.put(
+            "/api/users/me",
+            data=json.dumps({"email": "fresh@example.com"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert self._email_from_me(regular_client) == "fresh@example.com"

@@ -86,6 +86,27 @@ class TestBugReportReach:
         body = (reports_dir / json.loads(response.data)["filename"]).read_text()
         assert "*Reported by reporter <reporter@example.com>*" in body
 
+    def test_custom_fields_are_preserved(self, app, reports_dir):
+        """PS-N3: any field the debug panel attaches beyond the shaped set must
+        reach the stored Markdown, not be silently dropped by the server."""
+        client = app.test_client()
+        response = client.post(
+            "/api/bug-report",
+            data=json.dumps({
+                "title": "custom field report",
+                "description": "it broke",
+                "repro_steps": "click the thing",
+                "browser": {"name": "firefox", "version": "130"},
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        body = (reports_dir / json.loads(response.data)["filename"]).read_text()
+        assert "## repro_steps" in body
+        assert "click the thing" in body
+        assert "## browser" in body
+        assert '"name": "firefox"' in body
+
 
 class TestBugReportRateLimit:
     def test_burst_beyond_the_limit_is_refused(self, app, reports_dir):

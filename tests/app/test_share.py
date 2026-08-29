@@ -181,6 +181,73 @@ class TestShareAPI:
         doc_resp = authed_client.get(f"/api/documents/{uuid}")
         assert json.loads(doc_resp.data)["is_public"] is True
 
+    def test_create_share_returns_shares(self, app, authed_client):
+        """PS-N1: the share response must carry the refreshed share list so the
+        client can refresh from the authoritative source, not from a payload the
+        contract promises but the server once omitted."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        import psycopg2
+        from werkzeug.security import generate_password_hash
+        _conn = psycopg2.connect(app.config["DB_DSN"])
+        _conn.autocommit = True
+        with _conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash, must_change_password) VALUES (%s, %s, %s)",
+                ("user2", generate_password_hash("pass2word"), 0),
+            )
+        _conn.close()
+
+        response = authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": "user2", "permission": "view"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        body = json.loads(response.data)
+        assert "shares" in body
+        assert any(s["username"] == "user2" for s in body["shares"])
+
+    def test_remove_share_returns_shares(self, app, authed_client):
+        """PS-N1: the unshare response must carry the refreshed share list too."""
+        create_resp = authed_client.post(
+            "/api/documents",
+            data=json.dumps({"name": "ShareDoc"}),
+            content_type="application/json",
+        )
+        uuid = json.loads(create_resp.data)["uuid"]
+
+        import psycopg2
+        from werkzeug.security import generate_password_hash
+        _conn = psycopg2.connect(app.config["DB_DSN"])
+        _conn.autocommit = True
+        with _conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash, must_change_password) VALUES (%s, %s, %s)",
+                ("user2", generate_password_hash("pass2word"), 0),
+            )
+        _conn.close()
+
+        authed_client.post(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": "user2", "permission": "view"}),
+            content_type="application/json",
+        )
+        response = authed_client.delete(
+            f"/api/documents/{uuid}/share",
+            data=json.dumps({"username": "user2"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        body = json.loads(response.data)
+        assert "shares" in body
+        assert all(s["username"] != "user2" for s in body["shares"])
+
     def test_create_share_non_owner(self, app, authed_client):
         create_resp = authed_client.post(
             "/api/documents",

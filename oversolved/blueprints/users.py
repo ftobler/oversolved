@@ -46,13 +46,20 @@ def update_profile():
             return api_error("Username already exists", "CONFLICT", 409)
         updates["username"] = new_username
 
-    if email and email.strip():
-        new_email = email.strip()
-        # Pre-check so a taken address answers 409 instead of an IntegrityError 500.
-        existing = user_store.find_by_email(new_email)
-        if existing is not None and existing["id"] != user_id:
-            return api_error("Email already exists", "CONFLICT", 409)
-        updates["email"] = new_email
+    if email is not None:
+        if email.strip():
+            new_email = email.strip()
+            # Pre-check so a taken address answers 409 instead of an
+            # IntegrityError 500.
+            existing = user_store.find_by_email(new_email)
+            if existing is not None and existing["id"] != user_id:
+                return api_error("Email already exists", "CONFLICT", 409)
+            updates["email"] = new_email
+        else:
+            # An explicit empty string clears the address. This is distinct from
+            # the key being absent (which leaves the email untouched): nulling it
+            # rather than storing "" keeps find_by_email and uniqueness honest.
+            updates["email"] = None
 
     if new_password:
         pw_error = validate_password_strength(new_password)

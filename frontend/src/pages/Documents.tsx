@@ -29,6 +29,14 @@ function stopClick(handler: () => void): React.MouseEventHandler {
   }
 }
 
+// A cloud document can only be duplicated by its owner (the server gates the
+// duplicate endpoint on doc ownership), so the button on a shared/public tile
+// would only surface a guaranteed Forbidden banner. Local documents belong to
+// the device, so duplication is always available there.
+export function canDuplicateDocument(doc: DocumentMeta, onCloud: boolean): boolean {
+  return !onCloud || !!doc.is_owner
+}
+
 type DocumentMeta = DocSummary
 
 type SidebarFilter = 'owned' | 'shared' | 'public'
@@ -701,7 +709,7 @@ export default function Documents() {
                                 <span className="material-icons">share</span>
                               </button>
                             )}
-                            {onCloud && !doc.is_owner && (
+                             {onCloud && !doc.is_owner && (
                               <button
                                 className="btn btn-tile-action"
                                 onClick={stopClick(() => setUnshareTarget(doc))}
@@ -710,6 +718,7 @@ export default function Documents() {
                                 <span className="material-icons">link_off</span>
                               </button>
                             )}
+                            {canDuplicateDocument(doc, onCloud) && (
                               <button
                                 className="btn btn-tile-action"
                                 onClick={stopClick(() => handleDuplicate(doc.uuid))}
@@ -717,6 +726,7 @@ export default function Documents() {
                               >
                               <span className="material-icons">content_copy</span>
                             </button>
+                            )}
                             {!onCloud && cloudAvailable && (
                               <button
                                 className="btn btn-tile-action"

@@ -238,7 +238,13 @@ def create_share(uuid):
     else:
         doc_store.set_public(uuid, True)
 
-    return jsonify({"status": "shared"}), 201
+    # Return the refreshed share list so the client can refresh from the
+    # authoritative source instead of relying on a payload the contract promises
+    # but the server once omitted.
+    return jsonify({
+        "status": "shared",
+        "shares": doc_store.get_shares(uuid),
+    }), 201
 
 
 @documents_bp.route("/<uuid>/share", methods=["DELETE"])
@@ -272,7 +278,13 @@ def remove_share(uuid):
         else:
             doc_store.unshare_document(uuid, g.current_user["id"])
 
-    return jsonify({"status": "unshared"}), 200
+    # Return the refreshed share list so the client can refresh from the
+    # authoritative source instead of relying on a payload the contract promises
+    # but the server once omitted.
+    return jsonify({
+        "status": "unshared",
+        "shares": doc_store.get_shares(uuid),
+    }), 200
 
 
 @documents_bp.route("/<uuid>/shares", methods=["GET"])
