@@ -9,8 +9,6 @@ import json
 
 import pytest
 
-from oversolved.db import DocumentStore
-
 from .dbutil import make_db
 
 
@@ -71,19 +69,28 @@ def test_import_rejects_non_string_name(authed_client):
 def test_import_never_commits_an_empty_content_row(authed_client, pg_dsn, monkeypatch):
     """A failing content write must not leave a half-imported document behind.
 
-    store_content is sabotaged to stand in for any mid-import failure. The
-    atomic route no longer calls it, so the import succeeds; the pre-fix route
-    committed the empty row first and only then failed.
+    The atomic route inserts content via import_document, so the failure is
+    injected into the transaction it actually opens: import_document raises
+    before any row commits, and the rollback leaves no half-imported document.
     """
-    def _boom(self, uuid, content):
+    from oversolved.db.migrations import Database
+
+    def _boom(self):
         raise RuntimeError("content write failed")
 
-    monkeypatch.setattr(DocumentStore, "store_content", _boom)
+    monkeypatch.setattr(Database, "transaction", _boom)
 
+    # The route surfaces the in-transaction failure (the atomic insert rolls
+    # back) rather than committing a partial row; in test mode the exception
+    # propagates out of the view, so catch it and assert on the db state.
     try:
-        _import(authed_client, {"name": "atomic", "content": "features: []\n"})
+        authed_client.post(
+            "/api/documents/import",
+            data=json.dumps({"name": "atomic", "content": "features: []\n"}),
+            content_type="application/json",
+        )
     except RuntimeError:
-        pass  # the pre-fix route surfaces the sabotage; the row check below is the assertion
+        pass
 
     db = make_db(pg_dsn)
     try:

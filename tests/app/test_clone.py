@@ -2,6 +2,13 @@
 
 import json
 
+from oversolved.blueprints import _permission_at_least
+
+# DocumentStore.has_permission was removed as dead code; the production path is
+# get_permission() + _permission_at_least, which this mirrors for the store tests.
+def _has_perm(doc_store, uuid, user_id, level):
+    return _permission_at_least(doc_store.get_permission(uuid, user_id), level)
+
 
 class TestDocumentStoreClone:
     """Tests for DocumentStore.clone_document."""
@@ -63,18 +70,18 @@ class TestDocumentStoreHasPermission:
     def test_owner_has_permission(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
         uuid = doc_store.create("Doc", owner_id)
-        assert doc_store.has_permission(uuid, owner_id, "view") is True
-        assert doc_store.has_permission(uuid, owner_id, "edit") is True
+        assert _has_perm(doc_store, uuid, owner_id, "view") is True
+        assert _has_perm(doc_store, uuid, owner_id, "edit") is True
 
     def test_other_user_no_permission(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
         other_id = user_store.create("other", "hash")
         uuid = doc_store.create("Doc", owner_id)
-        assert doc_store.has_permission(uuid, other_id, "view") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is False
 
     def test_nonexistent_document(self, doc_store, user_store):
         user_id = user_store.create("user", "hash")
-        assert doc_store.has_permission("no-such-uuid", user_id, "view") is False
+        assert _has_perm(doc_store, "no-such-uuid", user_id, "view") is False
 
 
 class TestCloneAPI:

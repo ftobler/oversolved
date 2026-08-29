@@ -5,7 +5,7 @@ total order. Without a tiebreaker, documents sharing an owner and a name can be
 repeated or skipped between pages.
 """
 
-from oversolved.blueprints.admin import _iter_documents_page
+from oversolved.blueprints.admin import _iter_documents_page, _safe_component
 
 
 def _insert_doc(db, uuid, name, owner_id):
@@ -50,3 +50,48 @@ def test_pager_skips_deleted_documents(db, user_store):
 
     uuids = [row[0] for row in _iter_documents_page(db)]
     assert uuids == ["live"]
+
+
+def test_pager_picks_up_inserted_during_iteration(db, user_store):
+    """A document inserted after paging started must still be yielded.
+
+    OFFSET paging would either skip or duplicate it because the insert shifts
+    the absolute offset; keyset paging tracks the last seen key instead.
+    """
+    owner_id = user_store.create("concurrent", "hashed_pw")
+    for slug in ("before0", "before1", "before2"):
+        _insert_doc(db, slug, "concurrent", owner_id)
+    db.commit()
+
+    pages = _iter_documents_page(db, page_size=2)
+    first_page = [next(pages)[0] for _ in range(2)]
+    assert len(first_page) == 2
+
+    _insert_doc(db, "m_after", "concurrent", owner_id)
+    db.commit()
+
+    rest = [row[0] for row in pages]
+    assert "m_after" in rest
+    assert "before2" in rest
+
+
+class TestSafeComponent:
+    """The backup filename sanitizer must keep unicode but stay in its folder."""
+
+    def test_keeps_unicode(self):
+        assert _safe_component("Müller's plan") == "Müller's plan"
+
+    def test_strips_path_separators(self):
+        cleaned = _safe_component("a/b\\c")
+        assert "/" not in cleaned
+        assert "\\" not in cleaned
+
+    def test_strips_nul_and_control_chars(self):
+        cleaned = _safe_component("a\x00b\x01c")
+        assert "\x00" not in cleaned
+        assert "\x01" not in cleaned
+
+    def test_falls_back_on_blank_or_dot_only(self):
+        assert _safe_component("") == "document"
+        assert _safe_component("...") == "document"
+        assert _safe_component("  .  ") == "document"

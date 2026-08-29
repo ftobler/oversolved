@@ -8,7 +8,13 @@ from oversolved.db import (
     SessionStore,
 )
 from oversolved.db.connection import translate_placeholders
+from oversolved.blueprints import _permission_at_least
 from .dbutil import make_db as _make_db
+
+# DocumentStore.has_permission was removed as dead code; the production path is
+# get_permission() + _permission_at_least, which this mirrors for the store tests.
+def _has_perm(doc_store, uuid, user_id, level):
+    return _permission_at_least(doc_store.get_permission(uuid, user_id), level)
 
 
 @pytest.fixture
@@ -706,7 +712,7 @@ class TestDocumentStorePublicAccess:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.set_public(uuid, True)
-        assert doc_store.has_permission(uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
 
     def test_public_document_has_no_edit_permission(self, doc_store, user_store):
         owner_id = user_store.create("owner2", "hash")
@@ -714,7 +720,7 @@ class TestDocumentStorePublicAccess:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.set_public(uuid, True)
-        assert doc_store.has_permission(uuid, other_id, "edit") is False
+        assert _has_perm(doc_store, uuid, other_id, "edit") is False
 
     def test_public_document_get_permission(self, doc_store, user_store):
         owner_id = user_store.create("owner3", "hash")
@@ -732,7 +738,7 @@ class TestDocumentStorePublicAccess:
         doc_store.set_public(uuid, True)
         doc_store.set_public(uuid, True)
         doc_store.set_public(uuid, False)
-        assert doc_store.has_permission(uuid, other_id, "view") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is False
 
         null_rows = doc_store.db.execute(
             "SELECT COUNT(*) FROM document_shares WHERE document_uuid = ? AND shared_with_user_id IS NULL",
@@ -746,10 +752,10 @@ class TestDocumentStorePublicAccess:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.set_public(uuid, True)
-        assert doc_store.has_permission(uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
 
         doc_store.set_public(uuid, False)
-        assert doc_store.has_permission(uuid, other_id, "view") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is False
 
 
 class TestDocumentStoreMisc:
@@ -791,10 +797,10 @@ class TestDocumentStoreMisc:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.set_public(uuid, True)
-        assert doc_store.has_permission(uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
 
         doc_store.set_public(uuid, False)
-        assert doc_store.has_permission(uuid, other_id, "view") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is False
 
     def test_get_shares_includes_public_link(self, doc_store, user_store):
         owner_id = user_store.create("share_owner", "hash")
@@ -814,3 +820,22 @@ class TestDocumentStoreMisc:
 
     def test_get_permission_nonexistent_returns_none(self, doc_store, user_id):
         assert doc_store.get_permission("no-such-uuid", user_id) is None
+
+
+class TestDocumentStoreUpdateContent:
+    """Coverage for the atomic content + preview write used by PUT /<uuid>."""
+
+    def test_update_content_writes_both(self, doc_store, user_id):
+        uuid = doc_store.create("Doc", user_id)
+        doc_store.update_content(uuid, "v1", b"img")
+        doc = doc_store.retrieve(uuid)
+        assert doc["content"] == "v1"
+        assert doc["preview_image"] == b"img"
+
+    def test_update_content_leaves_preview_when_omitted(self, doc_store, user_id):
+        uuid = doc_store.create("Doc", user_id)
+        doc_store.store_preview_image(uuid, b"old")
+        doc_store.update_content(uuid, "v2")
+        doc = doc_store.retrieve(uuid)
+        assert doc["content"] == "v2"
+        assert doc["preview_image"] == b"old"

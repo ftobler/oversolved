@@ -10,8 +10,6 @@ import io
 import json
 import zipfile
 
-from oversolved.db import DocumentStore
-
 from .dbutil import make_db
 
 
@@ -27,15 +25,17 @@ def _zip_bytes(entries):
 def test_failed_content_write_leaves_no_orphan_row(authed_client, pg_dsn, monkeypatch):
     """A mid-import failure must not leave a committed empty-content document.
 
-    store_content is sabotaged like the documents-import twin test: the restore
-    path inserts content atomically via import_document and never calls it, so
-    the import succeeds; the pre-fix create()/store_content() pair committed the
-    empty row first and only then failed.
+    The restore path inserts content atomically via import_document, so the
+    failure is injected into the transaction it actually opens: import_document
+    raises before any row commits, the route counts the entry as skipped, and
+    the rollback leaves no half-imported document behind.
     """
-    def _boom(self, uuid, content):
+    from oversolved.db.migrations import Database
+
+    def _boom(self):
         raise RuntimeError("content write failed")
 
-    monkeypatch.setattr(DocumentStore, "store_content", _boom)
+    monkeypatch.setattr(Database, "transaction", _boom)
 
     payload = _zip_bytes([("admin/orphan_check.yaml", "name: orphan\n")])
     resp = authed_client.post(
@@ -45,7 +45,8 @@ def test_failed_content_write_leaves_no_orphan_row(authed_client, pg_dsn, monkey
     )
     assert resp.status_code == 200
     body = json.loads(resp.data)
-    assert body["imported_count"] == 1
+    assert body["imported_count"] == 0
+    assert body["skipped_count"] == 1
 
     db = make_db(pg_dsn)
     try:
@@ -117,3 +118,25 @@ def test_restored_preview_is_servable_as_png(authed_client):
     assert thumb.status_code == 200
     assert thumb.content_type == "image/png"
     assert thumb.data == png_bytes
+
+
+def test_import_skips_nested_paths(authed_client, pg_dsn):
+    """A zip entry nested deeper than user/document.yaml is not restorable and
+    must be skipped rather than flattened into a wrong-named document."""
+    payload = _zip_bytes([("admin/sub/orphan.yaml", "name: nested\n")])
+    resp = authed_client.post(
+        "/api/admin/import-backup",
+        data={"file": (payload, "backup.zip")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = json.loads(resp.data)
+    assert body["imported_count"] == 0
+    assert body["skipped_count"] == 1
+
+    db = make_db(pg_dsn)
+    try:
+        cursor = db.execute("SELECT COUNT(*) FROM documents")
+        assert cursor.fetchone()[0] == 0
+    finally:
+        db.close()

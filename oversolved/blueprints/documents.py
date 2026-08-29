@@ -105,9 +105,7 @@ def update_document(uuid):
         image_data = decoded
     db = get_db()
     doc_store = DocumentStore(db)
-    doc_store.store_content(uuid, content)
-    if image_data is not None:
-        doc_store.store_preview_image(uuid, image_data)
+    doc_store.update_content(uuid, content, image_data)
     return jsonify({"uuid": uuid, "status": "stored"}), 200
 
 

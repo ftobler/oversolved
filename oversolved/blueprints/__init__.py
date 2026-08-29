@@ -9,6 +9,23 @@ from oversolved.db import (
 )
 from oversolved.auth import authenticate_token, AuthOk
 
+# Both SQLite and PostgreSQL raise their own IntegrityError subclass on a unique
+# or other constraint violation; callers that want to translate a race-condition
+# conflict into a 409 catch this union rather than importing backend-specifics.
+try:
+    from psycopg2 import IntegrityError as _PsycopgIntegrityError
+except ImportError:  # pragma: no cover - psycopg2 absent in the sqlite test env
+    _PsycopgIntegrityError = None  # type: ignore[assignment]
+
+from sqlite3 import IntegrityError as _SQLiteIntegrityError
+
+
+def integrity_error_types() -> tuple:
+    """Return the exception types that represent a constraint violation."""
+    if _PsycopgIntegrityError is not None:
+        return (_SQLiteIntegrityError, _PsycopgIntegrityError)
+    return (_SQLiteIntegrityError,)
+
 
 def api_error(message: str, code: str, status: int = 400):
     """Return a (jsonify(response), status) tuple with the unified error shape."""

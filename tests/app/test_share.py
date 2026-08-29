@@ -2,6 +2,13 @@
 
 import json
 
+from oversolved.blueprints import _permission_at_least
+
+# DocumentStore.has_permission was removed as dead code; the production path is
+# get_permission() + _permission_at_least, which this mirrors for the store tests.
+def _has_perm(doc_store, uuid, user_id, level):
+    return _permission_at_least(doc_store.get_permission(uuid, user_id), level)
+
 
 class TestDocumentStoreShares:
     """Tests for DocumentStore sharing methods."""
@@ -12,8 +19,8 @@ class TestDocumentStoreShares:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.share_document(uuid, other_id, "view")
-        assert doc_store.has_permission(uuid, other_id, "view") is True
-        assert doc_store.has_permission(uuid, other_id, "edit") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "edit") is False
 
     def test_share_document_edit_permission(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
@@ -21,8 +28,8 @@ class TestDocumentStoreShares:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.share_document(uuid, other_id, "edit")
-        assert doc_store.has_permission(uuid, other_id, "view") is True
-        assert doc_store.has_permission(uuid, other_id, "edit") is True
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "edit") is True
 
     def test_unshare_document(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
@@ -30,10 +37,10 @@ class TestDocumentStoreShares:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.share_document(uuid, other_id, "view")
-        assert doc_store.has_permission(uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
 
         doc_store.unshare_document(uuid, other_id)
-        assert doc_store.has_permission(uuid, other_id, "view") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is False
 
     def test_get_shares(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")
@@ -52,11 +59,11 @@ class TestDocumentStoreShares:
         uuid = doc_store.create("Doc", owner_id)
 
         doc_store.set_public(uuid, True)
-        assert doc_store.has_permission(uuid, other_id, "view") is True
-        assert doc_store.has_permission(uuid, other_id, "edit") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is True
+        assert _has_perm(doc_store, uuid, other_id, "edit") is False
 
         doc_store.set_public(uuid, False)
-        assert doc_store.has_permission(uuid, other_id, "view") is False
+        assert _has_perm(doc_store, uuid, other_id, "view") is False
 
     def test_get_permission(self, doc_store, user_store):
         owner_id = user_store.create("owner", "hash")

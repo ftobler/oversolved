@@ -38,21 +38,52 @@ class DocumentStore:
             )
         return uuid
 
-    def import_document(self, name: str, owner_id: int, content: str) -> str:
-        """Create a document together with its content and return its UUID.
+    def import_document(
+        self, name: str, owner_id: int, content: str, preview_image: bytes | None = None
+    ) -> str:
+        """Create a document together with its content (and optional preview).
 
-        Import must never leave a committed empty-content row behind, so name and
-        content land in one INSERT inside a single transaction instead of the
-        create()/store_content() pair, which commits twice.
+        Import must never leave a committed empty-content row behind, so name,
+        content and preview land in one INSERT inside a single transaction
+        instead of create()/store_content()/store_preview_image(), which commit
+        up to three times and could leave a half-imported entry on a mid-import
+        failure.
         """
         uuid = uuid_mod.uuid4().hex
         now = _now()
+        columns = ["uuid", "name", "content", "owner_id", "is_public", "created_at", "updated_at"]
+        values: list = [uuid, name, content, owner_id, 0, now, now]
+        if preview_image is not None:
+            columns.append("preview_image")
+            values.append(preview_image)
+        placeholders = ", ".join(["?"] * len(values))
         with self.db.transaction():
             self.db.execute(
-                "INSERT INTO documents (uuid, name, content, owner_id, is_public, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (uuid, name, content, owner_id, 0, now, now),
+                f"INSERT INTO documents ({', '.join(columns)}) VALUES ({placeholders})",
+                tuple(values),
             )
         return uuid
+
+    def update_content(self, uuid: str, content: str, preview_image: bytes | None = None) -> None:
+        """Write content (and optionally a preview) in one transaction.
+
+        update_document used to call store_content then store_preview_image as
+        two separate commits, so a failure between them left the document with
+        new content but a stale preview (or vice versa). Both columns land
+        together now so the pair is atomic.
+        """
+        now = _now()
+        with self.db.transaction():
+            if preview_image is not None:
+                self.db.execute(
+                    "UPDATE documents SET content = ?, preview_image = ?, updated_at = ? WHERE uuid = ?",
+                    (content, preview_image, now, uuid),
+                )
+            else:
+                self.db.execute(
+                    "UPDATE documents SET content = ?, updated_at = ? WHERE uuid = ?",
+                    (content, now, uuid),
+                )
 
     def store_content(self, uuid: str, content: str) -> None:
         """Update document content."""
@@ -250,31 +281,6 @@ class DocumentStore:
                 "UPDATE documents SET is_public = ? WHERE uuid = ?",
                 (1 if is_public else 0, uuid),
             )
-
-    def has_permission(self, uuid: str, user_id: int, min_permission: str = "view") -> bool:
-        """Check if user has permission to access a document."""
-        cursor = self.db.execute(
-            """SELECT d.owner_id, d.is_public, ds.permission
-               FROM documents d
-               LEFT JOIN document_shares ds ON d.uuid = ds.document_uuid
-                   AND ds.shared_with_user_id = ?
-               WHERE d.uuid = ?""",
-            (user_id, uuid),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            return False
-        owner_id, is_public, perm = row[0], row[1], row[2]
-        if owner_id == user_id:
-            return True
-        if perm is not None:
-            if min_permission == "view" and perm in ("view", "edit"):
-                return True
-            if min_permission == "edit" and perm == "edit":
-                return True
-        if is_public and min_permission == "view":
-            return True
-        return False
 
     def get_permission(self, uuid: str, user_id: int) -> str | None:
         """Get the permission level for a user on a document. Returns 'owner', 'edit', 'view', or None."""

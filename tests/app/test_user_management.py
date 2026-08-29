@@ -874,6 +874,116 @@ class TestAdminCreateUserWithEmail:
         )
         assert response.status_code == 400
 
+    def test_create_user_string_admin_is_rejected(self, admin_client):
+        """A non-boolean is_admin must 400; bool('false') is True, so coercing
+        silently grants admin."""
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "stringadmin", "password": "password123",
+                "email": "stringadmin@example.com", "is_admin": "false",
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_create_user_numeric_admin_is_rejected(self, admin_client):
+        """A numeric is_admin must 400 rather than be coerced to a truthy flag."""
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "numadmin", "password": "password123",
+                "email": "numadmin@example.com", "is_admin": 0,
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_update_user_string_flags_are_rejected(self, admin_client):
+        """String/number is_active and is_admin must 400, not silently flip."""
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "flaguser", "password": "password123",
+                "email": "flaguser@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        bad_active = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"is_active": "false"}),
+            content_type="application/json",
+        )
+        assert bad_active.status_code == 400
+
+        bad_admin = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"is_admin": 1}),
+            content_type="application/json",
+        )
+        assert bad_admin.status_code == 400
+
+    def test_create_user_unique_race_returns_409(self, admin_client, monkeypatch):
+        """When the pre-check misses a taken name (a concurrent insert), the
+        unique-constraint IntegrityError must become a 409, not a 500."""
+        from oversolved.db import UserStore
+
+        monkeypatch.setattr(UserStore, "find_by_username", lambda self, name: None)
+        monkeypatch.setattr(UserStore, "find_by_email", lambda self, email: None)
+
+        def _boom(self, *args, **kwargs):
+            from sqlite3 import IntegrityError as SqlIntegrity
+            try:
+                from psycopg2 import IntegrityError as PgIntegrity
+            except ImportError:
+                PgIntegrity = SqlIntegrity
+            raise PgIntegrity("duplicate key")
+
+        monkeypatch.setattr(UserStore, "create", _boom)
+
+        response = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "raceuser", "password": "password123",
+                "email": "raceuser@example.com"
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
+    def test_update_user_unique_race_returns_409(self, admin_client, monkeypatch):
+        """A race on the update path must also resolve to 409, not 500."""
+        from oversolved.db import UserStore
+
+        def _boom(self, *args, **kwargs):
+            from sqlite3 import IntegrityError as SqlIntegrity
+            try:
+                from psycopg2 import IntegrityError as PgIntegrity
+            except ImportError:
+                PgIntegrity = SqlIntegrity
+            raise PgIntegrity("duplicate key")
+
+        monkeypatch.setattr(UserStore, "update", _boom)
+
+        create_resp = admin_client.post(
+            "/api/admin/users",
+            data=json.dumps({
+                "username": "raceupdate", "password": "password123",
+                "email": "raceupdate@example.com"
+            }),
+            content_type="application/json",
+        )
+        user_id = json.loads(create_resp.data)["id"]
+
+        response = admin_client.put(
+            f"/api/admin/users/{user_id}",
+            data=json.dumps({"username": "raceupdate"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
+
 
 class TestUserPreferences:
     """Tests for user preferences API endpoints."""
@@ -961,6 +1071,27 @@ class TestUserPreferences:
         )
         assert response.status_code == 400
         assert "required" in json.loads(response.data)["error"].lower()
+
+    def test_update_profile_unique_race_returns_409(self, admin_client, monkeypatch):
+        """A concurrent claim on the new username must yield 409, not a 500."""
+        from oversolved.db import UserStore
+
+        def _boom(self, *args, **kwargs):
+            from sqlite3 import IntegrityError as SqlIntegrity
+            try:
+                from psycopg2 import IntegrityError as PgIntegrity
+            except ImportError:
+                PgIntegrity = SqlIntegrity
+            raise PgIntegrity("duplicate key")
+
+        monkeypatch.setattr(UserStore, "update", _boom)
+
+        response = admin_client.put(
+            "/api/users/me",
+            data=json.dumps({"username": "anothername"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 409
 
 
 class TestBackupEndpoint:

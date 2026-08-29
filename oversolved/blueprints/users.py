@@ -5,7 +5,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from oversolved.db import UserStore, SessionStore
-from oversolved.blueprints import get_db, auth_required, validate_password_strength, api_error
+from oversolved.blueprints import get_db, auth_required, validate_password_strength, api_error, integrity_error_types
 
 users_bp = Blueprint("users", __name__, url_prefix="/api/users/me")
 
@@ -70,7 +70,12 @@ def update_profile():
         updates["must_change_password"] = 0
 
     if updates:
-        success = user_store.update(user_id, **updates)
+        try:
+            success = user_store.update(user_id, **updates)
+        except integrity_error_types():
+            # Lost a race with the pre-check above: the new username or email was
+            # taken by another account between the check and the write.
+            return api_error("Username or email already exists", "CONFLICT", 409)
         if not success:
             return api_error("User not found", "NOT_FOUND", 404)
         if "password_hash" in updates:

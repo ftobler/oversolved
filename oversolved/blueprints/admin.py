@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import tempfile
+import unicodedata
 import yaml
 import zipfile
 from pathlib import Path
@@ -11,13 +12,13 @@ from datetime import datetime, timezone
 from typing import Any, Iterator
 from flask import Blueprint, jsonify, request, send_file
 from flask.typing import ResponseReturnValue
-from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from oversolved.db import Database, DocumentStore, PeriodicTaskStore, SessionStore, UserStore
 from flask import g
 from oversolved.auth import AuthOk, authenticate_token
 from oversolved.blueprints import (
     auth_required, get_db, require_csrf, require_json, validate_password_strength, api_error,
+    integrity_error_types,
 )
 from oversolved.blueprints.documents import decode_png
 from oversolved.rate_limit import RateLimiter
@@ -63,7 +64,12 @@ def create_user_admin() -> ResponseReturnValue:
     username = (data.get("username") or "").strip()
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
-    is_admin = bool(data.get("is_admin", False))
+    # A JSON boolean is the only accepted value. bool("false") and bool(0) are
+    # both True, so coercing a string/number here would silently grant admin.
+    is_admin_raw = data.get("is_admin", False)
+    if not isinstance(is_admin_raw, bool):
+        return api_error("is_admin must be a boolean", "BAD_REQUEST", 400)
+    is_admin = is_admin_raw
 
     if not username or not password:
         return api_error("Username and password required", "BAD_REQUEST", 400)
@@ -81,11 +87,17 @@ def create_user_admin() -> ResponseReturnValue:
     if user_store.find_by_email(email):
         return api_error("Email already exists", "CONFLICT", 409)
 
-    uid = user_store.create(
-        username, generate_password_hash(password),
-        email=email,
-        is_admin=is_admin,
-    )
+    try:
+        uid = user_store.create(
+            username, generate_password_hash(password),
+            email=email,
+            is_admin=is_admin,
+        )
+    except integrity_error_types():
+        # Lost a race with the pre-check above: another request claimed this
+        # username or email first. Answer 409 rather than surfacing the unique
+        # constraint as a 500.
+        return api_error("Username or email already exists", "CONFLICT", 409)
     return jsonify({"id": uid, "username": username, "email": email}), 201
 
 
@@ -132,14 +144,25 @@ def admin_update_user(user_id: int) -> ResponseReturnValue:
                 return api_error("Email already exists", "CONFLICT", 409)
         updates["email"] = new_email
     if "is_active" in data:
-        updates["is_active"] = 1 if data["is_active"] else 0
+        is_active_raw = data["is_active"]
+        if not isinstance(is_active_raw, bool):
+            return api_error("is_active must be a boolean", "BAD_REQUEST", 400)
+        updates["is_active"] = 1 if is_active_raw else 0
     if "is_admin" in data:
-        updates["is_admin"] = 1 if data["is_admin"] else 0
+        is_admin_raw = data["is_admin"]
+        if not isinstance(is_admin_raw, bool):
+            return api_error("is_admin must be a boolean", "BAD_REQUEST", 400)
+        updates["is_admin"] = 1 if is_admin_raw else 0
 
     if not updates:
         return api_error("No fields to update", "BAD_REQUEST", 400)
 
-    success = user_store.update(user_id, **updates)
+    try:
+        success = user_store.update(user_id, **updates)
+    except integrity_error_types():
+        # Lost a race with the pre-check above: the new username or email was
+        # taken by another account between the check and the write.
+        return api_error("Username or email already exists", "CONFLICT", 409)
     if not success:
         return api_error("User not found", "NOT_FOUND", 404)
 
@@ -217,23 +240,59 @@ def force_run_periodic_task(task_key: str) -> ResponseReturnValue:
 # ─── Admin Backup ───
 
 
+def _safe_component(name: str) -> str:
+    """Map a document name to a safe zip member component, keeping unicode.
+
+    secure_filename() transliterates non-ASCII away, so a document named
+    "Müller" was silently backed up as "M_ller". We keep the original glyphs but
+    strip anything that could climb out of the user's folder (path separators,
+    NUL) or is a control character, and refuse a name that collapses to dots.
+    """
+    if not name:
+        return "document"
+    cleaned = name.replace("/", "_").replace("\\", "_").replace("\x00", "")
+    cleaned = "".join(
+        ch for ch in cleaned if ch == " " or unicodedata.category(ch)[0] != "C"
+    )
+    cleaned = cleaned.strip().strip(".")
+    return cleaned or "document"
+
+
 def _iter_documents_page(db: Database, page_size: int = 100) -> Iterator[Any]:
-    """Yield documents in pages to avoid loading all into memory."""
-    offset = 0
+    """Yield documents in pages to avoid loading all into memory.
+
+    Uses keyset (seek) pagination over the (owner_id, name, uuid) total order
+    instead of LIMIT/OFFSET. OFFSET paging shifts under concurrent writes: an
+    insert before the current cursor position would either skip a row or repeat
+    one, so a backup taken while documents are being created/deleted would be
+    incomplete or duplicated. The keyset cursor advances by the last seen key,
+    which is stable regardless of rows inserted elsewhere.
+    """
+    last: tuple[Any, Any, Any] | None = None
     while True:
-        cursor = db.execute(
-            "SELECT uuid, name, content, preview_image, owner_id FROM documents "
-            # uuid breaks ties so paging cannot repeat or skip same-named documents.
-            "WHERE deleted_at IS NULL ORDER BY owner_id, name, uuid "
-            "LIMIT ? OFFSET ?",
-            (page_size, offset),
-        )
+        if last is None:
+            cursor = db.execute(
+                "SELECT uuid, name, content, preview_image, owner_id FROM documents "
+                "WHERE deleted_at IS NULL ORDER BY owner_id, name, uuid LIMIT ?",
+                (page_size,),
+            )
+        else:
+            # (owner_id, name, uuid) is a total order, so a strict tuple
+            # comparison continues exactly where the previous page ended.
+            cursor = db.execute(
+                "SELECT uuid, name, content, preview_image, owner_id FROM documents "
+                "WHERE deleted_at IS NULL AND ("
+                "owner_id > ? OR (owner_id = ? AND name > ?) "
+                "OR (owner_id = ? AND name = ? AND uuid > ?)) "
+                "ORDER BY owner_id, name, uuid LIMIT ?",
+                (last[0], last[0], last[1], last[0], last[1], last[2], page_size),
+            )
         rows = cursor.fetchall()
         if not rows:
             break
         for row in rows:
             yield row
-        offset += page_size
+        last = (rows[-1][4], rows[-1][1], rows[-1][0])
 
 
 @admin_bp.route("/api/admin/backup", methods=["GET"])
@@ -248,7 +307,7 @@ def backup_all_documents() -> ResponseReturnValue:
             for doc_uuid, name, content, preview_image, owner_id in _iter_documents_page(db):
                 user = user_store.find_by_id(owner_id)
                 username = user["username"] if user else "unknown"
-                doc_name = secure_filename(name)
+                doc_name = _safe_component(name)
                 user_dir = f"{username}/"
 
                 key = (username, doc_name)
@@ -343,8 +402,12 @@ def import_backup() -> ResponseReturnValue:
                     continue
 
                 parts = path.split('/')
-                if len(parts) < 2:
+                if len(parts) != 2:
+                    # Backups are flat (username/document.yaml); a nested or
+                    # single-component path is not a restorable document and
+                    # would otherwise be silently flattened into the wrong name.
                     errors.append(f"Invalid path structure: {path}")
+                    skipped_count += 1
                     continue
 
                 username = parts[0]
@@ -377,12 +440,11 @@ def import_backup() -> ResponseReturnValue:
                             # the entry.
                             decode_png(preview_data)
 
-                        # Atomic create+content insert: a mid-import failure must
-                        # not leave a committed empty-content document behind.
-                        uuid = doc_store.import_document(doc_name, user["id"], content)
-
-                        if preview_data is not None:
-                            doc_store.store_preview_image(uuid, preview_data)
+                        # Atomic create+content+preview insert: a mid-import
+                        # failure must not leave a committed half-imported entry.
+                        doc_store.import_document(
+                            doc_name, user["id"], content, preview_image=preview_data
+                        )
 
                         imported_count += 1
                     except Exception as e:
