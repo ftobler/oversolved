@@ -192,6 +192,44 @@ export async function bundleCachePut(bundle: PartBundle): Promise<void> {
   await evictBeyondMaxDocs(bundles, latest, bundle.doc_id)
 }
 
+// A late relay salvage writes a finished build whose original solve timed out.
+// It must never clobber a bundle a concurrent or later solve already cached
+// (a migrated record under the same key, for instance). Unlike bundleCachePut
+// this refuses to overwrite: the read of the existing key and the write run in
+// one transaction, so there is no check-then-act window for a racing solve to
+// slip its own write in between. Returns true when it wrote, false when the key
+// was already present and the write was skipped.
+export async function bundleCachePutIfAbsent(bundle: PartBundle): Promise<boolean> {
+  const db = await openDb()
+  const tx = db.transaction([STORE, LATEST_STORE], 'readwrite')
+  const bundles = tx.objectStore(STORE)
+  const latest = tx.objectStore(LATEST_STORE)
+
+  const existing = await prom(bundles.getKey(bundleKey(bundle.doc_id, bundle.doc_rev)) as IDBRequest<IDBValidKey | undefined>)
+  if (existing !== undefined) {
+    // Something already owns this key (a migrated or newer build): the late
+    // salvage yields rather than revert it. The read has already resolved, so
+    // the aborted transaction will commit on its own (no write was issued).
+    return false
+  }
+
+  await prom(bundles.put({
+    key: bundleKey(bundle.doc_id, bundle.doc_rev),
+    payload: bundle,
+    built_by: BUNDLE_BUILD_FINGERPRINT,
+  }))
+
+  const prev = await prom(latest.get(bundle.doc_id) as IDBRequest<LatestRecord | undefined>)
+  const revs = Array.from(new Set([...(prev?.revs ?? []), bundle.doc_rev])).sort((a, b) => a - b)
+  const evicted = revs.length > MAX_REVS_PER_DOC ? revs.splice(0, revs.length - MAX_REVS_PER_DOC) : []
+  for (const rev of evicted) {
+    await prom(bundles.delete(bundleKey(bundle.doc_id, rev)))
+  }
+  await prom(latest.put({ doc_id: bundle.doc_id, revs, last_written: nextLastWritten() }))
+  await evictBeyondMaxDocs(bundles, latest, bundle.doc_id)
+  return true
+}
+
 // Bound the cache across docs: once `latest` exceeds MAX_DOCS, drop the
 // least-recently-written doc's revs from both stores. The doc just written is
 // by definition the most recent, so it is never the eviction victim.

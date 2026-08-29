@@ -16,7 +16,7 @@ import { extractErrorMessage } from '../errors'
 import { initAnchorSolver, getMateSolver } from '../../wasm-kernel/anchorSolver'
 import { solveAssembly } from '../solveAssembly'
 import type { AssemblyBuildResponse } from '../solveAssembly'
-import { bundleCacheHas, bundleCachePut } from '../bundleCache'
+import { bundleCachePutIfAbsent } from '../bundleCache'
 import type { PartBundle } from '../partBundle'
 import type {
   SolveAssemblyRequest,
@@ -144,11 +144,13 @@ export function handleRelayResponse(msg: AnchorRelayResponse): Promise<void> | u
 
 async function cacheLateBundle(bundle: PartBundle): Promise<void> {
   try {
-    // Never overwrite a migrated bundle: a concurrent successful solve caches
-    // the MIGRATED record under this key, and replacing it with the raw relay
-    // reply would revert the legacy anchor-id lineage migrateBundle applied.
-    if (await bundleCacheHas(bundle.doc_id, bundle.doc_rev)) return
-    await bundleCachePut(bundle)
+    // Atomic if-absent: the read and write share one transaction, so the late
+    // salvage can never overwrite a bundle a concurrent or later solve just
+    // wrote (a migrated record, for instance). The old guard read
+    // `bundleCacheHas` then `bundleCachePut` as two transactions; a solve
+    // committing between them left the salvage free to clobber the migrated
+    // write. putIfAbsent collapses that window to zero.
+    await bundleCachePutIfAbsent(bundle)
   } catch (e) {
     // Best effort: the solve already failed, so a failed cache write must not
     // surface as an unhandled rejection in the worker.

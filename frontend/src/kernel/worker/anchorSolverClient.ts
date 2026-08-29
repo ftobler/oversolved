@@ -236,7 +236,26 @@ function onMessage(e: { data: AssemblyWorkerResponse }): void {
       // and relayReplyTransferables refuses any bundle that arrived without
       // the BUNDLE_FRESH stamp (it clones instead of detaching).
       const transfer = relayReplyTransferables(msg.subKind, res)
-      sender?.postMessage(res, transfer.length > 0 ? transfer : undefined)
+      try {
+        sender?.postMessage(res, transfer.length > 0 ? transfer : undefined)
+      } catch {
+        // The relay reply could not be posted to the anchor worker: a
+        // DataCloneError from a detached transfer buffer, or a worker that went
+        // away mid-post. Without an answer the worker's pending relay request
+        // would hang until its own ceiling and, in production where the solve
+        // watchdog is Infinity, spin the UI forever. Post a minimal, always
+        // cloneable error reply so the worker rejects the request now.
+        try {
+          sender?.postMessage({
+            kind: 'asr_relayRes',
+            requestId: msg.requestId,
+            ok: false,
+            error: 'relay reply failed to post to the worker',
+          })
+        } catch {
+          // Worker is gone: the solve is torn down elsewhere, nothing to answer.
+        }
+      }
     })
     return
   }

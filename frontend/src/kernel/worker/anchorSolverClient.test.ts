@@ -42,9 +42,16 @@ class FakeWorker implements AnchorSolverWorkerLike {
   received: AssemblyWorkerRequest[] = []
   terminated = false
   failOnPost = false
+  // Throws only on a successful relay-reply post (ok:true), leaving the benign
+  // ok:false fallback reply free to post. Mirrors a DataCloneError on the
+  // relay-reply postMessage while keeping the catch's recovery observable.
+  failOnRelayReplyPost = false
 
   postMessage(msg: AssemblyWorkerRequest, transfer?: Transferable[]): void {
     if (this.failOnPost) throw new Error('DataCloneError: the object could not be cloned')
+    if (this.failOnRelayReplyPost && msg.kind === 'asr_relayRes' && (msg as { ok?: boolean }).ok) {
+      throw new Error('DataCloneError: the object could not be cloned')
+    }
     this.posted.push(msg)
     this.transfers.push(transfer)
     if (transfer && transfer.length > 0) {
@@ -737,6 +744,37 @@ describe('relay plumbing', () => {
     const idx = relayReplyIndex()
     expect(idx).toBeGreaterThanOrEqual(0)
     expect(fakeWorker.transfers[idx]).toBeUndefined()
+  })
+
+  it('WK-L2: a relay-reply postMessage that throws answers ok:false instead of hanging', async () => {
+    setRelayHandlers({
+      partDocContent: vi.fn().mockResolvedValue({ kind: 'part', features: [] }),
+      buildBundle: vi.fn(),
+    })
+    // A DataCloneError on the relay-reply post (e.g. a detached transfer buffer,
+    // or a worker gone mid-post) must not leave the worker's pending relay
+    // request unanswered: it answers with a minimal, always-cloneable ok:false
+    // reply so the worker rejects now instead of spinning forever.
+    fakeWorker.failOnRelayReplyPost = true
+
+    void solveAssemblyViaWorker(
+      '_asm',
+      [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { _: 1 },
+      [],
+    ).catch(() => {})  // never settles here; the afterEach reset rejects it
+    fakeWorker.reply({ kind: 'asr_relay', requestId: 911, subKind: 'partDocContent', doc_id: 'doc' })
+
+    await vi.waitFor(() => {
+      const r = fakeWorker.posted.find(m => m.kind === 'asr_relayRes')
+      if (r && !r.ok) return true
+      throw new Error('expected an ok:false relay reply')
+    }, { timeout: 1000 })
+
+    const relayRes = fakeWorker.posted.find(m => m.kind === 'asr_relayRes') as AnchorRelayErrResponse
+    expect(relayRes.requestId).toBe(911)
+    expect(relayRes.ok).toBe(false)
+    expect(relayRes.error).toContain('failed to post')
   })
 
   it('ownership: the relay transfer detaches the main-thread bundle buffers and delivers a fresh copy', async () => {

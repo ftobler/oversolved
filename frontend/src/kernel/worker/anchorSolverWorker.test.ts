@@ -24,7 +24,7 @@ import type {
 } from './solverProtocol'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { bundleCachePut, bundleCacheGet, resetBundleDbConnection } from '../bundleCache'
+import { bundleCachePut, bundleCachePutIfAbsent, bundleCacheGet, resetBundleDbConnection } from '../bundleCache'
 import { BUNDLE_SCHEMA, type Anchor, type PartBundle } from '../partBundle'
 
 vi.mock('../../wasm-kernel/anchorSolver', () => ({
@@ -48,6 +48,7 @@ vi.mock('../bundleCache', async (importOriginal) => {
   return {
     ...actual,
     bundleCachePut: vi.fn(actual.bundleCachePut),
+    bundleCachePutIfAbsent: vi.fn(actual.bundleCachePutIfAbsent),
   }
 })
 
@@ -346,7 +347,7 @@ describe('relay plumbing', () => {
       // original promise already rejected and must not double-settle.
       const bundle = makeBundle('doc-a', 1)
       await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: bundle })
-      expect(bundleCachePut).toHaveBeenCalledWith(bundle)
+      expect(bundleCachePutIfAbsent).toHaveBeenCalledWith(bundle)
       const loaded = await bundleCacheGet('doc-a', 1)
       expect(loaded).toBeDefined()
       expect(loaded && loaded.bodies[0].mesh.vertices.byteLength).toBeGreaterThan(0)
@@ -428,6 +429,7 @@ describe('relay plumbing', () => {
       // The pre-cache put above is an expected call; clear it so the late-reply
       // guard below is the only thing under assertion.
       vi.mocked(bundleCachePut).mockClear()
+      vi.mocked(bundleCachePutIfAbsent).mockClear()
 
       const prom = relay.requestBuildBundle('doc-a', 1, {})
       const assertion = expect(prom).rejects.toThrow(/timed out/)
@@ -435,8 +437,9 @@ describe('relay plumbing', () => {
       await assertion
 
       // The late raw reply must not clobber the migrated record: the key is
-      // already cached, so the guard skips the put.
+      // already cached, so the if-absent salvage skips the write.
       await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', 1) })
+      expect(bundleCachePutIfAbsent).toHaveBeenCalled()
       expect(bundleCachePut).not.toHaveBeenCalled()
       const loaded = await bundleCacheGet('doc-a', 1)
       expect(loaded && loaded.anchors['a1'].point).toEqual([1, 2, 3])

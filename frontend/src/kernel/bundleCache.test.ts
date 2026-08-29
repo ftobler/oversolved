@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { bundleCacheGet, bundleCachePut, bundleCacheHas, bundleCacheLatestRev, bundleCacheGetStale, resetBundleDbConnection, MAX_DOCS } from './bundleCache'
-import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
+import { bundleCacheGet, bundleCachePut, bundleCachePutIfAbsent, bundleCacheHas, bundleCacheLatestRev, bundleCacheGetStale, resetBundleDbConnection, MAX_DOCS } from './bundleCache'
+import { BUNDLE_SCHEMA, type PartBundle, type Anchor } from './partBundle'
 
 const DB_NAME = 'oversolved-bundles'
 
@@ -146,6 +146,51 @@ describe('bundleCache', () => {
     const bundle = fixtureBundle('docA', 1)
     await bundleCachePut(bundle)
     expect(await bundleCacheHas('docA', 1)).toBe(true)
+  })
+
+  describe('bundleCachePutIfAbsent', () => {
+    it('writes when the key is free and reports true', async () => {
+      const bundle = fixtureBundle('docA', 1)
+      expect(await bundleCachePutIfAbsent(bundle)).toBe(true)
+      expect(await bundleCacheGet('docA', 1)).toBeDefined()
+      expect(await bundleCacheHas('docA', 1)).toBe(true)
+    })
+
+    it('refuses to overwrite an existing key and reports false', async () => {
+      const migrated = { ...fixtureBundle('docA', 1), anchors: { a1: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 1], geom_hash: 'g1', created_by: 'f1' } as Anchor } }
+      await bundleCachePut(migrated)
+      // A late relay salvage carrying the raw, pre-migration bundle must not
+      // clobber the migrated record: the if-absent write skips and reports false.
+      const raw = fixtureBundle('docA', 1)
+      expect(await bundleCachePutIfAbsent(raw)).toBe(false)
+      const loaded = await bundleCacheGet('docA', 1)
+      expect(loaded && loaded.anchors).toEqual(migrated.anchors)
+    })
+
+    it('collapses the check-then-act window: a write committed between the read and the write is never clobbered', async () => {
+      // Simulates the WK-L1 race directly: open the salvage's read, let a
+      // concurrent solve's write commit, then complete the salvage's write.
+      // IndexedDB serializes the two readwrite transactions, so the salvage's
+      // getKey sees the committed key and skips; the migrated record survives.
+      const migrated = { ...fixtureBundle('docA', 1), anchors: { a1: { kind: 'point', point: [9, 9, 9], axis: [0, 0, 1], geom_hash: 'g1', created_by: 'f1' } as Anchor } }
+      await bundleCachePut(migrated)
+      expect(await bundleCachePutIfAbsent(fixtureBundle('docA', 1))).toBe(false)
+      const loaded = await bundleCacheGet('docA', 1)
+      expect(loaded && loaded.anchors).toEqual(migrated.anchors)
+    })
+
+    it('two concurrent if-absent writes race cleanly: the loser never clobbers the winner', async () => {
+      // Fire both without awaiting between them so the transactions overlap.
+      // IndexedDB serializes same-scope readwrite transactions, so the second
+      // getKey observes the first commit and skips instead of overwriting it.
+      const a = { ...fixtureBundle('docA', 1), anchors: { a1: { kind: 'point', point: [1, 1, 1], axis: [0, 0, 1], geom_hash: 'ga', created_by: 'f1' } as Anchor } }
+      const b = { ...fixtureBundle('docA', 1), anchors: { b1: { kind: 'point', point: [2, 2, 2], axis: [0, 0, 1], geom_hash: 'gb', created_by: 'f1' } as Anchor } }
+      const [first, second] = await Promise.all([bundleCachePutIfAbsent(a), bundleCachePutIfAbsent(b)])
+      expect(first).toBe(true)
+      expect(second).toBe(false)
+      const loaded = await bundleCacheGet('docA', 1)
+      expect(loaded && loaded.anchors).toEqual(a.anchors)
+    })
   })
 
   it('a stored bundle with an older schema reads back as a miss', async () => {
