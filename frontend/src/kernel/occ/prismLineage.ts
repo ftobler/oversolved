@@ -10,7 +10,14 @@
 // Size/First_1/RemoveFirst like every other list in this build (no iterator binding).
 
 import { drainList, type DisposeScope } from './disposeScope'
-import { extractErrorMessage } from '../errors'
+import { extractErrorMessage, extractOccErrorMessage } from '../errors'
+import { isDevBuild } from '../isDevBuild'
+import {
+  ANCHORED_KINDS,
+  describeProfile,
+  formatGap,
+  formatProfileReport,
+} from '../profileDiagnostics'
 import type {
   OccModule,
   OccShape,
@@ -36,6 +43,7 @@ import {
   makeWire,
   makeFaceFromWire,
   healWire,
+  wireEndpointGaps,
   type Vec3,
 } from './primitives'
 import { faceGh, edgeGh } from './lineageHash'
@@ -171,10 +179,8 @@ function buildEllipseArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLik
 // genuinely open loop sits far above it and still fails loudly in makeWire.
 const JOINT_SNAP_TOL = 1e-3
 
-// Edges whose OCC endpoints are pinned to an analytic curve (center+radius+angle
-// for arcs, the eccentric-angle frame for ellipse arcs): a neighbouring joint
-// cannot pull them off that curve, so at a joint they win and the free edge moves.
-const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc'])
+// ANCHORED_KINDS lives in kernel/profileDiagnostics so the snapper below and
+// the pure profile dump cannot drift apart about which edges can be moved.
 
 function jointDist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1])
@@ -221,8 +227,27 @@ function snapLoopJoints(loop: LoopEdge[]): LoopEdge[] {
   return out
 }
 
-function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop: LoopEdge[]): OccShape {
-  const loop = snapLoopJoints(rawLoop)
+/**
+ * The joint gaps as OCC realized them, for a failure message. Best effort: this
+ * runs only on a path that is already throwing, so it must never be the reason
+ * anything fails, and it must never mask the real error.
+ */
+function realizedGapsLine(oc: OccModule, scope: DisposeScope, edges: OccShape[]): string {
+  try {
+    const gaps = wireEndpointGaps(oc, scope, edges)
+    return `\n  gaps OCC realized at each joint: ${gaps.map(formatGap).join(', ')}`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Build one loop's OCC wire. `loop` must ALREADY be snapped (see
+ * `sketchLoopsToFace`): the wire this makes and the report the caller dumps have
+ * to describe the same geometry, or the dump accuses joints the kernel repaired
+ * and never saw.
+ */
+function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: LoopEdge[]): OccShape {
   const circle = fullCircleOf(loop)
   // Every edge below is tracked at creation and released once makeWire has
   // copied it into the wire, so a dirty feature's repeated rebuilds do not
@@ -230,7 +255,12 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop
   // tracked: the caller's dispose() is then their owner.
   const singleEdge = (edge: OccShape): OccShape => {
     const tracked = scope.track(edge)
-    const wire = scope.track(makeWire(oc, scope, [tracked]))
+    let wire: OccShape
+    try {
+      wire = scope.track(makeWire(oc, scope, [tracked], { requireClosed: true }))
+    } catch (e) {
+      throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, [tracked])}`)
+    }
     scope.release(tracked)
     return wire
   }
@@ -263,9 +293,36 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, rawLoop
       edges.push(scope.track(makeLineEdge(oc, scope, p1, p2)))
     }
   }
-  const wire = scope.track(makeWire(oc, scope, edges))
+  // A profile boundary that does not close is not a profile: without this the
+  // face builder takes an open chain and the extrude reports ok. The uv-space
+  // dump the caller attaches says what the SKETCH asked for; these gaps say what
+  // the kernel actually built, which is the pair that identifies an arc whose
+  // endpoint was forced onto its ideal circle.
+  let wire: OccShape
+  try {
+    wire = scope.track(makeWire(oc, scope, edges, { requireClosed: true }))
+  } catch (e) {
+    throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, edges)}`)
+  }
   for (const e of edges) scope.release(e)
   return wire
+}
+
+/**
+ * The profile dump, or '' if producing it fails. A diagnostic must never become
+ * the failure: on the success path a throw in here would turn a working extrude
+ * into a red feature, and in the catch it would replace the real OCC error with
+ * its own. `when: 'suspect'` returns '' for a clean profile, so the dev-gated
+ * log stays quiet.
+ */
+function safeProfileReport(loops: LoopEdge[][], when: 'suspect' | 'always'): string {
+  try {
+    const report = describeProfile(loops)
+    if (when === 'suspect' && report.verdict !== 'suspect') return ''
+    return formatProfileReport(report)
+  } catch (e) {
+    return when === 'always' ? `(profile dump unavailable: ${extractErrorMessage(e)})` : ''
+  }
 }
 
 /**
@@ -280,15 +337,38 @@ export function sketchLoopsToFace(
   loops: LoopEdge[][],
   plane: PlaneLike,
 ): OccShape {
-  const outerWire = buildWire(oc, scope, plane, loops[0])
-  const holeWires = loops.slice(1).map((hole) => buildWire(oc, scope, plane, hole))
-  // The wires live only until makeFaceFromWire copies them into the face; the
-  // face keeps their curves alive via shared TShapes.
+  // Snap ONCE, here, so the wires below and the dump attached to a failure are
+  // the same geometry. Snapping inside buildWire meant the report described the
+  // pre-snap loops: it accused joints snapLoopJoints had already repaired and
+  // OCC never saw, and it fired `suspect` on profiles that built perfectly.
+  const snapped = loops.map(snapLoopJoints)
   try {
-    return makeFaceFromWire(oc, scope, outerWire, holeWires)
-  } finally {
-    scope.release(outerWire)
-    for (const w of holeWires) scope.release(w)
+    const outerWire = buildWire(oc, scope, plane, snapped[0])
+    const holeWires = snapped.slice(1).map((hole) => buildWire(oc, scope, plane, hole))
+    // The wires live only until makeFaceFromWire copies them into the face; the
+    // face keeps their curves alive via shared TShapes.
+    let face: OccShape
+    try {
+      face = makeFaceFromWire(oc, scope, outerWire, holeWires)
+    } finally {
+      scope.release(outerWire)
+      for (const w of holeWires) scope.release(w)
+    }
+    // A profile can build into a wrong-but-valid solid with no error anywhere
+    // (a duplicated hole wire, a nesting decision that only holds on the coarse
+    // polygon). Leave a trace when that happens, gated like every other hot-path
+    // diagnostic so production solves stay silent.
+    if (isDevBuild()) {
+      const suspect = safeProfileReport(snapped, 'suspect')
+      if (suspect !== '') console.warn(`sketchLoopsToFace: the profile built but looks suspect\n${suspect}`)
+    }
+    return face
+  } catch (e) {
+    // Without this the user sees an emscripten pointer, or a bare "only 3 of 4
+    // edges connected", with nothing to say WHICH joint or how wide. The dump is
+    // the reproduction: it is what turns "OCCT is not recognizing the shape"
+    // into a paste-able bug report.
+    throw new Error(`${extractOccErrorMessage(oc, e)}\n${safeProfileReport(snapped, 'always')}`)
   }
 }
 

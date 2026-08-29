@@ -46,7 +46,13 @@ export function edgesToProfileFace(oc: OccModule, scope: DisposeScope, edges: Oc
   // loud. A raw MakeWire silently drops the unconnectable edge and stays done,
   // which used to build the face off a shortened loop (an open U of the
   // remaining sides) with no error at all.
-  const wire = scope.track(makeWire(oc, scope, edges))
+  //
+  // requireClosed because these edges are a PROFILE boundary, not a spine. The
+  // edge count alone does not catch the other half of the same bug: pick 3 of a
+  // rectangle's 4 edges and every edge connects, so the count guard passes,
+  // MakeFace finds a plane through the open chain and reports IsDone, and the
+  // extrude quietly produces a solid bounded by an open U.
+  const wire = scope.track(makeWire(oc, scope, edges, { requireClosed: true }))
   // onlyPlane=true forces a planar surface; a non-coplanar wire leaves the
   // builder not-done instead of silently producing a curved/garbage face.
   const faceBuilder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(wire, true))

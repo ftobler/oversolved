@@ -119,6 +119,11 @@ export function buildExtrudedProfile(
     const edges = spec.loop.map((p, i) =>
       makeLineEdge(oc, scope, p, spec.loop[(i + 1) % spec.loop.length]),
     )
+    // No requireClosed here, deliberately: this builder and buildProfileExtrude
+    // below have no production callers (they are the Real suites' shape
+    // fixtures), so the guard would only add a failure mode to test scaffolding.
+    // The production profile paths -- prismLineage.buildWire and
+    // edgeProfile.edgesToProfileFace -- do opt in.
     const wire = makeWire(oc, scope, edges)
     const face = makeFaceFromWire(oc, scope, wire)
     const solid = makePrism(oc, scope, face, spec.direction, spec.distance)

@@ -155,6 +155,12 @@ export function trimAtPlane(
   poly.Close()
   const wire = scope.track(poly.Wire())
   const faceBuilder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(wire, true))
+  // Face() on a not-done builder does not throw in this build, it returns a NULL
+  // shape -- which would sweep into an empty half-space and make the Common
+  // below silently delete the whole body.
+  if (!faceBuilder.IsDone()) {
+    throw new Error('up_to: could not build a planar cap face for the cut plane')
+  }
   const capFace = scope.track(faceBuilder.Face())
   // Sweep the cap back toward the profile (opposite the extrude direction) so the
   // box covers the keep side; depth exceeds the over-length prism.

@@ -200,6 +200,57 @@ function edgeCount(oc: OccModule, scope: DisposeScope, shape: OccShape): number 
   return n
 }
 
+/**
+ * Unique B-rep vertices of a wire (deduped by topological identity, the same
+ * `SubShapeDedup` the solid readers use). The explorer visits a shared vertex
+ * once per owning edge, so the raw visit count is useless; the DEDUPED count is
+ * the closure oracle: BRepBuilderAPI_MakeWire fuses coincident endpoints, so a
+ * closed wire has exactly as many vertices as edges and an open one has one
+ * more. Verified against opencascade.js@1.1.1: a full-circle wire reads 1/1, a
+ * closed square 4/4, a three-sided chain 4 vertices for 3 edges.
+ */
+export function wireVertexCount(oc: OccModule, scope: DisposeScope, wire: OccShape): number {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(wire, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
+  const dedup = new SubShapeDedup()
+  let n = 0
+  for (; exp.More(); exp.Next()) {
+    const v = scope.track(oc.TopoDS.Vertex_1(exp.Current())) as OccSubShape
+    if (dedup.add(v)) n++
+  }
+  return n
+}
+
+/**
+ * The 3D distance at each joint of an ordered edge list, read from the edges OCC
+ * actually built rather than from the uv coordinates they were asked for. This
+ * is the measurement that answers "what does the KERNEL think the gap is": an
+ * arc endpoint is forced onto its ideal circle, so it can sit ~1e-7..1e-6 away
+ * from the joint point the solver produced, which is exactly the band
+ * BRepBuilderAPI_MakeWire refuses. The uv-space counterpart is `describeProfile`
+ * in kernel/profileDiagnostics.ts.
+ *
+ * One entry per edge: index i is the gap from edge i's last point to edge
+ * (i+1)'s first point, so the final entry is the loop's closure gap.
+ */
+export function wireEndpointGaps(oc: OccModule, scope: DisposeScope, edges: OccShape[]): number[] {
+  const ends = edges.map((e) => {
+    const ad = scope.track(new oc.BRepAdaptor_Curve_2(e))
+    // gp_Pnt proxies are by-value returns; only the coordinates outlive them.
+    const sp = ad.Value(ad.FirstParameter())
+    const ep = ad.Value(ad.LastParameter())
+    const first: Vec3 = [sp.X(), sp.Y(), sp.Z()]
+    const last: Vec3 = [ep.X(), ep.Y(), ep.Z()]
+    sp.delete()
+    ep.delete()
+    return { first, last }
+  })
+  return ends.map((e, i) => {
+    const next = ends[(i + 1) % ends.length].first
+    return Math.hypot(e.last[0] - next[0], e.last[1] - next[1], e.last[2] - next[2])
+  })
+}
+
 /** Assemble ordered edges into a wire (BRepBuilderAPI_MakeWire), with
  *  ShapeFix_Wire gap-healing when the raw wire build fails on sub-micron joints.
  *
@@ -208,8 +259,20 @@ function edgeCount(oc: OccModule, scope: DisposeScope, shape: OccShape): number 
  *  re-attach it (ShapeFix only re-loads one wire), so the wire would collapse
  *  to a subset and the sweep/extrude would produce a wrong-shape or single-face
  *  solid while still reporting ok. We instead fail loudly: a missing edge means
- *  the joints need snapping upstream (see collectPathEdges). */
-export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
+ *  the joints need snapping upstream (see collectPathEdges).
+ *
+ *  `requireClosed` adds the check the edge count cannot make. A chain of N edges
+ *  that connects head to tail but never closes the LAST joint yields a wire with
+ *  all N edges and IsDone() true, so the count guard passes and the face builder
+ *  happily produces a solid off an open profile. Opt in wherever the wire is a
+ *  profile boundary; leave it off for a wire that is legitimately open (the
+ *  sweep spine). Default off so no existing caller changes meaning. */
+export function makeWire(
+  oc: OccModule,
+  scope: DisposeScope,
+  edges: OccShape[],
+  { requireClosed = false }: { requireClosed?: boolean } = {},
+): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeWire_1())
   for (const e of edges) builder.Add_1(e)
   let wire: OccShape | null = null
@@ -218,11 +281,38 @@ export function makeWire(oc: OccModule, scope: DisposeScope, edges: OccShape[]):
   } catch {
     wire = healWireFromEdges(oc, scope, edges)
   }
+  // The wire is returned UNTRACKED (the caller owns it), so a guard that throws
+  // has to free it here or the rejected proxy is stranded on the heap -- and a
+  // dirty feature retries the build on every edit.
+  const refuse = (message: string): never => {
+    scope.release(wire as OccShape)
+    throw new Error(message)
+  }
   const got = edgeCount(oc, scope, wire)
   if (got < edges.length) {
-    throw new Error(
+    refuse(
       `makeWire: only ${got} of ${edges.length} edges connected; a joint gap exceeds the kernel tolerance (snap the joints upstream)`,
     )
+  }
+  if (requireClosed) {
+    // A closed wire has exactly one vertex per edge. MORE means a joint never
+    // fused and the chain hangs open; FEWER means two non-adjacent vertices
+    // fused, so the wire closes but pinches into a figure-eight. They are
+    // opposite defects and lumping them under "the wire is open" sends the
+    // reader looking for a gap that is not there.
+    const verts = wireVertexCount(oc, scope, wire)
+    if (verts > got) {
+      refuse(
+        `makeWire: the wire is open (${got} edges but ${verts} distinct vertices); ` +
+        `its last joint never closed, so this is not a profile boundary`,
+      )
+    }
+    if (verts < got) {
+      refuse(
+        `makeWire: the wire is pinched (${got} edges sharing only ${verts} distinct vertices); ` +
+        `it touches itself, so it does not bound a single region`,
+      )
+    }
   }
   return wire
 }
@@ -290,6 +380,21 @@ export function makeFaceFromWire(
   holeWires: OccShape[] = [],
 ): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(outerWire, true))
+  // onlyPlane=true makes OCC refuse a non-coplanar wire by leaving the builder
+  // not-done. Nobody read that: `Face()` on a not-done builder does not throw in
+  // this build, it hands back a NULL shape, which then travels all the way into
+  // the prism as a silently wrong (or empty) body. Same check the sibling
+  // edge-profile builder in features/edgeProfile.ts already makes.
+  if (!builder.IsDone()) {
+    throw new Error(
+      `makeFaceFromWire: the outer wire (${edgeCount(oc, scope, outerWire)} edges, ` +
+      `${wireVertexCount(oc, scope, outerWire)} vertices) does not bound a planar face`,
+    )
+  }
+  // No IsDone() check per hole: BRepLib_MakeFace::Add(W) ends with an
+  // unconditional `myError = BRepLib_FaceDone; Done();`, so the builder reports
+  // done however bad the wire was. A rejected hole has to be caught by
+  // validating the wire before adding it, not by asking the builder afterwards.
   for (const hw of holeWires) builder.Add(hw)
   // The pre-fix raw face is fully consumed by the ShapeFix pass (the fixed face
   // shares its TShapes), so free it immediately instead of stranding one proxy
