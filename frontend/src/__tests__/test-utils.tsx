@@ -20,7 +20,7 @@
  *   vi.mock('@/components/Viewport', async () =>
  *     (await import('@/__tests__/test-utils')).viewportMockModule())
  *
- * The plain helpers (`Wrapper`, `partDocFetchMock`) have no such constraint and
+ * The plain helpers (`Wrapper`, `partDocStoreMock`) have no such constraint and
  * are imported normally.
  *
  * Because of that, a `vi.mock` factory reaching in here pulls this module's own
@@ -33,6 +33,7 @@ import { vi } from 'vitest'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { backendBundle } from '@/adapters/backend'
 
 const theme = createTheme()
 
@@ -49,42 +50,31 @@ export function Wrapper({ children }: { children: ReactNode }) {
 /** An empty part, the content most Part page tests load. */
 const EMPTY_PART_YAML = 'version: 1\nkind: part\nfeatures: []\n'
 
-interface PartDocFetchOptions {
-  // Raw YAML served as the document body.
+interface PartDocStoreOptions {
+  // Raw YAML the store serves as the document body.
   content?: string
-  permission?: string
   name?: string
 }
 
 /**
- * A `fetch` stub for the Part page's two boot requests: the session probe and
- * the document itself. Anything else 404s, which is what keeps a test honest
- * about which endpoints the page really touches.
+ * Stubs the document store the Part page boots from: `load` answers with the
+ * given YAML, and `save` / `rename` accept without persisting.
  *
- * Use with `vi.stubGlobal('fetch', partDocFetchMock({ content: DOC }))`.
+ * The page reads its document straight out of IndexedDB, so a test could seed a
+ * real fake-indexeddb instead. Spies are used because they are synchronous --
+ * these suites stub inside a non-async `beforeEach` -- and because the returned
+ * spies let a test assert on what the page tried to WRITE, which is the half
+ * that matters for save behaviour.
  */
-export function partDocFetchMock({
+export function partDocStoreMock({
   content = EMPTY_PART_YAML,
-  permission = 'owner',
   name = 'TestDoc',
-}: PartDocFetchOptions = {}) {
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-        text: () => Promise.resolve('{}'),
-      } as Response)
-    }
-    if (url === '/api/documents/doc-1') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ uuid: 'doc-1', name, content, permission }),
-        text: () => Promise.resolve('{}'),
-      } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
-  })
+}: PartDocStoreOptions = {}) {
+  return {
+    load: vi.spyOn(backendBundle.documents, 'load').mockResolvedValue({ content, name }),
+    save: vi.spyOn(backendBundle.documents, 'save').mockResolvedValue(undefined),
+    rename: vi.spyOn(backendBundle.documents, 'rename').mockResolvedValue(undefined),
+  }
 }
 
 /**
@@ -111,18 +101,6 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
       // measurement readout); render the slot so a page test can assert what
       // was handed into it.
       return <div data-testid="viewport-hud">{props.hud as ReactNode}</div>
-    }),
-  }
-}
-
-/** Module shape for `vi.mock('.../contexts/AuthContext', ...)`: signed in, not admin. */
-export function authMockModule(user: Record<string, unknown> = { is_admin: false }) {
-  return {
-    useAuth: () => ({
-      user,
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
     }),
   }
 }
@@ -174,8 +152,6 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       renameDoc: vi.fn(),
       cloneDoc: vi.fn(),
       docName: 'Test Doc',
-      ownerUsername: 'user',
-      permission: 'owner',
       setPickBoundary: vi.fn(),
       setRollbackPos: vi.fn(),
       startPreviewMode: vi.fn(),

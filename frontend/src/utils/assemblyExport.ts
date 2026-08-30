@@ -21,7 +21,7 @@ import type { AssemblyExportPartSpec } from '@/kernel/worker/solverProtocol'
 import type { StlMesh } from '@/kernel/stl'
 import { encodeBinaryStl } from '@/kernel/stl'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
+import { backendBundle } from '@/adapters/backend'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 
 /** Visible part instances, in document order. */
@@ -31,15 +31,15 @@ export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
     .map(f => f.instance!)
 }
 
-/** Load and parse each referenced PartDoc once, keyed by doc id. Resolved
- * across both domains: a part instanced from the picker's cloud category has
- * no local mirror and would otherwise fail the whole STEP export. */
+/** Load and parse each referenced PartDoc once, keyed by doc id. A missing part
+ * rejects the whole export rather than silently omitting a body: a STEP file
+ * quietly short a component is worse than no file. */
 export async function loadPartContents(instances: PartInstance[]): Promise<Record<string, Record<string, unknown>>> {
   const ids = [...new Set(instances.map(i => i.doc_id))]
-  const loaded = await Promise.all(ids.map(id => loadDocumentAnyDomain(id)))
+  const loaded = await Promise.all(ids.map(id => backendBundle.documents.load(id)))
   const out: Record<string, Record<string, unknown>> = {}
   ids.forEach((id, i) => {
-    const doc = (parseYaml(loaded[i].data.content) ?? {}) as PartDoc
+    const doc = (parseYaml(loaded[i].content) ?? {}) as PartDoc
     // Same self-heal as the part load seam: the OCC worker that rehydrates the
     // part's B-rep reads only `bodies`, so a legacy singular `body` must be
     // migrated before export.

@@ -19,7 +19,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn(),
@@ -76,7 +76,7 @@ describe('edit exit reSolve', () => {
   })
 
   it('exiting edit on middle feature sends full feature list and end-of-stack rollback', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: FOUR_FEATURE_DOC }))
+    partDocStoreMock({ content: FOUR_FEATURE_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -137,7 +137,7 @@ describe('edit exit reSolve', () => {
   })
 
   it('enter+exit on single-feature doc does not crash and pins the exit solve', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SINGLE_FEATURE_DOC }))
+    partDocStoreMock({ content: SINGLE_FEATURE_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

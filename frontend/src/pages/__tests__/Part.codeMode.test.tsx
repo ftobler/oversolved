@@ -7,7 +7,7 @@ import Part from '@/pages/Part'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 // The code tab replaces the whole document from text without ever touching
 // handleMutation, the only place that pushes undo entries. These tests pin the
@@ -139,7 +139,7 @@ describe('Part - code tab and undo history', () => {
     vi.clearAllMocks()
     useUnsavedChangesStore.setState({ dirty: false, pendingCallback: null })
     mockSolveViaWorker.mockResolvedValue(null)
-    vi.stubGlobal('fetch', partDocFetchMock({ content: BASE_DOC }))
+    partDocStoreMock({ content: BASE_DOC })
   })
 
   it('drops the undo history when the code tab is opened', async () => {
@@ -309,8 +309,7 @@ describe('Part - code tab and undo history', () => {
   })
 
   it('Save after leaving the tab serializes the applied YAML', async () => {
-    const fetchMock = partDocFetchMock({ content: BASE_DOC })
-    vi.stubGlobal('fetch', fetchMock)
+    const store = partDocStoreMock({ content: BASE_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
 
@@ -321,13 +320,11 @@ describe('Part - code tab and undo history', () => {
 
     await act(async () => { fireEvent.click(screen.getByTitle('Save')) })
 
-    // The save body must be the APPLIED document, not the base doc that was
-    // on screen when the tab was opened.
-    const calls = fetchMock.mock.calls as [string, RequestInit?][]
-    const put = calls.find(([url, init]) => url === '/api/documents/doc-1' && init?.method === 'PUT')
-    expect(put).toBeDefined()
-    const body = JSON.parse(put![1]!.body as string) as { content: string }
-    expect(parseYaml(body.content)).toEqual({
+    // What reached the store must be the APPLIED document, not the base doc that
+    // was on screen when the tab was opened.
+    expect(store.save).toHaveBeenCalled()
+    const [, input] = store.save.mock.calls.at(-1)!
+    expect(parseYaml(input.content)).toEqual({
       version: 1,
       kind: 'part',
       features: [{ id: 'typed1', kind: 'sketch', label: 'Typed Sketch' }],

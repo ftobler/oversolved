@@ -9,7 +9,6 @@ vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: vi.fn() }))
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-vi.mock('@/adapters/backend', () => ({ backendBundle: { sharing: null } }))
 
 function deferred() {
   let resolve!: (saved: boolean) => void
@@ -20,14 +19,10 @@ function deferred() {
 function renderToolbar(handleSave: () => Promise<boolean>) {
   return render(
     <PartToolbar
-      readOnly={false}
-      permission="owner"
       docName="TestDoc"
-      isCloudDoc={false}
       onRename={vi.fn()}
       handleSave={handleSave}
       handleClone={vi.fn()}
-      onShare={vi.fn()}
     />,
   )
 }

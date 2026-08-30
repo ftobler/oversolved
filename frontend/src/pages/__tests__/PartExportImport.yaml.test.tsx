@@ -35,7 +35,7 @@ function openExportDialog() {
   const ref = createRef<PartExportImportHandle>()
   render(
     <ToastProvider>
-      <PartExportImport ref={ref} uuid="u1" docName="Bracket" ownerUsername="ada" permission="owner" />
+      <PartExportImport ref={ref} uuid="u1" />
     </ToastProvider>
   )
   act(() => ref.current!.openExport(null, 'bracket'))

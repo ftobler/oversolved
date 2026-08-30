@@ -1,7 +1,6 @@
 import { forwardRef, useState, useImperativeHandle } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import ExportDialog from '@/components/dialogs/ExportDialog'
-import ShareDialog from '@/components/dialogs/ShareDialog'
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
@@ -11,25 +10,20 @@ import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
 interface PartExportImportProps {
   uuid: string
-  docName: string | null
-  ownerUsername: string | null
-  permission: string | null
 }
 
 export interface PartExportImportHandle {
   openExport: (bodyId?: string | null, defaultName?: string) => void
-  openShare: () => void
 }
 
 const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProps>(
-  function PartExportImport({ uuid, docName, ownerUsername, permission }, ref) {
+  function PartExportImport({ uuid }, ref) {
     const doc = usePartEditorStore(s => s.doc)
     const notify = useNotify()
 
     const [exportDialogOpen, setExportDialogOpen] = useState(false)
     const [exportTargetBodyId, setExportTargetBodyId] = useState<string | null>(null)
     const [exportDefaultName, setExportDefaultName] = useState('export')
-    const [shareDocOpen, setShareDocOpen] = useState(false)
 
     useImperativeHandle(ref, () => ({
       openExport: (bodyId, defaultName) => {
@@ -37,7 +31,6 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
         setExportDefaultName(defaultName ?? 'export')
         setExportDialogOpen(true)
       },
-      openShare: () => setShareDocOpen(true),
     }))
 
     const handleExportDownload = async (format: ExportFormat, tessellation: number, fileName: string) => {
@@ -60,9 +53,9 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
         return
       }
       // Export runs entirely in the WASM kernel (the same builder that solves the
-      // doc), so it works offline / zero-backend with no network round-trip. The
-      // Worker rebuilds the document, resolves the export shape (single body or a
-      // compound of the whole assembly), and serialises it to STEP/STL bytes.
+      // doc). The Worker rebuilds the document, resolves the export shape (single
+      // body or a compound of the whole assembly), and serialises it to STEP/STL
+      // bytes.
       const features = doc.features.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
       const spec = { ...doc, ...(uuid ? { id: uuid } : {}), features }
       try {
@@ -89,25 +82,15 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
     }
 
     return (
-      <>
-        <ExportDialog
-          isOpen={exportDialogOpen}
-          defaultName={exportDefaultName}
-          onDownload={handleExportDownload}
-          onCancel={() => {
-            setExportTargetBodyId(null)
-            setExportDialogOpen(false)
-          }}
-        />
-        <ShareDialog
-          isOpen={shareDocOpen}
-          documentUuid={uuid}
-          documentName={docName || 'Untitled'}
-          ownerUsername={ownerUsername || ''}
-          isOwner={permission === 'owner'}
-          onClose={() => setShareDocOpen(false)}
-        />
-      </>
+      <ExportDialog
+        isOpen={exportDialogOpen}
+        defaultName={exportDefaultName}
+        onDownload={handleExportDownload}
+        onCancel={() => {
+          setExportTargetBodyId(null)
+          setExportDialogOpen(false)
+        }}
+      />
     )
   }
 )

@@ -3,18 +3,17 @@ import { renderHook, act } from '@testing-library/react'
 import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS, useDocumentState } from '@/hooks/useDocumentState'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
-const { loadMock } = vi.hoisted(() => ({ loadMock: vi.fn() }))
-vi.mock('@/adapters/documentLoad', () => ({ loadDocumentAnyDomain: loadMock }))
-
 // Deferred store save: a manual save spends multiple awaits (screenshot, then
 // the network), so tests need to hold the save open while an edit lands.
 const h = vi.hoisted(() => {
+  const loadMock = vi.fn()
   const makeGate = () => {
     let resolve!: (v: unknown) => void
     const promise = new Promise((res) => { resolve = res })
     return { promise, resolve }
   }
   return {
+    loadMock,
     makeGate,
     saveGates: [] as ReturnType<typeof makeGate>[],
     bodies: [] as string[],
@@ -24,6 +23,7 @@ const h = vi.hoisted(() => {
 vi.mock('@/adapters/backend', () => ({
   backendBundle: {
     documents: {
+      load: (uuid: string) => h.loadMock(uuid),
       save: (_uuid: string, input: { content: string }) => {
         const gate = h.makeGate()
         h.bodies.push(input.content)
@@ -33,8 +33,6 @@ vi.mock('@/adapters/backend', () => ({
     },
   },
 }))
-
-import { backendBundle } from '@/adapters/backend'
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
@@ -93,7 +91,7 @@ features:
       rotation_angle: 0
       scale: 1
 `
-    loadMock.mockResolvedValue({ data: { content, name: 'Legacy Transform' }, store: {} })
+    h.loadMock.mockResolvedValue({ content, name: 'Legacy Transform' })
     const reSolveRef = { current: vi.fn() }
     const { result } = renderHook(() => useDocumentState('L', reSolveRef, { solveOnLoad: true }))
     await tick()
@@ -117,7 +115,7 @@ features:
     delete_body:
       body: "@body_ex1"
 `
-    loadMock.mockResolvedValue({ data: { content, name: 'Legacy Delete' }, store: {} })
+    h.loadMock.mockResolvedValue({ content, name: 'Legacy Delete' })
     // Stable ref: a fresh object per render would re-trigger the load effect and
     // the test would spin.
     const reSolveRef = { current: null }
@@ -143,7 +141,7 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
   })
 
   const loadSimpleDoc = async () => {
-    loadMock.mockResolvedValue({ data: { content: 'name: S', name: 'S' }, store: backendBundle.documents })
+    h.loadMock.mockResolvedValue({ content: 'name: S', name: 'S' })
     const reSolveRef = { current: null }
     const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
     await tick()

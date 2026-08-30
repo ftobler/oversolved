@@ -13,9 +13,6 @@ const mockCloneDoc = vi.hoisted(() => vi.fn(async () => ({ uuid: 'clone-uuid' })
 vi.mock('../../hooks/usePartDoc', async () =>
   (await import('@/__tests__/test-utils')).partDocMockModule({ cloneDoc: mockCloneDoc, docName: 'Bracket' }))
 
-vi.mock('../../contexts/AuthContext', async () =>
-  (await import('@/__tests__/test-utils')).authMockModule())
-
 vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule())
 
@@ -26,7 +23,6 @@ vi.mock('../../components/layout/AppHeader', () => ({
 }))
 vi.mock('../../components/layout/MeasurementDisplay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
-vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
 vi.mock('../../components/layout/Sidebar', () => ({ Sidebar: () => null }))
 

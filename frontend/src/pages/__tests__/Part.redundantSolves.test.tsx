@@ -3,7 +3,7 @@ import { render, waitFor, fireEvent, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 
 vi.mock('@/kernel/worker/solverClient', () => ({
@@ -24,7 +24,7 @@ describe('Part - eliminate redundant solves', () => {
   }
 
   async function renderAndWaitForLoad() {
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

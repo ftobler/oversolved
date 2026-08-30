@@ -14,7 +14,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -65,7 +65,7 @@ describe('feature edit rollback restore', () => {
   })
 
   it('enters edit mode on the first non-builtin non-sketch feature with pickBoundary 0', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: FIRST_EXTRUDE_DOC }))
+    partDocStoreMock({ content: FIRST_EXTRUDE_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -108,7 +108,7 @@ describe('feature edit rollback restore', () => {
   })
 
   it('rollback bar returns to end after exiting edit mode on non-last feature', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: TWO_FILLETS_DOC }))
+    partDocStoreMock({ content: TWO_FILLETS_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -152,7 +152,7 @@ describe('feature edit rollback restore', () => {
   })
 
   it('editing the last feature and exiting also restores correctly', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: TWO_FILLETS_DOC }))
+    partDocStoreMock({ content: TWO_FILLETS_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

@@ -78,59 +78,6 @@
   transition: 0.2s;
 }
 
-.cloud-offline {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #c79a3a;
-  font-size: 14px;
-  padding: 8px 12px;
-  white-space: nowrap;
-  border-radius: 4px;
-  cursor: default;
-}
-
-.cloud-offline .material-icons-outlined {
-  font-size: 18px;
-}
-
-.header-username {
-  color: inherit;
-  font-size: 14px;
-  padding: 8px 12px;
-  white-space: nowrap;
-  text-decoration: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.header-username:hover {
-  background: #222;
-  color: #fff;
-}
-
-.header-login {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #888;
-  font-size: 14px;
-  padding: 8px 12px;
-  white-space: nowrap;
-  text-decoration: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.header-login:hover {
-  background: #222;
-  color: #fff;
-}
-
-.header-login .material-icons-outlined {
-  font-size: 18px;
-}
-
 .doc-name {
   margin: 0;
   font-size: 16px;

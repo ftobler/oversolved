@@ -1,13 +1,16 @@
-// A TypeScript port of Werkzeug's `secure_filename`, used so the frontend
-// bundle writes the exact same entry paths the server's `/api/admin/backup`
-// produces (`<user>/<name>.yaml`). One format, two producers: the zip a static
-// build exports must be ingestible by `/api/admin/import-backup`, and vice
-// versa. Keep this in sync with werkzeug.utils.secure_filename.
+// A TypeScript port of Werkzeug's `secure_filename`, used to name the entries
+// inside an exported bundle (`<user>/<name>.yaml`). A document name is arbitrary
+// user text and a zip entry path is not: it must not contain separators, must
+// survive extraction on Windows, and must round-trip back through import.
+// Werkzeug's rules are the well-tested answer to exactly that, so this mirrors
+// them rather than inventing a sanitizer -- and it keeps bundles written by
+// older versions of the app importable. Keep this in sync with
+// werkzeug.utils.secure_filename.
 //
 // Mirrored in full except for one platform gate: werkzeug prepends the
 // Windows reserved-device-name underscore only when it runs on Windows
 // (`os.name == "nt"`), while this port applies the rule unconditionally so
-// entry paths match backups from any deployment OS. The reachable device set
+// entry paths are safe to extract wherever the bundle lands. The reachable device set
 // after ASCII filtering is CON, PRN, AUX, NUL, COM1-9, LPT1-9 (werkzeug's
 // superscript variants normalize into COM/LPT1-3, and '$' is stripped before
 // the check, so CONIN$/CONOUT$ can never match there either).

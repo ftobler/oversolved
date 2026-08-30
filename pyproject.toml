@@ -10,24 +10,10 @@ include = ["oversolved*"]
 name = "oversolved"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = [
-    "flask>=3.0",
-    "flask-sock>=0.7",
-    "waitress>=3.0",
-    "gunicorn>=22.0",
-    "gevent",
-    "numpy>=1.26",
-    "scipy>=1.12",
-    "pyyaml>=6.0",
-    "multimethod",
-    "psycopg2-binary>=2.9",
-    "pillow",
-    "websockets>=12.0",
-    "croniter>=2.0",
-]
-
-[project.scripts]
-oversolved = "oversolved.cli:main"
+# The app is browser-only (IndexedDB + WASM); no Python runs at runtime. What
+# is left of the package is build-time icon generation, whose only dependency
+# (pycairo) belongs to the dev extra alongside the lint/type/test gates.
+dependencies = []
 
 [project.optional-dependencies]
 dev = [

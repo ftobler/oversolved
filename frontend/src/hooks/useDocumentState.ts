@@ -2,9 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
-import { parseHttpError } from '@/utils/core/httpClient'
+import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
-import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
@@ -18,36 +17,21 @@ export function useDocumentState(
 ) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
-  const [ownerUsername, setOwnerUsername] = useState<string>('')
   const docRef = useRef<PartDoc | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [permission, setPermission] = useState<string>('owner')
-  const [isPublic, setIsPublic] = useState(false)
-  // True when the open document was resolved from the cloud domain. Sharing is a
-  // cloud-only concept, so the share UI uses this to refuse a local-only doc
-  // instead of issuing a guaranteed-404 request for a uuid the server never minted.
-  const [isCloudDoc, setIsCloudDoc] = useState(false)
-  // The store the open document was resolved from (its domain). Edits go back to
-  // the SAME domain, so save/rename target this rather than assuming local home.
-  const storeRef = useRef(backendBundle.documents)
+  const store = backendBundle.documents
 
   useEffect(() => {
     if (!uuid) return
     // Guard against a superseded load: if the uuid changes while a load is in
-    // flight, a slow prior resolution must not overwrite the newer doc or, worse,
-    // point storeRef at the wrong domain (a later save would target it). Mirrors
+    // flight, a slow prior resolution must not overwrite the newer doc. Mirrors
     // the listReqRef guard in Documents.tsx.
     let cancelled = false
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
-    // Whichever domain answers becomes the save/rename target. The resolving
-    // store is committed to storeRef only in the guarded .then below, so a
-    // stale load cannot corrupt the save target.
-    loadDocumentAnyDomain(uuid)
-      .then(({ data, store }) => {
+    store.load(uuid)
+      .then(data => {
         if (cancelled) return
-        storeRef.current = store
-        setIsCloudDoc(store === backendBundle.cloudDocuments)
         const parsed = (parseYaml(data.content) ?? {}) as PartDoc
         if ((!parsed.kind || parsed.kind === 'part') && (!parsed.features || parsed.features.length === 0)) {
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
@@ -62,9 +46,6 @@ export function useDocumentState(
         docRef.current = parsed
         setDoc(parsed)
         setDocName(data.name)
-        setOwnerUsername(data.owner_username || '')
-        setPermission(data.permission || 'owner')
-        setIsPublic(data.is_public || false)
         // Freshly loaded content matches its store; any self-heal above predates
         // user intent, so the document starts clean.
         useUnsavedChangesStore.getState().setDirty(false)
@@ -75,19 +56,19 @@ export function useDocumentState(
       })
       .catch(e => {
         if (cancelled) return
-        setError(parseHttpError(e, 'Failed to load document'))
+        setError(errorMessage(e, 'Failed to load document'))
         setLoading(false)
       })
     return () => { cancelled = true }
-  }, [uuid, solveOnLoad, reSolveRef])
+  }, [uuid, solveOnLoad, reSolveRef, store])
 
   // Single-flight chain for saves. Bytes are serialized per call from the doc
   // the caller hands over (the latest mutation's state), but a call landing
   // while another save is in flight must not race it to the store: without
-  // gating, an older slow save can complete after a newer one and strand the
-  // newer edits on the server under dirty=false (review-18 ST-M1). Chaining
-  // makes arrival order the landing order, so the latest bytes always win,
-  // independent of the identity guard below.
+  // gating, an older slow save can complete after a newer one and leave the
+  // stored bytes behind the newer edits under dirty=false (review-18 ST-M1).
+  // Chaining makes arrival order the landing order, so the latest bytes always
+  // win, independent of the identity guard below.
   const saveChain = useRef<Promise<void>>(Promise.resolve())
 
   const saveDoc = useCallback(async (uuid: string, document: PartDoc, screenshot?: () => Promise<string | null>) => {
@@ -109,7 +90,7 @@ export function useDocumentState(
             body.preview_image = dataUrl.split(',')[1]
           }
         }
-        await storeRef.current.save(uuid, body)
+        await store.save(uuid, body)
         // The store now holds the latest edits, so there is nothing to warn about.
         // An edit during the save windows postdates the stored bytes though: its
         // dirty flag must survive, or a reload would silently drop those edits.
@@ -118,32 +99,28 @@ export function useDocumentState(
         }
         return true
       } catch (e) {
-        setError(parseHttpError(e, 'Failed to save document'))
+        setError(errorMessage(e, 'Failed to save document'))
         return false
       }
     } finally {
       release()
     }
-  }, [])
+  }, [store])
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {
-      await storeRef.current.rename(uuid, name)
+      await store.rename(uuid, name)
       setDocName(name)
       return true
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to rename document'))
+      setError(errorMessage(e, 'Failed to rename document'))
       return false
     }
-  }, [])
+  }, [store])
 
-  // Clone the open document into the caller's library, via the SAME store it was
-  // resolved from (a cloud doc clones server-side; a local doc copies locally).
-  // Routing through storeRef fixes the cross-domain case the old build-flag fork
-  // got wrong: on the HTTP build a LOCAL doc must not hit the server clone route.
   const cloneDoc = useCallback(async (id: string, name?: string): Promise<{ uuid: string }> => {
-    return storeRef.current.clone(id, name)
-  }, [])
+    return store.clone(id, name)
+  }, [store])
 
   return {
     doc,
@@ -151,13 +128,9 @@ export function useDocumentState(
     docRef,
     docName,
     setDocName,
-    ownerUsername,
     loading,
     error,
     setError,
-    permission,
-    isPublic,
-    isCloudDoc,
     saveDoc,
     renameDoc,
     cloneDoc,

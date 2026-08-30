@@ -5,7 +5,7 @@ import Part from '@/pages/Part'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 // Undo swaps in a document the open editor session knows nothing about. These
 // tests walk the page the way a user does, because the teardown is composed
@@ -58,7 +58,7 @@ describe('Part - undo tears down transient editor state', () => {
   })
 
   it('clears selection, the pick field and the edit while undoing an added feature', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
     renderPart()
     await screen.findByTitle('Feature mode')
 
@@ -87,7 +87,7 @@ describe('Part - undo tears down transient editor state', () => {
   })
 
   it('leaves sketch mode when the undo closes the sketch edit behind it', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_DOC }))
+    partDocStoreMock({ content: SKETCH_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
 
@@ -114,7 +114,7 @@ describe('Part - undo tears down transient editor state', () => {
   // step could not possibly have invalidated it. See the call site in Part.tsx
   // for why this is not decided per entry.
   it('clears the selection on an undo made with no edit session open', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_DOC }))
+    partDocStoreMock({ content: SKETCH_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
 
@@ -138,7 +138,7 @@ describe('Part - undo tears down transient editor state', () => {
   // listener silently dropped by the edit-exit unmount) must not find a live
   // drag pointing into a doc that no longer exists.
   it('clears a live drag and pointer-down state on an undo made mid-gesture', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
     renderPart()
     await screen.findByTitle('Feature mode')
 
@@ -185,7 +185,7 @@ describe('Part - undo tears down transient editor state', () => {
   // buildContextMenu's "Normal to" item after the face is gone. This pins the
   // delegation to the store's own wipe, which owns these too.
   it('clears the hover residue along with the rest of the transient state', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
     renderPart()
     await screen.findByTitle('Feature mode')
 
@@ -220,7 +220,7 @@ describe('Part - undo tears down transient editor state', () => {
   })
 
   it('an undo with an empty stack tears nothing down', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
     renderPart()
     await screen.findByTitle('Feature mode')
 

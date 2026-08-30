@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
-import { parseHttpError } from '@/utils/core/httpClient'
+import { errorMessage } from '@/utils/core/errorMessage'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, type MateFieldTarget } from '@/stores/assemblyStore'
@@ -18,7 +18,6 @@ import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import { backendBundle } from '@/adapters/backend'
-import { useCloudAvailable } from '@/hooks/useCloudAvailable'
 import {
   appendMate,
   appendPartInstance,
@@ -90,13 +89,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     docName,
     instances,
     mates,
-    permission,
     saveDoc,
     renameDoc,
     cloneDoc,
   } = useAssemblyDoc(uuid)
   const navigate = useNavigate()
-  const readOnly = permission === 'view'
   const [pickerOpen, setPickerOpen] = useState(false)
   const [editingInstanceHandle, setEditingInstanceHandle] = useState<string | null>(null)
   // Which mate has its inline parameter editor open. Distinct from the store's
@@ -127,29 +124,21 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const instanceSnapshot = useRef<{ handle: string; inst: PartInstance } | null>(null)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
-  // Both domains are consulted (a part may be instanced straight from the cloud
-  // browser category); the local home library wins on a uuid present in both.
-  // The cloud list is gated on a live session so a guest or offline editor
-  // never fires a doomed request; it re-runs when the session (re)appears.
-  const cloudListAvailable = useCloudAvailable()
+  // A failed list is swallowed on purpose: names are a nicety here and the tree
+  // falls back to the uuid, which is worse to read but never wrong.
   const [docNames, setDocNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    Promise.allSettled([
-      cloudListAvailable ? backendBundle.cloudDocuments!.list() : Promise.resolve([]),
-      backendBundle.documents.list(),
-    ])
-      .then(results => {
+    backendBundle.documents.list()
+      .then(list => {
         if (cancelled) return
         const map: Record<string, string> = {}
-        for (const r of results) {
-          if (r.status !== 'fulfilled') continue  // names are a nicety; fall back to the uuid
-          for (const d of r.value) map[d.uuid] = d.name
-        }
+        for (const d of list) map[d.uuid] = d.name
         setDocNames(map)
       })
+      .catch(() => undefined)
     return () => { cancelled = true }
-  }, [cloudListAvailable])
+  }, [])
 
   // The hook's memo is what goes into the store, not a second extraction of the
   // same features. This is a de-duplication and nothing more: the memo is keyed
@@ -295,7 +284,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       const data = await cloneDoc(uuid)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to clone document'))
+      setError(errorMessage(e, 'Failed to clone document'))
     }
   }, [uuid, cloneDoc, navigate, setError])
 
@@ -705,7 +694,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   return (
     <div className="document-viewer">
       <AssemblyToolbar
-        readOnly={readOnly}
         docName={docName}
         onRename={handleRename}
         handleSave={handleSave}
@@ -762,7 +750,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               title="Insert part"
               aria-label="Insert part"
               onClick={openPicker}
-              disabled={readOnly}
             >
               <img src={featurePartIcon} alt="Insert part" />
             </button>
@@ -774,7 +761,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
                 title={`Insert ${MATE_KIND_LABELS[kind]} mate`}
                 aria-label={`Insert ${MATE_KIND_LABELS[kind]} mate`}
                 onClick={() => handleInsertMate(kind)}
-                disabled={readOnly}
               >
                 <img src={MATE_KIND_ICONS[kind]} alt={MATE_KIND_LABELS[kind]} />
               </button>

@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
-import { hasBackend } from '@/config/capabilities'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 import MessageDialog from '@/components/dialogs/MessageDialog'
@@ -16,6 +14,10 @@ const COPYRIGHT = 'Copyright 2026 - Oversolved'
 // Where the burger has nowhere to go, because this IS the documents overview.
 const OVERVIEW_PATHS = new Set(['/', '/documents'])
 
+// The one app-wide titlebar: burger, logo, page title, and the always-available
+// controls on the right (Help, bug report). There is no account slot and never a
+// place for one -- the app runs entirely in this browser tab, so there is no
+// session to show, sign out of, or report as unavailable.
 interface AppHeaderProps {
   title?: string
   children?: ReactNode
@@ -25,7 +27,6 @@ interface AppHeaderProps {
 export default function AppHeader({ title, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, online, logout } = useAuth()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
@@ -56,18 +57,6 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
     if (!saved) return
     cb()
     dismissConfirm()
-  }
-
-  const handleLogout = async () => {
-    if (!confirmDiscardUnsavedChanges(async () => {
-      await logout()
-      navigate('/documents')
-    })) return
-    // Logout is non-destructive: it drops the cloud credential and drops you back
-    // to the guest session, still inside the app on your local library. So return
-    // to the documents home, not the login page.
-    await logout()
-    navigate('/documents')
   }
 
   // The header is the only in-app way out of the part editor, and react-router's
@@ -136,37 +125,6 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         >
           <span className="material-icons-outlined">bug_report</span>
         </button>
-        {/* The static build has no account slot at all: no server ever existed
-            for it, so there is nothing to sign in to and nothing to report as
-            missing -- an "unavailable" marker would only tease a capability
-            this deployment does not have. With a server there are two states of
-            the one guest-first session:
-            - not signed in -> a "Sign in" affordance (the optional upgrade)
-            - signed in     -> the account name + a logout button
-            Signed in but the server went away mid-session is a deliberate offline
-            state, not a crash: an "offline" marker, still on the local library. */}
-        {!hasBackend ? null : user ? (
-          <>
-            {!online && (
-              <span
-                className="cloud-offline"
-                title="Cloud unavailable - working on your local library"
-              >
-                <span className="material-icons-outlined">cloud_off</span>
-                offline
-              </span>
-            )}
-            <Link to="/settings/profile" className="header-username" onClick={guardLink}>{user.username}</Link>
-            <button className="toolbar-btn" title="Sign out" onClick={handleLogout}>
-              <span className="material-icons-outlined">logout</span>
-            </button>
-          </>
-        ) : (
-          <Link to="/login" className="header-login" title="Sign in" onClick={guardLink}>
-            <span className="material-icons-outlined">login</span>
-            <span className="header-login-label">Sign in</span>
-          </Link>
-        )}
       </div>
     </header>
 

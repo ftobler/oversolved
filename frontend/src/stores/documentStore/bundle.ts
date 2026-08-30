@@ -3,15 +3,18 @@ import type { DocumentStore } from './types'
 import { LOCAL_OWNER } from './IndexedDbDocumentStore'
 import { secureFilename } from './secureFilename'
 
-// Bundle import/export. NOT a third store -- these round-trip through whatever
-// `DocumentStore` is active. The zip layout matches the server's admin backup
-// exactly so the two are interchangeable:
+// Bundle import/export. NOT a second store -- these round-trip through whatever
+// `DocumentStore` is wired in. Documents live only in this browser's IndexedDB,
+// so a bundle is the one way to get a library onto disk or onto another machine:
 //
 //   <user>/<doc>.yaml   document payload, as YAML text
 //   <user>/<doc>.png    preview image, alongside (only when present)
 //
 //   - Export one doc   -> 1-entry zip (the `.oversolved` file).
-//   - Export a library -> N-entry zip (the static replacement for admin backup).
+//   - Export a library -> N-entry zip (the whole-library backup).
+//
+// The per-user directory level is vestigial (there is one library), but it is
+// kept in the layout so older bundles keep importing unchanged.
 
 // Normalizes any binary input to bytes JSZip can read. A real browser File
 // (Blob) exposes arrayBuffer(); jsdom does not, so fall back to Response, which
@@ -81,22 +84,21 @@ export async function exportBundle(store: DocumentStore, ids: string[]): Promise
   return new Blob([bytes as BlobPart], { type: 'application/zip' })
 }
 
-// Zip-bomb guardrails for import, mirroring admin.py's import-backup path
-// (_MAX_ZIP_ENTRIES and its 100MB compressed request pre-check). Static builds
-// have no server in front of this code, so these caps are the only ones.
+// Zip-bomb guardrails for import. Nothing stands in front of this code -- the
+// file goes straight from the user's disk into the browser -- so these caps are
+// the only ones.
 //
-// Residual gap: admin.py also caps total DECOMPRESSED size via the central
-// directory's per-entry file_size. JSZip does not expose uncompressed sizes
-// through public API before decompression (its uncompressedSize field is
-// internal), so this port relies on the compressed-input cap plus the entry
-// cap; a highly-compressible archive under the input cap can still fan out
-// past what the server would admit.
+// Residual gap: total DECOMPRESSED size is not capped. JSZip does not expose
+// uncompressed sizes through public API before decompression (its
+// uncompressedSize field is internal), so this relies on the compressed-input
+// cap plus the entry cap; a highly-compressible archive under the input cap can
+// still fan out past either.
 export const MAX_BUNDLE_ENTRIES = 10000
 export const MAX_BUNDLE_INPUT_BYTES = 100 * 1024 * 1024
 
-// Ingests a bundle into the active store. The per-user directory is irrelevant
-// locally (single user), so the username segment is dropped: every document is
-// created under the local store. Returns the ids written.
+// Ingests a bundle into the store. The per-user directory segment is dropped
+// (there is one library), so a bundle exported anywhere imports here. Returns
+// the ids written.
 export async function importBundle(
   store: DocumentStore,
   data: Blob | ArrayBuffer | Uint8Array,

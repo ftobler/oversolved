@@ -5,7 +5,7 @@ import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -50,7 +50,7 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
   })
 
   it('clears the pick claims but keeps the query when an edit enter/exit re-solves', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_DOC }))
+    partDocStoreMock({ content: SKETCH_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

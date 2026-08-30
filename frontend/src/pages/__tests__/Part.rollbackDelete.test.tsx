@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -29,7 +29,7 @@ describe('rollback position clamping on feature delete', () => {
   })
 
   it('keeps rollback bar visible after deleting a feature', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: THREE_FEATURE_DOC }))
+    partDocStoreMock({ content: THREE_FEATURE_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -76,7 +76,7 @@ describe('rollback position clamping on feature delete', () => {
   })
 
   it('clamps rollback position when multiple features are deleted', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: THREE_FEATURE_DOC }))
+    partDocStoreMock({ content: THREE_FEATURE_DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

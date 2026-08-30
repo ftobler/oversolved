@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
 import Documents from '@/pages/Documents'
 import DocumentPage from '@/pages/DocumentPage'
@@ -10,14 +9,14 @@ import '@/App.css'
 
 function App() {
   return (
-    <AuthProvider>
+    <>
       {/* Route-independent: the welcome/disclaimer popup must greet a visitor
           no matter which page they land on. */}
       <DisclaimerDialog />
       <Routes>
-        {/* No wall and no account pages: every visitor lands straight on the
-            documents library (the local IndexedDB home) and can create/export
-            without signing in anywhere. */}
+        {/* The app is the library: every visit lands on the documents page,
+            which reads this browser's IndexedDB. There is no session and
+            nothing to sign in to, so there is no wall and no account route. */}
         <Route path="/" element={<Navigate to="/documents" replace />} />
         <Route path="/documents" element={<Documents />} />
         <Route path="/documents/:uuid" element={<DocumentPage />} />
@@ -29,7 +28,7 @@ function App() {
           <Route path="registry" element={<Registry />} />
         </Route>
       </Routes>
-    </AuthProvider>
+    </>
   )
 }
 

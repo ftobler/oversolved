@@ -12,7 +12,7 @@ import Part from '@/pages/Part'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 const mockSolveViaWorker = vi.hoisted(() => vi.fn())
 
@@ -59,7 +59,7 @@ describe('Delete on a body plus its generator feature', () => {
   })
 
   it('hands the kernel a doc with the feature gone and no delete_body feature', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: DOC }))
+    partDocStoreMock({ content: DOC })
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
         <Routes>

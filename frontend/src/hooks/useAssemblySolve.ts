@@ -13,7 +13,6 @@ import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, AssemblyFeature, NumberOrExpr, PartDoc } from '@/types/cad'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { backendBundle } from '@/adapters/backend'
-import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
@@ -155,9 +154,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   useEffect(() => {
     setRelayHandlers({
       partDocContent: async (doc_id) => {
-        // A part picked from the cloud category has no local mirror; the shared
-        // resolver falls back to the cloud domain for it.
-        const { data } = await loadDocumentAnyDomain(doc_id)
+        const data = await backendBundle.documents.load(doc_id)
         const doc = (parseYaml(data.content) ?? {}) as PartDoc
         // Same self-heal as the part load seam: a legacy singular transform
         // `body` must reach the OCC worker as the plural `bodies` it reads.

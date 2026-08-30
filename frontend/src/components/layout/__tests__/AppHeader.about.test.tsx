@@ -1,16 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-
-vi.mock('@/config/capabilities', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/config/capabilities')>()),
-  backend: 'http' as const,
-  hasBackend: true,
-  debugToolsUnrestricted: false,
-}))
-
-const mockUseAuth = vi.fn()
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => mockUseAuth(),
-}))
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -27,7 +15,6 @@ function wrap(path: string) {
 
 describe('AppHeader burger on the documents overview', () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: null, online: true, logout: vi.fn() })
     useAboutDialogStore.getState().closeAbout()
   })
   afterEach(() => { act(() => { useAboutDialogStore.getState().closeAbout() }) })

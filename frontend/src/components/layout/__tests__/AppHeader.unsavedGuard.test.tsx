@@ -1,19 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-
-// Partial mock: the header pulls in the backend bundle (bug report sink), which
-// reads `backend` too -- a bare { hasBackend } mock leaves that import undefined.
-vi.mock('@/config/capabilities', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/config/capabilities')>()),
-  backend: 'http' as const,
-  hasBackend: true,
-  debugToolsUnrestricted: false,
-}))
-
-const mockUseAuth = vi.fn()
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => mockUseAuth(),
-}))
-
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import AppHeader from '../AppHeader'
@@ -29,7 +14,6 @@ function wrap() {
 
 describe('AppHeader unsaved-changes navigation guard', () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: null, online: true, logout: vi.fn() })
     useUnsavedChangesStore.getState().setDirty(false)
     useUnsavedChangesStore.getState().dismissConfirm()
     window.history.pushState({}, '', '/documents/abc')
@@ -77,19 +61,16 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
-  it('guards logout when dirty', () => {
-    const logout = vi.fn().mockResolvedValue(undefined)
-    mockUseAuth.mockReturnValue({
-      user: { id: 1, username: 'ada', email: null, must_change_password: false, is_admin: false, is_active: true },
-      online: true,
-      logout,
-    })
+  // The header's Help link leaves the editor the same way the burger does, so it
+  // carries the same guard. Covered separately because it is the one remaining
+  // header link that is not the burger, and losing its guard would be silent.
+  it('guards the Help link when dirty', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Sign out'))
+      fireEvent.click(screen.getByLabelText('Help'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
-    expect(logout).not.toHaveBeenCalled()
+    expect(window.location.pathname).toBe('/documents/abc')
   })
 })

@@ -1,6 +1,6 @@
-// Minimal promise wrapper over IndexedDB. Kept tiny and dependency-free so the
-// static build does not pull a database library for what is essentially a
-// keyed object store. One database, one object store keyed by document uuid.
+// Minimal promise wrapper over IndexedDB. Kept tiny and dependency-free rather
+// than pulling a database library in for what is essentially a keyed object
+// store. One database, one object store keyed by document uuid.
 
 export const DB_NAME = 'oversolved'
 export const DB_VERSION = 1

@@ -15,10 +15,47 @@ def _read(rel: str) -> str:
     return (ROOT / rel).read_text()
 
 
-def test_env_example_has_no_dead_db_path_var() -> None:
-    # AR-M1: OVERSOLVED_DB_PATH is never read; the SQLite path is a CLI flag.
-    text = _read(".env.example")
-    assert "OVERSOLVED_DB_PATH" not in text
+# AR-M1 originally guarded one dead variable (OVERSOLVED_DB_PATH) in
+# .env.example. The server teardown deleted that file along with every variable
+# it described, so the guard is widened rather than dropped: the failure mode it
+# caught -- documenting configuration nothing reads -- now applies to the whole
+# surviving doc and tooling surface.
+DEAD_SERVER_ENV_VARS = (
+    "OVERSOLVED_DB_PATH",
+    "OVERSOLVED_DB_DSN",
+    "TEST_DB_DSN",
+    "OVERSOLVED_ADMIN_PASSWORD",
+    "OVERSOLVED_SESSION_COOKIE_SECURE",
+    "OVERSOLVED_UPLOAD_DIR",
+    "SOLVER_DAEMON_HOST",
+    "GUNICORN_WORKERS",
+)
+
+DOC_AND_TOOLING_SURFACE = (
+    "AGENTS.md",
+    "code_guideline.md",
+    "docs/setup.md",
+    "justfile",
+    "pyproject.toml",
+    ".github/workflows/ci.yaml",
+)
+
+
+def test_no_dead_server_env_vars_are_documented() -> None:
+    stale = []
+    for rel in DOC_AND_TOOLING_SURFACE:
+        text = _read(rel)
+        stale += [f"{rel}: {var}" for var in DEAD_SERVER_ENV_VARS if var in text]
+    assert not stale, (
+        "the app is browser-only; these variables configure a server that no "
+        "longer exists:\n" + "\n".join(stale)
+    )
+
+
+def test_env_example_is_gone() -> None:
+    # Every variable it held configured the deleted Flask/Postgres stack, and a
+    # browser-only app reads no environment at runtime at all.
+    assert not (ROOT / ".env.example").exists()
 
 
 def test_frontend_package_json_declares_node_floor() -> None:
@@ -27,11 +64,18 @@ def test_frontend_package_json_declares_node_floor() -> None:
     assert pkg.get("engines", {}).get("node") == ">=20.19.0"
 
 
-def test_runtime_config_cites_real_just_target() -> None:
-    # AR-L6: the build target is `just build`, not `just buildstatic`.
-    text = _read("frontend/public/runtime-config.js")
-    assert "just buildstatic" not in text
-    assert "just build" in text
+def test_runtime_config_file_is_gone() -> None:
+    """The per-deployment backend flag file must not come back.
+
+    It existed to tell one app bundle whether a Flask backend was in front of
+    it. With the server gone there is one build and one behaviour, so a
+    runtime-config.js reappearing would mean a deployment fork reappeared with
+    it -- and the file is loaded by a blocking script tag in index.html, so it
+    would be doing that invisibly, before any test-covered code runs.
+    """
+    assert not (ROOT / "frontend/public/runtime-config.js").exists()
+    assert not (ROOT / "frontend/scripts/writeRuntimeConfig.mjs").exists()
+    assert "runtime-config" not in _read("frontend/index.html")
 
 
 def test_code_guideline_uses_draw_all_not_drawall() -> None:

@@ -22,7 +22,7 @@ frontend/dist/
 frontend/.vite/
 frontend/coverage/
 
-# Docker
+# Env
 *.env
 .env.local
 
@@ -35,7 +35,6 @@ frontend/coverage/
 docs/notes.md
 docs/feature/*
 
-*.db
 data/*
 bugreports/
 feature/
@@ -45,11 +44,6 @@ feature/
 .scratch/
 tmp/
 scratch/
-
-# Uploads
-oversolved/uploads/*
-oversolved/exports/*
-instance/
 
 *.log
 # Real-doc parity anchors (4b.5): gitignored, best-effort/skip-on-failure

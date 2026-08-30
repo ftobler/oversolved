@@ -16,7 +16,6 @@ vi.mock('@/components/layout/AppHeader', () => ({
 function renderToolbar() {
   return render(
     <AssemblyToolbar
-      readOnly={false}
       docName="TestDoc"
       onRename={vi.fn()}
       handleSave={vi.fn()}

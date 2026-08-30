@@ -2,18 +2,13 @@
 
 # `just` command runner. Targets can be run with `just <target>`.
 
-export OVERSOLVED_ADMIN_PASSWORD := "aadmin"
-export OVERSOLVED_SESSION_COOKIE_SECURE := "false"
-export TESTING := "true"
-export OVERSOLVED_DB_DSN := "postgresql://oversolved:oversolved@localhost:5432/oversolved"
-
 default:
     just backend
     just frontend
 
-# run all python backend jobs
-# requires postgres: docker compose -f docker-compose-postgres.yml up -d
-# override DB with: TEST_DB_DSN=postgresql://... just backend
+# Run every Python gate. No Python runs at app runtime any more, so this covers
+# only the repo's own tooling: the icon generator under oversolved/ and the
+# tests that pin lint.py's behaviour and the docs/config invariants.
 backend:
     just mypy
     just ruff
@@ -76,6 +71,7 @@ parity:
     npm run test:parity 2>&1 | tee ../tmp/parity.log
 
 
+# The app is browser-only, so the Vite dev server is the whole running app.
 runf:
     just run_front
 
@@ -97,28 +93,20 @@ install-occ:
     npm run occ:install
     npm run occ:provision
 
-runb:
-    just run_back
-
-# Build the zero-backend deploy: the SAME app bundle as `just frontend-build`,
-# then stamps dist/runtime-config.js with backend=static (no auth wall,
-# IndexedDB persistence, local-WASM STEP/STL export). The flag is read at boot,
-# so the JS bundle is byte-identical to the http build -- only that one config
-# file differs. Like `frontend-build`, this assumes public/occ + public/wasm are
+# Build the deployable app into frontend/dist. There is one build and one
+# artifact: the app is static files (IndexedDB persistence, local-WASM STEP/STL
+# export), so any file server can host it and there is nothing to configure per
+# deployment. Like `frontend-build`, this assumes public/occ + public/wasm are
 # already provisioned by `just install` (occ:provision needs the --no-save
 # opencascade.js dep, so it belongs to install, not every build).
 [working-directory: "frontend"]
 build:
-    npm run build:static
+    npm run build
 
 # Serve frontend/dist on a plain static server (npx serve, SPA fallback).
 # you need to build first.
 static:
     npx --yes serve -s frontend/dist
-
-run_back:
-    source .venv/bin/activate && oversolved run_server --debug
-
 
 install-wasm:
     cargo install wasm-pack
@@ -161,8 +149,6 @@ deepclean:
 
 
 set shell := ["bash", "-cuo", "pipefail"]
+
 run:
-    trap 'kill 0' EXIT; \
-    just run_front & \
-    just run_back & \
-    wait
+    just run_front

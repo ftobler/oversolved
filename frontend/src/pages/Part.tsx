@@ -8,7 +8,6 @@ import { isWholeBodySelectionId, parseTopoFallbackQuery } from '@/utils/query/se
 import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { useAuth } from '@/contexts/AuthContext'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -21,8 +20,7 @@ import { useSolverStore } from '@/stores/solverStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
-import { parseHttpError } from '@/utils/core/httpClient'
-import { debugToolsUnrestricted } from '@/config/capabilities'
+import { errorMessage } from '@/utils/core/errorMessage'
 import '@/pages/Part.css'
 
 import PartToolbar from '@/pages/PartToolbar'
@@ -132,7 +130,6 @@ export default function Part() {
   const [cloneName, setCloneName] = useState<string | null>(null)
   const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number]; session: number } | null>(null)
   const colorPopoverSession = useRef(0)
-  const { user } = useAuth()
 
   const [debugOpen, setDebugOpen] = useState(false)
   const [messageDialog, setMessageDialog] = useState<ShowMessagePayload | null>(null)
@@ -174,12 +171,9 @@ export default function Part() {
     renameDoc,
     cloneDoc,
     docName,
-    ownerUsername,
     bodies,
     pickBodies,
     pickStateReady,
-    permission,
-    isCloudDoc,
     startPreviewMode,
     commitPreview,
     cancelPreview,
@@ -188,8 +182,6 @@ export default function Part() {
     cancelEditSession,
     registerUndoTeardown,
   } = usePartDoc(uuid, mode, setCodeText, { onFirstSolve: handleFirstSolve })
-
-  const readOnly = permission === 'view'
 
   const features = useMemo(() => extractFeatures(doc), [doc])
   // The sketch-on-face FSM only cares about a sketch's plane field being picked.
@@ -803,7 +795,7 @@ export default function Part() {
       const data = await cloneDoc(uuid, name)
       navigate(`/documents/${data.uuid}`)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to clone document'))
+      setError(errorMessage(e, 'Failed to clone document'))
     }
   }
 
@@ -1071,17 +1063,14 @@ export default function Part() {
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key !== 'F2' && e.code !== 'F2') return
-      // Same gate as the footer button's visibility: open to everyone on the
-      // static build, admin-only on the server build. An unhandled F2 must
-      // fall through untouched, so preventDefault fires only alongside an
-      // actual toggle.
-      if (!(debugToolsUnrestricted || user?.is_admin)) return
+      // The debug panel is open to whoever is running the app -- it is their own
+      // machine and their own documents, so there is nobody to withhold it from.
       e.preventDefault()
       setDebugOpen(prev => !prev)
     }
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [user?.is_admin])
+  }, [])
 
   const partEditorCallbacks = useMemo(() => ({
     onToggleSelect: toggleNormalSelection,
@@ -1107,26 +1096,20 @@ export default function Part() {
   return (
     <div className="document-viewer">
       <PartToolbar
-        readOnly={readOnly}
-        permission={permission}
         docName={docName}
-        isCloudDoc={isCloudDoc}
         onRename={(name) => renameDoc(uuid!, name)}
         handleSave={handleSave}
         handleClone={handleClone}
-        onShare={() => exportImportRef.current?.openShare()}
         rightContent={
           <>
-            {(debugToolsUnrestricted || user?.is_admin) && (
-              <button
-                className={`toolbar-btn ${debugOpen ? 'active' : ''}`}
-                aria-label="Toggle debug panel"
-                title="Toggle debug panel (F2)"
-                onClick={() => setDebugOpen(v => !v)}
-              >
-                <span className="material-icons-outlined">terminal</span>
-              </button>
-            )}
+            <button
+              className={`toolbar-btn ${debugOpen ? 'active' : ''}`}
+              aria-label="Toggle debug panel"
+              title="Toggle debug panel (F2)"
+              onClick={() => setDebugOpen(v => !v)}
+            >
+              <span className="material-icons-outlined">terminal</span>
+            </button>
             <button
               className="toolbar-btn"
               aria-label="Toggle debug collision rendering"
@@ -1151,7 +1134,6 @@ export default function Part() {
         setSolveError={setSolveError}
         error={error}
         setError={setError}
-        readOnly={readOnly}
         loading={loading}
         planeSelectionFeatureId={planeSelectionFeatureId}
         handleAddFeature={handleAddFeature}
@@ -1165,9 +1147,7 @@ export default function Part() {
           <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
         }
         rightPanel={
-          <PartDebugPanel
-            debugOpen={debugOpen && (debugToolsUnrestricted || !!user?.is_admin)}
-          />
+          <PartDebugPanel debugOpen={debugOpen} />
         }
       >
         <PartEditorProvider value={partEditorCallbacks}>
@@ -1209,13 +1189,7 @@ export default function Part() {
         onCancel={handleColorCancel}
         onApply={handleColorApply}
       />
-      <PartExportImport
-        ref={exportImportRef}
-        uuid={uuid!}
-        docName={docName}
-        ownerUsername={ownerUsername}
-        permission={permission}
-      />
+      <PartExportImport ref={exportImportRef} uuid={uuid!} />
       <MessageDialog
         isOpen={messageDialog !== null}
         title={messageDialog?.title ?? ''}

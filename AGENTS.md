@@ -1,15 +1,21 @@
 # Project: Oversolved
 
-A mechanical CAD system running in the browser.
-Python/Flask backend with a React frontend.
+A mechanical CAD system running entirely in the browser. React frontend,
+OpenCascade + the Rust solvers compiled to WASM in Web Workers, documents
+persisted to IndexedDB. There is no server and no database process.
 
 ## Structure
-- `oversolved/` - Flask application source
-- `tests/` - pytest test suite
-- `frontend/` - React frontend (must `cd frontend` before running frontend commands)
+- `frontend/` - React app, the whole product (must `cd frontend` before running frontend commands)
+- `sketch-solver/`, `mate-solver/`, `solver-core/` - Rust solver workspace, built to WASM
+- `oversolved/` - build-time icon generation only (`icons.py`, `icon_cairo.py`)
+- `tests/` - pytest suite for the Python tooling and the docs/config invariants
+- `lint.py` - the project's own comment-style linter
 
-## Backend Commands
+## Python Commands
 from the justfile: `just backend`
+
+The recipe is still called `backend` for muscle memory, but no Python runs at
+app runtime: it gates the icon generator, `lint.py`, and the tooling tests.
 
 Every gate tees its full output to a log in `tmp/` as well as printing to
 stdout, and keeps the gate's own exit code (pipefail). One run is slow, so the
@@ -24,8 +30,8 @@ log lets you re-grep the result afterwards without re-running the gate.
 ## Frontend Commands
 from the justfile: `just frontend`
 
-Same logging convention as the backend. Run from `frontend/`; the `tmp/` log
-dir lives at the project root.
+Same logging convention. Run from `frontend/`; the `tmp/` log dir lives at the
+project root.
 
 ```bash
 cd frontend
@@ -38,10 +44,10 @@ npm run build 2>&1 | tee ../tmp/npm_build.log
 ## Conventions
 - The frontend goal is: If I delete the Viewport, the logic should still pass unit tests.
 - `code_guideline.md` should help navigate the codebase.
-- Test driven development. Frontend changes must pass `just frontend`. Backend changes must pass `just backend`.
+- Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just backend`.
 - Gates tee a full copy of their output to `tmp/<gate>.log` (e.g. `tmp/npx_test.log`) while also printing to stdout. You can grep stdout live and re-grep the log afterwards; never re-run a slow gate just to get its output in a different shape.
 - For each feature try to make a test.
-- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. The Flask backend is a document store only — no solver logic, no WebSocket.
+- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB. Nothing is sent to a server; there is no server.
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - code style: do not use em or en-dashes.
 - Agents must not commit to git unless prompted directly by the user.

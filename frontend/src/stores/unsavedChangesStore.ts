@@ -33,8 +33,7 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set) => ({
   dismissConfirm: () => set({ pendingCallback: null }),
 }))
 
-// Imperative guard for navigation outside React render (event handlers, the
-// logout flow). When the document is dirty, schedules a confirm dialog via the
+// Imperative guard for navigation outside React render (event handlers). When the document is dirty, schedules a confirm dialog via the
 // store so the shared header can render it. `onProceed` is baked into the stored
 // callback and fired when the user clicks Discard. Returns false to cancel the
 // current event (e.preventDefault etc.) while the user decides.

@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Part from '@/pages/Part'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -73,7 +73,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('reopens the document with the bar where it was saved', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('rollback: 5\n') }))
+    partDocStoreMock({ content: docContent('rollback: 5\n') })
     renderPart()
 
     await waitFor(() => {
@@ -89,7 +89,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('falls back to the end of the stack when the doc has no saved position', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('') }))
+    partDocStoreMock({ content: docContent('') })
     renderPart()
 
     await waitFor(() => {
@@ -103,7 +103,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('clamps a saved position that outlives the features it pointed past', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('rollback: 99\n') }))
+    partDocStoreMock({ content: docContent('rollback: 99\n') })
     renderPart()
 
     await waitFor(() => {
@@ -116,7 +116,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('writes the position into the doc when the user drags the bar', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('') }))
+    partDocStoreMock({ content: docContent('') })
     renderPart()
 
     await waitFor(() => {
@@ -135,7 +135,7 @@ describe('rollback bar position round trips through the document', () => {
   })
 
   it('removes the position from the doc when the user drags the bar back to the end', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: docContent('rollback: 5\n') }))
+    partDocStoreMock({ content: docContent('rollback: 5\n') })
     renderPart()
 
     await waitFor(() => {

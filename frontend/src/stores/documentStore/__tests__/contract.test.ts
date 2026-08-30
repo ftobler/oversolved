@@ -1,33 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { resetFakeIndexedDb } from './fakeIndexedDb'
-import { mountFakeDocumentsServer } from './fakeDocumentsServer'
 import type { DocumentStore } from '../types'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
-import { HttpDocumentStore } from '../HttpDocumentStore'
-import { HttpError } from '@/utils/core/httpClient'
+import { InMemoryDocumentStore } from './InMemoryDocumentStore'
 import { resetDbConnection } from '../idb'
 import { suggestedCloneName } from '../cloneName'
 
 // One behavioral contract, run against every DocumentStore implementation. The
 // rule: given the same sequence of calls, each store must present the same
-// observable document state. Anything here is asserted once and guaranteed
-// identical across HTTP and IndexedDB, so the two builds can't silently drift.
+// observable document state.
 //
-// Impl-specific concerns live in their own files: HttpDocumentStore.test.ts
-// locks the exact wire protocol (the real Flask contract), and
-// IndexedDbDocumentStore.test.ts covers the local-only sync `meta` envelope.
+// IndexedDB is the only store the app ships, but the seam exists so another one
+// (OPFS, a file-system handle, a sync engine) can be dropped in at the
+// composition root without touching a caller -- and a seam with a single
+// conformer rots, because nothing distinguishes "the interface promises this"
+// from "this is what IndexedDB happens to do". InMemoryDocumentStore is the
+// second conformer that keeps the distinction real: it is written from this
+// contract rather than ported from the IndexedDB store, so a behaviour only one
+// of them has shows up here as a failure instead of as silent coupling.
+//
+// Impl-specific concerns stay in their own files: IndexedDbDocumentStore.test.ts
+// covers the local-only sync `meta` envelope, the tombstone lifecycle and the
+// no-op-save optimization, none of which the interface promises.
 //
 // Known accepted divergences (documented, not contracted):
-// - save() to an unknown id: the HTTP store 404s (require_doc_permission runs
-//   before update_document), while the local store deliberately upserts a
-//   phantom 'Untitled' record because a static build may save into an id that
-//   only exists in memory (a fresh doc whose create() raced the first save).
-//   Do NOT "fix" either side toward the other without revisiting that intent.
-// - load() after remove(): the local store rejects (its tombstone hides the
-//   record from every read), while the cloud keeps serving a trashed row to
-//   its owner over GET until purge (DocumentStore.retrieve has no deleted_at
-//   filter). Pinned per side: IndexedDbDocumentStore.test.ts for the local
-//   rejection, fakeDocumentsServer.ts + the drift pins below for the cloud.
+// - load() after remove(): the IndexedDB store rejects because its tombstone
+//   hides the record from every read; the in-memory store rejects because the
+//   record is simply gone. Both reject, so the contract pins list membership
+//   (below) and leaves the tombstone lifecycle to the IDB suite.
 
 interface Adapter {
   name: string
@@ -44,24 +44,21 @@ const adapters: Adapter[] = [
     teardown: () => {},
   },
   {
-    name: 'HttpDocumentStore',
-    make: () => new HttpDocumentStore(),
-    setup: () => {},  // server mounted per-test below so teardown can restore fetch
+    name: 'InMemoryDocumentStore',
+    make: () => new InMemoryDocumentStore(),  // state lives on the instance
+    setup: () => {},
     teardown: () => {},
   },
 ]
 
 describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
   let store: DocumentStore
-  let unmount: () => void
 
   beforeEach(() => {
     adapter.setup()
-    unmount = adapter.name === 'HttpDocumentStore' ? mountFakeDocumentsServer() : () => {}
     store = adapter.make()
   })
   afterEach(() => {
-    unmount()
     adapter.teardown()
   })
 
@@ -83,7 +80,6 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(loaded.content).toBe('features: []')
     expect(loaded.preview_image).toBe('PNGDATA')
     expect(loaded.name).toBe('Box')
-    expect(loaded.permission).toBe('owner')
   })
 
   it('save overwrites in place (no duplicate ids)', async () => {
@@ -94,10 +90,22 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect((await store.load(uuid)).content).toBe('v2')
   })
 
-  // Only list membership is contracted after remove: both backends hide a
-  // deleted document from listings, but they disagree on direct reads (see the
-  // divergence note in the file header), so load-after-remove is pinned per
-  // store, not here.
+  // `meta.rev` is the assembly bundle cache key (`${doc_id}@${rev}`), so a store
+  // that failed to move it would serve stale geometry for an edited part with no
+  // error anywhere. Only the direction is contracted -- the numbering is the
+  // store's own business.
+  it('save advances meta.rev so a cached rebuild is invalidated', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'v1' })
+    const first = (await store.list()).find(s => s.uuid === uuid)!
+    await store.save(uuid, { content: 'v2' })
+    const second = (await store.list()).find(s => s.uuid === uuid)!
+    expect(second.meta!.rev).toBeGreaterThan(first.meta!.rev)
+  })
+
+  // Only list membership is contracted after remove: both stores hide a deleted
+  // document from listings, but what happens to the record underneath (tombstone
+  // vs. gone) is the store's business, so load-after-remove is pinned per store.
   it('remove drops the entry from list', async () => {
     const { uuid } = await store.create('Doc')
     await store.save(uuid, { content: 'x' })
@@ -109,11 +117,12 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     await expect(store.load('no-such-doc')).rejects.toThrow()
   })
 
-  // Unknown-id rename rejects everywhere: the backend answers 404 through
-  // require_doc_permission and the local store throws on its own (the
-  // canonical local semantic, see IndexedDbDocumentStore.rename).
-  it('rename of a missing id rejects', async () => {
+  // A rename of an id that does not exist must fail loudly rather than invent a
+  // record. (save() is the deliberate exception: it upserts, so an editor whose
+  // create() has not landed yet cannot lose the user's bytes.)
+  it('rename of a missing id rejects and creates nothing', async () => {
     await expect(store.rename('no-such-doc', 'New')).rejects.toThrow()
+    expect(await store.list()).toEqual([])
   })
 
   it('rename changes the name without touching content', async () => {
@@ -125,8 +134,7 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(loaded.content).toBe('body')
   })
 
-  // The suffix is matched case-insensitively on purpose: the backend spells it
-  // "(Copy)" and the local store still says "(copy)". The casing is cosmetic;
+  // The suffix is matched case-insensitively on purpose: the casing is cosmetic,
   // what is contracted is the copy relationship.
   it('duplicate clones content under a fresh id named after the source', async () => {
     const { uuid } = await store.create('Original')
@@ -137,6 +145,10 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(dup.content).toBe('shape')
     expect(dup.name).toMatch(/^Original \(copy\)$/i)
     expect(await store.list()).toHaveLength(2)
+  })
+
+  it('duplicate of a missing id rejects', async () => {
+    await expect(store.duplicate('no-such-doc')).rejects.toThrow()
   })
 
   it('clone copies content into a fresh document', async () => {
@@ -183,6 +195,8 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect((await store.list({ sort: 'name' })).map(s => s.name)).toEqual(['Alpha', 'Mike', 'Zeta'])
   })
 
+  // Content is opaque to the seam: a store must not parse, normalise or
+  // re-serialise the document text, so `kind` survives by never being read.
   it('round-trips assembly content preserving kind', async () => {
     const asmContent = 'kind: assembly\nfeatures: []\n'
     const { uuid } = await store.create('Asm')
@@ -205,159 +219,5 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     await store.save(uuid, { content: partContent })
     const loaded = await store.load(uuid)
     expect(loaded.content).toBe(partContent)
-  })
-})
-
-// Per-store pins for behavior the shared contract cannot express: the error
-// SHAPE each store uses to reject unknown ids, and the fake server's fidelity
-// to the real blueprints (review-17 L12 drift items). If one of these fails,
-// fakeDocumentsServer.ts has drifted from oversolved/blueprints/documents.py.
-describe('unknown-id semantics and fake-server fidelity', () => {
-  let unmount: () => void
-  beforeEach(() => { unmount = mountFakeDocumentsServer() })
-  afterEach(() => { unmount() })
-
-  it('HTTP rename of a missing id surfaces the backend 404 as a typed HttpError', async () => {
-    const store = new HttpDocumentStore()
-    const err = await store.rename('no-such-doc', 'X').then(() => null, e => e)
-    expect(err).toBeInstanceOf(HttpError)
-    expect((err as HttpError).status).toBe(404)
-    // The body carries the unified api_error shape, so parseHttpError at the
-    // call site renders "Document not found" instead of a generic fallback.
-    expect(JSON.parse((err as HttpError).body)).toMatchObject({ error: 'Document not found', code: 'NOT_FOUND' })
-  })
-
-  it('local rename of a missing id throws not-found (canonical local semantic)', async () => {
-    resetFakeIndexedDb(); resetDbConnection()
-    const store = new IndexedDbDocumentStore()
-    await expect(store.rename('no-such-doc', 'X')).rejects.toThrow(/not found/i)
-    // Nothing may have been created by the failed rename.
-    expect(await store.list()).toEqual([])
-  })
-
-  // ─── fake-server drift pins vs documents.py ───
-
-  it('create/duplicate/clone return the real statuses (201) and duplicate uses "(Copy)" casing', async () => {
-    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Box' }) })
-    expect(created.status).toBe(201)
-    const { uuid } = await created.json()
-
-    const dup = await fetch(`/api/documents/${uuid}/duplicate`, { method: 'POST' })
-    expect(dup.status).toBe(201)
-    expect((await dup.json()).name).toBe('Box (Copy)')
-
-    const clone = await fetch(`/api/documents/${uuid}/clone`, { method: 'POST' })
-    expect(clone.status).toBe(201)
-
-    const put = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'x' }) })
-    expect(put.status).toBe(200)
-  })
-
-  it('clone uniquifies the suggested name with (Clone N); an explicit name is verbatim', async () => {
-    // clone_document uniquifies only the fallback suggestion, against the
-    // caller's existing names; a requested name is never touched.
-    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Bracket' }) })
-    const { uuid } = await created.json()
-    await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Bracket (Clone)' }) })
-
-    const first = await fetch(`/api/documents/${uuid}/clone`, { method: 'POST' })
-    expect((await first.json()).name).toBe('Bracket (Clone 1)')
-
-    const named = await fetch(`/api/documents/${uuid}/clone`, {
-      method: 'POST',
-      body: JSON.stringify({ name: '  Bracket (Clone)  ' }),
-    })
-    expect((await named.json()).name).toBe('Bracket (Clone)')  // trimmed, not uniquified
-  })
-
-  it('DELETE tombstones like the backend: hidden from list, still served by GET', async () => {
-    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Gone' }) })
-    const { uuid } = await created.json()
-    await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'body' }) })
-
-    const del = await fetch(`/api/documents/${uuid}`, { method: 'DELETE' })
-    expect(del.status).toBe(200)
-    expect(await del.json()).toMatchObject({ uuid, status: 'moved_to_trash' })
-
-    const list = await fetch('/api/documents')
-    expect((await list.json()).documents.map((d: { uuid: string }) => d.uuid)).not.toContain(uuid)
-
-    // retrieve() has no deleted_at filter: the row keeps serving GET.
-    const get = await fetch(`/api/documents/${uuid}`)
-    expect(get.status).toBe(200)
-    expect((await get.json()).content).toBe('body')
-  })
-
-  it('every per-document verb 404s a missing uuid with the unified error shape', async () => {
-    for (const [method, init] of [
-      ['GET', undefined],
-      ['PUT', { body: JSON.stringify({ content: '' }) }],
-      ['PATCH', { body: JSON.stringify({ name: 'X' }) }],
-      ['DELETE', undefined],
-    ] as const) {
-      const res = await fetch('/api/documents/no-such-doc', { method, ...init })
-      expect(res.status, method).toBe(404)
-      expect(await res.json()).toMatchObject({ ok: false, error: 'Document not found', code: 'NOT_FOUND' })
-    }
-  })
-
-  // PATCH must reject a non-string or blank name with 400 (rename_document
-  // guard) and restamp updated_at, mirroring documents.py.
-  it('PATCH rejects non-string/blank names with 400 and restamps updated_at', async () => {
-    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Box' }) })
-    const { uuid } = await created.json()
-    await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'body' }) })
-    const before = (await (await fetch(`/api/documents/${uuid}`)).json()).updated_at
-
-    const nonString = await fetch(`/api/documents/${uuid}`, { method: 'PATCH', body: JSON.stringify({ name: 7 }) })
-    expect(nonString.status).toBe(400)
-    const blank = await fetch(`/api/documents/${uuid}`, { method: 'PATCH', body: JSON.stringify({ name: '  ' }) })
-    expect(blank.status).toBe(400)
-
-    const ok = await fetch(`/api/documents/${uuid}`, { method: 'PATCH', body: JSON.stringify({ name: 'Renamed' }) })
-    expect(ok.status).toBe(200)
-    expect((await ok.json()).name).toBe('Renamed')
-    const after = (await (await fetch(`/api/documents/${uuid}`)).json()).updated_at
-    expect(Date.parse(after)).toBeGreaterThan(Date.parse(before))
-  })
-
-  // PUT must reject a missing or non-string content with 400 (update_document
-  // guards), mirroring documents.py.
-  it('PUT rejects missing/non-string content with 400', async () => {
-    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Box' }) })
-    const { uuid } = await created.json()
-
-    const missing = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ name: 'x' }) })
-    expect(missing.status).toBe(400)
-    const notString = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 12 }) })
-    expect(notString.status).toBe(400)
-
-    const ok = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'body' }) })
-    expect(ok.status).toBe(200)
-  })
-
-  // ─── synthesized meta.rev (assembly bundle cache key) ───
-
-  it('HTTP list synthesizes meta.rev from the server updated_at and bumps it on edit', async () => {
-    // The server rows have no meta column; HttpDocumentStore.list maps
-    // updated_at into the local meta shape so cloud-picked parts get a real
-    // bundle cache key instead of pinning doc_rev 0 forever (review-18 PS-H1).
-    const store = new HttpDocumentStore()
-    const { uuid } = await store.create('Bracket')
-    await store.save(uuid, { content: 'v1' })
-
-    const first = (await store.list()).find(s => s.uuid === uuid)
-    expect(first?.meta).toEqual({
-      id: uuid,
-      rev: Date.parse(first!.updated_at),
-      updatedAt: Date.parse(first!.updated_at),
-      dirty: false,  // the server is the source of truth: nothing pending
-    })
-
-    await store.save(uuid, { content: 'v2' })
-    const second = (await store.list()).find(s => s.uuid === uuid)
-    expect(second!.meta!.rev).toBeGreaterThan(first!.meta!.rev)
-    // solveAssembly cache-hits `${doc_id}@${rev}`: this bump is exactly what
-    // forces a post-edit rebuild instead of serving stale geometry.
   })
 })

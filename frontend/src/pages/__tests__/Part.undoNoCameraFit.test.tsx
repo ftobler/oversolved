@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 // `vi.hoisted`, because the mock factory below is hoisted above this line and
 // reads the spies while building the module.
@@ -36,7 +36,7 @@ features:
 describe('Part - undo/redo never move the camera', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
   })
 
   it('disarms any pending fit on undo/redo and does not re-fit', async () => {
@@ -69,7 +69,7 @@ describe('Part - undo/redo never move the camera', () => {
   it('does not refit when the undo actually changes the document', async () => {
     // The empty-stack test above never pops an entry; this one drives a real
     // mutation so the undo restores a genuinely different doc.
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_DOC }))
+    partDocStoreMock({ content: SKETCH_DOC })
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>
         <Routes>

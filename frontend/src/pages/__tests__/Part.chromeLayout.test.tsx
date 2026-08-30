@@ -8,10 +8,6 @@ import { type ReactNode } from 'react'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ user: null, online: true, logout: vi.fn() }),
-}))
-
 vi.mock('../../hooks/usePartDoc', async () =>
   (await import('@/__tests__/test-utils')).partDocMockModule())
 
@@ -27,7 +23,6 @@ vi.mock('../../components/layout/MeasurementDisplay', () => ({
   default: () => <div data-testid="measurement-readout" />,
 }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
-vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())

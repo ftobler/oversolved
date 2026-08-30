@@ -1,9 +1,8 @@
-// STEP import into a fresh document. NOT a third store -- this round-trips
-// through whatever `DocumentStore` is active, like the bundle helpers. A STEP
-// file is read in-browser as base64 (the WASM kernel decodes it directly via
-// occ/stepIo), so import needs no server round-trip and works identically
-// offline -- the same path Part.tsx uses to add an `import_step` feature to an
-// open document.
+// STEP import into a fresh document. NOT a second store -- this round-trips
+// through whatever `DocumentStore` is wired in, like the bundle helpers. A STEP
+// file is read in-browser as base64 and the WASM kernel decodes it directly
+// (occ/stepIo) -- the same path Part.tsx uses to add an `import_step` feature to
+// an open document.
 
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
@@ -11,10 +10,10 @@ import type { DocumentStore } from './types'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { applyAddImportStep, randomId } from '@/utils/yamlMutations'
 
-// Calibration: app.py caps HTTP bodies at MAX_CONTENT_LENGTH = 100MB. The STEP
-// bytes ride inside the document YAML as base64 (4/3 inflation), so a raw file
-// above 75MB would produce a document no cloud build could accept on push; the
-// cap also bounds the ~3-4x transient memory fan-out of read + encode + clone.
+// The STEP bytes ride inside the document YAML as base64 (4/3 inflation), so a
+// 75MB file already becomes a ~100MB document string. The cap exists for the
+// ~3-4x transient memory fan-out of read + encode + clone, which is what
+// actually kills the tab on a large import.
 export const MAX_STEP_IMPORT_BYTES = 75 * 1024 * 1024
 
 /** Human-readable reason a file of this size cannot be imported, or null if it fits. */

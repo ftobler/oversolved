@@ -15,19 +15,14 @@ vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: mockExecuteComm
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-vi.mock('@/adapters/backend', () => ({ backendBundle: { sharing: null } }))
 
 function renderToolbar() {
   return render(
     <PartToolbar
-      readOnly={false}
-      permission="owner"
       docName="TestDoc"
-      isCloudDoc={false}
       onRename={vi.fn()}
       handleSave={vi.fn()}
       handleClone={vi.fn()}
-      onShare={vi.fn()}
     />,
   )
 }

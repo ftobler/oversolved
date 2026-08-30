@@ -1,5 +1,7 @@
-import type { DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta } from './types'
-import type { TrashAdapter, TrashDoc } from '@/adapters/trash'
+import type {
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
+  TrashAdapter, TrashDoc,
+} from './types'
 import { idbGet, idbGetAll, idbPut, idbDelete, idbReadModifyWrite } from './idb'
 import { suggestedCloneName } from './cloneName'
 import { randomUuid } from '@/utils/randomUuid'
@@ -45,9 +47,9 @@ function toSummary(rec: StoredDoc): DocSummary {
   }
 }
 
-// IndexedDB-backed store: the default for a static (zero-backend) deployment.
-// Offline is first-class here, not a degraded mode -- this is the full
-// persistence layer when no server is present.
+// IndexedDB-backed store: the document library. Offline is not a degraded mode
+// here, it is the only mode -- this is the whole persistence layer, scoped to
+// the origin serving the app.
 export class IndexedDbDocumentStore implements DocumentStore {
   async list(opts: ListOptions = {}): Promise<DocSummary[]> {
     const all = await idbGetAll<StoredDoc>()
@@ -82,7 +84,6 @@ export class IndexedDbDocumentStore implements DocumentStore {
       content: rec.content,
       name: rec.name,
       owner_username: LOCAL_OWNER,
-      permission: 'owner',
       is_public: rec.is_public,
       preview_image: rec.preview_image,
     }
@@ -127,9 +128,9 @@ export class IndexedDbDocumentStore implements DocumentStore {
     })
   }
 
-  // Soft delete: stamp a tombstone and keep the record so the local Trash can
-  // recover or purge it. A missing record is a no-op (already gone). This mirrors
-  // the cloud store, whose remove() is a server-side soft delete feeding its Trash.
+  // Soft delete: stamp a tombstone and keep the record so the Trash can recover
+  // or purge it. A missing record is a no-op (already gone). Delete is reversible
+  // by design -- an accidental click on your only copy has no undo anywhere else.
   async remove(id: string): Promise<void> {
     await idbReadModifyWrite<StoredDoc>(id, existing => {
       if (!existing || existing.deleted_at) return undefined  // no-op: gone or already trashed
@@ -148,20 +149,19 @@ export class IndexedDbDocumentStore implements DocumentStore {
       created_at: new Date(now).toISOString(),
       updated_at: new Date(now).toISOString(),
       // rev 0 on create; the first save bumps it to 1 (a new doc is a local
-      // change not yet pushed to any server, hence dirty).
+      // change nothing has synced anywhere, hence dirty).
       meta: { id: uuid, rev: 0, updatedAt: now, dirty: true },
     }
     await idbPut(rec)
     return { uuid }
   }
 
-  // Reject-on-missing is the canonical local unknown-id semantic (review-17
-  // L12): a rename of an id that does not exist must fail loudly rather than
-  // invent state, mirroring both the backend (require_doc_permission 404s
-  // before rename_document runs) and the local load()/duplicate paths.
-  // save()'s phantom-'Untitled' upsert below is the ONE deliberate exception,
-  // kept because a static build may save into an id whose create() raced the
-  // first save -- do not align these two without revisiting that intent.
+  // Reject-on-missing is the canonical unknown-id semantic (review-17 L12): a
+  // rename of an id that does not exist must fail loudly rather than invent
+  // state, matching load() and duplicate(). save()'s phantom-'Untitled' upsert
+  // above is the ONE deliberate exception, kept because the editor may save
+  // into an id whose create() raced the first save -- do not align these two
+  // without revisiting that intent.
   async rename(id: string, name: string): Promise<void> {
     const renamed = await idbReadModifyWrite<StoredDoc>(id, existing => {
       if (!existing) return undefined
@@ -208,15 +208,15 @@ export class IndexedDbDocumentStore implements DocumentStore {
     return { uuid }
   }
 
-  // No server-rendered thumbnail: the grid uses the inline preview_image carried
-  // on each summary instead. Keeps the interface's (id) signature so callers pass
-  // the id uniformly across stores.
+  // No separate thumbnail resource: the grid uses the inline preview_image
+  // carried on each summary instead. Keeps the interface's (id) signature so a
+  // store that does serve thumbnails can drop straight in.
   thumbnailUrl(_id: string): string | null {
     return null
   }
 
   // Engine-facing primitive (NOT part of DocumentStore). A future sync engine
-  // calls this on push-ack: the document is now in sync with the server.
+  // calls this on push-ack: the document now matches what the target holds.
   async markSynced(id: string): Promise<void> {
     await idbReadModifyWrite<StoredDoc>(id, existing => {
       if (!existing) return undefined
@@ -238,11 +238,10 @@ function toTrashDoc(rec: StoredDoc): TrashDoc {
   }
 }
 
-// Local trash: the recover/purge side of the IndexedDB store's soft delete. It
-// reads the same object store as IndexedDbDocumentStore -- the records the store
-// tombstoned with remove() are exactly what this lists. Implements the same
-// TrashAdapter contract the cloud (HTTP) trash does, so the Trash view is one
-// piece of UI driven by whichever adapter the active domain provides.
+// The recover/purge side of the IndexedDB store's soft delete. It reads the same
+// object store as IndexedDbDocumentStore -- the records that store tombstoned
+// with remove() are exactly what this lists. Split out as its own TrashAdapter
+// so the Trash view is the only screen holding a purge().
 export class IndexedDbTrashAdapter implements TrashAdapter {
   async list(): Promise<TrashDoc[]> {
     const all = await idbGetAll<StoredDoc>()

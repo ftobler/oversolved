@@ -1,30 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createBugReportSink, formatBugReportMarkdown } from '@/adapters/telemetry'
+import { DownloadBugReportSink, formatBugReportMarkdown } from '@/adapters/telemetry'
 
 describe('telemetry adapter', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('HTTP sink POSTs the report to /api/bug-report', async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({ ok: true, text: () => Promise.resolve('') } as Response),
-    )
-    vi.stubGlobal('fetch', fetchMock)
-
-    const sink = createBugReportSink('http')
-    await sink.send({ title: 'boom', description: 'it broke' })
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/bug-report',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ title: 'boom', description: 'it broke' }),
-      }),
-    )
-  })
-
-  describe('static download sink', () => {
+  describe('download sink', () => {
     let clickSpy: ReturnType<typeof vi.fn>
     let anchor: { href: string; download: string; click: ReturnType<typeof vi.fn> }
     let blobs: { parts: unknown[]; options?: BlobPropertyBag }[]
@@ -49,12 +31,14 @@ describe('telemetry adapter', () => {
       vi.unstubAllGlobals()
     })
 
+    // The "instead of the network" half is the point, not incidental: there is
+    // nowhere to POST a report to, so a sink that quietly tried would fail in a
+    // way the user never sees.
     it('renders the report to a .md download instead of hitting the network', async () => {
       const fetchMock = vi.fn()
       vi.stubGlobal('fetch', fetchMock)
 
-      const sink = createBugReportSink('static')
-      await sink.send({ title: 'boom', description: 'it broke' })
+      await new DownloadBugReportSink().send({ title: 'boom', description: 'it broke' })
 
       expect(clickSpy).toHaveBeenCalledTimes(1)
       expect(fetchMock).not.toHaveBeenCalled()

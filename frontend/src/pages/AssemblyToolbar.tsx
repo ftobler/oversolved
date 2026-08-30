@@ -5,7 +5,6 @@ import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore
 import AppHeader from '@/components/layout/AppHeader'
 
 interface AssemblyToolbarProps {
-  readOnly: boolean
   docName: string | null
   onRename: (name: string) => Promise<boolean>
   // Resolves to whether the bytes actually landed, so a failed save can be
@@ -16,12 +15,11 @@ interface AssemblyToolbarProps {
   rightContent?: ReactNode
 }
 
-// Assembly counterpart to PartToolbar: the same AppHeader shell (logo, burger,
-// account) with the save / clone / rename controls, so the assembly editor wears
+// Assembly counterpart to PartToolbar: the same AppHeader shell (burger, logo,
+// help) with the save / clone / rename controls, so the assembly editor wears
 // the same titlebar as the part editor. The undo/redo group mirrors the part
 // toolbar, gated on the assembly store's stacks.
 export default function AssemblyToolbar({
-  readOnly,
   docName,
   onRename,
   handleSave,
@@ -123,18 +121,12 @@ export default function AssemblyToolbar({
           </div>
         )}
       </div>
-      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick} disabled={readOnly}>
+      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick}>
         <span className="material-icons-outlined">{saveState === 'success' ? 'check' : 'save'}</span>
       </button>
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
       </button>
-      {readOnly && (
-        <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
-          <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>
-          {' '}View Only
-        </span>
-      )}
       {isEditing ? (
         <input
           className="doc-name-input"

@@ -1,15 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-// Static build: no backend, no auth endpoint, IndexedDB-backed store.
-vi.mock('@/config/capabilities', () => ({ hasBackend: false, backend: 'static' }))
-
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { parse as parseYaml } from 'yaml'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
 import { backendBundle } from '@/adapters/backend'
 import Documents from '@/pages/Documents'
 
@@ -25,16 +21,14 @@ afterEach(() => {
 function wrap() {
   return render(
     <BrowserRouter>
-      <AuthProvider>
-        <Documents />
-      </AuthProvider>
+      <Documents />
     </BrowserRouter>
   )
 }
 
 async function createVia(buttonTitle: string, name: string) {
   wrap()
-  await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText('Documents', { selector: '.sidebar-item-label' })).toBeInTheDocument())
 
   await act(async () => {
     fireEvent.click(screen.getByTitle(buttonTitle))
@@ -45,7 +39,7 @@ async function createVia(buttonTitle: string, name: string) {
   await act(async () => {
     fireEvent.click(screen.getByText('Create'))
   })
-  await waitFor(() => expect(screen.getByTitle(`local/${name}`)).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByTitle(name)).toBeInTheDocument())
 }
 
 /** The content the store actually persisted for the single document that exists. */
@@ -78,7 +72,7 @@ describe('Documents: creating an assembly (static build)', () => {
 
   it('titles the dialog by the kind the pressed button chose', async () => {
     wrap()
-    await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Documents', { selector: '.sidebar-item-label' })).toBeInTheDocument())
 
     await act(async () => { fireEvent.click(screen.getByTitle('Add assembly')) })
     expect(screen.getByText('Create New Assembly')).toBeInTheDocument()
@@ -88,7 +82,7 @@ describe('Documents: creating an assembly (static build)', () => {
   // assembly one must not leave an assembly seeded behind.
   it('does not carry the assembly kind over to a later part creation', async () => {
     wrap()
-    await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Documents', { selector: '.sidebar-item-label' })).toBeInTheDocument())
 
     await act(async () => { fireEvent.click(screen.getByTitle('Add assembly')) })
     await act(async () => { fireEvent.click(screen.getByTitle('Add assembly')) })  // close
@@ -99,7 +93,7 @@ describe('Documents: creating an assembly (static build)', () => {
       fireEvent.change(screen.getByPlaceholderText(/name/i), { target: { value: 'bracket' } })
     })
     await act(async () => { fireEvent.click(screen.getByText('Create')) })
-    await waitFor(() => expect(screen.getByTitle('local/bracket')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTitle('bracket')).toBeInTheDocument())
 
     expect(await onlyDocContent()).toBe('')
   })

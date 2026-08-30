@@ -1,148 +1,76 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
-import { freshLocalDb, renderDocuments, gotoCloudDomain } from './documentsHarness'
+import { freshLocalDb, renderDocuments, seedStore } from './documentsHarness'
 
-// Trash is a cloud-domain lifecycle view (the local library has no server-side
-// trash), so each test signs in and switches to the Cloud domain to reach it.
-const authOk = {
-  ok: true,
-  json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-} as Response
-
-const prefsOk = {
-  ok: true,
-  json: () => Promise.resolve({ document_sort: 'date_newest_first' }),
-} as Response
-
+// The Trash view, end to end against the real store: deleting a document from
+// the grid must be recoverable, because IndexedDB is the only copy there is --
+// a hard delete on a mis-click would be unrecoverable, not merely annoying.
 describe('Documents trash', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     freshLocalDb()
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+    localStorage.clear()
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  const mockFetch = (docs: Record<string, unknown>[] = [], trash: Record<string, unknown>[] = []) => {
-    return vi.fn((url: string): Promise<Response> => {
-      if (url === '/api/auth/me') return Promise.resolve(authOk)
-      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
-      if (url === '/api/documents/trash') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ documents: trash }),
-        } as Response)
-      }
-      if (url.startsWith('/api/documents')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ documents: docs }),
-        } as Response)
-      }
-      return Promise.resolve({ ok: false, status: 404 } as Response)
-    })
+  const openTrash = async () => {
+    await waitFor(() => expect(screen.getByTitle('Trash')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Trash'))
   }
 
-  it('shows trash button', async () => {
-    vi.stubGlobal('fetch', mockFetch())
-
+  it('shows an empty trash on a fresh library', async () => {
     renderDocuments()
-    await gotoCloudDomain()
-
-    await waitFor(() => {
-      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
-    })
+    await openTrash()
+    await waitFor(() => expect(screen.getByText('Trash is empty.')).toBeInTheDocument())
   })
 
-  it('clicking trash button shows trash view', async () => {
-    vi.stubGlobal('fetch', mockFetch())
+  it('a deleted document leaves the grid and appears in the trash', async () => {
+    const store = seedStore()
+    await store.create('Deleted Doc')
 
     renderDocuments()
-    await gotoCloudDomain()
+    await waitFor(() => expect(screen.getByText('Deleted Doc')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Delete document'))
+    await waitFor(() => expect(screen.queryByText('Deleted Doc')).not.toBeInTheDocument())
 
-    await waitFor(() => {
-      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByTitle('My Trash'))
-
-    await waitFor(() => {
-      expect(screen.getByText('Trash is empty.')).toBeInTheDocument()
-    })
+    await openTrash()
+    await waitFor(() => expect(screen.getByText('Deleted Doc')).toBeInTheDocument())
   })
 
-  it('trash view shows deleted documents', async () => {
-    vi.stubGlobal('fetch', mockFetch([], [
-      { uuid: 'trash-1', name: 'Deleted Doc', owner_username: 'admin', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
-    ]))
+  it('recover puts the document back in the library', async () => {
+    const store = seedStore()
+    const { uuid } = await store.create('Deleted Doc')
+    await store.remove(uuid)
 
     renderDocuments()
-    await gotoCloudDomain()
+    await openTrash()
+    await waitFor(() => expect(screen.getByText('Deleted Doc')).toBeInTheDocument())
 
-    await waitFor(() => {
-      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
-    })
+    fireEvent.click(screen.getByTitle('Recover document'))
+    await waitFor(() => expect(screen.getByText('Trash is empty.')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByTitle('My Trash'))
-
-    await waitFor(() => {
-      expect(screen.getByText('admin/Deleted Doc')).toBeInTheDocument()
-    })
+    fireEvent.click(screen.getByTitle('Documents'))
+    await waitFor(() => expect(screen.getByText('Deleted Doc')).toBeInTheDocument())
   })
 
-  it('recover button calls recover API', async () => {
-    const fetchMock = vi.fn((url: string): Promise<Response> => {
-      if (url === '/api/auth/me') return Promise.resolve(authOk)
-      if (url === '/api/users/me/preferences') return Promise.resolve(prefsOk)
-      if (url === '/api/documents/trash') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            documents: [
-              { uuid: 'trash-1', name: 'Deleted Doc', owner_username: 'admin', deleted_at: '2024-04-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z' },
-            ],
-          }),
-        } as Response)
-      }
-      if (url === '/api/documents/trash-1/recover') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ status: 'recovered' }),
-        } as Response)
-      }
-      if (url.startsWith('/api/documents')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ documents: [] }),
-        } as Response)
-      }
-      return Promise.resolve({ ok: false, status: 404 } as Response)
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it('permanent delete asks first, then drops the document for good', async () => {
+    const store = seedStore()
+    const { uuid } = await store.create('Deleted Doc')
+    await store.remove(uuid)
 
     renderDocuments()
-    await gotoCloudDomain()
+    await openTrash()
+    await waitFor(() => expect(screen.getByText('Deleted Doc')).toBeInTheDocument())
 
-    await waitFor(() => {
-      expect(screen.getByTitle('My Trash')).toBeInTheDocument()
-    })
+    fireEvent.click(screen.getByTitle('Permanently delete'))
+    // The confirmation is the last guard before an irreversible delete.
+    await waitFor(() => expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
-    fireEvent.click(screen.getByTitle('My Trash'))
-
-    await waitFor(() => {
-      expect(screen.getByText('admin/Deleted Doc')).toBeInTheDocument()
-    })
-
-    const recoverBtn = screen.getByTitle('Recover document')
-    fireEvent.click(recoverBtn)
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/documents/trash-1/recover',
-        expect.objectContaining({ method: 'POST' })
-      )
-    })
+    await waitFor(() => expect(screen.getByText('Trash is empty.')).toBeInTheDocument())
+    expect(await store.list()).toEqual([])
   })
 })

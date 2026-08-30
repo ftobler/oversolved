@@ -19,7 +19,6 @@ describe('AssemblyToolbar save-state reset timer', () => {
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
     const { unmount } = render(
       <AssemblyToolbar
-        readOnly={false}
         docName="TestDoc"
         onRename={vi.fn()}
         handleSave={() => Promise.resolve(true)}

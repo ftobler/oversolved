@@ -1,14 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Static build: no backend, no auth endpoint, IndexedDB-backed store.
-vi.mock('@/config/capabilities', () => ({ hasBackend: false, backend: 'static' }))
-
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
 import Documents from '@/pages/Documents'
 
 beforeEach(() => {
@@ -23,9 +19,7 @@ afterEach(() => {
 function wrap() {
   return render(
     <BrowserRouter>
-      <AuthProvider>
-        <Documents />
-      </AuthProvider>
+      <Documents />
     </BrowserRouter>
   )
 }
@@ -33,7 +27,7 @@ function wrap() {
 describe('Documents STEP import (static build)', () => {
   it('uploads a .step file into a new document tile', async () => {
     wrap()
-    await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Documents', { selector: '.sidebar-item-label' })).toBeInTheDocument())
 
     const input = document.querySelector<HTMLInputElement>('.doc-controls input.file-upload-input')!
     expect(input.accept).toContain('.step')
@@ -45,6 +39,6 @@ describe('Documents STEP import (static build)', () => {
       fireEvent.change(input, { target: { files: [file] } })
     })
 
-    await waitFor(() => expect(screen.getByTitle('local/bracket')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTitle('bracket')).toBeInTheDocument())
   })
 })

@@ -1,10 +1,19 @@
 # Setup Guide
 
+Oversolved runs entirely in the browser. There is no server, no database
+process and no API to configure: documents live in IndexedDB, and the CAD
+kernel (OpenCascade) plus both solvers are WASM running in Web Workers. A
+build produces static files that any static host can serve.
+
+Python survives only as build-time tooling: the icon generator and the repo's
+own lint/test gates. It is never deployed.
+
 ## Prerequisites
 
-- Python >= 3.12
 - Node.js >= 20.19
 - npm
+- Python >= 3.12 (build tooling only)
+- Rust + `wasm-pack` (only to rebuild the solver crates)
 
 ## System Dependencies
 
@@ -12,110 +21,90 @@
 sudo apt install libcairo2-dev    # pycairo (icon generation)
 ```
 
-## Backend Setup
+## Install
+
+```bash
+just install
+```
+
+That creates `.venv`, installs the Python dev extra, runs `npm install`,
+installs `wasm-pack`, and provisions OpenCascade.js into `frontend/public/occ`.
+OCC.js is an opt-in ~66 MB download, not a `package.json` dependency, which is
+why it belongs to install rather than to every build.
+
+To do it by hand:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
+cd frontend && npm install
 ```
 
-## Environment Variables
+The package declares no runtime dependencies. Everything Python needs lives in
+the `[dev]` extra, so `pip install -e .` on its own installs nothing.
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `OVERSOLVED_ADMIN_PASSWORD` | Yes | — | Admin password; server refuses to start without it |
-| `OVERSOLVED_SESSION_COOKIE_SECURE` | No | `false` | Set `true` in production for Secure cookies |
-| `OVERSOLVED_DB_DSN` | Yes (postgres) | `postgresql://oversolved:oversolved@localhost:5432/oversolved` | PostgreSQL DSN; also `--db-dsn`. SQLite uses `--db-path` on the CLI instead |
-| `OVERSOLVED_UPLOAD_DIR` | No | — | Directory for uploaded/exported files |
-
-## Frontend Setup
+## Running
 
 ```bash
-cd frontend
-npm install
+just runf       # Vite dev server on :5173 with HMR -- this is the whole app
 ```
 
-## Running (venv active, project root)
+There is no second process to start. Nothing proxies anywhere.
 
-### Backend API
+## Building and serving
 
 ```bash
-oversolved run_server --debug                # Flask dev server on :5000
-oversolved run_server                         # waitress production on :5000
-oversolved run_server --db-type sqlite --db-path /tmp/my.db   # SQLite at custom path
+just build      # static deploy build into frontend/dist
+just static     # serve frontend/dist with an SPA-fallback static server
 ```
 
-### Frontend Dev Server (HMR, separate terminal)
+`just build` is `just frontend-build` under another name: one build, one
+artifact, nothing to configure per deployment. Both assume `public/occ` and
+`public/wasm` are already provisioned by `just install`.
+
+## Storage
+
+Documents persist in the browser's IndexedDB, scoped to the origin serving the
+app. Clearing site data deletes them; different origins do not share them.
+Export STEP/STL through the app to get files out; there is nothing on disk to
+back up server-side.
+
+## Just recipes
 
 ```bash
-cd frontend && npm run dev    # Vite on :5173, proxies API to Flask
+just backend    # mypy + ruff + pytest over the Python tooling (CI still runs flake8)
+just frontend   # icons + lint + test + build
+just wasm       # rebuild both Rust solvers (web + nodejs targets)
+just rust-test  # cargo test over the solver workspace
+just icons      # regenerate frontend/src/assets/icons from oversolved/icons.py
+just parity     # full-document WASM parity gate (slow, needs OCC.js)
 ```
-
-### Just recipes
-
-```bash
-just backend    # mypy + ruff + pytest (CI still runs flake8)
-just frontend   # lint + test + build
-just run_back   # backend dev server
-just run_front  # frontend dev server
-```
-
-## Database
-
-Two backends are supported: `postgres` (default) and `sqlite`. Migrations run
-automatically on startup. For SQLite, pass `--db-type sqlite` (default file
-`oversolved.db`, override with `--db-path`).
-
-### PostgreSQL (default)
-
-A dev-only Postgres server is provided via Docker Compose:
-
-```bash
-docker compose -f docker-compose-postgres.yml up -d
-```
-
-It matches the default DSN (`postgresql://oversolved:oversolved@localhost:5432/oversolved`).
-Override with `--db-dsn` or the `OVERSOLVED_DB_DSN` env var:
-
-```bash
-oversolved run_server --db-dsn postgresql://user:pass@host:5432/dbname
-```
-
-### CLI
-
-```bash
-oversolved db status    # current version + pending migrations
-oversolved db upgrade   # apply pending
-oversolved db check     # exit 1 if pending (CI)
-```
-
-These default to `--db-type postgres`; add `--db-type sqlite --db-path ...` for SQLite.
 
 ## Testing
 
 ```bash
-pytest tests/ -v                           # backend (needs Postgres; see below)
-cd frontend && npx vitest run               # frontend
-mypy tests/ oversolved/ && ruff check tests/ oversolved/   # backend lint (CI still runs flake8)
-cd frontend && npm run lint                 # frontend lint
+pytest tests/ -v                            # Python tooling tests
+cd frontend && npx vitest run                # frontend
+mypy tests/ oversolved/ && ruff check tests/ oversolved/   # Python lint (CI still runs flake8)
+cd frontend && npm run lint                  # frontend lint
 ```
 
-Backend tests create an isolated PostgreSQL database per test (dropped
-afterward), so a Postgres server must be reachable. Start the dev server with
-`docker compose -f docker-compose-postgres.yml up -d`, or point tests at another
-server via the `TEST_DB_DSN` env var.
+No test needs a database or a network service. The frontend suite self-skips
+its B-rep tests when OCC.js or the Rust `pkg-node` builds are absent, so run
+`just install` and `just wasm` first if you want real coverage of the kernel
+layer rather than a suite that passes as skipped.
 
 ## Troubleshooting
 
-**"Cannot operate on a closed database"** — Ensure all `db.transaction()` usage is within the `with` block.
-
 **"Dependency cairo not found"** — Install `libcairo2-dev`, re-run `pip install`.
 
-**Frontend not serving** — Build it: `cd frontend && npm run build`. For dev, use Vite HMR instead.
+**Kernel tests all skip** — OCC.js is not provisioned or the Rust solvers are
+not built: run `just install-occ` and `just wasm`.
 
-**"OVERSOLVED_ADMIN_PASSWORD must be set"** — Set before starting:
-```bash
-export OVERSOLVED_ADMIN_PASSWORD=my-secret-password
-oversolved run_server --debug
-```
+**Frontend not serving** — Build it: `just build`, then `just static`. For dev,
+use `just runf` (Vite HMR) instead.
+
+**Documents vanished** — IndexedDB is per-origin and per-browser-profile.
+Serving the same build from a different port or host is a different origin with
+its own empty store.

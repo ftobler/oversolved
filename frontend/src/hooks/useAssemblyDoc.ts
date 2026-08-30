@@ -2,9 +2,8 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { parse as parseYaml } from 'yaml'
 import { stringify as stringifyYaml } from 'yaml'
 import type { AssemblyDoc } from '@/types/cad'
-import { parseHttpError } from '@/utils/core/httpClient'
+import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
-import { loadDocumentAnyDomain } from '@/adapters/documentLoad'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { mateFeatures, partInstances } from '@/utils/assemblyMutations'
@@ -13,23 +12,18 @@ import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 export function useAssemblyDoc(uuid: string | undefined) {
   const [doc, setDoc] = useState<AssemblyDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
-  const [ownerUsername, setOwnerUsername] = useState<string>('')
   const docRef = useRef<AssemblyDoc | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [permission, setPermission] = useState<string>('owner')
-  const [isCloudDoc, setIsCloudDoc] = useState(false)
-  const storeRef = useRef(backendBundle.documents)
+  const store = backendBundle.documents
 
   useEffect(() => {
     if (!uuid) return
     let cancelled = false
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
-    loadDocumentAnyDomain(uuid)
-      .then(({ data, store }) => {
+    store.load(uuid)
+      .then(data => {
         if (cancelled) return
-        storeRef.current = store
-        setIsCloudDoc(store === backendBundle.cloudDocuments)
         const parsed = (parseYaml(data.content) ?? {}) as AssemblyDoc
         // An empty assembly starts with its own Origin + 3 planes (its coordinate
         // frame), mirroring the part-editor empty-doc prepend but with assembly
@@ -47,8 +41,6 @@ export function useAssemblyDoc(uuid: string | undefined) {
         useAssemblyStore.getState().resetTransientAssemblyState()
         setDoc(parsed)
         setDocName(data.name)
-        setOwnerUsername(data.owner_username || '')
-        setPermission(data.permission || 'owner')
         useUnsavedChangesStore.getState().setDirty(false)
         // A fresh document must not inherit the previous document's undo
         // history: Ctrl+Z in the new doc would otherwise restore the old one
@@ -58,7 +50,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
       })
       .catch(e => {
         if (cancelled) return
-        setError(parseHttpError(e, 'Failed to load document'))
+        setError(errorMessage(e, 'Failed to load document'))
         // A failed load must not leave a previous document's history in the
         // module store: Ctrl+Z after the error would otherwise restore the old
         // document's content into the one that failed to load. Clearing on a
@@ -67,7 +59,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
         setLoading(false)
       })
     return () => { cancelled = true }
-  }, [uuid])
+  }, [uuid, store])
 
   const instances = useMemo(() => partInstances(doc), [doc])
 
@@ -86,7 +78,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
         const dataUrl = await screenshot()
         if (dataUrl) body.preview_image = dataUrl.split(',')[1]
       }
-      await storeRef.current.save(uuid, body)
+      await store.save(uuid, body)
       // Same guard as the part editor's saveDoc: an edit during the save
       // windows postdates the stored bytes, so its dirty flag must survive
       // or a reload would silently drop those edits.
@@ -95,29 +87,29 @@ export function useAssemblyDoc(uuid: string | undefined) {
       }
       return true
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to save document'))
+      setError(errorMessage(e, 'Failed to save document'))
       return false
     }
-  }, [])
+  }, [store])
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {
-      await storeRef.current.rename(uuid, name)
+      await store.rename(uuid, name)
       setDocName(name)
       return true
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to rename document'))
+      setError(errorMessage(e, 'Failed to rename document'))
       return false
     }
-  }, [])
+  }, [store])
 
   const cloneDoc = useCallback(async (id: string): Promise<{ uuid: string }> => {
-    return storeRef.current.clone(id)
-  }, [])
+    return store.clone(id)
+  }, [store])
 
   return {
-    doc, setDoc, docRef, docName, setDocName, ownerUsername,
-    loading, error, setError, permission, isCloudDoc,
+    doc, setDoc, docRef, docName, setDocName,
+    loading, error, setError,
     instances, mates,
     saveDoc, renameDoc, cloneDoc,
   }

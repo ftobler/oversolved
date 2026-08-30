@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:static": "npm run build && node scripts/writeRuntimeConfig.mjs static",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",

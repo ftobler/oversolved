@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Static build: no backend, no auth endpoint, IndexedDB-backed store. Keeps this
-// test focused on the loading flag itself -- no fetch/auth mocking needed, and
-// user preferences resolve synchronously (guest defaults) so the list fetch fires
-// on first render.
-vi.mock('@/config/capabilities', () => ({ hasBackend: false, backend: 'static' }))
-
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
@@ -13,7 +7,6 @@ import { getLocalStore } from '@/stores/documentStore'
 import type { DocSummary } from '@/stores/documentStore'
 import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
 import Documents from '@/pages/Documents'
 
 beforeEach(() => {
@@ -28,9 +21,7 @@ afterEach(() => {
 function wrap() {
   return render(
     <BrowserRouter>
-      <AuthProvider>
-        <Documents />
-      </AuthProvider>
+      <Documents />
     </BrowserRouter>
   )
 }

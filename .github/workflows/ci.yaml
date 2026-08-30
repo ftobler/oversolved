@@ -6,26 +6,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Python is build-time tooling only now (icon generation plus the lint/docs
+  # guards); the app itself is browser-only, so this job needs no database and
+  # no GL/X stack.
   backend:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
         python-version: ["3.12", "3.13", "3.14"]
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: oversolved
-          POSTGRES_USER: oversolved
-          POSTGRES_PASSWORD: oversolved
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U oversolved"
-          --health-interval 10s
-          --health-timeout 3s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -37,27 +26,16 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libgl1 \
-            libglu1-mesa \
-            libglib2.0-0 \
-            libxext6 \
-            libxrender1 \
-            libsm6 \
-            libice6 \
-            xvfb
-
-      - name: Smoke test (prod deps only)
-        env:
-          OVERSOLVED_ADMIN_PASSWORD: smoke
-        run: |
-          pip install -e .
-          oversolved --help
-          python -c "from oversolved import cli; print('OK')"
-          python -c 'from oversolved.app import create_app; create_app({"TESTING": True}); print("OK")' || echo "SKIP: app startup failed (postgres likely unavailable in smoke environment)"
+          sudo apt-get install -y libcairo2-dev
 
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
+
+      # The package declares no runtime dependencies, so this proves the icon
+      # generator still runs off the dev extra alone (pycairo) on every
+      # supported Python.
+      - name: Smoke test (icon generation)
+        run: python oversolved/icons.py
 
       - name: flake8
         run: flake8 oversolved tests
@@ -66,8 +44,6 @@ jobs:
         run: mypy oversolved tests
 
       - name: pytest
-        env:
-          TEST_DB_DSN: postgresql://oversolved:oversolved@postgres:5432/oversolved
         run: pytest tests
 
       - name: Build wheel

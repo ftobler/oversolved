@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 // `vi.hoisted`, because the mock factory below is hoisted above this line and
 // reads the spy while building the module (the old inline mock got away with a
@@ -18,7 +18,7 @@ describe('Part - zoom to fit on open', () => {
   })
 
   it('should call autoZoomToFit after first solve', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock())
+    partDocStoreMock()
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

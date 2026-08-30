@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { backendBundle } from '@/adapters/backend'
-import { useCloudAvailable } from '@/hooks/useCloudAvailable'
-import { parseHttpError } from '@/utils/core/httpClient'
+import { errorMessage } from '@/utils/core/errorMessage'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
-import type { DocSummary, DocumentStore } from '@/stores/documentStore'
-// The tile grid, sidebar entries and search box reuse the documents page's
-// classes so a part looks the same here as in the library; import its sheet
-// explicitly rather than relying on the page chunk having loaded it.
+import type { DocSummary } from '@/stores/documentStore'
+// The tile grid and search box reuse the documents page's classes so a part
+// looks the same here as in the library; import its sheet explicitly rather
+// than relying on the page chunk having loaded it.
 import '@/pages/Documents.css'
 import '@/components/dialogs/AssemblyPartPicker.css'
 
@@ -21,20 +20,12 @@ interface AssemblyPartPickerProps {
   onPick: (docId: string, docRev: number) => void
 }
 
-// A browsable category: domain + server-side filter, mirroring the Documents
-// sidebar minus trash (a deleted doc is no insert source) and minus the tile
-// verbs (share/copy/delete) -- this dialog only browses and picks.
-interface Category {
-  key: string
-  label: string
-  icon: string
-  store: DocumentStore
-  filter: 'owned' | 'shared' | 'public'
-  domain: 'local' | 'cloud'
-}
-
-// Picks a PartDoc to instance into the assembly, presented as a full document
-// browser (categories, search, preview tiles) in the standardized dialog shell.
+// Picks a PartDoc to instance into the assembly, presented as a document browser
+// (search + preview tiles) in the standardized dialog shell. It shows the same
+// library as the documents page, minus the Trash (a deleted doc is no insert
+// source) and minus the tile verbs (duplicate/export/delete) -- this dialog only
+// browses and picks, so there is no sidebar to put them behind.
+//
 // The summaries carry no `kind`, so all docs are shown (except the assembly
 // itself). Choosing a non-part doc is a user error, not a crash: the bundle
 // build just yields no anchors.
@@ -43,40 +34,21 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [activeKey, setActiveKey] = useState('local')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  // Same availability rule as the Documents page; without the cloud domain the
-  // sidebar collapses to the local library.
-  const cloudOk = useCloudAvailable()
-  const cloudStore = backendBundle.cloudDocuments
-  const categories: Category[] = [
-    { key: 'local', label: 'Local Documents', icon: 'computer', store: backendBundle.documents, filter: 'owned', domain: 'local' },
-  ]
-  if (cloudOk && cloudStore != null) {
-    categories.push(
-      { key: 'cloud-owned', label: 'My Documents', icon: 'folder', store: cloudStore, filter: 'owned', domain: 'cloud' },
-      { key: 'cloud-shared', label: 'Shared with me', icon: 'people', store: cloudStore, filter: 'shared', domain: 'cloud' },
-      { key: 'cloud-public', label: 'Public Documents', icon: 'public', store: cloudStore, filter: 'public', domain: 'cloud' },
-    )
-  }
-  const cloudAvailable = categories.some(c => c.domain === 'cloud')
-  // Falls back to local when the cloud domain vanishes (sign-out / offline)
-  // while a cloud category is active.
-  const activeCategory = categories.find(c => c.key === activeKey) ?? categories[0]
+  const store = backendBundle.documents
 
-  // Each open starts fresh: local category, empty search, nothing selected.
-  // The reset runs on CLOSE (the dialog stays mounted, only isOpen toggles) so
-  // reopening never paints, fetches, or double-click-inserts the previous
-  // session's stale category and selection. Deferred a microtask to satisfy
-  // the no-sync-setState-in-effect rule.
+  // Each open starts fresh: empty search, nothing selected. The reset runs on
+  // CLOSE (the dialog stays mounted, only isOpen toggles) so reopening never
+  // paints, fetches, or double-click-inserts the previous session's stale
+  // selection. Deferred a microtask to satisfy the no-sync-setState-in-effect
+  // rule.
   useEffect(() => {
     if (isOpen) return
     let cancelled = false
     queueMicrotask(() => {
       if (cancelled) return
-      setActiveKey('local')
       setSearchQuery('')
       setDebouncedSearch('')
       setSelected(null)
@@ -89,11 +61,9 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Stale-response guard: switching category fires a new list; a slow earlier
-  // request (local IndexedDB read vs. fast cloud fetch, or vice versa) must not
-  // overwrite the newer result. Only the latest request sets state.
+  // Stale-response guard: typing fires a fresh list per debounce tick and
+  // nothing promises they resolve in order, so only the latest sets state.
   const listReqRef = useRef(0)
-  const { store: activeListStore, filter: activeFilter } = activeCategory
   useEffect(() => {
     if (!isOpen) return
     const reqId = ++listReqRef.current
@@ -102,7 +72,7 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
       setLoading(true)
       setError(null)
     })
-    activeListStore.list({ sort: 'name', filter: activeFilter, search: debouncedSearch })
+    store.list({ sort: 'name', search: debouncedSearch })
       .then(list => {
         if (reqId !== listReqRef.current) return
         const visible = list.filter(d => d.uuid !== selfUuid)
@@ -114,15 +84,15 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
       })
       .catch(e => {
         if (reqId !== listReqRef.current) return
-        setError(parseHttpError(e, 'Failed to list documents'))
+        setError(errorMessage(e, 'Failed to list documents'))
         setLoading(false)
       })
-  }, [isOpen, activeListStore, activeFilter, debouncedSearch, selfUuid])
+  }, [isOpen, store, debouncedSearch, selfUuid])
 
   const pick = (doc: DocSummary) => {
-    // The store synthesizes meta.rev from the server updated_at (see
-    // HttpDocumentStore.list), so a cloud pick records a real bundle cache
-    // key; the 0 fallback only covers a stamp the store could not parse.
+    // `meta.rev` is the assembly bundle cache key, so the picked rev is what
+    // later forces a rebuild when the part is edited. `meta` is optional on the
+    // interface, hence the 0 fallback for a store that does not track it.
     onPick(doc.uuid, doc.meta?.rev ?? 0)
     onClose()
   }
@@ -131,18 +101,6 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
     const doc = docs.find(d => d.uuid === selected)
     if (doc) pick(doc)
   }
-
-  const renderCategory = (c: Category) => (
-    <div
-      key={c.key}
-      className={`sidebar-item ${activeCategory.key === c.key ? 'active' : ''}`}
-      onClick={() => setActiveKey(c.key)}
-      title={c.label}
-    >
-      <span className="material-icons sidebar-item-icon">{c.icon}</span>
-      <span className="sidebar-item-label">{c.label}</span>
-    </div>
-  )
 
   return (
     <Dialog
@@ -156,16 +114,6 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
       className="doc-browser-dialog"
     >
       <div className="doc-browser">
-        <aside className="doc-browser-sidebar">
-          <div className="sidebar-section-label">Local</div>
-          {categories.filter(c => c.domain === 'local').map(renderCategory)}
-          {cloudAvailable && (
-            <>
-              <div className="sidebar-section-label">Cloud</div>
-              {categories.filter(c => c.domain === 'cloud').map(renderCategory)}
-            </>
-          )}
-        </aside>
         <div className="doc-browser-main">
           <div className="search-input-container doc-browser-search">
             <span className="material-icons search-icon">search</span>
@@ -205,13 +153,10 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
                   onDoubleClick={() => pick(doc)}
                 >
                   <div className="doc-tile-preview">
-                    <DocTilePreview doc={doc} store={activeCategory.store} />
+                    <DocTilePreview doc={doc} store={store} />
                   </div>
                   <div className="doc-tile-info">
-                    <span
-                      className="doc-tile-name"
-                      title={doc.owner_username ? `${doc.owner_username}/${doc.name}` : doc.name}
-                    >
+                    <span className="doc-tile-name" title={doc.name}>
                       {doc.name || doc.uuid}
                     </span>
                   </div>

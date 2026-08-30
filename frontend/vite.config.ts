@@ -3,6 +3,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
+//
+// No dev-server proxy: the app talks to nothing but the browser it runs in
+// (IndexedDB for storage, WASM workers for compute), so `vite dev` serves the
+// whole application and there is no second process to forward to.
 export default defineConfig({
   plugins: [react()],
 
@@ -20,23 +24,6 @@ export default defineConfig({
           if (id.includes('node_modules/three') || id.includes('node_modules/@react-three')) return 'three'
           if (id.includes('node_modules/@mui') || id.includes('node_modules/@emotion')) return 'mui'
           if (id.includes('node_modules/react') || id.includes('node_modules/zustand')) return 'vendor'
-        },
-      },
-    },
-  },
-
-  server: {
-    proxy: {
-      '/api': {
-        target: process.env.VITE_API_PROXY || 'http://localhost:5000',
-        changeOrigin: true,
-        ws: true,
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            const target = process.env.VITE_API_PROXY || 'http://localhost:5000'
-            proxyReq.setHeader('origin', target)
-            proxyReq.setHeader('referer', target + '/')
-          })
         },
       },
     },

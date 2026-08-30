@@ -1,14 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-// Static build: no backend, IndexedDB-backed local store.
-vi.mock('@/config/capabilities', () => ({ hasBackend: false, backend: 'static' }))
-
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from '@/contexts/AuthContext'
 import Documents from '@/pages/Documents'
 
 beforeEach(() => {
@@ -23,9 +19,7 @@ afterEach(() => {
 function wrap() {
   return render(
     <BrowserRouter>
-      <AuthProvider>
-        <Documents />
-      </AuthProvider>
+      <Documents />
     </BrowserRouter>
   )
 }
@@ -35,7 +29,7 @@ function wrap() {
 // button exercises it.
 async function openAddDialog() {
   wrap()
-  await waitFor(() => expect(screen.getByText('Local Documents')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText('Documents', { selector: '.sidebar-item-label' })).toBeInTheDocument())
   await act(async () => {
     fireEvent.click(screen.getByTitle('Add part'))
   })
@@ -87,7 +81,7 @@ describe('Documents: add-form empty-name validation clears on valid input', () =
     })
 
     // Document was created and the dialog closed (no longer asking for a name).
-    await waitFor(() => expect(screen.getByTitle('local/bracket')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTitle('bracket')).toBeInTheDocument())
     expect(screen.queryByText('Create New Part')).not.toBeInTheDocument()
     expect(screen.queryByText('Document name cannot be empty')).not.toBeInTheDocument()
   })

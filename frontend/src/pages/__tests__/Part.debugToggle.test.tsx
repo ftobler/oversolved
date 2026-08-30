@@ -1,28 +1,15 @@
-// The F2 debug toggle against the server build: the capability is closed
-// (debugToolsUnrestricted false), so the panel is admin-only AND an unhandled
-// F2 must fall through untouched instead of being swallowed with a
-// preventDefault. The static-build counterpart lives in
-// Part.debugToggle.static.test.tsx (one capabilities mock per file).
+// The F2 debug toggle. The panel is open to whoever is running the app -- it is
+// their machine and their documents -- so both the header button and its
+// shortcut key are unconditional. Regression this pins: the button and the key
+// handler once had SEPARATE gates, so the button could be on screen while its
+// own shortcut was dead.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, screen, act } from '@testing-library/react'
+import { render, cleanup, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
-
-vi.mock('@/config/capabilities', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/config/capabilities')>()),
-  backend: 'http' as const,
-  hasBackend: true,
-  debugToolsUnrestricted: false,
-}))
-
-// Mutable holder so each test can pick the signed-in user's privilege.
-const authState: { user: Record<string, unknown> | null } = { user: null }
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => authState,
-}))
 
 vi.mock('../../hooks/usePartDoc', async () =>
   (await import('@/__tests__/test-utils')).partDocMockModule())
@@ -37,35 +24,27 @@ vi.mock('../../components/layout/AppHeader', () => ({
 }))
 vi.mock('../../components/layout/MeasurementDisplay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
-vi.mock('../../components/dialogs/ShareDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())
 vi.mock('../../components/layout/Sidebar', async () =>
   (await import('@/__tests__/test-utils')).sidebarMockModule())
 
-const ADMIN = { id: 1, username: 'root', must_change_password: false, is_admin: true }
-const NON_ADMIN = { id: 2, username: 'dev', must_change_password: false, is_admin: false }
-
-function renderPage(withEditableTarget = false) {
+function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
       <Routes>
         <Route path="/documents/:uuid" element={<Part />} />
       </Routes>
-      {withEditableTarget && <input data-testid="field" />}
     </MemoryRouter>,
     { wrapper: Wrapper },
   )
 }
 
-// Returns the preventDefault spy so a test can tell a handled key (toggle +
-// preventDefault) from an unhandled fall-through (neither). Dispatch runs
-// inside act so the toggle's setState is flushed before assertions.
-function pressF2(target?: Element) {
+function pressF2() {
   const event = new KeyboardEvent('keydown', { key: 'F2', code: 'F2', bubbles: true, cancelable: true })
   const prevented = vi.spyOn(event, 'preventDefault')
-  act(() => { (target ?? window).dispatchEvent(event) })
+  act(() => { window.dispatchEvent(event) })
   return prevented
 }
 
@@ -73,7 +52,7 @@ function pressF2(target?: Element) {
 // button with the same class, and only this one reflects debugOpen.
 const headerButton = () => document.querySelector('button[title="Toggle debug panel (F2)"]')
 
-describe('Part F2 debug toggle (http build)', () => {
+describe('Part F2 debug toggle (static build)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useSketchEditorStore.setState({
@@ -88,11 +67,9 @@ describe('Part F2 debug toggle (http build)', () => {
 
   afterEach(() => {
     cleanup()
-    authState.user = null
   })
 
-  it('an admin toggles the debug panel and consumes the key', () => {
-    authState.user = ADMIN
+  it('toggles the debug panel and consumes the key', () => {
     renderPage()
 
     const button = headerButton()
@@ -102,24 +79,5 @@ describe('Part F2 debug toggle (http build)', () => {
     expect(button!.classList.contains('active')).toBe(true)
     expect(pressF2()).toHaveBeenCalled()
     expect(button!.classList.contains('active')).toBe(false)
-  })
-
-  it('an admin toggles even when an editable field has focus', () => {
-    authState.user = ADMIN
-    renderPage(true)
-
-    expect(pressF2(screen.getByTestId('field'))).toHaveBeenCalled()
-    expect(headerButton()!.classList.contains('active')).toBe(true)
-  })
-
-  it('a non-admin gets the key passed through untouched', () => {
-    authState.user = NON_ADMIN
-    renderPage(true)
-
-    // The debug-panel button stays hidden for a non-admin on this build, and
-    // the keydown is left alone rather than eaten by a dead handler.
-    expect(headerButton()).toBeNull()
-    expect(pressF2(screen.getByTestId('field'))).not.toHaveBeenCalled()
-    expect(headerButton()).toBeNull()
   })
 })

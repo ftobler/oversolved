@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 
@@ -57,7 +57,7 @@ describe('delete_body ghost preview', () => {
         ? editSolve
         : Promise.resolve({ result: {}, bodies: BODIES, _build_state: null }),
     )
-    vi.stubGlobal('fetch', partDocFetchMock({ content: DOC }))
+    partDocStoreMock({ content: DOC })
 
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

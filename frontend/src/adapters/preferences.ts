@@ -1,13 +1,19 @@
 // Preferences capability: where user preferences (e.g. document sort) live.
 //
-// The HTTP build stores them per-user on the PDM backend; the static
-// (zero-backend) build has no server, so they live in localStorage on the
-// device. Both builds always have SOME preferences store -- only the transport
-// differs -- so this capability is always present in the bundle (like
-// telemetry). The hook reads `backendBundle.preferences` and never asks which
-// build it is.
-import { http } from '@/utils/core/httpClient'
-import { type Backend } from '@/config/capabilities'
+// localStorage, not IndexedDB: these are a handful of small scalars read during
+// the first render of the documents grid, and localStorage is the only browser
+// store that can answer that synchronously. Putting them in the document
+// database would cost an async hop and a loading flicker on every page load to
+// remember which way a sort arrow points.
+//
+// Still a port rather than direct localStorage calls at the call site: the hook
+// asks `backendBundle.preferences`, so preferences can later move (into the
+// document store, into a synced profile) without touching the hook.
+//
+// `read` is deliberately synchronous, which is a real constraint on any future
+// implementation, not an accident of this one: an async read would put a loading
+// state and a first-render flicker into every consumer. A store that cannot
+// answer synchronously has to cache into memory at boot and serve from there.
 
 export type DocumentSort = 'alphabetical' | 'date_newest_first' | 'date_oldest_first'
 
@@ -18,33 +24,14 @@ export interface UserPreferences {
 export const DEFAULT_PREFS: UserPreferences = { document_sort: 'date_newest_first' }
 
 export interface PreferencesAdapter {
-  // Synchronous best-effort value available at first render. The static build
-  // hydrates straight from localStorage here (no async flicker); the HTTP build
-  // returns defaults until `load()` resolves.
-  initial(): UserPreferences
-  // Whether an async `load()` should follow `initial()` (HTTP yes, static no).
-  readonly async: boolean
-  load(): Promise<UserPreferences>
-  // `next` is the full updated set; `key`/`value` is the single changed field
-  // (the HTTP API patches one key, localStorage rewrites the whole blob).
+  read(): UserPreferences
+  // `next` is the full updated set; `key`/`value` is the single changed field,
+  // for a store that can write one field without rewriting the rest. Async
+  // because writing may be slow or may fail -- the caller applies the change
+  // optimistically and reverts if this rejects.
   save(next: UserPreferences, key: keyof UserPreferences, value: string): Promise<void>
 }
 
-const API_PATH = '/api/users/me/preferences'
-
-class HttpPreferences implements PreferencesAdapter {
-  readonly async = true
-  initial(): UserPreferences { return DEFAULT_PREFS }
-  async load(): Promise<UserPreferences> {
-    const data = await http.getJson<{ document_sort?: DocumentSort }>(API_PATH)
-    return { document_sort: data.document_sort ?? DEFAULT_PREFS.document_sort }
-  }
-  async save(_next: UserPreferences, key: keyof UserPreferences, value: string): Promise<void> {
-    await http.putJson(API_PATH, { [key]: value })
-  }
-}
-
-// In a static build preferences live in localStorage instead of on the server.
 const LS_KEY = 'oversolved.preferences'
 
 function readLocalPrefs(): UserPreferences {
@@ -58,17 +45,12 @@ function readLocalPrefs(): UserPreferences {
   }
 }
 
-class LocalPreferences implements PreferencesAdapter {
-  readonly async = false  // localStorage is synchronous; initial() already has it
-  initial(): UserPreferences { return readLocalPrefs() }
-  async load(): Promise<UserPreferences> { return readLocalPrefs() }
+export class LocalPreferences implements PreferencesAdapter {
+  read(): UserPreferences { return readLocalPrefs() }
   async save(next: UserPreferences): Promise<void> {
+    // A browser with site data disabled throws here. Losing a sort preference is
+    // not worth an error banner over, let alone an unhandled rejection, so the
+    // write is best-effort and the in-memory value stands for this session.
     try { localStorage.setItem(LS_KEY, JSON.stringify(next)) } catch {  /* quota / disabled */ }
   }
-}
-
-// Pure factory (testable without touching the env). Assembled into the
-// `backendBundle` composition root (adapters/backend.ts), not a singleton here.
-export function createPreferencesAdapter(b: Backend): PreferencesAdapter {
-  return b === 'static' ? new LocalPreferences() : new HttpPreferences()
 }

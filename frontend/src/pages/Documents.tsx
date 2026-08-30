@@ -3,23 +3,18 @@ import { Link } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
-import ShareDialog from '@/components/dialogs/ShareDialog'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DocumentSort } from '@/hooks/useUserPreferences'
-import { isConnectionError, parseHttpError } from '@/utils/core/httpClient'
+import { errorMessage } from '@/utils/core/errorMessage'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import { exportBundle, importBundle, copyDocument, pushDocument, moveDocument, syncAllDocuments, importStepFile } from '@/stores/documentStore'
-import type { DocSummary } from '@/stores/documentStore'
+import { exportBundle, importBundle, importStepFile } from '@/stores/documentStore'
+import type { DocSummary, TrashDoc } from '@/stores/documentStore'
 import { backendBundle } from '@/adapters/backend'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import { stringify as stringifyYaml } from 'yaml'
 import { emptyAssemblyDoc } from '@/utils/assemblyMutations'
-import type { TrashDoc } from '@/adapters/trash'
-import { useAuth } from '@/contexts/AuthContext'
-import { useCloudAvailable } from '@/hooks/useCloudAvailable'
-import { canDuplicateDocument } from '@/pages/documentsGuards'
 import '@/pages/Documents.css'
 
 function stopClick(handler: () => void): React.MouseEventHandler {
@@ -32,9 +27,9 @@ function stopClick(handler: () => void): React.MouseEventHandler {
 
 type DocumentMeta = DocSummary
 
-type SidebarFilter = 'owned' | 'shared' | 'public'
-type Domain = 'local' | 'cloud'
-
+// The document library, and the Trash it deletes into. They are two faces of one
+// store -- a delete moves a document from the first to the second -- so they
+// share a page and a sidebar rather than being separate routes.
 export default function Documents() {
   const [documents, setDocuments] = useState<DocumentMeta[]>([])
   const [loading, setLoading] = useState(true)
@@ -42,117 +37,60 @@ export default function Documents() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newDocName, setNewDocName] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
-  const [newDocPublic, setNewDocPublic] = useState(false)
   const [newDocKind, setNewDocKind] = useState<'part' | 'assembly'>('part')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [shareDoc, setShareDoc] = useState<DocumentMeta | null>(null)
-  const [activeFilter, setActiveFilter] = useState<SidebarFilter>('owned')
   const [isTrashView, setIsTrashView] = useState(false)
   const [trashDocs, setTrashDocs] = useState<TrashDoc[]>([])
   const [trashLoading, setTrashLoading] = useState(false)
-  const [activeDomain, setActiveDomain] = useState<Domain>('local')
-  const [notice, setNotice] = useState<string | null>(null)
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<{ uuid: string; name: string } | null>(null)
-  const [moveTarget, setMoveTarget] = useState<{ uuid: string; name: string; toCloud: boolean } | null>(null)
-  const [unshareTarget, setUnshareTarget] = useState<DocumentMeta | null>(null)
-  const { user, setOnline } = useAuth()
-  // Guest sort lives on defaults only; the cloud preferences load is gated on a
-  // signed-in session so a guest never fires a doomed 401 request.
-  const { preferences, loading: prefsLoading, updatePreference } = useUserPreferences(!!user)
+  const { preferences, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
 
-  // The two domains (doc-domain-move). Local is always home; the cloud domain is
-  // additive and present only when this build has a server, a session is signed in,
-  // AND the server is reachable -- a structural value, not a per-render backend-flag
-  // fork. Losing any of the three (sign-out or going offline) makes the cloud domain
-  // simply not available, dropping you back to local (session-logout-offline). The
-  // owned/shared/public sub-filter, sharing and trash are all cloud-domain concepts
-  // (the local IndexedDB library is identity-free), so they render only under Cloud.
-  const cloudStore = backendBundle.cloudDocuments
-  const cloudAvailable = useCloudAvailable()
-  // Fall back to local if the cloud domain vanishes (sign-out / offline) while active.
-  const onCloud = activeDomain === 'cloud' && cloudAvailable
-  const activeStore = onCloud ? cloudStore! : backendBundle.documents
-
-  // When the cloud domain disappears (logout or going offline), snap the view back
-  // to a coherent local-only state so no stale cloud filter / trash view lingers.
-  const prevCloudAvailable = useRef(cloudAvailable)
-  useEffect(() => {
-    prevCloudAvailable.current = cloudAvailable
-    if (cloudAvailable) return
-    setActiveDomain('local')
-    setActiveFilter('owned')
-    setIsTrashView(false)
-  }, [cloudAvailable])
+  const store = backendBundle.documents
+  // The recover/purge face of the same store's soft delete: what
+  // handleDeleteDocument tombstones is exactly what this lists.
+  const trash = backendBundle.localTrash
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Cross-domain copy confirmation is transient: clear it after a few seconds.
-  useEffect(() => {
-    if (!notice) return
-    const timer = setTimeout(() => setNotice(null), 4000)
-    return () => clearTimeout(timer)
-  }, [notice])
-
-  const sortToApiParam = (sort: DocumentSort): string => {
+  const sortToStoreParam = (sort: DocumentSort): string => {
     if (sort === 'date_newest_first') return 'modified'
     if (sort === 'date_oldest_first') return 'modified_asc'
     return 'name'
   }
 
-  // Guards against a stale list response winning the race: switching domains
-  // fires a new list against the new store, but the previous store's promise (a
-  // slow local IndexedDB read can land after a fast cloud fetch) must not
-  // overwrite it. Only the latest request gets to set state.
+  // Guards against a stale list response winning the race: a sort or search
+  // change fires a fresh list while the previous one may still be in flight, and
+  // nothing promises they resolve in order. Only the latest request sets state.
+  //
+  // The tiles already on screen stay mounted while that request runs -- there is
+  // no loading flip on refetch. Every refetch here is a revalidation of the same
+  // library, and blanking the grid for it flashes an empty page over content
+  // that is about to come back nearly identical.
   const listReqRef = useRef(0)
-  // The store behind the tiles currently on screen. A refetch from the SAME store
-  // (the preferences load landing after sign-in, a sort or search change) is only
-  // a revalidation and must keep the stale tiles mounted until the fresh list
-  // arrives -- flipping to the loading state there flashes an empty grid, which
-  // is the race the Documents.transfer suite kept losing. Only a DIFFERENT store
-  // (a domain switch) may blank the grid, since the old domain's tiles must not
-  // linger under the new one.
-  const listedFromRef = useRef<typeof activeStore | null>(null)
-  const fetchDocuments = useCallback((filter: string = 'owned', search: string = '') => {
+  const fetchDocuments = useCallback((search: string = '') => {
     const reqId = ++listReqRef.current
-    activeStore.list({ sort: sortToApiParam(sortBy), filter, search })
+    store.list({ sort: sortToStoreParam(sortBy), search })
       .then(documents => {
         if (reqId !== listReqRef.current) return
-        listedFromRef.current = activeStore
         setDocuments(documents)
         setError(null)
         setLoading(false)
       })
       .catch(e => {
         if (reqId !== listReqRef.current) return
-        // Lost the server mid-session: report offline (drops the cloud domain and
-        // re-fetches against local) instead of stranding the user on a hard error.
-        if (onCloud && isConnectionError(e)) {
-          setOnline(false)
-          setError(null)
-          setNotice('Cloud unavailable. Showing your local documents.')
-          setLoading(false)
-          return
-        }
-        setError(parseHttpError(e, 'Failed to load documents'))
+        setError(errorMessage(e, 'Failed to load documents'))
         setLoading(false)
       })
-  }, [sortBy, activeStore, onCloud, setOnline])
+  }, [sortBy, store])
 
   useEffect(() => {
-    if (prefsLoading) return
-    // Same-store revalidation keeps the previous list visible (see listedFromRef);
-    // a domain switch clears first so no cross-domain tiles are ever shown.
-    if (listedFromRef.current !== activeStore) {
-      setDocuments([])
-      setLoading(true)
-    }
-    fetchDocuments(activeFilter, debouncedSearch)
-  }, [activeFilter, debouncedSearch, fetchDocuments, prefsLoading, activeStore])
+    fetchDocuments(debouncedSearch)
+  }, [debouncedSearch, fetchDocuments])
 
   const handleAddDocument = async () => {
     if (!newDocName.trim()) {
@@ -161,139 +99,65 @@ export default function Documents() {
     }
 
     try {
-      const { uuid } = await activeStore.create(newDocName.trim(), { is_public: newDocPublic })
+      const { uuid } = await store.create(newDocName.trim())
       // `create` always makes an empty document, and empty content parses to a
       // part (DocumentPage routes on `kind`). An assembly is therefore a create
       // + save of its seed content, the same two-step handleImportFile uses, so
-      // neither store adapter nor the backend learns what a `kind` is.
+      // the store never learns what a `kind` is.
       if (newDocKind === 'assembly') {
-        await activeStore.save(uuid, { content: stringifyYaml(emptyAssemblyDoc()) })
+        await store.save(uuid, { content: stringifyYaml(emptyAssemblyDoc()) })
       }
       setNewDocName('')
       setShowAddForm(false)
       setAddError(null)
-      fetchDocuments(activeFilter, debouncedSearch)
+      fetchDocuments(debouncedSearch)
     } catch (e) {
-      setAddError(parseHttpError(e, 'Failed to create document'))
+      setAddError(errorMessage(e, 'Failed to create document'))
     }
   }
 
   const handleDeleteDocument = async (uuid: string) => {
     try {
-      await activeStore.remove(uuid)
-      fetchDocuments(activeFilter, debouncedSearch)
+      await store.remove(uuid)
+      fetchDocuments(debouncedSearch)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to delete document'))
+      setError(errorMessage(e, 'Failed to delete document'))
     }
   }
 
   const handleDuplicate = async (uuid: string) => {
     try {
-      await activeStore.duplicate(uuid)
-      fetchDocuments(activeFilter, debouncedSearch)
+      await store.duplicate(uuid)
+      fetchDocuments(debouncedSearch)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to duplicate document'))
-    }
-  }
-
-  // Cross-domain copy verbs (doc-domain-move slice 4). Both leave the source
-  // intact -- they bridge a mirror across the boundary, they do not move it. The
-  // list is not refetched because the active domain (the one on screen) is
-  // unchanged; only the OTHER domain gains a copy.
-  const handleCopyToCloud = async (uuid: string, name: string) => {
-    if (!cloudStore) return
-    try {
-      await pushDocument(backendBundle.documents, cloudStore, uuid)
-      setNotice(`Copied "${name}" to Cloud`)
-    } catch (e) {
-      setError(parseHttpError(e, 'Failed to copy document'))
-    }
-  }
-
-  const handleCopyToLocal = async (uuid: string, name: string) => {
-    if (!cloudStore) return
-    try {
-      await copyDocument(cloudStore, backendBundle.documents, uuid)
-      setNotice(`Copied "${name}" to Local`)
-    } catch (e) {
-      setError(parseHttpError(e, 'Failed to copy document'))
-    }
-  }
-
-  // Cross-domain MOVE (doc-domain-move slice 5): copy across, then delete the
-  // source. Destructive on the source side, so confirm first; the active list is
-  // refetched because the moved tile leaves the domain on screen (unlike copy).
-  const handleMoveToCloud = async (uuid: string, name: string) => {
-    if (!cloudStore) return
-    setMoveTarget({ uuid, name, toCloud: true })
-  }
-
-  const handleMoveToLocal = async (uuid: string, name: string) => {
-    if (!cloudStore) return
-    setMoveTarget({ uuid, name, toCloud: false })
-  }
-
-  const handleMoveConfirm = async () => {
-    const target = moveTarget
-    if (!target || !cloudStore) return
-    setMoveTarget(null)
-    try {
-      if (target.toCloud) {
-        await moveDocument(backendBundle.documents, cloudStore, target.uuid)
-        setNotice(`Moved "${target.name}" to Cloud`)
-      } else {
-        await moveDocument(cloudStore, backendBundle.documents, target.uuid)
-        setNotice(`Moved "${target.name}" to Local`)
-      }
-      fetchDocuments(activeFilter, debouncedSearch)
-    } catch (e) {
-      setError(parseHttpError(e, 'Failed to move document'))
-    }
-  }
-
-  // Bulk push the whole local library up to the cloud.
-  // Only unsynced docs move (markSynced clears dirty), so it is safe to
-  // re-run. Both sides stay intact -- it mirrors, never moves.
-  const handleSyncAll = async () => {
-    if (!cloudStore) return
-    try {
-      const { pushed } = await syncAllDocuments(backendBundle.documents, cloudStore)
-      setNotice(
-        pushed.length > 0
-          ? `Synced ${pushed.length} document${pushed.length === 1 ? '' : 's'} to Cloud`
-          : 'Everything is already in sync',
-      )
-    } catch (e) {
-      setError(parseHttpError(e, 'Failed to sync documents'))
+      setError(errorMessage(e, 'Failed to duplicate document'))
     }
   }
 
   const handleExport = async (uuid: string, name: string) => {
     try {
-      // Read the document text from whichever domain is active and download it.
-      // Both stores answer load() the same way, so there is no backend fork here.
-      const content = (await activeStore.load(uuid)).content
+      const content = (await store.load(uuid)).content
       const blob = new Blob([content], { type: 'text/yaml' })
       downloadBlob(blob, `${name}.yaml`)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to export document'))
+      setError(errorMessage(e, 'Failed to export document'))
     }
   }
 
-  // Library backup: every listed document into one .oversolved bundle. This is
-  // the static replacement for the admin backup feature; it also works against
-  // the HTTP store (the zip layout matches the server-side admin backup).
+  // Whole-library backup: every document into one .oversolved bundle. Documents
+  // live only in this browser's IndexedDB, so this is the one way to get them
+  // onto disk or onto another machine -- clearing site data is otherwise final.
   const handleExportAll = async () => {
     try {
-      const all = await activeStore.list({ filter: 'owned' })
+      const all = await store.list()
       if (all.length === 0) {
         setError('No documents to export')
         return
       }
-      const blob = await exportBundle(activeStore, all.map(d => d.uuid))
+      const blob = await exportBundle(store, all.map(d => d.uuid))
       downloadBlob(blob, `oversolved-backup-${new Date().toISOString().slice(0, 10)}.oversolved`)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to export documents'))
+      setError(errorMessage(e, 'Failed to export documents'))
     }
   }
 
@@ -302,27 +166,27 @@ export default function Documents() {
     if (!file) return
     e.target.value = ''  // allow re-importing the same file
 
-    // A bundle (.oversolved/.zip) round-trips through the active store; a bare
-    // .yaml stays on the single-document import path.
+    // A bundle (.oversolved/.zip) round-trips through the store; a bare .yaml
+    // stays on the single-document import path.
     if (/\.(oversolved|zip)$/i.test(file.name)) {
       try {
-        await importBundle(activeStore, file)
-        fetchDocuments(activeFilter, debouncedSearch)
+        await importBundle(store, file)
+        fetchDocuments(debouncedSearch)
       } catch (err) {
-        setError(parseHttpError(err, 'Failed to import file'))
+        setError(errorMessage(err, 'Failed to import file'))
       }
       return
     }
 
     // A STEP file becomes a fresh document whose content is a single
-    // import_step feature carrying the inline base64 bytes (parsed by the WASM
-    // kernel, no server round-trip). Same shape Part.tsx produces on import.
+    // import_step feature carrying the inline base64 bytes, decoded by the WASM
+    // kernel. Same shape Part.tsx produces on import.
     if (/\.(step|stp)$/i.test(file.name)) {
       try {
-        await importStepFile(activeStore, file)
-        fetchDocuments(activeFilter, debouncedSearch)
+        await importStepFile(store, file)
+        fetchDocuments(debouncedSearch)
       } catch (err) {
-        setError(parseHttpError(err, 'Failed to import STEP file'))
+        setError(errorMessage(err, 'Failed to import STEP file'))
       }
       return
     }
@@ -335,41 +199,32 @@ export default function Documents() {
 
     try {
       const text = await file.text()
-      // Import into the active domain's store: create + save round-trips through
-      // either store identically, so no backend fork.
-      const { uuid } = await activeStore.create(name)
-      await activeStore.save(uuid, { content: text })
-      fetchDocuments(activeFilter, debouncedSearch)
+      const { uuid } = await store.create(name)
+      await store.save(uuid, { content: text })
+      fetchDocuments(debouncedSearch)
     } catch (err) {
-      setError(parseHttpError(err, 'Failed to import document'))
+      setError(errorMessage(err, 'Failed to import document'))
     }
   }
 
-  // Trash is a per-domain capability: the cloud trash is server-side, the local
-  // trash is the IndexedDB soft delete's other half. The Trash view is one piece
-  // of UI driven by whichever adapter the active domain provides.
-  const activeTrash = onCloud ? backendBundle.trash : backendBundle.localTrash
-
-  const fetchTrash = useCallback(async (domain: Domain) => {
-    const adapter = domain === 'cloud' ? backendBundle.trash : backendBundle.localTrash
-    if (!adapter) return
+  const fetchTrash = useCallback(async () => {
     setTrashLoading(true)
     try {
-      setTrashDocs(await adapter.list())
+      setTrashDocs(await trash.list())
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to load trash'))
+      setError(errorMessage(e, 'Failed to load trash'))
     } finally {
       setTrashLoading(false)
     }
-  }, [])
+  }, [trash])
 
   const handleRecover = async (uuid: string) => {
     try {
-      await activeTrash?.recover(uuid)
-      fetchTrash(activeDomain)
-      fetchDocuments(activeFilter, debouncedSearch)
+      await trash.recover(uuid)
+      fetchTrash()
+      fetchDocuments(debouncedSearch)
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to recover document'))
+      setError(errorMessage(e, 'Failed to recover document'))
     }
   }
 
@@ -382,66 +237,31 @@ export default function Documents() {
     if (!target) return
     setPermanentDeleteTarget(null)
     try {
-      await activeTrash?.purge(target.uuid)
-      fetchTrash(activeDomain)
+      await trash.purge(target.uuid)
+      fetchTrash()
     } catch (e) {
-      setError(parseHttpError(e, 'Failed to delete document'))
+      setError(errorMessage(e, 'Failed to delete document'))
     }
   }
 
-  // Leaving a share is a normal store verb, so its failures surface exactly
-  // like the other tile actions: banner, server message, no silent swallow.
-  const handleUnshareConfirm = async () => {
-    const target = unshareTarget
-    if (!target) return
-    setUnshareTarget(null)
-    try {
-      await backendBundle.sharing?.leaveShare(target.uuid)
-      fetchDocuments(activeFilter, debouncedSearch)
-    } catch (e) {
-      setError(parseHttpError(e, 'Failed to remove shared document'))
-    }
-  }
+  // Two entries, no section label above them: a divider names a group only when
+  // there is a second group to tell it apart from.
+  type SidebarEntry = { label: string; icon: string; trash: boolean }
 
-  // One flat sidebar of items grouped under "Local" / "Cloud" dividers, replacing
-  // the old Local/Cloud toggle: a click picks BOTH the domain and the view (a
-  // filter, or the domain's Trash) in one go. The local home is identity-free, so
-  // shared / public have no meaning there -- only its own documents and trash.
-  type SidebarEntry =
-    | { domain: Domain; label: string; icon: string; filter: SidebarFilter }
-    | { domain: Domain; label: string; icon: string; trash: true }
-
-  const localEntries: SidebarEntry[] = [
-    { domain: 'local', label: 'Local Documents', icon: 'computer', filter: 'owned' },
-    { domain: 'local', label: 'Local Trash', icon: 'delete_outline', trash: true },
+  const entries: SidebarEntry[] = [
+    { label: 'Documents', icon: 'folder', trash: false },
+    { label: 'Trash', icon: 'delete_outline', trash: true },
   ]
-  const cloudEntries: SidebarEntry[] = [
-    { domain: 'cloud', label: 'My Documents', icon: 'folder', filter: 'owned' },
-    { domain: 'cloud', label: 'Shared with me', icon: 'people', filter: 'shared' },
-    { domain: 'cloud', label: 'Public Documents', icon: 'public', filter: 'public' },
-    { domain: 'cloud', label: 'My Trash', icon: 'delete_outline', trash: true },
-  ]
-
-  const isEntryActive = (e: SidebarEntry): boolean => {
-    if (e.domain !== activeDomain) return false
-    return 'trash' in e ? isTrashView : !isTrashView && activeFilter === e.filter
-  }
 
   const selectEntry = (e: SidebarEntry) => {
-    setActiveDomain(e.domain)
-    if ('trash' in e) {
-      setIsTrashView(true)
-      fetchTrash(e.domain)
-    } else {
-      setIsTrashView(false)
-      setActiveFilter(e.filter)
-    }
+    setIsTrashView(e.trash)
+    if (e.trash) fetchTrash()
   }
 
   const renderEntry = (e: SidebarEntry) => (
     <div
-      key={`${e.domain}-${e.label}`}
-      className={`sidebar-item ${isEntryActive(e) ? 'active' : ''}`}
+      key={e.label}
+      className={`sidebar-item ${isTrashView === e.trash ? 'active' : ''}`}
       onClick={() => selectEntry(e)}
       title={e.label}
     >
@@ -490,10 +310,10 @@ export default function Documents() {
               {sortBy === 'alphabetical' ? 'sort_by_alpha' : sortBy === 'date_newest_first' ? 'update' : 'history'}
             </span>
           </button>
-          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('part'); setNewDocPublic(activeFilter === 'public') }} title="Add part">
+          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('part') }} title="Add part">
             <span className="material-icons">add</span>
           </button>
-          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('assembly'); setNewDocPublic(activeFilter === 'public') }} title="Add assembly">
+          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('assembly') }} title="Add assembly">
             <span className="material-icons">account_tree</span>
           </button>
           <label className="toolbar-btn btn-import" title="Import STEP, YAML, or .oversolved bundle">
@@ -508,39 +328,15 @@ export default function Documents() {
           <button className="toolbar-btn" onClick={handleExportAll} title="Export all as .oversolved bundle">
             <span className="material-icons">archive</span>
           </button>
-          {!onCloud && cloudAvailable && (
-            <button className="toolbar-btn" onClick={handleSyncAll} title="Sync all to Cloud">
-              <span className="material-icons">cloud_sync</span>
-            </button>
-          )}
         </div>
       </AppHeader>
 
       <div className="documents-layout">
         <aside className="documents-sidebar">
-          <div className="sidebar-section-label">Local</div>
-          {localEntries.map(renderEntry)}
-          {cloudAvailable ? (
-            <>
-              <div className="sidebar-section-label">Cloud</div>
-              {cloudEntries.map(renderEntry)}
-            </>
-          ) : cloudStore && !user ? (
-            // A cloud domain exists in this build but you are a guest: offer to
-            // sign in right where the Cloud section would otherwise be, so the
-            // upgrade is one click from the library, not just the header.
-            <>
-              <div className="sidebar-section-label">Cloud</div>
-              <Link to="/login" className="sidebar-item sidebar-item-login" title="Sign in to Cloud">
-                <span className="material-icons sidebar-item-icon">login</span>
-                <span className="sidebar-item-label">Sign in to Cloud</span>
-              </Link>
-            </>
-          ) : null}
+          {entries.map(renderEntry)}
         </aside>
 
         <div className="documents-main">
-          {notice && <p className="status notice">{notice}</p>}
           <Dialog
             isOpen={showAddForm}
             title={newDocKind === 'assembly' ? 'Create New Assembly' : 'Create New Part'}
@@ -562,27 +358,8 @@ export default function Documents() {
               }}
               autoFocus
             />
-            <label className="dialog-checkbox">
-              <input
-                type="checkbox"
-                checked={newDocPublic}
-                onChange={e => setNewDocPublic(e.target.checked)}
-              />
-              Public document
-            </label>
             {addError && <p className="error-text">{addError}</p>}
           </Dialog>
-
-          {shareDoc && (
-            <ShareDialog
-              isOpen={!!shareDoc}
-              documentUuid={shareDoc.uuid}
-              documentName={shareDoc.name}
-              ownerUsername={shareDoc.owner_username}
-              isOwner={shareDoc.is_owner}
-              onClose={() => setShareDoc(null)}
-            />
-          )}
 
           <MessageDialog
             isOpen={permanentDeleteTarget != null}
@@ -592,30 +369,6 @@ export default function Documents() {
             onClose={() => setPermanentDeleteTarget(null)}
             onConfirm={handlePermanentDeleteConfirm}
             confirmLabel="Delete"
-            cancelLabel="Cancel"
-          />
-
-          <MessageDialog
-            isOpen={moveTarget != null}
-            title="Move Document"
-            message={moveTarget?.toCloud
-              ? `Move "${moveTarget?.name}" to Cloud? It will be removed from Local.`
-              : `Move "${moveTarget?.name}" to Local? It will be removed from Cloud.`}
-            variant="info"
-            onClose={() => setMoveTarget(null)}
-            onConfirm={handleMoveConfirm}
-            confirmLabel="Move"
-            cancelLabel="Cancel"
-          />
-
-          <MessageDialog
-            isOpen={unshareTarget != null}
-            title="Remove Shared Document"
-            message={`Remove "${unshareTarget?.name}" from your shared documents?`}
-            variant="info"
-            onClose={() => setUnshareTarget(null)}
-            onConfirm={handleUnshareConfirm}
-            confirmLabel="Remove"
             cancelLabel="Cancel"
           />
 
@@ -631,11 +384,11 @@ export default function Documents() {
                       <div key={doc.uuid} className="doc-tile">
                         <div className="doc-tile-link">
                           <div className="doc-tile-preview">
-                            <DocTilePreview doc={doc} store={activeStore} />
+                            <DocTilePreview doc={doc} store={store} />
                           </div>
                           <div className="doc-tile-info">
-                            <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
-                              {doc.owner_username}/{doc.name}
+                            <span className="doc-tile-name" title={doc.name}>
+                              {doc.name}
                             </span>
                           </div>
                           <div className="doc-tile-meta">
@@ -683,95 +436,37 @@ export default function Documents() {
                     <div key={doc.uuid} className="doc-tile">
                       <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                         <div className="doc-tile-preview">
-                          <DocTilePreview doc={doc} store={activeStore} />
+                          <DocTilePreview doc={doc} store={store} />
                         </div>
                         <div className="doc-tile-info">
-                          <span className="doc-tile-name" title={`${doc.owner_username}/${doc.name}`}>
-                            {doc.owner_username}/{doc.name}
+                          <span className="doc-tile-name" title={doc.name}>
+                            {doc.name}
                           </span>
                         </div>
                         <div className="doc-tile-meta">
                           <span className="doc-tile-date">{formatRelativeDate(doc.updated_at)}</span>
-                           <div className="doc-tile-actions">
-                            {onCloud && doc.is_owner && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => setShareDoc(doc))}
-                                title="Share document"
-                              >
-                                <span className="material-icons">share</span>
-                              </button>
-                            )}
-                             {onCloud && !doc.is_owner && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => setUnshareTarget(doc))}
-                                title="Unshare document"
-                              >
-                                <span className="material-icons">link_off</span>
-                              </button>
-                            )}
-                            {canDuplicateDocument(doc, onCloud) && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => handleDuplicate(doc.uuid))}
-                                title="Duplicate"
-                              >
+                          <div className="doc-tile-actions">
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={stopClick(() => handleDuplicate(doc.uuid))}
+                              title="Duplicate"
+                            >
                               <span className="material-icons">content_copy</span>
                             </button>
-                            )}
-                            {!onCloud && cloudAvailable && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => handleCopyToCloud(doc.uuid, doc.name))}
-                                title="Copy to Cloud"
-                              >
-                                <span className="material-icons">cloud_upload</span>
-                              </button>
-                            )}
-                            {!onCloud && cloudAvailable && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => handleMoveToCloud(doc.uuid, doc.name))}
-                                title="Move to Cloud"
-                              >
-                                <span className="material-icons">drive_file_move</span>
-                              </button>
-                            )}
-                            {onCloud && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => handleCopyToLocal(doc.uuid, doc.name))}
-                                title="Copy to Local"
-                              >
-                                <span className="material-icons">cloud_download</span>
-                              </button>
-                            )}
-                            {onCloud && doc.is_owner && (
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => handleMoveToLocal(doc.uuid, doc.name))}
-                                title="Move to Local"
-                              >
-                                <span className="material-icons">drive_file_move</span>
-                              </button>
-                            )}
-                              <button
-                                className="btn btn-tile-action"
-                                onClick={stopClick(() => handleExport(doc.uuid, doc.name))}
-                                title="Export YAML"
-                              >
+                            <button
+                              className="btn btn-tile-action"
+                              onClick={stopClick(() => handleExport(doc.uuid, doc.name))}
+                              title="Export YAML"
+                            >
                               <span className="material-icons">download</span>
                             </button>
-                            {doc.is_owner && (
-                              <button
-                                className="btn btn-delete-tile"
-                                onClick={stopClick(() => handleDeleteDocument(doc.uuid))}
-                                title="Delete document"
-                              >
-                                <span className="material-icons">delete</span>
-                              </button>
-                            )}
+                            <button
+                              className="btn btn-delete-tile"
+                              onClick={stopClick(() => handleDeleteDocument(doc.uuid))}
+                              title="Delete document"
+                            >
+                              <span className="material-icons">delete</span>
+                            </button>
                           </div>
                         </div>
                       </Link>

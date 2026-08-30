@@ -12,7 +12,7 @@ Comprehensive coding standards for the Oversolved CAD system.
 - Pure logic must have unit tests
 - No mocked store methods where Zustand works directly
 - Frontend changes must pass `just frontend`
-- Backend changes must pass `just backend`
+- Python tooling changes must pass `just backend`
 
 ## 2. Code Style
 
@@ -44,30 +44,20 @@ length = distance_between(A, B)
 - **Do not** use em-dashes (—) or en-dashes (–)
 - **Do not** use emojis in code and documentation
 
-## 3. Backend Conventions
+## 3. Persistence
 
-### Database Usage
+The app is browser-only: there is no server and no database process. Documents
+live in IndexedDB under the origin serving the app, and every CAD computation
+happens in a WASM Web Worker on the same machine.
 
-**Rule:** Always use context managers for transactions.
+**Rule:** Persistence is an implementation detail behind the document store.
+Feature code reads and writes documents through the store, never IndexedDB
+directly, so that the storage layer stays swappable and testable without a
+browser.
 
-```python
-with db.transaction():
-    cur = db.execute("INSERT INTO features VALUES (?, ?, ?)", ...)
-```
-
-- Avoid: "Cannot operate on a closed database"
-- Only affects production mode (TESTING config)
-
-### Response Format
-
-**Rule:** Return only newly computed data, not input echo.
-
-```python
-# GOOD - only computed result
-{
-  "geometry": {...}
-}
-```
+**Rule:** Treat a write as fallible. IndexedDB can reject on quota, on a
+private-browsing profile, or on a blocked upgrade, and there is no server copy
+to fall back to. Surface the failure rather than dropping the change silently.
 
 ## 4. Frontend Conventions
 
@@ -269,24 +259,6 @@ export function executeCommand(name: string): void
 export function dispatchKey(e: KeyboardEvent): boolean
 ```
 
-### Migration System
-
-**Location:** `oversolved/migrations/` (one file per migration, auto-discovered by `discover_and_register()` and applied on startup).
-
-**Rule:** Each migration runs exactly once on startup. Track version in `schema_version` table.
-
-```python
-# oversolved/migrations/m002_add_preview_image.py
-from oversolved.db import Database
-
-VERSION = 2
-NAME = "add_preview_image"
-
-
-def apply(database: Database) -> None:
-    database.execute("ALTER TABLE documents ADD COLUMN preview_image BYTEA")
-```
-
 ### Geometry Mapping
 
 **Location:** `frontend/src/utils/geometry/geometryMapping.ts`
@@ -299,7 +271,7 @@ def apply(database: Database) -> None:
 
 | Task | Command | Location |
 |------|---------|----------|
-| Run backend tests | `pytest tests/` | `tests/` |
+| Run Python tooling tests | `pytest tests/` | `tests/` |
 | Run frontend tests | `npx vitest run` | `frontend/` |
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `mypy tests/ oversolved/` | root |

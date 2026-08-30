@@ -15,7 +15,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
 
@@ -49,7 +49,7 @@ function renderPart() {
 
 describe('plane-on-face and the nested edit session guard', () => {
   it('closes an open feature session first, then opens the new sketch per-action', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_AND_EXTRUDE_DOC }))
+    partDocStoreMock({ content: SKETCH_AND_EXTRUDE_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
@@ -105,7 +105,7 @@ describe('plane-on-face and the nested edit session guard', () => {
   })
 
   it('abandoning a plane pick before it lands leaves no half-open session', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_AND_EXTRUDE_DOC }))
+    partDocStoreMock({ content: SKETCH_AND_EXTRUDE_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))

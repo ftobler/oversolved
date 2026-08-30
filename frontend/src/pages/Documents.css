@@ -23,34 +23,6 @@
   margin-bottom: 25px;
 }
 
-/* Section divider grouping the sidebar items by domain (Local / Cloud). Renders
-   as "Local ────" -- a small uppercase label with a rule trailing on each side. */
-.sidebar-section-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 12px 12px 4px;
-  color: #666;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  user-select: none;
-}
-
-.sidebar-section-label::before,
-.sidebar-section-label::after {
-  content: '';
-  flex: 1 1 0;
-  height: 1px;
-  background: #2a2c33;
-}
-
-.sidebar-section-label::before {
-  flex: 1 1 0;
-}
-
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -65,13 +37,6 @@
 
 .sidebar-item:hover {
   background-color: #101014;
-}
-
-/* The sign-in entry is a Link, not a div: drop the default anchor styling so it
-   matches the surrounding sidebar items. */
-.sidebar-item-login {
-  text-decoration: none;
-  color: inherit;
 }
 
 .sidebar-item.active {

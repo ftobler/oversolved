@@ -1,49 +1,57 @@
-// The storage adapter seam: the one interface that lets Oversolved run either
-// HTTP-backed (Flask PDM) or fully local (IndexedDB, zero backend). Every
-// document persistence call site routes through a `DocumentStore` so the
-// backend choice is a single boot-time decision, not smeared across the app.
+// The storage seam: the one interface every document persistence call site
+// routes through. Today exactly one implementation backs it (IndexedDB, in the
+// browser), and that is the point of keeping the interface rather than calling
+// idb.ts directly -- swapping in another store (OPFS, a file-system handle, a
+// sync engine) is a single boot-time wiring change in adapters/backend.ts, not
+// a rewrite of every caller. The contract suite runs this interface against
+// every conformer so a second implementation cannot quietly drift from the
+// first.
 //
-// The interactive compute (sketch solve, OCCT, STEP I/O) already lives in the
-// browser via WASM, so going static is a storage problem, not a compute one.
-// See feature plan: static-deploy-adapter.
+// Compute is not part of this seam: sketch solve, OCCT and STEP I/O all run in
+// the browser via WASM, so persistence is the only thing a backend would ever
+// have provided.
 
-// Per-document modification tracking. Carried from day one so a future cloud
-// sync engine is purely additive: it reads `dirty` / compares `rev` vs
-// `baseRev`, pushes, and on ack sets `baseRev = rev`. The IDB-only build
-// maintains these fields itself; the HTTP build synthesizes `rev`/`updatedAt`
-// from the server row's updated_at (its version field) with `dirty: false`,
-// so consumers like the assembly bundle cache see one uniform shape.
+// Per-document modification tracking. Carried from day one so a future sync
+// engine is purely additive: it reads `dirty` / compares `rev` vs `baseRev`,
+// pushes, and on ack sets `baseRev = rev`. `rev` doubles as the assembly bundle
+// cache key, so every store must bump it on save -- a store that pinned it
+// would serve stale geometry after an edit.
 export interface DocMeta {
   id: string
   rev: number          // monotonic local revision, bumped on every save
   updatedAt: number    // epoch ms, set on every save
-  dirty: boolean       // local change not yet pushed to a server
-  baseRev?: number     // last rev known synced to a server (conflict detection)
+  dirty: boolean       // local change not yet pushed to a sync target
+  baseRev?: number     // last rev known synced (conflict detection)
 }
 
-// The lightweight document descriptor surfaced by `list()`. Mirrors the shape
-// the documents grid already consumes from `/api/documents`, plus the optional
-// sync `meta` envelope so both the UI and a future engine can read tracking
-// state without loading the payload.
+// The lightweight document descriptor surfaced by `list()`: what the documents
+// grid paints a tile from, plus the optional sync `meta` envelope so both the UI
+// and a future sync engine can read tracking state without loading the payload.
 export interface DocSummary {
   uuid: string
   name: string
   created_at: string
   updated_at: string
+  // Record fields, not UI state: nothing renders these. `is_owner` is always
+  // true and `owner_username` a fixed label -- the library belongs to the
+  // browser holding it -- but a store keeps them because the exported bundle
+  // format has a per-user directory level, and dropping them would make every
+  // bundle written so far un-importable. `is_public` likewise: no view offers
+  // it today, and the store still round-trips it so an older document does not
+  // lose the flag by being opened.
   is_owner: boolean
   owner_username: string
   is_public: boolean
-  preview_image?: string  // base64 PNG, set by IDB store; HTTP store leaves it undefined
+  preview_image?: string  // base64 PNG rendered from the last save
   meta?: DocMeta
 }
 
 // The full document as round-tripped today: YAML/JSON text plus identity. No
-// format migration in this seam -- `content` is exactly what the server stores.
+// format migration in this seam -- `content` is exactly what the store holds.
 export interface DocumentPayload {
   content: string
   name: string
   owner_username?: string
-  permission?: string
   is_public?: boolean
   preview_image?: string  // base64 PNG, no data: prefix (matches save body)
 }
@@ -54,8 +62,7 @@ export interface SaveInput {
   preview_image?: string
 }
 
-// List filters. The HTTP store forwards these as query params (server-side
-// sort/filter/search); a local store applies them in-memory.
+// List filters, applied by the store over its own records.
 export interface ListOptions {
   sort?: string
   filter?: string
@@ -70,16 +77,37 @@ export interface DocumentStore {
   create(name: string, opts?: { is_public?: boolean }): Promise<{ uuid: string }>
   rename(id: string, name: string): Promise<void>
   duplicate(id: string): Promise<{ uuid: string }>
-  // Copy a document into the caller's own library. On the server this differs
-  // from `duplicate`: it needs only view permission, so it works on a shared or
-  // public document the caller does not own (reassigning ownership to them). The
-  // local store has no other owners, so it is a plain copy like `duplicate`.
-  // `name` is what the user confirmed in the clone prompt; omitted, the store
-  // falls back to its own suggested name.
+  // Copy a document under a fresh id, from the editor rather than the library
+  // grid: `name` is what the user confirmed in the clone prompt, and omitting it
+  // lets the store fall back to its own suggested name. Kept distinct from
+  // `duplicate` (which always auto-names) because the two are different user
+  // gestures, not because the storage differs.
   clone(id: string, name?: string): Promise<{ uuid: string }>
-  // A network URL the grid can point an <img> at for a thumbnail, or null when
-  // the store has no server-rendered thumbnail (the local store inlines a
-  // base64 preview_image on the summary instead). Keeps the view from hardcoding
-  // an /api path it would otherwise reach past the adapter to build.
+  // A URL the grid can point an <img> at for a thumbnail, or null when this
+  // store renders no separate thumbnail resource and inlines a base64
+  // `preview_image` on the summary instead. It exists so the view never
+  // constructs a store-specific URL of its own.
   thumbnailUrl(id: string): string | null
+}
+
+// The recover/purge half of a store's soft delete. `remove()` above only
+// tombstones a document; this is where the tombstoned records are listed,
+// brought back, or destroyed for good. It is a separate port because the Trash
+// view is the only screen that needs it -- every other caller works with live
+// documents and should not be handed a purge().
+export interface TrashDoc {
+  uuid: string
+  name: string
+  deleted_at: string
+  created_at: string
+  owner_id: number
+  owner_username: string
+  preview_image?: string  // inline base64 PNG, as on DocSummary
+}
+
+export interface TrashAdapter {
+  list(): Promise<TrashDoc[]>
+  recover(uuid: string): Promise<void>
+  // Permanent delete from the trash (the soft-delete's hard end).
+  purge(uuid: string): Promise<void>
 }

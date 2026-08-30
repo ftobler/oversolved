@@ -11,7 +11,6 @@ const h = vi.hoisted(() => ({
   buildBundleViaWorker: vi.fn(),
   list: vi.fn(),
   load: vi.fn(),
-  cloudLoad: vi.fn(),
 }))
 
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
@@ -22,15 +21,10 @@ vi.mock('@/kernel/worker/anchorSolverClient', () => ({
 }))
 vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBundleViaWorker }))
 vi.mock('@/adapters/backend', () => ({
-  backendBundle: {
-    documents: { list: h.list, load: h.load },
-    cloudDocuments: { load: h.cloudLoad },
-  },
+  backendBundle: { documents: { list: h.list, load: h.load } },
 }))
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentRevs } from '@/hooks/useAssemblySolve'
-import { HttpDocumentStore } from '@/stores/documentStore/HttpDocumentStore'
-import { mountFakeDocumentsServer } from '@/stores/documentStore/__tests__/fakeDocumentsServer'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
@@ -132,31 +126,14 @@ describe('currentRevs', () => {
     expect(await currentRevs(docWith(instance('p1')))).toEqual({ 'doc-p1': 1 })
   })
 
-  it('moves the solve key of a cloud-only part after a server-side edit', async () => {
-    // PS-H1 end to end: a part picked from the cloud category has no local
-    // mirror, so its instance pins doc_rev 0 and only list()'s synthesized
-    // meta.rev can re-key `${doc_id}@${rev}` after the remote doc changes.
-    // h.list routes through the REAL HttpDocumentStore against the fake
-    // Flask server, so the synthesis under test is the shipped one.
-    const unmount = mountFakeDocumentsServer()
-    try {
-      const http = new HttpDocumentStore()
-      const { uuid } = await http.create('Bracket')
-      await http.save(uuid, { content: 'kind: part\nfeatures: []\n' })
-      h.list.mockImplementation(() => http.list())
-
-      const cloud = docWith(instance('p1', { doc_id: uuid, doc_rev: 0 }))
-      const before = await currentRevs(cloud)
-      expect(before[uuid]).toBeGreaterThan(0)
-
-      // Edit the part on the SERVER only (no local copy exists): the next
-      // solve must rebuild its bundle, not cache-hit the old key.
-      await http.save(uuid, { content: 'kind: part\nfeatures:\n  - id: b2\n    kind: box\n' })
-      const after = await currentRevs(cloud)
-      expect(after[uuid]).toBeGreaterThan(before[uuid])
-    } finally {
-      unmount()
-    }
+  it('moves the solve key when the part is edited after being instanced', async () => {
+    // PS-H1: the instance pins the doc_rev it was inserted at, so editing the
+    // part afterwards must re-key `${doc_id}@${rev}` from the store's CURRENT
+    // meta.rev. Reading the pinned rev instead would cache-hit the stale bundle
+    // and paint the assembly with pre-edit geometry.
+    const asm = docWith(instance('p1', { doc_rev: 1 }))
+    h.list.mockResolvedValue([{ uuid: 'doc-p1', meta: { rev: 7 } }])
+    expect(await currentRevs(asm)).toEqual({ 'doc-p1': 7 })
   })
 })
 
@@ -373,24 +350,12 @@ describe('useAssemblySolve', () => {
 
     const handlers = h.setRelayHandlers.mock.calls[0][0]
     expect(await handlers.partDocContent('doc-a')).toEqual({ kind: 'part', features: [] })
-    expect(h.cloudLoad).not.toHaveBeenCalled()  // local hit needs no cloud round-trip
+    expect(h.load).toHaveBeenCalledWith('doc-a')
 
     await handlers.buildBundle('doc-a', 4, { kind: 'part' })
     // The relay stamps the doc id onto the raw PartDoc YAML so the OCC worker's
     // doc-keyed cache-reset guard fires between bundle builds of different docs.
     expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part', id: 'doc-a' }, 'doc-a', 4)
-  })
-
-  it('falls back to the cloud store for a part with no local mirror', async () => {
-    // A part instanced from the picker's cloud category exists only in the
-    // cloud domain; the relay must resolve it there when the local load misses.
-    h.load.mockRejectedValue(new Error('not found'))
-    h.cloudLoad.mockResolvedValue({ content: 'kind: part\nfeatures: [{id: f1}]' })
-    renderHook(() => useAssemblySolve('asm-1', null))
-
-    const handlers = h.setRelayHandlers.mock.calls[0][0]
-    expect(await handlers.partDocContent('doc-cloud')).toEqual({ kind: 'part', features: [{ id: 'f1' }] })
-    expect(h.cloudLoad).toHaveBeenCalledWith('doc-cloud')
   })
 
   it('relay partDocContent migrates a legacy singular transform body to the plural list', async () => {

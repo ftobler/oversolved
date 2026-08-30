@@ -1,27 +1,19 @@
 // Telemetry capability: where a bug report goes.
 //
-// The HTTP build POSTs the report to the PDM backend; the static (zero-backend)
-// build has no server, so the same report object is rendered to a Markdown file
-// the user downloads instead. The debug panel calls `backendBundle.telemetry.send`
-// and stays ignorant of which transport it got -- absence of a server is a
-// different wiring, not a branch the view carries.
+// There is nowhere to send one -- the app is the browser tab -- so the report is
+// rendered to a Markdown file the user downloads and forwards themselves. The
+// debug panel calls `backendBundle.telemetry.send` and stays ignorant of that:
+// the sink is a port precisely so "where reports land" can change (an issue
+// tracker, a support address) without the panel learning about it.
 //
 // Markdown rather than JSON because a downloaded report has a human next stop:
 // the user pastes it into an issue tracker or a chat. The bulky attachments stay
 // fenced JSON inside it so they remain machine-readable for whoever triages.
-import { http } from '@/utils/core/httpClient'
-import { type Backend } from '@/config/capabilities'
 
 export type BugReport = Record<string, unknown>
 
 export interface BugReportSink {
   send(report: BugReport): Promise<void>
-}
-
-class HttpBugReportSink implements BugReportSink {
-  async send(report: BugReport): Promise<void> {
-    await http.postJson('/api/bug-report', report)
-  }
 }
 
 function jsonBlock(value: unknown): string {
@@ -77,9 +69,9 @@ export function formatBugReportMarkdown(report: BugReport): string {
   return sections.join('\n\n') + '\n'
 }
 
-// No backend: land the report at the browser download edge, the same way local
-// STEP/STL export already does (Blob -> object URL -> anchor click).
-class DownloadBugReportSink implements BugReportSink {
+// Land the report at the browser download edge, the same way STEP/STL export
+// already does (Blob -> object URL -> anchor click).
+export class DownloadBugReportSink implements BugReportSink {
   async send(report: BugReport): Promise<void> {
     const blob = new Blob([formatBugReportMarkdown(report)], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
@@ -89,10 +81,4 @@ class DownloadBugReportSink implements BugReportSink {
     a.click()
     URL.revokeObjectURL(url)
   }
-}
-
-// Pure factory (testable without touching the env). Assembled into the
-// `backendBundle` composition root (adapters/backend.ts), not a singleton here.
-export function createBugReportSink(b: Backend): BugReportSink {
-  return b === 'static' ? new DownloadBugReportSink() : new HttpBugReportSink()
 }

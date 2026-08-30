@@ -20,7 +20,6 @@ function deferred() {
 function renderToolbar(handleSave: () => Promise<boolean>) {
   return render(
     <AssemblyToolbar
-      readOnly={false}
       docName="TestDoc"
       onRename={vi.fn()}
       handleSave={handleSave}

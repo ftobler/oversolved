@@ -15,7 +15,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { Wrapper, partDocFetchMock } from '@/__tests__/test-utils'
+import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
 
@@ -79,7 +79,7 @@ function radiusOf(id: string): number | undefined {
 
 describe('nested edit session guard (direct FeatureTree Edit button)', () => {
   it('clicking Edit on feature C while feature D is open closes D into its own entry and opens C clean', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: TWO_FILLETS_DOC }))
+    partDocStoreMock({ content: TWO_FILLETS_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
@@ -124,7 +124,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
   // close-then-open generalizes across both the entry point and the kind,
   // not just the fillet-editing-fillet case above.
   it('clicking Edit sketch while a different feature is open closes it first too', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: FILLET_AND_SKETCH_DOC }))
+    partDocStoreMock({ content: FILLET_AND_SKETCH_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
@@ -156,7 +156,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
   // undo entry. Confirmed by there being exactly one real entry afterward
   // (the fillet edit), not two.
   it('opening a fillet while an untouched sketch session is open closes it with no phantom entry', async () => {
-    vi.stubGlobal('fetch', partDocFetchMock({ content: SKETCH_AND_FILLET_DOC }))
+    partDocStoreMock({ content: SKETCH_AND_FILLET_DOC })
     renderPart()
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))

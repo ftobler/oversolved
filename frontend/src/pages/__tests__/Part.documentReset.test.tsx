@@ -6,6 +6,7 @@ import { solveViaWorker } from '@/kernel/worker/solverClient'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { Wrapper } from '@/__tests__/test-utils'
+import { backendBundle } from '@/adapters/backend'
 
 // undo-document-reset at the Part-page level: the store-owned fields
 // (rollbackPosition, pickBoundary, editingFeatureId) and the sketch editor's
@@ -41,27 +42,17 @@ features:
     label: B feature
 `
 
-function twoDocFetchMock() {
-  return vi.fn((url: string) => {
-    if (url === '/api/auth/me') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ user: { id: 1, username: 'admin', must_change_password: false } }),
-      } as Response)
-    }
-    if (url === '/api/documents/A') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ uuid: 'A', name: 'Doc A', content: DOC_A, permission: 'owner' }),
-      } as Response)
-    }
-    if (url === '/api/documents/B') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ uuid: 'B', name: 'Doc B', content: DOC_B, permission: 'owner' }),
-      } as Response)
-    }
-    return Promise.resolve({ ok: false, status: 404 } as Response)
+// A store holding both documents, so navigating A -> B is a real second load
+// rather than the same bytes served twice.
+function stubTwoDocStore() {
+  const docs: Record<string, { content: string; name: string }> = {
+    A: { content: DOC_A, name: 'Doc A' },
+    B: { content: DOC_B, name: 'Doc B' },
+  }
+  return vi.spyOn(backendBundle.documents, 'load').mockImplementation(async (id: string) => {
+    const doc = docs[id]
+    if (!doc) throw new Error(`Document not found: ${id}`)
+    return doc
   })
 }
 
@@ -102,7 +93,7 @@ describe('Part - document change resets the editor store', () => {
   })
 
   it('a keyed remount to another document leaves the editor store fresh and B\'s first solve clean', async () => {
-    vi.stubGlobal('fetch', twoDocFetchMock())
+    stubTwoDocStore()
 
     render(
       <MemoryRouter initialEntries={['/documents/A']}>
@@ -156,7 +147,7 @@ describe('Part - document change resets the editor store', () => {
   })
 
   it('a remount clears A\'s half-open dimension gesture, so B\'s first pick does not trip the invariants', async () => {
-    vi.stubGlobal('fetch', twoDocFetchMock())
+    stubTwoDocStore()
 
     render(
       <MemoryRouter initialEntries={['/documents/A']}>

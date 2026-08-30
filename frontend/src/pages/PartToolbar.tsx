@@ -5,35 +5,26 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import AppHeader from '@/components/layout/AppHeader'
-import { backendBundle } from '@/adapters/backend'
 
 type StackEntry = { mutation: Mutation }
 
 interface PartToolbarProps {
-  readOnly: boolean
-  permission: string | null
   docName: string | null
-  isCloudDoc: boolean
   onRename: (name: string) => Promise<boolean>
   // Resolves to whether the bytes actually landed, so a failed save can be
   // told apart from a successful one.
   handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
-  onShare: () => void
   // Header-right slot (the page's debug toggles). The header owns the layout;
   // the page owns the state behind the buttons.
   rightContent?: ReactNode
 }
 
 export default function PartToolbar({
-  readOnly,
-  permission,
   docName,
-  isCloudDoc,
   onRename,
   handleSave,
   handleClone,
-  onShare,
   rightContent,
 }: PartToolbarProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
@@ -134,29 +125,12 @@ export default function PartToolbar({
           </div>
         )}
       </div>
-      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick} disabled={readOnly}>
+      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick}>
         <span className="material-icons-outlined">{saveState === 'success' ? 'check' : 'save'}</span>
       </button>
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
       </button>
-      {backendBundle.sharing && permission === 'owner' && isCloudDoc && (
-        <button
-          className="toolbar-btn"
-          aria-label="Share document"
-          title="Share document"
-          onClick={onShare}
-          disabled={readOnly}
-        >
-          <span className="material-icons-outlined">share</span>
-        </button>
-      )}
-      {readOnly && (
-        <span className="doc-name" style={{ color: '#ef5350', fontSize: '12px', marginLeft: '8px' }}>
-          <span className="material-icons-outlined" style={{ fontSize: '14px', verticalAlign: 'middle' }}>lock</span>
-          {' '}View Only
-        </span>
-      )}
       {isEditing ? (
         <input
           className="doc-name-input"

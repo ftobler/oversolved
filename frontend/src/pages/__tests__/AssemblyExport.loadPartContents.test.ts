@@ -7,7 +7,7 @@ import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { PartInstance } from '@/types/cad'
 
 const { loadMock } = vi.hoisted(() => ({ loadMock: vi.fn() }))
-vi.mock('@/adapters/documentLoad', () => ({ loadDocumentAnyDomain: loadMock }))
+vi.mock('@/adapters/backend', () => ({ backendBundle: { documents: { load: loadMock } } }))
 
 function instance(handle: string, doc_id: string): PartInstance {
   return { handle, doc_id, doc_rev: 1, transform: IDENTITY_TRANSFORM }
@@ -18,10 +18,8 @@ describe('AssemblyExport loadPartContents', () => {
 
   it('returns a migrated doc for legacy singular transform YAML', async () => {
     loadMock.mockResolvedValue({
-      data: {
-        content: 'kind: part\nfeatures:\n  - id: t1\n    kind: transform\n    transform:\n      body: "@body_ex1"\n      operation: new\n',
+      content: 'kind: part\nfeatures:\n  - id: t1\n    kind: transform\n    transform:\n      body: "@body_ex1"\n      operation: new\n',
       name: 'Legacy',
-    },
     })
     const out = await loadPartContents([instance('h1', 'doc-a')])
     const sub = (out['doc-a'].features as Array<Record<string, unknown>>)[0].transform as Record<string, unknown>
@@ -30,7 +28,7 @@ describe('AssemblyExport loadPartContents', () => {
   })
 
   it('loads each referenced doc once, keyed by doc id', async () => {
-    loadMock.mockResolvedValue({ data: { content: 'kind: part\nfeatures: []', name: 'P' } })
+    loadMock.mockResolvedValue({ content: 'kind: part\nfeatures: []', name: 'P' })
     const out = await loadPartContents([instance('h1', 'doc-a'), instance('h2', 'doc-a'), instance('h3', 'doc-b')])
     expect(loadMock).toHaveBeenCalledTimes(2)
     expect(out['doc-a']).toBeDefined()
