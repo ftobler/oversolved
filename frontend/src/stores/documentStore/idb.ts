@@ -1,10 +1,18 @@
 // Minimal promise wrapper over IndexedDB. Kept tiny and dependency-free rather
 // than pulling a database library in for what is essentially a keyed object
-// store. One database, one object store keyed by document uuid.
+// store. One database; `documents` is keyed by document uuid, `handles` holds
+// out-of-line values under names this module's callers choose.
+//
+// v2 adds `handles`, whose only inhabitant is the FileSystemDirectoryHandle of
+// a library folder the user opened. A handle is structured-cloneable, so
+// IndexedDB is the only place it CAN be kept across sessions -- which is the
+// role IndexedDB takes on once a document can live in a real file: the handle
+// registry rather than the library itself.
 
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 export const STORE_DOCUMENTS = 'documents'
+export const STORE_HANDLES = 'handles'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -17,6 +25,11 @@ function openDb(): Promise<IDBDatabase> {
       const db = req.result
       if (!db.objectStoreNames.contains(STORE_DOCUMENTS)) {
         db.createObjectStore(STORE_DOCUMENTS, { keyPath: 'uuid' })
+      }
+      // Created without a keyPath: a directory handle is an opaque platform
+      // object with no field to key on, so the caller supplies the key.
+      if (!db.objectStoreNames.contains(STORE_HANDLES)) {
+        db.createObjectStore(STORE_HANDLES)
       }
     }
     req.onsuccess = () => {
@@ -56,9 +69,9 @@ function promisify<T>(req: IDBRequest<T>): Promise<T> {
   })
 }
 
-async function tx(mode: IDBTransactionMode): Promise<IDBObjectStore> {
+async function tx(mode: IDBTransactionMode, name = STORE_DOCUMENTS): Promise<IDBObjectStore> {
   const db = await openDb()
-  return db.transaction(STORE_DOCUMENTS, mode).objectStore(STORE_DOCUMENTS)
+  return db.transaction(name, mode).objectStore(name)
 }
 
 export async function idbGet<T>(key: string): Promise<T | undefined> {
@@ -78,6 +91,24 @@ export async function idbPut<T>(value: T): Promise<void> {
 
 export async function idbDelete(key: string): Promise<void> {
   const store = await tx('readwrite')
+  await promisify(store.delete(key))
+}
+
+// The `handles` store, whose values carry no key of their own. Separate
+// entry points rather than an optional store argument on idbGet/idbPut, so a
+// keyed-by-uuid document call can never accidentally address it.
+export async function idbGetHandle<T>(key: string): Promise<T | undefined> {
+  const store = await tx('readonly', STORE_HANDLES)
+  return promisify(store.get(key) as IDBRequest<T | undefined>)
+}
+
+export async function idbPutHandle<T>(key: string, value: T): Promise<void> {
+  const store = await tx('readwrite', STORE_HANDLES)
+  await promisify(store.put(value as unknown as Record<string, unknown>, key))
+}
+
+export async function idbDeleteHandle(key: string): Promise<void> {
+  const store = await tx('readwrite', STORE_HANDLES)
   await promisify(store.delete(key))
 }
 

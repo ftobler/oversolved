@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { DB_NAME, idbGet, idbPut, resetDbConnection } from './idb'
+import { DB_NAME, DB_VERSION, idbGet, idbPut, resetDbConnection } from './idb'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
@@ -31,13 +31,13 @@ describe('idb open robustness', () => {
   })
 
   it('closes its connection on versionchange so an upgrade by another party can proceed', async () => {
-    // Caches a live v1 connection first.
+    // Caches a live connection at the module's pinned version first.
     await idbPut({ uuid: 'doc1', name: 'Doc 1' })
 
     // An upgrader stuck on `blocked` would never settle and fail this test
     // on timeout; the module's onversionchange close must let it through.
     await new Promise<void>((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 2)
+      const req = indexedDB.open(DB_NAME, DB_VERSION + 1)
       req.onupgradeneeded = () => {}
       req.onsuccess = () => { req.result.close(); resolve() }
       req.onerror = () => reject(req.error)
