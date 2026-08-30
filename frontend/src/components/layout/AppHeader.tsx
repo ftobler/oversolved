@@ -124,20 +124,16 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         >
           <span className="material-icons-outlined">bug_report</span>
         </button>
-        {/* Three states of one guest-first session:
-            - no server reachable  -> "cloud not available" (login impossible here)
-            - server, not signed in -> a "Sign in" affordance (the optional upgrade)
-            - server, signed in     -> the account name + a logout button
+        {/* The static build has no account slot at all: no server ever existed
+            for it, so there is nothing to sign in to and nothing to report as
+            missing -- an "unavailable" marker would only tease a capability
+            this deployment does not have. With a server there are two states of
+            the one guest-first session:
+            - not signed in -> a "Sign in" affordance (the optional upgrade)
+            - signed in     -> the account name + a logout button
             Signed in but the server went away mid-session is a deliberate offline
             state, not a crash: an "offline" marker, still on the local library. */}
-        {!hasBackend ? (
-          <span
-            className="cloud-not-available"
-            title="Sign-in requires the server build"
-          >
-            cloud not available
-          </span>
-        ) : user ? (
+        {!hasBackend ? null : user ? (
           <>
             {!online && (
               <span

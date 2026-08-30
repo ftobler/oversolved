@@ -25,10 +25,16 @@ function wrap() {
 }
 
 describe('AppHeader (static / no backend)', () => {
-  it('shows cloud-not-available indicator instead of username and logout', () => {
+  // The static build is a deployment where the cloud never existed. The account
+  // slot is empty -- no sign-in, no logout, and no "unavailable" marker either:
+  // naming a capability this build does not have only teases it.
+  it('shows no account slot at all: no sign-in, no logout, no cloud marker', () => {
     wrap()
-    expect(screen.getByText('cloud not available')).toBeInTheDocument()
     expect(screen.queryByTitle('Sign out')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Sign in')).not.toBeInTheDocument()
+    expect(screen.queryByText('cloud not available')).not.toBeInTheDocument()
+    expect(screen.queryByText(/cloud/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('offline')).not.toBeInTheDocument()
   })
 
   it('does not show the synthetic local username in the header', () => {
