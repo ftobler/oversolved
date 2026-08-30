@@ -255,7 +255,14 @@ export default function Documents() {
   // Firefox and Safari the sidebar is exactly what it was before this existed.
   // Absence is structural, the way the backend removal treated every capability
   // the platform does not have.
-  const showLibraryGroup = library.canOpenFolder || library.kind !== 'browser'
+  const showLibraryGroup = library.canOpenFolder || library.canOpenFile ||
+    library.kind !== 'browser'
+
+  // A single opened file is a library of exactly one document, so the gestures
+  // that need a second file have nothing to mean. Hiding them is the same
+  // structural absence the group itself uses; the store refuses them too, as
+  // the backstop.
+  const canAddDocuments = library.kind !== 'file'
 
   type SidebarEntry = { label: string; icon: string; trash: boolean }
 
@@ -321,21 +328,25 @@ export default function Documents() {
               {sortBy === 'alphabetical' ? 'sort_by_alpha' : sortBy === 'date_newest_first' ? 'update' : 'history'}
             </span>
           </button>
-          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('part') }} title="Add part">
-            <span className="material-icons">add</span>
-          </button>
-          <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('assembly') }} title="Add assembly">
-            <span className="material-icons">account_tree</span>
-          </button>
-          <label className="toolbar-btn btn-import" title="Import STEP, YAML, or .oversolved bundle">
-            <input
-              type="file"
-              accept=".step,.stp,.yaml,.yml,.oversolved,.zip"
-              onChange={handleImportFile}
-              className="file-upload-input"
-            />
-            <span className="material-icons">upload</span>
-          </label>
+          {canAddDocuments && (
+            <>
+              <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('part') }} title="Add part">
+                <span className="material-icons">add</span>
+              </button>
+              <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('assembly') }} title="Add assembly">
+                <span className="material-icons">account_tree</span>
+              </button>
+              <label className="toolbar-btn btn-import" title="Import STEP, YAML, or .oversolved bundle">
+                <input
+                  type="file"
+                  accept=".step,.stp,.yaml,.yml,.oversolved,.zip"
+                  onChange={handleImportFile}
+                  className="file-upload-input"
+                />
+                <span className="material-icons">upload</span>
+              </label>
+            </>
+          )}
           <button className="toolbar-btn" onClick={handleExportAll} title="Export all as .oversolved bundle">
             <span className="material-icons">archive</span>
           </button>
@@ -360,12 +371,16 @@ export default function Documents() {
 
               {library.kind !== 'browser' && (
                 <div className="sidebar-item active" title={library.label}>
-                  <span className="material-icons sidebar-item-icon">folder_open</span>
+                  <span className="material-icons sidebar-item-icon">
+                    {library.kind === 'file' ? 'description' : 'folder_open'}
+                  </span>
                   <span className="sidebar-item-label">{library.label}</span>
                   <button
                     className="sidebar-item-action"
                     onClick={stopClick(() => { library.closeFolder() })}
-                    title="Stop using this folder (the files stay where they are)"
+                    title={library.kind === 'file'
+                      ? 'Close this file (it stays where it is)'
+                      : 'Stop using this folder (the files stay where they are)'}
                   >
                     <span className="material-icons">close</span>
                   </button>
@@ -391,6 +406,17 @@ export default function Documents() {
                 >
                   <span className="material-icons sidebar-item-icon">create_new_folder</span>
                   <span className="sidebar-item-label">Open folder...</span>
+                </div>
+              )}
+
+              {library.canOpenFile && (
+                <div
+                  className="sidebar-item"
+                  onClick={() => { library.openFile() }}
+                  title="Open one document file on disk, and save back to it"
+                >
+                  <span className="material-icons sidebar-item-icon">file_open</span>
+                  <span className="sidebar-item-label">Open file...</span>
                 </div>
               )}
             </>

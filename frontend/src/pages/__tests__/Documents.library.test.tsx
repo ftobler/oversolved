@@ -12,13 +12,18 @@ import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDi
 
 // The sidebar half of the feature: which library is live, and the fact that
 // none of it appears on a browser that cannot pick directories.
-const capability = { can: true }
-const picker = { result: null as FileSystemDirectoryHandle | null }
+const capability = { can: true, canFile: true }
+const picker = {
+  result: null as FileSystemDirectoryHandle | null,
+  file: null as FileSystemFileHandle | null,
+}
 const registry = { forgotten: 0 }
 
 vi.mock('@/adapters/fileSystemAccess', () => ({
   canPickDirectory: () => capability.can,
+  canPickFiles: () => capability.canFile,
   pickLibraryDirectory: async () => picker.result,
+  pickDocumentToOpen: async () => picker.file,
 }))
 
 vi.mock('@/stores/documentStore/libraryHandleRegistry', () => ({
@@ -33,10 +38,14 @@ beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory()
   resetDbConnection()
   capability.can = true
+  capability.canFile = true
   picker.result = null
+  picker.file = null
   registry.forgotten = 0
   useLibraryStore.getState().useBrowserStorage()
-  useLibraryStore.setState({ remembered: null, error: null, canOpenFolder: false })
+  useLibraryStore.setState({
+    remembered: null, error: null, canOpenFolder: false, canOpenFile: false,
+  })
   vi.useFakeTimers({ shouldAdvanceTime: true })
 })
 
@@ -59,11 +68,13 @@ describe('Documents library sidebar', () => {
   // was before this feature existed: no group, no dead "Open folder" entry.
   it('shows no library group at all when directories cannot be picked', async () => {
     capability.can = false
+    capability.canFile = false
     await boot()
     wrap()
     await waitFor(() => expect(screen.getByText('No documents yet.')).toBeInTheDocument())
     expect(screen.queryByText('Library')).not.toBeInTheDocument()
     expect(screen.queryByText('Open folder...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Open file...')).not.toBeInTheDocument()
     expect(screen.queryByText('Browser storage')).not.toBeInTheDocument()
   })
 
@@ -73,6 +84,38 @@ describe('Documents library sidebar', () => {
     expect(await screen.findByText('Library')).toBeInTheDocument()
     expect(screen.getByText('Browser storage')).toBeInTheDocument()
     expect(screen.getByText('Open folder...')).toBeInTheDocument()
+  })
+
+  // One opened file is a library of exactly one document, so the gestures that
+  // need a second file have nothing to mean and are not offered.
+  it('hides the add and import gestures for a single opened file', async () => {
+    const bytes = new TextEncoder().encode('kind: part\n')
+    picker.file = {
+      kind: 'file',
+      name: 'Bracket.yaml',
+      async getFile() {
+        return {
+          name: 'Bracket.yaml', size: bytes.length, type: '', lastModified: 0,
+          async text() { return new TextDecoder().decode(bytes) },
+          async arrayBuffer() { return bytes.buffer },
+        } as unknown as File
+      },
+      async createWritable() {
+        return { async write() {}, async close() {}, async abort() {} }
+      },
+    } as unknown as FileSystemFileHandle
+
+    await boot()
+    wrap()
+    expect(await screen.findByTitle('Add part')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Open file...'))
+    // Twice: the sidebar names the open file, and the grid shows it as the one
+    // document that library contains.
+    expect(await screen.findAllByText('Bracket')).toHaveLength(2)
+    expect(screen.queryByTitle('Add part')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Add assembly')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Import STEP, YAML, or .oversolved bundle')).not.toBeInTheDocument()
   })
 
   it('names the opened folder and lists its documents instead', async () => {

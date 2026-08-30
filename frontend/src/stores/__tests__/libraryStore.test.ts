@@ -6,8 +6,12 @@ import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDi
 // The platform edges are mocked; what is under test is the decision table
 // between them. `capability.can` flips the whole feature off, which is the
 // Firefox/Safari shape.
-const capability = { can: true }
-const picker = { result: null as FileSystemDirectoryHandle | null, error: null as Error | null }
+const capability = { can: true, canFile: true }
+const picker = {
+  result: null as FileSystemDirectoryHandle | null,
+  file: null as FileSystemFileHandle | null,
+  error: null as Error | null,
+}
 const registry = {
   restored: null as FileSystemDirectoryHandle | null,
   reopened: null as FileSystemDirectoryHandle | null,
@@ -18,9 +22,14 @@ const registry = {
 
 vi.mock('@/adapters/fileSystemAccess', () => ({
   canPickDirectory: () => capability.can,
+  canPickFiles: () => capability.canFile,
   pickLibraryDirectory: async () => {
     if (picker.error) throw picker.error
     return picker.result
+  },
+  pickDocumentToOpen: async () => {
+    if (picker.error) throw picker.error
+    return picker.file
   },
 }))
 
@@ -36,7 +45,9 @@ const cad = () => fakeDirectory('cad') as unknown as FileSystemDirectoryHandle
 
 beforeEach(() => {
   capability.can = true
+  capability.canFile = true
   picker.result = null
+  picker.file = null
   picker.error = null
   registry.restored = null
   registry.reopened = null
@@ -44,7 +55,9 @@ beforeEach(() => {
   registry.remembered = []
   registry.forgotten = 0
   useLibraryStore.getState().useBrowserStorage()
-  useLibraryStore.setState({ remembered: null, error: null, canOpenFolder: false })
+  useLibraryStore.setState({
+    remembered: null, error: null, canOpenFolder: false, canOpenFile: false,
+  })
 })
 
 describe('libraryStore', () => {
@@ -60,10 +73,13 @@ describe('libraryStore', () => {
     expect(useLibraryStore.getState().canOpenFolder).toBe(false)
     await useLibraryStore.getState().restore()
     expect(useLibraryStore.getState().canOpenFolder).toBe(true)
+    expect(useLibraryStore.getState().canOpenFile).toBe(true)
 
     capability.can = false
+    capability.canFile = false
     await useLibraryStore.getState().restore()
     expect(useLibraryStore.getState().canOpenFolder).toBe(false)
+    expect(useLibraryStore.getState().canOpenFile).toBe(false)
   })
 
   // Absence is structural: on a browser without the pickers there is nothing to
@@ -91,6 +107,24 @@ describe('libraryStore', () => {
     await useLibraryStore.getState().restore()
     expect(useLibraryStore.getState().kind).toBe('browser')
     expect(useLibraryStore.getState().remembered).toBe('cad')
+  })
+
+  // The degenerate case: one file is a library of one document. It is not
+  // remembered across sessions the way a folder is -- there is no library to
+  // come back to, only a document, and reopening it is one click of the picker.
+  it('opens a picked file as a one-document library', async () => {
+    picker.file = { name: 'Bracket.yaml' } as FileSystemFileHandle
+    await useLibraryStore.getState().openFile()
+    expect(useLibraryStore.getState().kind).toBe('file')
+    expect(useLibraryStore.getState().label).toBe('Bracket')
+    expect(activeLibrary().kind).toBe('file')
+  })
+
+  it('treats a cancelled file picker as a non-event', async () => {
+    picker.file = null
+    await useLibraryStore.getState().openFile()
+    expect(useLibraryStore.getState().kind).toBe('browser')
+    expect(useLibraryStore.getState().error).toBeNull()
   })
 
   it('opens a picked folder and remembers it', async () => {

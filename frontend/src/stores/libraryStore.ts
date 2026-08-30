@@ -5,11 +5,14 @@ import {
 import type { DocumentStore, TrashAdapter } from '@/stores/documentStore'
 import { getLocalStore, getLocalTrash } from '@/stores/documentStore'
 import { openDirectoryLibrary } from '@/stores/documentStore/FileSystemDirectoryStore'
+import { openSingleFileLibrary } from '@/stores/documentStore/singleFileLibrary'
 import {
   rememberLibraryHandle, restoreLibraryHandle, reopenLibraryHandle,
   rememberedLibraryName, forgetLibraryHandle,
 } from '@/stores/documentStore/libraryHandleRegistry'
-import { canPickDirectory, pickLibraryDirectory } from '@/adapters/fileSystemAccess'
+import {
+  canPickDirectory, canPickFiles, pickLibraryDirectory, pickDocumentToOpen,
+} from '@/adapters/fileSystemAccess'
 import { errorMessage } from '@/utils/core/errorMessage'
 
 // Which library the user is looking at, as UI state.
@@ -35,9 +38,11 @@ interface LibraryState {
   // generic "open a folder", which is a materially different click.
   remembered: string | null
   canOpenFolder: boolean
+  canOpenFile: boolean
   error: string | null
   restore: () => Promise<void>
   openFolder: () => Promise<void>
+  openFile: () => Promise<void>
   reopenRemembered: () => Promise<void>
   useBrowserStorage: () => void
   closeFolder: () => Promise<void>
@@ -66,6 +71,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     activate('directory', dir.name, { documents, trash })
   }
 
+  // The degenerate case: a library of exactly one document, which is the file
+  // the user picked. Not remembered across sessions, unlike a folder -- there
+  // is no library to come back to, only a document, and reopening it is one
+  // click of the same picker.
+  const toFile = (file: FileSystemFileHandle): void => {
+    const { documents, trash, label } = openSingleFileLibrary(file)
+    activate('file', label, { documents, trash })
+  }
+
   return {
     // Browser storage is the boot state and the fallback, set as the live
     // target in adapters/backend before any of this runs.
@@ -79,6 +93,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     // evaluating makes the answer depend on import order, which is how a
     // capability check turns into a heisenbug.
     canOpenFolder: false,
+    canOpenFile: false,
     error: null,
 
     // Boot. Runs outside a user gesture, so it may probe an existing grant but
@@ -86,7 +101,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     // entry to click, not as a permission dialog nobody asked for.
     restore: async () => {
       const canOpenFolder = canPickDirectory()
-      set({ canOpenFolder })
+      set({ canOpenFolder, canOpenFile: canPickFiles() })
       if (!canOpenFolder) return
       const handle = await restoreLibraryHandle()
       if (handle) {
@@ -105,6 +120,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         set({ remembered: null })
       } catch (e) {
         set({ error: errorMessage(e, 'Failed to open folder') })
+      }
+    },
+
+    openFile: async () => {
+      try {
+        const file = await pickDocumentToOpen()
+        if (!file) return  // cancelled: a non-event
+        toFile(file)
+      } catch (e) {
+        set({ error: errorMessage(e, 'Failed to open file') })
       }
     },
 
@@ -129,9 +154,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       toBrowser()
     },
 
-    // Stops using the folder AND forgets it, so it does not come back next
-    // boot. Nothing on disk is touched: the documents are the files, and they
-    // stay exactly where the user put them.
+    // Stops using the folder or file AND forgets the folder, so it does not
+    // come back next boot. Nothing on disk is touched: the documents are the
+    // files, and they stay exactly where the user put them.
     closeFolder: async () => {
       await forgetLibraryHandle()
       set({ remembered: null })
