@@ -10,7 +10,7 @@ import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportBundle, importBundle, importStepFile } from '@/stores/documentStore'
 import type { DocSummary, TrashDoc } from '@/stores/documentStore'
-import { backendBundle } from '@/adapters/backend'
+import { useLibraryStore } from '@/stores/libraryStore'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import { stringify as stringifyYaml } from 'yaml'
@@ -46,11 +46,18 @@ export default function Documents() {
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<{ uuid: string; name: string } | null>(null)
   const { preferences, updatePreference } = useUserPreferences()
   const sortBy = preferences.document_sort
+  const library = useLibraryStore()
 
-  const store = backendBundle.documents
-  // The recover/purge face of the same store's soft delete: what
-  // handleDeleteDocument tombstones is exactly what this lists.
-  const trash = backendBundle.localTrash
+  // Read off the library store, not off backendBundle, because this page is the
+  // one that SWITCHES libraries: taking the live pair as reactive state is what
+  // makes the grid refetch when the user opens a folder. Every other consumer
+  // keeps reading the forwarding pair on the bundle and never notices.
+  //
+  // The recover/purge face is the same library's soft delete: what
+  // handleDeleteDocument tombstones is exactly what `trash` lists, so the two
+  // always come from the same place.
+  const store = library.documents
+  const trash = library.trash
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -244,8 +251,12 @@ export default function Documents() {
     }
   }
 
-  // Two entries, no section label above them: a divider names a group only when
-  // there is a second group to tell it apart from.
+  // The library group appears only where a folder can actually be picked, so on
+  // Firefox and Safari the sidebar is exactly what it was before this existed.
+  // Absence is structural, the way the backend removal treated every capability
+  // the platform does not have.
+  const showLibraryGroup = library.canOpenFolder || library.kind !== 'browser'
+
   type SidebarEntry = { label: string; icon: string; trash: boolean }
 
   const entries: SidebarEntry[] = [
@@ -334,6 +345,56 @@ export default function Documents() {
       <div className="documents-layout">
         <aside className="documents-sidebar">
           {entries.map(renderEntry)}
+
+          {showLibraryGroup && (
+            <>
+              <div className="sidebar-section">Library</div>
+              <div
+                className={`sidebar-item ${library.kind === 'browser' ? 'active' : ''}`}
+                onClick={library.useBrowserStorage}
+                title="Documents stored inside this browser"
+              >
+                <span className="material-icons sidebar-item-icon">storage</span>
+                <span className="sidebar-item-label">Browser storage</span>
+              </div>
+
+              {library.kind !== 'browser' && (
+                <div className="sidebar-item active" title={library.label}>
+                  <span className="material-icons sidebar-item-icon">folder_open</span>
+                  <span className="sidebar-item-label">{library.label}</span>
+                  <button
+                    className="sidebar-item-action"
+                    onClick={stopClick(() => { library.closeFolder() })}
+                    title="Stop using this folder (the files stay where they are)"
+                  >
+                    <span className="material-icons">close</span>
+                  </button>
+                </div>
+              )}
+
+              {library.kind === 'browser' && library.remembered && (
+                <div
+                  className="sidebar-item"
+                  onClick={() => { library.reopenRemembered() }}
+                  title="Reopen this folder (the browser needs permission again)"
+                >
+                  <span className="material-icons sidebar-item-icon">folder</span>
+                  <span className="sidebar-item-label">{library.remembered}</span>
+                </div>
+              )}
+
+              {library.canOpenFolder && (
+                <div
+                  className="sidebar-item"
+                  onClick={() => { library.openFolder() }}
+                  title="Open a folder on disk as the document library"
+                >
+                  <span className="material-icons sidebar-item-icon">create_new_folder</span>
+                  <span className="sidebar-item-label">Open folder...</span>
+                </div>
+              )}
+            </>
+          )}
         </aside>
 
         <div className="documents-main">
@@ -423,6 +484,9 @@ export default function Documents() {
             <>
               {loading && <p className="status">Loading documents...</p>}
               {error && <ErrorBanner message={`Error: ${error}`} onDismiss={() => setError(null)} />}
+              {library.error && (
+                <ErrorBanner message={`Error: ${library.error}`} onDismiss={library.clearError} />
+              )}
               {!loading && documents.length === 0 && debouncedSearch && (
                 <p className="status">No documents match "{debouncedSearch}"</p>
               )}

@@ -59,6 +59,39 @@
   text-align: left;
 }
 
+/* Names the library group. A divider earns a label only once there is a second
+   group to tell it apart from, which is what a pickable folder introduces. */
+.sidebar-section {
+  margin: 18px 12px 6px 12px;
+  padding-top: 12px;
+  border-top: 1px solid #26262c;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7a7a85;
+  user-select: none;
+}
+
+/* The close-folder affordance rides inside its row and only appears on hover,
+   so a one-click "stop using this folder" never reads as a delete. */
+.sidebar-item-action {
+  display: none;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.sidebar-item:hover .sidebar-item-action {
+  display: block;
+}
+
+.sidebar-item-action .material-icons {
+  font-size: 16px;
+}
+
 .documents-main {
   flex: 1;
   padding: 16px;

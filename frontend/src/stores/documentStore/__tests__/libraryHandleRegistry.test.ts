@@ -3,7 +3,7 @@ import { resetFakeIndexedDb } from './fakeIndexedDb'
 import { resetDbConnection } from '../idb'
 import {
   rememberLibraryHandle, restoreLibraryHandle, reopenLibraryHandle,
-  hasRememberedLibrary, forgetLibraryHandle,
+  rememberedLibraryName, forgetLibraryHandle,
 } from '../libraryHandleRegistry'
 
 // A real FileSystemDirectoryHandle is a platform object: IndexedDB clones it
@@ -44,7 +44,7 @@ describe('libraryHandleRegistry', () => {
   })
 
   it('reports no remembered library on a first visit', async () => {
-    expect(await hasRememberedLibrary()).toBe(false)
+    expect(await rememberedLibraryName()).toBeNull()
     expect(await restoreLibraryHandle()).toBeNull()
     expect(await reopenLibraryHandle()).toBeNull()
   })
@@ -52,7 +52,7 @@ describe('libraryHandleRegistry', () => {
   it('remembers a folder across a simulated reload', async () => {
     await rememberLibraryHandle(directory('granted'))
     resetDbConnection()  // a new session against the same database
-    expect(await hasRememberedLibrary()).toBe(true)
+    expect(await rememberedLibraryName()).toBe('cad')
     expect((await restoreLibraryHandle())?.name).toBe('cad')
   })
 
@@ -65,7 +65,7 @@ describe('libraryHandleRegistry', () => {
     expect(await restoreLibraryHandle()).toBeNull()
     expect(prompted).not.toHaveBeenCalled()
     // Still remembered: the sidebar can offer to reopen it.
-    expect(await hasRememberedLibrary()).toBe(true)
+    expect(await rememberedLibraryName()).toBe('cad')
   })
 
   it('re-grants on the user gesture path', async () => {
@@ -80,20 +80,20 @@ describe('libraryHandleRegistry', () => {
     await rememberLibraryHandle(directory('prompt', 'denied'))
     resetDbConnection()
     expect(await reopenLibraryHandle()).toBeNull()
-    expect(await hasRememberedLibrary()).toBe(false)
+    expect(await rememberedLibraryName()).toBeNull()
   })
 
   it('forgets a directory that no longer exists', async () => {
     await rememberLibraryHandle(directory(undefined))  // no permission to be had
     resetDbConnection()
     expect(await reopenLibraryHandle()).toBeNull()
-    expect(await hasRememberedLibrary()).toBe(false)
+    expect(await rememberedLibraryName()).toBeNull()
   })
 
   it('forgets on request', async () => {
     await rememberLibraryHandle(directory('granted'))
     await forgetLibraryHandle()
-    expect(await hasRememberedLibrary()).toBe(false)
+    expect(await rememberedLibraryName()).toBeNull()
   })
 
   // Not being able to remember the folder is not a reason to fail opening it:

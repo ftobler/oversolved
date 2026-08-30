@@ -16,9 +16,9 @@
 // one place. It also gives every consumer one import to reach for instead of a
 // per-capability import graph to keep straight.
 import type { DocumentStore, TrashAdapter } from '@/stores/documentStore'
-import { getLocalStore, getLocalTrash } from '@/stores/documentStore'
 import { DownloadBugReportSink, type BugReportSink } from './telemetry'
 import { LocalPreferences, type PreferencesAdapter } from './preferences'
+import { activeDocumentStore, activeTrashAdapter } from './library'
 
 export interface BackendBundle {
   documents: DocumentStore        // the document library
@@ -44,4 +44,10 @@ export function createBackend(
 }
 
 // Boot-time singleton. Views import this.
-export const backendBundle: BackendBundle = createBackend(getLocalStore(), getLocalTrash())
+//
+// The storage ports are the FORWARDING pair from ./library, not a concrete
+// store: which library is live is a user choice now (browser storage, or a
+// folder they opened) and it can change after boot, while this bundle is held
+// by every consumer forever. ./library resolves browser storage as its own
+// starting point, so there is never a moment with no library.
+export const backendBundle: BackendBundle = createBackend(activeDocumentStore, activeTrashAdapter)

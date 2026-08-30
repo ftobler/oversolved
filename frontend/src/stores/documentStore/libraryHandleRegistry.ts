@@ -46,15 +46,17 @@ async function storedHandle(): Promise<FileSystemDirectoryHandle | null> {
 // Boot path. Returns the handle only if the grant is somehow still in force,
 // which is the exception rather than the rule -- so a null here usually means
 // "there is a remembered folder, but it needs a click", not "there is none".
-// Use `hasRememberedLibrary()` to tell those apart.
+// Use `rememberedLibraryName()` to tell those apart.
 export async function restoreLibraryHandle(): Promise<FileSystemDirectoryHandle | null> {
   const handle = await storedHandle()
   if (!handle) return null
   return (await hasReadWritePermission(handle, { request: false })) ? handle : null
 }
 
-export async function hasRememberedLibrary(): Promise<boolean> {
-  return (await storedHandle()) !== null
+// The folder's name without asking for permission, so the sidebar can name the
+// entry it is offering to reopen. Reading `.name` off a handle needs no grant.
+export async function rememberedLibraryName(): Promise<string | null> {
+  return (await storedHandle())?.name ?? null
 }
 
 // User-gesture path: prompts if needed. A refusal, a revoked grant or a
