@@ -168,6 +168,17 @@ describe('the folder changing underneath the app', () => {
     expect(dir.snapshot()[INDEX_FILE]).toContain(first)
   })
 
+  // Reconcile runs in front of writes as well as reads, so its result has to
+  // survive a mutation that decides to write nothing of its own -- otherwise
+  // the index and the folder agree after a read but not after a write.
+  it('persists an adoption found by a write that then no-ops', async () => {
+    dir.putText('Gearbox.yaml', 'kind: part\n')
+    await store.remove('no-such-doc')  // a no-op mutation, nothing of its own to write
+    const index = dir.snapshot()[INDEX_FILE]
+    expect(index).toContain('Gearbox')
+    expect(index).toContain((await store.list())[0].uuid)
+  })
+
   it('drops a document whose file was deleted from outside', async () => {
     const { uuid } = await store.create('Bracket')
     await dir.removeEntry('Bracket.yaml')

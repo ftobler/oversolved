@@ -275,17 +275,24 @@ export class DirectoryLibrary {
   }
 
   // The write side: read-reconcile-mutate-write, serialized against every other
-  // mutation. `mutate` returns the new entry list, or undefined to skip the
+  // mutation. `mutate` returns the new entry list, or undefined to skip its own
   // write (a no-op save still gets to decide that inside the critical section).
-  // Its `write` argument is how a mutation puts document bytes on disk WITHIN
-  // the same serialized slot, so a save and an index update cannot interleave.
+  // Its `io` argument is how a mutation puts document bytes on disk WITHIN the
+  // same serialized slot, so a save and an index update cannot interleave.
+  //
+  // A mutation that writes nothing still persists what reconcile found.
+  // Otherwise a file that appeared underneath the app is adopted, thrown away,
+  // and adopted again under a different uuid on every no-op call until some
+  // read happens to land -- so the index and the folder agree after a read but
+  // not after a write, which is a distinction nothing else in here makes.
   async update<T>(
     mutate: (entries: IndexEntry[], io: LibraryIo) => Promise<{ entries?: IndexEntry[]; result: T }>,
   ): Promise<T> {
     return this.enqueue(async () => {
-      const { index } = await this.reconcile(await this.loadIndex())
+      const { index, changed } = await this.reconcile(await this.loadIndex())
       const { entries, result } = await mutate(index.docs.map(cloneEntry), this.io())
       if (entries) await this.saveIndex({ version: INDEX_VERSION, docs: entries })
+      else if (changed) await this.saveIndex(index)
       return result
     })
   }
