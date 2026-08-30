@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Comment-style linter for the Oversolved codebase.
 
-Enforces the comment conventions documented in CLAUDE.md against a set of
+Enforces the comment conventions documented in AGENTS.md against a set of
 folders. Right now it understands TypeScript; the rule set is meant to grow.
 
 Each rule is a function registered with the @rule decorator. The registry is
@@ -457,7 +457,7 @@ def main(argv: list[str] | None = None) -> int:
     rule_lines = "\n".join(f"  {name}: {r.description}" for name, r in RULES.items())
     parser = argparse.ArgumentParser(
         prog="lint.py",
-        description=f"Oversolved comment-style linter. Enforces the comment conventions from CLAUDE.md.\n\nRules:\n{rule_lines}",
+        description=f"Oversolved comment-style linter. Enforces the comment conventions from AGENTS.md.\n\nRules:\n{rule_lines}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("folders", nargs="+", help="folders to scan")

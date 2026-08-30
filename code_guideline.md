@@ -178,7 +178,7 @@ def my_icon(ctx):
     ctx.arc(0.5, 0.5, px(0.1), 0, 2 * math.pi)
     ctx.fill()
 
-drawall()  # Required at end
+draw_all()  # Required at end
 ```
 
 **Helpers:**
@@ -302,7 +302,7 @@ def apply(database: Database) -> None:
 | Run backend tests | `pytest tests/` | `tests/` |
 | Run frontend tests | `npx vitest run` | `frontend/` |
 | Run linter | `npm run lint` | `frontend/` |
-| Run type checker | `mypy oversolved/ tests/` | root |
+| Run type checker | `mypy tests/ oversolved/` | root |
 | Add new command | `registerCommand()` | `frontend/src/utils/core/commandRegistry.ts` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |

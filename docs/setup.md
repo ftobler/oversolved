@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Python >= 3.12
-- Node.js >= 18
+- Node.js >= 20.19
 - npm
 
 ## System Dependencies
@@ -26,6 +26,8 @@ pip install -e .[dev]
 |---|---|---|---|
 | `OVERSOLVED_ADMIN_PASSWORD` | Yes | — | Admin password; server refuses to start without it |
 | `OVERSOLVED_SESSION_COOKIE_SECURE` | No | `false` | Set `true` in production for Secure cookies |
+| `OVERSOLVED_DB_DSN` | Yes (postgres) | `postgresql://oversolved:oversolved@localhost:5432/oversolved` | PostgreSQL DSN; also `--db-dsn`. SQLite uses `--db-path` on the CLI instead |
+| `OVERSOLVED_UPLOAD_DIR` | No | — | Directory for uploaded/exported files |
 
 ## Frontend Setup
 
@@ -95,7 +97,7 @@ These default to `--db-type postgres`; add `--db-type sqlite --db-path ...` for 
 ```bash
 pytest tests/ -v                           # backend (needs Postgres; see below)
 cd frontend && npx vitest run               # frontend
-mypy oversolved/ tests/ && ruff check oversolved/ tests/   # backend lint (CI still runs flake8)
+mypy tests/ oversolved/ && ruff check tests/ oversolved/   # backend lint (CI still runs flake8)
 cd frontend && npm run lint                 # frontend lint
 ```
 
