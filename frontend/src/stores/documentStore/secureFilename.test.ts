@@ -5,7 +5,7 @@
 // writes mismatched entry paths.
 
 import { describe, it, expect } from 'vitest'
-import { secureFilename } from './secureFilename'
+import { secureFilename, uniqueStem } from './secureFilename'
 
 describe('secureFilename', () => {
   it('joins internal spaces with underscores', () => {
@@ -131,5 +131,36 @@ describe('secureFilename', () => {
     const entry = `${user}/${name}`
     expect(entry).toBe('Ada_Lovelace/Difference_Engine.yaml')
     expect(entry.split('/')).toHaveLength(2)
+  })
+})
+
+// One suffixing rule, shared by the folder library and the bundle format. They
+// have to agree: a document exported from a folder and imported back has to
+// come out with the name it went in with.
+describe('uniqueStem', () => {
+  const takenIn = (...names: string[]) => (c: string) => names.includes(c)
+
+  it('leaves a free stem alone', () => {
+    expect(uniqueStem('Bracket', takenIn())).toBe('Bracket')
+  })
+
+  it('suffixes a taken stem and keeps counting', () => {
+    expect(uniqueStem('Bracket', takenIn('Bracket'))).toBe('Bracket_1')
+    expect(uniqueStem('Bracket', takenIn('Bracket', 'Bracket_1'))).toBe('Bracket_2')
+  })
+
+  // A dotted name reads as having an extension whether or not it is one, so the
+  // suffix goes before the last dot and leaves that tail intact.
+  it('inserts the suffix before the last dot', () => {
+    expect(uniqueStem('Bracket.v2', takenIn('Bracket.v2'))).toBe('Bracket_1.v2')
+  })
+
+  // A generated suffix must not land on a document that really is called that.
+  it('skips a suffix another document already owns', () => {
+    expect(uniqueStem('Untitled', takenIn('Untitled', 'Untitled_1'))).toBe('Untitled_2')
+  })
+
+  it('does not treat a leading dot as an extension boundary', () => {
+    expect(uniqueStem('.hidden', takenIn('.hidden'))).toBe('.hidden_1')
   })
 })

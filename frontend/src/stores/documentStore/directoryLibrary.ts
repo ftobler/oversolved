@@ -1,5 +1,5 @@
 import type { DocMeta } from './types'
-import { secureFilename, UNTITLED_DOC_NAME } from './secureFilename'
+import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from './secureFilename'
 import { randomUuid } from '@/utils/randomUuid'
 import { base64ToBytes } from '@/kernel/occ/stepIo'
 
@@ -539,22 +539,12 @@ export interface LibraryIo {
 
 // ─── naming ───
 
-// The stem a document name lands on, given the stems already spoken for.
-// Suffixes collisions `_1`, `_2`, ... so two documents named the same can never
-// overwrite each other. The taken set must hold every PRODUCED stem including
-// suffixes, so a generated `Bracket_1` cannot land on a real document already
-// called that, and every stem the folder already uses for a file of any kind.
-//
-// The suffix goes at the end, where `bundle.ts`'s `reserveStem` puts it before
-// the last dot. They differ for a dotted name (`Bracket.v2_1` here,
-// `Bracket_1.v2` there); this is a file on disk rather than a zip entry, and
-// the extension is appended afterwards either way.
+// The stem a document name lands on, given the stems already spoken for in this
+// folder level (see `takenStems`: index entries plus every stem the folder uses
+// for a file of any kind). Collision suffixing is `uniqueStem`, shared with the
+// bundle format so the two agree on what a colliding name becomes.
 export function allocateStem(name: string, taken: Set<string>): string {
-  const base = secureFilename(name) || UNTITLED_DOC_NAME
-  if (!taken.has(base)) return base
-  let n = 1
-  while (taken.has(`${base}_${n}`)) n += 1
-  return `${base}_${n}`
+  return uniqueStem(secureFilename(name) || UNTITLED_DOC_NAME, c => taken.has(c))
 }
 
 // A file found in the folder that no index entry claims. Its name is its name:

@@ -1,7 +1,7 @@
 import JSZip from 'jszip'
 import type { DocumentStore } from './types'
 import { LOCAL_OWNER } from './IndexedDbDocumentStore'
-import { secureFilename, UNTITLED_DOC_NAME } from './secureFilename'
+import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from './secureFilename'
 
 // Bundle import/export. NOT a second store -- these round-trip through whatever
 // `DocumentStore` is wired in. For the browser-storage library a bundle is the
@@ -28,31 +28,17 @@ async function toBytes(data: Blob | ArrayBuffer | Uint8Array): Promise<ArrayBuff
   return new Response(data).arrayBuffer()
 }
 
-// Mirrors admin.py's per-(user, name) collision suffixing so two documents that
-// secure-filename to the same stem get `_1`, `_2`, ... and never overwrite. The
-// reservation set tracks every produced stem (including suffixes), not just the
-// base, so a generated `_1` can never land on a stem another document already
-// owns (e.g. a real doc named "Untitled_1" must not be clobbered by a stripped
-// empty-name doc's suffixed entry).
+// Per-(user, name) collision suffixing, so two documents that secure-filename to
+// the same stem get `_1`, `_2`, ... and never overwrite. Reservations are keyed
+// on the full owner path rather than the bare stem, which is why this wraps
+// `uniqueStem` rather than calling it directly: two owners may each hold a
+// document that sanitizes to the same name. The suffixing rule itself is shared
+// with the directory library, so a document exported from a folder and imported
+// back keeps its name.
 function reserveStem(seen: Set<string>, ownerPath: string, stem: string): string {
-  const first = `${ownerPath}${stem}`
-  if (!seen.has(first)) {
-    seen.add(first)
-    return stem
-  }
-  const dot = stem.lastIndexOf('.')
-  let n = 1
-  while (true) {
-    const suffixed = dot > 0
-      ? `${stem.slice(0, dot)}_${n}.${stem.slice(dot + 1)}`
-      : `${stem}_${n}`
-    const candidate = `${ownerPath}${suffixed}`
-    if (!seen.has(candidate)) {
-      seen.add(candidate)
-      return suffixed
-    }
-    n += 1
-  }
+  const chosen = uniqueStem(stem, candidate => seen.has(`${ownerPath}${candidate}`))
+  seen.add(`${ownerPath}${chosen}`)
+  return chosen
 }
 
 // Core producer: returns the raw zip bytes. Kept separate from `exportBundle`

@@ -89,6 +89,16 @@ describe('on-disk layout', () => {
     expect((await store.load(b.uuid)).content).toBe('second')
   })
 
+  // A dotted name reads as having an extension whether or not it is one, and
+  // the bundle format suffixes it the same way, so a document exported from a
+  // folder and imported back keeps its name.
+  it('suffixes a dotted name the way the bundle format does', async () => {
+    await store.create('Bracket.v2')
+    await store.create('Bracket.v2')
+    expect(dir.fileNames()).toContain('Bracket.v2.yaml')
+    expect(dir.fileNames()).toContain('Bracket_1.v2.yaml')
+  })
+
   // In a directory library the filename IS the document name, so a rename that
   // left the old file behind would make the folder disagree with the app.
   it('renames the file on disk, taking the preview with it', async () => {

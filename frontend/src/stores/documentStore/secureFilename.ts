@@ -50,3 +50,31 @@ export function secureFilename(filename: string): string {
   }
   return name
 }
+
+// The stem a name lands on when another document already owns it. There are two
+// callers with the same problem in different containers -- a folder on disk
+// (directoryLibrary) and a zip entry path (bundle) -- and they have to agree,
+// because a document exported from a folder and imported back has to keep its
+// name. They did not: one appended the suffix and the other inserted it before
+// the last dot, so a document called "Bracket.v2" was suffixed differently on
+// each side of the round trip.
+//
+// The suffix goes BEFORE the last dot, which is where werkzeug and the backend
+// this format came from put it: a name with a dot in it reads as having an
+// extension whether or not it is one, and `Bracket_1.v2` keeps that tail intact
+// where `Bracket.v2_1` buries it.
+//
+// `isTaken` rather than a Set so a caller keying on more than the stem (bundle
+// scopes its reservations per owner directory) can answer for itself. The
+// candidate is offered including its suffix, so a generated `Bracket_1` cannot
+// land on a document really called that.
+export function uniqueStem(base: string, isTaken: (candidate: string) => boolean): string {
+  if (!isTaken(base)) return base
+  const dot = base.lastIndexOf('.')
+  for (let n = 1; ; n++) {
+    const candidate = dot > 0
+      ? `${base.slice(0, dot)}_${n}.${base.slice(dot + 1)}`
+      : `${base}_${n}`
+    if (!isTaken(candidate)) return candidate
+  }
+}
