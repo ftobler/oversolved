@@ -66,7 +66,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- module also exports the useNotify hook alongside the ToastProvider component
 export function useNotify(): (message: string, severity?: Severity) => void {
   const ctx = useContext(ToastContext)
   if (!ctx) throw new Error('useNotify must be used inside ToastProvider')

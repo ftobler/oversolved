@@ -148,7 +148,7 @@ export function useWasmDragSolve(
       startWorldRef.current = null
       setLastDragSolve(null)
       // Reset in response to an external event (pointer-up / drag end).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the reset must apply after render, in response to an external pointer-up
       setPreview(null)
       return
     }

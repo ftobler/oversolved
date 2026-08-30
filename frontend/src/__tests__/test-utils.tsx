@@ -2,7 +2,7 @@
 // the Fast Refresh rule forbids. It is test-only and never enters the HMR graph,
 // so the rule has nothing to protect here; splitting it would only cost every
 // call site a second import.
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components -- test-only module mixes the Wrapper component with helpers; it never enters the HMR graph */
 /**
  * Shared test scaffolding for the React-level suites.
  *

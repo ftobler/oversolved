@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components -- module mixes the default component export with non-component helpers */
 
 import { Suspense, useRef } from 'react'
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'

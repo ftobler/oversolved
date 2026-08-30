@@ -121,6 +121,6 @@ export function useSketchSurfaceIdRegistration(params: {
       }
       pipeline.markDirty()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- effect must retrigger only on the listed shape keys, not on every surface identity
   }, [pipeline, featureId, topology, planeKey, enabled])
 }

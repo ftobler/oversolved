@@ -261,7 +261,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
-  // eslint-disable-next-line react-hooks/refs
+  // eslint-disable-next-line react-hooks/refs -- mirror latest bodies into a ref for use inside stable callbacks
   bodiesRef.current = bodies
   const idPipelineRef = useRef<IdPipeline | null>(null)
   const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])

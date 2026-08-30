@@ -60,7 +60,7 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   // Per-instance save slot: module scope would leak one viewport's saved
   // pose into another when multiple SceneControllers are mounted at once.
   const savedOrbitStateRef = useRef<SavedOrbitState | null>(null)
-  // eslint-disable-next-line react-hooks/refs
+  // eslint-disable-next-line react-hooks/refs -- mirror the latest camera into a ref without triggering a re-render
   cameraRefStable.current = camera
 
   // showSeq bumps every time this component's effect setup runs, which
@@ -109,7 +109,7 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   }, [showSeq, camera])
 
   // Expose the Canvas-owned camera to the parent Viewport (for fitToContent).
-  // eslint-disable-next-line react-hooks/refs
+  // eslint-disable-next-line react-hooks/refs -- expose the Canvas-owned camera to the parent Viewport without a re-render
   cameraRef.current = camera
 
   // Right-button mapping: shift/ctrl/meta override the default rotate action.

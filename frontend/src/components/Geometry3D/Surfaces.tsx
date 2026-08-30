@@ -8,7 +8,7 @@ import { tessellateBoundary } from '@/kernel/topologyBoundary'
 
 type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string; buildable: boolean }
 
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- module exports a pure geometry helper alongside components
 export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
   return topology.surfaces.flatMap((surface: TopologySurface) => {
     const pts = tessellateBoundary(surface.boundary, ARC_SEGMENTS)
@@ -58,7 +58,7 @@ interface SurfaceMeshProps {
 // pointing at it still reads as a state change, and it ranks below selection,
 // hover and the inactive dimming, which answer the more urgent "what am I
 // acting on". The area stays pickable either way.
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- module exports a pure style helper alongside components
 export function surfaceFillStyle(
   mode: TopologyMode, isSelected: boolean, isHovered: boolean, buildable = true,
 ): { color: string; opacity: number } {

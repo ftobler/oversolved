@@ -31,7 +31,7 @@ export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | nul
   if (isDevBuild()) console.log('[loadOccWeb] starting load from', base)
   cached = (async () => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- opencascade is attached to window at runtime, absent from the TS types
       const w = window as any
 
       if (w.opencascade) {

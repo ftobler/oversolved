@@ -41,6 +41,6 @@ export function useRegisteredBody(
       unregister(pipeline)
       pipeline.markDirty()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are spread from a caller-supplied array and cannot be listed statically
   }, [pipeline, enabled, bodyKey, ...deps])
 }

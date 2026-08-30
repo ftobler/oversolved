@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- module also exports the useAuth hook alongside the AuthProvider component
 export function useAuth() {
   return useContext(AuthContext)
 }

@@ -50,7 +50,7 @@ export function useIdPipelineLifecycle(factory: () => IdPipeline): IdPipelineLif
       setPipeline(null)
       failedMap.delete(created)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- effect runs once on mount and reads live values through refs
   }, [])
 
   const tryRender = (renderer: THREE.WebGLRenderer, camera: THREE.Camera): void => {

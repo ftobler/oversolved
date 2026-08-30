@@ -1,6 +1,6 @@
 import type { Mutation } from '@/types/cad'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- editor schema values are a heterogeneous bag and are intentionally untyped
 export type SchemaData = Record<string, any>
 
 // ─── field-definition types (shared between FeatureEditor and widgets) ───

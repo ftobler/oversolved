@@ -101,6 +101,6 @@ export function useSketchIdRegistration(params: {
     // planeKey is the load-bearing dep for plane changes; planeTransform
     // object identity isn't. `constraints`/`topology` drive the inferred-contact
     // set (a new tangent or crossing adds a handle, materializing one removes it).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- planeTransform identity is intentionally excluded; see note above
   }, [pipeline, featureId, sketch, planeKey, enabled, suppressed, constraints, topology])
 }

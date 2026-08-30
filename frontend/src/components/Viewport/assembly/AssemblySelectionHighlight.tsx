@@ -29,7 +29,7 @@ const NO_RAYCAST = () => undefined
 // bakes a filled circle once and hands it to pointsMaterial as an alpha mask,
 // making the batched point sprite read as a circle like the part editor's.
 let vertexDotAlphaMap: THREE.Texture | null = null
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- non-component helper exported alongside components
 export function getVertexDotAlphaMap(): THREE.Texture {
   if (vertexDotAlphaMap) return vertexDotAlphaMap
   const size = 32
@@ -50,7 +50,7 @@ export function getVertexDotAlphaMap(): THREE.Texture {
 // Test-only escape hatch for the module-level cache, mirroring
 // resetGizmoLabelFontForTest: without it, whichever test runs first would
 // permanently decide what every later getVertexDotAlphaMap() call observes.
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- test-only non-component export kept in-module to share the module cache
 export function resetVertexDotAlphaMapForTest(): void {
   vertexDotAlphaMap = null
 }

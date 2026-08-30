@@ -20,7 +20,7 @@ function resolveTransformQuery(selectionId: string): string {
   return selectionId
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema data is a heterogeneous bag of editor values
 type SchemaData = Record<string, any>
 
 const showMergeTarget = (d: SchemaData) => d.operation !== 'new'

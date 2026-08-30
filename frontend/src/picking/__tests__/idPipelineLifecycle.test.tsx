@@ -53,7 +53,7 @@ function Harness({ onPipeline }: { onPipeline?: (p: IdPipeline | null) => void }
 // so reading `.current` after render gives the live pipeline.
 function Capture({ capturedRef }: { capturedRef: { current: IdPipelineLifecycle | null } }) {
   const lc = useIdPipelineLifecycle(makeFactory())
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- effect intentionally captures the latest lifecycle on every render
   useEffect(() => { capturedRef.current = lc }, [lc])
   return null
 }

@@ -15,7 +15,7 @@ beforeEach(() => {
   useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [], chipOwnedSelection: new Set() })
 })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture type; schema values are heterogeneous
 type SchemaData = Record<string, any>
 
 function makeFeature(kind: string, subKey: string, data: SchemaData): PartFeature {

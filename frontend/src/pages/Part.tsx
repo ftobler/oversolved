@@ -230,7 +230,7 @@ export default function Part() {
     if (doc && rollbackPosition !== null && rollbackPosition > features.length) {
       usePartEditorStore.getState().setRollbackPosition(features.length)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- effect must run only when the feature count changes, not on every features identity
   }, [features.length])
 
   // The parse and the doc swap deliberately sit OUTSIDE the setModeRaw updater:

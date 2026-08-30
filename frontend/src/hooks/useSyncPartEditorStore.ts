@@ -38,7 +38,7 @@ export function useSyncPartEditorStore(data: MirroredPartEditorData): void {
       pickBoundary: null,
       editingFeatureId: null,
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are listed explicitly to mirror the exact watched slice
   }, [features, doc, activeSketchFeatureId,
     visibleFeatures, visibleBodies, partLabels, solveResults, bodies, pickBodies,
     isRebuilding, featureTimings, validation, ghostMode, otherSketches,
