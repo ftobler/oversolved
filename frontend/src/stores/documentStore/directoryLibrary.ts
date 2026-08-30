@@ -54,6 +54,13 @@ export interface IndexEntry {
   updated_at: string
   meta: DocMeta
   has_preview: boolean
+  // The document file as reconcile last saw it. A directory library's whole
+  // point is that other tools write these files, and nothing notifies us when
+  // one does, so the fingerprint is how an outside edit is detected at all:
+  // without it an edited document keeps its old `rev`, and `rev` is the
+  // assembly bundle cache key, so the app would serve pre-edit geometry.
+  size: number
+  mtime: number
   // Soft-delete tombstone. A tombstoned entry's files live under TRASH_DIR, so
   // the library folder shows exactly the documents the library lists.
   deleted_at?: string
@@ -63,6 +70,42 @@ export interface LibraryIndex {
   version: number
   docs: IndexEntry[]
 }
+
+// A document file as the filesystem reports it. Size and mtime together are
+// enough to notice an edit made by anything that is not this app; neither alone
+// is (a same-length rewrite, a preserved mtime from a checkout).
+//
+// Every write returns one, and the caller MUST fold it into the entry it
+// stores: an entry whose fingerprint does not match the file this app just
+// wrote would read as an outside edit on the very next reconcile, bumping rev
+// forever.
+export interface DiskFile {
+  size: number
+  mtime: number
+}
+
+// One directory level, as read. `occupied` covers every file's stem whatever
+// its extension, so stem allocation can avoid names the folder already uses.
+interface DirectoryContents {
+  docs: Map<string, DiskFile>
+  previews: Set<string>
+  occupied: Set<string>
+}
+
+interface Reconciled {
+  index: LibraryIndex
+  changed: boolean
+  onDisk: DirectoryContents
+  inTrash: DirectoryContents
+}
+
+// Stands in for a trash folder that does not exist yet, so a read path can ask
+// what is in it without creating it.
+const EMPTY_DIR = {
+  kind: 'directory' as const,
+  name: TRASH_DIR,
+  async *values() {},
+} as unknown as FileSystemDirectoryHandle
 
 function emptyIndex(): LibraryIndex {
   return { version: INDEX_VERSION, docs: [] }
@@ -97,7 +140,7 @@ async function readTextFile(dir: FileSystemDirectoryHandle, name: string): Promi
 // has to stay one file.
 async function writeFile(
   dir: FileSystemDirectoryHandle, name: string, data: string | Uint8Array<ArrayBuffer>,
-): Promise<void> {
+): Promise<DiskFile> {
   const handle = await dir.getFileHandle(name, { create: true })
   const writable = await handle.createWritable()
   try {
@@ -108,6 +151,10 @@ async function writeFile(
     throw err
   }
   await writable.close()
+  // Read back rather than predict: the fingerprint has to be what a later
+  // reconcile will see, and only the filesystem knows the mtime it stamped.
+  const written = await handle.getFile()
+  return { size: written.size, mtime: written.lastModified }
 }
 
 async function removeFile(dir: FileSystemDirectoryHandle, name: string): Promise<void> {
@@ -148,6 +195,17 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary)
 }
 
+// Web Locks is what makes the exclusion cross-tab. It is absent in jsdom and in
+// a handful of older engines, and there is no substitute (a lock FILE would
+// need the very atomicity this is standing in for), so its absence degrades to
+// the per-instance chain the caller already holds. That is exactly today's
+// single-tab guarantee, which is the honest floor.
+async function withCrossTabLock<T>(name: string, job: () => Promise<T>): Promise<T> {
+  const locks = navigator.locks
+  if (!locks || typeof locks.request !== 'function') return job()
+  return locks.request(name, job) as Promise<T>
+}
+
 // ─── the library ───
 
 // Owns the directory handle, the index, and every write ordering rule. Both the
@@ -155,10 +213,17 @@ async function fileToBase64(file: File): Promise<string> {
 // delete moves files between the two halves and they must share an index.
 export class DirectoryLibrary {
   // Every index read-modify-write is chained onto this promise. The File System
-  // Access API has no transaction, so two overlapping saves would otherwise
-  // interleave their read and write of the index and one would silently clobber
-  // the other -- the same lost update `idbReadModifyWrite` exists to prevent,
-  // solved the only way this API allows.
+  // Access API has no transaction of any kind, so two overlapping operations
+  // would otherwise interleave their read and write of the index and one would
+  // silently clobber the other: the lost update `idbReadModifyWrite` exists to
+  // prevent, in a place where nothing equivalent is on offer.
+  //
+  // This chain covers one DirectoryLibrary only, which is not enough. Every tab
+  // reconnects to the remembered folder at boot (libraryStore.restore), so the
+  // same folder is routinely open in several tabs, each with its own instance
+  // and its own chain. The Web Locks API is origin-scoped and therefore does
+  // cover them: `lockName` below is the mutex, and the local chain stays
+  // underneath it as the fallback for a context without Web Locks.
   private queue: Promise<unknown> = Promise.resolve()
 
   readonly dir: FileSystemDirectoryHandle
@@ -171,20 +236,39 @@ export class DirectoryLibrary {
     return this.dir.name
   }
 
-  // Serializes `job` behind every mutation already queued. Failures do not
-  // poison the chain: the next job runs regardless of how this one ended.
+  // Named per folder, so two libraries over different folders do not serialize
+  // against each other. Folder names collide (two `cad` directories), and the
+  // consequence of that is only over-serialization, never a missed exclusion.
+  private get lockName(): string {
+    return `oversolved-library:${this.dir.name}`
+  }
+
+  // Serializes `job` behind every operation already queued, in this tab and in
+  // every other tab holding the same folder. Failures do not poison the chain:
+  // the next job runs regardless of how this one ended.
   private enqueue<T>(job: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(job, job)
+    const guarded = () => withCrossTabLock(this.lockName, job)
+    const run = this.queue.then(guarded, guarded)
     this.queue = run.catch(() => undefined)
     return run
   }
 
-  private async trashDir(): Promise<FileSystemDirectoryHandle> {
-    return this.dir.getDirectoryHandle(TRASH_DIR, { create: true })
+  // `create: false` everywhere except an actual delete. Reading a folder must
+  // not write to it: merely browsing a library the user opened should leave it
+  // byte-for-byte as they left it, and a handle downgraded to read-only would
+  // otherwise fail the whole read rather than degrade.
+  private async trashDir({ create }: { create: boolean }): Promise<FileSystemDirectoryHandle> {
+    if (create) return this.dir.getDirectoryHandle(TRASH_DIR, { create: true })
+    try {
+      return await this.dir.getDirectoryHandle(TRASH_DIR)
+    } catch (err) {
+      if (isNotFound(err)) return EMPTY_DIR
+      throw err
+    }
   }
 
-  private dirFor(entry: IndexEntry): Promise<FileSystemDirectoryHandle> {
-    return entry.deleted_at ? this.trashDir() : Promise.resolve(this.dir)
+  private dirFor(entry: IndexEntry, opts = { create: false }): Promise<FileSystemDirectoryHandle> {
+    return entry.deleted_at ? this.trashDir(opts) : Promise.resolve(this.dir)
   }
 
   // ─── index ───
@@ -210,27 +294,38 @@ export class DirectoryLibrary {
 
   // Reconciles the index against what is actually on disk, in both directions.
   // There is no change notification on a directory handle, so this runs on
-  // every read: a git checkout, a Dropbox sync or another editor is simply what
-  // the folder looks like now.
+  // every read AND in front of every write: a git checkout, a Dropbox sync or
+  // another editor is simply what the folder looks like now.
   //
-  //   file with no entry   -> adopted under a fresh uuid, named after the file
-  //   entry with no file   -> dropped (the user deleted it outside the app)
+  //   file with no entry     -> adopted under a fresh uuid, named after the file
+  //   entry with no file     -> dropped (deleted outside the app)
+  //   file changed underneath -> rev bumped, so caches keyed on rev let go
   //
   // Adoption persists, so an externally added file keeps the same uuid on the
-  // next read and the route to it does not break under the user.
-  private async reconcile(index: LibraryIndex): Promise<{ index: LibraryIndex; changed: boolean }> {
+  // next read and the route to it does not break under the user. A file in the
+  // trash folder is adopted as ALREADY DELETED: it is a deleted document, so
+  // recovering it must stay possible without it reappearing in the library.
+  private async reconcile(index: LibraryIndex): Promise<Reconciled> {
     const onDisk = await this.listStems(this.dir)
-    const inTrash = await this.listStems(await this.trashDir())
+    const inTrash = await this.listStems(await this.trashDir({ create: false }))
     const kept: IndexEntry[] = []
     let changed = false
 
     for (const entry of index.docs) {
       const present = entry.deleted_at ? inTrash : onDisk
-      if (!present.has(entry.stem)) {
+      const file = present.docs.get(entry.stem)
+      if (!file) {
         changed = true
         continue  // the file is gone: so is the document
       }
-      const has_preview = present.get(entry.stem)!
+      const has_preview = present.previews.has(entry.stem)
+      // Bytes we did not write. The document is whatever the file now says, and
+      // a rev bump is what tells every cache keyed on it to let go.
+      if (file.size !== entry.size || file.mtime !== entry.mtime) {
+        kept.push(restamp({ ...entry, has_preview, ...file }))
+        changed = true
+        continue
+      }
       if (has_preview !== entry.has_preview) {
         kept.push({ ...entry, has_preview })
         changed = true
@@ -239,28 +334,33 @@ export class DirectoryLibrary {
       kept.push(entry)
     }
 
-    const claimed = new Set(kept.filter(e => !e.deleted_at).map(e => e.stem))
-    for (const [stem, has_preview] of onDisk) {
-      if (claimed.has(stem)) continue
-      kept.push(adopt(stem, has_preview))
-      changed = true
-    }
-    // Files sitting in the trash folder with no entry are not adopted: they are
-    // deleted documents, and resurrecting them into the library on every read
-    // would make delete un-stick.
-    return { index: { version: INDEX_VERSION, docs: kept }, changed }
+    changed = adoptOrphans(onDisk, kept, false) || changed
+    changed = adoptOrphans(inTrash, kept, true) || changed
+    return { index: { version: INDEX_VERSION, docs: kept }, changed, onDisk, inTrash }
   }
 
-  // Stem -> has-a-sibling-preview, for one directory level.
-  private async listStems(dir: FileSystemDirectoryHandle): Promise<Map<string, boolean>> {
-    const docs = new Set<string>()
+  // What one directory level actually holds: the documents in it, and every
+  // stem any file in it occupies. The second set is wider than the first on
+  // purpose -- a stem must not be handed to a new document while a file of any
+  // kind already answers to it, or the first save with a preview would silently
+  // overwrite a `.png` the user put there themselves.
+  private async listStems(dir: FileSystemDirectoryHandle): Promise<DirectoryContents> {
+    const docs = new Map<string, DiskFile>()
     const previews = new Set<string>()
+    const occupied = new Set<string>()
     for await (const handle of dir.values()) {
       if (handle.kind !== 'file') continue
-      if (handle.name.endsWith(DOC_EXT)) docs.add(handle.name.slice(0, -DOC_EXT.length))
-      else if (handle.name.endsWith(PREVIEW_EXT)) previews.add(handle.name.slice(0, -PREVIEW_EXT.length))
+      const name = handle.name
+      const dot = name.lastIndexOf('.')
+      occupied.add(dot > 0 ? name.slice(0, dot) : name)
+      if (name.endsWith(DOC_EXT)) {
+        const file = await (handle as FileSystemFileHandle).getFile()
+        docs.set(name.slice(0, -DOC_EXT.length), { size: file.size, mtime: file.lastModified })
+      } else if (name.endsWith(PREVIEW_EXT)) {
+        previews.add(name.slice(0, -PREVIEW_EXT.length))
+      }
     }
-    return new Map([...docs].map(stem => [stem, previews.has(stem)]))
+    return { docs, previews, occupied }
   }
 
   // The read side: the reconciled index, with any adoption already persisted.
@@ -289,8 +389,9 @@ export class DirectoryLibrary {
     mutate: (entries: IndexEntry[], io: LibraryIo) => Promise<{ entries?: IndexEntry[]; result: T }>,
   ): Promise<T> {
     return this.enqueue(async () => {
-      const { index, changed } = await this.reconcile(await this.loadIndex())
-      const { entries, result } = await mutate(index.docs.map(cloneEntry), this.io())
+      const state = await this.reconcile(await this.loadIndex())
+      const { index, changed } = state
+      const { entries, result } = await mutate(index.docs.map(cloneEntry), this.io(state))
       if (entries) await this.saveIndex({ version: INDEX_VERSION, docs: entries })
       else if (changed) await this.saveIndex(index)
       return result
@@ -299,8 +400,13 @@ export class DirectoryLibrary {
 
   // ─── document bytes ───
 
-  private io(): LibraryIo {
+  private io(state: Reconciled): LibraryIo {
     return {
+      // The stems each folder level already uses, for a file of ANY kind. The
+      // index alone is not enough: a `.png` the user put in the folder occupies
+      // a stem, and handing it to a new document would have the first save with
+      // a preview overwrite their image.
+      occupiedStems: where => new Set(where === 'trash' ? state.inTrash.occupied : state.onDisk.occupied),
       readContent: entry => this.readContent(entry),
       readPreview: entry => this.readPreview(entry),
       writeDoc: (entry, content, preview) => this.writeDoc(entry, content, preview),
@@ -332,10 +438,11 @@ export class DirectoryLibrary {
   // never be lost; a preview written against older text is a stale thumbnail,
   // while text written after a preview failure would be a document the user
   // cannot tell is saved.
-  private async writeDoc(entry: IndexEntry, content: string, preview?: string): Promise<void> {
-    const dir = await this.dirFor(entry)
-    await writeFile(dir, entry.stem + DOC_EXT, content)
+  private async writeDoc(entry: IndexEntry, content: string, preview?: string): Promise<DiskFile> {
+    const dir = await this.dirFor(entry, { create: true })
+    const written = await writeFile(dir, entry.stem + DOC_EXT, content)
     if (preview !== undefined) await writeFile(dir, entry.stem + PREVIEW_EXT, base64ToBytes(preview))
+    return written
   }
 
   // Between the library folder and the trash folder, in either direction, and
@@ -348,12 +455,14 @@ export class DirectoryLibrary {
   // Copy then delete, because `FileSystemFileHandle.move()` is newer than the
   // pickers this feature already depends on and is not in every Chromium the
   // app supports. A crash between the two leaves a duplicate, never a loss.
-  private async moveDoc(entry: IndexEntry, to: 'library' | 'trash', stem: string): Promise<void> {
-    const from = entry.deleted_at ? await this.trashDir() : this.dir
-    const dest = to === 'trash' ? await this.trashDir() : this.dir
+  private async moveDoc(entry: IndexEntry, to: 'library' | 'trash', stem: string): Promise<DiskFile> {
+    const from = entry.deleted_at ? await this.trashDir({ create: false }) : this.dir
+    // The one place the trash folder is brought into existence: an actual
+    // delete, which is a write the user asked for.
+    const dest = to === 'trash' ? await this.trashDir({ create: true }) : this.dir
     const content = await readTextFile(from, entry.stem + DOC_EXT)
     if (content === null) throw new Error(`Document file missing: ${entry.stem}${DOC_EXT}`)
-    await writeFile(dest, stem + DOC_EXT, content)
+    const written = await writeFile(dest, stem + DOC_EXT, content)
     if (entry.has_preview) {
       try {
         const handle = await from.getFileHandle(entry.stem + PREVIEW_EXT)
@@ -362,20 +471,32 @@ export class DirectoryLibrary {
         // No preview to carry across; the document still moves.
       }
     }
-    await removeFile(from, entry.stem + DOC_EXT)
-    await removeFile(from, entry.stem + PREVIEW_EXT)
+    // Rolling back the copy is the point of catching here. A crash between the
+    // two halves leaves a duplicate and that is the right trade, but a refused
+    // delete is a failure we are still standing to handle: without the rollback
+    // the copy stays behind, gets adopted on the next reconcile, and a move
+    // that FAILED shows up as a document in the destination.
+    try {
+      await removeFile(from, entry.stem + DOC_EXT)
+      await removeFile(from, entry.stem + PREVIEW_EXT)
+    } catch (err) {
+      await removeFile(dest, stem + DOC_EXT).catch(() => undefined)
+      await removeFile(dest, stem + PREVIEW_EXT).catch(() => undefined)
+      throw err
+    }
+    return written
   }
 
   // A rename is a real file rename: the filename IS the document name in a
   // directory library, so leaving the old stem in place would make the folder
   // disagree with the app about what a document is called. Same copy-then-
   // delete shape as moveDoc, and for the same reason.
-  private async renameDoc(entry: IndexEntry, stem: string): Promise<void> {
-    if (stem === entry.stem) return
+  private async renameDoc(entry: IndexEntry, stem: string): Promise<DiskFile> {
     const dir = await this.dirFor(entry)
+    if (stem === entry.stem) return { size: entry.size, mtime: entry.mtime }
     const content = await readTextFile(dir, entry.stem + DOC_EXT)
     if (content === null) throw new Error(`Document file missing: ${entry.stem}${DOC_EXT}`)
-    await writeFile(dir, stem + DOC_EXT, content)
+    const written = await writeFile(dir, stem + DOC_EXT, content)
     if (entry.has_preview) {
       try {
         const handle = await dir.getFileHandle(entry.stem + PREVIEW_EXT)
@@ -384,8 +505,15 @@ export class DirectoryLibrary {
         // No preview to carry across; the rename still lands.
       }
     }
-    await removeFile(dir, entry.stem + DOC_EXT)
-    await removeFile(dir, entry.stem + PREVIEW_EXT)
+    try {
+      await removeFile(dir, entry.stem + DOC_EXT)
+      await removeFile(dir, entry.stem + PREVIEW_EXT)
+    } catch (err) {
+      await removeFile(dir, stem + DOC_EXT).catch(() => undefined)
+      await removeFile(dir, stem + PREVIEW_EXT).catch(() => undefined)
+      throw err
+    }
+    return written
   }
 
   private async deleteDoc(entry: IndexEntry): Promise<void> {
@@ -399,21 +527,30 @@ export class DirectoryLibrary {
 // serialized slot. Handed to `update`'s callback rather than reachable on the
 // library, so a write cannot accidentally be issued outside the lock.
 export interface LibraryIo {
+  occupiedStems(where: 'library' | 'trash'): Set<string>
   readContent(entry: IndexEntry): Promise<string>
   readPreview(entry: IndexEntry): Promise<string | undefined>
-  writeDoc(entry: IndexEntry, content: string, preview?: string): Promise<void>
-  moveDoc(entry: IndexEntry, to: 'library' | 'trash', stem: string): Promise<void>
-  renameDoc(entry: IndexEntry, stem: string): Promise<void>
+  // The three writers return the document file's fingerprint as it now stands
+  // on disk. Fold it into the entry you store, or the next reconcile reads this
+  // app's own write as somebody else's edit.
+  writeDoc(entry: IndexEntry, content: string, preview?: string): Promise<DiskFile>
+  moveDoc(entry: IndexEntry, to: 'library' | 'trash', stem: string): Promise<DiskFile>
+  renameDoc(entry: IndexEntry, stem: string): Promise<DiskFile>
   deleteDoc(entry: IndexEntry): Promise<void>
 }
 
 // ─── naming ───
 
 // The stem a document name lands on, given the stems already spoken for.
-// Mirrors the bundle format's collision suffixing so two documents named the
-// same get `_1`, `_2`, ... and one can never overwrite the other. The taken set
-// holds every PRODUCED stem including suffixes, so a generated `Bracket_1` can
-// not land on a real document already called that.
+// Suffixes collisions `_1`, `_2`, ... so two documents named the same can never
+// overwrite each other. The taken set must hold every PRODUCED stem including
+// suffixes, so a generated `Bracket_1` cannot land on a real document already
+// called that, and every stem the folder already uses for a file of any kind.
+//
+// The suffix goes at the end, where `bundle.ts`'s `reserveStem` puts it before
+// the last dot. They differ for a dotted name (`Bracket.v2_1` here,
+// `Bracket_1.v2` there); this is a file on disk rather than a zip entry, and
+// the extension is appended afterwards either way.
 export function allocateStem(name: string, taken: Set<string>): string {
   const base = secureFilename(name) || UNTITLED_DOC_NAME
   if (!taken.has(base)) return base
@@ -425,7 +562,7 @@ export function allocateStem(name: string, taken: Set<string>): string {
 // A file found in the folder that no index entry claims. Its name is its name:
 // the point of a directory library is that the filename IS the document name,
 // so an externally dropped Bracket.yaml opens as "Bracket".
-function adopt(stem: string, has_preview: boolean): IndexEntry {
+function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: boolean): IndexEntry {
   const now = Date.now()
   const uuid = randomUuid()
   return {
@@ -439,13 +576,51 @@ function adopt(stem: string, has_preview: boolean): IndexEntry {
     // not confuse an adopted document with a freshly created empty one.
     meta: { id: uuid, rev: 1, updatedAt: now, dirty: true },
     has_preview,
+    size: file.size,
+    mtime: file.mtime,
+    // A file found in the trash folder is a document that was deleted, and it
+    // stays deleted: adopting it live would make delete un-stick, and refusing
+    // to adopt it at all (the previous behaviour) left it unlistable,
+    // unrecoverable, and liable to be overwritten by the next same-named delete.
+    ...(deleted ? { deleted_at: new Date(now).toISOString() } : {}),
+  }
+}
+
+// Adds an entry for every document file in `contents` that no kept entry
+// claims. Returns whether anything was adopted.
+function adoptOrphans(
+  contents: DirectoryContents, kept: IndexEntry[], deleted: boolean,
+): boolean {
+  const claimed = new Set(kept.filter(e => !!e.deleted_at === deleted).map(e => e.stem))
+  let adopted = false
+  for (const [stem, file] of contents.docs) {
+    if (claimed.has(stem)) continue
+    kept.push(adopt(stem, contents.previews.has(stem), file, deleted))
+    adopted = true
+  }
+  return adopted
+}
+
+// The local-change stamp for a change this app did not make: bump rev so every
+// cache keyed on it lets go, and restamp the modification time the grid sorts
+// by. Kept next to reconcile rather than shared with the store's own `stamp`
+// because the store's is about a save the user asked for.
+function restamp(entry: IndexEntry): IndexEntry {
+  const at = Math.max(Date.now(), entry.meta.updatedAt + 1)
+  return {
+    ...entry,
+    updated_at: new Date(at).toISOString(),
+    meta: { ...entry.meta, rev: entry.meta.rev + 1, updatedAt: at, dirty: true },
   }
 }
 
 function isEntry(value: unknown): value is IndexEntry {
   const e = value as Partial<IndexEntry> | null
   return !!e && typeof e.uuid === 'string' && typeof e.stem === 'string' &&
-    typeof e.name === 'string' && !!e.meta && typeof e.meta.rev === 'number'
+    typeof e.name === 'string' && !!e.meta && typeof e.meta.rev === 'number' &&
+    // An entry written before the fingerprint existed would read as "changed"
+    // on every reconcile and bump rev forever, so it is rejected and re-adopted.
+    typeof e.size === 'number' && typeof e.mtime === 'number'
 }
 
 function cloneEntry(entry: IndexEntry): IndexEntry {

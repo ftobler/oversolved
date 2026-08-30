@@ -22,6 +22,16 @@ beforeEach(() => {
 })
 
 describe('on-disk layout', () => {
+  // A `.png` the user put in the folder occupies that stem. Handing it to a new
+  // document would have the first save with a preview overwrite their image.
+  it('does not claim a stem an unrelated file already occupies', async () => {
+    dir.putText('Bracket.png', 'MY OWN IMAGE')
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'x', preview_image: btoa('\x89PNG') })
+    expect(dir.snapshot()['Bracket.png']).toBe('MY OWN IMAGE')
+    expect(dir.fileNames()).toContain('Bracket_1.yaml')
+  })
+
   // The point of the feature: a folder of files the user already understands,
   // not an opaque archive. One document is one plain .yaml.
   it('writes one plain .yaml per document, named after the document', async () => {
@@ -179,6 +189,42 @@ describe('the folder changing underneath the app', () => {
     expect(index).toContain((await store.list())[0].uuid)
   })
 
+  // The headline use case: a file edited by git, an editor or a sync client.
+  // `meta.rev` is the assembly bundle cache key, so a document whose bytes
+  // changed without a rev bump renders its PRE-edit geometry with no error.
+  it('bumps rev when a document file is edited from outside', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'v1' })
+    const before = (await store.list())[0]
+
+    dir.putText('Bracket.yaml', 'edited by something else')
+    const after = (await store.list())[0]
+    expect(after.uuid).toBe(uuid)  // same document, not a re-adoption
+    expect(after.meta!.rev).toBeGreaterThan(before.meta!.rev)
+    expect(after.updated_at).not.toBe(before.updated_at)
+    expect((await store.load(uuid)).content).toBe('edited by something else')
+  })
+
+  // A rewrite that preserves the length is the case a size check alone misses.
+  it('notices an outside edit that did not change the file length', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'v1' })
+    const before = (await store.list())[0]
+    dir.touch('Bracket.yaml')
+    expect((await store.list())[0].meta!.rev).toBeGreaterThan(before.meta!.rev)
+  })
+
+  // The other half of that: this app's OWN writes must not read as outside
+  // edits, or every save would bump rev twice and every list would rewrite the
+  // index.
+  it('does not mistake its own writes for outside edits', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'v1' })
+    const settled = (await store.list())[0].meta!.rev
+    expect((await store.list())[0].meta!.rev).toBe(settled)
+    expect((await store.list())[0].meta!.rev).toBe(settled)
+  })
+
   it('drops a document whose file was deleted from outside', async () => {
     const { uuid } = await store.create('Bracket')
     await dir.removeEntry('Bracket.yaml')
@@ -219,6 +265,18 @@ describe('the folder changing underneath the app', () => {
 })
 
 describe('trash', () => {
+  // Reading a folder must not write to it: browsing a library should leave it
+  // byte-for-byte as the user left it, and a read-only handle would otherwise
+  // fail the whole read rather than degrade.
+  it('does not create the trash folder just by listing', async () => {
+    await store.list()
+    await store.create('Bracket')
+    await store.list()
+    expect(dir.dirNames()).toEqual([])
+    await store.remove((await store.list())[0].uuid)
+    expect(dir.dirNames()).toEqual([TRASH_DIR])
+  })
+
   it('moves a deleted document into the trash folder, out of the library view', async () => {
     const { uuid } = await store.create('Bracket')
     await store.save(uuid, { content: 'shape' })
@@ -255,6 +313,52 @@ describe('trash', () => {
     expect(dir.snapshot()['Bracket.yaml']).toBe('replacement')
   })
 
+  // An editor autosave can land after the grid deleted the document. Falling
+  // through to save()'s upsert minted a SECOND entry under the same uuid: two
+  // rows sharing a React key, the user's bytes stranded in an `Untitled.yaml`,
+  // and a later recover overwriting them. It resurrects instead, which is what
+  // the IndexedDB store does with the same sequence.
+  it('a save into a trashed id resurrects it rather than minting a twin', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'v1' })
+    await store.remove(uuid)
+    await store.save(uuid, { content: 'v2' })
+
+    const list = await store.list()
+    expect(list.map(d => d.name)).toEqual(['Bracket'])
+    expect(list.map(d => d.uuid)).toEqual([uuid])
+    expect((await store.load(uuid)).content).toBe('v2')
+    expect(await trash.list()).toEqual([])
+    expect(dir.snapshot()['Bracket.yaml']).toBe('v2')
+    expect(dir.snapshot()[`${TRASH_DIR}/Bracket.yaml`]).toBeUndefined()
+  })
+
+  it('resurrects under a fresh stem when the name was taken meanwhile', async () => {
+    const first = await store.create('Bracket')
+    await store.save(first.uuid, { content: 'v1' })
+    await store.remove(first.uuid)
+    const second = await store.create('Bracket')
+    await store.save(second.uuid, { content: 'replacement' })
+
+    await store.save(first.uuid, { content: 'v2' })
+    expect((await store.load(first.uuid)).content).toBe('v2')
+    expect((await store.load(second.uuid)).content).toBe('replacement')
+    expect(dir.snapshot()['Bracket.yaml']).toBe('replacement')
+  })
+
+  // The Trash view shows a name, so it has to be the current one. The
+  // IndexedDB store renames a tombstoned record too.
+  it('renames a trashed document in place', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'shape' })
+    await store.remove(uuid)
+    await store.rename(uuid, 'Gearbox')
+    expect((await trash.list()).map(d => d.name)).toEqual(['Gearbox'])
+    expect(dir.snapshot()[`${TRASH_DIR}/Gearbox.yaml`]).toBe('shape')
+    await trash.recover(uuid)
+    expect(dir.snapshot()['Gearbox.yaml']).toBe('shape')
+  })
+
   it('purge deletes the files for good', async () => {
     const { uuid } = await store.create('Bracket')
     await store.remove(uuid)
@@ -264,12 +368,34 @@ describe('trash', () => {
     expect(dir.snapshot()[INDEX_FILE]).not.toContain(uuid)
   })
 
-  // Files in the trash folder are deleted documents. Adopting them back into
-  // the library on every read would make delete un-stick.
-  it('never adopts a file sitting in the trash folder', async () => {
+  // A file in the trash folder is a DELETED document, so losing the index must
+  // not make it unlistable and unrecoverable. It comes back as a tombstone: the
+  // Trash can see it, and the library still cannot.
+  it('adopts a trash-folder file as already deleted when the index is lost', async () => {
     const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'precious' })
     await store.remove(uuid)
     await dir.removeEntry(INDEX_FILE)
-    expect(await store.list()).toEqual([])
+
+    expect(await store.list()).toEqual([])  // delete still sticks
+    const trashed = await trash.list()
+    expect(trashed.map(d => d.name)).toEqual(['Bracket'])
+    await trash.recover(trashed[0].uuid)
+    expect(dir.snapshot()['Bracket.yaml']).toBe('precious')
+  })
+
+  // Before those files were adopted they were invisible to stem allocation
+  // too, so the next same-named delete overwrote them.
+  it('does not overwrite an unindexed trash file with a new delete', async () => {
+    const first = await store.create('Bracket')
+    await store.save(first.uuid, { content: 'precious' })
+    await store.remove(first.uuid)
+    await dir.removeEntry(INDEX_FILE)
+
+    const second = await store.create('Bracket')
+    await store.save(second.uuid, { content: 'unrelated' })
+    await store.remove(second.uuid)
+    expect(Object.values(dir.snapshot())).toContain('precious')
+    expect((await trash.list()).map(d => d.name).sort()).toEqual(['Bracket', 'Bracket'])
   })
 })

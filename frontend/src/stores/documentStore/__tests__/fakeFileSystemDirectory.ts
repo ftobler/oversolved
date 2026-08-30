@@ -18,6 +18,20 @@ function notFound(name: string): DOMException {
   return new DOMException(`A requested file or directory could not be found: ${name}`, 'NotFoundError')
 }
 
+// Wall-clock milliseconds are far too coarse to separate two writes in a test,
+// and the store's outside-edit detection keys on the modification time, so the
+// fake stamps a strictly increasing counter instead of a clock.
+let clock = 1_700_000_000_000
+
+function tick(): number {
+  return ++clock
+}
+
+interface StoredFile {
+  bytes: Uint8Array
+  mtime: number
+}
+
 class FakeWritable {
   private chunks: Uint8Array[] = []
   private done = false
@@ -63,12 +77,13 @@ async function toBytes(data: string | Blob | Uint8Array | ArrayBuffer): Promise<
 // model the browser API less accurately than this object does -- and would
 // quietly push a Response-shaped workaround into production code that a real
 // browser never needs.
-function fakeFile(bytes: Uint8Array, name: string): File {
+function fakeFile(entry: StoredFile, name: string): File {
+  const bytes = entry.bytes
   return {
     name,
     size: bytes.byteLength,
     type: '',
-    lastModified: 0,
+    lastModified: entry.mtime,
     async text() { return new TextDecoder().decode(bytes) },
     async arrayBuffer() {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
@@ -79,13 +94,13 @@ function fakeFile(bytes: Uint8Array, name: string): File {
 class FakeFileHandle {
   readonly kind = 'file' as const
   readonly name: string
-  private readonly read: () => Uint8Array | undefined
+  private readonly read: () => StoredFile | undefined
   private readonly write: (data: Uint8Array) => void
   private readonly guard: () => void
 
   constructor(
     name: string,
-    read: () => Uint8Array | undefined,
+    read: () => StoredFile | undefined,
     write: (data: Uint8Array) => void,
     guard: () => void,
   ) {
@@ -96,9 +111,9 @@ class FakeFileHandle {
   }
 
   async getFile(): Promise<File> {
-    const bytes = this.read()
-    if (!bytes) throw notFound(this.name)
-    return fakeFile(bytes, this.name)
+    const stored = this.read()
+    if (!stored) throw notFound(this.name)
+    return fakeFile(stored, this.name)
   }
 
   async createWritable(): Promise<FakeWritable> {
@@ -109,7 +124,7 @@ class FakeFileHandle {
 
 export class FakeDirectoryHandle {
   readonly kind = 'directory' as const
-  private files = new Map<string, Uint8Array>()
+  private files = new Map<string, StoredFile>()
   private dirs = new Map<string, FakeDirectoryHandle>()
   // Set to a message to make the next createWritable throw, standing in for a
   // quota error or a revoked permission mid-save.
@@ -126,7 +141,7 @@ export class FakeDirectoryHandle {
     return new FakeFileHandle(
       name,
       () => this.files.get(name),
-      data => { this.files.set(name, data) },
+      data => { this.files.set(name, { bytes: data, mtime: tick() }) },
       () => {
         const failure = this.failNextWrite
         if (failure) {
@@ -162,7 +177,7 @@ export class FakeDirectoryHandle {
   snapshot(): Record<string, string> {
     const out: Record<string, string> = {}
     const decoder = new TextDecoder()
-    for (const [name, bytes] of this.files) out[name] = decoder.decode(bytes)
+    for (const [name, stored] of this.files) out[name] = decoder.decode(stored.bytes)
     for (const [dirName, dir] of this.dirs) {
       for (const [name, text] of Object.entries(dir.snapshot())) out[`${dirName}/${name}`] = text
     }
@@ -173,10 +188,21 @@ export class FakeDirectoryHandle {
     return [...this.files.keys()].sort()
   }
 
+  dirNames(): string[] {
+    return [...this.dirs.keys()].sort()
+  }
+
   // Seeds a file the way an external tool would: a git checkout, another
   // editor, a Dropbox sync.
   putText(name: string, text: string): void {
-    this.files.set(name, new TextEncoder().encode(text))
+    this.files.set(name, { bytes: new TextEncoder().encode(text), mtime: tick() })
+  }
+
+  // The other half of an outside edit: a tool that rewrote a file without
+  // changing its length. Only the modification time moves.
+  touch(name: string): void {
+    const stored = this.files.get(name)
+    if (stored) this.files.set(name, { ...stored, mtime: tick() })
   }
 }
 

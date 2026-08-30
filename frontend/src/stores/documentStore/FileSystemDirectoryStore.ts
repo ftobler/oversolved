@@ -2,7 +2,9 @@ import type {
   DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
   TrashAdapter, TrashDoc,
 } from './types'
-import { DirectoryLibrary, allocateStem, type IndexEntry } from './directoryLibrary'
+import {
+  DirectoryLibrary, allocateStem, type IndexEntry, type LibraryIo,
+} from './directoryLibrary'
 import { suggestedCloneName } from './cloneName'
 import { randomUuid } from '@/utils/randomUuid'
 
@@ -46,16 +48,29 @@ function toSummary(entry: IndexEntry, preview?: string): DocSummary {
 // Bracket in the folder the user is looking at, which is the only reading that
 // matches what they see.
 function takenStems(
-  entries: IndexEntry[], where: 'library' | 'trash', except?: string,
+  io: LibraryIo, entries: IndexEntry[], where: 'library' | 'trash', except?: string,
 ): Set<string> {
   const trashed = where === 'trash'
-  return new Set(entries
-    .filter(e => e.uuid !== except && !!e.deleted_at === trashed)
-    .map(e => e.stem))
+  const taken = io.occupiedStems(where)
+  if (except) {
+    const own = entries.find(e => e.uuid === except)
+    if (own) taken.delete(own.stem)  // renaming a document may reuse its own stem
+  }
+  for (const e of entries) {
+    if (e.uuid !== except && !!e.deleted_at === trashed) taken.add(e.stem)
+  }
+  return taken
 }
 
 function findLive(entries: IndexEntry[], id: string): IndexEntry | undefined {
   return entries.find(e => e.uuid === id && !e.deleted_at)
+}
+
+// Tombstoned included. Used wherever operating on an id must not be allowed to
+// mint a SECOND entry under it: two rows sharing a uuid make `replace` write
+// both and `list` hand the grid a duplicate React key.
+function findAny(entries: IndexEntry[], id: string): IndexEntry | undefined {
+  return entries.find(e => e.uuid === id)
 }
 
 export class FileSystemDirectoryStore implements DocumentStore {
@@ -76,10 +91,10 @@ export class FileSystemDirectoryStore implements DocumentStore {
     return this.library.label
   }
 
-  private async preview(entry: IndexEntry): Promise<string | undefined> {
+  private async preview(entry: IndexEntry, io?: LibraryIo): Promise<string | undefined> {
     const cached = this.previews.get(entry.uuid)
     if (cached && cached.rev === entry.meta.rev) return cached.data
-    const data = await this.library.readPreview(entry)
+    const data = await (io ? io.readPreview(entry) : this.library.readPreview(entry))
     this.previews.set(entry.uuid, { rev: entry.meta.rev, data })
     return data
   }
@@ -103,23 +118,49 @@ export class FileSystemDirectoryStore implements DocumentStore {
     return Promise.all(sorted.map(async e => toSummary(e, await this.preview(e))))
   }
 
+  // Reads the entry and its bytes inside ONE serialized slot. Split across two
+  // (look the entry up, then read the file) a concurrent delete lands between
+  // them and load rejects with `Document file missing`, which is a filesystem
+  // detail leaking through a contract that promises `Document not found`.
   async load(id: string): Promise<DocumentPayload> {
-    const entry = findLive(await this.library.read(), id)
-    // A trashed document is gone as far as the library is concerned: load
-    // rejects just as if the file had been deleted (the store contract expects
-    // this, and the Trash view reads through the TrashAdapter instead).
-    if (!entry) throw new Error(`Document not found: ${id}`)
-    return {
-      content: await this.library.readContent(entry),
-      name: entry.name,
-      owner_username: DIRECTORY_OWNER,
-      is_public: entry.is_public,
-      preview_image: await this.preview(entry),
-    }
+    return this.library.update(async (entries, io) => {
+      const entry = findLive(entries, id)
+      // A trashed document is gone as far as the library is concerned: load
+      // rejects just as if the file had been deleted (the store contract
+      // expects this, and the Trash view reads through the TrashAdapter).
+      if (!entry) throw new Error(`Document not found: ${id}`)
+      return {
+        result: {
+          content: await io.readContent(entry),
+          name: entry.name,
+          owner_username: DIRECTORY_OWNER,
+          is_public: entry.is_public,
+          preview_image: await this.preview(entry, io),
+        },
+      }
+    })
   }
 
   async save(id: string, input: SaveInput): Promise<void> {
     await this.library.update(async (entries, io) => {
+      const tombstoned = entries.find(e => e.uuid === id && e.deleted_at)
+      if (tombstoned) {
+        // Saving into a trashed id resurrects it, matching the IndexedDB store:
+        // the bytes belong to a document the editor still has open, and the
+        // alternative (falling through to the upsert below) minted a SECOND
+        // entry sharing the uuid. The files come back out of the trash folder
+        // under a stem allocated against whatever took the name meanwhile.
+        const stem = allocateStem(tombstoned.name, takenStems(io, entries, 'library'))
+        const moved = await io.moveDoc(tombstoned, 'library', stem)
+        const revived: IndexEntry = { ...tombstoned, stem, ...moved }
+        delete revived.deleted_at
+        const updated = stamp(revived, {
+          has_preview: revived.has_preview || input.preview_image !== undefined,
+        })
+        const written = await io.writeDoc(updated, input.content, input.preview_image)
+        this.previews.delete(id)
+        return { entries: replace(entries, { ...updated, ...written }), result: undefined }
+      }
       const existing = findLive(entries, id)
       if (existing) {
         // No-op save: identical bytes must not churn meta.rev (the assembly
@@ -133,21 +174,21 @@ export class FileSystemDirectoryStore implements DocumentStore {
         const updated = stamp(existing, {
           has_preview: existing.has_preview || input.preview_image !== undefined,
         })
-        await io.writeDoc(updated, input.content, input.preview_image)
+        const written = await io.writeDoc(updated, input.content, input.preview_image)
         this.previews.delete(id)
-        return { entries: replace(entries, updated), result: undefined }
+        return { entries: replace(entries, { ...updated, ...written }), result: undefined }
       }
       // Upsert rather than reject, matching every other store: the editor may
       // save into an id whose create() has not landed yet, and losing the
       // user's bytes is worse than holding a document the library never named.
-      const created = newEntry(id, 'Untitled', allocateStem('Untitled', takenStems(entries, 'library')), {
+      const created = newEntry(id, 'Untitled', allocateStem('Untitled', takenStems(io, entries, 'library')), {
         is_public: false,
         rev: 1,
         has_preview: input.preview_image !== undefined,
       })
-      await io.writeDoc(created, input.content, input.preview_image)
+      const written = await io.writeDoc(created, input.content, input.preview_image)
       this.previews.delete(id)
-      return { entries: [...entries, created], result: undefined }
+      return { entries: [...entries, { ...created, ...written }], result: undefined }
     })
   }
 
@@ -159,9 +200,11 @@ export class FileSystemDirectoryStore implements DocumentStore {
     await this.library.update(async (entries, io) => {
       const entry = findLive(entries, id)
       if (!entry) return { result: undefined }
-      const stem = allocateStem(entry.name, takenStems(entries, 'trash'))
-      await io.moveDoc(entry, 'trash', stem)
-      const trashed: IndexEntry = { ...entry, stem, deleted_at: new Date(Date.now()).toISOString() }
+      const stem = allocateStem(entry.name, takenStems(io, entries, 'trash'))
+      const moved = await io.moveDoc(entry, 'trash', stem)
+      const trashed: IndexEntry = {
+        ...entry, stem, ...moved, deleted_at: new Date(Date.now()).toISOString(),
+      }
       this.previews.delete(id)
       return { entries: replace(entries, trashed), result: undefined }
     })
@@ -171,30 +214,37 @@ export class FileSystemDirectoryStore implements DocumentStore {
     return this.library.update(async (entries, io) => {
       // The file exists from create, not from the first save: an empty document
       // the folder does not show would be a library the user cannot see.
-      const entry = newEntry(randomUuid(), name, allocateStem(name, takenStems(entries, 'library')), {
+      const entry = newEntry(randomUuid(), name, allocateStem(name, takenStems(io, entries, 'library')), {
         is_public: opts.is_public ?? false,
         // rev 0 on create; the first save bumps it to 1 (a new doc is a local
         // change nothing has synced anywhere, hence dirty).
         rev: 0,
         has_preview: false,
       })
-      await io.writeDoc(entry, '')
-      return { entries: [...entries, entry], result: { uuid: entry.uuid } }
+      const written = await io.writeDoc(entry, '')
+      return { entries: [...entries, { ...entry, ...written }], result: { uuid: entry.uuid } }
     })
   }
 
   // Reject-on-missing is the canonical unknown-id semantic: a rename of an id
   // that does not exist must fail loudly rather than invent state, matching
   // load() and duplicate(). save()'s upsert above is the ONE exception.
+  // Tombstoned documents rename too, in place in the trash folder, matching the
+  // IndexedDB store (whose rename finds a record regardless of its tombstone).
+  // The Trash view shows a name, so it has to be the current one.
   async rename(id: string, name: string): Promise<void> {
     await this.library.update(async (entries, io) => {
-      const entry = findLive(entries, id)
+      const entry = findAny(entries, id)
       if (!entry) throw new Error(`Document not found: ${id}`)
-      const stem = allocateStem(name, takenStems(entries, 'library', id))
-      await io.renameDoc(entry, stem)
+      const where = entry.deleted_at ? 'trash' : 'library'
+      const stem = allocateStem(name, takenStems(io, entries, where, id))
+      const renamed = await io.renameDoc(entry, stem)
       // A rename is a local change like a save: bump rev, restamp updated_at,
       // flag dirty so it re-sorts by "modified".
-      return { entries: replace(entries, stamp(entry, { name, stem })), result: undefined }
+      return {
+        entries: replace(entries, stamp(entry, { name, stem, ...renamed })),
+        result: undefined,
+      }
     })
   }
 
@@ -217,13 +267,13 @@ export class FileSystemDirectoryStore implements DocumentStore {
       const src = findLive(entries, id)
       if (!src) throw new Error(`Document not found: ${id}`)
       const name = nameFor(src.name)
-      const copy = newEntry(randomUuid(), name, allocateStem(name, takenStems(entries, 'library')), {
+      const copy = newEntry(randomUuid(), name, allocateStem(name, takenStems(io, entries, 'library')), {
         is_public: src.is_public,
         rev: 1,
         has_preview: src.has_preview,
       })
-      await io.writeDoc(copy, await io.readContent(src), await io.readPreview(src))
-      return { entries: [...entries, copy], result: { uuid: copy.uuid } }
+      const written = await io.writeDoc(copy, await io.readContent(src), await io.readPreview(src))
+      return { entries: [...entries, { ...copy, ...written }], result: { uuid: copy.uuid } }
     })
   }
 
@@ -266,9 +316,9 @@ export class FileSystemDirectoryTrashAdapter implements TrashAdapter {
     await this.library.update(async (entries, io) => {
       const entry = entries.find(e => e.uuid === id && e.deleted_at)
       if (!entry) return { result: undefined }
-      const stem = allocateStem(entry.name, takenStems(entries, 'library'))
-      await io.moveDoc(entry, 'library', stem)
-      const restored: IndexEntry = { ...entry, stem }
+      const stem = allocateStem(entry.name, takenStems(io, entries, 'library'))
+      const moved = await io.moveDoc(entry, 'library', stem)
+      const restored: IndexEntry = { ...entry, stem, ...moved }
       delete restored.deleted_at
       return { entries: replace(entries, restored), result: undefined }
     })
@@ -299,6 +349,10 @@ function newEntry(
     updated_at: new Date(now).toISOString(),
     meta: { id: uuid, rev: opts.rev, updatedAt: now, dirty: true },
     has_preview: opts.has_preview,
+    // Placeholder until the write lands; every caller folds in the real
+    // fingerprint the writer returns.
+    size: 0,
+    mtime: 0,
   }
 }
 

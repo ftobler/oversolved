@@ -228,6 +228,36 @@ describe('IndexedDbDocumentStore', () => {
       expect((await trash.list())[0].deleted_at).toBe(first)
     })
 
+    // The other half of the soft delete's write side, and the reason it is
+    // pinned here as well as in FileSystemDirectoryStore.test.ts: an editor
+    // autosave can land after the grid deleted the document, and the two stores
+    // have to agree on what that does. Neither may end up holding two records
+    // under one uuid.
+    it('a save into a trashed id resurrects the document under the same id', async () => {
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const { uuid } = await store.create('Bracket')
+      await store.save(uuid, { content: 'v1' })
+      await store.remove(uuid)
+      await store.save(uuid, { content: 'v2' })
+
+      const list = await store.list()
+      expect(list.map(d => d.uuid)).toEqual([uuid])
+      expect(list.map(d => d.name)).toEqual(['Bracket'])
+      expect((await store.load(uuid)).content).toBe('v2')
+      expect(await trash.list()).toEqual([])
+    })
+
+    it('a rename of a trashed id renames it in place, still trashed', async () => {
+      const store = new IndexedDbDocumentStore()
+      const trash = new IndexedDbTrashAdapter()
+      const { uuid } = await store.create('Bracket')
+      await store.remove(uuid)
+      await store.rename(uuid, 'Gearbox')
+      expect((await trash.list()).map(d => d.name)).toEqual(['Gearbox'])
+      expect(await store.list()).toEqual([])
+    })
+
     // duplicate/clone read the raw record, so a tombstoned id would otherwise
     // come back as a live copy: resurrecting a trashed doc behind load()'s and
     // list()'s backs, which both reject/hide trashed records.
