@@ -157,6 +157,34 @@ describe('save atomicity', () => {
     dir.failNextWrite = null
   })
 
+  // Noticing an outside edit costs a stat per document, and only a read has to
+  // notice: a write is about not clobbering, which needs the folder's names and
+  // nothing more. Statting on both paths made a bulk ingest quadratic, since
+  // importBundle runs two operations per document.
+  it('does not stat every document file on a write path', async () => {
+    // The same create + save in two libraries of different sizes. If the write
+    // path swept the folder the larger one would cost more, which is what made
+    // a bulk ingest quadratic: importBundle runs two operations per document.
+    const cost = async (siblings: number): Promise<number> => {
+      const folder = fakeDirectory()
+      const library = openDirectoryLibrary(folder).documents
+      for (let i = 0; i < siblings; i++) await library.create(`Doc${i}`)
+      await library.list()
+      folder.reads = 0
+      const { uuid } = await library.create('New')
+      await library.save(uuid, { content: 'body' })
+      return folder.reads
+    }
+    expect(await cost(20)).toBe(await cost(2))
+
+    // The read path does sweep them: that is where an outside edit is noticed.
+    for (let i = 0; i < 5; i++) await store.create(`Doc${i}`)
+    await store.list()
+    dir.reads = 0
+    await store.list()
+    expect(dir.reads).toBeGreaterThanOrEqual(5)
+  })
+
   // There is no cross-file transaction in this API, so overlapping saves would
   // otherwise interleave their read and write of the index and one would lose.
   it('serializes concurrent writes so none is lost', async () => {

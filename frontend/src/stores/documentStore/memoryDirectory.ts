@@ -99,9 +99,11 @@ export class MemoryDirectory {
     this.name = name
   }
 
-  // Overridden by the test double to inject a write failure; the base is a
-  // plain hook with nothing in it.
+  // Overridden by the test double to inject a write failure and to count file
+  // reads; the base is a pair of plain hooks with nothing in them.
   protected beforeWrite(_name: string): void {}
+
+  protected beforeRead(_name: string): void {}
 
   async getFileHandle(name: string, opts: { create?: boolean } = {}): Promise<FileSystemFileHandle> {
     if (!this.files.has(name) && !opts.create) throw notFound(name)
@@ -109,6 +111,7 @@ export class MemoryDirectory {
       kind: 'file',
       name,
       getFile: async () => {
+        this.beforeRead(name)
         const stored = this.files.get(name)
         if (!stored) throw notFound(name)
         return fileFrom(stored, name)

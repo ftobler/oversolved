@@ -87,12 +87,20 @@ export interface DiskFile {
   mtime: number
 }
 
-// One directory level, as read. `occupied` covers every file's stem whatever
-// its extension, so stem allocation can avoid names the folder already uses.
+// One directory level, as read. Handles rather than fingerprints: reading a
+// name is one directory entry, reading a size and modification time is a stat
+// per file, and only the read path needs every one of them (see `reconcile`).
+// `occupied` covers every file's stem whatever its extension, so stem
+// allocation can avoid names the folder already uses.
 interface DirectoryContents {
-  docs: Map<string, DiskFile>
+  docs: Map<string, FileSystemFileHandle>
   previews: Set<string>
   occupied: Set<string>
+}
+
+async function fingerprint(handle: FileSystemFileHandle): Promise<DiskFile> {
+  const file = await handle.getFile()
+  return { size: file.size, mtime: file.lastModified }
 }
 
 interface Reconciled {
@@ -303,7 +311,15 @@ export class DirectoryLibrary {
   // next read and the route to it does not break under the user. A file in the
   // trash folder is adopted as ALREADY DELETED: it is a deleted document, so
   // recovering it must stay possible without it reappearing in the library.
-  private async reconcile(index: LibraryIndex): Promise<Reconciled> {
+  //
+  // `restat` is what separates the two callers. Noticing a CHANGED file costs a
+  // stat per document, and only a read has to notice: a write is about not
+  // clobbering, which needs the folder's names and nothing more, and the edit
+  // it did not stat is seen by the next read anyway. Statting on both made a
+  // bulk ingest (importBundle: two operations per document) quadratic in stat
+  // calls. Adoption still stats, but only the files actually being adopted,
+  // which in the steady state is none.
+  private async reconcile(index: LibraryIndex, { restat }: { restat: boolean }): Promise<Reconciled> {
     const onDisk = await this.listStems(this.dir)
     const inTrash = await this.listStems(await this.trashDir({ create: false }))
     const kept: IndexEntry[] = []
@@ -311,15 +327,16 @@ export class DirectoryLibrary {
 
     for (const entry of index.docs) {
       const present = entry.deleted_at ? inTrash : onDisk
-      const file = present.docs.get(entry.stem)
-      if (!file) {
+      const handle = present.docs.get(entry.stem)
+      if (!handle) {
         changed = true
         continue  // the file is gone: so is the document
       }
       const has_preview = present.previews.has(entry.stem)
       // Bytes we did not write. The document is whatever the file now says, and
       // a rev bump is what tells every cache keyed on it to let go.
-      if (file.size !== entry.size || file.mtime !== entry.mtime) {
+      const file = restat ? await fingerprint(handle) : null
+      if (file && (file.size !== entry.size || file.mtime !== entry.mtime)) {
         kept.push(restamp({ ...entry, has_preview, ...file }))
         changed = true
         continue
@@ -332,8 +349,8 @@ export class DirectoryLibrary {
       kept.push(entry)
     }
 
-    changed = adoptOrphans(onDisk, kept, false) || changed
-    changed = adoptOrphans(inTrash, kept, true) || changed
+    changed = await adoptOrphans(onDisk, kept, false) || changed
+    changed = await adoptOrphans(inTrash, kept, true) || changed
     return { index: { version: INDEX_VERSION, docs: kept }, changed, onDisk, inTrash }
   }
 
@@ -343,7 +360,7 @@ export class DirectoryLibrary {
   // kind already answers to it, or the first save with a preview would silently
   // overwrite a `.png` the user put there themselves.
   private async listStems(dir: FileSystemDirectoryHandle): Promise<DirectoryContents> {
-    const docs = new Map<string, DiskFile>()
+    const docs = new Map<string, FileSystemFileHandle>()
     const previews = new Set<string>()
     const occupied = new Set<string>()
     for await (const handle of dir.values()) {
@@ -351,12 +368,8 @@ export class DirectoryLibrary {
       const name = handle.name
       const dot = name.lastIndexOf('.')
       occupied.add(dot > 0 ? name.slice(0, dot) : name)
-      if (name.endsWith(DOC_EXT)) {
-        const file = await (handle as FileSystemFileHandle).getFile()
-        docs.set(name.slice(0, -DOC_EXT.length), { size: file.size, mtime: file.lastModified })
-      } else if (name.endsWith(PREVIEW_EXT)) {
-        previews.add(name.slice(0, -PREVIEW_EXT.length))
-      }
+      if (name.endsWith(DOC_EXT)) docs.set(name.slice(0, -DOC_EXT.length), handle as FileSystemFileHandle)
+      else if (name.endsWith(PREVIEW_EXT)) previews.add(name.slice(0, -PREVIEW_EXT.length))
     }
     return { docs, previews, occupied }
   }
@@ -366,7 +379,9 @@ export class DirectoryLibrary {
   // back into a later read.
   async read(): Promise<IndexEntry[]> {
     return this.enqueue(async () => {
-      const { index, changed } = await this.reconcile(await this.loadIndex())
+      // The read path is the one that has to notice an outside edit, so this is
+      // the sweep that stats every document file.
+      const { index, changed } = await this.reconcile(await this.loadIndex(), { restat: true })
       if (changed) await this.saveIndex(index)
       return index.docs.map(cloneEntry)
     })
@@ -387,7 +402,7 @@ export class DirectoryLibrary {
     mutate: (entries: IndexEntry[], io: LibraryIo) => Promise<{ entries?: IndexEntry[]; result: T }>,
   ): Promise<T> {
     return this.enqueue(async () => {
-      const state = await this.reconcile(await this.loadIndex())
+      const state = await this.reconcile(await this.loadIndex(), { restat: false })
       const { index, changed } = state
       const { entries, result } = await mutate(index.docs.map(cloneEntry), this.io(state))
       if (entries) await this.saveIndex({ version: INDEX_VERSION, docs: entries })
@@ -575,15 +590,16 @@ function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: bool
 }
 
 // Adds an entry for every document file in `contents` that no kept entry
-// claims. Returns whether anything was adopted.
-function adoptOrphans(
+// claims. Returns whether anything was adopted. Stats only the orphans, which
+// in a folder this app has been keeping is none.
+async function adoptOrphans(
   contents: DirectoryContents, kept: IndexEntry[], deleted: boolean,
-): boolean {
+): Promise<boolean> {
   const claimed = new Set(kept.filter(e => !!e.deleted_at === deleted).map(e => e.stem))
   let adopted = false
-  for (const [stem, file] of contents.docs) {
+  for (const [stem, handle] of contents.docs) {
     if (claimed.has(stem)) continue
-    kept.push(adopt(stem, contents.previews.has(stem), file, deleted))
+    kept.push(adopt(stem, contents.previews.has(stem), await fingerprint(handle), deleted))
     adopted = true
   }
   return adopted

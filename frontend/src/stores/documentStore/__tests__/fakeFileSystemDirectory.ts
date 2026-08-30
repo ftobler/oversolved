@@ -12,6 +12,11 @@ export class FakeDirectoryHandle extends MemoryDirectory {
   // Set to a message to make the next createWritable throw, standing in for a
   // quota error or a permission revoked mid-save.
   failNextWrite: string | null = null
+  // Every getFile() that reached this level. `getFile` is how the store reads a
+  // file's contents AND how it stats one for the outside-edit fingerprint, and
+  // in a real browser each is a round trip to the browser process, so counting
+  // them is how the cost of a bulk operation is pinned.
+  reads = 0
 
   protected override beforeWrite(_name: string): void {
     const failure = this.failNextWrite
@@ -19,6 +24,10 @@ export class FakeDirectoryHandle extends MemoryDirectory {
       this.failNextWrite = null
       throw new Error(failure)
     }
+  }
+
+  protected override beforeRead(_name: string): void {
+    this.reads += 1
   }
 
   protected override makeChild(name: string): MemoryDirectory {
