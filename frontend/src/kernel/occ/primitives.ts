@@ -823,9 +823,18 @@ const SHAPE_HASH_UPPER = 2147483647  // 2^31 - 1
  */
 export class SubShapeDedup {
   private readonly buckets = new Map<number, OccSubShape[]>()
+  // Synthetic shapes (unit-test mocks) may lack HashCode; fall back to a flat
+  // IsSame scan so the helper still dedups without a real OCC TShape.
+  private readonly flat: OccSubShape[] = []
   // Register a shape; returns true the first time this identity is seen.
   add(shape: OccSubShape): boolean {
-    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const hashFn = (shape as unknown as { HashCode?: (n: number) => number }).HashCode
+    if (typeof hashFn !== 'function') {
+      if (this.flat.some((u) => u.IsSame(shape))) return false
+      this.flat.push(shape)
+      return true
+    }
+    const key = hashFn.call(shape, SHAPE_HASH_UPPER)
     const bucket = this.buckets.get(key)
     if (bucket === undefined) {
       this.buckets.set(key, [shape])

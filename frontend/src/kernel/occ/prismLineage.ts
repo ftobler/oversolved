@@ -44,6 +44,7 @@ import {
   makeFaceFromWire,
   healWire,
   wireEndpointGaps,
+  SubShapeDedup,
   type Vec3,
 } from './primitives'
 import { faceGh, edgeGh } from './lineageHash'
@@ -637,8 +638,12 @@ export function buildPrismLineageMap(
   let capRoleGhs: ReadonlySet<string> | undefined
   if (createdBy && capCandidates.length < 2) {
     const geo = geometricCapFaces(oc, scope, solid, occFace)
+    // Seed with the builder's own caps so the geometric fallback neither
+    // re-adds one of them nor duplicates itself across the loop.
+    const capSeen = new SubShapeDedup()
+    for (const c of capCandidates) capSeen.add(c.face)
     for (const g of geo.caps) {
-      if (!capCandidates.some((c) => c.face.IsSame(g.face))) capCandidates.push(g)
+      if (capSeen.add(g.face)) capCandidates.push(g)
     }
     // A cap-role face the cap path could not reach must stay exactly as the old
     // wire output left it (unnamed): the neighbour pass must not reclassify a

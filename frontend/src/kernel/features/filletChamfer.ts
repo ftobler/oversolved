@@ -14,7 +14,7 @@ import { bestDescriptorMatch, type GeomDescriptor } from '../geomDescriptor'
 import { resolveBody, resolveBodyIds } from './shared'
 import { resplitBody } from './bodySplit'
 import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
-import { faceCentroid, faceNormal, edgeToGeom, type Vec3 } from '../occ/primitives'
+import { faceCentroid, faceNormal, edgeToGeom, SubShapeDedup, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
@@ -117,9 +117,9 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   const shape = table.get<OccShape>(body.shape)
 
   const uniq: OccShape[] = []
+  const dedup = new SubShapeDedup()
   for (const e of exploreEdges(oc, scope, shape)) {
-    if (uniq.some((u) => (u as OccSubShape).IsSame(e as OccSubShape))) continue
-    uniq.push(e)
+    if (dedup.add(e as OccSubShape)) uniq.push(e)
   }
 
   const hasModifier =
@@ -213,8 +213,9 @@ export function resolveEdgesWithIndex(
   bodyStore: Record<string, unknown> | null = null,
 ): OccShape[] {
   const result: OccShape[] = []
+  const dedup = new SubShapeDedup()
   const addUnique = (e: OccShape): void => {
-    if (!result.some((r) => (r as OccSubShape).IsSame(e as OccSubShape))) result.push(e)
+    if (dedup.add(e as OccSubShape)) result.push(e)
   }
 
   const isFaceQuery = (q: string): boolean => {
