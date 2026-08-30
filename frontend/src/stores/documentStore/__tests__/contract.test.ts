@@ -3,6 +3,8 @@ import { resetFakeIndexedDb } from './fakeIndexedDb'
 import type { DocumentStore } from '../types'
 import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
 import { InMemoryDocumentStore } from './InMemoryDocumentStore'
+import { openDirectoryLibrary } from '../FileSystemDirectoryStore'
+import { fakeDirectory } from './fakeFileSystemDirectory'
 import { resetDbConnection } from '../idb'
 import { suggestedCloneName } from '../cloneName'
 
@@ -10,14 +12,20 @@ import { suggestedCloneName } from '../cloneName'
 // rule: given the same sequence of calls, each store must present the same
 // observable document state.
 //
-// IndexedDB is the only store the app ships, but the seam exists so another one
-// (OPFS, a file-system handle, a sync engine) can be dropped in at the
-// composition root without touching a caller -- and a seam with a single
-// conformer rots, because nothing distinguishes "the interface promises this"
-// from "this is what IndexedDB happens to do". InMemoryDocumentStore is the
-// second conformer that keeps the distinction real: it is written from this
-// contract rather than ported from the IndexedDB store, so a behaviour only one
-// of them has shows up here as a failure instead of as silent coupling.
+// IndexedDB is the browser-storage default, but the seam exists so another
+// store can be dropped in at the composition root without touching a caller --
+// and a seam with a single conformer rots, because nothing distinguishes "the
+// interface promises this" from "this is what IndexedDB happens to do".
+// InMemoryDocumentStore is the second conformer that keeps the distinction
+// real: it is written from this contract rather than ported from the IndexedDB
+// store, so a behaviour only one of them has shows up here as a failure instead
+// of as silent coupling.
+//
+// FileSystemDirectoryStore is the third, and the first one that is not a
+// browser-private database: a folder the user picked, one .yaml file per
+// document. It was built to this suite -- passing it UNCHANGED was the whole
+// acceptance bar for that feature -- so anything it needed that the interface
+// did not already promise would have shown up here as a contract change.
 //
 // Impl-specific concerns stay in their own files: IndexedDbDocumentStore.test.ts
 // covers the local-only sync `meta` envelope, the tombstone lifecycle and the
@@ -49,6 +57,16 @@ const adapters: Adapter[] = [
     setup: () => {},
     teardown: () => {},
   },
+  {
+    name: 'FileSystemDirectoryStore',
+    // A fresh in-memory directory handle per case, the same way the IDB adapter
+    // gets a fresh fake database. Impl-specific behaviour (the on-disk layout,
+    // save atomicity, adopting files that appeared underneath the app) lives in
+    // FileSystemDirectoryStore.test.ts, not here.
+    make: () => openDirectoryLibrary(fakeDirectory()).documents,
+    setup: () => {},
+    teardown: () => {},
+  },
 ]
 
 describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
@@ -73,12 +91,19 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(list.find(s => s.uuid === uuid)?.is_owner).toBe(true)
   })
 
+  // The preview fixture is CANONICAL base64, not arbitrary text: the field
+  // holds base64-encoded PNG bytes, and a store that keeps them as an actual
+  // .png file decodes and re-encodes them. Re-encoding is only byte-stable for
+  // a valid encoding, so a fixture like 'PNGDATA' (which decodes to 5 bytes and
+  // re-encodes to 'PNGDATA=') would pin an encoding artifact rather than the
+  // promise. bundle.test.ts uses canonical fixtures for the same reason.
   it('save then load round-trips content, name and preview', async () => {
+    const preview = btoa('\x89PNG\r\n')
     const { uuid } = await store.create('Box')
-    await store.save(uuid, { content: 'features: []', preview_image: 'PNGDATA' })
+    await store.save(uuid, { content: 'features: []', preview_image: preview })
     const loaded = await store.load(uuid)
     expect(loaded.content).toBe('features: []')
-    expect(loaded.preview_image).toBe('PNGDATA')
+    expect(loaded.preview_image).toBe(preview)
     expect(loaded.name).toBe('Box')
   })
 
