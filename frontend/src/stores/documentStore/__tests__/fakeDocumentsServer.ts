@@ -143,18 +143,36 @@ export function mountFakeDocumentsServer(): () => void {
         return respond(200, {
           uuid: rec.uuid,
           content: rec.content, name: rec.name,
+          created_at: rec.created_at, updated_at: rec.updated_at,
           owner_username: 'server-user', permission: 'owner',
           is_public: rec.is_public, preview_image: rec.preview_image,
         })
       }
       if (method === 'PUT') {
+        // Mirror update_document's content guards: a missing or non-string
+        // content would 500 on the real backend; callers expect a clean 400.
+        if (body.content === undefined) {
+          return apiError(400, 'Missing "content" field', 'BAD_REQUEST')
+        }
+        if (typeof body.content !== 'string') {
+          return apiError(400, '"content" must be a string', 'BAD_REQUEST')
+        }
         rec.content = body.content
         if (body.preview_image !== undefined) rec.preview_image = body.preview_image
-        rec.updated_at = stamp()
+        rec.updated_at = stamp()  // update_content restamps updated_at
         return respond(200, { uuid: rec.uuid, status: 'stored' })
       }
       if (method === 'PATCH') {
-        rec.name = body.name
+        // Mirror rename_document's name guards: a non-string name would crash
+        // strip() into a 500, and an absent/blank name is rejected with 400.
+        const name = body?.name
+        if (name !== undefined && typeof name !== 'string') {
+          return apiError(400, '"name" must be a string', 'BAD_REQUEST')
+        }
+        const trimmed = (name ?? '').toString().trim()
+        if (!trimmed) return apiError(400, 'Document name required', 'BAD_REQUEST')
+        rec.name = trimmed
+        rec.updated_at = stamp()  // rename restamps updated_at
         return respond(200, { uuid: rec.uuid, name: rec.name })
       }
       if (method === 'DELETE') {

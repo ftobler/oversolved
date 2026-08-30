@@ -19,6 +19,7 @@ import { emptyAssemblyDoc } from '@/utils/assemblyMutations'
 import type { TrashDoc } from '@/adapters/trash'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCloudAvailable } from '@/hooks/useCloudAvailable'
+import { canDuplicateDocument } from '@/pages/documentsGuards'
 import '@/pages/Documents.css'
 
 function stopClick(handler: () => void): React.MouseEventHandler {
@@ -27,14 +28,6 @@ function stopClick(handler: () => void): React.MouseEventHandler {
     e.stopPropagation()
     handler()
   }
-}
-
-// A cloud document can only be duplicated by its owner (the server gates the
-// duplicate endpoint on doc ownership), so the button on a shared/public tile
-// would only surface a guaranteed Forbidden banner. Local documents belong to
-// the device, so duplication is always available there.
-export function canDuplicateDocument(doc: DocumentMeta, onCloud: boolean): boolean {
-  return !onCloud || !!doc.is_owner
 }
 
 type DocumentMeta = DocSummary

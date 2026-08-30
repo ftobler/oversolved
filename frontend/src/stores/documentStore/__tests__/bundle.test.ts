@@ -175,6 +175,38 @@ describe('bundle export/import', () => {
     expect(contents.sort()).toEqual(['first', 'second', 'third'])
   })
 
+  it('never lets a suffixed stripped-name entry overwrite a real doc sharing that stem', async () => {
+    // Corner from review-17: a real doc named "Untitled_1" secure-filenames to
+    // "Untitled_1", while two stripped non-ASCII names both fall back to
+    // "Untitled". An old per-base counter would suffix the second stripped name
+    // to "Untitled_1", clobbering the real doc. The reservation set keys on the
+    // produced stem, so the suffix skips to "Untitled_2".
+    const store = new IndexedDbDocumentStore()
+    const real = await store.create('Untitled_1')
+    await store.save(real.uuid, { content: 'real' })
+    const a = await store.create('部品')
+    await store.save(a.uuid, { content: 'first' })
+    const b = await store.create('Деталь')
+    await store.save(b.uuid, { content: 'second' })
+
+    const bytes = await buildBundleBytes(store, [real.uuid, a.uuid, b.uuid])
+    expect(await entryNames(bytes)).toEqual([
+      `${LOCAL_OWNER}/Untitled.yaml`,
+      `${LOCAL_OWNER}/Untitled_1.yaml`,
+      `${LOCAL_OWNER}/Untitled_2.yaml`,
+    ])
+
+    // Round-trip preserves all three contents, no overwritten entry.
+    resetFakeIndexedDb()
+    resetDbConnection()
+    const target = new IndexedDbDocumentStore()
+    const contents: string[] = []
+    for (const id of await importBundle(target, bytes)) {
+      contents.push((await target.load(id)).content)
+    }
+    expect(contents.sort()).toEqual(['first', 'real', 'second'])
+  })
+
   it('imports a legacy blank-stem entry (.yaml) as Untitled instead of an unreachable blank name', async () => {
     const zip = new JSZip()
     zip.file('u/.yaml', 'features: [legacy]')

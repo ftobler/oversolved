@@ -23,14 +23,30 @@ async function toBytes(data: Blob | ArrayBuffer | Uint8Array): Promise<ArrayBuff
 }
 
 // Mirrors admin.py's per-(user, name) collision suffixing so two documents that
-// secure-filename to the same stem get `_1`, `_2`, ... and never overwrite.
-function uniqueStem(counts: Map<string, number>, key: string, stem: string): string {
-  const seen = counts.get(key) ?? 0
-  counts.set(key, seen + 1)
-  if (seen === 0) return stem
+// secure-filename to the same stem get `_1`, `_2`, ... and never overwrite. The
+// reservation set tracks every produced stem (including suffixes), not just the
+// base, so a generated `_1` can never land on a stem another document already
+// owns (e.g. a real doc named "Untitled_1" must not be clobbered by a stripped
+// empty-name doc's suffixed entry).
+function reserveStem(seen: Set<string>, ownerPath: string, stem: string): string {
+  const first = `${ownerPath}${stem}`
+  if (!seen.has(first)) {
+    seen.add(first)
+    return stem
+  }
   const dot = stem.lastIndexOf('.')
-  if (dot > 0) return `${stem.slice(0, dot)}_${seen}.${stem.slice(dot + 1)}`
-  return `${stem}_${seen}`
+  let n = 1
+  while (true) {
+    const suffixed = dot > 0
+      ? `${stem.slice(0, dot)}_${n}.${stem.slice(dot + 1)}`
+      : `${stem}_${n}`
+    const candidate = `${ownerPath}${suffixed}`
+    if (!seen.has(candidate)) {
+      seen.add(candidate)
+      return suffixed
+    }
+    n += 1
+  }
 }
 
 // secureFilename strips every non-ASCII code point, so a Cyrillic/CJK document
@@ -43,14 +59,14 @@ const UNTITLED_DOC_NAME = 'Untitled'
 // so it is testable without a Blob (jsdom Blobs are opaque to binary reads).
 export async function buildBundleBytes(store: DocumentStore, ids: string[]): Promise<Uint8Array> {
   const zip = new JSZip()
-  const counts = new Map<string, number>()
+  const seen = new Set<string>()
   for (const id of ids) {
     const payload = await store.load(id)
     const owner = payload.owner_username || LOCAL_OWNER
     // Key and stem share the fallback so a literal 'Untitled' doc collides
     // (and suffixes) with a stripped non-ASCII name instead of overwriting it.
     const safe = secureFilename(payload.name) || UNTITLED_DOC_NAME
-    const stem = uniqueStem(counts, `${owner}/${safe}`, safe)
+    const stem = reserveStem(seen, `${owner}/`, safe)
     zip.file(`${owner}/${stem}.yaml`, payload.content)
     if (payload.preview_image) {
       // preview_image is base64 (no data: prefix), matching the save body.

@@ -301,6 +301,41 @@ describe('unknown-id semantics and fake-server fidelity', () => {
     }
   })
 
+  // PATCH must reject a non-string or blank name with 400 (rename_document
+  // guard) and restamp updated_at, mirroring documents.py.
+  it('PATCH rejects non-string/blank names with 400 and restamps updated_at', async () => {
+    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Box' }) })
+    const { uuid } = await created.json()
+    await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'body' }) })
+    const before = (await (await fetch(`/api/documents/${uuid}`)).json()).updated_at
+
+    const nonString = await fetch(`/api/documents/${uuid}`, { method: 'PATCH', body: JSON.stringify({ name: 7 }) })
+    expect(nonString.status).toBe(400)
+    const blank = await fetch(`/api/documents/${uuid}`, { method: 'PATCH', body: JSON.stringify({ name: '  ' }) })
+    expect(blank.status).toBe(400)
+
+    const ok = await fetch(`/api/documents/${uuid}`, { method: 'PATCH', body: JSON.stringify({ name: 'Renamed' }) })
+    expect(ok.status).toBe(200)
+    expect((await ok.json()).name).toBe('Renamed')
+    const after = (await (await fetch(`/api/documents/${uuid}`)).json()).updated_at
+    expect(Date.parse(after)).toBeGreaterThan(Date.parse(before))
+  })
+
+  // PUT must reject a missing or non-string content with 400 (update_document
+  // guards), mirroring documents.py.
+  it('PUT rejects missing/non-string content with 400', async () => {
+    const created = await fetch('/api/documents', { method: 'POST', body: JSON.stringify({ name: 'Box' }) })
+    const { uuid } = await created.json()
+
+    const missing = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ name: 'x' }) })
+    expect(missing.status).toBe(400)
+    const notString = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 12 }) })
+    expect(notString.status).toBe(400)
+
+    const ok = await fetch(`/api/documents/${uuid}`, { method: 'PUT', body: JSON.stringify({ content: 'body' }) })
+    expect(ok.status).toBe(200)
+  })
+
   // ─── synthesized meta.rev (assembly bundle cache key) ───
 
   it('HTTP list synthesizes meta.rev from the server updated_at and bumps it on edit', async () => {

@@ -369,6 +369,48 @@ describe('bundleCache', () => {
       expect(await bundleCacheGet('docA', 1)).toBeDefined()
     })
 
+    it('closes the connection that resolves only after its open was abandoned (blocked-open zombie)', async () => {
+      // Stand-in for a pre-deploy tab holding v1 open: the v2 open blocks,
+      // rejects fast, and the cached seam is cleared. Once the blocker closes
+      // the blocked request settles via onsuccess with a connection nobody
+      // holds -- the zombie. Count v2 opens via the success event (the module
+      // overwrites onsuccess, so a listener catches it) and every close, then
+      // assert they balance: the orphan must be closed on settle, not left
+      // until the next version bump.
+      let opens = 0
+      let closes = 0
+      const origClose = IDBDatabase.prototype.close
+      IDBDatabase.prototype.close = function (this: IDBDatabase) { closes++; return origClose.call(this) }
+      const origOpen = indexedDB.open.bind(indexedDB)
+      indexedDB.open = ((...args: Parameters<IDBFactory['open']>) => {
+        const req = origOpen(...args)
+        req.addEventListener('success', () => {
+          // Only the module's v2 opens matter; the v1 blocker is excluded.
+          if (req.result.name === DB_NAME && req.result.version === 2) opens++
+        })
+        return req
+      }) as typeof indexedDB.open
+
+      const blocker = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1)
+        req.onupgradeneeded = () => { req.result.createObjectStore('bundles', { keyPath: 'key' }) }
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+
+      await expect(bundleCacheGet('nope', 1)).rejects.toThrow(/blocked/)
+
+      blocker.close()
+      // The blocked v2 open now settles through onsuccess (orphan) before work.
+      await new Promise(r => setTimeout(r, 0))
+      await bundleCachePut(fixtureBundle('docA', 1))
+
+      expect(closes).toBe(opens)  // every opened v2 connection was also closed
+
+      IDBDatabase.prototype.close = origClose
+      indexedDB.open = origOpen
+    })
+
     it('closes its connection when another party upgrades, letting the upgrade proceed', async () => {
       // Caches a live connection first.
       await bundleCachePut(fixtureBundle('docA', 1))

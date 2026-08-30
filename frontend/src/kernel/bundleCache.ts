@@ -99,6 +99,14 @@ function openDb(): Promise<IDBDatabase> {
         db.close()
         if (dbPromise === opening) dbPromise = null
       }
+      // A blocked open (onblocked already rejected this promise and cleared the
+      // cached seam) can still settle onsuccess later, once the tab holding the
+      // older version closes. That connection has no cached seam and would live
+      // until the next version bump: close it so it never leaks.
+      if (dbPromise !== opening) {
+        db.close()
+        return
+      }
       resolve(db)
     }
     req.onerror = () => reject(req.error)
