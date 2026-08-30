@@ -42,8 +42,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     loading: false,
     error: null,
     setError: vi.fn(),
-    permission: 'owner',
-    isCloudDoc: false,
     saveDoc: saveDocMock,
     renameDoc: vi.fn(),
     cloneDoc: vi.fn(),

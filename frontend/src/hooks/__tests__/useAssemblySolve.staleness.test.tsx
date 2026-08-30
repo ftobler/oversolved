@@ -23,7 +23,6 @@ const h = vi.hoisted(() => ({
   buildBundleViaWorker: vi.fn(),
   list: vi.fn(),
   load: vi.fn(),
-  cloudLoad: vi.fn(),
 }))
 
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
@@ -36,7 +35,6 @@ vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBu
 vi.mock('@/adapters/backend', () => ({
   backendBundle: {
     documents: { list: h.list, load: h.load },
-    cloudDocuments: { load: h.cloudLoad },
   },
 }))
 

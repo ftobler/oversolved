@@ -34,7 +34,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     setDoc: (d: PartDoc) => { docRef.current = d },
     ownerUsername: null, loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
-    permission: 'owner', isCloudDoc: false,
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
   BUILTIN_FEATURE_IDS: new Set<string>(),
