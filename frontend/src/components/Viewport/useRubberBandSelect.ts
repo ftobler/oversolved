@@ -20,8 +20,9 @@ export interface RubberBandState {
   dragging: boolean
   // The rectangle in viewport-relative pixels (e.g. left/top relative to the canvas).
   rect: RubberBandRect | null
-  /** Ref-backed flag, true while a rubberband drag is active. Use in event handlers
-   *  where React state may not yet be committed. */
+  /** Ref-backed mirror of `dragging`: true only while a box is actually open,
+   *  never for a press that has not passed the open threshold. Use in event
+   *  handlers where React state may not yet be committed. */
   isDraggingRef: { readonly current: boolean }
 }
 
@@ -108,10 +109,15 @@ export function useRubberBandSelect(
     const canvas = glRef.current?.domElement
     if (!canvas) return false
     const canvasRect = canvas.getBoundingClientRect()
+    // The press only ARMS the band; the drag flag stays down until a box
+    // actually opens. It is the ref half of `dragging`, and the Viewport
+    // publishes it at pointer-up as "a sweep owns this click" for the sketch
+    // backplane's empty-click deselect -- raising it here made every stationary
+    // click inside a sketch look like the tail of a sweep and killed
+    // deselection by clicking the background.
     startRef.current = [e.clientX - canvasRect.left, e.clientY - canvasRect.top]
     committedRef.current = false
     rectRef.current = null
-    draggingRef.current = true
     return true
   }, [glRef])
 
@@ -144,6 +150,7 @@ export function useRubberBandSelect(
     const becameVisible = rectRef.current === null
     const nextRect = { x, y, w, h }
     rectRef.current = nextRect
+    draggingRef.current = true
     setRect(nextRect)
     return becameVisible
   }, [glRef, endDrag])

@@ -4,6 +4,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
+import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { getLivePipeline, setLivePipeline } from '@/picking/IdPipelineContext'
 import { IdPipeline, FACE_LAYER_NAME } from '@/picking'
 
@@ -167,6 +168,27 @@ describe('part editor empty-space click clears the selection', () => {
 
     act(() => { missedFn.current?.() })
     expect(useSketchEditorStore.getState().normalSelection.has('face:body1:0')).toBe(true)
+  })
+
+  // Inside a sketch R3F never reports a miss: the DrawPlane backplane covers
+  // the whole plane, so it is always hit and the clear runs off the flags
+  // handlePointerUp publishes instead of the live refs onPointerMissed reads.
+  // A stationary press on empty space arms the rubber band without opening a
+  // box; publishing that as "a sweep owns this click" made the backplane refuse
+  // every clear, and background deselection was dead in sketch edit mode only.
+  it('a stationary left click inside a sketch clears through the backplane path', () => {
+    useSketchEditorStore.setState({ activeFeatureId: 'sk1', activeTool: null })
+    seedSelection('entity:sk1:e0')
+    const { container } = render(<Viewport />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+    act(() => { getLivePipeline()?.target.markClean() })
+
+    act(() => { fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+    act(() => { fireEvent.pointerUp(el, { button: 0, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+    act(() => { fireEvent.click(fakeCanvas, { button: 0, clientX: 100, clientY: 100 }) })
+
+    expect(shouldClearSelectionOnBackplaneClick()).toBe(true)
   })
 
   it('the pane holds no pointer capture for a press that never opened a box', () => {

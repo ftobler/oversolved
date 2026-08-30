@@ -168,6 +168,22 @@ describe('useRubberBandSelect band start gates', () => {
     expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
   })
 
+  // The drag flag means "a box is open", not "a press is live". A stationary
+  // press arms the band but opens nothing, and the Viewport publishes this flag
+  // at pointer-up for the sketch backplane's empty-click deselect: raising it on
+  // the press made every in-sketch click look like the tail of a sweep, and
+  // deselection by clicking the background died.
+  it('a press that never opens a box leaves the drag flag down', () => {
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    act(() => { result.current.onPointerDown(pointerEvent(10, 10), false) })
+    expect(result.current.state.isDraggingRef.current).toBe(false)
+    // A sub-threshold twitch is still no box.
+    act(() => { result.current.onPointerMove(pointerEvent(12, 12)) })
+    expect(result.current.state.isDraggingRef.current).toBe(false)
+  })
+
   // L27: band-start reads the async hover state as its geometry guard, and
   // touch/pen first contact has no hover resolved yet -- a finger landing on a
   // body would open a box over geometry instead of selecting it. Until a sync
