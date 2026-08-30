@@ -1124,7 +1124,7 @@ export default function Part() {
                 title="Toggle debug panel (F2)"
                 onClick={() => setDebugOpen(v => !v)}
               >
-                <span className="material-icons-outlined">bug_report</span>
+                <span className="material-icons-outlined">terminal</span>
               </button>
             )}
             <button
