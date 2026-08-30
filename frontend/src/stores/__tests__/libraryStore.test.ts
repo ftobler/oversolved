@@ -173,9 +173,25 @@ describe('libraryStore', () => {
   it('switches back to browser storage on request', async () => {
     picker.result = cad()
     await useLibraryStore.getState().openFolder()
-    useLibraryStore.getState().useBrowserStorage()
+    registry.name = 'cad'
+    await useLibraryStore.getState().useBrowserStorage()
     expect(useLibraryStore.getState().kind).toBe('browser')
     expect(activeLibrary().kind).toBe('browser')
+    // Still remembered, so it stays offered rather than vanishing until reload.
+    expect(useLibraryStore.getState().remembered).toBe('cad')
+  })
+
+  // The close button is shared between a folder and a single file. Only a
+  // folder is forgotten: closing a file opened on top of one must not throw
+  // the folder away.
+  it('closing a single file leaves the remembered folder alone', async () => {
+    registry.name = 'cad'
+    picker.file = { name: 'Bracket.yaml' } as FileSystemFileHandle
+    await useLibraryStore.getState().openFile()
+    await useLibraryStore.getState().closeFolder()
+    expect(useLibraryStore.getState().kind).toBe('browser')
+    expect(registry.forgotten).toBe(0)
+    expect(useLibraryStore.getState().remembered).toBe('cad')
   })
 
   // Closing forgets the folder so it does not come back next boot. Nothing on

@@ -151,9 +151,11 @@ export default function Documents() {
     }
   }
 
-  // Whole-library backup: every document into one .oversolved bundle. Documents
-  // live only in this browser's IndexedDB, so this is the one way to get them
-  // onto disk or onto another machine -- clearing site data is otherwise final.
+  // Whole-library backup: every document in the ACTIVE library into one
+  // .oversolved bundle. For browser storage that is the only way to get the
+  // documents onto disk or onto another machine, since clearing site data is
+  // otherwise final; for a folder library the files are already on disk and
+  // this is a snapshot of them.
   const handleExportAll = async () => {
     try {
       const all = await store.list()
@@ -262,7 +264,12 @@ export default function Documents() {
   // that need a second file have nothing to mean. Hiding them is the same
   // structural absence the group itself uses; the store refuses them too, as
   // the backstop.
-  const canAddDocuments = library.kind !== 'file'
+  // A single opened file is a library of exactly one document, so the gestures
+  // that need a second file (add, import, duplicate) and the one that needs a
+  // parent directory (delete) have nothing to mean. Hiding them is the same
+  // structural absence the group itself uses; the store refuses them too, as
+  // the backstop.
+  const isSingleFile = library.kind === 'file'
 
   type SidebarEntry = { label: string; icon: string; trash: boolean }
 
@@ -328,7 +335,7 @@ export default function Documents() {
               {sortBy === 'alphabetical' ? 'sort_by_alpha' : sortBy === 'date_newest_first' ? 'update' : 'history'}
             </span>
           </button>
-          {canAddDocuments && (
+          {!isSingleFile && (
             <>
               <button className="toolbar-btn" onClick={() => { setShowAddForm(!showAddForm); setNewDocKind('part') }} title="Add part">
                 <span className="material-icons">add</span>
@@ -362,7 +369,7 @@ export default function Documents() {
               <div className="sidebar-section">Library</div>
               <div
                 className={`sidebar-item ${library.kind === 'browser' ? 'active' : ''}`}
-                onClick={library.useBrowserStorage}
+                onClick={() => { library.useBrowserStorage() }}
                 title="Documents stored inside this browser"
               >
                 <span className="material-icons sidebar-item-icon">storage</span>
@@ -536,13 +543,15 @@ export default function Documents() {
                         <div className="doc-tile-meta">
                           <span className="doc-tile-date">{formatRelativeDate(doc.updated_at)}</span>
                           <div className="doc-tile-actions">
-                            <button
-                              className="btn btn-tile-action"
-                              onClick={stopClick(() => handleDuplicate(doc.uuid))}
-                              title="Duplicate"
-                            >
-                              <span className="material-icons">content_copy</span>
-                            </button>
+                            {!isSingleFile && (
+                              <button
+                                className="btn btn-tile-action"
+                                onClick={stopClick(() => handleDuplicate(doc.uuid))}
+                                title="Duplicate"
+                              >
+                                <span className="material-icons">content_copy</span>
+                              </button>
+                            )}
                             <button
                               className="btn btn-tile-action"
                               onClick={stopClick(() => handleExport(doc.uuid, doc.name))}
@@ -550,13 +559,15 @@ export default function Documents() {
                             >
                               <span className="material-icons">download</span>
                             </button>
-                            <button
-                              className="btn btn-delete-tile"
-                              onClick={stopClick(() => handleDeleteDocument(doc.uuid))}
-                              title="Delete document"
-                            >
-                              <span className="material-icons">delete</span>
-                            </button>
+                            {!isSingleFile && (
+                              <button
+                                className="btn btn-delete-tile"
+                                onClick={stopClick(() => handleDeleteDocument(doc.uuid))}
+                                title="Delete document"
+                              >
+                                <span className="material-icons">delete</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </Link>

@@ -44,7 +44,7 @@ interface LibraryState {
   openFolder: () => Promise<void>
   openFile: () => Promise<void>
   reopenRemembered: () => Promise<void>
-  useBrowserStorage: () => void
+  useBrowserStorage: () => Promise<void>
   closeFolder: () => Promise<void>
   clearError: () => void
 }
@@ -149,18 +149,25 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       }
     },
 
-    useBrowserStorage: () => {
+    useBrowserStorage: async () => {
       if (get().kind === 'browser') return
       toBrowser()
+      // The folder is still remembered, so it has to reappear as an entry to
+      // click. Without this it silently vanishes from the sidebar until a
+      // reload, which reads as "switching away lost my folder".
+      set({ remembered: await rememberedLibraryName() })
     },
 
-    // Stops using the folder or file AND forgets the folder, so it does not
-    // come back next boot. Nothing on disk is touched: the documents are the
-    // files, and they stay exactly where the user put them.
+    // Stops using whatever is open. A FOLDER is also forgotten, so it does not
+    // come back next boot; a single FILE is not, because closing a file the
+    // user opened on top of their folder must not throw the folder away.
+    // Nothing on disk is touched either way: the documents are the files, and
+    // they stay exactly where the user put them.
     closeFolder: async () => {
-      await forgetLibraryHandle()
-      set({ remembered: null })
+      const wasDirectory = get().kind === 'directory'
+      if (wasDirectory) await forgetLibraryHandle()
       toBrowser()
+      set({ remembered: wasDirectory ? null : await rememberedLibraryName() })
     },
 
     clearError: () => set({ error: null }),

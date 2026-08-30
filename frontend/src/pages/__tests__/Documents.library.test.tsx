@@ -116,6 +116,11 @@ describe('Documents library sidebar', () => {
     expect(screen.queryByTitle('Add part')).not.toBeInTheDocument()
     expect(screen.queryByTitle('Add assembly')).not.toBeInTheDocument()
     expect(screen.queryByTitle('Import STEP, YAML, or .oversolved bundle')).not.toBeInTheDocument()
+    // Duplicate needs a second file and Delete needs a parent directory to
+    // delete from; both would reach the store's refusal as a raw error banner.
+    expect(screen.queryByTitle('Duplicate')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Delete document')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Export YAML')).toBeInTheDocument()  // still meaningful
   })
 
   it('names the opened folder and lists its documents instead', async () => {
@@ -131,6 +136,35 @@ describe('Documents library sidebar', () => {
     // The grid refetched against the folder: the file that was sitting in it is
     // adopted and shown, without anything re-mounting the page.
     expect(await screen.findByText('Gearbox')).toBeInTheDocument()
+  })
+
+  // Closing a file the user opened on top of their folder must not throw the
+  // folder away: the close button is shared, but only a folder is forgotten.
+  it('keeps the remembered folder when a single file is closed', async () => {
+    picker.result = fakeDirectory('cad') as unknown as FileSystemDirectoryHandle
+    picker.file = {
+      kind: 'file',
+      name: 'Bracket.yaml',
+      async getFile() {
+        return {
+          name: 'Bracket.yaml', size: 0, type: '', lastModified: 0,
+          async text() { return '' },
+          async arrayBuffer() { return new ArrayBuffer(0) },
+        } as unknown as File
+      },
+      async createWritable() {
+        return { async write() {}, async close() {}, async abort() {} }
+      },
+    } as unknown as FileSystemFileHandle
+
+    await boot()
+    wrap()
+    await userEvent.click(await screen.findByText('Open file...'))
+    await screen.findAllByText('Bracket')
+
+    await userEvent.click(screen.getByTitle('Close this file (it stays where it is)'))
+    await waitFor(() => expect(useLibraryStore.getState().kind).toBe('browser'))
+    expect(registry.forgotten).toBe(0)
   })
 
   it('goes back to browser storage and forgets the folder on close', async () => {
