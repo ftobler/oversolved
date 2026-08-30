@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { requestStoragePersistence, durabilityNotice } from '../storagePersistence'
+import {
+  checkStoragePersistence, requestStoragePersistence, durabilityNotice,
+} from '../storagePersistence'
 import {
   useStoragePersistenceStore, resetStoragePersistenceRequest,
 } from '@/stores/storagePersistenceStore'
@@ -73,29 +75,63 @@ describe('durabilityNotice', () => {
   })
 })
 
+// Reading the grant and asking for it are separate calls because asking can put
+// a permission prompt on screen. Boot reads; only a user gesture asks.
+describe('checkStoragePersistence', () => {
+  afterEach(() => { installStorage(undefined) })
+
+  it('never asks for the grant', async () => {
+    const persist = vi.fn(async () => true)
+    installStorage({ persisted: async () => false, persist })
+    expect(await checkStoragePersistence()).toBe('best-effort')
+    expect(persist).not.toHaveBeenCalled()
+  })
+
+  it('reports a grant already in force', async () => {
+    installStorage({ persisted: async () => true, persist: async () => true })
+    expect(await checkStoragePersistence()).toBe('persisted')
+  })
+
+  it('reports unsupported when the API is absent or throws', async () => {
+    installStorage(undefined)
+    expect(await checkStoragePersistence()).toBe('unsupported')
+    installStorage({ persist: async () => true, persisted: async () => { throw new Error('x') } })
+    expect(await checkStoragePersistence()).toBe('unsupported')
+  })
+})
+
 describe('useStoragePersistenceStore', () => {
   afterEach(() => {
     installStorage(undefined)
     resetStoragePersistenceRequest()
   })
 
-  it('starts unknown and publishes the browser answer once asked', async () => {
-    installStorage({ persisted: async () => false, persist: async () => true })
+  it('starts unknown and publishes what the browser already granted', async () => {
+    installStorage({ persisted: async () => true, persist: async () => true })
     expect(useStoragePersistenceStore.getState().state).toBe('unknown')
-    useStoragePersistenceStore.getState().ensureRequested()
+    useStoragePersistenceStore.getState().ensureChecked()
     await vi.waitFor(() => expect(useStoragePersistenceStore.getState().state).toBe('persisted'))
   })
 
-  // StrictMode double-invokes effects and boot asks too, so the guard has to
-  // hold across every caller or a granted origin gets asked twice.
-  it('asks the browser only once however many callers ensure it', async () => {
+  // The boot check must not prompt, however many callers run it: the folder
+  // handles follow the same rule, and a doorhanger in front of a visitor who
+  // has not clicked anything is what both are avoiding.
+  it('reads the grant at boot without ever asking for it', async () => {
     const persist = vi.fn(async () => true)
     installStorage({ persisted: async () => false, persist })
     const store = useStoragePersistenceStore.getState()
-    store.ensureRequested()
-    store.ensureRequested()
-    store.ensureRequested()
-    await vi.waitFor(() => expect(useStoragePersistenceStore.getState().state).toBe('persisted'))
+    store.ensureChecked()
+    store.ensureChecked()
+    store.ensureChecked()
+    await vi.waitFor(() => expect(useStoragePersistenceStore.getState().state).toBe('best-effort'))
+    expect(persist).not.toHaveBeenCalled()
+  })
+
+  it('asks on request and publishes the answer', async () => {
+    const persist = vi.fn(async () => true)
+    installStorage({ persisted: async () => false, persist })
+    await useStoragePersistenceStore.getState().request()
     expect(persist).toHaveBeenCalledTimes(1)
+    expect(useStoragePersistenceStore.getState().state).toBe('persisted')
   })
 })

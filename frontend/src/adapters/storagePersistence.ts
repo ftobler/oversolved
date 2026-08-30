@@ -18,21 +18,45 @@
 // 'unsupported' the API is absent, so durability is unknown and unaskable.
 export type PersistenceState = 'persisted' | 'best-effort' | 'unsupported'
 
-// Asks once and reports what the browser decided. `persisted()` is checked
-// first: a grant already in force must not be re-requested, because in some
-// browsers a repeat `persist()` re-runs the heuristics and a previously granted
-// origin would see a fresh prompt for nothing.
-export async function requestStoragePersistence(): Promise<PersistenceState> {
+function manager(): StorageManager | null {
   const storage = navigator.storage
   if (!storage || typeof storage.persist !== 'function' || typeof storage.persisted !== 'function') {
+    return null
+  }
+  return storage
+}
+
+// Reports the grant WITHOUT asking for it. `persisted()` is a pure query and
+// never prompts, so this is what boot runs: the durability sentence can be
+// rendered honestly from it, and nothing pops up in front of a visitor who has
+// not done anything yet.
+export async function checkStoragePersistence(): Promise<PersistenceState> {
+  const storage = manager()
+  if (!storage) return 'unsupported'
+  try {
+    return (await storage.persisted()) ? 'persisted' : 'best-effort'
+  } catch {
+    // A rejected promise here (private mode, storage disabled) tells us the same
+    // thing an absent API does: durability cannot be established.
     return 'unsupported'
   }
+}
+
+// Asks for the grant. Some engines decide this on their own heuristics and some
+// put a permission prompt in front of the user, so it is called from a user
+// gesture (the disclaimer's OK, which is where the storage copy is read) rather
+// than at boot -- the same discipline the folder handles follow.
+//
+// `persisted()` is checked first: a grant already in force must not be
+// re-requested, because a repeat `persist()` can re-run those heuristics and
+// prompt a previously granted origin for nothing.
+export async function requestStoragePersistence(): Promise<PersistenceState> {
+  const storage = manager()
+  if (!storage) return 'unsupported'
   try {
     if (await storage.persisted()) return 'persisted'
     return (await storage.persist()) ? 'persisted' : 'best-effort'
   } catch {
-    // A rejected promise here (private mode, storage disabled) tells us the same
-    // thing an absent API does: durability cannot be established.
     return 'unsupported'
   }
 }

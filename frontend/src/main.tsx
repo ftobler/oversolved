@@ -26,11 +26,11 @@ const theme = createTheme({
 })
 
 initializeTools()
-// Ask before the first document is written, not after: IndexedDB is the only
-// home a document has, and until this is granted the browser may evict the
-// whole library under disk pressure. The answer is what the disclaimer's
-// storage paragraph reports.
-useStoragePersistenceStore.getState().ensureRequested()
+// Read the storage grant, do not ask for it. Until it is granted the browser
+// may evict the whole library under disk pressure, which is what the
+// disclaimer's storage paragraph reports; asking can prompt, so that waits for
+// the acknowledgement click.
+useStoragePersistenceStore.getState().ensureChecked()
 // Reconnect to the folder the user last opened as their library, if the browser
 // still holds the grant. Outside a user gesture this can only probe, never
 // prompt: a folder whose permission lapsed surfaces in the documents sidebar as

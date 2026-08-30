@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
 import { hasAcknowledgedDisclaimer, acknowledgeDisclaimer } from '@/components/dialogs/disclaimerConsent'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
@@ -44,6 +44,33 @@ describe('DisclaimerDialog', () => {
     })
     render(<DisclaimerDialog />)
     expect(await screen.findByText(/may discard them when disk space runs short/)).toBeInTheDocument()
+  })
+
+  // Merely showing the notice must not prompt: asking for persistent storage
+  // puts a permission doorhanger on screen in some engines, and this dialog is
+  // the first thing a visitor sees.
+  it('does not ask for persistent storage just by opening', async () => {
+    const persist = vi.fn(async () => true)
+    Object.defineProperty(navigator, 'storage', {
+      value: { persisted: async () => false, persist },
+      configurable: true, writable: true,
+    })
+    render(<DisclaimerDialog />)
+    await screen.findByText(/may discard them when disk space runs short/)
+    expect(persist).not.toHaveBeenCalled()
+  })
+
+  // OK is the gesture it rides on: the user has just read where the documents
+  // live and that clearing site data deletes them.
+  it('asks for persistent storage when the notice is acknowledged', async () => {
+    const persist = vi.fn(async () => true)
+    Object.defineProperty(navigator, 'storage', {
+      value: { persisted: async () => false, persist },
+      configurable: true, writable: true,
+    })
+    render(<DisclaimerDialog />)
+    fireEvent.click(screen.getByText('OK'))
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
   })
 
   // Before the answer lands there is nothing honest to say about durability,

@@ -48,9 +48,12 @@ export default function DisclaimerDialog() {
   const persistence = useStoragePersistenceStore(s => s.state)
   const isOpen = greeting || requested
 
-  // Boot fires the same request; this covers the dialog being reached in a
-  // context that did not (a test mount, a future embed). Idempotent by design.
-  useEffect(() => { useStoragePersistenceStore.getState().ensureRequested() }, [])
+  // Reads the grant, never asks for it: this runs on mount, and a permission
+  // prompt in front of a visitor who has not clicked anything is exactly what
+  // the rest of this app refuses to do. Boot fires the same check; this covers
+  // the dialog being reached in a context that did not (a test mount, a future
+  // embed). Idempotent by design.
+  useEffect(() => { useStoragePersistenceStore.getState().ensureChecked() }, [])
 
   const close = () => {
     setGreeting(false)
@@ -59,6 +62,11 @@ export default function DisclaimerDialog() {
 
   const acknowledge = () => {
     acknowledgeDisclaimer()
+    // The gesture the persistence request rides on. The user has just read
+    // where their documents live and that clearing site data deletes them, so
+    // this is the one moment a durability prompt means something to them. Some
+    // engines answer from their own heuristics and never show one.
+    useStoragePersistenceStore.getState().request()
     close()
   }
 
