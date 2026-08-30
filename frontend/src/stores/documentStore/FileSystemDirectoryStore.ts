@@ -360,13 +360,18 @@ function newEntry(
 // updated_at, flag dirty. `baseRev` is never touched by a local change -- only
 // a future sync engine sets it.
 //
-// `updatedAt` is nudged past the previous value rather than taken raw from the
-// clock: two saves inside one millisecond are ordinary in tests and in an
-// autosave burst, and "newest first" has to stay a strict order.
+// The two timestamps come from different clocks on purpose. `updated_at` is the
+// date the grid shows a human, so it is the wall clock and never runs ahead of
+// it. `meta.updatedAt` is the sort and sync key, so it is nudged past the
+// previous value: two saves inside one millisecond are ordinary in an autosave
+// burst and in tests, and "newest first" has to stay a strict order. Stamping
+// both from the nudged value put a document's visible modification date in the
+// future for the length of the burst.
 function stamp(entry: IndexEntry, patch: Partial<IndexEntry>): IndexEntry {
-  const at = Math.max(Date.now(), entry.meta.updatedAt + 1)
+  const now = Date.now()
+  const at = Math.max(now, entry.meta.updatedAt + 1)
   const meta: DocMeta = { ...entry.meta, rev: entry.meta.rev + 1, updatedAt: at, dirty: true }
-  return { ...entry, ...patch, updated_at: new Date(at).toISOString(), meta }
+  return { ...entry, ...patch, updated_at: new Date(now).toISOString(), meta }
 }
 
 function replace(entries: IndexEntry[], updated: IndexEntry): IndexEntry[] {

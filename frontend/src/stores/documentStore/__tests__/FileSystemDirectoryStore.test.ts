@@ -211,7 +211,9 @@ describe('the folder changing underneath the app', () => {
     const after = (await store.list())[0]
     expect(after.uuid).toBe(uuid)  // same document, not a re-adoption
     expect(after.meta!.rev).toBeGreaterThan(before.meta!.rev)
-    expect(after.updated_at).not.toBe(before.updated_at)
+    // The sort key, not the shown date: both are wall-clock milliseconds and
+    // the edit can land inside the same one.
+    expect(after.meta!.updatedAt).toBeGreaterThan(before.meta!.updatedAt)
     expect((await store.load(uuid)).content).toBe('edited by something else')
   })
 
@@ -233,6 +235,22 @@ describe('the folder changing underneath the app', () => {
     const settled = (await store.list())[0].meta!.rev
     expect((await store.list())[0].meta!.rev).toBe(settled)
     expect((await store.list())[0].meta!.rev).toBe(settled)
+  })
+
+  // `updated_at` is a date shown to a human and must never run ahead of their
+  // clock; `meta.updatedAt` is the sort key and must stay strictly ordered
+  // through a burst of saves inside one millisecond. Two clocks, one stamp.
+  it('keeps the shown date on the wall clock while the sort key stays strict', async () => {
+    const { uuid } = await store.create('Bracket')
+    const revs: number[] = []
+    for (let i = 0; i < 5; i++) {
+      await store.save(uuid, { content: `v${i}` })
+      const [doc] = await store.list()
+      revs.push(doc.meta!.updatedAt)
+      expect(Date.parse(doc.updated_at)).toBeLessThanOrEqual(Date.now())
+    }
+    expect(revs).toEqual([...revs].sort((a, b) => a - b))
+    expect(new Set(revs).size).toBe(revs.length)  // strictly increasing, no ties
   })
 
   it('drops a document whose file was deleted from outside', async () => {

@@ -593,11 +593,16 @@ function adoptOrphans(
 // cache keyed on it lets go, and restamp the modification time the grid sorts
 // by. Kept next to reconcile rather than shared with the store's own `stamp`
 // because the store's is about a save the user asked for.
+//
+// Same two-clock split as that one: `updated_at` is what a human reads and
+// stays on the wall clock, `meta.updatedAt` is the sort key and is nudged so
+// two changes noticed in the same millisecond still order.
 function restamp(entry: IndexEntry): IndexEntry {
-  const at = Math.max(Date.now(), entry.meta.updatedAt + 1)
+  const now = Date.now()
+  const at = Math.max(now, entry.meta.updatedAt + 1)
   return {
     ...entry,
-    updated_at: new Date(at).toISOString(),
+    updated_at: new Date(now).toISOString(),
     meta: { ...entry.meta, rev: entry.meta.rev + 1, updatedAt: at, dirty: true },
   }
 }
