@@ -46,18 +46,24 @@ length = distance_between(A, B)
 
 ## 3. Persistence
 
-The app is browser-only: there is no server and no database process. Documents
-live in IndexedDB under the origin serving the app, and every CAD computation
-happens in a WASM Web Worker on the same machine.
+The app is browser-only: there is no server and no database process. Every CAD
+computation happens in a WASM Web Worker on the same machine, and documents
+live in one of three libraries, one active at a time: IndexedDB under the
+origin serving the app (the default), a folder the user picked through the File
+System Access API, or that folder's degenerate case, a single opened file. The
+pickers are Chromium-only, so on other engines the last two are absent, not
+disabled.
 
 **Rule:** Persistence is an implementation detail behind the document store.
-Feature code reads and writes documents through the store, never IndexedDB
-directly, so that the storage layer stays swappable and testable without a
-browser.
+Feature code reads and writes documents through the store, never IndexedDB or a
+file handle directly. Take the store off `backendBundle`, which holds a
+forwarding pair: which library is live is a user choice and it changes at
+runtime.
 
 **Rule:** Treat a write as fallible. IndexedDB can reject on quota, on a
-private-browsing profile, or on a blocked upgrade, and there is no server copy
-to fall back to. Surface the failure rather than dropping the change silently.
+private-browsing profile, or on a blocked upgrade; a file write can fail on a
+revoked permission or a folder that moved. There is no server copy to fall back
+to. Surface the failure rather than dropping the change silently.
 
 ## 4. Frontend Conventions
 

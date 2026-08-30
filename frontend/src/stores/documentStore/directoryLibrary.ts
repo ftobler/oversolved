@@ -1,6 +1,7 @@
 import type { DocMeta } from './types'
-import { secureFilename } from './secureFilename'
+import { secureFilename, UNTITLED_DOC_NAME } from './secureFilename'
 import { randomUuid } from '@/utils/randomUuid'
+import { base64ToBytes } from '@/kernel/occ/stepIo'
 
 // The on-disk shape of a directory-backed library, and the bookkeeping that
 // keeps it honest. FileSystemDirectoryStore is the DocumentStore built on top;
@@ -24,23 +25,25 @@ import { randomUuid } from '@/utils/randomUuid'
 // user picked has exactly one library in it, and a `local/` level inside it
 // would be an artifact of a server that no longer exists.
 //
-// The index is library bookkeeping, NOT part of any document. Losing it costs
-// uuid stability and nothing else: `reconcile` below adopts every .yaml it
-// finds. That is what keeps the atomicity objection answered -- a document save
-// is one file write, committed by `close()`, and the only multi-file operations
-// are library-level ones whose partial state is a visible extra file rather
-// than a corrupt document.
+// The index is library bookkeeping, NOT part of any document: no document's
+// content is in it, and `reconcile` below rebuilds it from what is on disk,
+// live documents and trashed ones alike. What losing it costs is the uuids
+// (every document is re-adopted under a new one, so open routes break) and the
+// sync `meta` envelope, which restarts from the adoption default.
+//
+// The atomicity objection is answered by the document itself staying ONE file:
+// its text is written by a single `createWritable()`, committed by `close()`,
+// so an interrupted save leaves the previous contents rather than a truncated
+// document. A save carrying a preview writes a second file after that one, and
+// a delete writes at the destination before removing the source; those are the
+// multi-file operations, and their partial state is a stale thumbnail or a
+// duplicate, never a corrupt document.
 
 export const INDEX_FILE = '.oversolved-index.json'
 export const TRASH_DIR = '.oversolved-trash'
 export const DOC_EXT = '.yaml'
 export const PREVIEW_EXT = '.png'
 const INDEX_VERSION = 1
-
-// The name a document gets when its own name sanitizes to nothing (a purely
-// non-ASCII name) -- the same fallback the bundle format uses, so a document
-// survives a round trip through either.
-export const UNTITLED_DOC_NAME = 'Untitled'
 
 // One document's registry row. `stem` is the on-disk realization of `name`:
 // they differ whenever the name needs sanitizing or a collision suffix, and the
@@ -167,18 +170,13 @@ async function removeFile(dir: FileSystemDirectoryHandle, name: string): Promise
 
 // base64 is how a preview travels through the seam (DocumentPayload carries the
 // bytes of a PNG with no data: prefix, matching the save body), but on disk it
-// must be a real .png a file manager can preview. These two convert at the
-// boundary and nowhere else.
+// must be a real .png a file manager can preview. The decode is the kernel's
+// (`base64ToBytes`, shared with STEP ingestion); the encode is here because
+// nothing else needed it.
 //
 // Note that this decode/re-encode is only byte-stable for a CANONICAL base64
 // string. Every producer in the app is one (canvas.toDataURL), and the bundle
 // format's zip entries have canonicalized the same way since it was written.
-function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes
-}
 
 async function fileBytes(file: File): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await file.arrayBuffer())

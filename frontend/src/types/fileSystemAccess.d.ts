@@ -9,7 +9,9 @@
 //
 // Declaring them does not make them exist. Every call site must still ask the
 // capability module (adapters/fileSystemAccess.ts) first; these declarations
-// only stop the optional-chaining checks from being written against `any`.
+// only stop the optional-chaining checks from being written against `any`, and
+// they cover exactly the surface this app calls: a picker or an iterator that
+// nothing uses is a declaration that cannot go stale where anyone would notice.
 
 interface FileSystemHandle {
   queryPermission?(descriptor?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>
@@ -17,9 +19,7 @@ interface FileSystemHandle {
 }
 
 interface FileSystemDirectoryHandle {
-  keys(): AsyncIterableIterator<string>
   values(): AsyncIterableIterator<FileSystemHandle>
-  entries(): AsyncIterableIterator<[string, FileSystemHandle]>
 }
 
 interface FilePickerAcceptType {
@@ -34,13 +34,6 @@ interface OpenFilePickerOptions {
   types?: FilePickerAcceptType[]
 }
 
-interface SaveFilePickerOptions {
-  id?: string
-  suggestedName?: string
-  excludeAcceptAllOption?: boolean
-  types?: FilePickerAcceptType[]
-}
-
 interface DirectoryPickerOptions {
   id?: string
   mode?: 'read' | 'readwrite'
@@ -49,6 +42,5 @@ interface DirectoryPickerOptions {
 
 interface Window {
   showOpenFilePicker?(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>
-  showSaveFilePicker?(options?: SaveFilePickerOptions): Promise<FileSystemFileHandle>
   showDirectoryPicker?(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>
 }

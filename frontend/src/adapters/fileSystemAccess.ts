@@ -26,9 +26,7 @@ export function canPickDirectory(): boolean {
 }
 
 export function canPickFiles(): boolean {
-  return typeof window !== 'undefined' &&
-    typeof window.showOpenFilePicker === 'function' &&
-    typeof window.showSaveFilePicker === 'function'
+  return typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function'
 }
 
 // Documents written by this app. One extension, because one document is one
@@ -64,18 +62,6 @@ export async function pickDocumentToOpen(): Promise<FileSystemFileHandle | null>
       id: DOCUMENT_PICKER_ID, multiple: false, types: DOCUMENT_TYPES,
     })
     return handle ?? null
-  } catch (err) {
-    if (isAbort(err)) return null
-    throw err
-  }
-}
-
-export async function pickDocumentToSave(suggestedName: string): Promise<FileSystemFileHandle | null> {
-  if (!canPickFiles()) return null
-  try {
-    return await window.showSaveFilePicker!({
-      id: DOCUMENT_PICKER_ID, suggestedName, types: DOCUMENT_TYPES,
-    })
   } catch (err) {
     if (isAbort(err)) return null
     throw err

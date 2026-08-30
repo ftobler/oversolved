@@ -1,5 +1,6 @@
 import { DOC_EXT } from './directoryLibrary'
 import { openDirectoryLibrary } from './FileSystemDirectoryStore'
+import { MemoryDirectory } from './memoryDirectory'
 
 // "Open this one file, edit it, save it back" -- the degenerate case of the
 // directory library, not a second implementation of anything.
@@ -26,91 +27,10 @@ import { openDirectoryLibrary } from './FileSystemDirectoryStore'
 
 const ONE_FILE_ONLY = 'This library is a single file. Open a folder to keep more than one document.'
 
-function notFound(name: string): DOMException {
-  return new DOMException(`A requested file or directory could not be found: ${name}`, 'NotFoundError')
-}
-
-// A directory handle whose entries are held in memory. Used for the parts of a
-// single-file library that must exist but must not be written to the user's
-// disk: the index, the preview, and the trash folder.
-class MemoryDirectory {
-  readonly kind = 'directory' as const
-  readonly name: string
-  private files = new Map<string, Uint8Array>()
-  private dirs = new Map<string, MemoryDirectory>()
-
-  constructor(name: string) {
-    this.name = name
-  }
-
-  async getFileHandle(name: string, opts: { create?: boolean } = {}): Promise<FileSystemFileHandle> {
-    if (!this.files.has(name) && !opts.create) throw notFound(name)
-    return memoryFileHandle(name, this.files)
-  }
-
-  async getDirectoryHandle(name: string, opts: { create?: boolean } = {}): Promise<MemoryDirectory> {
-    const existing = this.dirs.get(name)
-    if (existing) return existing
-    if (!opts.create) throw notFound(name)
-    const created = new MemoryDirectory(name)
-    this.dirs.set(name, created)
-    return created
-  }
-
-  async removeEntry(name: string): Promise<void> {
-    if (!this.files.delete(name) && !this.dirs.delete(name)) throw notFound(name)
-  }
-
-  async *values(): AsyncIterableIterator<FileSystemHandle> {
-    for (const name of [...this.files.keys()]) yield await this.getFileHandle(name)
-    for (const dir of [...this.dirs.values()]) yield dir as unknown as FileSystemHandle
-  }
-}
-
-function memoryFileHandle(name: string, files: Map<string, Uint8Array>): FileSystemFileHandle {
-  return {
-    kind: 'file',
-    name,
-    async getFile() {
-      const bytes = files.get(name)
-      if (!bytes) throw notFound(name)
-      return fileFrom(bytes, name)
-    },
-    async createWritable() {
-      const chunks: Uint8Array[] = []
-      return {
-        async write(data: string | Uint8Array) {
-          chunks.push(typeof data === 'string' ? new TextEncoder().encode(data) : data)
-        },
-        async close() { files.set(name, concat(chunks)) },
-        async abort() { chunks.length = 0 },
-      }
-    },
-  } as unknown as FileSystemFileHandle
-}
-
-function concat(chunks: Uint8Array[]): Uint8Array {
-  const merged = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0))
-  let at = 0
-  for (const chunk of chunks) { merged.set(chunk, at); at += chunk.length }
-  return merged
-}
-
-// The File a getFile() hands back. Only text() and arrayBuffer() are read, and
-// building them directly avoids depending on a Blob implementation exposing
-// them (jsdom's does not).
-function fileFrom(bytes: Uint8Array, name: string): File {
-  return {
-    name,
-    size: bytes.byteLength,
-    type: '',
-    lastModified: Date.now(),
-    async text() { return new TextDecoder().decode(bytes) },
-    async arrayBuffer() {
-      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-    },
-  } as unknown as File
-}
+// The bookkeeping directory: an index, a preview and a trash folder that exist
+// for the store's sake and must never be written next to a document the user
+// picked. Shared with the test double, so the store cannot lean on behaviour
+// real Chromium does not have. See memoryDirectory.ts.
 
 // The directory the single-file library runs on: exactly one real file, plus
 // memory for everything else. `name` is the document's stem, so the sidebar

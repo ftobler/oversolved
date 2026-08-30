@@ -1,11 +1,12 @@
 import JSZip from 'jszip'
 import type { DocumentStore } from './types'
 import { LOCAL_OWNER } from './IndexedDbDocumentStore'
-import { secureFilename } from './secureFilename'
+import { secureFilename, UNTITLED_DOC_NAME } from './secureFilename'
 
 // Bundle import/export. NOT a second store -- these round-trip through whatever
-// `DocumentStore` is wired in. Documents live only in this browser's IndexedDB,
-// so a bundle is the one way to get a library onto disk or onto another machine:
+// `DocumentStore` is wired in. For the browser-storage library a bundle is the
+// only way to get documents onto disk or onto another machine; for a
+// directory-backed one it is a snapshot of files that are already there:
 //
 //   <user>/<doc>.yaml   document payload, as YAML text
 //   <user>/<doc>.png    preview image, alongside (only when present)
@@ -14,7 +15,9 @@ import { secureFilename } from './secureFilename'
 //   - Export a library -> N-entry zip (the whole-library backup).
 //
 // The per-user directory level is vestigial (there is one library), but it is
-// kept in the layout so older bundles keep importing unchanged.
+// kept in the layout so older bundles keep importing unchanged. The directory
+// store sheds it: a folder the user picked has no reason to carry a level named
+// after a server's account model. See directoryLibrary.ts.
 
 // Normalizes any binary input to bytes JSZip can read. A real browser File
 // (Blob) exposes arrayBuffer(); jsdom does not, so fall back to Response, which
@@ -51,12 +54,6 @@ function reserveStem(seen: Set<string>, ownerPath: string, stem: string): string
     n += 1
   }
 }
-
-// secureFilename strips every non-ASCII code point, so a Cyrillic/CJK document
-// name sanitizes to '' and would export as '<user>/.yaml', then import back as
-// a blank-name document no other path can reach. The store's own default name
-// is the fallback on both directions.
-const UNTITLED_DOC_NAME = 'Untitled'
 
 // Core producer: returns the raw zip bytes. Kept separate from `exportBundle`
 // so it is testable without a Blob (jsdom Blobs are opaque to binary reads).

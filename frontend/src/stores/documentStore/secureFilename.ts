@@ -15,6 +15,12 @@
 // superscript variants normalize into COM/LPT1-3, and '$' is stripped before
 // the check, so CONIN$/CONOUT$ can never match there either).
 
+// secureFilename strips every non-ASCII code point, so a Cyrillic or CJK
+// document name sanitizes to '' and would become a nameless file. Every caller
+// needs the same fallback, and they must agree: a bundle written by one and a
+// folder written by the other have to name the document identically.
+export const UNTITLED_DOC_NAME = 'Untitled'
+
 const STRIP_RE = /[^A-Za-z0-9_.-]/g
 
 const WINDOWS_DEVICE_FILES = new Set([

@@ -2,7 +2,8 @@
 
 A mechanical CAD system running entirely in the browser. React frontend,
 OpenCascade + the Rust solvers compiled to WASM in Web Workers, documents
-persisted to IndexedDB. There is no server and no database process.
+persisted to IndexedDB or, on Chromium, to a folder of files the user picked.
+There is no server and no database process.
 
 ## Structure
 - `frontend/` - React app, the whole product (must `cd frontend` before running frontend commands)
@@ -48,7 +49,7 @@ npm run build 2>&1 | tee ../tmp/npm_build.log
 - Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just python`.
 - Gates tee a full copy of their output to `tmp/<gate>.log` (e.g. `tmp/npx_test.log`) while also printing to stdout. You can grep stdout live and re-grep the log afterwards; never re-run a slow gate just to get its output in a different shape.
 - For each feature try to make a test.
-- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB. Nothing is sent to a server; there is no server.
+- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB, or in a folder (or single file) the user opened through the File System Access API. Nothing is sent to a server; there is no server.
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - code style: do not use em or en-dashes.
 - Agents must not commit to git unless prompted directly by the user.

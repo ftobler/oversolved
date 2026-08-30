@@ -1,11 +1,13 @@
 // The storage seam: the one interface every document persistence call site
-// routes through. Today exactly one implementation backs it (IndexedDB, in the
-// browser), and that is the point of keeping the interface rather than calling
-// idb.ts directly -- swapping in another store (OPFS, a file-system handle, a
-// sync engine) is a single boot-time wiring change in adapters/backend.ts, not
-// a rewrite of every caller. The contract suite runs this interface against
-// every conformer so a second implementation cannot quietly drift from the
-// first.
+// routes through. Three implementations back it: IndexedDB (the browser's own
+// storage, and the default), a folder the user picked through the File System
+// Access API, and that folder's degenerate case, a single opened file. Which
+// one is live is a user choice made in the documents sidebar; callers hold the
+// forwarding pair from adapters/library.ts and never learn it changed.
+//
+// That is the point of keeping the interface rather than calling idb.ts
+// directly. The contract suite runs this interface against every conformer, so
+// an implementation cannot quietly drift from the others.
 //
 // Compute is not part of this seam: sketch solve, OCCT and STEP I/O all run in
 // the browser via WASM, so persistence is the only thing a backend would ever

@@ -27,8 +27,13 @@ const SCRATCH_PATH = '/s.step'
 // named enum member instead of a magic number.
 const enumVal = (e: unknown): number => (typeof e === 'number' ? e : (e as { value: number }).value)
 
-/** Decode a base64 string to bytes (portable across Node + browser/Worker). */
-export function base64ToBytes(b64: string): Uint8Array {
+/**
+ * Decode a base64 string to bytes (portable across Node + browser/Worker).
+ * The buffer is stated as a plain ArrayBuffer, not ArrayBufferLike, so the
+ * result is accepted by APIs that refuse a possibly-shared buffer (the File
+ * System Access writable stream, for one).
+ */
+export function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64)
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)

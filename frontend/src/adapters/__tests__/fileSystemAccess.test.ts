@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
   canPickDirectory, canPickFiles, pickLibraryDirectory, pickDocumentToOpen,
-  pickDocumentToSave, hasReadWritePermission,
+  hasReadWritePermission,
 } from '../fileSystemAccess'
 
 // jsdom is the Firefox/Safari shape by default: no pickers on window at all.
@@ -14,11 +14,7 @@ function installPickers(pickers: Record<string, unknown>): void {
 }
 
 function clearPickers(): void {
-  installPickers({
-    showDirectoryPicker: undefined,
-    showOpenFilePicker: undefined,
-    showSaveFilePicker: undefined,
-  })
+  installPickers({ showDirectoryPicker: undefined, showOpenFilePicker: undefined })
 }
 
 const abort = () => { throw new DOMException('The user aborted a request.', 'AbortError') }
@@ -32,21 +28,12 @@ describe('file system access capability', () => {
     expect(canPickFiles()).toBe(false)
   })
 
-  it('requires both file pickers before claiming file support', () => {
-    clearPickers()
-    installPickers({ showOpenFilePicker: () => undefined })
-    expect(canPickFiles()).toBe(false)
-    installPickers({ showSaveFilePicker: () => undefined })
-    expect(canPickFiles()).toBe(true)
-  })
-
   // Absence must be structural: a caller on Firefox gets null without the
   // module ever touching an undefined picker.
   it('returns null from every picker when the API is absent', async () => {
     clearPickers()
     expect(await pickLibraryDirectory()).toBeNull()
     expect(await pickDocumentToOpen()).toBeNull()
-    expect(await pickDocumentToSave('Bracket.yaml')).toBeNull()
   })
 
   it('asks for readwrite on the directory picker', async () => {
@@ -60,12 +47,9 @@ describe('file system access capability', () => {
   // Cancelling a picker is a non-event, not a failure: it must not reach an
   // error banner.
   it('folds a user cancellation into null', async () => {
-    installPickers({
-      showDirectoryPicker: abort, showOpenFilePicker: abort, showSaveFilePicker: abort,
-    })
+    installPickers({ showDirectoryPicker: abort, showOpenFilePicker: abort })
     expect(await pickLibraryDirectory()).toBeNull()
     expect(await pickDocumentToOpen()).toBeNull()
-    expect(await pickDocumentToSave('Bracket.yaml')).toBeNull()
   })
 
   it('propagates a real picker failure', async () => {
@@ -73,15 +57,11 @@ describe('file system access capability', () => {
     await expect(pickLibraryDirectory()).rejects.toThrow('boom')
   })
 
-  it('opens a single file and passes the suggested name through on save', async () => {
+  it('opens exactly one file', async () => {
     const showOpenFilePicker = vi.fn(async () => [{ name: 'Bracket.yaml' }])
-    const showSaveFilePicker = vi.fn(async () => ({ name: 'Bracket.yaml' }))
-    installPickers({ showOpenFilePicker, showSaveFilePicker })
+    installPickers({ showOpenFilePicker })
     expect(await pickDocumentToOpen()).toEqual({ name: 'Bracket.yaml' })
     expect(showOpenFilePicker).toHaveBeenCalledWith(expect.objectContaining({ multiple: false }))
-    await pickDocumentToSave('Bracket.yaml')
-    expect(showSaveFilePicker).toHaveBeenCalledWith(
-      expect.objectContaining({ suggestedName: 'Bracket.yaml' }))
   })
 })
 
