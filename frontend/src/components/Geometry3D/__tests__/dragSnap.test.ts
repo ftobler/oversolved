@@ -111,7 +111,7 @@ describe('sketchToEntityCandidates and collectEntityCandidatesFlat', () => {
   })
 })
 
-describe('findSnapTarget — vertex snap', () => {
+describe('findSnapTarget  -  vertex snap', () => {
   it('returns null when no vertex or entity within threshold', () => {
     const sketch = makeSketch()
     const vertexCands = collectVertexTargets(sketch, FEATURE, '__none__')
@@ -157,7 +157,7 @@ describe('findSnapTarget — vertex snap', () => {
   })
 })
 
-describe('findSnapTarget — projected entities and other sketches', () => {
+describe('findSnapTarget  -  projected entities and other sketches', () => {
   it('snaps to projected entity vertex in the active sketch', () => {
     const sketch = makeSketch()
     const vertexCands = collectVertexTargets(sketch, FEATURE, '__none__')
@@ -203,7 +203,7 @@ describe('findSnapTarget — projected entities and other sketches', () => {
   })
 })
 
-describe('findSnapTarget — entity snap (path fallback)', () => {
+describe('findSnapTarget  -  entity snap (path fallback)', () => {
   it('returns entity snap with constraintKind from registry', () => {
     const sketch = makeSketch()
     const vertexCands = collectVertexTargets(sketch, FEATURE, '__none__')

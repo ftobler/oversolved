@@ -240,7 +240,7 @@ pub struct SpLmResult {
 
 /// LM driver that uses a sparse Jacobian + conjugate-gradient linear solve
 /// instead of dense JᵀJ + LU. O(nnz·CG_iters·LM_iters) vs O(n³) dense LU.
-/// The Jacobian closure returns `Vec<SparseRow>` — one sparse row per residual.
+/// The Jacobian closure returns `Vec<SparseRow>` - one sparse row per residual.
 ///
 /// On the N=100 benchmark this replaces the dominant O(n³) dense factorization
 /// with O(nnz) matvecs inside CG, dropping p95 drag latency from ~600 ms toward

@@ -52,7 +52,7 @@ fn sparse_transpose_matvec(jac: &[SparseRow], v: &[f64], n: usize) -> Vec<f64> {
     out
 }
 
-/// (JᵀJ)·v computed as Jᵀ(J·v) — never forms the dense JᵀJ matrix.
+/// (JᵀJ)·v computed as Jᵀ(J·v) - never forms the dense JᵀJ matrix.
 #[cfg(test)]
 fn jtj_matvec(jac: &[SparseRow], v: &[f64], n: usize) -> Vec<f64> {
     let jv = sparse_matvec(jac, v);
@@ -108,7 +108,7 @@ fn cg_solve(
 
         let p_ap = dot(&p, &ap);
         if p_ap <= 0.0 {
-            // A is not positive-definite — should not happen with λ>0 unless
+            // A is not positive-definite - should not happen with λ>0 unless
             // numerical issues. Stop, and say so: silently returning the
             // current estimate would hand the caller a step nobody vetted.
             truncated = true;

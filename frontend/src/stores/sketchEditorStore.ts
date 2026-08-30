@@ -63,7 +63,7 @@ function samePoint(a: readonly number[] | null, b: readonly number[] | null): bo
 function requireMutation(name: string): ((m: Mutation) => void) | null {
   const onMutation = _sketchCbs.onMutation
   if (!onMutation) {
-    if (devOnly) console.warn(`[sketchEditorStore] onMutation: callback not registered — ${name} will be a no-op.`)
+    if (devOnly) console.warn(`[sketchEditorStore] onMutation: callback not registered  -  ${name} will be a no-op.`)
   }
   return onMutation
 }

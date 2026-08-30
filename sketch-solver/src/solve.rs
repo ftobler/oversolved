@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn drag_preserves_status_rank_and_feasibility() {
         // p1 fixed at origin (seeded off), p2 free. Underconstrained either way.
-        // Dragging must not change the geometry — only re-place free DOF toward
+        // Dragging must not change the geometry - only re-place free DOF toward
         // seed. The sparse drag fast path skips SVD/rank, so entity_status
         // and rank diagnostics are not compared against the cold path.
         let mut fix_p1 = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);

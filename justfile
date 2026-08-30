@@ -142,6 +142,7 @@ rust-test:
 rust-lint:
     mkdir -p tmp
     cargo clippy --workspace -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
+    python3 lint.py solver-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
 
 # Remove build artifacts (keeps .venv and node_modules)
 clean:

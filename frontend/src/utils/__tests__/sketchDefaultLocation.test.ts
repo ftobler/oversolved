@@ -10,7 +10,7 @@ function emptyDoc(): PartDoc {
 }
 
 describe('applyAddSketch sets no default plane', () => {
-  it('new sketch has no plane — user must pick one', () => {
+  it('new sketch has no plane  -  user must pick one', () => {
     const doc = emptyDoc()
     applyAddSketch(doc, 'sk1')
     const sketch = doc.features!.find(f => f.id === 'sk1')!

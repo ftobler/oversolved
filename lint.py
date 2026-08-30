@@ -2,14 +2,15 @@
 """Comment-style linter for the Oversolved codebase.
 
 Enforces the comment conventions documented in AGENTS.md against a set of
-folders. Right now it understands TypeScript; the rule set is meant to grow.
+folders. It understands TypeScript (comments plus string literals) and Rust
+(comments only). The rule set is meant to grow.
 
 Each rule is a function registered with the @rule decorator. The registry is
 the single source of truth: it drives the --no-<rule> switches, the rule list
 in --help, and the enforcement loop in check_file().
 
 Usage:
-    python lint.py [dir ...] [--filter GLOB] [--language ts] [--no-<rule>]
+    python lint.py [dir ...] [--filter GLOB] [--language {ts,rust}] [--no-<rule>]
 """
 
 from __future__ import annotations
@@ -25,6 +26,11 @@ EM_DASH = "\u2014"
 EN_DASH = "\u2013"
 BOX_DASH = "\u2500"
 SEPARATORS = frozenset("-=*_#~+")
+
+# Languages this linter understands. `ts` scans TypeScript sources; `rust`
+# scans Rust sources. The emdash rule spans both; the comment-shape rules are
+# TypeScript-only conventions and never run on Rust.
+LANGUAGES = ("ts", "rust")
 
 # A `/` starts a regex literal (not a division) when the previous significant
 # token is one of these, so `//` inside such a regex is not a comment.
@@ -62,7 +68,7 @@ _SKIP_DIRS = frozenset(
     }
 )
 
-EXTENSIONS = {"ts": (".ts", ".tsx")}
+EXTENSIONS = {"ts": (".ts", ".tsx"), "rust": (".rs",)}
 
 
 @dataclass
@@ -76,6 +82,7 @@ class Comment:
     jsx: bool = False  # a JSX `{/* ... */}` comment, i.e. the marker directly follows `{`
     trailing_code: bool = False  # non-whitespace follows the closing `*/` on the same line
     lines: list[str] = field(default_factory=list)
+    is_string: bool = False  # a string literal (not a comment); only the emdash rule inspects these
 
 
 @dataclass
@@ -92,17 +99,19 @@ class Rule:
     name: str
     description: str
     check: Callable[[pathlib.Path, str, list[Comment]], list[str]]
+    languages: frozenset[str] = frozenset(LANGUAGES)
 
 
 RULES: dict[str, Rule] = {}
 
 
-def rule(name: str, description: str) -> Callable[[Callable], Callable]:
+def rule(name: str, description: str, languages: frozenset[str] = frozenset(LANGUAGES)) -> Callable[[Callable], Callable]:
     """Register a rule under `name`; the registry drives the CLI and the
-    enforcement loop."""
+    enforcement loop. `languages` restricts which source dialects the rule
+    applies to (default: every language this linter knows)."""
 
     def decorate(check: Callable) -> Callable:
-        RULES[name] = Rule(name=name, description=description, check=check)
+        RULES[name] = Rule(name=name, description=description, check=check, languages=languages)
         return check
 
     return decorate
@@ -308,6 +317,156 @@ def scan_comments(text: str) -> list[Comment]:
     return comments
 
 
+def _string_comment(line_starts: list[int], seg_start: int, seg: str) -> Comment:
+    """Wrap a string-literal segment as a comment-shaped span the emdash rule
+    can inspect (it is the only rule that looks at string contents)."""
+    line = _line_of(line_starts, seg_start)
+    col = seg_start - line_starts[line - 1]
+    return Comment(
+        kind="line",
+        line=line,
+        col=col,
+        text=seg,
+        lines=seg.split("\n"),
+        is_string=True,
+    )
+
+
+def scan_ts_strings(text: str) -> list[Comment]:
+    """Return every string and template-literal segment in a TS file, so the
+    emdash rule can cover prose written inside string literals (not just
+    comments). Template `${...}` expressions are skipped; only the literal
+    text between them is reported."""
+    line_starts = _line_starts(text)
+    out: list[Comment] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and i + 1 < n and text[i + 1] in "/*":
+            # a comment: skip it so its body is not mistaken for string text
+            if text[i + 1] == "/":
+                j = text.find("\n", i, n)
+                i = n if j == -1 else j
+            else:
+                j = text.find("*/", i + 2, n)
+                i = n if j == -1 else j + 2
+            continue
+        if c in "'\"":
+            end = _skip_string(text, i, n)
+            seg = text[i + 1:end - 1]
+            out.append(_string_comment(line_starts, i + 1, seg))
+            i = end
+            continue
+        if c == "`":
+            i = _scan_template(out, text, line_starts, i)
+            continue
+        i = _advance(text, i, n)
+    return out
+
+
+def _scan_template(out: list[Comment], text: str, line_starts: list[int], start: int) -> int:
+    """Append the literal-text segments of a template literal beginning at the
+    opening backtick `start`, returning the index just past the closing
+    backtick."""
+    i = start + 1
+    n = len(text)
+    seg_start = start + 1
+    while i < n:
+        ch = text[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == "`":
+            seg = text[seg_start:i]
+            if seg:
+                out.append(_string_comment(line_starts, seg_start, seg))
+            return i + 1
+        if text.startswith("${", i):
+            seg = text[seg_start:i]
+            if seg:
+                out.append(_string_comment(line_starts, seg_start, seg))
+            i = _skip_expression(text, i + 2, n)  # index past the closing `}`
+            seg_start = i
+            continue
+        i += 1
+    return n  # unterminated template: consume to end of file
+
+
+def _scan_rust_string(text: str, i: int, end: int) -> int:
+    """Return the index just past a Rust string/char literal starting at `i`.
+
+    Handles normal `"..."`, byte `b"..."`, raw `r"..."`/`r#"..."#` strings and
+    `'c'` char literals; lifetimes like `'a` are left untouched so a following
+    `//` is still seen as a comment."""
+    quote = text[i]
+    if quote == "'":
+        nxt = text[i + 1] if i + 1 < end else ""
+        if nxt == "\\":
+            return _skip_string(text, i, end)  # `'\...'`
+        if i + 2 < end and text[i + 2] == "'":
+            return i + 3  # `'c'`
+        return i + 1  # a lifetime, not a char literal
+    # double-quoted: raw strings (r prefix) keep no escapes and may use #"..."#
+    raw = i > 0 and text[i - 1] == "r"
+    if raw:
+        hashes = 0
+        k = i - 1
+        while k >= 0 and text[k] == "#":
+            hashes += 1
+            k -= 1
+        close = '"' + "#" * hashes
+        j = text.find(close, i + 1, end)
+        return end if j == -1 else j + len(close)
+    return _skip_string(text, i, end)
+
+
+def scan_rust_comments(text: str) -> list[Comment]:
+    """Return every line and block comment in a Rust file, skipping string and
+    char literals (so `//` inside a string is not a comment). `///` and `//!`
+    doc comments drop the third slash from the body; `/* ... */` blocks keep
+    their inner text, one comment span per block."""
+    line_starts = _line_starts(text)
+    comments: list[Comment] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c in "'\"`":
+            if c == "`":  # Rust raw string `r"..."`; treat as a string literal
+                i = _scan_rust_string(text, i, n) if i + 1 < n and text[i + 1] == '"' else i + 1
+                continue
+            i = _scan_rust_string(text, i, n)
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] in "/*":
+            start = i
+            line = _line_of(line_starts, start)
+            col = start - line_starts[line - 1]
+            if text[i + 1] == "/":
+                j = text.find("\n", i, n)
+                if j == -1:
+                    j = n
+                marker = 3 if i + 2 < n and text[i + 2] in "/!" else 2
+                body = text[start + marker:j]
+                comments.append(
+                    Comment(kind="line", line=line, col=col, text=body, lines=body.split("\n"))
+                )
+                i = j
+            else:
+                j = text.find("*/", i + 2, n)
+                if j == -1:
+                    j = n
+                block_end = j + 2
+                inner = text[start + 2:j]
+                comments.append(
+                    Comment(kind="block", line=line, col=col, text=inner, lines=inner.split("\n"))
+                )
+                i = block_end
+        else:
+            i += 1
+    return comments
+
+
 def _dash_runs(text: str) -> list[int]:
     """Lengths of every run of the box-drawing dash in `text`."""
     runs: list[int] = []
@@ -347,6 +506,7 @@ def _banner_check(lines: list[str], start_line: int, errors: list[str], path: pa
 @rule(
     "inline-spacing",
     "a trailing // must be two spaces from the code, or column-aligned with a neighbour",
+    languages={"ts"},
 )
 def _check_inline_spacing(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
@@ -365,7 +525,7 @@ def _check_inline_spacing(path: pathlib.Path, text: str, comments: list[Comment]
     return errors
 
 
-@rule("banner", "no ASCII-art divider lines; the approved divider uses box-drawing dashes")
+@rule("banner", "no ASCII-art divider lines; the approved divider uses box-drawing dashes", languages={"ts"})
 def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -373,7 +533,7 @@ def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> lis
     return errors
 
 
-@rule("emdash", "no em or en dashes inside comments; write -- or reword instead")
+@rule("emdash", "no em or en dashes in comments or string literals; reword instead", languages={"ts", "rust"})
 def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -383,7 +543,7 @@ def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> lis
     return errors
 
 
-@rule("block-comment", "an own-line block comment indented inside a block must be a // comment")
+@rule("block-comment", "an own-line block comment indented inside a block must be a // comment", languages={"ts"})
 def _check_block_comment(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -392,7 +552,7 @@ def _check_block_comment(path: pathlib.Path, text: str, comments: list[Comment])
     return errors
 
 
-@rule("block-code-after", "a block comment followed by code on the same line is dangerous; move the code or use //")
+@rule("block-code-after", "a block comment followed by code on the same line is dangerous; move the code or use //", languages={"ts"})
 def _check_block_code_after(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -401,7 +561,7 @@ def _check_block_code_after(path: pathlib.Path, text: str, comments: list[Commen
     return errors
 
 
-@rule("flagpole", "a flag-pole divider must use exactly three box-drawing dashes per side")
+@rule("flagpole", "a flag-pole divider must use exactly three box-drawing dashes per side", languages={"ts"})
 def _check_flagpole(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -417,10 +577,21 @@ def _check_flagpole(path: pathlib.Path, text: str, comments: list[Comment]) -> l
 
 def check_file(path: pathlib.Path, text: str, config: Config) -> list[str]:
     errors: list[str] = []
-    comments = scan_comments(text)
+    if config.language == "ts":
+        comments = scan_comments(text) + scan_ts_strings(text)
+    elif config.language == "rust":
+        comments = scan_rust_comments(text)
+    else:
+        comments = scan_comments(text)
     for rule in RULES.values():
-        if config.enabled(rule.name):
-            errors.extend(rule.check(path, text, comments))
+        if not config.enabled(rule.name):
+            continue
+        if config.language not in rule.languages:
+            continue
+        # string literals are only meaningful to the emdash rule; the
+        # comment-shape rules would misfire on them.
+        comments_for = comments if rule.name == "emdash" else [c for c in comments if not c.is_string]
+        errors.extend(rule.check(path, text, comments_for))
     return errors
 
 

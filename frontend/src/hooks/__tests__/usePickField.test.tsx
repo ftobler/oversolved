@@ -47,7 +47,7 @@ function mountPickField(
   }
 }
 
-describe('usePickField — mutual exclusion', () => {
+describe('usePickField  -  mutual exclusion', () => {
   it('isPicking is true when activePickField matches', () => {
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'plane' })
@@ -101,7 +101,7 @@ describe('usePickField — mutual exclusion', () => {
   })
 })
 
-describe('usePickField — consumer (Layer 2)', () => {
+describe('usePickField  -  consumer (Layer 2)', () => {
   it('new non-chip-owned item in normalSelection triggers onPick then clears', () => {
     const onPick = vi.fn()
     act(() => {
@@ -146,7 +146,7 @@ describe('usePickField — consumer (Layer 2)', () => {
   })
 })
 
-describe('usePickField — re-click toggles off (unpick)', () => {
+describe('usePickField  -  re-click toggles off (unpick)', () => {
   it('re-clicking an already-picked item fires onUnpick with that id', () => {
     const onPick = vi.fn()
     const onUnpick = vi.fn()
@@ -192,7 +192,7 @@ describe('usePickField — re-click toggles off (unpick)', () => {
   })
 })
 
-describe('usePickField — auto-close (multi vs single)', () => {
+describe('usePickField  -  auto-close (multi vs single)', () => {
   it('single-pick field auto-closes after one pick', () => {
     const onPick = vi.fn()
     act(() => {
@@ -228,7 +228,7 @@ describe('usePickField — auto-close (multi vs single)', () => {
   })
 })
 
-describe('usePickField — toggle', () => {
+describe('usePickField  -  toggle', () => {
   it('toggle activates the field when it is not active', () => {
     const spy = mountPickField('sk1', 'plane', vi.fn())
     expect(spy.isPicking).toBe(false)

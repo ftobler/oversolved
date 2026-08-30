@@ -1,7 +1,7 @@
 //! Mate constraint solver types and flat typed-array codec for the WASM boundary.
 //!
 //! The mate solver reuses `solve_lm` (`solver_core::lm`) with 3D rigid-body residuals:
-//! each rigid body carries 7 params (tx, ty, tz, qx, qy, qz, qw — translation +
+//! each rigid body carries 7 params (tx, ty, tz, qx, qy, qz, qw - translation +
 //! quaternion rotation). Mates constrain the bodies' relative transforms by
 //! comparing anchor geometry (point + axis) in world space.
 //!
@@ -409,7 +409,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     })
 }
 
-/// Encode a MateInput to bytes (test-only — production decode happens on WASM side).
+/// Encode a MateInput to bytes (test-only - production decode happens on WASM side).
 #[cfg(test)]
 pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
     let mut w = Writer::default();
