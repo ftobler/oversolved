@@ -12,7 +12,7 @@ Comprehensive coding standards for the Oversolved CAD system.
 - Pure logic must have unit tests
 - No mocked store methods where Zustand works directly
 - Frontend changes must pass `just frontend`
-- Python tooling changes must pass `just backend`
+- Python tooling changes must pass `just python`
 
 ## 2. Code Style
 

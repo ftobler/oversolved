@@ -12,10 +12,11 @@ persisted to IndexedDB. There is no server and no database process.
 - `lint.py` - the project's own comment-style linter
 
 ## Python Commands
-from the justfile: `just backend`
+from the justfile: `just python`
 
-The recipe is still called `backend` for muscle memory, but no Python runs at
-app runtime: it gates the icon generator, `lint.py`, and the tooling tests.
+No Python runs at app runtime: the recipe gates the icon generator, `lint.py`,
+and the tooling tests. It was called `backend` until the backend was deleted;
+the old name outlived its subject and was retired with it.
 
 Every gate tees its full output to a log in `tmp/` as well as printing to
 stdout, and keeps the gate's own exit code (pipefail). One run is slow, so the
@@ -44,7 +45,7 @@ npm run build 2>&1 | tee ../tmp/npm_build.log
 ## Conventions
 - The frontend goal is: If I delete the Viewport, the logic should still pass unit tests.
 - `code_guideline.md` should help navigate the codebase.
-- Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just backend`.
+- Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just python`.
 - Gates tee a full copy of their output to `tmp/<gate>.log` (e.g. `tmp/npx_test.log`) while also printing to stdout. You can grep stdout live and re-grep the log afterwards; never re-run a slow gate just to get its output in a different shape.
 - For each feature try to make a test.
 - All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB. Nothing is sent to a server; there is no server.

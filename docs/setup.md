@@ -47,7 +47,7 @@ the `[dev]` extra, so `pip install -e .` on its own installs nothing.
 ## Running
 
 ```bash
-just runf       # Vite dev server on :5173 with HMR -- this is the whole app
+just dev        # Vite dev server on :5173 with HMR -- this is the whole app
 ```
 
 There is no second process to start. Nothing proxies anywhere.
@@ -73,7 +73,7 @@ back up server-side.
 ## Just recipes
 
 ```bash
-just backend    # mypy + ruff + pytest over the Python tooling (CI still runs flake8)
+just python     # mypy + ruff + pytest over the Python tooling (CI still runs flake8)
 just frontend   # icons + lint + test + build
 just wasm       # rebuild both Rust solvers (web + nodejs targets)
 just rust-test  # cargo test over the solver workspace
@@ -103,7 +103,7 @@ layer rather than a suite that passes as skipped.
 not built: run `just install-occ` and `just wasm`.
 
 **Frontend not serving** — Build it: `just build`, then `just static`. For dev,
-use `just runf` (Vite HMR) instead.
+use `just dev` (Vite HMR) instead.
 
 **Documents vanished** — IndexedDB is per-origin and per-browser-profile.
 Serving the same build from a different port or host is a different origin with

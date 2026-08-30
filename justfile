@@ -1,22 +1,69 @@
 # justfile
-
+#
 # `just` command runner. Targets can be run with `just <target>`.
+#
+#   everyday   dev, build, static
+#   gates      default (python + frontend), python, frontend, rust-test,
+#              rust-lint, parity
+#   assets     wasm, icons
+#   setup      install
+#   cleanup    clean, deepclean
 
+# pipefail keeps a recipe's own exit code when it pipes into `tee`, which every
+# gate below does; without it the gate would report tee's success instead.
+set shell := ["bash", "-cuo", "pipefail"]
+
+
+# --- everyday ---
+
+# The app is browser-only, so the Vite dev server IS the whole running app:
+# storage is IndexedDB, compute is WASM, nothing else needs to be running.
+
+# Run the app (Vite dev server, HMR).
+[working-directory: "frontend"]
+dev:
+    npm run dev
+
+# Build the deployable app into frontend/dist. One build, one artifact: the app
+# is static files, so any file server can host it and there is nothing to
+# configure per deployment. Assumes public/occ + public/wasm are already
+# provisioned by `just install` (occ:provision needs the --no-save
+# opencascade.js dep, so it belongs to install, not to every build).
+
+# Build the deployable static app into frontend/dist.
+[working-directory: "frontend"]
+build:
+    mkdir -p ../tmp
+    npm run build 2>&1 | tee ../tmp/npm_build.log
+
+# Run `just build` first; this serves the artifact, it does not create it.
+
+# Serve frontend/dist on a plain static server (npx serve, SPA fallback).
+static:
+    npx --yes serve -s frontend/dist
+
+
+# --- gates ---
+
+# Run every gate (Python + frontend).
 default:
-    just backend
+    just python
     just frontend
 
-# Run every Python gate. No Python runs at app runtime any more, so this covers
-# only the repo's own tooling: the icon generator under oversolved/ and the
-# tests that pin lint.py's behaviour and the docs/config invariants.
-backend:
+# Every Python gate. No Python runs at app runtime any more, so this covers only
+# the repo's own tooling: the icon generator under oversolved/ and the tests
+# that pin lint.py's behaviour and the docs/config invariants.
+
+# Every Python gate (mypy + ruff + pytest).
+python:
     just mypy
     just ruff
     just pytest
 
 # Each gate tees its full output to tmp/<gate>.log as well as stdout. One run is
-# slow, so the log lets you re-grep the result afterwards without re-running the
-# gate. pipefail keeps the gate's own exit code (see `set shell` at the bottom).
+# slow, so the log lets you re-grep the result afterwards without re-running it.
+
+# Type-check the surviving Python tooling.
 mypy:
     mkdir -p tmp
     .venv/bin/python -m mypy tests/ oversolved/ 2>&1 | tee tmp/mypy.log
@@ -26,21 +73,17 @@ ruff:
     mkdir -p tmp
     .venv/bin/python -m ruff check tests/ oversolved/ 2>&1 | tee tmp/ruff.log
 
+# Run the Python test suite.
 pytest:
     mkdir -p tmp
     .venv/bin/python -m pytest tests/ 2>&1 | tee tmp/pytest.log
 
-
-icons:
-    .venv/bin/python oversolved/icons.py
-
-
-[working-directory: "frontend"]
+# Every frontend gate (icons + lint + tests + build).
 frontend:
     just icons
     just frontend-lint
     just frontend-test
-    just frontend-build
+    just build
 
 [working-directory: "frontend"]
 frontend-lint:
@@ -53,73 +96,15 @@ frontend-test:
     mkdir -p ../tmp
     npx vitest run 2>&1 | tee ../tmp/npx_test.log
 
-[working-directory: "frontend"]
-frontend-build:
-    mkdir -p ../tmp
-    npm run build 2>&1 | tee ../tmp/npm_build.log
-
-[working-directory: "frontend"]
-install-npm:
-    npm install
-
 # Full-document WASM parity gate (TS kernel vs frozen baseline). Slow, needs
 # OCC.js provisioned, hard-fails on any divergence. Kept out of `just frontend`.
+
+# Full-document WASM parity gate against the frozen baseline. Slow.
 [working-directory: "frontend"]
 parity:
     just install-occ
     mkdir -p ../tmp
     npm run test:parity 2>&1 | tee ../tmp/parity.log
-
-
-# The app is browser-only, so the Vite dev server is the whole running app.
-runf:
-    just run_front
-
-[working-directory: "frontend"]
-run_front:
-    npm run dev
-
-# Install all dependencies (Python + frontend + wasm tools + opencascade.js)
-install:
-    test -d .venv || python3 -m venv .venv
-    # note cairo needs apt libcairo2-dev
-    .venv/bin/pip install -e ".[dev]"
-    just install-npm
-    just install-wasm
-    just install-occ
-
-[working-directory: "frontend"]
-install-occ:
-    npm run occ:install
-    npm run occ:provision
-
-# Build the deployable app into frontend/dist. There is one build and one
-# artifact: the app is static files (IndexedDB persistence, local-WASM STEP/STL
-# export), so any file server can host it and there is nothing to configure per
-# deployment. Like `frontend-build`, this assumes public/occ + public/wasm are
-# already provisioned by `just install` (occ:provision needs the --no-save
-# opencascade.js dep, so it belongs to install, not every build).
-[working-directory: "frontend"]
-build:
-    npm run build
-
-# Serve frontend/dist on a plain static server (npx serve, SPA fallback).
-# you need to build first.
-static:
-    npx --yes serve -s frontend/dist
-
-install-wasm:
-    cargo install wasm-pack
-
-# Build both Rust solvers to WASM (web target for frontend + nodejs target for
-# tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
-# worker each load only their own. See the workspace root Cargo.toml.
-wasm:
-    cd sketch-solver && wasm-pack build --target web --out-dir pkg --release
-    cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
-    cd mate-solver && wasm-pack build --target web --out-dir pkg --release
-    cd mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
-    cd frontend && node scripts/copyWasm.mjs
 
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
 rust-test:
@@ -131,6 +116,52 @@ rust-lint:
     mkdir -p tmp
     cargo clippy --workspace -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
     python3 lint.py solver-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
+
+
+# --- assets ---
+
+# Build both Rust solvers to WASM (web target for frontend + nodejs target for
+# tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
+# worker each load only their own. See the workspace root Cargo.toml.
+
+# Build both Rust solvers to WASM and copy them into the frontend.
+wasm:
+    cd sketch-solver && wasm-pack build --target web --out-dir pkg --release
+    cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
+    cd mate-solver && wasm-pack build --target web --out-dir pkg --release
+    cd mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
+    cd frontend && node scripts/copyWasm.mjs
+
+# Regenerate the icon set from oversolved/icons.py.
+icons:
+    .venv/bin/python oversolved/icons.py
+
+
+# --- setup ---
+
+# Install all dependencies (Python + frontend + wasm tools + opencascade.js)
+install:
+    test -d .venv || python3 -m venv .venv
+    # note cairo needs apt libcairo2-dev
+    .venv/bin/pip install -e ".[dev]"
+    just install-npm
+    just install-wasm
+    just install-occ
+
+[working-directory: "frontend"]
+install-npm:
+    npm install
+
+install-wasm:
+    cargo install wasm-pack
+
+[working-directory: "frontend"]
+install-occ:
+    npm run occ:install
+    npm run occ:provision
+
+
+# --- cleanup ---
 
 # Remove build artifacts (keeps .venv and node_modules)
 clean:
@@ -146,9 +177,3 @@ deepclean:
     just clean
     rm -rf .venv
     rm -rf frontend/node_modules
-
-
-set shell := ["bash", "-cuo", "pipefail"]
-
-run:
-    just run_front

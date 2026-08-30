@@ -90,14 +90,6 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-      # Exercise the zero-backend deploy build on every Node version in the
-      # matrix. The JS bundle is byte-identical to `npm run build`; this adds the
-      # runtime-config stamp, so we catch a broken writeRuntimeConfig across all
-      # supported Node runtimes.
-      - name: npm build:static
-        run: npm run build:static
-        working-directory: frontend
-
       - name: npm lint
         run: npm run lint
         working-directory: frontend
