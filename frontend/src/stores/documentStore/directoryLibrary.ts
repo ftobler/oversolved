@@ -8,9 +8,9 @@ import { base64ToBytes } from '@/kernel/occ/stepIo'
 // everything about WHERE bytes land lives here.
 //
 //   Bracket.yaml              the document, byte-identical to the YAML export
-//   Bracket.png               its preview, alongside (only when one exists)
 //   .oversolved-index.json    the library's registry (uuid, name, sync meta)
-//   .oversolved-trash/        soft-deleted documents, same two files each
+//   .oversolved-previews/     one <stem>.png thumbnail per document
+//   .oversolved-trash/        soft-deleted documents, and their previews
 //
 // Two decisions this layout makes, both of which the plan left open:
 //
@@ -24,6 +24,15 @@ import { base64ToBytes } from '@/kernel/occ/stepIo'
 // vestigial there (kept so older bundles keep importing); a real folder the
 // user picked has exactly one library in it, and a `local/` level inside it
 // would be an artifact of a server that no longer exists.
+//
+// Previews do NOT sit beside the document the way the bundle format puts them,
+// and that is the third decision. The folder is the user's, and the only names
+// this app may own in it are the ones it announced: `<their document>.yaml` and
+// entries starting with `.oversolved-`. A `<stem>.png` sibling would silently
+// claim a name they may already be using -- point the app at a folder holding
+// `Bracket.yaml` and an unrelated `Bracket.png` and the first thumbnail save
+// overwrites their image. Previews are bookkeeping, like the index, so they
+// live with it.
 //
 // The index is library bookkeeping, NOT part of any document: no document's
 // content is in it, and `reconcile` below rebuilds it from what is on disk,
@@ -41,6 +50,7 @@ import { base64ToBytes } from '@/kernel/occ/stepIo'
 
 export const INDEX_FILE = '.oversolved-index.json'
 export const TRASH_DIR = '.oversolved-trash'
+export const PREVIEWS_DIR = '.oversolved-previews'
 export const DOC_EXT = '.yaml'
 export const PREVIEW_EXT = '.png'
 const INDEX_VERSION = 1
@@ -90,12 +100,9 @@ export interface DiskFile {
 // One directory level, as read. Handles rather than fingerprints: reading a
 // name is one directory entry, reading a size and modification time is a stat
 // per file, and only the read path needs every one of them (see `reconcile`).
-// `occupied` covers every file's stem whatever its extension, so stem
-// allocation can avoid names the folder already uses.
 interface DirectoryContents {
   docs: Map<string, FileSystemFileHandle>
   previews: Set<string>
-  occupied: Set<string>
 }
 
 async function fingerprint(handle: FileSystemFileHandle): Promise<DiskFile> {
@@ -110,12 +117,17 @@ interface Reconciled {
   inTrash: DirectoryContents
 }
 
-// Stands in for a trash folder that does not exist yet, so a read path can ask
-// what is in it without creating it.
+// Stands in for one of this app's own directories before anything has been put
+// in it, so a read path can ask what it holds without creating it. Every entry
+// is absent, which is the truth, and `removeFile` already treats absent as the
+// outcome it wanted.
 const EMPTY_DIR = {
   kind: 'directory' as const,
-  name: TRASH_DIR,
+  name: '',
   async *values() {},
+  async getFileHandle(name: string) { throw notFound(name) },
+  async getDirectoryHandle(name: string) { throw notFound(name) },
+  async removeEntry(name: string) { throw notFound(name) },
 } as unknown as FileSystemDirectoryHandle
 
 function emptyIndex(): LibraryIndex {
@@ -130,6 +142,10 @@ function emptyIndex(): LibraryIndex {
 // library is exactly what the index reconciler treats as "adopt everything".
 function isNotFound(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'NotFoundError'
+}
+
+function notFound(name: string): DOMException {
+  return new DOMException(`A requested file or directory could not be found: ${name}`, 'NotFoundError')
 }
 
 async function readTextFile(dir: FileSystemDirectoryHandle, name: string): Promise<string | null> {
@@ -263,18 +279,32 @@ export class DirectoryLibrary {
   // not write to it: merely browsing a library the user opened should leave it
   // byte-for-byte as they left it, and a handle downgraded to read-only would
   // otherwise fail the whole read rather than degrade.
-  private async trashDir({ create }: { create: boolean }): Promise<FileSystemDirectoryHandle> {
-    if (create) return this.dir.getDirectoryHandle(TRASH_DIR, { create: true })
+  private async ownDir(name: string, { create }: { create: boolean }): Promise<FileSystemDirectoryHandle> {
+    if (create) return this.dir.getDirectoryHandle(name, { create: true })
     try {
-      return await this.dir.getDirectoryHandle(TRASH_DIR)
+      return await this.dir.getDirectoryHandle(name)
     } catch (err) {
       if (isNotFound(err)) return EMPTY_DIR
       throw err
     }
   }
 
-  private dirFor(entry: IndexEntry, opts = { create: false }): Promise<FileSystemDirectoryHandle> {
+  private trashDir(opts: { create: boolean }): Promise<FileSystemDirectoryHandle> {
+    return this.ownDir(TRASH_DIR, opts)
+  }
+
+  // Where a document's text lives: the folder the user picked, or the trash.
+  private docDir(entry: IndexEntry, opts = { create: false }): Promise<FileSystemDirectoryHandle> {
     return entry.deleted_at ? this.trashDir(opts) : Promise.resolve(this.dir)
+  }
+
+  // Where its preview lives, which is never beside it in the user's folder. A
+  // TRASHED document keeps both files together in the trash, so that a deleted
+  // `Bracket` and a newly created one can hold the same stem without colliding
+  // -- the two levels have separate name spaces, and one shared previews
+  // directory would put them back in the same one.
+  private previewDir(entry: IndexEntry, opts = { create: false }): Promise<FileSystemDirectoryHandle> {
+    return entry.deleted_at ? this.trashDir(opts) : this.ownDir(PREVIEWS_DIR, opts)
   }
 
   // ─── index ───
@@ -320,8 +350,9 @@ export class DirectoryLibrary {
   // calls. Adoption still stats, but only the files actually being adopted,
   // which in the steady state is none.
   private async reconcile(index: LibraryIndex, { restat }: { restat: boolean }): Promise<Reconciled> {
-    const onDisk = await this.listStems(this.dir)
-    const inTrash = await this.listStems(await this.trashDir({ create: false }))
+    const trash = await this.trashDir({ create: false })
+    const onDisk = await this.listStems(this.dir, await this.ownDir(PREVIEWS_DIR, { create: false }))
+    const inTrash = await this.listStems(trash, trash)
     const kept: IndexEntry[] = []
     let changed = false
 
@@ -354,24 +385,24 @@ export class DirectoryLibrary {
     return { index: { version: INDEX_VERSION, docs: kept }, changed, onDisk, inTrash }
   }
 
-  // What one directory level actually holds: the documents in it, and every
-  // stem any file in it occupies. The second set is wider than the first on
-  // purpose -- a stem must not be handed to a new document while a file of any
-  // kind already answers to it, or the first save with a preview would silently
-  // overwrite a `.png` the user put there themselves.
-  private async listStems(dir: FileSystemDirectoryHandle): Promise<DirectoryContents> {
+  // A level is a documents directory plus wherever ITS previews live. For the
+  // library those are two different directories, which is the whole point: the
+  // user's folder holds their documents and nothing this app invented a name
+  // for. In the trash they are the same directory.
+  private async listStems(
+    docsDir: FileSystemDirectoryHandle, previewsDir: FileSystemDirectoryHandle,
+  ): Promise<DirectoryContents> {
     const docs = new Map<string, FileSystemFileHandle>()
-    const previews = new Set<string>()
-    const occupied = new Set<string>()
-    for await (const handle of dir.values()) {
-      if (handle.kind !== 'file') continue
-      const name = handle.name
-      const dot = name.lastIndexOf('.')
-      occupied.add(dot > 0 ? name.slice(0, dot) : name)
-      if (name.endsWith(DOC_EXT)) docs.set(name.slice(0, -DOC_EXT.length), handle as FileSystemFileHandle)
-      else if (name.endsWith(PREVIEW_EXT)) previews.add(name.slice(0, -PREVIEW_EXT.length))
+    for await (const handle of docsDir.values()) {
+      if (handle.kind !== 'file' || !handle.name.endsWith(DOC_EXT)) continue
+      docs.set(handle.name.slice(0, -DOC_EXT.length), handle as FileSystemFileHandle)
     }
-    return { docs, previews, occupied }
+    const previews = new Set<string>()
+    for await (const handle of previewsDir.values()) {
+      if (handle.kind !== 'file' || !handle.name.endsWith(PREVIEW_EXT)) continue
+      previews.add(handle.name.slice(0, -PREVIEW_EXT.length))
+    }
+    return { docs, previews }
   }
 
   // The read side: the reconciled index, with any adoption already persisted.
@@ -415,11 +446,10 @@ export class DirectoryLibrary {
 
   private io(state: Reconciled): LibraryIo {
     return {
-      // The stems each folder level already uses, for a file of ANY kind. The
-      // index alone is not enough: a `.png` the user put in the folder occupies
-      // a stem, and handing it to a new document would have the first save with
-      // a preview overwrite their image.
-      occupiedStems: where => new Set(where === 'trash' ? state.inTrash.occupied : state.onDisk.occupied),
+      // The document stems each level already holds. Only `.yaml` files count:
+      // this app writes nothing else into the user's folder, so nothing else in
+      // it can collide with a document.
+      documentStems: where => new Set((where === 'trash' ? state.inTrash : state.onDisk).docs.keys()),
       readContent: entry => this.readContent(entry),
       readPreview: entry => this.readPreview(entry),
       writeDoc: (entry, content, preview) => this.writeDoc(entry, content, preview),
@@ -430,7 +460,7 @@ export class DirectoryLibrary {
   }
 
   async readContent(entry: IndexEntry): Promise<string> {
-    const dir = await this.dirFor(entry)
+    const dir = await this.docDir(entry)
     const text = await readTextFile(dir, entry.stem + DOC_EXT)
     if (text === null) throw new Error(`Document file missing: ${entry.stem}${DOC_EXT}`)
     return text
@@ -438,7 +468,7 @@ export class DirectoryLibrary {
 
   async readPreview(entry: IndexEntry): Promise<string | undefined> {
     if (!entry.has_preview) return undefined
-    const dir = await this.dirFor(entry)
+    const dir = await this.previewDir(entry)
     try {
       const handle = await dir.getFileHandle(entry.stem + PREVIEW_EXT)
       return await fileToBase64(await handle.getFile())
@@ -452,87 +482,95 @@ export class DirectoryLibrary {
   // while text written after a preview failure would be a document the user
   // cannot tell is saved.
   private async writeDoc(entry: IndexEntry, content: string, preview?: string): Promise<DiskFile> {
-    const dir = await this.dirFor(entry, { create: true })
+    const dir = await this.docDir(entry, { create: true })
     const written = await writeFile(dir, entry.stem + DOC_EXT, content)
-    if (preview !== undefined) await writeFile(dir, entry.stem + PREVIEW_EXT, base64ToBytes(preview))
+    if (preview !== undefined) {
+      const previews = await this.previewDir(entry, { create: true })
+      await writeFile(previews, entry.stem + PREVIEW_EXT, base64ToBytes(preview))
+    }
     return written
   }
 
-  // Between the library folder and the trash folder, in either direction, and
-  // under a destination stem the caller allocated against THAT folder's names.
-  // The two levels have independent name spaces: the library folder is what the
-  // user looks at, so deleting Bracket must free the name Bracket there, and
-  // recovering it later must find a name still free rather than overwrite
-  // whatever took it.
+  // The one file relocation, shared by a move between levels and a rename in
+  // place. Both are copy-then-delete, because `FileSystemFileHandle.move()` is
+  // newer than the pickers this feature already depends on and is not in every
+  // Chromium the app supports.
   //
-  // Copy then delete, because `FileSystemFileHandle.move()` is newer than the
-  // pickers this feature already depends on and is not in every Chromium the
-  // app supports. A crash between the two leaves a duplicate, never a loss.
-  private async moveDoc(entry: IndexEntry, to: 'library' | 'trash', stem: string): Promise<DiskFile> {
-    const from = entry.deleted_at ? await this.trashDir({ create: false }) : this.dir
-    // The one place the trash folder is brought into existence: an actual
-    // delete, which is a write the user asked for.
-    const dest = to === 'trash' ? await this.trashDir({ create: true }) : this.dir
-    const content = await readTextFile(from, entry.stem + DOC_EXT)
+  // The document and its preview travel separately: a live document's preview
+  // is in `.oversolved-previews/` while a trashed one's sits beside its text in
+  // the trash, so a delete moves the pair across two different directory pairs.
+  //
+  // A crash between copy and delete leaves a duplicate, never a loss, and that
+  // is the right trade. A REFUSED delete is different: we are still standing to
+  // handle it, and without the rollback the copy stays behind, gets adopted on
+  // the next reconcile, and a relocation that FAILED shows up as a document at
+  // the destination.
+  private async relocate(
+    entry: IndexEntry, stem: string,
+    dirs: {
+      doc: { from: FileSystemDirectoryHandle; to: FileSystemDirectoryHandle }
+      preview: { from: FileSystemDirectoryHandle; to: FileSystemDirectoryHandle }
+    },
+  ): Promise<DiskFile> {
+    const content = await readTextFile(dirs.doc.from, entry.stem + DOC_EXT)
     if (content === null) throw new Error(`Document file missing: ${entry.stem}${DOC_EXT}`)
-    const written = await writeFile(dest, stem + DOC_EXT, content)
+    const written = await writeFile(dirs.doc.to, stem + DOC_EXT, content)
     if (entry.has_preview) {
       try {
-        const handle = await from.getFileHandle(entry.stem + PREVIEW_EXT)
-        await writeFile(dest, stem + PREVIEW_EXT, await fileBytes(await handle.getFile()))
+        const handle = await dirs.preview.from.getFileHandle(entry.stem + PREVIEW_EXT)
+        await writeFile(dirs.preview.to, stem + PREVIEW_EXT, await fileBytes(await handle.getFile()))
       } catch {
         // No preview to carry across; the document still moves.
       }
     }
-    // Rolling back the copy is the point of catching here. A crash between the
-    // two halves leaves a duplicate and that is the right trade, but a refused
-    // delete is a failure we are still standing to handle: without the rollback
-    // the copy stays behind, gets adopted on the next reconcile, and a move
-    // that FAILED shows up as a document in the destination.
     try {
-      await removeFile(from, entry.stem + DOC_EXT)
-      await removeFile(from, entry.stem + PREVIEW_EXT)
+      await removeFile(dirs.doc.from, entry.stem + DOC_EXT)
+      await removeFile(dirs.preview.from, entry.stem + PREVIEW_EXT)
     } catch (err) {
-      await removeFile(dest, stem + DOC_EXT).catch(() => undefined)
-      await removeFile(dest, stem + PREVIEW_EXT).catch(() => undefined)
+      await removeFile(dirs.doc.to, stem + DOC_EXT).catch(() => undefined)
+      await removeFile(dirs.preview.to, stem + PREVIEW_EXT).catch(() => undefined)
       throw err
     }
     return written
+  }
+
+  // Between the library folder and the trash folder, in either direction, and
+  // under a destination stem the caller allocated against THAT level's names.
+  // The two levels have independent name spaces: the library folder is what the
+  // user looks at, so deleting Bracket must free the name Bracket there, and
+  // recovering it later must find a name still free rather than overwrite
+  // whatever took it.
+  private async moveDoc(entry: IndexEntry, to: 'library' | 'trash', stem: string): Promise<DiskFile> {
+    // The one place the trash folder is brought into existence: an actual
+    // delete, which is a write the user asked for.
+    const trash = to === 'trash'
+      ? await this.trashDir({ create: true })
+      : await this.trashDir({ create: false })
+    const previews = entry.has_preview && to === 'library'
+      ? await this.ownDir(PREVIEWS_DIR, { create: true })
+      : await this.ownDir(PREVIEWS_DIR, { create: false })
+    return this.relocate(entry, stem, {
+      doc: to === 'trash' ? { from: this.dir, to: trash } : { from: trash, to: this.dir },
+      preview: to === 'trash' ? { from: previews, to: trash } : { from: trash, to: previews },
+    })
   }
 
   // A rename is a real file rename: the filename IS the document name in a
   // directory library, so leaving the old stem in place would make the folder
-  // disagree with the app about what a document is called. Same copy-then-
-  // delete shape as moveDoc, and for the same reason.
+  // disagree with the app about what a document is called.
   private async renameDoc(entry: IndexEntry, stem: string): Promise<DiskFile> {
-    const dir = await this.dirFor(entry)
     if (stem === entry.stem) return { size: entry.size, mtime: entry.mtime }
-    const content = await readTextFile(dir, entry.stem + DOC_EXT)
-    if (content === null) throw new Error(`Document file missing: ${entry.stem}${DOC_EXT}`)
-    const written = await writeFile(dir, stem + DOC_EXT, content)
-    if (entry.has_preview) {
-      try {
-        const handle = await dir.getFileHandle(entry.stem + PREVIEW_EXT)
-        await writeFile(dir, stem + PREVIEW_EXT, await fileBytes(await handle.getFile()))
-      } catch {
-        // No preview to carry across; the rename still lands.
-      }
-    }
-    try {
-      await removeFile(dir, entry.stem + DOC_EXT)
-      await removeFile(dir, entry.stem + PREVIEW_EXT)
-    } catch (err) {
-      await removeFile(dir, stem + DOC_EXT).catch(() => undefined)
-      await removeFile(dir, stem + PREVIEW_EXT).catch(() => undefined)
-      throw err
-    }
-    return written
+    const doc = await this.docDir(entry)
+    const preview = await this.previewDir(entry, { create: entry.has_preview })
+    return this.relocate(entry, stem, {
+      doc: { from: doc, to: doc },
+      preview: { from: preview, to: preview },
+    })
   }
 
   private async deleteDoc(entry: IndexEntry): Promise<void> {
-    const dir = await this.dirFor(entry)
-    await removeFile(dir, entry.stem + DOC_EXT)
-    await removeFile(dir, entry.stem + PREVIEW_EXT)
+    await removeFile(await this.docDir(entry), entry.stem + DOC_EXT)
+    await removeFile(await this.previewDir(entry), entry.stem + PREVIEW_EXT)
   }
 }
 
@@ -540,7 +578,7 @@ export class DirectoryLibrary {
 // serialized slot. Handed to `update`'s callback rather than reachable on the
 // library, so a write cannot accidentally be issued outside the lock.
 export interface LibraryIo {
-  occupiedStems(where: 'library' | 'trash'): Set<string>
+  documentStems(where: 'library' | 'trash'): Set<string>
   readContent(entry: IndexEntry): Promise<string>
   readPreview(entry: IndexEntry): Promise<string | undefined>
   // The three writers return the document file's fingerprint as it now stands

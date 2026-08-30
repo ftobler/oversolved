@@ -47,11 +47,15 @@ function toSummary(entry: IndexEntry, preview?: string): DocSummary {
 // trash folder have independent name spaces: deleting Bracket frees the name
 // Bracket in the folder the user is looking at, which is the only reading that
 // matches what they see.
+//
+// The index alone is not enough: a document file that appeared underneath the
+// app is not in it yet on the write path, which does not restat and so has not
+// adopted it.
 function takenStems(
   io: LibraryIo, entries: IndexEntry[], where: 'library' | 'trash', except?: string,
 ): Set<string> {
   const trashed = where === 'trash'
-  const taken = io.occupiedStems(where)
+  const taken = io.documentStems(where)
   if (except) {
     const own = entries.find(e => e.uuid === except)
     if (own) taken.delete(own.stem)  // renaming a document may reuse its own stem

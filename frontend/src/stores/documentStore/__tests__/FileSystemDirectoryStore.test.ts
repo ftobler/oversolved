@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   openDirectoryLibrary, FileSystemDirectoryStore, FileSystemDirectoryTrashAdapter,
 } from '../FileSystemDirectoryStore'
-import { INDEX_FILE, TRASH_DIR } from '../directoryLibrary'
+import { INDEX_FILE, TRASH_DIR, PREVIEWS_DIR } from '../directoryLibrary'
 import { fakeDirectory, type FakeDirectoryHandle } from './fakeFileSystemDirectory'
 import { InMemoryDocumentStore } from './InMemoryDocumentStore'
 
@@ -22,14 +22,17 @@ beforeEach(() => {
 })
 
 describe('on-disk layout', () => {
-  // A `.png` the user put in the folder occupies that stem. Handing it to a new
-  // document would have the first save with a preview overwrite their image.
-  it('does not claim a stem an unrelated file already occupies', async () => {
+  // The folder is the user's. The only names this app may own in it are the
+  // ones it announced: their `<document>.yaml` files, and the `.oversolved-`
+  // entries. A `<stem>.png` sibling would silently claim a name they may
+  // already be using, and the first thumbnail save would overwrite their image.
+  it('never writes beside a document in the user folder', async () => {
     dir.putText('Bracket.png', 'MY OWN IMAGE')
     const { uuid } = await store.create('Bracket')
     await store.save(uuid, { content: 'x', preview_image: btoa('\x89PNG') })
     expect(dir.snapshot()['Bracket.png']).toBe('MY OWN IMAGE')
-    expect(dir.fileNames()).toContain('Bracket_1.yaml')
+    expect(dir.fileNames()).toEqual(['.oversolved-index.json', 'Bracket.png', 'Bracket.yaml'])
+    expect((await store.load(uuid)).preview_image).toBe(btoa('\x89PNG'))
   })
 
   // The point of the feature: a folder of files the user already understands,
@@ -60,11 +63,13 @@ describe('on-disk layout', () => {
     expect(dir.fileNames()).toContain('Empty.yaml')
   })
 
-  it('keeps the preview as a real .png sibling', async () => {
+  // A real .png a file manager can open, in a directory this app owns.
+  it('keeps the preview as a real .png under its own directory', async () => {
     const png = btoa('\x89PNG\r\n\x1a\n')
     const { uuid } = await store.create('Bracket')
     await store.save(uuid, { content: 'x', preview_image: png })
-    expect(dir.fileNames()).toEqual([INDEX_FILE, 'Bracket.png', 'Bracket.yaml'].sort())
+    expect(dir.fileNames()).toEqual([INDEX_FILE, 'Bracket.yaml'])
+    expect(dir.snapshot()[`${PREVIEWS_DIR}/Bracket.png`]).toBeDefined()
     expect((await store.load(uuid)).preview_image).toBe(png)
   })
 
@@ -74,6 +79,24 @@ describe('on-disk layout', () => {
   it('sheds the bundle format per-user directory level', async () => {
     await store.create('Bracket')
     expect(dir.fileNames().some(n => n.includes('/'))).toBe(false)
+  })
+
+  // A trashed document keeps both files together in the trash, so a deleted
+  // Bracket and a newly created one can hold the same stem: the two levels have
+  // separate name spaces, and one shared previews directory would put them back
+  // into the same one.
+  it('carries the preview into the trash beside the document', async () => {
+    const png = btoa('\x89PNG')
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'shape', preview_image: png })
+    await store.remove(uuid)
+    expect(dir.snapshot()[`${PREVIEWS_DIR}/Bracket.png`]).toBeUndefined()
+    expect(Object.keys(dir.snapshot())).toContain(`${TRASH_DIR}/Bracket.png`)
+    expect((await trash.list())[0].preview_image).toBe(png)
+
+    await trash.recover(uuid)
+    expect(Object.keys(dir.snapshot())).toContain(`${PREVIEWS_DIR}/Bracket.png`)
+    expect((await store.load(uuid)).preview_image).toBe(png)
   })
 
   // A name that is not a filename still has to become one, and two documents
@@ -106,7 +129,9 @@ describe('on-disk layout', () => {
     const { uuid } = await store.create('Old')
     await store.save(uuid, { content: 'body', preview_image: png })
     await store.rename(uuid, 'New')
-    expect(dir.fileNames()).toEqual([INDEX_FILE, 'New.png', 'New.yaml'].sort())
+    expect(dir.fileNames()).toEqual([INDEX_FILE, 'New.yaml'])
+    expect(Object.keys(dir.snapshot())).toContain(`${PREVIEWS_DIR}/New.png`)
+    expect(Object.keys(dir.snapshot())).not.toContain(`${PREVIEWS_DIR}/Old.png`)
     const loaded = await store.load(uuid)
     expect(loaded.content).toBe('body')
     expect(loaded.preview_image).toBe(png)
@@ -331,6 +356,17 @@ describe('trash', () => {
     expect(dir.dirNames()).toEqual([])
     await store.remove((await store.list())[0].uuid)
     expect(dir.dirNames()).toEqual([TRASH_DIR])
+  })
+
+  // Same rule for the previews directory: a library whose documents have no
+  // thumbnails yet should not grow one.
+  it('does not create the previews folder until there is a preview', async () => {
+    const { uuid } = await store.create('Bracket')
+    await store.save(uuid, { content: 'no thumbnail' })
+    await store.list()
+    expect(dir.dirNames()).toEqual([])
+    await store.save(uuid, { content: 'thumbnail now', preview_image: btoa('\x89PNG') })
+    expect(dir.dirNames()).toEqual([PREVIEWS_DIR])
   })
 
   it('moves a deleted document into the trash folder, out of the library view', async () => {
