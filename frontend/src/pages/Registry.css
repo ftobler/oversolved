@@ -1,7 +1,11 @@
 .registry-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* Fills the /help shell's content pane rather than the viewport -- the shell
+     already spent height on the app header. min-height:0 lets .reg-container
+     scroll internally instead of pushing the page taller. */
+  flex: 1;
+  min-height: 0;
   background: #0d0d0d;
   color: #ccc;
 }

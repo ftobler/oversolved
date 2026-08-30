@@ -116,6 +116,18 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
       </div>
       <div className="app-header-right">
         {rightContent}
+        {/* Help is a navigation, not a dialog, so it is a Link -- but it leaves
+            the editor the same way the burger does, hence the unsaved-changes
+            guard. */}
+        <Link
+          to="/help"
+          className="toolbar-btn"
+          aria-label="Help"
+          title="Help"
+          onClick={guardLink}
+        >
+          <span className="material-icons-outlined">help_outline</span>
+        </Link>
         <button
           className="toolbar-btn"
           aria-label="Report a bug"

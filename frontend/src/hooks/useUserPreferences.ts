@@ -3,7 +3,7 @@ import { backendBundle } from '@/adapters/backend'
 import type { DocumentSort, UserPreferences } from '@/adapters/preferences'
 
 // Types live with the adapter now; re-exported here so existing call sites
-// (Documents, UserProfile) keep importing them from the hook.
+// (Documents) keep importing them from the hook.
 export type { DocumentSort, UserPreferences }
 
 // `signedIn` gates the cloud load: a guest (the default session) has no

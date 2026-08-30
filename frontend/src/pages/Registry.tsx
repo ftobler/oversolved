@@ -1,4 +1,3 @@
-import AppHeader from '@/components/layout/AppHeader'
 import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, SNAP_KINDS } from '@/registry'
 import { SINGLE_ENTITY_RULES, MULTI_ENTITY_RULES } from '@/registry/measurementRegistry'
 import { KEYMAP } from '@/utils/core/commandRegistry'
@@ -25,9 +24,10 @@ export default function Registry() {
   }
 
   return (
+    // No AppHeader here: the registry is a page inside the /help shell, which
+    // owns the app chrome. Rendering one would stack a second header under the
+    // shell's.
     <div className="registry-page">
-      <AppHeader title="Registry" />
-
       <div className="reg-container">
         <nav className="reg-nav">
           <ul>

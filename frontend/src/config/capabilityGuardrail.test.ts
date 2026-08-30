@@ -32,24 +32,18 @@ const ALLOWED_HOME_PREFIXES = [
   'main.tsx',
 ]
 
-// Sanctioned cloud-only seams: views/contexts that exist ONLY when there is a
-// server and never mount on the static build (the auth gatekeeping flow + the
-// admin / account / login pages, all self-guarded behind `user?.`). Their
-// backend coupling is structural, not migration debt -- there is no static
-// behaviour to fold them into, so they are deliberately exempt rather than
-// baselined (decided 2026-06-19: auth is a FLOW, not a port; admin/account
-// pages ride the same reasoning). Unlike
-// the shrink-only baselines below, this list is permanent by design. Keep it
-// tight: a view that ALSO ships on static (Part, Documents) is debt, not a seam.
+// Sanctioned cloud-only seams: views/contexts whose backend coupling is
+// structural rather than migration debt -- there is no static behaviour to fold
+// them into, so they are deliberately exempt rather than baselined (decided
+// 2026-06-19: auth is a FLOW, not a port). Keep it tight: a view that ALSO ships
+// on static (Part, Documents) is debt, not a seam.
+// The admin/account/login pages are gone with the server teardown, and App.tsx
+// lost its login route (and with it its last `hasBackend` read), so all five
+// dropped off this list -- the "still exists and still couples" check below
+// would otherwise fail on them.
 const SANCTIONED_SEAMS = [
-  'App.tsx',  // route wall / redirects (auth gatekeeping)
   'components/layout/AppHeader.tsx',  // sign-in affordance vs username + logout
   'contexts/AuthContext.tsx',  // the auth flow itself + /api/auth
-  'pages/AdminPeriodicTasks.tsx',
-  'pages/AdminUsers.tsx',
-  'pages/Backup.tsx',
-  'pages/Login.tsx',
-  'pages/UserProfile.tsx',
 ]
 
 // `hasBackend` leaks awaiting migration behind the capability bundle. EMPTY:

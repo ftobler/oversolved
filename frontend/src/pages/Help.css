@@ -1,0 +1,57 @@
+.help {
+  min-height: 100vh;
+  height: 100vh;
+  background: #16171d;
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+/* Unlike the settings shell this grew out of, the help body is NOT capped to a
+   centred reading column: reference pages carry wide tables (the registry's
+   constraint and keybinding listings) that a 950px column would force into a
+   horizontal scroll. The body fills the viewport and each page scrolls its own
+   content pane. */
+.help-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.help-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 180px;
+  flex-shrink: 0;
+  padding: 24px 12px;
+  box-sizing: border-box;
+}
+
+.help-nav-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  color: #ccc;
+  text-decoration: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.help-nav-item:hover {
+  background-color: #141519;
+}
+
+.help-nav-item.active {
+  background-color: #111111;
+}
+
+/* min-width/min-height 0 so a wide or tall child scrolls inside this pane
+   instead of stretching the flex row past the viewport. */
+.help-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
