@@ -18,12 +18,18 @@ import App from '@/App.tsx'
 import { initializeTools } from '@/tools'
 import { preloadViewportLabelFont } from '@/components/Viewport/labelFont'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
 
 const theme = createTheme({
   palette: { mode: 'dark', background: { default: '#111' } },
 })
 
 initializeTools()
+// Ask before the first document is written, not after: IndexedDB is the only
+// home a document has, and until this is granted the browser may evict the
+// whole library under disk pressure. The answer is what the disclaimer's
+// storage paragraph reports.
+useStoragePersistenceStore.getState().ensureRequested()
 // Off the gesture on purpose: the first 3D label to mount would otherwise
 // suspend the whole Canvas on the font fetch. See preloadViewportLabelFont.
 preloadViewportLabelFont()
