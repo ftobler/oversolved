@@ -11,6 +11,7 @@ from oversolved.db.connection import translate_placeholders
 from oversolved.blueprints import _permission_at_least
 from .dbutil import make_db as _make_db
 
+
 # DocumentStore.has_permission was removed as dead code; the production path is
 # get_permission() + _permission_at_least, which this mirrors for the store tests.
 def _has_perm(doc_store, uuid, user_id, level):

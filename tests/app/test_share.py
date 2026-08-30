@@ -4,6 +4,7 @@ import json
 
 from oversolved.blueprints import _permission_at_least
 
+
 # DocumentStore.has_permission was removed as dead code; the production path is
 # get_permission() + _permission_at_least, which this mirrors for the store tests.
 def _has_perm(doc_store, uuid, user_id, level):
