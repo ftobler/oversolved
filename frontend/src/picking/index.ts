@@ -15,6 +15,7 @@ export {
   DIMENSION_LABEL_FAT_PIXELS, VERTEX_PICK_CUBE_PIXELS,
   type IdPipelineOptions,
 } from './IdPipeline'
+export { getPixelRatio, MIN_PLAUSIBLE_CANVAS_CSS_WIDTH } from './pickPixelRatio'
 export { IdPipelineContext, useIdPipeline } from './IdPipelineContext'
 export { default as IdPickingDriver } from './IdPickingDriver'
 export { useFaceIdRegistration } from './useFaceIdRegistration'

@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { IdPipeline } from './IdPipeline'
 import { useIdPipelineLifecycle } from './useIdPipelineLifecycle'
 import { cameraPoseChanged, createCameraPose, recordCameraPoseInto, type CameraPoseSnapshot } from './cameraPose'
+import { getPixelRatio } from './pickPixelRatio'
 
 // Reused across getRenderSize calls (per-frame resize poll). getDrawingBufferSize
 // only writes into the vector it is handed, so one module-scope instance avoids a
@@ -13,17 +14,6 @@ const RENDER_SIZE_SCRATCH = new THREE.Vector2()
 interface IdPickingDriverProps {
   // External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync.
   onReady?: (pipeline: IdPipeline) => void
-}
-
-/**
- * Device pixels per CSS pixel of the ID target. Derived from the sizes the
- * driver already has rather than `gl.getPixelRatio()`, so it stays exact when
- * the renderer clamps its own ratio, and falls back to 1 on the no-GL path
- * where the drawing buffer IS the CSS size. The pipeline needs it because the
- * pick window is specified in CSS pixels but read in device ones.
- */
-function getPixelRatio(bufferWidth: number, cssWidth: number): number {
-  return cssWidth > 0 ? bufferWidth / cssWidth : 1
 }
 
 function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: number): { width: number; height: number } {

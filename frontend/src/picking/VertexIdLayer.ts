@@ -65,6 +65,14 @@ const VERT_SHADER = `
 
   void main() {
     vColor = aColor;
+    // Written explicitly: gl_PointSize is UNDEFINED in GLSL ES when a POINTS
+    // draw leaves it unset. Desktop GL happens to hand back the fixed-function
+    // 1.0 this layer has always assumed, but a driver that zero-initialises
+    // vertex outputs marks nothing at all -- every sketch vertex, the origin
+    // and every dimension label silently unpickable -- and ANGLE's point-sprite
+    // emulation expands the point to a quad of that undefined size. One pixel
+    // is the right size: the resolver's window supplies the reach.
+    gl_PointSize = 1.0;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `

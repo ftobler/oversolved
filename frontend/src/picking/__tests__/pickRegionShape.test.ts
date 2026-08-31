@@ -52,7 +52,7 @@ describe('pick region shape', () => {
     }
   })
 
-  it('reaches the same distance in every direction', () => {
+  it('never reaches further in one direction than another', () => {
     // How far a lone pixel can sit along each of the eight compass directions
     // and still be caught, measured in true pixel distance rather than steps.
     const reach = (sx: number, sy: number): number => {

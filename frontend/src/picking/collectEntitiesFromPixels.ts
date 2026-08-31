@@ -7,6 +7,12 @@ import type { IdRegistry, IdRecord } from './IdRegistry'
  *
  * `pixels` is a row-major RGBA Uint8Array (4 bytes per pixel). `width` / `height`
  * are the dimensions of the rectangle.
+ *
+ * Every pixel of that rectangle counts, unlike the cursor resolver, which keeps
+ * only the disc inscribed in its window. The two are different affordances and
+ * the difference is deliberate: a resolve is an aim at one point, so its reach
+ * has to be the same in every direction, while a band is a region the user drew
+ * and its corners are as much a part of it as its middle.
  */
 export function collectEntitiesFromPixels(
   pixels: Uint8Array,

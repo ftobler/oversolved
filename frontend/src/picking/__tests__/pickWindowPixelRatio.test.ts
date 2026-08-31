@@ -79,6 +79,45 @@ describe('pick window scales with the device pixel ratio', () => {
     p.dispose()
   })
 
+  it('never scales the window BELOW the flat window it replaced', () => {
+    // Under 100% browser zoom the ratio drops below 1. Honouring that literally
+    // would read fewer device pixels than the window used to be before it
+    // scaled at all, turning a HiDPI fix into a regression for anyone zoomed
+    // out -- the same sub-1 ratio the rubber band already contends with.
+    const p = new IdPipeline({ width: 64, height: 64 })
+    for (const zoomedOut of [0.9, 0.8, 0.5, 0.25]) {
+      p.setPixelRatio(zoomedOut)
+      expect(p.getPixelRatio()).toBe(1)
+      expect(p.getEffectiveWindowSize()).toBe(DEFAULT_WINDOW_SIZE)
+    }
+    p.dispose()
+  })
+
+  it('a non-finite window size falls back instead of poisoning the read', () => {
+    // NaN survives every downstream check (`NaN <= 0` and `length < NaN` are
+    // both false), so the resolver would answer an empty window rather than
+    // failing. Guarded at the same seam the ratio is.
+    const p = new IdPipeline({ width: 64, height: 64 })
+    expect(p.getEffectiveWindowSize(NaN)).toBe(DEFAULT_WINDOW_SIZE)
+    expect(p.getEffectiveWindowSize(Infinity)).toBe(DEFAULT_WINDOW_SIZE)
+    p.dispose()
+  })
+
+  it('holds the CSS reach at 8 px in every direction once scaled', () => {
+    // Ties the two halves together: the disc cutoff is measured in device
+    // pixels, so only this says the RADIUS it enforces is a constant on-screen
+    // distance. Without it a change to the scale's rounding could make the CSS
+    // reach direction-dependent again with both suites still green.
+    const p = new IdPipeline({ width: 512, height: 512 })
+    for (const ratio of [1, 2, 3]) {
+      p.setPixelRatio(ratio)
+      const size = p.getEffectiveWindowSize()
+      const deviceRadius = (size - 1) / 2
+      expect(deviceRadius / ratio).toBe(8)
+    }
+    p.dispose()
+  })
+
   it('an explicit CSS window size goes through the same scale', () => {
     const p = new IdPipeline({ width: 64, height: 64, windowSize: 9, pixelRatio: 2 })
     expect(p.getWindowSize()).toBe(9)

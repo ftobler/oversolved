@@ -10,9 +10,10 @@
 // instead, which is the same rule the gizmo is drawn by.
 //
 // The shapes here are the PICK shapes. They are deliberately THIN: the ID
-// resolver already scans a 17 px window around the cursor and returns the
-// nearest entity in it (IdResolver.ts, DEFAULT_WINDOW_SIZE), so grab tolerance
-// is provided once, in pixel space, for every layer. Fattening the geometry on
+// resolver already scans a window around the cursor and returns the nearest
+// entity within its inscribed disc -- 8 CSS px in every direction, at any
+// device pixel ratio (IdResolver.ts, IdPipeline's DEFAULT_WINDOW_SIZE) -- so
+// grab tolerance is provided once, in pixel space, for every layer. Fattening the geometry on
 // top of that buys no reach and costs precision, because fat volumes from two
 // different handles overlap and the winner is then decided by which triangle
 // happened to rasterize last rather than by where the user aimed. The visual

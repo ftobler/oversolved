@@ -28,8 +28,8 @@ export const ORIGIN_FAT_PIXELS = 14
 export const DIMENSION_LABEL_FAT_PIXELS = 18
 
 /**
- * Edge of the square pick window, in CSS pixels: the radius the user actually
- * aims with (17 -> 8 px around the cursor).
+ * Edge of the square pick window, in CSS pixels; the reach it stands for is the
+ * radius of the disc inscribed in it, 8 px around the cursor.
  *
  * CSS and not device pixels, because the two diverge on every HiDPI display and
  * only one of them is the affordance. The ID target is allocated at
@@ -37,18 +37,34 @@ export const DIMENSION_LABEL_FAT_PIXELS = 18
  * cursor is converted into those same device pixels, so a window taken
  * literally as device pixels shrinks to 8/DPR CSS pixels. That matters most for
  * the helper vertex layers -- sketch vertices, the origin marker, dimension
- * labels -- which mark exactly ONE device pixel each (`VertexIdLayer`'s points
- * path), so the window is not a tolerance around their footprint, it IS their
- * whole catch radius. At DPR 2 that radius lands at 4 CSS px, inside the 5 px
- * sketch-point dot the user can plainly see, and the fat sketch-entity band
- * under it keeps answering instead. `getEffectiveWindowSize` scales this back
- * into device pixels at read time.
+ * labels -- which each mark a single point (`VertexIdLayer`'s points path), so
+ * the window is not a tolerance around their footprint, it IS their whole catch
+ * radius. At DPR 2 that radius lands at 4 CSS px, inside the 5 px radius of the
+ * dot a sketch point draws, so the user aims at a dot whose own rim is out of
+ * range. A sketch entity nearby keeps answering not because it is drawn fat --
+ * `EdgeIdLayer` rasterises 1 px lines too -- but because a curve marks a
+ * contiguous RUN of pixels, so it is far likelier than an isolated dot to have
+ * one of them inside a shrunken window. `getEffectiveWindowSize` scales this
+ * back into device pixels at read time.
  */
 export const DEFAULT_WINDOW_SIZE = 17
 
-// Upper bound on the device-pixel ratio the pick window is scaled by. Guards a
-// nonsense ratio (a mis-sized canvas reporting a huge drawing buffer) from
-// turning one hover into a megabyte-scale readback; no real display is near it.
+/**
+ * Bounds on the device-pixel ratio the pick window is scaled by.
+ *
+ * The floor is the load-bearing one. Below 100% browser zoom the ratio drops
+ * under 1 (the rubber band already contends with that, see useRubberBandSelect),
+ * and honouring it literally would read FEWER device pixels than the flat 17
+ * this window was before it scaled at all -- turning a fix for HiDPI into a
+ * regression for anyone zoomed out. Holding at 1 makes the scale strictly
+ * one-way: never tighter than it has always been, more generous as the display
+ * gets denser.
+ *
+ * The ceiling catches a nonsense ratio (a mis-sized canvas reporting a huge
+ * drawing buffer) before it turns one hover into a 66 KB readback. No real
+ * display is near it.
+ */
+const MIN_PICK_PIXEL_RATIO = 1
 const MAX_PICK_PIXEL_RATIO = 8
 
 /**
@@ -61,7 +77,11 @@ const MAX_PICK_PIXEL_RATIO = 8
  * of letting the shared centre pixel get scaled along with the two sides.
  */
 function scaledWindowSize(cssSize: number, ratio: number): number {
-  const cssRadius = Math.max(0, (Math.max(1, Math.round(cssSize)) - 1) / 2)
+  // Guarded like the ratio is: a non-finite size would survive every downstream
+  // check (`NaN <= 0` and `length < NaN` are both false), so the resolver would
+  // answer an empty window instead of failing.
+  const css = Number.isFinite(cssSize) ? Math.max(1, Math.round(cssSize)) : DEFAULT_WINDOW_SIZE
+  const cssRadius = (css - 1) / 2
   return 2 * Math.round(cssRadius * ratio) + 1
 }
 
@@ -238,7 +258,7 @@ export class IdPipeline {
    */
   setPixelRatio(ratio: number): void {
     this.pixelRatio = Number.isFinite(ratio) && ratio > 0
-      ? Math.min(ratio, MAX_PICK_PIXEL_RATIO)
+      ? Math.min(Math.max(ratio, MIN_PICK_PIXEL_RATIO), MAX_PICK_PIXEL_RATIO)
       : 1
   }
 
