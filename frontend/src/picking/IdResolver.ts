@@ -14,6 +14,29 @@ export interface ResolvedHit {
   distancePx: number
 }
 
+/**
+ * Where the cursor really is inside the window, and how far a pick reaches.
+ *
+ * Both exist because a pixel is an area and a cursor is a point. The ID mark
+ * for a vertex is the pixel its projection lands in, whose CENTRE is up to half
+ * a pixel off the vertex itself; the cursor likewise sits somewhere inside its
+ * own pixel. Measuring index-to-index throws both fractions away and they do
+ * not cancel -- the leftover lands entirely on one side, so the reach runs up
+ * to 2 px further toward -x/-y (left and up on screen) than the other way.
+ *
+ * Giving the resolver the sub-pixel offset lets it measure from where the
+ * cursor actually is to where each pixel's centre actually is. What remains is
+ * the mark's own half-pixel quantisation, which is unavoidable at one pixel per
+ * vertex and is at least unbiased.
+ */
+export interface WindowGeometry {
+  // Cursor position relative to the centre pixel's CENTRE, in pixels.
+  cursorOffsetX?: number
+  cursorOffsetY?: number
+  // Pick reach from the cursor. Defaults to the window's half-width.
+  radiusPx?: number
+}
+
 export interface ResolveOptions {
   // Square window edge in pixels; the pick reach is the disc inscribed in it,
   // so 17 means a true 8 px snap radius in every direction.
@@ -27,6 +50,12 @@ export interface ResolveOptions {
    * (legacy behaviour).
    */
   layerPriority?: Readonly<Record<string, number>>
+  /**
+   * Sub-pixel cursor placement and reach. Supplied by `IdPipeline.readWindow`,
+   * which is the only caller that knows where inside its pixel the cursor sat.
+   * Omitted, distances fall back to whole-pixel offsets from the centre pixel.
+   */
+  windowGeometry?: WindowGeometry
 }
 
 /**
@@ -54,6 +83,7 @@ export function resolvePixelWindowAll(
   registry: IdRegistry,
   allowedLayers?: ReadonlySet<string>,
   layerPriority?: Readonly<Record<string, number>>,
+  geometry?: WindowGeometry,
 ): ResolvedHit[] {
   if (windowSize <= 0) return []
   if (pixels.length < windowSize * windowSize * 4) {
@@ -61,6 +91,12 @@ export function resolvePixelWindowAll(
   }
 
   const center = (windowSize - 1) / 2
+  // The cursor's true position in window-pixel coordinates, and the reach from
+  // it. Both default to the centre pixel's index, which is the whole-pixel
+  // behaviour every caller that passes no geometry still gets.
+  const cursorX = center + (geometry?.cursorOffsetX ?? 0)
+  const cursorY = center + (geometry?.cursorOffsetY ?? 0)
+  const radius = geometry?.radiusPx ?? center
 
   // Nearest pixel per distinct entity id. `scanIndex` is where that nearest
   // pixel sat in the row-major scan: it breaks a distance tie toward whichever
@@ -78,8 +114,8 @@ export function resolvePixelWindowAll(
       const a = pixels[i + 3]
       if (a === 0) continue
 
-      const dx = x - center
-      const dy = y - center
+      const dx = x - cursorX
+      const dy = y - cursorY
       const dist = Math.hypot(dx, dy)
       // The window is read as a square because that is the only shape a pixel
       // blit has, but the reach it stands for is a radius. Without this the
@@ -87,7 +123,7 @@ export function resolvePixelWindowAll(
       // 11.3 px into the corners -- the same point answers from half again as
       // far when approached diagonally. Discarding the corners costs nothing
       // else: distance already orders candidates, it just never rejected one.
-      if (dist > center) continue
+      if (dist > radius) continue
 
       const id = rgbToId(pixels[i], pixels[i + 1], pixels[i + 2])
       if (id === EMPTY_ID) continue
@@ -124,8 +160,9 @@ export function resolvePixelWindow(
   registry: IdRegistry,
   allowedLayers?: ReadonlySet<string>,
   layerPriority?: Readonly<Record<string, number>>,
+  geometry?: WindowGeometry,
 ): ResolvedHit | null {
-  return resolvePixelWindowAll(pixels, windowSize, registry, allowedLayers, layerPriority)[0] ?? null
+  return resolvePixelWindowAll(pixels, windowSize, registry, allowedLayers, layerPriority, geometry)[0] ?? null
 }
 
 /**
@@ -158,12 +195,12 @@ export class IdResolver {
    * buffer the resolver decodes).
    */
   decode(scratch: Uint8Array, windowSize: number, opts?: ResolveOptions): ResolvedHit | null {
-    return resolvePixelWindow(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
+    return resolvePixelWindow(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority, opts?.windowGeometry)
   }
 
   // Every entity the window covers, priority-then-distance ordered.
   decodeAll(scratch: Uint8Array, windowSize: number, opts?: ResolveOptions): ResolvedHit[] {
-    return resolvePixelWindowAll(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority)
+    return resolvePixelWindowAll(scratch, windowSize, this.registry, opts?.allowedLayers, opts?.layerPriority, opts?.windowGeometry)
   }
 
   getScratchBuffer(windowSize: number): Uint8Array {

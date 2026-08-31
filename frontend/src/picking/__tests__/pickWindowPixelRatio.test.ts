@@ -145,7 +145,11 @@ describe('pick window scales with the device pixel ratio', () => {
     p.target.markClean()
 
     const hit = p.resolveSync(renderer, { x: 64, y: 64 })
-    expect(reads[0].w).toBe(33)  // 8 CSS px radius * 2, rebuilt odd
+    // The reach is 33 (8 CSS px radius doubled, rebuilt odd); the READ is one
+    // pixel wider on each side so a cursor leaning toward one edge of its own
+    // pixel cannot clip the disc on that side.
+    expect(p.getEffectiveWindowSize()).toBe(33)
+    expect(reads[0].w).toBe(35)
     expect(hit?.layer).toBe(SKETCH_VERTEX_LAYER_NAME)
     expect(hit?.entityKey).toBe('vertex:S1:P1:xy')
 

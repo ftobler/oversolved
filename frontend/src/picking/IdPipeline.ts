@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { IdRegistry } from './IdRegistry'
 import { IdRenderTarget } from './IdRenderTarget'
-import { IdResolver, type ResolveOptions, type ResolvedHit } from './IdResolver'
+import { IdResolver, type ResolveOptions, type ResolvedHit, type WindowGeometry } from './IdResolver'
 import { FaceIdLayer } from './FaceIdLayer'
 import { EdgeIdLayer } from './EdgeIdLayer'
 import { VertexIdLayer } from './VertexIdLayer'
@@ -431,7 +431,8 @@ export class IdPipeline {
   ): ResolvedHit | null {
     const read = this.readWindow(renderer, cursorPx, opts)
     if (!read) return null
-    return this.resolver.decode(read.scratch, read.windowSize, { ...opts, layerPriority: this.getLayerPriority() })
+    return this.resolver.decode(read.scratch, read.windowSize,
+      { ...opts, layerPriority: this.getLayerPriority(), windowGeometry: read.geometry })
   }
 
   /**
@@ -446,7 +447,8 @@ export class IdPipeline {
   ): ResolvedHit[] {
     const read = this.readWindow(renderer, cursorPx, opts)
     if (!read) return []
-    return this.resolver.decodeAll(read.scratch, read.windowSize, { ...opts, layerPriority: this.getLayerPriority() })
+    return this.resolver.decodeAll(read.scratch, read.windowSize,
+      { ...opts, layerPriority: this.getLayerPriority(), windowGeometry: read.geometry })
   }
 
   // Blit the pixel window under the cursor into the resolver's scratch buffer.
@@ -454,17 +456,37 @@ export class IdPipeline {
     renderer: THREE.WebGLRenderer,
     cursorPx: { x: number; y: number },
     opts?: ResolveOptions,
-  ): { scratch: Uint8Array; windowSize: number } | null {
+  ): { scratch: Uint8Array; windowSize: number; geometry: WindowGeometry } | null {
     if (this.target.isDirty()) return null  // render target is stale
     const w = this.target.getWidth()
     const h = this.target.getHeight()
     // opts.windowSize, like the pipeline default, is CSS pixels; the read below
     // is in device pixels, so it goes through the same DPR scale.
-    const windowSize = this.getEffectiveWindowSize(opts?.windowSize)
+    const reachSize = this.getEffectiveWindowSize(opts?.windowSize)
+    const radius = (reachSize - 1) / 2
+    // Read one pixel wider on every side than the reach. The cursor sits
+    // anywhere inside its own pixel, so the disc of radius `radius` around it
+    // extends up to a pixel past the window that would be centred on that pixel
+    // alone; without the margin the disc would be clipped on whichever side the
+    // cursor leans toward, which is the asymmetry this whole path is here to
+    // avoid. The resolver still cuts at `radius`, so the extra ring only ever
+    // supplies pixels, never reach.
+    const windowSize = reachSize + 2
 
-    const cx = Math.round(cursorPx.x)
-    const cy = Math.round(cursorPx.y)
+    // floor, not round: the window is centred on the pixel the cursor is INSIDE.
+    // Rounding centres it on the nearest pixel BOUNDARY instead, which offsets
+    // the window half a pixel from the cursor on average.
+    const cx = Math.floor(cursorPx.x)
+    const cy = Math.floor(cursorPx.y)
     if (cx < 0 || cy < 0 || cx >= w || cy >= h) return null
+
+    // Where the cursor sits relative to that pixel's centre, which is what lets
+    // the resolver measure a true distance instead of an index difference.
+    const geometry: WindowGeometry = {
+      cursorOffsetX: cursorPx.x - (cx + 0.5),
+      cursorOffsetY: cursorPx.y - (cy + 0.5),
+      radiusPx: radius,
+    }
 
     // Convert canvas cursor (top-left origin) to render-target read origin
     // (bottom-left): readY = h - cy - 1. The window of size N is centered
@@ -506,7 +528,7 @@ export class IdPipeline {
       scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
     }
 
-    return { scratch, windowSize }
+    return { scratch, windowSize, geometry }
   }
 
   /**
