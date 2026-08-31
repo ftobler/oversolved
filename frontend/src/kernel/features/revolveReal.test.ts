@@ -275,11 +275,43 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     }
   })
 
-  it('revolve with two profile sketches produces one body', () => {
+  it('revolve with two disjoint profile sketches makes two bodies', () => {
     /**
-     * Two independent rectangle sketches revolved together around the same axis produce a
-     * single body.
+     * Two independent rectangle sketches revolved together around the same
+     * axis produce two disconnected toroidal solids. Per the separated-parts
+     * doctrine (one Body == one OCC solid, disjoint solids are separate parts)
+     * these are TWO bodies, reported through `body_ids` -- the old guide said
+     * "one body" and the missing profile was silently dropped. The two rects
+     * sit at different heights so the swept tori have distinct centroids and
+     * bodySplit can order them (coaxial same-height tori are the known
+     * near-tie refusal, pinned by the concentric revolve-cut case below).
      */
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 1, 1, 1, 0),
+        rectSketch('sk2', 1, 1, 3, 2),
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: ['$sk1', '$sk2'], angle: 360,
+          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+      ],
+    })
+    expect(res(result, 'rev1').status).toBe('ok')
+    expect((res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1', 'body_rev1_1'])
+    expect(result.bodies).toHaveProperty('body_rev1')
+    expect(result.bodies).toHaveProperty('body_rev1_1')
+    // Both tori present: one per profile, none of the geometry dropped.
+    for (const bid of ['body_rev1', 'body_rev1_1']) {
+      const mesh = body(result, bid).mesh as { vertices?: number[][] } | undefined
+      expect(mesh?.vertices?.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('revolve with two coaxial profile sketches refuses loudly (near-tie)', () => {
+    // Two same-height disjoint profiles revolve into two coaxial tori whose
+    // centroids both sit on the rotation axis -- bodySplit cannot order them
+    // positionally, so the solve surfaces as an exception instead of dropping
+    // one profile silently or naming the tori in OCC explorer order.
     const result = run({
       version: 1, kind: 'part',
       features: [
@@ -290,10 +322,56 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
+    expect(res(result, 'rev1').status).toBe('exception')
+    expect(String(res(result, 'rev1').exception)).toMatch(/near-tie/)
+  })
+
+  it('revolve with two nested profile sketches stays one body (donut)', () => {
+    // The inner profile is a genuine hole of the outer, so the sweep is one
+    // washer-shaped solid and the profile pair must NOT split into two bodies.
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0),
+        rectSketch('sk2', 0.5, 0.5, 1.75, 0),
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: ['$sk1', '$sk2'], angle: 360,
+          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+      ],
+    })
     expect(res(result, 'rev1').status).toBe('ok')
+    expect((res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1'])
     expect(result.bodies).toHaveProperty('body_rev1')
+    expect(result.bodies).not.toHaveProperty('body_rev1_1')
+  })
+
+  it('revolve with two adjacent profile sketches fuses into one body', () => {
+    // Two rectangles stacked in y share the boundary y=1; their swept tori
+    // touch at that plane and the per-group fuse collapses them into ONE solid.
+    // The fan-out must not split an adjacent pair that fuses, only a disjoint
+    // one.
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 2, 1, 1, 0),
+        rectSketch('sk2', 2, 1, 1, 1),
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: ['$sk1', '$sk2'], angle: 360,
+          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+      ],
+    })
+    expect(res(result, 'rev1').status).toBe('ok')
+    expect((res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1'])
+    expect(result.bodies).toHaveProperty('body_rev1')
+    expect(result.bodies).not.toHaveProperty('body_rev1_1')
+    // The fused torus spans both rects (y in [0,2]); neither profile dropped.
     const mesh = body(result, 'body_rev1').mesh as { vertices?: number[][] } | undefined
     expect(mesh?.vertices?.length).toBeGreaterThan(0)
+    if (mesh?.vertices) {
+      const ys = mesh.vertices.map((v) => v[1])
+      expect(Math.max(...ys)).toBeCloseTo(2, 0)
+      expect(Math.min(...ys)).toBeCloseTo(0, 0)
+    }
   })
 
   it('revolve from sketch surface query (circle profile)', () => {

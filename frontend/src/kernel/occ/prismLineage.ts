@@ -1249,10 +1249,12 @@ export function revolveFace(
 
 /**
  * Revolve profile loops around an axis and return (solid + construction-name
- * maps) (mirrors `revolve_profile_with_lineage`). Unlike extrude, revolve
- * treats `loops` as one face (loops[0] outer, the rest holes) -- no disjoint-group
- * fan-out -- and uses BRepPrimAPI_MakeRevol.Generated() for lineage. Tokens are
- * `@sketch_id/entity`.
+ * maps) (mirrors `revolve_profile_with_lineage`). Disjoint loop groups are
+ * revolved and fused; nested loops become holes -- the same fan-out extrude has,
+ * so two separate profile areas become a compound the caller side splits into
+ * separate bodies (one Body == one OCC solid). A single group keeps the raw
+ * one-face revolve. Lineage tokens are `@sketch_id/entity`; a multi-group
+ * revolve keeps each group's tokens, merged onto the fused solid.
  */
 export function revolveProfileWithLineage(
   oc: OccModule,
@@ -1265,17 +1267,68 @@ export function revolveProfileWithLineage(
   sketchId = '',
   createdBy = '',
 ): LineageResult {
-  const face = scope.track(sketchLoopsToFace(oc, scope, loops, plane))
-  const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
-  const builder = scope.track(
-    new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, (angleDeg * Math.PI) / 180, true),
-  )
-  const solid = builder.Shape()
-  const lineage = buildPrismLineageMap(oc, scope, face, builder, loops, plane, createdBy, sketchId)
-  prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
-  // The profile face is dead once the lineage has been read off it.
-  scope.release(face)
-  return { solid, ...lineage }
+  const groups = classifyLoops(loops)
+  if (groups.length === 0) throw new Error('no loops to revolve')
+  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+  const angleRad = (angleDeg * Math.PI) / 180
+
+  if (groups.length === 1) {
+    const [outer, holes] = groups[0]
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
+    const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
+    const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
+    const solid = builder.Shape()
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    // The profile face is dead once the lineage has been read off it.
+    scope.release(face)
+    return { solid, ...lineage }
+  }
+
+  // Multi-group fan-out (mirrors perGroupPrismWithLineage): each group is one
+  // revolve, the solids are fused. Disjoint groups stay a compound of solids --
+  // the caller splits them into separate bodies. Adjacent groups (an area an
+  // edit cut in two) fuse into one solid; the clean folds their coplanar seam
+  // faces, and a clean that rejects the compound keeps the raw fused solid.
+  let solid: OccShape | null = null
+  const merged = emptyLineageMaps()
+  for (const [outer, holes] of groups) {
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
+    const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
+    const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
+    const part = builder.Shape()
+    // Each group's solid and each fuse output is consumed by the next fuse
+    // except the survivor returned at the end; scope-own them all here and
+    // detach only that survivor, which the caller takes over.
+    scope.track(part)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    // The profile face is dead once the lineage has been read off it.
+    scope.release(face)
+    Object.assign(merged.faceNames, lineage.faceNames)
+    Object.assign(merged.edgeNames, lineage.edgeNames)
+    Object.assign(merged.faceAncestry, lineage.faceAncestry)
+    Object.assign(merged.edgeAncestry, lineage.edgeAncestry)
+
+    if (solid === null) {
+      solid = part
+    } else {
+      const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
+      scope.track(fused)
+      scope.release(solid)  // the previous running solid is consumed by the fuse
+      solid = fused
+    }
+  }
+  if (solid === null) throw new Error('no loops to revolve')
+  try {
+    const cleaned = cleanWithHistory(oc, scope, solid).shape
+    scope.track(cleaned)
+    scope.release(solid)  // the previous running solid is consumed by the clean
+    solid = cleaned
+  } catch {
+    // kept raw fused solid -- segmentation faces survive but the volume is intact.
+  }
+  return { solid: scope.detach(solid), ...merged }
 }
 
 // ─── sweep (the sweep leaf's brep producer) ───
