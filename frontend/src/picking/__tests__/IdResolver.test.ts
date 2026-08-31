@@ -43,7 +43,7 @@ describe('resolvePixelWindow', () => {
 
   it('returns the pixel nearest to center when multiple are filled', () => {
     const buf = makeWindow(17, [
-      { x: 0, y: 0, id: faceA },    // far
+      { x: 3, y: 3, id: faceA },    // far, but inside the reach
       { x: 10, y: 9, id: faceB },   // closer to center (8,8)
     ])
     const hit = resolvePixelWindow(buf, 17, reg)
@@ -53,7 +53,7 @@ describe('resolvePixelWindow', () => {
   it('ignores pixels whose id is not in the registry', () => {
     const buf = makeWindow(17, [
       { x: 8, y: 8, id: 9999999 },  // unregistered, near center
-      { x: 0, y: 0, id: faceA },    // registered, corner
+      { x: 3, y: 3, id: faceA },    // registered, further out
     ])
     const hit = resolvePixelWindow(buf, 17, reg)
     expect(hit!.id).toBe(faceA)
@@ -73,7 +73,7 @@ describe('resolvePixelWindow', () => {
     const edgeId = reg.allocate('edge', 'edge@A')
     const buf = makeWindow(17, [
       { x: 8, y: 8, id: edgeId },   // closer
-      { x: 0, y: 0, id: faceA },    // farther
+      { x: 3, y: 3, id: faceA },    // farther
     ])
     const filtered = resolvePixelWindow(buf, 17, reg, new Set(['face']))
     expect(filtered!.id).toBe(faceA)

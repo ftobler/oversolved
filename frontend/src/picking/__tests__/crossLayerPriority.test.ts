@@ -102,7 +102,7 @@ describe('crossLayerPriority (CPU stand-in for GPU layering)', () => {
     const size = 17
     const buf = new Uint8Array(size * size * 4)
     fillPixel(buf, size, 8, 8, vertexId)
-    fillPixel(buf, size, 0, 0, faceId)
+    fillPixel(buf, size, 3, 3, faceId)
     const hit = resolvePixelWindow(buf, size, reg, new Set([FACE_LAYER_NAME]))
     expect(hit!.layer).toBe(FACE_LAYER_NAME)
   })

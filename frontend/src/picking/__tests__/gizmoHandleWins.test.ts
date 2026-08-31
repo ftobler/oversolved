@@ -79,7 +79,7 @@ describe('gizmo handle layer priority', () => {
     // a drag affordance and must never become a mate reference.
     const buf = new Uint8Array(SIZE * SIZE * 4)
     fillPixel(buf, SIZE, 8, 8, gizmoId)
-    fillPixel(buf, SIZE, 2, 2, faceId)
+    fillPixel(buf, SIZE, 3, 3, faceId)
     const hits = resolvePixelWindowAll(buf, SIZE, reg, new Set([FACE_LAYER_NAME]), priority)
     expect(hits.map(h => h.layer)).toEqual([FACE_LAYER_NAME])
   })

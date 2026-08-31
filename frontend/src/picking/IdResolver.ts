@@ -15,7 +15,8 @@ export interface ResolvedHit {
 }
 
 export interface ResolveOptions {
-  // Square window edge in pixels. Default 17 (8 px snap radius).
+  // Square window edge in pixels; the pick reach is the disc inscribed in it,
+  // so 17 means a true 8 px snap radius in every direction.
   windowSize?: number
   // Optional filter: only return hits in these layers.
   allowedLayers?: ReadonlySet<string>
@@ -32,6 +33,10 @@ export interface ResolveOptions {
  * Decode an N x N RGBA pixel window into EVERY distinct entity it covers, each
  * carrying its nearest pixel's distance, ordered by layer priority (highest
  * first) then by distance (nearest first).
+ *
+ * "Covers" means the disc inscribed in the window, not the whole square: a
+ * pixel further than the window's half-width from the centre is discarded, so
+ * the reach is the same in every direction. See the cutoff in the scan below.
  *
  * This is the pick contract the assembly's mate authoring needs (Stage 7): a
  * single pixel at a corner covers three faces, three edges and a vertex, and a
@@ -72,15 +77,23 @@ export function resolvePixelWindowAll(
       const i = (y * windowSize + x) * 4
       const a = pixels[i + 3]
       if (a === 0) continue
+
+      const dx = x - center
+      const dy = y - center
+      const dist = Math.hypot(dx, dy)
+      // The window is read as a square because that is the only shape a pixel
+      // blit has, but the reach it stands for is a radius. Without this the
+      // square IS the catch region, so a pick carries 8 px straight out and
+      // 11.3 px into the corners -- the same point answers from half again as
+      // far when approached diagonally. Discarding the corners costs nothing
+      // else: distance already orders candidates, it just never rejected one.
+      if (dist > center) continue
+
       const id = rgbToId(pixels[i], pixels[i + 1], pixels[i + 2])
       if (id === EMPTY_ID) continue
       const rec: IdRecord | undefined = registry.lookup(id)
       if (!rec) continue
       if (allowedLayers && !allowedLayers.has(rec.layer)) continue
-
-      const dx = x - center
-      const dy = y - center
-      const dist = Math.hypot(dx, dy)
 
       const existing = bestPerId.get(id)
       if (!existing) {

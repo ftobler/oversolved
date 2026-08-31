@@ -50,7 +50,7 @@ describe('resolvePixelWindowAll', () => {
       { x: 8, y: 5, id: edgeB },   // 3 px out
       { x: 6, y: 8, id: faceA },   // 2 px out
       { x: 8, y: 12, id: faceB },  // 4 px out
-      { x: 0, y: 0, id: faceC },   // far corner
+      { x: 3, y: 3, id: faceC },   // furthest, 7.07 px out
     ])
     const hits = resolvePixelWindowAll(buf, 17, reg, undefined, PRIORITY)
     expect(hits.map(h => h.entityKey)).toEqual([
@@ -104,7 +104,7 @@ describe('resolvePixelWindowAll', () => {
     // faceA shows up early but far, and only ties faceB at the very end. The
     // single-hit resolver has always answered faceB here; `[0]` must agree.
     const buf = makeWindow(17, [
-      { x: 0, y: 0, id: faceA },   // scanned first, 11.3 px out
+      { x: 3, y: 3, id: faceA },   // scanned first, 7.07 px out
       { x: 8, y: 6, id: faceB },   // 2 px out
       { x: 8, y: 10, id: faceA },  // 2 px out, but scanned later
     ])
