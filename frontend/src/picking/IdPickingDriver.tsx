@@ -15,6 +15,17 @@ interface IdPickingDriverProps {
   onReady?: (pipeline: IdPipeline) => void
 }
 
+/**
+ * Device pixels per CSS pixel of the ID target. Derived from the sizes the
+ * driver already has rather than `gl.getPixelRatio()`, so it stays exact when
+ * the renderer clamps its own ratio, and falls back to 1 on the no-GL path
+ * where the drawing buffer IS the CSS size. The pipeline needs it because the
+ * pick window is specified in CSS pixels but read in device ones.
+ */
+function getPixelRatio(bufferWidth: number, cssWidth: number): number {
+  return cssWidth > 0 ? bufferWidth / cssWidth : 1
+}
+
 function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: number): { width: number; height: number } {
   if (typeof gl.getDrawingBufferSize === 'function') {
     const db = gl.getDrawingBufferSize(RENDER_SIZE_SCRATCH)
@@ -59,6 +70,7 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     return new IdPipeline({
       width: db.width,
       height: db.height,
+      pixelRatio: getPixelRatio(db.width, sizeWidth),
       pickDuringCameraMotion: true,
     })
   }, [gl, sizeWidth, sizeHeight])
@@ -92,6 +104,10 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     if (!pipeline) return
     const db = getRenderSize(gl, sizeWidth, sizeHeight)
     pipeline.resize(db.width, db.height)
+    // Re-derived every frame alongside the size: dragging the window to a
+    // display with a different DPR, or a browser zoom, changes the ratio
+    // without changing anything the pipeline is otherwise told about.
+    pipeline.setPixelRatio(getPixelRatio(db.width, sizeWidth))
 
     let cs = camState.current.get(pipeline)
     if (!cs) {

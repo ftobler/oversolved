@@ -27,7 +27,43 @@ export const ORIGIN_FAT_PIXELS = 14
 // `30 * p2w(camera)` scale on the unit circleGeometry hit mesh.
 export const DIMENSION_LABEL_FAT_PIXELS = 18
 
+/**
+ * Edge of the square pick window, in CSS pixels: the radius the user actually
+ * aims with (17 -> 8 px around the cursor).
+ *
+ * CSS and not device pixels, because the two diverge on every HiDPI display and
+ * only one of them is the affordance. The ID target is allocated at
+ * drawing-buffer resolution (`IdPickingDriver`'s `getDrawingBufferSize`) and the
+ * cursor is converted into those same device pixels, so a window taken
+ * literally as device pixels shrinks to 8/DPR CSS pixels. That matters most for
+ * the helper vertex layers -- sketch vertices, the origin marker, dimension
+ * labels -- which mark exactly ONE device pixel each (`VertexIdLayer`'s points
+ * path), so the window is not a tolerance around their footprint, it IS their
+ * whole catch radius. At DPR 2 that radius lands at 4 CSS px, inside the 5 px
+ * sketch-point dot the user can plainly see, and the fat sketch-entity band
+ * under it keeps answering instead. `getEffectiveWindowSize` scales this back
+ * into device pixels at read time.
+ */
 export const DEFAULT_WINDOW_SIZE = 17
+
+// Upper bound on the device-pixel ratio the pick window is scaled by. Guards a
+// nonsense ratio (a mis-sized canvas reporting a huge drawing buffer) from
+// turning one hover into a megabyte-scale readback; no real display is near it.
+const MAX_PICK_PIXEL_RATIO = 8
+
+/**
+ * A CSS-pixel window edge converted to a device-pixel one.
+ *
+ * The DPR scale is applied to the window's RADIUS, not its edge, because the
+ * radius is the quantity with a meaning -- how far from the cursor a pick
+ * reaches. The odd edge is then rebuilt from it, which keeps the centre pixel
+ * the cursor's own (the resolver measures distance from `(n - 1) / 2`) instead
+ * of letting the shared centre pixel get scaled along with the two sides.
+ */
+function scaledWindowSize(cssSize: number, ratio: number): number {
+  const cssRadius = Math.max(0, (Math.max(1, Math.round(cssSize)) - 1) / 2)
+  return 2 * Math.round(cssRadius * ratio) + 1
+}
 
 // Screen-space edge length of the B-rep vertex pick cube. Three pixels is the
 // smallest odd size that still leaves a lit centre pixel after rasterisation,
@@ -38,8 +74,13 @@ export const VERTEX_PICK_CUBE_PIXELS = 3
 export interface IdPipelineOptions {
   width: number
   height: number
-  // Pixel window size for hover/click resolves. Default 17.
+  // Pick window edge in CSS pixels for hover/click resolves. Default 17.
   windowSize?: number
+  /**
+   * Device pixels per CSS pixel of the ID target. Default 1; the driver keeps
+   * it in step with the canvas each frame via `setPixelRatio`.
+   */
+  pixelRatio?: number
   /**
    * When true, the pipeline re-renders the ID buffer every frame while
    * the camera is in motion. Default false (matches "suppress hover during
@@ -80,7 +121,9 @@ export class IdPipeline {
   readonly featureHandleLayer: EdgeIdLayer
   readonly gizmoHandleLayer: FaceIdLayer
   private layers: IdLayer[]
+  // CSS pixels; see DEFAULT_WINDOW_SIZE.
   private windowSize: number
+  private pixelRatio = 1
   private renderCount = 0
   private lastDirtyReason: string | null = null
   pickDuringCameraMotion: boolean
@@ -157,6 +200,7 @@ export class IdPipeline {
     this.addLayer(this.gizmoHandleLayer)     //  90
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
+    this.setPixelRatio(opts.pixelRatio ?? 1)
     this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false
   }
 
@@ -182,6 +226,39 @@ export class IdPipeline {
     const map: Record<string, number> = {}
     for (const l of this.layers) map[l.name] = l.priority
     return map
+  }
+
+  /**
+   * Device pixels per CSS pixel of the ID target. The driver recomputes it each
+   * frame from the drawing-buffer / canvas size ratio, so a window move to
+   * another display (or a browser zoom) is picked up without a remount.
+   *
+   * Lives on the pipeline rather than being read off the renderer so the whole
+   * resolve path stays testable without a GL context.
+   */
+  setPixelRatio(ratio: number): void {
+    this.pixelRatio = Number.isFinite(ratio) && ratio > 0
+      ? Math.min(ratio, MAX_PICK_PIXEL_RATIO)
+      : 1
+  }
+
+  getPixelRatio(): number {
+    return this.pixelRatio
+  }
+
+  // The configured window edge in CSS pixels (what the user aims with).
+  getWindowSize(): number {
+    return this.windowSize
+  }
+
+  /**
+   * The window actually read from the target, in device pixels: the CSS-pixel
+   * window's radius scaled by the current pixel ratio, with the odd edge rebuilt
+   * from it. This is what keeps the catch radius a constant on-screen distance
+   * at every DPR.
+   */
+  getEffectiveWindowSize(cssWindowSize?: number): number {
+    return scaledWindowSize(cssWindowSize ?? this.windowSize, this.pixelRatio)
   }
 
   markDirty(reason?: string): void {
@@ -361,7 +438,9 @@ export class IdPipeline {
     if (this.target.isDirty()) return null  // render target is stale
     const w = this.target.getWidth()
     const h = this.target.getHeight()
-    const windowSize = opts?.windowSize ?? this.windowSize
+    // opts.windowSize, like the pipeline default, is CSS pixels; the read below
+    // is in device pixels, so it goes through the same DPR scale.
+    const windowSize = this.getEffectiveWindowSize(opts?.windowSize)
 
     const cx = Math.round(cursorPx.x)
     const cy = Math.round(cursorPx.y)
