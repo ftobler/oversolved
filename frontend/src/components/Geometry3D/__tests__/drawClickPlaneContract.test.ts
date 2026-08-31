@@ -54,7 +54,7 @@ const emptySnap = (): DrawSnapState => ({
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
   hoveredSelectionId: null,
-  drawSnapVertexId: null,
+  drawSnapRefs: [],
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
 })

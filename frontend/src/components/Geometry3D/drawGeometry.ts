@@ -30,10 +30,16 @@ export function circumcircle(
 /** Given arc start and end angles (degrees) and a radius point, determine the CCW arc.
  *  Returns [aStart, aEnd] such that going CCW from aStart reaches aEnd.
  *  The radius point determines which arc (short or long) was intended. */
-export function arcAnglesFromRadiusPoint(
+/** The arc's angles plus which clicked endpoint became its `start` vertex.
+ *
+ *  An arc is stored CCW from angle_start to angle_end, so the bulge point
+ *  decides which of the two clicked ends leads. A caller that wants to say
+ *  something about the FIRST clicked point (a snap on it, say) has to know
+ *  whether that point is the arc's `start` vertex or its `end` vertex. */
+export function arcEndpointOrder(
   cx: number, cy: number,
   start: readonly [number, number], end: readonly [number, number], radiusPt: readonly [number, number]
-): [number, number] {
+): { angles: [number, number]; startsAtFirst: boolean } {
   const toDeg = (a: number) => a * (180 / Math.PI)
   const norm = (a: number) => ((a % 360) + 360) % 360
   const aStart = toDeg(Math.atan2(start[1] - cy, start[0] - cx))
@@ -42,7 +48,16 @@ export function arcAnglesFromRadiusPoint(
   const s = norm(aStart), e = norm(aEnd), rp = norm(aRadius)
   const spanCCW = ((e - s) + 360) % 360
   const rpInCCW = ((rp - s) + 360) % 360 < spanCCW
-  return rpInCCW ? [aStart, aEnd] : [aEnd, aStart]
+  return rpInCCW
+    ? { angles: [aStart, aEnd], startsAtFirst: true }
+    : { angles: [aEnd, aStart], startsAtFirst: false }
+}
+
+export function arcAnglesFromRadiusPoint(
+  cx: number, cy: number,
+  start: readonly [number, number], end: readonly [number, number], radiusPt: readonly [number, number]
+): [number, number] {
+  return arcEndpointOrder(cx, cy, start, end, radiusPt).angles
 }
 
 /** Vertices of a regular N-gon circumscribed by the circle through `corner`,

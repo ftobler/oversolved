@@ -17,7 +17,7 @@ function emptySnap(): DrawSnapState {
     hoveredVertexPosition: null,
     hoveredSnapKind: null,
     hoveredSelectionId: null,
-    drawSnapVertexId: null,
+    drawSnapRefs: [],
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
   }
@@ -39,20 +39,20 @@ function sketchOf(doc: PartDoc) {
 function makeTool(doc: PartDoc) {
   let ids = 0
   let drawPoints: [number, number][] = []
-  let drawSnapVertexId: string | null = null
+  let drawSnapRefs: (string | null)[] = []
 
   return function click(at: [number, number], snapPatch: Partial<DrawSnapState> = {}) {
-    const snap: DrawSnapState = { ...emptySnap(), ...snapPatch, drawSnapVertexId }
+    const snap: DrawSnapState = { ...emptySnap(), ...snapPatch, drawSnapRefs }
     const result = computeDrawClick('line', drawPoints, at, snap, FEATURE, () => `L${++ids}`)
     for (const m of result.mutations) {
       const handler = (mutationHandlers as Record<string, ((d: PartDoc, m: Mutation) => void) | undefined>)[m.type]
       handler?.(doc, m)
     }
     drawPoints = result.nextDrawPoints ?? drawPoints
-    if (result.nextDrawSnap !== null) drawSnapVertexId = result.nextDrawSnap.vertexId
+    if (result.nextDrawSnap !== null) drawSnapRefs = result.nextDrawSnap.refs
     if (result.gestureComplete) {
       drawPoints = []
-      drawSnapVertexId = null
+      drawSnapRefs = []
     }
     return result
   }

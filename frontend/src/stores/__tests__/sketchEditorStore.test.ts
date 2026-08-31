@@ -728,7 +728,7 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().activeTool).toBeNull()
       expect(useSketchEditorStore.getState().drawPoints).toEqual([])
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
-      expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+      expect(useSketchEditorStore.getState().drawSnapRefs).toEqual([])
       // The tool must leave through its lifecycle hook, otherwise its mode entry
       // outlives the sketch session.
       expect(useSketchEditorStore.getState().modeStack).toEqual([])
@@ -895,19 +895,19 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
     })
 
-    it('setDrawSnap stores vertexId', () => {
-      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start')
-      expect(useSketchEditorStore.getState().drawSnapVertexId).toBe('vertex:S1:L1:start')
+    it('setDrawSnap stores the carried refs', () => {
+      useSketchEditorStore.getState().setDrawSnap(['vertex:S1:L1:start'])
+      expect(useSketchEditorStore.getState().drawSnapRefs).toEqual(['vertex:S1:L1:start'])
     })
 
     it('clearDraw resets all draw state', () => {
       useSketchEditorStore.getState().addDrawPoint([1, 2])
       useSketchEditorStore.getState().setDrawHover([3, 4])
-      useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start')
+      useSketchEditorStore.getState().setDrawSnap(['vertex:S1:L1:start'])
       useSketchEditorStore.getState().clearDraw()
       expect(useSketchEditorStore.getState().drawPoints).toEqual([])
       expect(useSketchEditorStore.getState().drawHover).toBeNull()
-      expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+      expect(useSketchEditorStore.getState().drawSnapRefs).toEqual([])
     })
   })
 
@@ -1422,10 +1422,10 @@ describe('sketchEditorStore', () => {
         expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
       })
 
-      it('clears drawSnapVertexId when switching tool', () => {
-        useSketchEditorStore.getState().setDrawSnap('vertex:S1:L1:start')
+      it('clears the carried draw snaps when switching tool', () => {
+        useSketchEditorStore.getState().setDrawSnap(['vertex:S1:L1:start'])
         useSketchEditorStore.getState().setActiveTool('circle')
-        expect(useSketchEditorStore.getState().drawSnapVertexId).toBeNull()
+        expect(useSketchEditorStore.getState().drawSnapRefs).toEqual([])
       })
     })
 
@@ -1438,7 +1438,7 @@ describe('sketchEditorStore', () => {
         expect(s.activeTool).toBeNull()
         expect(s.drawPoints).toEqual([])
         expect(s.drawHover).toBeNull()
-        expect(s.drawSnapVertexId).toBeNull()
+        expect(s.drawSnapRefs).toEqual([])
       })
 
       it('does not clear tool state when clearing the pick', () => {

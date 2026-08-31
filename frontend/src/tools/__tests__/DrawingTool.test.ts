@@ -19,7 +19,7 @@ function createMockContext(overrides: Partial<DrawingToolContext> = {}): Drawing
     pushMode: vi.fn(),
     popMode: vi.fn(),
     drawPoints: [],
-    drawSnapVertexId: null,
+    drawSnapRefs: [],
     setDrawHover: vi.fn(),
     setDrawPoints: (pts) => { context.drawPoints = [...pts] },
     clearDraw: vi.fn(),

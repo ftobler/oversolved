@@ -11,7 +11,7 @@ import { devOnly } from '@/stores/stateInvariants'
 
 export interface DrawingToolContext extends ToolContext {
   drawPoints: Point[]
-  drawSnapVertexId: string | null
+  drawSnapRefs: (string | null)[]
   setDrawHover: (pt: Point | null) => void
   // Replaces the intermediate-click buffer through zustand so the preview is
   // reactive on the committing click (mutating the handed-in array in place
@@ -26,7 +26,7 @@ export interface DrawingToolContext extends ToolContext {
   hoveredFaceEdges?: { source: string; kind: string }[] | null
   alignmentSnapPoint: Point | null
   alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
-  setDrawSnap: (vertexId: string | null) => void
+  setDrawSnap: (refs: (string | null)[]) => void
   sketch?: Record<string, Entity>
   otherSketches?: Record<string, Record<string, Entity>>
   ngonSides?: number
@@ -56,7 +56,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         hoveredSelectionId: context.hoveredSelectionId,
         hoveredSourceKind: context.hoveredSourceKind,
         hoveredFaceEdges: context.hoveredFaceEdges,
-        drawSnapVertexId: context.drawSnapVertexId,
+        drawSnapRefs: context.drawSnapRefs,
         alignmentSnapPoint: context.alignmentSnapPoint,
         alignmentSnapKind: context.alignmentSnapKind,
         ngonSides: context.ngonSides,
@@ -88,7 +88,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
       }
 
       if (result.nextDrawSnap !== null) {
-        context.setDrawSnap(result.nextDrawSnap.vertexId)
+        context.setDrawSnap(result.nextDrawSnap.refs)
       }
 
       if (result.nextDrawPoints !== null) {

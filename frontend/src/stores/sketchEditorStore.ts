@@ -323,11 +323,11 @@ interface SketchEditorState {
   // DRAW TOOL STATE
   drawPoints: [number, number][]
   drawHover: [number, number] | null
-  drawSnapVertexId: string | null
+  drawSnapRefs: (string | null)[]
   addDrawPoint: (pt: [number, number]) => void
   setDrawPoints: (pts: [number, number][]) => void
   setDrawHover: (pt: [number, number] | null) => void
-  setDrawSnap: (vertexId: string | null) => void
+  setDrawSnap: (refs: (string | null)[]) => void
   clearDraw: () => void
 
   // NAVIGATION SUBSYSTEM
@@ -452,7 +452,7 @@ function deactivateTool(
     activeTool: null,
     drawPoints: [],
     drawHover: null,
-    drawSnapVertexId: null,
+    drawSnapRefs: [],
     dimensionPicks: [],
     dimensionCursorWorld: null,
   })
@@ -493,7 +493,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   activeOriginLocal: [0, 0],
   drawPoints: [],
   drawHover: null,
-  drawSnapVertexId: null,
+  drawSnapRefs: [],
   dimensionPicks: [],
   pendingBrepProjectionIds: [],
   dimensionCursorWorld: null,
@@ -569,7 +569,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       activeFeatureId: null,
       drawPoints: [],
       drawHover: null,
-      drawSnapVertexId: null,
+      drawSnapRefs: [],
       dimensionPicks: [],
       pendingBrepProjectionIds: [],
       dimensionCursorWorld: null,
@@ -722,7 +722,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         activeTool: keepsPickField ? cur.activeTool : tool,
         drawPoints: [],
         drawHover: null,
-        drawSnapVertexId: null,
+        drawSnapRefs: [],
       }
       // Reset leftover dimension placement state on every tool switch so the
       // first click in any tool starts a fresh gesture.
@@ -804,7 +804,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     }
     set(state => {
       if (state.activeFeatureId !== null && id === null) {
-        return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapVertexId: null, activeOriginLocal: [0, 0] }
+        return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapRefs: [], activeOriginLocal: [0, 0] }
       }
       return { activeFeatureId: id }
     })
@@ -935,9 +935,9 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
   setDrawPoints: (pts) => set({ drawPoints: pts }),
   setDrawHover: (pt) => set({ drawHover: pt }),
-  setDrawSnap: (vertexId) => set({ drawSnapVertexId: vertexId }),
+  setDrawSnap: (refs) => set({ drawSnapRefs: refs }),
   clearDraw: () => {
-    set({ drawPoints: [], drawHover: null, drawSnapVertexId: null })
+    set({ drawPoints: [], drawHover: null, drawSnapRefs: [] })
     if (devOnly || testMode) {
       validateWithRepair(get, set)
     }
@@ -1208,7 +1208,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       activeTool: null,
       drawPoints: [],
       drawHover: null,
-      drawSnapVertexId: null,
+      drawSnapRefs: [],
       ...(opts?.seed ? {} : { normalSelection: new Set<string>(), selectedPicks: new Map<string, Set<string>>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
     })
     get().pushMode('pick')

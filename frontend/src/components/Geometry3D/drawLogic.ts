@@ -2,35 +2,16 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { Mutation, Entity } from '@/types/cad'
-import type { SnapKind } from '@/registry'
-import { suggestConstraint } from '@/registry'
+import type { DrawSnapState, InsertTarget } from '@/components/Geometry3D/drawAutoConstraints'
+import { createInsertionHelper, insertCoincidentPoint, insertAxisConstraint, carriedSnapFields, resolveSnapPoint } from '@/components/Geometry3D/drawAutoConstraints'
 import { getEntityKind } from '@/types/cad'
 import { projectionMutationsForId } from '@/tools/projectionMutations'
-import { circumcircle, arcAnglesFromRadiusPoint, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
+import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 import { isFiniteSketchPoint } from '@/components/Geometry3D/pointerAbstraction'
 import { failLoud } from '@/stores/stateInvariants'
 
-export interface DrawSnapState {
-  hoveredVertexId: string | null
-  hoveredVertexPosition: [number, number] | null
-  hoveredSnapKind: SnapKind | null
-  // Composite ID: "entity:featureId:entityId" or null
-  hoveredSelectionId: string | null
-  /** Curve kind of the hovered body edge ('line'|'circle'|'arc'|'spline'),
-   *  used by the project tool to choose the projected entity kind. */
-  hoveredSourceKind?: string | null
-  /** When the hovered selection is a body face, the projection sources of its
-   *  boundary edges. The project tool lowers a face pick into one projected
-   *  entity per boundary edge (a closed wire). */
-  hoveredFaceEdges?: { source: string; kind: string }[] | null
-  drawSnapVertexId: string | null
-  alignmentSnapPoint: [number, number] | null
-  // An alignment snap is measured against the last draw point, i.e. the segment's
-  // own start. It names no second vertex, which is why there is no id here.
-  alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
-  // Side count for the two-click n-gon tool. Defaults to 6 when absent.
-  ngonSides?: number
-}
+export type { DrawSnapState }
+export { resolveSnapPoint }
 
 export interface DrawClickResult {
   mutations: Mutation[]
@@ -39,8 +20,12 @@ export interface DrawClickResult {
    * array -- replace draw points with this array (intermediate clicks, arc 2nd click)
    */
   nextDrawPoints: [number, number][] | null
-  // null means leave draw snap unchanged; a string replaces the vertexId.
-  nextDrawSnap: { vertexId: string | null } | null
+  // null means leave the carried draw snaps unchanged; an object replaces them.
+  // One ref per placed point, index-aligned with drawPoints, each naming either
+  // a vertex or a whole entity (a point on that curve). A gesture whose entity
+  // is created several clicks after a snapped point (the arc's two ends, the
+  // spline's start) reads its own click's ref back out of this list.
+  nextDrawSnap: { refs: (string | null)[] } | null
   // true when this click completed the gesture and produced its entity; the
   // adapter clears the draw buffer and consults the tool's
   // `staysArmedAfterCommit` policy to decide whether to keep the tool armed.
@@ -50,59 +35,6 @@ export interface DrawClickResult {
 // Click positions that agree within this distance are the same vertex, used by
 // the line tool to detect a closing click on the open polyline endpoint.
 const SNAP_EPS = 1e-6
-
-/** What the snap under a segment's end click asks the document to record.
- *
- *  The two snaps that can resolve one click are not the same kind of statement
- *  and must not collapse into one. Landing on an existing vertex says "these two
- *  points are the same point": a coincident between a point pair. An alignment
- *  snap says "this segment runs along an axis"; it is measured against the last
- *  draw point, which is the segment's OWN start, so it constrains the line and
- *  names no second vertex at all. Treating the alignment case as a vertex snap
- *  is what used to author `coincident` against the alignment reference. */
-type EndSnap =
-  | { kind: 'coincident'; vertexId: string }
-  | { kind: 'horizontal' | 'vertical' }
-
-/** Resolve the end snap from the same signals resolveSnapPoint consumed, rather
- *  than from a separate, sometimes-stale, hover gate. Alignment wins (it is what
- *  moved the point), then a vertex-hover whose resolved point equals the click,
- *  then the legacy hoveredVertexId/hoveredSnapKind pair. */
-function resolveEndSnap(snap: DrawSnapState, px: number, py: number): EndSnap | null {
-  if (snap.alignmentSnapPoint && snap.alignmentSnapKind) {
-    const kind = suggestConstraint('vertex', snap.alignmentSnapKind)
-    // The registry owns the snap -> constraint mapping; anything but the two
-    // axis constraints means an alignment kind grew a meaning this branch does
-    // not implement, and authoring a guess would poison the sketch.
-    if (kind === 'horizontal' || kind === 'vertical') return { kind }
-    return null
-  }
-  if (snap.hoveredVertexPosition &&
-      Math.abs(px - snap.hoveredVertexPosition[0]) < SNAP_EPS &&
-      Math.abs(py - snap.hoveredVertexPosition[1]) < SNAP_EPS) {
-    return snap.hoveredVertexId ? { kind: 'coincident', vertexId: snap.hoveredVertexId } : null
-  }
-  if (snap.hoveredVertexId && snap.hoveredSnapKind) {
-    return { kind: 'coincident', vertexId: snap.hoveredVertexId }
-  }
-  return null
-}
-
-/** Resolve the effective click position from snap state.
- *  Priority: alignment snap (projected onto axis) > vertex hover > raw cursor. */
-export function resolveSnapPoint(
-  rawPoint: readonly [number, number],
-  snap: DrawSnapState,
-): [number, number] {
-  if (snap.alignmentSnapPoint && snap.alignmentSnapKind) {
-    if (snap.alignmentSnapKind === 'kinda_horizontal') {
-      return [rawPoint[0], snap.alignmentSnapPoint[1]]
-    }
-    return [snap.alignmentSnapPoint[0], rawPoint[1]]
-  }
-  if (snap.hoveredVertexPosition) return snap.hoveredVertexPosition
-  return [rawPoint[0], rawPoint[1]]
-}
 
 /** Pure draw click handler. Accepts all snap/draw state as plain data; has no store reads.
  *  newEntityIdFn is injected so tests can provide a deterministic ID instead of randomId(). */
@@ -117,8 +49,22 @@ export function computeDrawClick(
   sketch?: Record<string, Entity>,
   otherSketches?: Record<string, Record<string, Entity>>,
 ): DrawClickResult {
-  const [px, py] = resolveSnapPoint(rawPoint, snap)
+  // One read of what is under the cursor, then every branch below just asks it
+  // the questions its own entity can answer.
+  const inserter = createInsertionHelper({ sketch, otherSketches })
+  inserter.update(snap, rawPoint)
+  const [px, py] = inserter.getPoint()
   const pts = drawPoints
+
+  // The first click of a multi-click gesture records only WHAT it landed on;
+  // the constraint is authored later, by the click that creates the entity. An
+  // alignment snap has no meaning yet: there is no entity for an axis
+  // constraint to describe.
+  const clickedRef = (): string | null =>
+    inserter.foundSnappablePoint() || inserter.foundSnappablePath()
+      ? inserter.getSnappedElement()
+      : null
+  const startSnap = (): { refs: (string | null)[] } => ({ refs: [clickedRef()] })
 
   const nothing: DrawClickResult = { mutations: [], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: false }
 
@@ -133,8 +79,19 @@ export function computeDrawClick(
 
   const t: string = tool  // prevent type narrowing across branches
   if (t === 'point') {
+    // A point dropped onto an existing vertex IS that vertex, and one dropped on
+    // a curve lies on that curve; say so, rather than leaving a free point that
+    // merely starts at the right coordinate. An alignment snap cannot be
+    // expressed on a point entity, so that question is not asked here.
+    const onElement = inserter.foundSnappablePoint() || inserter.foundSnappablePath()
+      ? inserter.getSnappedElement()
+      : null
+    const mutation: Mutation = onElement
+      ? { type: 'add_entity_with_constraint', featureId, kind: 'point', params: [px, py],
+          vertexKey: 'xy', ...carriedSnapFields(onElement), constraintKind: 'coincident' }
+      : { type: 'add_entity', featureId, kind: 'point', params: [px, py] }
     return {
-      mutations: [{ type: 'add_entity', featureId, kind: 'point', params: [px, py] }],
+      mutations: [mutation],
       nextDrawPoints: null,
       nextDrawSnap: null,
       gestureComplete: true,
@@ -143,9 +100,7 @@ export function computeDrawClick(
 
   if (t === 'line') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
 
@@ -161,12 +116,12 @@ export function computeDrawClick(
 
     const lineId = newEntityIdFn()
     const mutations: Mutation[] = []
-    const startVertexId = snap.drawSnapVertexId
-    const endSnap = resolveEndSnap(snap, px, py)
-    const endVertexId = endSnap?.kind === 'coincident' ? endSnap.vertexId : null
-    // Both ends on the SAME vertex make a zero-length line: drop the constraints
-    // and fall back to a free line so the kernel does not silently discard it.
-    const sameVertex = !!startVertexId && startVertexId === endVertexId
+    const startRef = snap.drawSnapRefs[pts.length - 1] ?? null
+    const endRef = clickedRef()
+    // Both ends on the SAME element make a zero-length line (or two coincidents
+    // that say the same thing): drop the constraints and fall back to a free
+    // line so the kernel does not silently discard it.
+    const sameVertex = !!startRef && startRef === endRef
 
     const segStart = pts[pts.length - 1]
     // Take the closing endpoint from the chain's own first point rather than the
@@ -174,23 +129,31 @@ export function computeDrawClick(
     const segEnd = closesChain ? startPoint : [px, py]
     const params = [segStart[0], segStart[1], segEnd[0], segEnd[1]]
 
-    if (startVertexId && !sameVertex) {
+    if (startRef && !sameVertex) {
       mutations.push({ type: 'add_entity_with_constraint', featureId, kind: 'line',
         params, vertexKey: 'start',
-        snapVertexId: startVertexId, constraintKind: 'coincident', entityId: lineId })
+        ...carriedSnapFields(startRef), constraintKind: 'coincident', entityId: lineId })
     } else {
       mutations.push({ type: 'add_entity', featureId, kind: 'line', params, entityId: lineId })
     }
 
-    if (endSnap && !sameVertex) {
-      if (endSnap.kind === 'coincident') {
-        mutations.push({ type: 'add_constraint', featureId, kind: 'coincident',
-          targets: [`vertex:${featureId}:${lineId}:end`, endSnap.vertexId] })
-      } else {
-        // An axis alignment describes the whole segment, so it takes the
-        // single-target form of horizontal/vertical, not a point pair.
-        mutations.push({ type: 'add_constraint', featureId, kind: endSnap.kind,
-          targets: [`entity:${featureId}:${lineId}`] })
+    // Whatever the end click landed on is asked for once, here: the segment can
+    // express a point pair on its own end vertex and an axis constraint on
+    // itself, so it honours both questions the helper answers.
+    const endTarget: InsertTarget = {
+      featureId,
+      vertexRef: `vertex:${featureId}:${lineId}:end`,
+      entityRef: `entity:${featureId}:${lineId}`,
+    }
+    if (!sameVertex) {
+      if (endRef) {
+        mutations.push(...insertCoincidentPoint(endRef, endTarget))
+      }
+      if (inserter.foundHorizontal()) {
+        mutations.push(...insertAxisConstraint('horizontal', endTarget))
+      }
+      if (inserter.foundVertical()) {
+        mutations.push(...insertAxisConstraint('vertical', endTarget))
       }
     }
 
@@ -207,26 +170,31 @@ export function computeDrawClick(
     return {
       mutations,
       nextDrawPoints: [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]],
-      nextDrawSnap: { vertexId: endVertexId ?? `vertex:${featureId}:${lineId}:end` },
+      // An end that landed on a curve does NOT hand that curve to the next
+      // segment: the next segment starts at this line's own end vertex, which
+      // the point-on-path constraint already keeps on the curve.
+      nextDrawSnap: { refs: [
+        ...snap.drawSnapRefs.slice(0, pts.length),
+        inserter.foundSnappablePoint() ? endRef : `vertex:${featureId}:${lineId}:end`,
+      ] },
       gestureComplete: false,
     }
   }
 
   if (t === 'circle') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
 
     const r = Math.hypot(px - pts[0][0], py - pts[0][1])
     if (r <= 0) return nothing
     let mutation: Mutation
-    if (snap.drawSnapVertexId) {
+    const centreRef = snap.drawSnapRefs[0] ?? null
+    if (centreRef) {
       mutation = { type: 'add_entity_with_constraint', featureId, kind: 'circle',
         params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
-        snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident' }
+        ...carriedSnapFields(centreRef), constraintKind: 'coincident' }
     } else {
       mutation = { type: 'add_entity', featureId, kind: 'circle',
         params: [pts[0][0], pts[0][1], r] }
@@ -236,9 +204,7 @@ export function computeDrawClick(
 
   if (t === 'ellipse') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
 
@@ -252,10 +218,11 @@ export function computeDrawClick(
     const b = a * ELLIPSE_MINOR_RATIO
     const params = [pts[0][0], pts[0][1], a, b, theta]
     let mutation: Mutation
-    if (snap.drawSnapVertexId) {
+    const centreRef = snap.drawSnapRefs[0] ?? null
+    if (centreRef) {
       mutation = { type: 'add_entity_with_constraint', featureId, kind: 'ellipse',
         params, vertexKey: 'center',
-        snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident' }
+        ...carriedSnapFields(centreRef), constraintKind: 'coincident' }
     } else {
       mutation = { type: 'add_entity', featureId, kind: 'ellipse', params }
     }
@@ -265,7 +232,7 @@ export function computeDrawClick(
   if (t === 'spline') {
     // 4-click cubic Bezier: P1 (start), P2/P3 (control handles), P4 (end).
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId ? { vertexId: snap.hoveredVertexId } : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     if (pts.length < 3) {
@@ -274,48 +241,74 @@ export function computeDrawClick(
     }
     // Fourth click closes the curve.
     const params = [pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], px, py]
-    let mutation: Mutation
-    if (snap.drawSnapVertexId) {
-      mutation = { type: 'add_entity_with_constraint', featureId, kind: 'spline',
-        params, vertexKey: 'start',
-        snapVertexId: snap.drawSnapVertexId, constraintKind: 'coincident' }
-    } else {
-      mutation = { type: 'add_entity', featureId, kind: 'spline', params }
+    const splineId = newEntityIdFn()
+    const startRef = snap.drawSnapRefs[0] ?? null
+    const endRef = clickedRef()
+    const mutations: Mutation[] = [
+      startRef
+        ? { type: 'add_entity_with_constraint', featureId, kind: 'spline',
+            params, vertexKey: 'start',
+            ...carriedSnapFields(startRef), constraintKind: 'coincident', entityId: splineId }
+        : { type: 'add_entity', featureId, kind: 'spline', params, entityId: splineId },
+    ]
+    // The spline carries no axis constraint (its shape is the control polygon's,
+    // not a direction), so only the two point questions are asked. An end on the
+    // element the start is already pinned to would restate that coincident.
+    if (endRef && endRef !== startRef) {
+      mutations.push(...insertCoincidentPoint(endRef, {
+        featureId, vertexRef: `vertex:${featureId}:${splineId}:end`,
+      }))
     }
-    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   if (t === 'arc') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
-      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: startSnap(), gestureComplete: false }
     }
     if (pts.length === 1) {
       // Append second point; preserve first (use explicit tuple copy to satisfy types)
-      return { mutations: [], nextDrawPoints: [[pts[0][0], pts[0][1]], [px, py]], nextDrawSnap: null, gestureComplete: false }
+      return {
+        mutations: [], nextDrawPoints: [[pts[0][0], pts[0][1]], [px, py]],
+        nextDrawSnap: { refs: [snap.drawSnapRefs[0] ?? null, clickedRef()] },
+        gestureComplete: false,
+      }
     }
 
     // Third click: compute arc from 3 points
     const cc = circumcircle(pts[0], pts[1], [px, py])
-    if (cc) {
-      const [aStart, aEnd] = arcAnglesFromRadiusPoint(cc.cx, cc.cy, pts[0], pts[1], [px, py])
-    return {
-      mutations: [{ type: 'add_entity', featureId, kind: 'arc',
-        params: [cc.cx, cc.cy, cc.r, aStart, aEnd] }],
-      nextDrawPoints: null,
-      nextDrawSnap: null,
-      gestureComplete: true,
+    if (!cc) return nothing
+
+    // The arc is stored CCW from angle_start, so the bulge click decides which
+    // of the two clicked ends became the `start` vertex. The snaps were made on
+    // the points, not on the angles: they follow their own point across the swap.
+    const { angles: [aStart, aEnd], startsAtFirst } = arcEndpointOrder(cc.cx, cc.cy, pts[0], pts[1], [px, py])
+    const arcId = newEntityIdFn()
+    const params = [cc.cx, cc.cy, cc.r, aStart, aEnd]
+    const [firstKey, secondKey] = startsAtFirst ? ['start', 'end'] : ['end', 'start']
+    const firstRef = snap.drawSnapRefs[0] ?? null
+    const secondRef = snap.drawSnapRefs[1] ?? null
+
+    // The seed constraint rides along with the entity so the pair commits
+    // atomically; a second snapped end is a plain constraint on the same batch.
+    const mutations: Mutation[] = [
+      firstRef
+        ? { type: 'add_entity_with_constraint', featureId, kind: 'arc', params,
+            vertexKey: firstKey, ...carriedSnapFields(firstRef),
+            constraintKind: 'coincident', entityId: arcId }
+        : { type: 'add_entity', featureId, kind: 'arc', params, entityId: arcId },
+    ]
+    if (secondRef && secondRef !== firstRef) {
+      mutations.push(...insertCoincidentPoint(secondRef, {
+        featureId, vertexRef: `vertex:${featureId}:${arcId}:${secondKey}`,
+      }))
     }
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
-  }
   if (t === 'rect') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     // Second corner uses raw point, alignment snap would collapse the rectangle
@@ -329,9 +322,7 @@ export function computeDrawClick(
 
   if (t === 'center_rect') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     // Second corner uses raw point, alignment snap would collapse the rectangle
@@ -345,9 +336,7 @@ export function computeDrawClick(
 
   if (t === 'ngon') {
     if (pts.length === 0) {
-      const drawSnap = snap.hoveredVertexId
-        ? { vertexId: snap.hoveredVertexId }
-        : null
+      const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
     // Second click sets a vertex (circumradius + start angle). Raw point: an

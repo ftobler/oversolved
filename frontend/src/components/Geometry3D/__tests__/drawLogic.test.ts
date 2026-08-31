@@ -12,7 +12,7 @@ const emptySnap = (): DrawSnapState => ({
   hoveredVertexPosition: null,
   hoveredSnapKind: null,
   hoveredSelectionId: null,
-  drawSnapVertexId: null,
+  drawSnapRefs: [],
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
 })
@@ -134,7 +134,7 @@ describe('computeDrawClick - line tool', () => {
     snap.hoveredVertexId = 'vertex:S1:L1:end'
     snap.hoveredVertexPosition = [5, 0]
     const result = computeDrawClick('line', [], [5, 0], snap, FEATURE, newId)
-    expect(result.nextDrawSnap?.vertexId).toBe('vertex:S1:L1:end')
+    expect(result.nextDrawSnap?.refs).toEqual(['vertex:S1:L1:end'])
   })
 
   it('second click with no snap emits add_entity and keeps the chain open', () => {
@@ -175,7 +175,7 @@ describe('computeDrawClick - line tool', () => {
 
   it('second click with start vertex snap emits add_entity_with_constraint', () => {
     const snap = emptySnap()
-    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.drawSnapRefs = ['vertex:S1:L1:end']
     const result = computeDrawClick('line', [[0, 0]], [5, 5], snap, FEATURE, newId)
     expect(result.mutations[0].type).toBe('add_entity_with_constraint')
     if (result.mutations[0].type === 'add_entity_with_constraint') {
@@ -201,7 +201,7 @@ describe('computeDrawClick - line tool', () => {
     // hoveredSnapKind is absent yet the click still lands on the vertex, so the
     // end constraint must still be emitted (the snap-drop bug).
     const snap = emptySnap()
-    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.drawSnapRefs = ['vertex:S1:L1:end']
     snap.hoveredVertexPosition = [10, 0]
     snap.hoveredVertexId = 'vertex:S1:L2:start'
     const result = computeDrawClick('line', [[0, 0]], [10, 0], snap, FEATURE, newId)
@@ -217,7 +217,7 @@ describe('computeDrawClick - line tool', () => {
 
   it('both endpoints on distinct vertices emit start and end constraints', () => {
     const snap = emptySnap()
-    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.drawSnapRefs = ['vertex:S1:L1:end']
     snap.hoveredVertexPosition = [10, 0]
     snap.hoveredVertexId = 'vertex:S1:L2:start'
     snap.hoveredSnapKind = 'vertex'
@@ -229,7 +229,7 @@ describe('computeDrawClick - line tool', () => {
 
   it('both endpoints on the SAME vertex fall back to a free line', () => {
     const snap = emptySnap()
-    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.drawSnapRefs = ['vertex:S1:L1:end']
     snap.hoveredVertexPosition = [10, 0]
     snap.hoveredVertexId = 'vertex:S1:L1:end'
     snap.hoveredSnapKind = 'vertex'
@@ -241,7 +241,7 @@ describe('computeDrawClick - line tool', () => {
 
   it('a single-snapped (start only) line still works as before', () => {
     const snap = emptySnap()
-    snap.drawSnapVertexId = 'vertex:S1:L1:end'
+    snap.drawSnapRefs = ['vertex:S1:L1:end']
     const result = computeDrawClick('line', [[0, 0]], [5, 5], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_entity_with_constraint')
@@ -309,7 +309,7 @@ describe('computeDrawClick - ellipse tool', () => {
 
   it('snaps the center to a hovered vertex via add_entity_with_constraint', () => {
     const snap = emptySnap()
-    snap.drawSnapVertexId = `vertex:${FEATURE}:V1:xy`
+    snap.drawSnapRefs = [`vertex:${FEATURE}:V1:xy`]
     const result = computeDrawClick('ellipse', [[0, 0]], [4, 0], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     const m = result.mutations[0]
@@ -353,7 +353,7 @@ describe('computeDrawClick - spline tool', () => {
 
   it('snaps the start point to a hovered vertex via add_entity_with_constraint', () => {
     const snap = emptySnap()
-    snap.drawSnapVertexId = `vertex:${FEATURE}:V1:end`
+    snap.drawSnapRefs = [`vertex:${FEATURE}:V1:end`]
     const result = computeDrawClick('spline', [[0, 0], [1, 3], [3, 3]], [4, 0], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     const m = result.mutations[0]
@@ -503,7 +503,7 @@ describe('computeDrawClick - rect tool', () => {
     snap.hoveredVertexPosition = [10, 20]
     const result = computeDrawClick('rect', [], [5, 5], snap, FEATURE, newId)
     expect(result.nextDrawPoints).toEqual([[10, 20]])
-    expect(result.nextDrawSnap).toEqual({ vertexId: 'v1' })
+    expect(result.nextDrawSnap).toEqual({ refs: ['v1'] })
   })
 })
 

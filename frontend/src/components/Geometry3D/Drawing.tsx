@@ -224,7 +224,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           setDrawPoints: (pts: import('@/types/cad').Point[]) => {
             useSketchEditorStore.getState().setDrawPoints(pts)
           },
-          drawSnapVertexId: state.drawSnapVertexId,
+          drawSnapRefs: state.drawSnapRefs,
           setDrawHover,
           clearDraw,
           alignmentSnapPoint: state.alignmentSnapPoint,
