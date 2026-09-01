@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, Mutation } from '@/types/cad'
 
 const docRef: { current: PartDoc | null } = { current: null }
 
