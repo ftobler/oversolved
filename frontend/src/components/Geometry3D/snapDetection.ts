@@ -105,8 +105,11 @@ function sketchEntityToParams(entity: Entity): { kind: string; params: number[] 
  *  materialization). Each tangent contact is offered as a 0-D snap target whose id
  *  is the transient `dock:<featureId>:<hostId>` handle -- snapping to it (e.g.
  *  dragging an endpoint onto it) authors a `coincident` against the handle, which
- *  `applyAddConstraint` materializes into a real point. Hosts already materialized
- *  are omitted by `dockHostsOf` (the real point is its own vertex candidate). */
+ *  `applyAddConstraint` materializes into a real point. Hosts a `dock` constraint
+ *  already names are omitted by `dockHostsOf`; hosts whose contact a real point
+ *  occupies by any other route are omitted by `inferredContactCandidates`, which
+ *  is where the sketch's own vertices are in hand. Either way the real point is
+ *  its own vertex candidate and the contact is offered once. */
 export function sketchToDockCandidates(
   sketch: Sketch,
   featureId: string,
@@ -167,7 +170,28 @@ export function sketchToIntersectionCandidates(
 /** The full inferred-point snap/pick set: dockable-host contacts UNION free
  *  curve-curve intersections, the two halves the design names. An intersection
  *  coinciding with a dock (a tangent contact that also has a tangent constraint)
- *  is dropped so the contact is offered once, as a dock. */
+ *  is dropped so the contact is offered once, as a dock.
+ *
+ *  A contact a REAL point already sits on is not offered at all. That is the
+ *  rule both halves already state -- `dockHostsOf` omits a docked host and the
+ *  topology omits a crossing owned by a materialized point, both because "the
+ *  real point covers it" -- but the dock half tested only for a `dock`
+ *  constraint, and a `dock` constraint is not the only way a contact becomes
+ *  real. A line endpoint constrained `coincident` on the circle its line is
+ *  tangent to IS the tangent point: the same spot, arrived at by the ordinary
+ *  route rather than by materializing a dock. Offered anyway, the handle drew a
+ *  ring over a point that was already there and invited the user to materialize
+ *  a second point on top of the first.
+ *
+ *  The intersection half is held to the same rule rather than left to the
+ *  topology alone, because the two are now coupled: dropping a dock must not
+ *  resurrect a crossing at the spot the dock was dropped FOR.
+ *
+ *  Checked here rather than in `dockHostsOf`, which takes entities and params
+ *  and would have to rebuild the vertex set this module already has, and which
+ *  is the same function `dockLocationOf` deliberately shares with the
+ *  materialize interception -- that caller wants the foot whether or not
+ *  anything occupies it. */
 export function inferredContactCandidates(
   sketch: Sketch,
   featureId: string,
@@ -177,9 +201,12 @@ export function inferredContactCandidates(
 ): SnapCandidate[] {
   const docks = sketchToDockCandidates(sketch, featureId, constraints, domain)
   const isects = sketchToIntersectionCandidates(sketch, topology, featureId, domain)
-  const deduped = isects.filter(ic =>
-    !docks.some(d => Math.hypot(d.position[0] - ic.position[0], d.position[1] - ic.position[1]) < INFERRED_TOL))
-  return [...docks, ...deduped]
+  const real = sketchToVertexCandidates(sketch, featureId, domain)
+  const near = (a: SnapCandidate, b: SnapCandidate) =>
+    Math.hypot(a.position[0] - b.position[0], a.position[1] - b.position[1]) < INFERRED_TOL
+  const free = docks.filter(d => !real.some(v => near(d, v)))
+  const deduped = isects.filter(ic => !free.some(d => near(d, ic)) && !real.some(v => near(v, ic)))
+  return [...free, ...deduped]
 }
 
 export function sketchToEntityCandidates(

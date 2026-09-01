@@ -32,10 +32,11 @@ function DockRing({ x, y, px, id }: { x: number; y: number; px: number; id: stri
  *  (tangencies) UNION free curve-curve intersections. Visual-only: a contact is
  *  "just there to hover, snap to, and pick out of the soup" and stays inferred
  *  until constrained (lazy inferred materialization). Each marker disappears once
- *  materialized -- `dockHostsOf` omits docked hosts and `sketchToIntersectionCandidates`
- *  omits intersections that coincide with a real point, the materialized point's
- *  VertexDot standing in. Picking is via the vertex ID layer
- *  (`useSketchIdRegistration`), which carries the same `dock:`/`isect:` handles. */
+ *  materialized -- `inferredContactCandidates` omits every contact a real point
+ *  already occupies, whether it was materialized through a `dock` or reached by
+ *  an ordinary coincident, the real point's VertexDot standing in. Picking is via
+ *  the vertex ID layer (`useSketchIdRegistration`), which carries the same
+ *  `dock:`/`isect:` handles. */
 export function InferredContactMarkers({ sketch, featureId, constraints, topology }: {
   sketch?: Sketch
   featureId: string
