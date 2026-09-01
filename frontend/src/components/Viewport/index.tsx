@@ -27,6 +27,7 @@ import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
 import { IdPickingDriver } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
+import IdPickReadout from '@/components/Viewport/IdPickReadout'
 import type { IdPipeline } from '@/picking'
 import {
   PART_EDITOR_CONSUMED_LAYERS,
@@ -720,6 +721,12 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {/* Draggable editing arrow for the feature open in the editor panel. */}
         <FeatureHandles />
       </Canvas>
+
+      {/* Reads the pick pass in words while the collision debug view is on:
+          which entities the cursor's disc actually covers, in the order the
+          click would take them. The buffer overlay can only show that a mark
+          exists, not which entity it is. */}
+      {showDebugHit && <IdPickReadout glRef={glRef} />}
 
       {/* 268: rubber-band drag-box selection overlay. A box is crossing-only;
           the window-mode styling and its mode branch were deleted with the
