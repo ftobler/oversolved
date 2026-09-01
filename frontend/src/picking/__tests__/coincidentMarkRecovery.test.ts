@@ -85,9 +85,9 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
 
   it('recovers across layers and ranks the recovered mark on its own priority', () => {
     // The guaranteed case: a circle centre constrained to the document origin.
-    // The origin marker (60) draws after the sketch vertex (50) and took its
-    // only pixel. The origin still wins -- that is the ladder -- but the sketch
-    // point is no longer absent.
+    // The origin marker owns the pixel here, and the sketch vertex is recovered
+    // from underneath it -- then ranked ahead of it, because a recovered mark is
+    // sorted on its OWN priority and the point outranks the datum it sits on.
     const { image, p, renderer } = scene()
     p.sketchVertexLayer.registerBody({
       bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
@@ -97,8 +97,8 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     })
     image.mark(MID, MID, idOf(p, ORIGIN_LAYER_NAME, '@builtin_origin'))
     const all = p.resolveAllSync(renderer, CURSOR)
-    expect(all.map(h => h.entityKey)).toEqual(['@builtin_origin', 'vertex:S1:C1:center'])
-    expect(all.map(h => h.layer)).toEqual([ORIGIN_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME])
+    expect(all.map(h => h.entityKey)).toEqual(['vertex:S1:C1:center', '@builtin_origin'])
+    expect(all.map(h => h.layer)).toEqual([SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME])
     p.dispose()
   })
 
@@ -117,7 +117,7 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     image.line(MID - 30, MID, MID + 30, MID, curve)
     image.mark(MID + 5, MID, idOf(p, ORIGIN_LAYER_NAME, '@builtin_origin'))
     expect(p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey))
-      .toEqual(['@builtin_origin', 'vertex:S1:C1:center', 'entity:S1:C1'])
+      .toEqual(['vertex:S1:C1:center', '@builtin_origin', 'entity:S1:C1'])
     p.dispose()
   })
 

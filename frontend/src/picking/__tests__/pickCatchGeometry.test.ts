@@ -117,8 +117,9 @@ describe('catch geometry: one pixel marked, eight pixels of reach', () => {
 
   it('recovers it once the layer has published where the mark is', () => {
     // The same two entities registered the way the app registers them. One
-    // pixel still, one winner still -- the origin outranks and drew last -- but
-    // the covered mark is back in the list rather than gone from the buffer.
+    // pixel still, drawn by the origin marker, but the covered sketch point is
+    // back in the list -- and ahead of the marker, which is where the ladder
+    // puts it.
     const { image, p, renderer } = scene()
     p.sketchVertexLayer.registerBody({
       bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:E1:start'],
@@ -128,7 +129,7 @@ describe('catch geometry: one pixel marked, eight pixels of reach', () => {
     })
     image.mark(MID, MID, p.registry.lookupKey(ORIGIN_LAYER_NAME, '@builtin_origin')!)
     expect(p.resolveAllSync(renderer, { x: MID + 0.5, y: MID + 0.5 }).map(h => h.entityKey))
-      .toEqual(['@builtin_origin', 'vertex:S1:E1:start'])
+      .toEqual(['vertex:S1:E1:start', '@builtin_origin'])
     p.dispose()
   })
 

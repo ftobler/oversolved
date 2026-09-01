@@ -7,25 +7,22 @@ import {
 import { IdImage } from './pickCanvasHarness'
 
 /**
- * What the sketch half of the ladder costs a point pick.
+ * What the sketch half of the ladder does to a point pick.
  *
  * The dimensional order inside the sketch group is right -- surface below curve
  * below point -- and a point wins from anywhere in the disc, which the ladder
- * test covers. What it does not say is that TWO layers sit ABOVE the sketch
- * point and both of them mark a single pixel each: the origin marker at 60 and
- * the dimension label at 70. Neither is a region the user aims at; each is one
- * pixel with an 8 px reach, and inside that reach a real sketch point cannot be
- * picked at all.
+ * test covers. What it did not say was that two layers sat ABOVE the sketch
+ * point marking a single pixel each, so that inside their 8 px reach a real
+ * sketch point could not be picked at all. The origin marker was one of them
+ * and has moved below the sketch vertex; the dimension label is still there,
+ * pinned here because it is the same shape of problem and a different decision.
  *
- * And below them, one layer carries two populations: the real vertices and the
+ * Below them, one layer carries two populations: the real vertices and the
  * inferred `dock:` / `isect:` handles both live in sketchVertex at 50. Between
- * those, priority has nothing to say, so they are separated only by distance --
- * and, when they land on one pixel, by which was written last.
- *
- * Between those two populations a shared pixel used to be an ERASURE with a
- * fixed direction, because the inferred handles are appended last. It is now a
- * co-location the registry knows about, so both come back; what remains is that
- * only one of them can be the answer, and priority has no opinion on which.
+ * those, priority has nothing to say, so they are separated only by distance.
+ * A shared pixel used to be an ERASURE with a fixed direction, because the
+ * inferred handles are appended last; it is now a co-location the registry
+ * knows about, so both come back and the real point leads.
  */
 
 const SIZE = 160
@@ -41,12 +38,12 @@ function scene() {
 }
 
 describe('sketch precedence: what outranks a sketch point', () => {
-  it('takes the sketch point\'s catch region away wherever the origin can also be seen', () => {
-    // The origin is where the first constraint in every sketch goes, so a circle
-    // centre or a line end sits on or beside it constantly. What the point keeps
-    // is only the lune its own disc has outside the origin's -- and nothing at
-    // all once the two share a pixel. Measured rather than asserted, because the
-    // interesting number is how fast it collapses with distance.
+  it('costs the point nothing to have the origin marker beside it', () => {
+    // The origin is where the first constraint in every sketch goes, so a
+    // circle centre or a line end sits on or beside it constantly. While the
+    // marker outranked the point, the point kept only the lune its own disc had
+    // outside the marker's -- 17 of its 197 lattice positions at one pixel
+    // apart, 47 at three, none at zero. Below it, the point keeps all of them.
     const survives = (gapPx: number): number => {
       const { image, p, renderer } = scene()
       const pt = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:C1:center')
@@ -63,13 +60,15 @@ describe('sketch precedence: what outranks a sketch point', () => {
       p.dispose()
       return n
     }
-    // How many of the 197 lattice positions in the point's own disc still
-    // answer with the point, as the origin marker moves away from it.
-    expect([0, 1, 2, 3, 4, 6, 8, 12, 16, 40].map(survives))
-      .toEqual([0, 17, 32, 47, 62, 92, 120, 170, 196, 197])
+    expect([1, 2, 3, 4, 6, 8, 12, 16, 40].map(survives))
+      .toEqual([197, 197, 197, 197, 197, 197, 197, 197, 197])
+    // Zero is the one gap this cannot answer, because the marker overwrote the
+    // point's only pixel and these ids carry no registered position. Through
+    // the real layers it does answer -- see `coincidentMarkRecovery`.
+    expect(survives(0)).toBe(0)
   })
 
-  it('does the same for a dimension label anchor, which is also one pixel', () => {
+  it('still loses the point to a dimension label anchor, which is also one pixel', () => {
     const { image, p, renderer } = scene()
     const pt = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:L1:start')
     const label = p.registry.allocate(DIMENSION_LABEL_LAYER_NAME, 'dim:c_length_1')

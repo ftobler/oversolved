@@ -12,7 +12,7 @@ describe('IdPipeline layering', () => {
     expect(layers.map(l => l.name)).toEqual([
       'planeFace',
       FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-      'sketchSurface', 'sketchEntity', 'sketchVertex', 'originMarker', 'dimensionLabel',
+      'sketchSurface', 'sketchEntity', 'originMarker', 'sketchVertex', 'dimensionLabel',
       'featureHandle', 'gizmoHandle',
     ])
     p.dispose()
@@ -27,8 +27,8 @@ describe('IdPipeline layering', () => {
     expect(layers[3].zPolicy).toBe('depth-test-against-prev')   // vertex: preserves face depth for sketch surface
     expect(layers[4].zPolicy).toBe('depth-test-against-prev')   // sketchSurface: occluded by real B-rep depth
     expect(layers[5].zPolicy).toBe('clear-then-fresh')          // sketchEntity
-    expect(layers[6].zPolicy).toBe('no-depth')                  // sketchVertex
-    expect(layers[7].zPolicy).toBe('no-depth')                  // originMarker
+    expect(layers[6].zPolicy).toBe('no-depth')                  // originMarker
+    expect(layers[7].zPolicy).toBe('no-depth')                  // sketchVertex
     expect(layers[8].zPolicy).toBe('no-depth')                  // dimensionLabel
     expect(layers[9].zPolicy).toBe('no-depth')                  // featureHandle
     expect(layers[10].zPolicy).toBe('no-depth')                 // gizmoHandle
@@ -37,7 +37,10 @@ describe('IdPipeline layering', () => {
 
   it('addLayer keeps the array sorted by priority', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
-    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90])
+    // originMarker at 45, between sketchEntity and sketchVertex: it must beat
+    // the plane and the sketch curves it sits on, and lose to a sketch point
+    // that shares its position. See the note at its construction.
+    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 20, 30, 40, 45, 50, 70, 80, 90])
     p.dispose()
   })
 

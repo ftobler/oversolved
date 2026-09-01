@@ -4,10 +4,11 @@ import { useRegisteredBody } from './idRegistrationUtils'
 /**
  * Register the origin marker as a single pickable vertex.
  *
- * The originMarker ID layer is the highest-priority layer in the pipeline
- * (priority=60) with `depthTest=false`, so the origin pick wins over any
- * face/edge/vertex/plane/sketch pixel directly behind it -- matching the
- * visible-pass on-top behavior set in #255.
+ * The originMarker ID layer runs at priority 45 with `depthTest=false`, so the
+ * origin pick wins over any face/edge/plane/sketch-curve pixel directly behind
+ * it -- matching the visible-pass on-top behavior set in #255. It deliberately
+ * sits BELOW `sketchVertex`: see the ordering note at its construction in
+ * `IdPipeline`.
  */
 export function useOriginMarkerIdRegistration(params: {
   selectionId: string

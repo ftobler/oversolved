@@ -167,7 +167,8 @@ export class IdPipeline {
 
     // Helper layers. The plane renders at a negative priority so it sits
     // behind the B-rep stack -- bodies occlude the plane in the ID buffer.
-    // Order: planeFace (-10) -> B-rep (0/10/20) -> sketchEntity (40) -> ...
+    // Order: planeFace (-10) -> B-rep (0/10/20) -> sketchSurface (30) ->
+    // sketchEntity (40) -> originMarker (45) -> sketchVertex (50) -> ...
     this.planeLayer = new FaceIdLayer(this.registry, {
       name: PLANE_LAYER_NAME, priority: -10, zPolicy: 'clear-then-fresh',
     })
@@ -181,8 +182,19 @@ export class IdPipeline {
     this.sketchVertexLayer = new VertexIdLayer(this.registry, {
       name: SKETCH_VERTEX_LAYER_NAME, priority: 50, zPolicy: 'no-depth',
     })
+    // Below the sketch vertex rather than above it, which is the one place the
+    // ladder is not simply "later layers win". The origin has to beat the plane,
+    // the body and the sketch geometry it sits on -- that is what 45 buys, and
+    // it is why the marker is up here at all. It must NOT beat a sketch point
+    // that shares its position, which happens the moment anything is
+    // constrained to it, i.e. in almost every sketch: the marker is a global
+    // datum that can be neither dragged nor dimensioned, so answering with it
+    // where a real point exists takes capability away, while constraining to a
+    // point already pinned to the origin lands in the same place. The point is
+    // the more specific of two things at one spot, which is the rule the rest
+    // of the ladder already expresses.
     this.originLayer = new VertexIdLayer(this.registry, {
-      name: ORIGIN_LAYER_NAME, priority: 60, zPolicy: 'no-depth',
+      name: ORIGIN_LAYER_NAME, priority: 45, zPolicy: 'no-depth',
     })
     this.dimensionLabelLayer = new VertexIdLayer(this.registry, {
       name: DIMENSION_LABEL_LAYER_NAME, priority: 70, zPolicy: 'no-depth',
@@ -213,8 +225,8 @@ export class IdPipeline {
     this.addLayer(this.vertexLayer)  //  20
     this.addLayer(this.sketchSurfaceLayer)  //  30
     this.addLayer(this.sketchEntityLayer)    //  40
+    this.addLayer(this.originLayer)          //  45
     this.addLayer(this.sketchVertexLayer)    //  50
-    this.addLayer(this.originLayer)          //  60
     this.addLayer(this.dimensionLabelLayer)  //  70
     this.addLayer(this.featureHandleLayer)   //  80
     this.addLayer(this.gizmoHandleLayer)     //  90
