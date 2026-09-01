@@ -323,6 +323,29 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
   })
 
+  it('cancelling an instance edit on a clean document does not mark it dirty', async () => {
+    // The revert re-runs through `mutate`, which always sets dirty true; Cancel
+    // must restore the flag to what it was when the editor opened, so a Cancel
+    // on a saved doc cannot leave the save prompt lit.
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Save'))
+    await tick()
+    await tick()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.click(screen.getByLabelText('Fixed'))
+    await tick()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()  // let the revert's re-solve settle
+    expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
   it('editing an instance sets its position from the numeric fields', async () => {
     await renderLoaded()
     await insertPart('Bracket')

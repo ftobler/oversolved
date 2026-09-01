@@ -153,11 +153,12 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
 
     act(() => { result.current.commitEditSession() })
 
-    // The suppressed path is unchanged: the preview folds in first, then the
-    // session aggregate, so undo pops the gesture then the color.
+    // The aggregate edit_session is pushed first, then the preview_commit on
+    // top: the color was the last interaction, so its undo comes first and must
+    // not resurrect the swallowed edits on the second undo.
     expect(result.current.undoStack).toHaveLength(2)
-    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
-    expect(result.current.undoStack[1].mutation.type).toBe('edit_session')
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
+    expect(result.current.undoStack[1].mutation.type).toBe('preview_commit')
   })
 
   it('cancelling a sketch session with an open preview drops the refs so the later Cancel is inert', () => {

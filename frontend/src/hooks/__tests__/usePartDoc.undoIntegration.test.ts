@@ -740,11 +740,13 @@ describe('usePartDoc undo/redo integration', () => {
 
     // OK on the feature edit fires with the color popover still open (no
     // Apply was ever clicked): the session boundary must resolve the preview
-    // itself, landing preview_commit under the session's own aggregate.
+    // itself. The aggregate edit_session is pushed first so the preview_commit
+    // sits on top -- the preview was the last interaction, so its undo must
+    // come first and not resurrect the swallowed edits on the second undo.
     act(() => { result.current.commitEditSession() })
     expect(result.current.undoStack).toHaveLength(2)
-    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
-    expect(result.current.undoStack[1].mutation.type).toBe('edit_session')
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
+    expect(result.current.undoStack[1].mutation.type).toBe('preview_commit')
     const afterCommit = structuredClone(docRef.current)
 
     // The popover is still visually open; dragging it again is now a plain
@@ -1002,10 +1004,11 @@ describe('usePartDoc undo/redo integration', () => {
     expect((docRef.current.features ?? []).map((f: { id: string }) => f.id)).toEqual(['f1', 'f2', 'f3', 'f4'])
   })
 
-  it('a suppressed session whose only change is part_style leaves no aggregate entry', () => {
+  it('a suppressed session whose only change is part_style still leaves an undo entry', () => {
     // part_style is excluded from the session diff because the solver
-    // fabricates it during a solve; a session whose only real difference is
-    // part_style must not manufacture an undo entry either.
+    // fabricates it during a solve, but a genuine user color change swallowed
+    // by the session is a real edit that must stay undoable -- otherwise the
+    // change lands in the doc (and dirties it) yet can never be reverted.
     docRef.current = {
       oversolved: 1,
       kind: 'part',
@@ -1019,7 +1022,51 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     act(() => { result.current.commitEditSession() })
 
-    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
+
+    // Undo reverts the swallowed color back to what the session started with.
+    act(() => { result.current.handleUndo() })
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+  })
+
+  it('a preview opened mid suppressed session commits preview_commit on top so two undos return to the pre-session doc', () => {
+    // The popover is opened AFTER the session already has edits (so its baseline
+    // is the edited doc, not the pre-session one). The color is the last thing
+    // the user touched, so undo must revert the color first and the edits
+    // second -- never resurrect the swallowed edits on the second undo.
+    docRef.current = {
+      oversolved: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('edited')) })
+    // Open the color preview now, while the session already holds the rename.
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+    act(() => { result.current.commitEditSession() })
+
+    // Top entry is the preview_commit (last interaction); beneath it the
+    // aggregate edit_session that restores the pre-session doc.
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
+    expect(result.current.undoStack[1].mutation.type).toBe('preview_commit')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
+
+    // Undo 1: revert the color only, the rename stays.
+    act(() => { result.current.handleUndo() })
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+    expect((docRef.current.features?.[0] as { label?: string }).label).toBe('edited')
+
+    // Undo 2: revert the edits, back to the pre-session doc.
+    act(() => { result.current.handleUndo() })
+    expect((docRef.current.features?.[0] as { label?: string }).label).toBe('first')
   })
 
   it('no-op visibility and suppression toggles push nothing and neither dirty nor re-solve', () => {

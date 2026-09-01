@@ -122,6 +122,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // (mates and instances edit the doc in place; there is no other undo point).
   const mateSnapshot = useRef<{ id: string; def: MateFeatureDef } | null>(null)
   const instanceSnapshot = useRef<{ handle: string; inst: PartInstance } | null>(null)
+  // The dirty flag captured when an editor opened, so Cancel can restore it.
+  // The revert re-runs through `mutate`, which always sets dirty true, but the
+  // reverted doc equals the pre-edit doc, so the flag must return to whatever
+  // it was -- a Cancel on a clean doc must not leave the save prompt lit.
+  const editOpenDirtyRef = useRef(false)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
   // A failed list is swallowed on purpose: names are a nicety here and the tree
@@ -466,6 +471,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     closeOpenEditor()
     const inst = doc ? findInstance(doc, handle) : undefined
     instanceSnapshot.current = inst ? { handle, inst: { ...inst } } : null
+    editOpenDirtyRef.current = useUnsavedChangesStore.getState().dirty
     setEditingInstanceHandle(handle)
     useAssemblyStore.getState().setSelectedPartHandle(handle)
   }, [doc, closeOpenEditor])
@@ -483,7 +489,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (snap) mutate('Reset instance', d => replaceInstance(d, snap.handle, snap.inst))
     instanceSnapshot.current = null
     // Cancel discards the coalesced session: the snapshot reverted the edits,
-    // so there is nothing to record.
+    // so there is nothing to record. The revert re-dirtied the doc; restore the
+    // flag to what it was when the editor opened.
+    useUnsavedChangesStore.getState().setDirty(editOpenDirtyRef.current)
     cancelSession()
     setEditingInstanceHandle(null)
     requestSolve()  // undo any live position/fixed edit
@@ -535,6 +543,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (mateSnapshot.current?.id !== featureId) {
       const def = doc ? findMate(doc, featureId) : undefined
       mateSnapshot.current = def ? { id: featureId, def: { ...def } } : null
+      editOpenDirtyRef.current = useUnsavedChangesStore.getState().dirty
     }
     useAssemblyStore.getState().setSelectedMateId(featureId)
     setEditingMateId(featureId)
@@ -556,7 +565,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (snap) mutate('Reset mate', d => replaceMate(d, snap.id, snap.def))
     mateSnapshot.current = null
     // Cancel discards the coalesced session: the snapshot reverted the edits,
-    // so there is nothing to record.
+    // so there is nothing to record. The revert re-dirtied the doc; restore the
+    // flag to what it was when the editor opened.
+    useUnsavedChangesStore.getState().setDirty(editOpenDirtyRef.current)
     cancelSession()
     setEditingMateId(null)
     store.setSelectedMateId(null)

@@ -276,6 +276,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   // entry.
   const previewTouchedRef = useRef(false)
   const editSnapshotRef = useRef<PartDoc | null>(null)
+  // Whether the suppressed (feature) edit session swallowed a part_style
+  // mutation. The session diff excludes part_style (the solver fabricates
+  // entries there), so a genuine user color/visibility change during the
+  // session would otherwise leave no undo entry to revert it. This flag forces
+  // the aggregate entry when that happened.
+  const sessionStyleTouchedRef = useRef(false)
   // Whether the active edit session suppresses per-action undo entries. A
   // suppressed (feature) session commits one aggregate; a sketch session keeps
   // each action as its own entry and must not be folded on commit.
@@ -303,6 +309,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     brepWithholdRef.current = { armed: false, doc: null }
     previewOriginalDoc.current = null
     previewTouchedRef.current = false
+    sessionStyleTouchedRef.current = false
     undoTeardownRef.current?.()
   }, [])
 
@@ -551,6 +558,12 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       if (previewOriginalDoc.current !== null && PREVIEW_SCOPE.has(m.type)) {
         previewTouchedRef.current = true
       }
+      // A swallowed part_style mutation is a real user change the session diff
+      // cannot see (it strips part_style); remember it so commit pushes an
+      // entry that can revert the color/visibility, not just the feature spec.
+      if (BODY_STYLE_MUTATION_TYPES.has(m.type)) {
+        sessionStyleTouchedRef.current = true
+      }
       // A swallow still fulfils the withhold's "next mutation" contract: the
       // mutation applies without an entry, so consume the arm exactly like the
       // projection branch does. Leaving it armed would leak past the
@@ -611,6 +624,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     // suppressed (feature) session folds into one aggregate entry, a sketch
     // session keeps its per-action entries and pushes nothing extra.
     editSessionSuppressedRef.current = suppressUndo
+    // A fresh session starts with no swallowed part_style; the flag is only
+    // meaningful within one session and must not leak across boundaries.
+    sessionStyleTouchedRef.current = false
     saveUndoStackSnapshot()
     if (suppressUndo) {
       suppressUndoRef.current = true
@@ -622,22 +638,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // No active session (e.g. add+enter pattern where only editingFeatureId
       // was set without starting a session). Silently skip.
       return
-    }
-    // Invariant: previewOriginalDoc may not survive a session boundary. A
-    // preview left open when the session commits (the popover's own Apply was
-    // never clicked) has no other resolver -- commitPreview/cancelPreview only
-    // run from the popover's own buttons -- so it is folded in here first,
-    // while editSessionSuppressedRef is still true, so commitPreview's own
-    // suppress gate sees the session still active and leaves suppression on
-    // for the aggregate push below. This lands a suppressed session's stack in
-    // order [preview_commit, edit_session]: undo pops the aggregate first
-    // (reverts the whole gesture), then the preview. The resolution is
-    // unconditional: every session boundary, suppressed or not, must clear an
-    // open preview, or a later popover Apply keys its preview_commit to a doc
-    // that predates the session, inverting the undo order and resurrecting a
-    // swallowed color on the second undo.
-    if (previewOriginalDoc.current !== null) {
-      commitPreview({ type: 'preview_commit', description: 'preview resolved at session commit' })
     }
     const snapshot = editSnapshotRef.current
     const suppressed = editSessionSuppressedRef.current
@@ -653,7 +653,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // look dead to the user. The whole-doc diff excludes part_style (the
       // solver fabricates entries there during a solve) and rollback (the
       // mirror is gated on editingFeatureId === null, so it cannot drift here).
+      // A part_style mutation swallowed by the session is a real user change
+      // the diff cannot see, so it forces the entry too -- unless an open
+      // preview is about to resolve it on its own below, in which case the
+      // preview_commit already reverts the color and a second entry would be
+      // redundant.
       const changed = docDiffersForSession(snapshot, docRef.current)
+        || (sessionStyleTouchedRef.current && previewOriginalDoc.current === null)
       if (changed) {
         // The store still holds the edited feature here (commitEditSession runs
         // before the caller's exit cleanup clears it), so the undo label can name
@@ -661,6 +667,18 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
         const featureId = usePartEditorStore.getState().editingFeatureId ?? ''
         pushUndo({ type: 'edit_session', featureId }, snapshot)
       }
+    }
+    // An open preview left at the session boundary (its own Apply was never
+    // clicked) has no other resolver, so it folds in here. This must run AFTER
+    // the aggregate edit_session push above: the preview is the last action
+    // the user took, so its entry belongs on top. Reversed, the first undo
+    // would revert both the edits and the color, and the second would re-apply
+    // the edits alone -- two undos would not return to the pre-session doc.
+    // The resolution is unconditional: every session boundary clears an open
+    // preview, or a later popover Apply keys its preview_commit to a doc that
+    // predates the session.
+    if (previewOriginalDoc.current !== null) {
+      commitPreview({ type: 'preview_commit', description: 'preview resolved at session commit' })
     }
     clearUndoStackSnapshot()
   }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, docRef, commitPreview])
@@ -680,6 +698,7 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // becomes a null no-op instead of a second, stale rewind.
       previewOriginalDoc.current = null
       previewTouchedRef.current = false
+      sessionStyleTouchedRef.current = false
       editSnapshotRef.current = null
       editSessionSuppressedRef.current = false
       suppressUndoRef.current = false
@@ -734,6 +753,13 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
     const editorStore = usePartEditorStore.getState()
     if (editorStore.editingFeatureId === null) {
+      // Mirror the single-mutation funnel's guard: a set_rollback whose payload
+      // disagrees with the store was dispatched without pre-syncing it, which
+      // would silently no-op while still pushing a dead entry.
+      const rollback = ms.find(m => m.type === 'set_rollback') as Extract<Mutation, { type: 'set_rollback' }> | undefined
+      if (rollback && editorStore.rollbackPosition !== rollback.position) {
+        failLoud('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
+      }
       applySetRollback(next, editorStore.rollbackPosition)
     }
 
@@ -777,6 +803,11 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
       // mutation is swallowed as "the projection".
       if (brep.armed) {
         brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
+      }
+      // Mirror the single-mutation funnel: a swallowed part_style mutation must
+      // still earn an undo entry at commit.
+      if (ms.some(m => BODY_STYLE_MUTATION_TYPES.has(m.type))) {
+        sessionStyleTouchedRef.current = true
       }
     } else {
       // The first mutation names the entry so the undo tooltip has a label;

@@ -151,6 +151,20 @@ describe('doc.rollback mirrors the rollback bar', () => {
     }).toThrow('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
   })
 
+  it('a grouped set_rollback without a pre-synced store fails loud, matching the single path', () => {
+    // The gesture-group funnel must trip the same guard the single-mutation
+    // funnel does, or a set_rollback smuggled inside a group would silently
+    // no-op while still pushing an entry (the single path's exact failure mode).
+    setDoc(makeDoc())
+    usePartEditorStore.getState().setRollbackPosition(null)
+    const { result } = renderPartDoc()
+
+    expect(() => {
+      act(() => { result.current.commitMutationGroup([{ type: 'set_rollback', position: 2 }] as Mutation[]) })
+    }).toThrow('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
   it('a reorder leaves a parked rollback index pointing at the raw position', () => {
     // Rollback is a plain index into the feature list, deliberately not a
     // pointer that follows the reordered feature: the mirror rewrites
