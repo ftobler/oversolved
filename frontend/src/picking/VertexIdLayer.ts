@@ -3,6 +3,8 @@ import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { VERTEX_LAYER_NAME } from './layerNames'
 import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
+import { markPositionKey } from './markPosition'
+import { idToRGBNormalized } from './idEncoding'
 
 /**
  * Concrete ID layer for B-rep vertices.
@@ -11,6 +13,11 @@ import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
  * ID buffer's windowed resolver (default 17px) provides the snap radius, so
  * the drawn footprint only has to mark where the vertex is, not how far the
  * snap reaches.
+ *
+ * Every mark's position is published to the registry, because a footprint this
+ * small cannot share: two vertices at one place write one pixel and the later
+ * draw erases the earlier rather than ranking above it. The published position
+ * is what lets a resolve recover the ones that lost.
  *
  * Two shapes, chosen by `cubePixels`:
  *
@@ -228,8 +235,16 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
       // Keyed on the vertex's own index i, not on `written`: the pick key has to
       // match what Body3D recomputes from the registration's vertex list, which
       // includes the query-less vertices this loop skips.
-      const [r, g, b] = ids.rgbFor(i, query)
+      const id = ids.idFor(i, query)
+      const [r, g, b] = idToRGBNormalized(id)
       const v = vertices[i]
+      // Publish where this mark lands. A vertex marks a POINT -- one pixel here,
+      // one small cube in the b-rep path -- so a second vertex at the same place
+      // does not sit beside it, it overwrites it outright and leaves nothing in
+      // the buffer to resolve. Telling the registry where each mark is lets the
+      // resolver hand back everything at that position instead of only whichever
+      // draw happened to be last. See `IdRegistry.setMarkPosition`.
+      this.registry.setMarkPosition(id, markPositionKey(v[0], v[1], v[2]))
       const base = written * 3
       positions[base]     = v[0]
       positions[base + 1] = v[1]

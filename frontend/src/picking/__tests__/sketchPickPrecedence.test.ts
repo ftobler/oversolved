@@ -22,10 +22,10 @@ import { IdImage } from './pickCanvasHarness'
  * those, priority has nothing to say, so they are separated only by distance --
  * and, when they land on one pixel, by which was written last.
  *
- * `INFERRED_TOL` (snapDetection) dedups the inferred set against itself at
- * 1e-3 SKETCH UNITS. That is a world-space guard on a pixel-space collision:
- * how many millimetres fall in one pixel is a function of zoom, so two marks
- * that are distinct at one zoom share a pixel at another.
+ * Between those two populations a shared pixel used to be an ERASURE with a
+ * fixed direction, because the inferred handles are appended last. It is now a
+ * co-location the registry knows about, so both come back; what remains is that
+ * only one of them can be the answer, and priority has no opinion on which.
  */
 
 const SIZE = 160
@@ -110,40 +110,44 @@ describe('sketch precedence: inside the vertex layer, priority has nothing to sa
     p.dispose()
   })
 
-  it('erases the real point when an inferred handle lands on its pixel', () => {
+  it('no longer loses the real point to an inferred handle on its pixel', () => {
     // `useSketchIdRegistration` appends the inferred contacts AFTER the real
-    // vertices into one THREE.Points, so on a shared pixel the handle is what
-    // survives -- always in that direction, never the other. The real point is
-    // then absent from the buffer, so it is not last in the candidate list, it
-    // is not in it. The dedup that exists (INFERRED_TOL, 1e-3 sketch units)
-    // cannot see this: whether two marks share a pixel depends on zoom.
+    // vertices into one THREE.Points, so the handle used to be drawn last and
+    // the real point left the buffer entirely -- always in that direction,
+    // never the other. The dedup that exists could not see it: `INFERRED_TOL`
+    // is 1e-3 SKETCH UNITS, and how many units fall in one pixel is a function
+    // of zoom. Now both are registered at one position, so the pixel is one
+    // mark that answers for both, and the real point leads because it was
+    // registered first.
     const { image, p, renderer } = scene()
-    const real = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:L1:end')
+    p.sketchVertexLayer.registerBody({
+      bodyKey: 'S1',
+      vertices: [[2, 3, 0], [2, 3, 0]],
+      vertexQueries: ['vertex:S1:L1:end', 'dock:S1:C1:L1'],
+    })
     const curve = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'entity:S1:C1')
-    const dock = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'dock:S1:C1:L1')
     image.line(MID - 40, MID, MID + 40, MID, curve)
-    image.mark(MID, MID, real)
+    image.mark(MID, MID, p.registry.lookupKey(SKETCH_VERTEX_LAYER_NAME, 'dock:S1:C1:L1')!)
     expect(p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey))
-      .toEqual(['vertex:S1:L1:end', 'entity:S1:C1'])
-    image.mark(MID, MID, dock)  // same pixel, written later
-    const keys = p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey)
-    expect(keys).toEqual(['dock:S1:C1:L1', 'entity:S1:C1'])
-    expect(keys).not.toContain('vertex:S1:L1:end')
+      .toEqual(['vertex:S1:L1:end', 'dock:S1:C1:L1', 'entity:S1:C1'])
     p.dispose()
   })
 
-  it('erases one real point with another when two share a pixel', () => {
-    // The same thing without any inferred set involved: a line end drawn onto a
-    // circle with no coincident constraint yet. `suppressedCoincidentVertexIds`
-    // only hides CONSTRAINT-backed partners, so an unconstrained overlap is two
-    // live registrations competing for one pixel.
+  it('no longer loses one real point to another sharing its pixel', () => {
+    // The same thing with no inferred set involved: a line end drawn onto a
+    // circle before the coincident constraint exists.
+    // `suppressedCoincidentVertexIds` merges only CONSTRAINT-backed partners --
+    // and deliberately so, since dropping the constraint must bring both handles
+    // back -- so an unconstrained overlap is two live registrations at one spot.
     const { image, p, renderer } = scene()
-    const a = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:L1:end')
-    const b = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:C1:center')
-    image.mark(MID, MID, a)
-    image.mark(MID, MID, b)
+    p.sketchVertexLayer.registerBody({
+      bodyKey: 'S1',
+      vertices: [[5, 5, 0], [5, 5, 0]],
+      vertexQueries: ['vertex:S1:L1:end', 'vertex:S1:C1:center'],
+    })
+    image.mark(MID, MID, p.registry.lookupKey(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:C1:center')!)
     expect(p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey))
-      .toEqual(['vertex:S1:C1:center'])
+      .toEqual(['vertex:S1:L1:end', 'vertex:S1:C1:center'])
     p.dispose()
   })
 })

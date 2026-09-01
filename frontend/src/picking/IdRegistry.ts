@@ -1,5 +1,9 @@
 import { MAX_ID } from './idEncoding'
 
+// Shared empty result so the common "this id marks no point" answer allocates
+// nothing on a path that runs once per candidate per resolve.
+const EMPTY_MARK_IDS: readonly number[] = []
+
 /**
  * Central allocator mapping {layer, entityKey} <-> stable 24-bit integer ID.
  *
@@ -34,6 +38,19 @@ export class IdRegistry {
   private pendingFree = new Set<number>()
   private freeList: number[] = []  // eligible for reuse now
 
+  // Where each id's mark sits, and who else is there. A point-marking layer
+  // publishes its positions here at registration (see `VertexIdLayer`), which is
+  // what lets a resolve recover the marks that lost their pixel: a mark one
+  // pixel wide has no room to lose an argument, so when two land on the same
+  // pixel the later draw does not rank above the earlier one, it ERASES it. The
+  // buffer then answers WHERE the cursor is and this answers WHAT is there.
+  //
+  // Two maps rather than one: the id -> key direction is what a hit has in
+  // hand, and the key -> ids direction has to preserve registration order so an
+  // expansion is deterministic rather than dependent on which draw won the pixel.
+  private markPositionById = new Map<number, string>()
+  private idsByMarkPosition = new Map<string, number[]>()
+
   private composeKey(layer: string, entityKey: string): string {
     return layer + '\u0000' + entityKey
   }
@@ -67,11 +84,53 @@ export class IdRegistry {
     // gets a fresh ID, but keep the byId record until bumpCycle() so async
     // readbacks pending against the current ID buffer still decode correctly.
     this.byKey.delete(this.composeKey(record.layer, record.pickKey))
+    // Dropped now rather than at bumpCycle, unlike the byId record: a freed id
+    // is about to be handed to a re-registered primitive at a possibly different
+    // position, and a stale entry would co-locate it with whatever used to be
+    // there.
+    const markKey = this.markPositionById.get(id)
+    if (markKey !== undefined) this.dropMarkPosition(id, markKey)
     this.pendingFree.add(id)
   }
 
   lookup(id: number): IdRecord | undefined {
     return this.byId.get(id)
+  }
+
+  /**
+   * Record where `id`'s mark is drawn, so co-located marks can find each other.
+   * Only layers that mark a POINT call this: a curve or a face covers many
+   * pixels and cannot be erased by a single overlap, so it has nothing to
+   * recover and nothing to contribute.
+   */
+  setMarkPosition(id: number, key: string): void {
+    const prev = this.markPositionById.get(id)
+    if (prev === key) return
+    if (prev !== undefined) this.dropMarkPosition(id, prev)
+    this.markPositionById.set(id, key)
+    const at = this.idsByMarkPosition.get(key)
+    if (at) at.push(id)
+    else this.idsByMarkPosition.set(key, [id])
+  }
+
+  /**
+   * Every id whose mark shares a position with `id`'s, in registration order and
+   * including `id` itself. One element means nothing was co-located; none means
+   * `id` marks no point at all.
+   */
+  coincidentMarkIds(id: number): readonly number[] {
+    const key = this.markPositionById.get(id)
+    if (key === undefined) return EMPTY_MARK_IDS
+    return this.idsByMarkPosition.get(key) ?? EMPTY_MARK_IDS
+  }
+
+  private dropMarkPosition(id: number, key: string): void {
+    this.markPositionById.delete(id)
+    const at = this.idsByMarkPosition.get(key)
+    if (!at) return
+    const i = at.indexOf(id)
+    if (i >= 0) at.splice(i, 1)
+    if (at.length === 0) this.idsByMarkPosition.delete(key)
   }
 
   lookupKey(layer: string, entityKey: string): number | undefined {
@@ -96,6 +155,8 @@ export class IdRegistry {
   clear(): void {
     this.byId.clear()
     this.byKey.clear()
+    this.markPositionById.clear()
+    this.idsByMarkPosition.clear()
     this.pendingFree.clear()
     this.freeList.length = 0
     this.nextId = 1

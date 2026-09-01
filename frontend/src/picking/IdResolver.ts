@@ -73,6 +73,15 @@ export interface ResolveOptions {
  * defined as this list's first element, so a hover, a click and a candidate set
  * can never disagree about what "the" hit is.
  *
+ * Marks the registry knows to be CO-LOCATED expand into the same list, one
+ * candidate each. That is not a second idea beside it: "one pixel, several
+ * entities" is what this function has always meant at a corner, and two points
+ * at one position are the same situation reached from inside a layer rather
+ * than across three. The difference is that a point mark cannot share its
+ * pixel, so without the expansion the losers are not ranked last, they are
+ * absent -- see `IdRegistry.setMarkPosition`. Everything that already consumes
+ * this list covers them with no change.
+ *
  * `pixels` is laid out row-major, row 0 = top row of the window in canvas
  * coordinates (the caller is responsible for matching `readRenderTargetPixels`'s
  * y-flipped origin; this resolver is geometry-agnostic).
@@ -104,8 +113,9 @@ export function resolvePixelWindowAll(
   // resolver has always used. Without it a tie would fall to first-*seen* order,
   // and an entity whose first pixel was far but whose nearest pixel is tied
   // would jump ahead of one that was near all along.
-  interface Candidate { hit: ResolvedHit; prio: number; scanIndex: number }
+  interface Candidate { hit: ResolvedHit; prio: number; scanIndex: number; markOrder: number }
   const bestPerId = new Map<number, Candidate>()
+  const prioOf = (layer: string): number => layerPriority?.[layer] ?? 0
 
   let scanIndex = 0
   for (let y = 0; y < windowSize; y++) {
@@ -135,8 +145,9 @@ export function resolvePixelWindowAll(
       if (!existing) {
         bestPerId.set(id, {
           hit: { id, layer: rec.layer, entityKey: rec.entityKey, pickKey: rec.pickKey, distancePx: dist },
-          prio: layerPriority?.[rec.layer] ?? 0,
+          prio: prioOf(rec.layer),
           scanIndex,
+          markOrder: 0,
         })
       } else if (dist < existing.hit.distancePx) {
         existing.hit.distancePx = dist
@@ -145,8 +156,49 @@ export function resolvePixelWindowAll(
     }
   }
 
-  return [...bestPerId.values()]
-    .sort((p, q) => (q.prio - p.prio) || (p.hit.distancePx - q.hit.distancePx) || (p.scanIndex - q.scanIndex))
+  // Expand each lit mark into everything registered at its position, then sort
+  // the whole set once. Sorting after the expansion rather than before is what
+  // keeps the result a straight priority-then-distance ordering of ENTITIES: a
+  // recovered mark carries its own layer, so it has to be ranked on its own
+  // priority and not inherited into the position of the mark that outdrew it.
+  const candidates: Candidate[] = []
+  const seen = new Set<number>()
+  for (const c of bestPerId.values()) {
+    const coincident = registry.coincidentMarkIds(c.hit.id)
+    if (coincident.length < 2) {
+      if (!seen.has(c.hit.id)) { seen.add(c.hit.id); candidates.push(c) }
+      continue
+    }
+    for (let m = 0; m < coincident.length; m++) {
+      const mid = coincident[m]
+      if (seen.has(mid)) continue
+      if (mid === c.hit.id) {
+        seen.add(mid)
+        candidates.push({ ...c, markOrder: m })
+        continue
+      }
+      const rec = registry.lookup(mid)
+      if (!rec) continue
+      if (allowedLayers && !allowedLayers.has(rec.layer)) continue
+      seen.add(mid)
+      candidates.push({
+        // The recovered mark owns no pixel, so it borrows the distance of the
+        // one that covered it -- which is exact, not an approximation: they are
+        // at the same position, so the cursor is the same distance from both.
+        hit: {
+          id: mid, layer: rec.layer, entityKey: rec.entityKey, pickKey: rec.pickKey,
+          distancePx: c.hit.distancePx,
+        },
+        prio: prioOf(rec.layer),
+        scanIndex: c.scanIndex,
+        markOrder: m,
+      })
+    }
+  }
+
+  return candidates
+    .sort((p, q) => (q.prio - p.prio) || (p.hit.distancePx - q.hit.distancePx)
+      || (p.scanIndex - q.scanIndex) || (p.markOrder - q.markOrder))
     .map(c => c.hit)
 }
 

@@ -97,11 +97,12 @@ describe('catch geometry: one pixel marked, eight pixels of reach', () => {
     p.dispose()
   })
 
-  it('loses a one-pixel mark entirely when a later layer writes that pixel', () => {
-    // The failure mode a one-pixel mark has and a run of pixels does not. The
-    // origin draws after the sketch vertex, so a vertex constrained onto the
-    // document origin has its ONLY pixel overwritten: it is not outranked, it
-    // is absent, and no priority rule can recover it.
+  it('would lose a one-pixel mark entirely if nothing recorded where it was', () => {
+    // The failure mode a one-pixel mark has and a run of pixels does not, shown
+    // on ids that were allocated without registering a position (the state every
+    // mark was in before `IdRegistry.setMarkPosition`). The later write does not
+    // rank above the earlier one, it removes it: not last in the candidate list,
+    // absent from it, and no priority rule can recover what is not there.
     const { image, p, renderer } = scene()
     const vtx = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:E1:start')
     const origin = p.registry.allocate(ORIGIN_LAYER_NAME, '@builtin_origin')
@@ -114,43 +115,34 @@ describe('catch geometry: one pixel marked, eight pixels of reach', () => {
     p.dispose()
   })
 
-  it('drops the covered point out of the candidate list, not just off the top of it', () => {
-    // The distinction that matters for the pick chip and for any "cycle through
-    // what is here" affordance: an overwritten one-pixel mark cannot be cycled
-    // to, because resolveAllSync never sees it. A curve under the same cover
-    // survives on its other pixels.
+  it('recovers it once the layer has published where the mark is', () => {
+    // The same two entities registered the way the app registers them. One
+    // pixel still, one winner still -- the origin outranks and drew last -- but
+    // the covered mark is back in the list rather than gone from the buffer.
     const { image, p, renderer } = scene()
-    const curve = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'curve')
-    const point = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'pt')
-    const label = p.registry.allocate(DIMENSION_LABEL_LAYER_NAME, 'dim:c1')
-    image.line(MID - 60, MID, MID + 60, MID, curve)
-    image.mark(MID, MID, point)
-    image.mark(MID, MID, label)  // dimensionLabel draws after sketchVertex
-    const keys = p.resolveAllSync(renderer, { x: MID + 0.5, y: MID + 0.5 }).map(h => h.entityKey)
-    expect(keys).toEqual(['dim:c1', 'curve'])
-    expect(keys).not.toContain('pt')
+    p.sketchVertexLayer.registerBody({
+      bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:E1:start'],
+    })
+    p.originLayer.registerBody({
+      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    })
+    image.mark(MID, MID, p.registry.lookupKey(ORIGIN_LAYER_NAME, '@builtin_origin')!)
+    expect(p.resolveAllSync(renderer, { x: MID + 0.5, y: MID + 0.5 }).map(h => h.entityKey))
+      .toEqual(['@builtin_origin', 'vertex:S1:E1:start'])
     p.dispose()
   })
 
-  it('lets the curve answer once the cover is erased AND filtered out by the tool', () => {
-    // The full shape of "the line wins where the point should". Erasure alone
-    // hands the pick to the coverer, which is visible and explicable. But a
-    // drawing tool's allowedLayers admits plane / sketchEntity / sketchVertex /
-    // originMarker and NOT dimensionLabel, so a label anchor sitting on a
-    // vertex pixel removes the vertex from the buffer and then removes itself
-    // from the answer -- and the curve underneath, which was never covered
-    // anywhere else along its length, is what is left.
+  it('leaves a curve under the same cover answering from its other pixels', () => {
+    // The asymmetry that made this so hard to see: a run of pixels survives an
+    // overlap on its own, which is why edges and areas never showed the symptom
+    // and points showed it constantly.
     const { image, p, renderer } = scene()
     const curve = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'curve')
-    const point = p.registry.allocate(SKETCH_VERTEX_LAYER_NAME, 'pt')
     const label = p.registry.allocate(DIMENSION_LABEL_LAYER_NAME, 'dim:c1')
     image.line(MID - 60, MID, MID + 60, MID, curve)
-    image.mark(MID, MID, point)
-    const drawToolLayers = new Set([SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME])
-    const cursor = { x: MID + 0.5, y: MID + 0.5 }
-    expect(p.resolveSync(renderer, cursor, { allowedLayers: drawToolLayers })!.entityKey).toBe('pt')
     image.mark(MID, MID, label)
-    expect(p.resolveSync(renderer, cursor, { allowedLayers: drawToolLayers })!.entityKey).toBe('curve')
+    expect(p.resolveAllSync(renderer, { x: MID + 0.5, y: MID + 0.5 }).map(h => h.entityKey))
+      .toEqual(['dim:c1', 'curve'])
     p.dispose()
   })
 })

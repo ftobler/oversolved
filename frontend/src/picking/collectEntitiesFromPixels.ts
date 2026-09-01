@@ -32,7 +32,18 @@ export function collectEntitiesFromPixels(
       if (seen.has(id)) continue
       seen.add(id)
       const rec: IdRecord | undefined = registry.lookup(id)
-      if (rec) out.push({ layer: rec.layer, entityKey: rec.entityKey })
+      if (!rec) continue
+      out.push({ layer: rec.layer, entityKey: rec.entityKey })
+      // A mark that lost its pixel to a co-located one owns no pixel anywhere,
+      // so a box would never see it by scanning. It is inside the box just the
+      // same -- the mark that covered it is -- and the cursor resolver already
+      // hands both back, so the two selection routes agree.
+      for (const other of registry.coincidentMarkIds(id)) {
+        if (other === id || seen.has(other)) continue
+        seen.add(other)
+        const co = registry.lookup(other)
+        if (co) out.push({ layer: co.layer, entityKey: co.entityKey })
+      }
     }
   }
 

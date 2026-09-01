@@ -76,6 +76,7 @@ export class PrimitiveIdAllocator {
 
   private ids = new Set<number>()
   private rgbByIndex = new Map<number, [number, number, number]>()
+  private idByIndex = new Map<number, number>()
 
   constructor(registry: IdRegistry, layerName: string, plural: string, bodyKey: string, perPrimitive: boolean | undefined) {
     this.registry = registry
@@ -114,9 +115,23 @@ export class PrimitiveIdAllocator {
   rgbFor(idx: number, query: string): [number, number, number] {
     const cached = this.rgbByIndex.get(idx)
     if (cached) return cached
-    const rgb = idToRGBNormalized(this.allocate(idx, query))
+    const rgb = idToRGBNormalized(this.idFor(idx, query))
     this.rgbByIndex.set(idx, rgb)
     return rgb
+  }
+
+  /**
+   * Primitive `idx`'s ID itself, allocating it on first ask. Layers that only
+   * need a colour use `rgbFor`; a layer that also has to tell the registry
+   * something ABOUT the id -- where its mark landed, say -- needs the number.
+   * Memoized alongside the colour so asking for both costs one allocation.
+   */
+  idFor(idx: number, query: string): number {
+    const cached = this.idByIndex.get(idx)
+    if (cached !== undefined) return cached
+    const id = this.allocate(idx, query)
+    this.idByIndex.set(idx, id)
+    return id
   }
 
   private allocate(idx: number, query: string): number {
