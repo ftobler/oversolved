@@ -3,7 +3,6 @@ import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { VERTEX_LAYER_NAME } from './layerNames'
 import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
-import { markPositionKey } from './markPosition'
 import { idToRGBNormalized } from './idEncoding'
 
 /**
@@ -244,7 +243,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
       // the buffer to resolve. Telling the registry where each mark is lets the
       // resolver hand back everything at that position instead of only whichever
       // draw happened to be last. See `IdRegistry.setMarkPosition`.
-      this.registry.setMarkPosition(id, markPositionKey(v[0], v[1], v[2]))
+      this.registry.setMarkPosition(id, v[0], v[1], v[2])
       const base = written * 3
       positions[base]     = v[0]
       positions[base + 1] = v[1]

@@ -1,8 +1,21 @@
 import { MAX_ID } from './idEncoding'
+import { markCell, markCellKey, marksCoincide, MARK_CELL_NEIGHBOURS } from './markPosition'
 
 // Shared empty result so the common "this id marks no point" answer allocates
 // nothing on a path that runs once per candidate per resolve.
 const EMPTY_MARK_IDS: readonly number[] = []
+
+/** Where one id's mark sits. `seq` is the order it was published in, which is
+ *  what orders an expansion -- for a sketch that is the entity order, stable
+ *  across re-registrations and independent of which draw won the pixel. */
+interface MarkPosition {
+  x: number
+  y: number
+  z: number
+  cellKey: string
+  cell: readonly [number, number, number]
+  seq: number
+}
 
 /**
  * Central allocator mapping {layer, entityKey} <-> stable 24-bit integer ID.
@@ -45,11 +58,13 @@ export class IdRegistry {
   // pixel the later draw does not rank above the earlier one, it ERASES it. The
   // buffer then answers WHERE the cursor is and this answers WHAT is there.
   //
-  // Two maps rather than one: the id -> key direction is what a hit has in
-  // hand, and the key -> ids direction has to preserve registration order so an
-  // expansion is deterministic rather than dependent on which draw won the pixel.
-  private markPositionById = new Map<number, string>()
-  private idsByMarkPosition = new Map<string, number[]>()
+  // Two maps rather than one: the id -> position direction is what a hit has in
+  // hand, and the cell -> ids direction is the spatial index a lookup needs.
+  // The cell is a bucket, not the answer: co-location is decided by
+  // `marksCoincide`, and the cell only bounds how far a lookup has to look.
+  private markPositionById = new Map<number, MarkPosition>()
+  private idsByMarkCell = new Map<string, number[]>()
+  private markSeq = 0
 
   private composeKey(layer: string, entityKey: string): string {
     return layer + '\u0000' + entityKey
@@ -88,8 +103,8 @@ export class IdRegistry {
     // is about to be handed to a re-registered primitive at a possibly different
     // position, and a stale entry would co-locate it with whatever used to be
     // there.
-    const markKey = this.markPositionById.get(id)
-    if (markKey !== undefined) this.dropMarkPosition(id, markKey)
+    const mark = this.markPositionById.get(id)
+    if (mark !== undefined) this.dropMarkPosition(id, mark.cellKey)
     this.pendingFree.add(id)
   }
 
@@ -102,35 +117,68 @@ export class IdRegistry {
    * Only layers that mark a POINT call this: a curve or a face covers many
    * pixels and cannot be erased by a single overlap, so it has nothing to
    * recover and nothing to contribute.
+   *
+   * The position is stored at float32, the precision the position attribute is
+   * uploaded at, so what is indexed is what is drawn.
    */
-  setMarkPosition(id: number, key: string): void {
+  setMarkPosition(id: number, x: number, y: number, z: number): void {
+    const fx = Math.fround(x), fy = Math.fround(y), fz = Math.fround(z)
     const prev = this.markPositionById.get(id)
-    if (prev === key) return
-    if (prev !== undefined) this.dropMarkPosition(id, prev)
-    this.markPositionById.set(id, key)
-    const at = this.idsByMarkPosition.get(key)
+    if (prev && prev.x === fx && prev.y === fy && prev.z === fz) return
+    if (prev) this.dropMarkPosition(id, prev.cellKey)
+    const cell = markCell(fx, fy, fz)
+    const cellKey = markCellKey(cell[0], cell[1], cell[2])
+    this.markPositionById.set(id, { x: fx, y: fy, z: fz, cell, cellKey, seq: this.markSeq++ })
+    const at = this.idsByMarkCell.get(cellKey)
     if (at) at.push(id)
-    else this.idsByMarkPosition.set(key, [id])
+    else this.idsByMarkCell.set(cellKey, [id])
   }
 
   /**
    * Every id whose mark shares a position with `id`'s, in registration order and
    * including `id` itself. One element means nothing was co-located; none means
    * `id` marks no point at all.
+   *
+   * Grown transitively rather than as a flat "everything near `id`": a tolerance
+   * is not transitive on its own, so a straight radius query would answer
+   * differently depending on which member of a cluster was asked -- and the
+   * member being asked is whichever one happened to win the pixel, which is the
+   * dependence this index exists to remove. The closure is the same set from
+   * every member of it.
    */
   coincidentMarkIds(id: number): readonly number[] {
-    const key = this.markPositionById.get(id)
-    if (key === undefined) return EMPTY_MARK_IDS
-    return this.idsByMarkPosition.get(key) ?? EMPTY_MARK_IDS
+    const seed = this.markPositionById.get(id)
+    if (seed === undefined) return EMPTY_MARK_IDS
+    const found: Array<{ id: number; at: MarkPosition }> = [{ id, at: seed }]
+    const seen = new Set<number>([id])
+    // Index rather than iterator: `found` grows while it is being walked, which
+    // is what makes this a closure and not a single-hop query.
+    for (let i = 0; i < found.length; i++) {
+      const from = found[i].at
+      for (const [dx, dy, dz] of MARK_CELL_NEIGHBOURS) {
+        const bucket = this.idsByMarkCell.get(
+          markCellKey(from.cell[0] + dx, from.cell[1] + dy, from.cell[2] + dz))
+        if (!bucket) continue
+        for (const other of bucket) {
+          if (seen.has(other)) continue
+          const at = this.markPositionById.get(other)
+          if (!at || !marksCoincide(from.x, from.y, from.z, at.x, at.y, at.z)) continue
+          seen.add(other)
+          found.push({ id: other, at })
+        }
+      }
+    }
+    if (found.length === 1) return [id]
+    return found.sort((a, b) => a.at.seq - b.at.seq).map(m => m.id)
   }
 
-  private dropMarkPosition(id: number, key: string): void {
+  private dropMarkPosition(id: number, cellKey: string): void {
     this.markPositionById.delete(id)
-    const at = this.idsByMarkPosition.get(key)
+    const at = this.idsByMarkCell.get(cellKey)
     if (!at) return
     const i = at.indexOf(id)
     if (i >= 0) at.splice(i, 1)
-    if (at.length === 0) this.idsByMarkPosition.delete(key)
+    if (at.length === 0) this.idsByMarkCell.delete(cellKey)
   }
 
   lookupKey(layer: string, entityKey: string): number | undefined {
@@ -156,7 +204,8 @@ export class IdRegistry {
     this.byId.clear()
     this.byKey.clear()
     this.markPositionById.clear()
-    this.idsByMarkPosition.clear()
+    this.idsByMarkCell.clear()
+    this.markSeq = 0
     this.pendingFree.clear()
     this.freeList.length = 0
     this.nextId = 1

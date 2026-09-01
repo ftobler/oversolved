@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { markPositionKey } from '../markPosition'
+import { marksCoincide, axisCell, MARK_ABS_TOL, MARK_REL_TOL } from '../markPosition'
 import { IdRegistry } from '../IdRegistry'
 
 /**
@@ -11,24 +11,91 @@ import { IdRegistry } from '../IdRegistry'
  * is a wrong pick rather than a missing one, and worse.
  */
 
-describe('markPositionKey', () => {
-  it('buckets what float32 cannot tell apart, and nothing coarser', () => {
-    // The rule is "indistinguishable to everything downstream", because float32
-    // is the precision the position attribute is uploaded at. No epsilon to
-    // tune, and no dependence on zoom or camera.
-    expect(markPositionKey(10, 0, 0)).toBe(markPositionKey(10 + 1e-9, 0, 0))
-    expect(markPositionKey(10, 0, 0)).not.toBe(markPositionKey(10 + 1e-3, 0, 0))
+describe('marksCoincide', () => {
+  it('joins two derivations of one point that disagree by a float32 step', () => {
+    // The pair this index exists for, taken from a solved tangency: the line
+    // endpoint as the solver stored it, and the dock foot re-derived from the
+    // same params. They are one point, they write one pixel, and they differ
+    // in the last bit float32 has -- which is what an exact key splits on.
+    expect(marksCoincide(
+      7.9340643882751465, 5.224999904632568, 0,
+      7.9340643882751465, 5.225000381469727, 0)).toBe(true)
+  })
+
+  it('holds the window open near zero, where relative alone closes it', () => {
+    // A point constrained to the document origin solves to 1e-11, not to 0,
+    // and the origin marker is a literal 0. Without an absolute floor the
+    // relative window at that magnitude is 1e-17 and the two never meet.
+    expect(marksCoincide(0, 0, 0, -4.35e-12, -4.04e-11, 0)).toBe(true)
+  })
+
+  it('keeps apart what a user could see apart', () => {
+    // The window is a fraction of a pixel at any zoom that shows the
+    // coordinate, so it can only ever join marks that already share one.
+    expect(marksCoincide(10, 0, 0, 10 + 1e-3, 0, 0)).toBe(false)
+    expect(marksCoincide(10, 0, 0, 10 + 1e-4, 0, 0)).toBe(false)
+    expect(marksCoincide(10, 0, 0, 10 + 1e-9, 0, 0)).toBe(true)
+  })
+
+  it('scales the window with the magnitude, as float32 itself does', () => {
+    // A fixed absolute window would be coarser than the storage step at small
+    // coordinates and finer than it at large ones -- at x = 50 a one-step
+    // disagreement is 3.8e-6, and anything absolute enough to be safe at the
+    // origin would refuse it.
+    for (const x of [0.5, 5, 50, 5000]) {
+      expect(marksCoincide(x, 0, 0, x + x * MARK_REL_TOL * 0.5, 0, 0)).toBe(true)
+      expect(marksCoincide(x, 0, 0, x + x * MARK_REL_TOL * 4, 0, 0)).toBe(false)
+    }
+  })
+
+  it('is symmetric, so the answer does not depend on who is asked', () => {
+    const a: [number, number, number] = [5.224999904632568, 0, 0]
+    const b: [number, number, number] = [5.225000381469727, 0, 0]
+    expect(marksCoincide(...a, ...b)).toBe(marksCoincide(...b, ...a))
   })
 
   it('separates the axes rather than summing them', () => {
-    expect(markPositionKey(1, 2, 3)).not.toBe(markPositionKey(3, 2, 1))
-    expect(markPositionKey(0, 0, 0)).not.toBe(markPositionKey(0, 0, 1))
+    expect(marksCoincide(1, 2, 3, 3, 2, 1)).toBe(false)
+    expect(marksCoincide(0, 0, 0, 0, 0, 1)).toBe(false)
   })
 
   it('treats the two zeroes as one place', () => {
-    // -0 and 0 are the same point; a key that split them would leave a mark
-    // alone at a position another mark is also at.
-    expect(markPositionKey(-0, -0, -0)).toBe(markPositionKey(0, 0, 0))
+    expect(marksCoincide(-0, -0, -0, 0, 0, 0)).toBe(true)
+  })
+})
+
+describe('axisCell', () => {
+  it('is monotone, so cell order is coordinate order', () => {
+    const xs = [-1e6, -50, -1, -MARK_ABS_TOL * 2, 0, MARK_ABS_TOL * 2, 1, 50, 1e6]
+    const cells = xs.map(axisCell)
+    for (let i = 1; i < cells.length; i++) expect(cells[i]).toBeGreaterThan(cells[i - 1])
+  })
+
+  it('collapses the whole floor band into one cell', () => {
+    expect(axisCell(0)).toBe(0)
+    expect(axisCell(-0)).toBe(0)
+    expect(axisCell(1e-11)).toBe(0)
+    expect(axisCell(-1e-11)).toBe(0)
+  })
+
+  it('numbers the cells either side of the floor next to it, not away from it', () => {
+    // The floor is a much wider cell than its neighbours, so contiguity is not
+    // automatic -- and without it a neighbour probe falls off the band instead
+    // of crossing it, which is the near-origin half of the bug.
+    expect(axisCell(MARK_ABS_TOL * 1.0000001)).toBe(1)
+    expect(axisCell(-MARK_ABS_TOL * 1.0000001)).toBe(-1)
+  })
+
+  it('puts coincident coordinates no further than one cell apart', () => {
+    // The invariant the 27-cell probe rests on: a cell is wider than the
+    // window, so nothing inside the window can be two cells away.
+    for (const x of [1e-6, 0.5, 5.225, 50, 5000]) {
+      for (const d of [MARK_REL_TOL, -MARK_REL_TOL, MARK_REL_TOL / 3]) {
+        const y = x + x * d
+        if (!marksCoincide(x, 0, 0, y, 0, 0)) continue
+        expect(Math.abs(axisCell(x) - axisCell(y))).toBeLessThanOrEqual(1)
+      }
+    }
   })
 })
 
@@ -42,7 +109,7 @@ describe('IdRegistry mark positions', () => {
   it('reports a lone mark as itself alone', () => {
     const reg = new IdRegistry()
     const id = reg.allocate('sketchVertex', 'v1')
-    reg.setMarkPosition(id, markPositionKey(1, 1, 0))
+    reg.setMarkPosition(id, 1, 1, 0)
     expect(reg.coincidentMarkIds(id)).toEqual([id])
   })
 
@@ -51,23 +118,60 @@ describe('IdRegistry mark positions', () => {
     const a = reg.allocate('sketchVertex', 'a')
     const b = reg.allocate('sketchVertex', 'b')
     const c = reg.allocate('originMarker', 'c')
-    const at = markPositionKey(2, 3, 0)
-    reg.setMarkPosition(a, at)
-    reg.setMarkPosition(b, at)
-    reg.setMarkPosition(c, at)
+    for (const id of [a, b, c]) reg.setMarkPosition(id, 2, 3, 0)
     expect(reg.coincidentMarkIds(a)).toEqual([a, b, c])
     expect(reg.coincidentMarkIds(c)).toEqual([a, b, c])
+  })
+
+  it('groups marks that only nearly agree, from either end', () => {
+    // The real pair, through the registry: a solved endpoint and the dock foot
+    // re-derived from it. Whichever one the caller holds, the other is in the
+    // answer -- which is the property the pixel cannot supply, since only one
+    // of the two survives being drawn.
+    const reg = new IdRegistry()
+    const vertex = reg.allocate('sketchVertex', 'vertex:S1:L1:end')
+    const dock = reg.allocate('sketchVertex', 'dock:S1:c_tangent')
+    reg.setMarkPosition(vertex, 7.9340643882751465, 5.224999904632568, 0)
+    reg.setMarkPosition(dock, 7.934064194956269, 5.225000198183635, 0)
+    expect(reg.coincidentMarkIds(vertex)).toEqual([vertex, dock])
+    expect(reg.coincidentMarkIds(dock)).toEqual([vertex, dock])
+  })
+
+  it('answers a chain with the whole chain, whichever link is asked', () => {
+    // A tolerance is not transitive: a-b and b-c can both be inside the window
+    // with a-c outside it. A single-hop query would then answer differently
+    // depending on which mark won the pixel, and which mark wins the pixel is
+    // exactly what this index refuses to let matter.
+    const reg = new IdRegistry()
+    const step = 5 * MARK_REL_TOL * 0.6
+    const ids = [0, 1, 2].map(i => reg.allocate('sketchVertex', `v${i}`))
+    ids.forEach((id, i) => reg.setMarkPosition(id, 5 + i * step, 0, 0))
+    expect(marksCoincide(5, 0, 0, 5 + 2 * step, 0, 0)).toBe(false)  // the ends are not a pair
+    for (const id of ids) expect(reg.coincidentMarkIds(id)).toEqual(ids)
   })
 
   it('moves a mark rather than listing it in two places', () => {
     const reg = new IdRegistry()
     const a = reg.allocate('sketchVertex', 'a')
     const b = reg.allocate('sketchVertex', 'b')
-    reg.setMarkPosition(a, markPositionKey(0, 0, 0))
-    reg.setMarkPosition(b, markPositionKey(0, 0, 0))
-    reg.setMarkPosition(a, markPositionKey(9, 9, 0))
+    reg.setMarkPosition(a, 0, 0, 0)
+    reg.setMarkPosition(b, 0, 0, 0)
+    reg.setMarkPosition(a, 9, 9, 0)
     expect(reg.coincidentMarkIds(a)).toEqual([a])
     expect(reg.coincidentMarkIds(b)).toEqual([b])
+  })
+
+  it('keeps a mark where it was when the position is unchanged', () => {
+    // Re-registration is the common case (any solve re-registers the body), and
+    // re-publishing an unchanged position must not renumber it behind the marks
+    // that were registered after it.
+    const reg = new IdRegistry()
+    const a = reg.allocate('sketchVertex', 'a')
+    const b = reg.allocate('sketchVertex', 'b')
+    reg.setMarkPosition(a, 4, 4, 0)
+    reg.setMarkPosition(b, 4, 4, 0)
+    reg.setMarkPosition(a, 4, 4, 0)
+    expect(reg.coincidentMarkIds(b)).toEqual([a, b])
   })
 
   it('drops a freed mark immediately, before the id can be recycled', () => {
@@ -77,9 +181,8 @@ describe('IdRegistry mark positions', () => {
     const reg = new IdRegistry()
     const a = reg.allocate('sketchVertex', 'a')
     const b = reg.allocate('sketchVertex', 'b')
-    const at = markPositionKey(4, 4, 0)
-    reg.setMarkPosition(a, at)
-    reg.setMarkPosition(b, at)
+    reg.setMarkPosition(a, 4, 4, 0)
+    reg.setMarkPosition(b, 4, 4, 0)
     reg.free(a)
     expect(reg.coincidentMarkIds(b)).toEqual([b])
     expect(reg.coincidentMarkIds(a)).toEqual([])
@@ -91,7 +194,7 @@ describe('IdRegistry mark positions', () => {
   it('forgets every position on clear', () => {
     const reg = new IdRegistry()
     const a = reg.allocate('sketchVertex', 'a')
-    reg.setMarkPosition(a, markPositionKey(1, 0, 0))
+    reg.setMarkPosition(a, 1, 0, 0)
     reg.clear()
     expect(reg.coincidentMarkIds(a)).toEqual([])
   })

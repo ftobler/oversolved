@@ -65,6 +65,51 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     p.dispose()
   })
 
+  it('recovers a mark that is only NEARLY at the winner\'s position', () => {
+    // The pair the app actually produces, at the solved coordinates of a line
+    // tangent to a circle with its endpoint coincident on it: the endpoint as
+    // the solver stored it, and the dock foot `dockHosts` re-derives from the
+    // same params. They are one point and one pixel, and they disagree in the
+    // last bit float32 has -- at a tangency the offset along the line goes as
+    // `sqrt(2r * dr)`, so the residual gap the solver leaves comes back
+    // amplified into exactly that range. An index that demanded bit equality
+    // split them, and the endpoint left the buffer with nothing to recover it.
+    const END: [number, number, number] = [7.9340643882751465, 5.224999904632568, 0]
+    const FOOT: [number, number, number] = [7.934064194956269, 5.225000198183635, 0]
+    for (const painted of ['vertex:S1:L1:end', 'dock:S1:c_tangent']) {
+      const { image, p, renderer } = scene()
+      p.sketchVertexLayer.registerBody({
+        bodyKey: 'S1',
+        vertices: [END, FOOT],
+        vertexQueries: ['vertex:S1:L1:end', 'dock:S1:c_tangent'],
+      })
+      image.mark(MID, MID, idOf(p, SKETCH_VERTEX_LAYER_NAME, painted))
+      expect(p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey))
+        .toEqual(['vertex:S1:L1:end', 'dock:S1:c_tangent'])
+      p.dispose()
+    }
+  })
+
+  it('recovers a point pinned to the origin at the value the solver leaves', () => {
+    // The other near-miss the app produces constantly. `@builtin_origin` is a
+    // literal 0 and a point constrained to it solves to 1e-11, so a relative
+    // window alone -- 1e-17 at that magnitude -- would never join them, and the
+    // marker would go on answering for a point it cannot drag or dimension.
+    const { image, p, renderer } = scene()
+    p.sketchVertexLayer.registerBody({
+      bodyKey: 'S1',
+      vertices: [[-4.353449892247063e-12, -4.043118964625059e-11, 0]],
+      vertexQueries: ['vertex:S1:C1:center'],
+    })
+    p.originLayer.registerBody({
+      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    })
+    image.mark(MID, MID, idOf(p, ORIGIN_LAYER_NAME, '@builtin_origin'))
+    expect(p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey))
+      .toEqual(['vertex:S1:C1:center', '@builtin_origin'])
+    p.dispose()
+  })
+
   it('gives each recovered mark its own id and pick key, not the winner\'s', () => {
     // They are separate entities that happen to coincide, so highlight
     // isolation has to keep working per member.
