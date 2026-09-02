@@ -9,6 +9,10 @@
 // closes against the two rims. The tangent region was missing because a
 // converged tangent constraint leaves the line/circle discriminant a hair
 // negative, so neither circle got split at its tangent point.
+//
+// Second half of the same report: turning the vertical line into construction
+// geometry must read like deleting it (4 areas) while it still constrains the
+// solve -- the flag never reached the area builder, which happily sliced on it.
 import { describe, it, expect, beforeEach } from 'vitest'
 import { solveSketch, setSketchSolver, resetSketchSolver } from './sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -25,8 +29,8 @@ const SMALL = '_G3Z5xEtABUe0u6n'    // circle, diameter 8, 10 above it
 const TANGENT = '-xdCgl7z56nvBUbb'  // line tangent to both circles
 const VERT = 'V-Wlsm1U-eT1KpvE'     // vertical line, SMALL's centre -> origin
 
-/** The report's sketch feature. */
-function sketchFeature(opts: { withVert: boolean }): Dict {
+/** The report's sketch feature; `vertConstruction` flips the vertical line. */
+function sketchFeature(opts: { withVert: boolean; vertConstruction?: boolean }): Dict {
   const entities: Dict[] = [
     { id: BIG, kind: 'circle' },
     { id: SMALL, kind: 'circle' },
@@ -105,4 +109,15 @@ describe.skipIf(!solveBytes)('tangent line closes its own sketch area', () => {
     ])
   })
 
+  it('a construction vertical line bounds nothing, back to 4', () => {
+    const solved = solve(sketchFeature({ withVert: true, vertConstruction: true }))
+    expect(solved.surfaces).toHaveLength(4)
+    expect(areaOwners(solved).some((o) => o.includes(VERT))).toBe(false)
+    // ...but it is still an entity the solver placed, not one that was dropped:
+    // it holds its vertical, length-10 pose from the small circle's centre to
+    // the origin. That is what separates "construction" from "deleted".
+    expect(solved.status).toBe('fully_constrained')
+    const [x1, y1, x2, y2] = solved.geometry[VERT]
+    expect([x1, y1, x2, y2].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, 10, 0, 0])
+  })
 })

@@ -270,7 +270,9 @@ export function solveSketch(
       geometry[ent.id] = [...params]
     }
     features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
-    richGeom[ent.id] = enrichSketchEntity(ent.kind, params)
+    // Construction geometry solves like anything else but must bound no area,
+    // so the flag rides along to the area builder, which skips those entities.
+    richGeom[ent.id] = { ...enrichSketchEntity(ent.kind, params), ...(ent.construction ? { construction: true } : {}) }
     if (ent.kind === 'point') pointPositions.push([params[0], params[1]])
   }
 

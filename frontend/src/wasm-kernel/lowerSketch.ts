@@ -67,6 +67,9 @@ export const ORIGIN_ID = '_origin'
 export interface SketchEntity {
   id: string
   kind: string
+  /** Reference geometry: it constrains the solve like any other entity but
+   *  bounds no area, so the area builder skips it (`classify` in dcel.rs). */
+  construction?: boolean
 }
 
 export interface SketchInput {
@@ -87,6 +90,7 @@ export interface EntityLayout {
   kind: string
   offset: number
   size: number
+  construction?: boolean
 }
 
 export interface LowerResult {
@@ -144,7 +148,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
   entities.forEach((e, index) => {
     idToIndex.set(e.id, index)
     const size = ENTITY_SIZES[e.kind]
-    layout.push({ id: e.id, kind: e.kind, offset: params.length, size })
+    layout.push({ id: e.id, kind: e.kind, offset: params.length, size, construction: e.construction })
     const init = e.id === ORIGIN_ID ? [0, 0] : sk.initial[e.id] ?? new Array(size).fill(0)
     for (let i = 0; i < size; i++) params.push(init[i] ?? 0)
   })
