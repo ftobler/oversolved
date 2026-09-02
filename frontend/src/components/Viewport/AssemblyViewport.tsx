@@ -80,7 +80,12 @@ const EMPTY_CURVES: EdgeCurve[] = []
 
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
-const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none' }
+// `isolation: isolate` makes this div a stacking context, penning anything drei
+// portals next to the canvas inside the viewport. The assembly scene draws its
+// overlays in-canvas (Text/Billboard) and mounts no `<Html>` today, so this is
+// the part viewport's fix (see Viewport/index.tsx) carried over so a DOM
+// overlay added here cannot escape over the app's dialogs.
+const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none', isolation: 'isolate' }
 
 // The assembly editor grabs a preview of the solved scene on save, exactly as
 // the part editor does; that is the whole of what it needs from the viewport.

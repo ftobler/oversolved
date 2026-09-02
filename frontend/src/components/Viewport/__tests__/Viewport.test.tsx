@@ -300,3 +300,16 @@ describe('Viewport delete_body ghost preview', () => {
     expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
   })
 })
+
+describe('Viewport overlay stacking pen', () => {
+  it('isolates the viewport root so drei Html overlays cannot outrank dialogs', () => {
+    // Regression: every `<Html>` drei portals beside the canvas (constraint
+    // tiles, dimension labels) carries a z-index drei interpolates over its
+    // default range, up to ~16.8 million. With no stacking context around them
+    // they outrank the app's dialog overlays (9999) and paint over an open
+    // dialog.
+    const { container } = render(<Viewport />)
+    const root = container.firstElementChild as HTMLElement
+    expect(root.style.isolation).toBe('isolate')
+  })
+})

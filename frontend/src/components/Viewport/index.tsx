@@ -66,7 +66,13 @@ const ENABLE_ID_BUFFER_PICKING = true
 // references every Viewport render, forcing CanvasImpl to re-render needlessly.
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
-const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none' }
+// `isolation: isolate` makes this div a stacking context, which pens every
+// overlay drei portals next to the canvas inside the viewport. drei hands each
+// `<Html>` a z-index interpolated over its default range -- up to ~16.8 million
+// at the near plane -- so without the pen the constraint tiles (Constraints.tsx)
+// and dimension labels (DimensionLabel.tsx) outrank the app's dialogs (9999)
+// and paint over them, the closer to the camera the more reliably.
+const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none', isolation: 'isolate' }
 
 export interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void

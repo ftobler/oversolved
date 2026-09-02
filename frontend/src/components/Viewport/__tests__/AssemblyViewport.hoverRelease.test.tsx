@@ -61,3 +61,15 @@ describe('AssemblyViewport unmount releases the shared hover state', () => {
     expect(useAssemblyStore.getState().hoveredEntity).toBeNull()
   })
 })
+
+describe('AssemblyViewport overlay stacking pen', () => {
+  it('isolates the viewport root so a DOM overlay cannot outrank dialogs', () => {
+    // The same pen the part Viewport needs, held here so it stays true: the
+    // assembly scene draws its overlays in-canvas today, but a drei `<Html>`
+    // added to it would portal beside the canvas with a z-index in the
+    // millions and paint over the app's dialogs (z-index 9999).
+    const { container } = render(<AssemblyViewport />)
+    const root = container.firstElementChild as HTMLElement
+    expect(root.style.isolation).toBe('isolate')
+  })
+})
