@@ -49,7 +49,11 @@ const TANGENT_COLLAPSE_REL: f64 = 1e-3;
 // MERGE as the floor for tiny radii. That leaves ~1000x over the reported
 // sketch's 9e-8 residual, where the previous `h`-form rule left 52x -- and under
 // a square root 52x is thin, which is what an area flickering in and out of a
-// dragged sketch looks like from the outside.
+// dragged sketch looks like from the outside. `cc` reuses the same constant for
+// its miss-side rule: two circles whose centre distance falls a hair beyond
+// r1 + r2 (or a hair inside |r1 - r2|) get their single foot asserted within
+// the same budget, for the same reason -- the gap is the residual the tangent
+// solver drives to zero.
 const TANGENT_GAP_REL: f64 = 1e-5;
 
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
@@ -318,17 +322,53 @@ fn lc(p1: Vec2, p2: Vec2, cx: f64, cy: f64, r: f64) -> Vec<(f64, f64, Vec2)> {
 
 fn cc(cx1: f64, cy1: f64, r1: f64, cx2: f64, cy2: f64, r2: f64) -> Vec<(f64, f64, Vec2)> {
     let d = (cx2 - cx1).hypot(cy2 - cy1);
-    if d < EPS || d > r1 + r2 + EPS || d < (r1 - r2).abs() - EPS {
+    if d < EPS {
         return vec![];
     }
+    // Foot on the radical axis: the would-be tangent point, well defined on the
+    // miss side too, where it is the midpoint of closest approach.
     let a = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
+    let mx = cx1 + (a * (cx2 - cx1)) / d;
+    let my = cy1 + (a * (cy2 - cy1)) / d;
+
+    // Miss side first. A converged tangency that landed a hair apart (d just
+    // beyond r1 + r2, or just inside |r1 - r2|) has no roots, so the contact the
+    // region closes on is lost. The gap is exactly the residual r_tangent drives
+    // (residuals.rs), so asserting the foot within TANGENT_GAP_REL * r_min (MERGE
+    // floor) restores the contact with pure headroom: a miss has no crossing to
+    // swallow. This is cc's mirror of lc's miss-side rule.
+    if d >= r1 + r2 {
+        let gap = d - (r1 + r2);
+        if gap <= MERGE.max(TANGENT_GAP_REL * r1.min(r2)) {
+            return vec![(
+                (my - cy1).atan2(mx - cx1),
+                (my - cy2).atan2(mx - cx2),
+                [mx, my],
+            )];
+        }
+        return vec![];
+    }
+    if d <= (r1 - r2).abs() {
+        let gap = (r1 - r2).abs() - d;
+        if gap <= MERGE.max(TANGENT_GAP_REL * r1.min(r2)) {
+            return vec![(
+                (my - cy1).atan2(mx - cx1),
+                (my - cy2).atan2(mx - cx2),
+                [mx, my],
+            )];
+        }
+        return vec![];
+    }
+
+    // Graze side (|r1 - r2| < d < r1 + r2): two real roots. Fold them into the
+    // foot to stop a phantom sliver arc slicing two near-tangent circles
+    // (near_tangent_circles_stay_two_standalone_faces). Threshold stays the
+    // shipped h-form: on this side widening would swallow a real, if tiny, lens.
     let h2 = r1 * r1 - a * a;
     if h2 < 0.0 {
         return vec![];
     }
     let h = h2.max(0.0).sqrt();
-    let mx = cx1 + (a * (cx2 - cx1)) / d;
-    let my = cy1 + (a * (cy2 - cy1)) / d;
     // Virtual tangent point: when the two roots are within tolerance of
     // coinciding, define the single contact at the foot [mx, my] (the exact
     // tangent point in the h == 0 limit) instead of emitting two near-duplicate
@@ -1552,6 +1592,55 @@ mod tests {
     }
 
     #[test]
+    fn cc_external_miss_within_tolerance_is_one_point() {
+        // A converged tangency that landed a hair apart has no analytic roots, so
+        // the contact the area builder closes on is lost. The miss gap IS the
+        // r_tangent residual, so a miss within the tolerance must assert the foot.
+        let r: f64 = 5.0;
+        let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+        for gap in [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 0.5 * tol] {
+            let pts = cc(0.0, 0.0, r, 2.0 * r + gap, 0.0, r);
+            assert_eq!(pts.len(), 1, "gap {gap:e}: a miss within tolerance is one point");
+            // The foot is the midpoint of closest approach, gap/2 past the ideal
+            // touch point, so the horizontal budget must scale with the gap.
+            assert!((pts[0].2[0] - r).abs() < 1e-6 + gap && pts[0].2[1].abs() < 1e-9, "gap {gap:e}: foot at the tangent point");
+        }
+    }
+
+    #[test]
+    fn cc_external_miss_past_tolerance_stays_empty() {
+        // The cliff pinned from the far side so a widened constant cannot pass
+        // unnoticed: a genuine separation keeps zero contact.
+        let r: f64 = 5.0;
+        let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+        for gap in [2.0 * tol, 1e-3, 1e-2] {
+            assert!(cc(0.0, 0.0, r, 2.0 * r + gap, 0.0, r).is_empty(), "gap {gap:e}: a real miss stays a miss");
+        }
+    }
+
+    #[test]
+    fn cc_internal_miss_within_tolerance_is_one_point() {
+        // Internal mirror: B nested a hair short of touching A from inside.
+        let (r1, r2): (f64, f64) = (5.0, 2.0);
+        let tol = MERGE.max(TANGENT_GAP_REL * r1.min(r2));
+        for gap in [1e-9, 1e-7, 0.5 * tol] {
+            let pts = cc(0.0, 0.0, r1, r1 - r2 - gap, 0.0, r2);
+            assert_eq!(pts.len(), 1, "gap {gap:e}: an internal miss within tolerance is one point");
+            // The internal foot sits at the radical-axis a, which grows a hair
+            // past r1 as the miss deepens, so the budget scales with the gap.
+            assert!((pts[0].2[0] - r1).abs() < 1e-6 + gap && pts[0].2[1].abs() < 1e-9, "gap {gap:e}: foot at the tangent point");
+        }
+    }
+
+    #[test]
+    fn cc_internal_miss_past_tolerance_stays_empty() {
+        let (r1, r2): (f64, f64) = (5.0, 2.0);
+        let tol = MERGE.max(TANGENT_GAP_REL * r1.min(r2));
+        let gap = 2.0 * tol;
+        assert!(cc(0.0, 0.0, r1, r1 - r2 - gap, 0.0, r2).is_empty());
+    }
+
+    #[test]
     fn near_tangent_circles_stay_two_standalone_faces() {
         // Regression for the white-line report: two "tangent" circles the solver
         // left a hair overlapping must NOT be sliced into half-edge arcs. The cc
@@ -1815,6 +1904,53 @@ mod tests {
         ];
         let t = detect_topology(&geom);
         assert_eq!(t.surfaces.len(), 4, "expected 3 disks + 1 central triangle");
+    }
+
+    // Two equal circles tangent externally, centre distance 2r + gap: gap > 0 is
+    // a miss (apart), gap < 0 is a graze (overlap). gap is the external residual
+    // the solver drives, so walking it walks the collapse rule the way a sketch
+    // degrades as the solve loosens.
+    fn circle_pair_offset_by(r: f64, gap: f64) -> Vec<(String, InputEntity)> {
+        vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("B".into(), circle([2.0 * r + gap, 0.0], r)),
+        ]
+    }
+
+    #[test]
+    fn near_tangent_circle_pair_miss_side_stays_two_standalone_faces() {
+        // The miss-side mirror of near_tangent_circles_stay_two_standalone_faces
+        // and the direct end-to-end regression for finding 1: two tangent circles
+        // the solver left a hair APART must still close as two standalone disks
+        // with one virtual tangent point, not zero contact.
+        let r: f64 = 5.0;
+        let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+        for gap in [1e-9, 1e-7, 0.5 * tol] {
+            let t = detect_topology(&circle_pair_offset_by(r, gap));
+            assert_eq!(t.surfaces.len(), 2, "gap {gap:e}: two standalone disks");
+            assert!(t.edges.is_empty(), "gap {gap:e}: no split edges at a tangency");
+            assert_eq!(t.intersection_points.len(), 1, "gap {gap:e}: one virtual tangent point");
+        }
+    }
+
+    #[test]
+    fn three_circles_a_hair_apart_still_make_four_areas() {
+        // The three_mutually_tangent_circles geometry pushed a hair apart: the
+        // reported "4 -> 3 surfaces" cliff was the collapse never firing on the
+        // miss side. An equilateral centre spacing of 2r + gap keeps every pair
+        // a miss within tolerance, so the central triangle must still build.
+        let r: f64 = 2.61391544342041;
+        let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+        for gap in [1e-7, 0.5 * tol] {
+            let s = 2.0 * r + gap;
+            let geom = vec![
+                ("A".into(), circle([0.0, 0.0], r)),
+                ("B".into(), circle([s, 0.0], r)),
+                ("C".into(), circle([s / 2.0, 3.0f64.sqrt() * s / 2.0], r)),
+            ];
+            let t = detect_topology(&geom);
+            assert_eq!(t.surfaces.len(), 4, "gap {gap:e}: 3 disks + 1 central triangle");
+        }
     }
 
     #[test]
