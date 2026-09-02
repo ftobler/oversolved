@@ -225,6 +225,27 @@ describe('queryLabel', () => {
     })
   })
 
+  describe('sketch picks', () => {
+    // Stored verbatim as the selection id the viewport toggled (extrude and
+    // sweep take them as profile/path refs), so they never reach parseQuery.
+    it('names the sketch an entity pick came from', () => {
+      expect(queryLabel('entity:sk1:c1', features)).toBe('Entity of Sketch 1')
+    })
+
+    it('names a vertex pick as a vertex', () => {
+      expect(queryLabel('vertex:sk1:c1:center', features)).toBe('Vertex of Sketch 1')
+    })
+
+    it('falls back to the bare sketch id for an unknown feature', () => {
+      expect(queryLabel('entity:ghost1:c1', features)).toBe('Entity of ghost1')
+    })
+
+    it('leaves a prefix with no entity id alone', () => {
+      expect(queryLabel('entity:sk1', features)).toBe('entity:sk1')
+      expect(queryLabel('entity:sk1:', features)).toBe('entity:sk1:')
+    })
+  })
+
   describe('edge cases', () => {
     it('returns None for empty string', () => {
       expect(queryLabel('', features)).toBe('None')

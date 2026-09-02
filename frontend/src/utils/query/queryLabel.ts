@@ -1,5 +1,7 @@
 import type { PartFeature } from '@/types/cad'
+import type { EntitySelectionId, VertexSelectionId } from '@/types/query'
 import { parseQuery } from '@/utils/query'
+import { parseSelectionId } from './selectionId'
 
 export function extractFeatureId(ancestorId: string): string | null {
   // Special tokens (@u|<uuid>, @cls_* classifiers, @gd*| descriptors, @g*_
@@ -56,6 +58,21 @@ export function queryLabel(
   partLabels?: Record<string, string>,
 ): string {
   if (!query || query === 'None') return 'None'
+
+  // Sketch picks are stored as the selection id the viewport toggled, not as a
+  // query (a rewritten value would no longer match the re-click that unpicks
+  // it), so they never reach parseQuery. Extrude/revolve/sweep take them as
+  // profile refs, which puts the raw `entity:sk1:c1` string in front of the
+  // user unless it is named here. An id missing its entity segment names no
+  // geometry, so it falls through to the query paths rather than being labelled.
+  if (query.startsWith('entity:') || query.startsWith('vertex:')) {
+    const sel = parseSelectionId(query) as EntitySelectionId | VertexSelectionId
+    if (sel.eid) {
+      const feature = features.find(f => f.id === sel.featureId)
+      const owner = feature ? (feature.label || feature.id) : sel.featureId
+      return `${sel.kind === 'vertex' ? 'Vertex' : 'Entity'} of ${owner}`
+    }
+  }
 
   if (query === '@builtin_plane_front') return 'Front'
   if (query === '@builtin_plane_top') return 'Top'
