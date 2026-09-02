@@ -59,8 +59,9 @@
   text-align: left;
 }
 
-/* Names the library group. A divider earns a label only once there is a second
-   group to tell it apart from, which is what a pickable folder introduces. */
+/* Names a sidebar group. The Library header is always shown above the
+   Documents/Trash views; the Storage header only appears where a folder or
+   file can be opened and the user can switch the document library. */
 .sidebar-section {
   margin: 18px 12px 6px 12px;
   padding-top: 12px;

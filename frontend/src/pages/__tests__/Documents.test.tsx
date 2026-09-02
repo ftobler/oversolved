@@ -19,14 +19,16 @@ describe('Documents sidebar', () => {
     vi.useRealTimers()
   })
 
-  it('offers exactly two views, Documents and Trash, with no section divider', async () => {
+  it('offers exactly two views, Documents and Trash, under a Library header', async () => {
     renderDocuments()
 
     await waitFor(() => expect(screen.getByText('Documents', { selector: '.sidebar-item-label' })).toBeInTheDocument())
     expect(screen.getByText('Trash')).toBeInTheDocument()
     expect(document.querySelectorAll('.sidebar-item')).toHaveLength(2)
-    // A divider labels a group only against another group; there is one list.
-    expect(document.querySelector('.sidebar-section-label')).toBeNull()
+    // The single group is labelled Library; the Storage group only shows where
+    // a folder or file can be opened, so here there is just the one header.
+    expect(screen.getByText('Library', { selector: '.sidebar-section' })).toBeInTheDocument()
+    expect(document.querySelectorAll('.sidebar-section')).toHaveLength(1)
   })
 
   it('Documents is the active view on load', async () => {

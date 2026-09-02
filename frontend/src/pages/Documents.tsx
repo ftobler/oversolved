@@ -362,11 +362,12 @@ export default function Documents() {
 
       <div className="documents-layout">
         <aside className="documents-sidebar">
+          <div className="sidebar-section">Library</div>
           {entries.map(renderEntry)}
 
           {showLibraryGroup && (
             <>
-              <div className="sidebar-section">Library</div>
+              <div className="sidebar-section">Storage</div>
               <div
                 className={`sidebar-item ${library.kind === 'browser' ? 'active' : ''}`}
                 onClick={() => { library.useBrowserStorage() }}

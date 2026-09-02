@@ -72,7 +72,7 @@ describe('Documents library sidebar', () => {
     await boot()
     wrap()
     await waitFor(() => expect(screen.getByText('No documents yet.')).toBeInTheDocument())
-    expect(screen.queryByText('Library')).not.toBeInTheDocument()
+    expect(screen.queryByText('Storage')).not.toBeInTheDocument()
     expect(screen.queryByText('Open folder...')).not.toBeInTheDocument()
     expect(screen.queryByText('Open file...')).not.toBeInTheDocument()
     expect(screen.queryByText('Browser storage')).not.toBeInTheDocument()
@@ -81,7 +81,7 @@ describe('Documents library sidebar', () => {
   it('offers browser storage and an open-folder entry where it can', async () => {
     await boot()
     wrap()
-    expect(await screen.findByText('Library')).toBeInTheDocument()
+    expect(await screen.findByText('Storage')).toBeInTheDocument()
     expect(screen.getByText('Browser storage')).toBeInTheDocument()
     expect(screen.getByText('Open folder...')).toBeInTheDocument()
   })
