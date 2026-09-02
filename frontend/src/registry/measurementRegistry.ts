@@ -367,7 +367,7 @@ function findBodyElement(
 /**
  * Measure a single or pair of 3D body elements.
  * - 1 edge: length (line) or radius+sweep (arc/circle)
- * - 1 face: area
+ * - 1 cylindrical face: diameter (no other single face is measured)
  * - 2 line edges: angle or parallel distance
  * - 2 arc/circle edges: center-to-center distance
  * Returns [] when no rule matches or data is unavailable.
@@ -402,8 +402,17 @@ export function measure3dSelection(
 
     if (kind === 'face') {
       const faceData = body.mesh?.face_data?.[index]
-      if (faceData?.area != null) {
-        return [`[FACE] area=${faceData.area.toFixed(2)} mm\u00b2`]
+      // A cylinder reads as its diameter -- the number a hole or a boss is
+      // actually specified by, and the one a caliper would give back. Its
+      // radius comes from the analytic surface (`surface_frame`), never from
+      // the tessellation, so a coarse mesh does not move it; a body solved
+      // before that field existed simply has no readout rather than a wrong
+      // one. Every other face kind has no single-pick measurement: surface
+      // area used to be it, and it never answered a question anyone modelling
+      // actually asked.
+      if (faceData?.surface_type === 'cylinderface') {
+        const radius = faceData.surface_frame?.radius
+        if (radius != null) return [`[FACE] d=${mm(radius * 2)}`]
       }
       return []
     }

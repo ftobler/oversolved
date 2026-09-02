@@ -331,10 +331,17 @@ describe('Measurement Selection and Evaluation', () => {
         vertices: [],
         faces: [],
         face_data: [
-          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 12.5 },
-          { centroid: [1, 1, 0], normal: [1, 0, 0], area: 0.0 },
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 12.5, surface_type: 'flatface' },
+          { centroid: [1, 1, 0], normal: [1, 0, 0], area: 0.0, surface_type: 'flatface' },
+          {
+            centroid: [0, 0, 5], normal: [1, 0, 0], area: 94.2, surface_type: 'cylinderface',
+            surface_frame: { axis: [0, 0, 1], origin: [0, 0, 0], radius: 3 },
+          },
+          // A cylinder from a bundle solved before `surface_frame` existed:
+          // there is no analytic radius to read, so there is no readout.
+          { centroid: [0, 0, 5], normal: [1, 0, 0], area: 94.2, surface_type: 'cylinderface' },
         ],
-        face_queries: ['?9;@ex1face0:face', '?9;@ex1face1:face'],
+        face_queries: ['?9;@ex1face0:face', '?9;@ex1face1:face', '?9;@ex1face2:face', '?9;@ex1face3:face'],
       },
     }
     const bodies = { ex1: bodyResult }
@@ -349,9 +356,19 @@ describe('Measurement Selection and Evaluation', () => {
       expect(r[0]).toMatch(/\[EDGE\] r=2\.000 mm/)
     })
 
-    it('measures face area via simple format', () => {
+    it('measures a cylindrical face as its diameter via simple format', () => {
+      const r = computeMeasurements(new Set(['@ex1/face/2']), sketch, undefined, bodies)
+      expect(r).toEqual(['[FACE] d=6.000 mm'])
+    })
+
+    it('measures nothing for a planar face (area readout is gone)', () => {
       const r = computeMeasurements(new Set(['@ex1/face/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['[FACE] area=12.50 mm\u00b2'])
+      expect(r).toEqual([])
+    })
+
+    it('measures nothing for a cylinder with no analytic radius', () => {
+      const r = computeMeasurements(new Set(['@ex1/face/3']), sketch, undefined, bodies)
+      expect(r).toEqual([])
     })
 
     it('measures edge via ancestry query format', () => {
@@ -368,12 +385,12 @@ describe('Measurement Selection and Evaluation', () => {
 
     it('measures face via ancestry query format', () => {
       const r = computeMeasurements(
-        new Set(['?9;@ex1face0:face']),
+        new Set(['?9;@ex1face2:face']),
         sketch,
         undefined,
         bodies
       )
-      expect(r).toEqual(['[FACE] area=12.50 mm\u00b2'])
+      expect(r).toEqual(['[FACE] d=6.000 mm'])
     })
 
     it('returns empty for multi-3d selection', () => {
