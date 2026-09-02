@@ -8,17 +8,26 @@ import { sketchIdsInQuery } from '@/utils/query/consumedSketches'
  * sketch that owns it and the viewport cleans itself up. The feature list stays
  * linear -- "consumed" is a visibility flag, not a tree edge.
  *
+ * The auto-hide is a ONE-SHOT per sketch, stamped by `auto_hidden`. A sketch
+ * feeding several features would otherwise be yanked off screen again on every
+ * later pick, overruling a user who deliberately turned it back on; after the
+ * first hide the visibility flag is the user's setting and nothing but the user
+ * writes it. The stamp is sticky (never cleared), so re-showing a consumed
+ * sketch is permanent.
+ *
  * Hides on the add half of a pick only. Un-picking a profile leaves visibility
- * where it is: by then the flag is the user's own setting, and a pick that
- * silently un-hides would fight whoever turned it off. The consumer's own
- * editor forces its profiles back on screen while it is open (Part.tsx), so
- * this never hides geometry the user is still picking from.
+ * where it is: a pick that silently un-hides would fight whoever turned it off
+ * just as hard. The consumer's own editor forces its profiles back on screen
+ * while it is open (Part.tsx), so this never hides geometry the user is still
+ * picking from.
  */
 function hideConsumedSketches(doc: PartDoc, query: string): void {
   const features = doc.features ?? []
   for (const id of sketchIdsInQuery(query, features)) {
     const sketch = features.find(f => f.id === id)
-    if (sketch) sketch.visible = false
+    if (!sketch || sketch.auto_hidden) continue
+    sketch.visible = false
+    sketch.auto_hidden = true
   }
 }
 

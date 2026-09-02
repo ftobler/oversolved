@@ -93,6 +93,12 @@ describe('consuming a sketch hides it', () => {
     expect(doc.features![0].visible).toBeUndefined()
   })
 
+  it('stamps auto_hidden on the sketch it hides', () => {
+    const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1')])
+    applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
+    expect(doc.features![0].auto_hidden).toBe(true)
+  })
+
   it('un-picking a profile does not bring the sketch back', () => {
     // Once hidden, the flag is the user's own setting again: a remove that
     // silently re-showed the sketch would fight whoever turned it off.
@@ -127,6 +133,57 @@ describe('manual visibility toggles', () => {
   it('applyToggleSketchPlaneVisibility hides all when any are visible', () => {
     const doc = makeDoc([sketchFeature('sk1')])
     applyToggleSketchPlaneVisibility(doc)
+    expect(doc.features![0].visible).toBe(false)
+  })
+})
+
+// The auto-hide fires once per sketch and then gets out of the way: a sketch
+// feeding several features must not be yanked off screen again every time a
+// later feature picks from it, or it would overrule the user who turned it
+// back on.
+describe('the auto-hide is a one-shot', () => {
+  it('does not re-hide a sketch the user showed again', () => {
+    const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1'), extrudeFeature('ex2')])
+    applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
+    applySetFeatureVisibility(doc, 'sk1', true)
+    applyAddExtrudeProfile(doc, 'ex2', 'entity:sk1:circle2')
+    expect(doc.features![0].visible).toBeUndefined()
+  })
+
+  it('stays out of the way for good, not just for the next consume', () => {
+    const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1'), revolveFeature('r1'), holeFeature('h1')])
+    applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
+    applySetFeatureVisibility(doc, 'sk1', true)
+    applyAddRevolveProfile(doc, 'r1', 'entity:sk1:circle1')
+    applySetHoleSketch(doc, 'h1', 'entity:sk1:point1')
+    expect(doc.features![0].visible).toBeUndefined()
+  })
+
+  it('does not re-hide a sketch shown again by the bulk toggle', () => {
+    // The sketch/plane toggle is the other user-driven way back on screen; the
+    // stamp has to survive it too.
+    const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1'), extrudeFeature('ex2')])
+    applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
+    applyToggleSketchPlaneVisibility(doc)
+    expect(doc.features![0].visible).toBeUndefined()
+    applyAddExtrudeProfile(doc, 'ex2', 'entity:sk1:circle2')
+    expect(doc.features![0].visible).toBeUndefined()
+  })
+
+  it('a second consume leaves a still-hidden sketch hidden', () => {
+    const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1'), extrudeFeature('ex2')])
+    applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
+    applyAddExtrudeProfile(doc, 'ex2', 'entity:sk1:circle2')
+    expect(doc.features![0].visible).toBe(false)
+  })
+
+  it('hides a sketch that was never consumed before, however it got its visibility', () => {
+    // A sketch the user had hidden and shown again carries no stamp: the first
+    // consume is still owed its one hide.
+    const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1')])
+    applySetFeatureVisibility(doc, 'sk1', false)
+    applySetFeatureVisibility(doc, 'sk1', true)
+    applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
     expect(doc.features![0].visible).toBe(false)
   })
 })
