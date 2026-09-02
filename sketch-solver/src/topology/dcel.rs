@@ -38,6 +38,20 @@ const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 // tangent residual by orders of magnitude while never merging a real crossing.
 const TANGENT_COLLAPSE_REL: f64 = 1e-3;
 
+// `lc` asserts the same virtual tangent point for a line, but keyed on the
+// PERPENDICULAR GAP `|dist - r|` rather than the root separation `h`. The two
+// are one threshold rewritten (`gap == h * h / (dist + r)`), but the gap is what
+// a tangent residual drives linearly where `h ~ sqrt(2 * r * gap)` is its square
+// root, so the gap is the form that can be compared against a solve and tested.
+// Applies to a MISS only, so it swallows no geometry and can be sized purely for
+// headroom: it is the distance by which a line may fail to reach a rim and still
+// be read as touching it. Relative to the radius so it tracks model scale, with
+// MERGE as the floor for tiny radii. That leaves ~1000x over the reported
+// sketch's 9e-8 residual, where the previous `h`-form rule left 52x -- and under
+// a square root 52x is thin, which is what an area flickering in and out of a
+// dragged sketch looks like from the outside.
+const TANGENT_GAP_REL: f64 = 1e-5;
+
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
 
 /// One sketch entity's solved+enriched geometry, mirroring the stringly-typed
@@ -246,6 +260,38 @@ fn lc(p1: Vec2, p2: Vec2, cx: f64, cy: f64, r: f64) -> Vec<(f64, f64, Vec2)> {
     let b = 2.0 * (fx * dx + fy * dy);
     let c = fx * fx + fy * fy - r * r;
     let disc = b * b - 4.0 * a * c;
+    // Virtual tangent point, `cc`'s rule in the line's terms (see TANGENT_GAP_REL):
+    // a converged tangent constraint leaves `disc` a hair either side of zero, and
+    // the MISS side (`disc < 0`) has no roots to offer, so the contact the region
+    // closes on is simply lost (bugreports/bug-report-1788207174415).
+    //
+    // Only the miss side. A near-graze already carries two real roots, and they
+    // need no help: closer together than MERGE the vertex merge fuses them, and
+    // further apart they are an honest chord. Restricting the rule this way is
+    // what makes a generous tolerance safe -- on a miss there is no crossing to
+    // swallow, so widening it can only invent a contact where the curves come
+    // within `gap` of touching, never erase one the user drew.
+    let dist = (r * r - disc / (4.0 * a)).max(0.0).sqrt();
+    if disc < 0.0 && (dist - r).abs() <= MERGE.max(TANGENT_GAP_REL * r) {
+        let raw = -b / (2.0 * a);
+        // The foot is bounded in WORLD units, not in the line parameter: a line
+        // whose endpoint is constrained onto the rim it is tangent to has its
+        // tangency AT that endpoint, and the solver residual leaves the foot a
+        // sliver either side of it. `EPS` on the parameter (1e-9, ~7e-8 world on
+        // a sketch-sized segment) is inside that sliver and would drop the very
+        // contact this branch exists to keep; MERGE is the distance at which the
+        // foot and the endpoint are already the same vertex. Bailing here is
+        // exactly what the pre-collapse code did for a miss, and `disc < 0`
+        // guarantees there is no real root being given up with it.
+        let overhang = (-raw).max(raw - 1.0).max(0.0) * a.sqrt();
+        if overhang > MERGE {
+            return vec![];
+        }
+        let t = raw.clamp(0.0, 1.0);
+        let ix = p1[0] + t * dx;
+        let iy = p1[1] + t * dy;
+        return vec![(t, (iy - cy).atan2(ix - cx), [ix, iy])];
+    }
     if disc < 0.0 {
         return vec![];
     }
@@ -1738,6 +1784,117 @@ mod tests {
         ];
         let t = detect_topology(&geom);
         assert_eq!(t.surfaces.len(), 4, "expected 3 disks + 1 central triangle");
+    }
+
+    #[test]
+    fn tangent_line_between_two_circles_closes_its_own_area() {
+        // Bug report bug-report-1788207174415: a venn of two circles plus an
+        // external tangent line spanning them bounds a fifth region (line + the
+        // two arcs it touches). A converged tangent constraint leaves the
+        // line/circle discriminant a hair NEGATIVE (here -7.6e-4 and -8.8e-5,
+        // i.e. the line misses each rim by ~1e-7), so the old `disc < 0` bail
+        // split neither circle at its tangent point and that region never closed.
+        let geom = vec![
+            ("A".into(), circle([0.0, 0.0], 9.5)),
+            ("B".into(), circle([0.0, 10.0], 4.0)),
+            (
+                "L".into(),
+                line([3.340658664703369, 12.2], [7.9340643882751465, 5.225]),
+            ),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 4, "2 crescents + lens + the tangent region");
+
+        // The vertical line from B's centre down through A's centre cuts the lens
+        // in two; both of its ends are free, so neither crescent is divided.
+        let mut with_chord = geom.clone();
+        with_chord.push(("V".into(), line([0.0, 10.0], [0.0, 0.0])));
+        let t2 = detect_topology(&with_chord);
+        assert_eq!(t2.surfaces.len(), 5, "the chord splits only the lens");
+    }
+
+    /// The report's two circles plus their external tangent line, with the line
+    /// displaced `gap` along its own normal: `gap > 0` pulls it clear of both
+    /// rims, `gap < 0` pushes it in to cut two real chords. `gap` IS the quantity
+    /// the solver's tangent residual drives, so this walks the collapse rule
+    /// across its tolerance the way the sketch degrades as a solve gets looser.
+    fn tangent_pair_offset_by(gap: f64) -> Vec<(String, InputEntity)> {
+        let (ra, rb, d): (f64, f64, f64) = (9.5, 4.0, 10.0);
+        // Unit normal of the common external tangent, pointing at both centres.
+        let ny = (rb - ra) / d;
+        let nx = -(1.0 - ny * ny).sqrt();
+        // Feet on each rim, then slid along -n so the line sits `gap` further out.
+        let foot = |cy: f64, r: f64| [-r * nx - gap * nx, cy - r * ny - gap * ny];
+        vec![
+            ("A".into(), circle([0.0, 0.0], ra)),
+            ("B".into(), circle([0.0, d], rb)),
+            ("L".into(), line(foot(d, rb), foot(0.0, ra))),
+        ]
+    }
+
+    #[test]
+    fn tangent_collapse_holds_across_the_solver_residual_band() {
+        // Exact tangency, and a miss an order of magnitude past anything a
+        // converged solve leaves (the report's own solve sits at gap 9e-8): the
+        // collapse must carry all of them, or the tangent region stops building
+        // as soon as a drag loosens the solve. This is the side that needs the
+        // rule -- only a near-MISS has no roots to work from.
+        for gap in [0.0, 1e-9, 9e-8, 1e-6, 1e-5, 4e-5] {
+            let t = detect_topology(&tangent_pair_offset_by(gap));
+            assert_eq!(t.surfaces.len(), 4, "gap {gap:e}: tangent region must build");
+        }
+        // The near-GRAZE side needs no tolerance to close the region -- the two
+        // roots are real -- but taking both would slice each rim into a phantom
+        // sliver arc. Inside tolerance the collapse asserts the single foot, and
+        // past it the chords are honest geometry: 4 either way, never a
+        // degenerate extra face.
+        for gap in [-1e-5, -1e-4, -1e-2] {
+            let t = detect_topology(&tangent_pair_offset_by(gap));
+            assert_eq!(t.surfaces.len(), 4, "gap {gap:e}: no sliver face");
+        }
+        // Past tolerance on the miss side the line touches nothing, leaving just
+        // the venn's own 3 regions. The cliff is `TANGENT_GAP_REL * r` of the
+        // SMALLER circle (4e-5 here) since the region needs both contacts; it is
+        // pinned from both sides so widening the constant cannot pass unnoticed.
+        for gap in [4.1e-5, 1e-3, 1e-2, 0.1] {
+            let t = detect_topology(&tangent_pair_offset_by(gap));
+            assert_eq!(t.surfaces.len(), 3, "gap {gap:e}: a real miss stays a miss");
+        }
+    }
+
+    #[test]
+    fn a_crossing_survives_a_foot_that_lies_off_the_segment() {
+        // The collapse must never cost a real root. A line running from just past
+        // the foot of its own perpendicular to beyond the rim crosses the circle
+        // for real, but its foot sits off the segment -- when the collapse also
+        // ran on the graze side, that combination short-circuited and the whole
+        // crossing was dropped, which is worse than never having collapsed at all.
+        let r: f64 = 100.0;
+        for gap in [9e-4, 1e-3] {
+            let y = r - gap;  // chord `gap` inside the rim
+            let half = (r * r - y * y).sqrt();
+            let g = vec![
+                ("A".into(), circle([0.0, 0.0], r)),
+                ("H".into(), line([0.1, y], [half + 0.5, y])),  // foot at x=0, off-segment
+            ];
+            let t = detect_topology(&g);
+            assert_eq!(t.intersection_points.len(), 1, "gap {gap:e}: the crossing is real");
+        }
+    }
+
+    #[test]
+    fn a_near_miss_whose_foot_is_off_the_segment_stays_a_miss() {
+        // The other side of the same branch: the line misses the rim by less than
+        // tolerance, but its tangency would fall beyond the segment's end, so
+        // there is nothing to contact.
+        let r: f64 = 100.0;
+        let y = r + 1e-4;  // inside the 1e-3 budget for r=100
+        let g = vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("H".into(), line([5.0, y], [40.0, y])),  // foot at x=0, well off the segment
+        ];
+        let t = detect_topology(&g);
+        assert!(t.intersection_points.is_empty());
     }
 
     #[test]
