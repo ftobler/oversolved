@@ -1091,6 +1091,34 @@ fn boundary_edge(eg: &EdgeGeom, id: &str, v0: &str, v1: &str) -> BoundaryEdge {
     }
 }
 
+/// Drop the degenerate "spikes" a dangling curve leaves in a face cycle.
+///
+/// A curve whose endpoint sits in the interior of a face (a centre-to-rim line,
+/// for example) has a degree-1 terminal vertex. The face tracer reaches it via
+/// one half-edge and, with no other departure to choose, returns immediately on
+/// the twin, so the cycle carries the pair back to back: a zero-width slit that
+/// bounds nothing. OCC cannot build a face from that boundary, and it reads to
+/// the user as a "thin plane". Such a slit is a bridge, and a bridge is never
+/// part of the real boundary, so collapse each consecutive twin pair (and any
+/// pair the wrap-around leaves at the seam) out of the cycle.
+fn collapse_spikes(cycle: &[usize]) -> Vec<usize> {
+    let mut stack: Vec<usize> = Vec::with_capacity(cycle.len());
+    for &i in cycle {
+        if stack.last().is_some_and(|&l| l == (i ^ 1)) {
+            stack.pop();
+        } else {
+            stack.push(i);
+        }
+    }
+    // The cycle is cyclic: the first and last edges can be the two halves of one
+    // bridge, which the linear pass above cannot see.
+    while stack.len() >= 2 && stack[0] == (stack[stack.len() - 1] ^ 1) {
+        stack.remove(stack.len() - 1);
+        stack.remove(0);
+    }
+    stack
+}
+
 fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<SurfaceOut> {
     let mut surfaces: Vec<SurfaceOut> = Vec::new();
     if hes.is_empty() {
@@ -1162,17 +1190,20 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
                 break;
             }
         }
-        if !cycle.is_empty() && cur == start && face_area(&cycle, hes, verts) > 1e-10 {
-            let boundary: Vec<BoundaryEdge> = cycle
-                .iter()
-                .map(|&i| boundary_edge(&hes[i].2, &he_eid[i], &hes[i].0, &hes[i].1))
-                .collect();
-            let face_entity_ids: Vec<String> = cycle.iter().map(|&i| he_eid[i].clone()).collect();
-            surfaces.push(SurfaceOut {
-                boundary,
-                face_entity_ids,
-                holes: vec![],
-            });
+        if !cycle.is_empty() && cur == start {
+            let cycle = collapse_spikes(&cycle);
+            if cycle.len() >= 2 && face_area(&cycle, hes, verts) > 1e-10 {
+                let boundary: Vec<BoundaryEdge> = cycle
+                    .iter()
+                    .map(|&i| boundary_edge(&hes[i].2, &he_eid[i], &hes[i].0, &hes[i].1))
+                    .collect();
+                let face_entity_ids: Vec<String> = cycle.iter().map(|&i| he_eid[i].clone()).collect();
+                surfaces.push(SurfaceOut {
+                    boundary,
+                    face_entity_ids,
+                    holes: vec![],
+                });
+            }
         }
     }
 
@@ -1923,6 +1954,32 @@ mod tests {
         ];
         let t = detect_topology(&geom);
         assert_eq!(t.surfaces.len(), 2);
+    }
+
+    #[test]
+    fn center_to_center_line_bounds_no_spike() {
+        // Bug report bug-report-1788364894806: two overlapping circles plus a
+        // line joining their two centres. Each circle centre is an interior point,
+        // so the line dangles into both crescents and the face tracer used to
+        // carry the dangling segment back and forth as a zero-width slit. OCC
+        // cannot build a face from that boundary, so the picked "big circle minus
+        // the venn" area extruded as a thin plane instead of the crescent. The
+        // crescents must be clean 3-edge loops (the chord still splits the lens
+        // in two, so 4 areas total).
+        let geom = vec![
+            ("A".into(), circle([0.0, 0.0], 9.5)),
+            ("B".into(), circle([0.0, 10.0], 4.0)),
+            ("V".into(), line([0.0, 10.0], [0.0, 0.0])),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 4, "2 crescents + 2 lens halves");
+        // The line only divides the lens, so it must appear in exactly the two
+        // lens-half faces, never in a crescent it merely dangled into.
+        let with_line = t.surfaces.iter().filter(|s| s.face_entity_ids.contains(&"V".to_string())).count();
+        assert_eq!(with_line, 2, "the chord bounds only the lens halves");
+        for s in &t.surfaces {
+            assert_eq!(s.boundary.len(), 3, "no dangling slit in any boundary");
+        }
     }
 
     fn ellipse(center: Vec2, a: f64, b: f64, theta: f64) -> InputEntity {

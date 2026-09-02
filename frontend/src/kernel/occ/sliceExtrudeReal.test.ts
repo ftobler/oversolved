@@ -11,7 +11,7 @@ import { volumeOf } from './booleans'
 import { extrudeProfileWithLineage } from './prismLineage'
 import { detectTopology, topologyAvailable } from '../topologyTestUtil'
 import { extractProfileLoops, type PlaneLike } from '../features/shared'
-import type { LoopEdge } from '../profileLoops'
+import { loopSignedArea, type LoopEdge } from '../profileLoops'
 
 const oc = await loadOcc()
 const XY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
@@ -97,6 +97,42 @@ describe.skipIf(!oc || !topologyAvailable)('sliced-curve profile extrude (real O
     const vol = volumeOf(oc!, scope, solid)
     expect(vol).toBeGreaterThan(0)
     expect(vol).toBeLessThan(Math.PI * 5 * 2.5 * 2)  // less than the whole prism
+    scope.dispose()
+  })
+
+  it('occ-extrude-big-crescent-minus-venn: a centre-to-centre chord must not leave a sliver', () => {
+    // Bug report bug-report-1788364894806: a line joining the two circle centres
+    // dangles into both crescents. The area builder used to carry that dangling
+    // segment back and forth as a zero-width slit, so OCC extruded the picked
+    // "big circle minus the venn" area as a thin plane. The chord splits only the
+    // lens; each crescent must stay a clean closed loop the prism accepts.
+    const scope = new DisposeScope()
+    const topo = detectTopology(
+      {
+        A: { kind: 'circle', center: [0, 0], radius: 9.5 },
+        B: { kind: 'circle', center: [0, 10], radius: 4 },
+        V: { kind: 'line', start: [0, 10], end: [0, 0] },
+      },
+      'sk',
+    )
+    expect(topo.surfaces).toHaveLength(4)
+    // The two crescents are the faces the dangling chord must not touch; the two
+    // lens halves (and only those) carry the line in their boundary.
+    const crescents = topo.surfaces.filter(
+      (s) => !(s.boundary as LoopEdge[]).some((e) => e.id === 'V'),
+    )
+    expect(crescents).toHaveLength(2)
+    const big = crescents.reduce((a, b) =>
+      Math.abs(loopSignedArea(a.boundary as LoopEdge[])) > Math.abs(loopSignedArea(b.boundary as LoopEdge[]))
+        ? a
+        : b,
+    )
+    const { solid } = extrudeProfileWithLineage(oc!, scope, [big.boundary as LoopEdge[]], XY, [0, 0, 1], 10, 'sk')
+    const vol = volumeOf(oc!, scope, solid)
+    // Big crescent = big disk (pi*9.5^2 ~= 283.5) minus the lens (~19.0): ~264.5
+    // area, times height 10 ~= 2645. A thin sliver would be orders below this.
+    expect(vol).toBeGreaterThan(2500)
+    expect(vol).toBeLessThan(2800)
     scope.dispose()
   })
 })

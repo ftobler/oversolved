@@ -102,10 +102,12 @@ describe.skipIf(!solveBytes)('tangent line closes its own sketch area', () => {
     const solved = solve(sketchFeature({ withVert: true }))
     expect(solved.surfaces).toHaveLength(5)
     expect(areaOwners(solved)).toContainEqual([BIG, SMALL, TANGENT].sort())
-    // The vertical's two stubs dangle into the crescents, so all four of the
-    // other regions carry it; the tangent region is the one that does not.
-    expect(areaOwners(solved).filter((o) => !o.includes(VERT))).toEqual([
-      [BIG, SMALL, TANGENT].sort(),
+    // The chord splits only the lens: exactly the two lens halves carry it. The
+    // crescents it dangles into do not -- the dangling stub is a zero-width slit
+    // the area builder collapses away, not part of their real boundary.
+    expect(areaOwners(solved).filter((o) => o.includes(VERT))).toEqual([
+      [BIG, SMALL, VERT].sort(),
+      [BIG, SMALL, VERT].sort(),
     ])
   })
 
