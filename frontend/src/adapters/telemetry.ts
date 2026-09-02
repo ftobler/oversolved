@@ -69,6 +69,38 @@ export function formatBugReportMarkdown(report: BugReport): string {
   return sections.join('\n\n') + '\n'
 }
 
+// The filename is the only thing a maintainer sees before opening the file, so
+// it carries both halves of the report's identity: when it happened, then what
+// the user called it. Local time, because the timestamp is read by the human who
+// filed it; minute resolution, because that is enough to sort a day's reports.
+function timestamp(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    '_',
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+  ].join('')
+}
+
+// Anything a filesystem or an upload form could choke on collapses to a single
+// underscore; the title keeps its own casing so it still reads as the sentence
+// the user typed.
+function titleSlug(title: unknown): string {
+  const slug = (typeof title === 'string' ? title : '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60)
+    .replace(/_+$/, '')
+  return slug || 'bug_report'
+}
+
+export function bugReportFilename(report: BugReport, now: Date = new Date()): string {
+  return `${timestamp(now)}_${titleSlug(report.title)}.md`
+}
+
 // Land the report at the browser download edge, the same way STEP/STL export
 // already does (Blob -> object URL -> anchor click).
 export class DownloadBugReportSink implements BugReportSink {
@@ -77,7 +109,7 @@ export class DownloadBugReportSink implements BugReportSink {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `bug-report-${Date.now()}.md`
+    a.download = bugReportFilename(report)
     a.click()
     URL.revokeObjectURL(url)
   }
