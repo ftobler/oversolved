@@ -516,6 +516,47 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     }
   })
 
+  // ─── Picked sketch entities ───
+
+  // A 10x10 rectangle with a free r=2 circle at (5,5), both in one sketch.
+  function rectWithCircleSpec(profileRef: string) {
+    const sk = rectSketchSk('sk1', 10, 10) as Record<string, unknown>
+    const entities = sk.entities as Record<string, unknown>[]
+    const initial = sk.initial as Record<string, number[]>
+    const constraints = sk.constraints as Record<string, unknown>[]
+    entities.push({ id: 'ci', kind: 'circle' as const })
+    initial.ci = [5, 5, 2]
+    constraints.push({ id: 'cd', kind: 'diameter' as const, target: '$ci', value: 4 })
+    return {
+      features: [
+        sk,
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: [profileRef], distance: 3, direction: 'normal' } },
+      ],
+    }
+  }
+
+  it('a picked circle extrudes the disc it bounds, not the sketch around it', () => {
+    // The viewport hands the chip `entity:<sketch>:<eid>` when the click lands
+    // on the curve rather than on the area fill. The circle sits inside the
+    // rectangle, so answering with the sketch (or with every region the circle
+    // borders) would sweep the 10x10 plate as well.
+    const result = run(rectWithCircleSpec('entity:sk1:ci'))
+    expect(res(result, 'sk1').status).not.toBe('exception')
+    expect(res(result, 'ex1').status).toBe('ok')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      assertMeshValid(mesh)
+      assertMeshBbox(mesh, [3, 7], [3, 7], [0, 3])
+    }
+  })
+
+  it('a picked open curve is refused instead of widened to its sketch', () => {
+    const result = run(rectWithCircleSpec('entity:sk1:bottom'))
+    expect(res(result, 'ex1').status).toBe('exception')
+    expect(String(res(result, 'ex1').exception)).toContain('bounds no closed area')
+  })
+
   it('extrude from top face named query (@ex1/top_face)', () => {
     // Second extrude uses @ex1/top_face as its profile.
     const result = run({

@@ -15,7 +15,7 @@ import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops } from '../occ/faceLoops'
-import { extractProfileLoops, registerTopFace, type PlaneLike } from './shared'
+import { extractProfileLoops, parseSketchEntityRef, registerTopFace, surfaceEntityIds, type PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -222,10 +222,69 @@ interface ExtrudeLoops {
 }
 
 /**
+ * Loops for a viewport pick of ONE sketch entity (`entity:<sketch>:<eid>`), i.e.
+ * a click that landed on a sketch curve rather than on the area fill beside it.
+ *
+ * The answer is the curve's own closed loop, taken as a simple profile: the
+ * pick names a boundary, and what is extruded is what that boundary encloses.
+ * The loop is read from whichever of the two shapes the area builder left it in:
+ *
+ *  1. an undivided closed curve is already its own area (`build_standalone` in
+ *     topology/dcel.rs), whose ancestry names that one entity and nothing else;
+ *  2. a closed curve something crosses has no area of its own and survives as
+ *     the split edges under its entity id, which chain back into its loop.
+ *
+ * Only the OUTER boundary is taken, never that area's `holes`. A hole in the
+ * area model is not a void: the inner curve bounds its own filled area right
+ * next to it, so the fill the user sees inside the picked curve is solid, and
+ * the answer has to match it. It also has to match itself -- whether a chord
+ * happens to divide the curve decides which branch above answers, and case 2
+ * has no holes to speak of, so subtracting them in case 1 would make one drawing
+ * extrude two different solids. Pick the ring's area itself to keep its hole.
+ *
+ * The regions the curve BORDERS are never the answer: a circle drawn inside a
+ * rectangle borders the rectangle's region too, and a pick of the circle must
+ * not drag the plate in with it.
+ *
+ * A curve that closes nothing (a lone line, an arc) is refused rather than
+ * silently widened to the whole sketch. The pick is named in the error, and the
+ * area fill next to the curve is still there to pick instead.
+ */
+function collectEntityProfileLoops(
+  sketchId: string,
+  eid: string,
+  globalRepo: Repository,
+): ExtrudeLoops {
+  const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
+  if (plane === undefined) throw new Error(`sketch not found: ${sketchId}`)
+  const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+
+  const token = ref(sketchId + '/' + eid)
+  const ownArea = ((topo.surfaces as Dict[]) ?? []).find((s) => {
+    const ids = surfaceEntityIds(s)
+    return ids.length === 1 && ids[0] === token
+  })
+  // Either way it is one edge list to chain, and the chaining plus the closure
+  // test are the same ones a real area's boundary goes through.
+  const boundary = ownArea !== undefined
+    ? ((ownArea.boundary as Dict[]) ?? [])
+    : ((topo.edges as Dict[]) ?? []).filter((e) => e.entity_id === eid)
+  const loops = boundary.length > 0 ? extractProfileLoops([{ boundary }]) : []
+  if (loops.length === 0) {
+    throw new Error(
+      `profile entity '${eid}' of sketch ${sketchId} bounds no closed area; ` +
+      'pick the area itself, or a closed entity such as a circle',
+    )
+  }
+  return { loops, plane, sketchId, face: null }
+}
+
+/**
  * Resolve an extrude's profile to (loops, plane, sketch_id, face) (mirrors
  * `_collect_extrude_loops`). For a plain `$sketch` ref it registers the swept
  * top face and reads the sketch topology; for `@`/`?` refs it routes through
- * resolveFaceProfile.
+ * resolveFaceProfile; an `entity:`/`vertex:` viewport pick resolves to the area
+ * that one entity bounds.
  */
 export function collectExtrudeLoops(
   oc: OccModule,
@@ -237,6 +296,11 @@ export function collectExtrudeLoops(
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): ExtrudeLoops {
+  const picked = parseSketchEntityRef(sketchRef)
+  if (picked !== null) {
+    return collectEntityProfileLoops(picked.sketchId, picked.eid, globalRepo)
+  }
+
   if (sketchRef.startsWith('?') || sketchRef.startsWith('@')) {
     let sketchId = ''
     if (sketchRef.startsWith('?')) {

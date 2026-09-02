@@ -14,7 +14,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
-import { sketchToWorld2d, extractProfileLoops, surfaceEntityIds, type PlaneLike } from './shared'
+import { sketchToWorld2d, extractProfileLoops, parseSketchEntityRef, surfaceEntityIds, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
 import { makeLineEdge, makeArcEdge, type Vec3 } from '../occ/primitives'
@@ -125,13 +125,13 @@ export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): ChainEdge[] {
 /**
  * Split a sketch-entity selection ref (`entity:<sketchId>:<eid>` or
  * `vertex:<sketchId>:<eid>:<sub>`) into its sketch id and entity id. Returns a
- * null `eid` for any other ref form (the whole sketch is selected).
+ * null `eid` for a ref that names a whole sketch (`$sk`, `@sk/...`, `?...`);
+ * a selection id missing its entity segment names neither, and falls through to
+ * `pathRefToSketchId`, which refuses it.
  */
 function refToSketchAndEntity(ref: string, globalRepo: Repository): { sketchId: string; eid: string | null } {
-  if (ref.startsWith('entity:') || ref.startsWith('vertex:')) {
-    const parts = ref.split(':')
-    return { sketchId: parts[1], eid: parts[2] ?? null }
-  }
+  const picked = parseSketchEntityRef(ref)
+  if (picked !== null) return picked
   return { sketchId: pathRefToSketchId(ref, globalRepo), eid: null }
 }
 
@@ -378,18 +378,17 @@ export function solveSweep(
   const entityEidsBySketch = new Map<string, Set<string>>()
   const regionRefs: string[] = []
   for (const ref of rawRefs) {
-    if (ref.startsWith('entity:') || ref.startsWith('vertex:')) {
-      const parts = ref.split(':')
-      const sk = parts[1]
-      let set = entityEidsBySketch.get(sk)
-      if (!set) {
-        set = new Set()
-        entityEidsBySketch.set(sk, set)
-      }
-      if (parts[2]) set.add(parts[2])
-    } else {
+    const picked = parseSketchEntityRef(ref)
+    if (picked === null) {
       regionRefs.push(ref)
+      continue
     }
+    let set = entityEidsBySketch.get(picked.sketchId)
+    if (!set) {
+      set = new Set()
+      entityEidsBySketch.set(picked.sketchId, set)
+    }
+    set.add(picked.eid)
   }
 
   const allLoops: Dict[][] = []

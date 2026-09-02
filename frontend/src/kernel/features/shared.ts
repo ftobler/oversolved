@@ -50,6 +50,27 @@ export function surfaceEntityIds(surface: Dict): string[] {
   return [...new Set(ids.filter((i) => i.startsWith('@') && i.includes('/')))].sort()
 }
 
+/**
+ * Split a viewport sketch pick (`entity:<sketchId>:<eid>` or
+ * `vertex:<sketchId>:<eid>:<sub>`) into the sketch and the entity it names.
+ * Returns null for every other ref form (`$sketch`, `@feat/...`, `?...`).
+ *
+ * These are selection ids, not queries: the viewport toggles them into
+ * `normalSelection` verbatim and the pick chips persist them unchanged (a
+ * rewritten value would no longer match the re-click that unpicks it), so the
+ * feature leaves have to understand the raw form. A `vertex:` pick names the
+ * entity that owns the vertex, which is what both the sweep path and the
+ * profile paths want from it.
+ */
+export function parseSketchEntityRef(ref: string): { sketchId: string; eid: string } | null {
+  if (!ref.startsWith('entity:') && !ref.startsWith('vertex:')) return null
+  const parts = ref.split(':')
+  const sketchId = parts[1] ?? ''
+  const eid = parts[2] ?? ''
+  if (!sketchId || !eid) return null
+  return { sketchId, eid }
+}
+
 // ─── Profile loops ───
 
 /**
