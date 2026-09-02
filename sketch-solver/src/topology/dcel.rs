@@ -116,17 +116,24 @@ pub fn pymod(a: f64, b: f64) -> f64 {
     ((a % b) + b) % b
 }
 
-fn angle_in_arc(a_rad: f64, start_deg: f64, end_deg: f64) -> bool {
+fn angle_in_arc(a_rad: f64, r: f64, start_deg: f64, end_deg: f64) -> bool {
     let s = pymod(radians(start_deg), TWO_PI);
     let e = pymod(radians(end_deg), TWO_PI);
     let a = pymod(a_rad, TWO_PI);
     if (s - e).abs() < EPS || (s - e).abs() > TWO_PI - EPS {
         return true;
     }
+    // The endpoint slack is the angular width of a MERGE-world chord at this
+    // radius, floored at EPS so the window is never tighter than the old fixed
+    // radian slack. The old EPS-radians window was 1e-9 * r world wide: four
+    // orders tighter than the 1e-5 world vertex merge, so a tangent line whose
+    // contact landed a hair past an arc endpoint (the ordinary slot corner) was
+    // dropped while the same miss against a full circle was fused.
+    let slack = (MERGE / r.max(EPS)).max(EPS);
     if s < e {
-        s - EPS <= a && a <= e + EPS
+        s - slack <= a && a <= e + slack
     } else {
-        a >= s - EPS || a <= e + EPS
+        a >= s - slack || a <= e + slack
     }
 }
 
@@ -470,7 +477,7 @@ fn intersect(
     };
     let ta = class(eid_a);
     let tb = class(eid_b);
-    let ia = |e: &InputEntity, ang: f64| angle_in_arc(ang, e.angle_start.unwrap(), e.angle_end.unwrap());
+    let ia = |e: &InputEntity, ang: f64| angle_in_arc(ang, e.radius.unwrap(), e.angle_start.unwrap(), e.angle_end.unwrap());
 
     match (ta, tb) {
         ('l', 'l') => ll(ea.start.unwrap(), ea.end.unwrap(), eb.start.unwrap(), eb.end.unwrap())
@@ -980,7 +987,7 @@ fn register_hit(entry: &Tagged, t: f64, v: &str, splits: &mut HashMap<String, Ve
         }
         _ => {
             // arc: keep only hits within the arc span, normalized like the legacy pass.
-            if !angle_in_arc(t, entry.e.angle_start.unwrap(), entry.e.angle_end.unwrap()) {
+            if !angle_in_arc(t, entry.e.radius.unwrap(), entry.e.angle_start.unwrap(), entry.e.angle_end.unwrap()) {
                 return;
             }
             let p = norm_arc_param(t, *arc_a0.get(&entry.eid).unwrap_or(&0.0));
@@ -1818,6 +1825,74 @@ mod tests {
             angle_end: Some(a1),
             ..Default::default()
         }
+    }
+
+    // Tangent line at angle 90 deg of the circle (horizontal y = r), the arc
+    // ending at `end_deg`. The arc's `end` field sits at its angle_end position
+    // (not the helper default) so the seeded arc-end vertex fuses with the
+    // tangent contact instead of dangling at (center - r, center). Returns
+    // (arc, tangent_line, closing_line).
+    fn slot_corner(r: f64, end_deg: f64) -> Vec<(String, InputEntity)> {
+        let end_rad = radians(end_deg);
+        vec![
+            (
+                "arc".into(),
+                InputEntity {
+                    center: Some([0.0, 0.0]),
+                    radius: Some(r),
+                    start: Some([r, 0.0]),
+                    end: Some([r * end_rad.cos(), r * end_rad.sin()]),
+                    angle_start: Some(0.0),
+                    angle_end: Some(end_deg),
+                    ..Default::default()
+                },
+            ),
+            ("tangent".into(), line([-3.0, r], [3.0, r])),
+            ("close".into(), line([r, 0.0], [r, r])),
+        ]
+    }
+
+    #[test]
+    fn line_tangent_exactly_at_arc_endpoint_closes_the_slot() {
+        // The exact-endpoint contract (passes today; guards the change): a line
+        // tangent at the arc end must close the slot corner as one surface and
+        // emit no degenerate sliver arc edge below MERGE/r of angular span.
+        let r: f64 = 2.0;
+        let t = detect_topology(&slot_corner(r, 90.0));
+        assert_eq!(t.surfaces.len(), 1, "exact-endpoint tangent closes the slot");
+        for e in &t.edges {
+            if let EdgeGeom::Arc { angle_start_deg, angle_end_deg, .. } = e.geom {
+                let span = (radians(angle_end_deg - angle_start_deg)).abs();
+                assert!(span >= MERGE / r, "no sliver arc edge below MERGE/r (span {span:e})");
+            }
+        }
+    }
+
+    #[test]
+    fn arc_endpoint_tangency_tolerance_is_world_scaled() {
+        // The headline: the endpoint slack is the angular width of a MERGE-world
+        // chord at this radius (MERGE / r), not a bare 1e-9 radians (which was
+        // 1e-9 * r world -- four orders tighter than the vertex merge). A tangent
+        // contact within MERGE world of the arc end keeps the slot closed; one a
+        // hair further (2 * MERGE) leaves it open, matching the vertex merge.
+        let r: f64 = 2.0;
+        for delta_world in [MERGE / 2.0, MERGE] {
+            let end_deg = degrees(radians(90.0) - delta_world / r);
+            assert!(
+                angle_in_arc(radians(90.0), r, 0.0, end_deg),
+                "delta_world {delta_world:e}: a contact within MERGE of the arc end is inside the sweep"
+            );
+            let t = detect_topology(&slot_corner(r, end_deg));
+            assert_eq!(t.surfaces.len(), 1, "delta_world {delta_world:e}: the slot still closes");
+        }
+        let delta_world = 2.0 * MERGE;
+        let end_deg = degrees(radians(90.0) - delta_world / r);
+        assert!(
+            !angle_in_arc(radians(90.0), r, 0.0, end_deg),
+            "a contact 2x MERGE past the arc end is outside the sweep"
+        );
+        let t = detect_topology(&slot_corner(r, end_deg));
+        assert_eq!(t.surfaces.len(), 0, "a real miss past MERGE leaves the slot open");
     }
 
     #[test]

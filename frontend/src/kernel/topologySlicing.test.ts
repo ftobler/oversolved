@@ -100,6 +100,46 @@ describe.skipIf(!topologyAvailable)("area builder: line / arc / circle slicing a
   })
 })
 
+describe.skipIf(!topologyAvailable)("area builder: line tangent at an arc endpoint", () => {
+  // The slot-corner geometry from the arc-hit-tolerance feature: a quarter arc
+  // from angle 0 to `endDeg`, a tangent line y = r touching the circle at 90 deg
+  // (horizontal), and a closing line x = r. The tangent contact sits a controlled
+  // world distance past the arc end; the endpoint slack is the angular width of a
+  // MERGE-world chord (MERGE / r), so the slot must close within MERGE and stay
+  // open past it, matching the vertex merge.
+  const slot = (r: number, endDeg: number): Record<string, Geom> => {
+    const endRad = (endDeg * Math.PI) / 180
+    return {
+      arc: {
+        center: [0, 0],
+        radius: r,
+        angle_start: 0,
+        angle_end: endDeg,
+        start: [r, 0],
+        end: [r * Math.cos(endRad), r * Math.sin(endRad)],
+      },
+      tangent: line(-3, r, 3, r),
+      close: line(r, 0, r, r),
+    }
+  }
+  const endForShortfall = (r: number, deltaWorld: number): number =>
+    90 - (deltaWorld / r) * (180 / Math.PI)
+
+  it("slice-line-tangent-at-arc-endpoint: a contact within MERGE of the arc end keeps the slot closed", () => {
+    const r = 2
+    for (const dw of [TOL_TOPOLOGY_MERGE / 2, TOL_TOPOLOGY_MERGE]) {
+      const topo = detectTopology(slot(r, endForShortfall(r, dw)), "sk")
+      expect(topo.surfaces).toHaveLength(1)
+    }
+  })
+
+  it("slice-line-tangent-at-arc-endpoint: a contact past MERGE leaves the slot open", () => {
+    const r = 2
+    const topo = detectTopology(slot(r, endForShortfall(r, TOL_TOPOLOGY_MERGE * 2)), "sk")
+    expect(topo.surfaces).toHaveLength(0)
+  })
+})
+
 describe.skipIf(!topologyAvailable)("area builder: spline slicing", () => {
   it("slice-spline-thru-ellipse: spline slashes a full ellipse into areas", () => {
     const s = spline([-2.174095, 5.807216, -2.790440, -3.801748, 2.539267, 4.228380, 1.686274, -4.632326])
