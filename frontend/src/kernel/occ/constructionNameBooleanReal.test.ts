@@ -142,11 +142,21 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       const consumedCarried = new Set(Object.values(consumed.face_names))
       expect(consumedCarried.has(mintFaceUuid(sideFacePath('e2', 'sk2/l0')))).toBe(true)
 
-      // Ancestry follows the re-minted UUID, so the ancestral fallback tier
-      // still has the tool face's tokens to work with.
-      for (const uuid of carried) {
-        expect(kept.face_ancestry[uuid]).toBeDefined()
+      // Ancestry follows the re-minted UUID -- and carries the tool face's own
+      // tokens, not an empty list. Keying that lookup on the re-minted UUID
+      // instead of the source silently yields `[]`, which leaves the ancestral
+      // fallback tier with nothing and sends the face to the body-wide
+      // profile_queries bucket (builder.ts), so `toBeDefined` is not enough.
+      let withTokens = 0
+      for (const toolUuid of Object.values(bump.faceNames)) {
+        const reminted = mintFaceUuid(toolCopyFacePath(toolUuid, 'bool1'))
+        if (!carried.has(reminted)) continue  // face consumed by the fuse
+        expect(kept.face_ancestry[reminted]).toEqual(bump.faceAncestry[toolUuid])
+        if ((kept.face_ancestry[reminted] ?? []).length > 0) withTokens++
       }
+      // And at least one of them really has tokens -- the wrong lookup key
+      // satisfies the equality above only by making every list empty.
+      expect(withTokens).toBeGreaterThan(0)
     } finally {
       scope.dispose()
     }
