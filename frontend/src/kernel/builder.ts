@@ -8,6 +8,7 @@ import {
   Repository,
   evictAncestryAndRegister,
   clearBodyAncestry,
+  clearConsumedBodyAncestry,
   emitWire,
   absolute,
   canonical,
@@ -1220,9 +1221,16 @@ export function build(
       continue
     }
 
-    const modifiedByLenBefore = Object.fromEntries(
-      Object.entries(bodyStore).map(([bid, b]) => [bid, b.modified_by.length])
-    )
+    // Each body as it stood going in: how long `modified_by` was (a longer one
+    // after the solve means the feature modified it) and who owned it (so a body
+    // this feature CONSUMES can still be evicted below -- the store entry, and
+    // with it `created_by`, is gone by then). A body both created AND consumed
+    // inside one feature is invisible here; no solver does that today, a
+    // boolean's tools must pre-exist.
+    const before: Record<string, { modifiedByLen: number; createdBy: string }> = {}
+    for (const [bid, b] of Object.entries(bodyStore)) {
+      before[bid] = { modifiedByLen: b.modified_by.length, createdBy: b.created_by || '' }
+    }
 
     setCurrentFeatureId(fid)
     try {
@@ -1240,6 +1248,19 @@ export function build(
       setCurrentFeatureId(null)
     }
 
+    // A body the feature consumed (a boolean tool, a fused array source) is out of
+    // the store but still fully registered: its faces stay live carrying the very
+    // construction UUIDs the surviving body inherited from them, which the
+    // resolver's UUID tier then reports as a "collision by construction" on every
+    // pick of such a face. Evict it here, where the disappearance is observable,
+    // rather than in each consuming solver.
+    for (const [bodyId, was] of Object.entries(before)) {
+      if (bodyId in bodyStore) continue
+      clearConsumedBodyAncestry(globalRepo, bodyId, was.createdBy)
+      registeredBodyIds.delete(bodyId)
+      registeredVersions.delete(bodyId)
+    }
+
     for (const [bodyId, body] of Object.entries(bodyStore)) {
       if (body.shape != null && body.created_by) shapeOwningFids.add(body.created_by)
       if (!registeredBodyIds.has(bodyId) && body.shape != null) {
@@ -1252,7 +1273,7 @@ export function build(
         _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
         registeredBodyIds.add(bodyId)
         if (landed) registeredVersions.set(bodyId, bodyVersion(body))
-      } else if (body.shape != null && body.modified_by.length > (modifiedByLenBefore[bodyId] ?? 0)) {
+      } else if (body.shape != null && body.modified_by.length > (before[bodyId]?.modifiedByLen ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates. A
         // failed re-registration must also drop the stale entry: the snapshot now holds
         // the PREVIOUS version's ancestry, which is not what this checkpoint carries.

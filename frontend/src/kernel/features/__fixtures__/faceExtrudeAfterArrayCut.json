@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "kind": "part",
+  "features": [
+    {
+      "id": "yrXI_fDy_XDjU0ubwuhJEQD8",
+      "kind": "sketch",
+      "label": "sketch 1",
+      "plane": "@builtin_plane_top",
+      "initial": {
+        "oSlqWC8gt4zRkQfF": [
+          -1.2717753065938364e-11,
+          5.099897500832062e-12,
+          30.828083038330078
+        ],
+        "FAO1iDfUD_7ibTrQ": [
+          0,
+          0,
+          44.40827178955078
+        ]
+      },
+      "entities": [
+        {
+          "id": "oSlqWC8gt4zRkQfF",
+          "kind": "circle"
+        },
+        {
+          "id": "FAO1iDfUD_7ibTrQ",
+          "kind": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "c_coincident_a-kqm-iM",
+          "kind": "coincident",
+          "a": "$oSlqWC8gt4zRkQfFcenter",
+          "b": "@builtin_origin"
+        },
+        {
+          "id": "c_coincident_ueB6DZXn",
+          "kind": "coincident",
+          "a": "$FAO1iDfUD_7ibTrQcenter",
+          "b": "@builtin_origin"
+        }
+      ],
+      "visible": false,
+      "auto_hidden": true
+    },
+    {
+      "id": "n5fZFV21_P-zHwbXGC-I_BKG",
+      "kind": "extrude",
+      "label": "extrude 1",
+      "extrude": {
+        "sketch": [
+          "?2a,9,19;@yrXI_fDy_XDjU0ubwuhJEQD8/FAO1iDfUD_7ibTrQsurface:1@yrXI_fDy_XDjU0ubwuhJEQD8:flatface"
+        ],
+        "distance": 21,
+        "direction": "normal"
+      }
+    },
+    {
+      "id": "jPq1Fy6PD7V6lXdJcWuHK7X0",
+      "kind": "sketch",
+      "label": "sketch 2",
+      "plane": "@builtin_plane_front",
+      "initial": {
+        "Gs7sksPUidffzLc4": [
+          -12.770721435546875,
+          24.7315673828125,
+          0.0070360032841563225,
+          5.7305216789245605
+        ],
+        "IVVtnU_GurjLAqog": [
+          0.0070360032841563225,
+          5.7305216789245605,
+          13.179092407226562,
+          24.703956604003906
+        ],
+        "43SdKHQzF101-A4t": [
+          -12.770721435546875,
+          24.7315673828125,
+          13.179092407226562,
+          24.703956604003906
+        ]
+      },
+      "entities": [
+        {
+          "id": "Gs7sksPUidffzLc4",
+          "kind": "line"
+        },
+        {
+          "id": "IVVtnU_GurjLAqog",
+          "kind": "line"
+        },
+        {
+          "id": "43SdKHQzF101-A4t",
+          "kind": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "c_coincident_ZFxh8_s_",
+          "kind": "coincident",
+          "a": "$IVVtnU_GurjLAqogend",
+          "b": "@yrXI_fDy_XDjU0ubwuhJEQD8/oSlqWC8gt4zRkQfF"
+        },
+        {
+          "id": "c_coincident_flXmpZeh",
+          "kind": "coincident",
+          "a": "$43SdKHQzF101-A4tstart",
+          "b": "$Gs7sksPUidffzLc4start"
+        },
+        {
+          "id": "c_coincident_hLSRO3Ru",
+          "kind": "coincident",
+          "a": "$43SdKHQzF101-A4tend",
+          "b": "$draw:last"
+        },
+        {
+          "id": "c_coincident_e7QJXbEJ",
+          "kind": "coincident",
+          "a": "$IVVtnU_GurjLAqogend",
+          "b": "$43SdKHQzF101-A4tend"
+        },
+        {
+          "id": "c_coincident_DZST0o_K",
+          "kind": "coincident",
+          "a": "$43SdKHQzF101-A4tstart",
+          "b": "$Gs7sksPUidffzLc4"
+        },
+        {
+          "id": "c_coincident_kefSE5p0",
+          "kind": "coincident",
+          "a": "$Gs7sksPUidffzLc4end",
+          "b": "$IVVtnU_GurjLAqogstart"
+        },
+        {
+          "id": "c_coincident_UxHGmXSN",
+          "kind": "coincident",
+          "a": "$43SdKHQzF101-A4tend",
+          "b": "$IVVtnU_GurjLAqog"
+        },
+        {
+          "id": "c_coincident_9Z9M0-_K",
+          "kind": "coincident",
+          "a": "$Gs7sksPUidffzLc4end",
+          "b": "$IVVtnU_GurjLAqog"
+        }
+      ],
+      "visible": false,
+      "auto_hidden": true
+    },
+    {
+      "id": "8HH1e9K5F2WuPZLG7zIgGa3y",
+      "kind": "extrude",
+      "label": "extrude 2",
+      "extrude": {
+        "sketch": [
+          "?2a,2a,2a,9,19;@jPq1Fy6PD7V6lXdJcWuHK7X0/43SdKHQzF101-A4t@jPq1Fy6PD7V6lXdJcWuHK7X0/Gs7sksPUidffzLc4@jPq1Fy6PD7V6lXdJcWuHK7X0/IVVtnU_GurjLAqogsurface:0@jPq1Fy6PD7V6lXdJcWuHK7X0:flatface"
+        ],
+        "distance": 50,
+        "direction": "normal",
+        "operation": "new",
+        "merge_target": "?15,19,1e,2a;@u|u_c7b0ccd7c9a1e0dd@n5fZFV21_P-zHwbXGC-I_BKG@body_n5fZFV21_P-zHwbXGC-I_BKG@yrXI_fDy_XDjU0ubwuhJEQD8/FAO1iDfUD_7ibTrQ:cylinderface"
+      }
+    },
+    {
+      "id": "WlujpF0qBTE8m31DjT3ftNfT",
+      "kind": "circular_array",
+      "label": "circular_array 2",
+      "circular_array": {
+        "count": 3,
+        "operation": "add",
+        "include_source": true,
+        "source_body": "?15,19,1e,2a,7;@u|u_56b010c25bbf6e1b@8HH1e9K5F2WuPZLG7zIgGa3y@body_8HH1e9K5F2WuPZLG7zIgGa3y@jPq1Fy6PD7V6lXdJcWuHK7X0/43SdKHQzF101-A4t@cls_yp:flatface",
+        "axis": "?15,19,1e,2a;@u|u_bfe0638d05c0383f@n5fZFV21_P-zHwbXGC-I_BKG@body_n5fZFV21_P-zHwbXGC-I_BKG@yrXI_fDy_XDjU0ubwuhJEQD8/oSlqWC8gt4zRkQfF:cylinderface"
+      }
+    },
+    {
+      "id": "WiX1LqiIKPCzclGQHqNuVK9_",
+      "kind": "boolean",
+      "label": "boolean 3",
+      "boolean": {
+        "operation": "subtract",
+        "target": "?15,19,1e,2a;@u|u_c7b0ccd7c9a1e0dd@n5fZFV21_P-zHwbXGC-I_BKG@body_n5fZFV21_P-zHwbXGC-I_BKG@yrXI_fDy_XDjU0ubwuhJEQD8/FAO1iDfUD_7ibTrQ:cylinderface",
+        "tools": [
+          "?15,19,1e,2a,2a,2a,7;@u|u_c767a4591b947403@8HH1e9K5F2WuPZLG7zIgGa3y@body_8HH1e9K5F2WuPZLG7zIgGa3y@jPq1Fy6PD7V6lXdJcWuHK7X0/43SdKHQzF101-A4t@jPq1Fy6PD7V6lXdJcWuHK7X0/Gs7sksPUidffzLc4@jPq1Fy6PD7V6lXdJcWuHK7X0/IVVtnU_GurjLAqog@cls_zp:flatface"
+        ]
+      }
+    },
+    {
+      "id": "U9r4BTz3QTVHLLlOe3PGl2BO",
+      "kind": "extrude",
+      "label": "extrude 2",
+      "extrude": {
+        "sketch": [
+          "?15,19,1e,2a,7;@u|u_356bbd370089e0cc@n5fZFV21_P-zHwbXGC-I_BKG@body_n5fZFV21_P-zHwbXGC-I_BKG@jPq1Fy6PD7V6lXdJcWuHK7X0/IVVtnU_GurjLAqog@cls_zp:flatface"
+        ],
+        "distance": 10,
+        "direction": "normal"
+      }
+    }
+  ]
+}

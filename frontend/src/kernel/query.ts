@@ -1406,6 +1406,39 @@ export function clearBodyAncestry(repo: Repository, bodyId: string): void {
   repo.prunePendingUuids()
 }
 
+/** Evict every repo entry a body owns once the body itself is gone: its whole
+ *  face/edge/vertex index range (`clearBodyAncestry`) plus the solid element the
+ *  creating feature registered under its own bare `@<createdBy>` tag (which
+ *  carries no body tag, so the sweep above cannot see it).
+ *
+ *  Two callers: `delete_body`, and the build loop when a feature CONSUMES a body
+ *  (a boolean tool, an array/fuse source). Without the second, the consumed
+ *  body's faces stay live in the repo carrying the very construction UUIDs the
+ *  surviving body inherited from them, and the resolver's UUID tier reports a
+ *  "collision by construction" on every pick of such a face. */
+export function clearConsumedBodyAncestry(
+  repo: Repository,
+  bodyId: string,
+  createdBy: string,
+): void {
+  clearBodyAncestry(repo, bodyId)
+  if (!createdBy) return
+  const key = canonical([ref(createdBy)])
+  const entry = repo.ancestral.get(key)
+  if (entry === undefined) return
+  const doomed = new Set(
+    entry.eids.filter(eid => {
+      const el = repo.elements.get(eid)
+      return isDict(el) && el["body_id"] === bodyId
+    }),
+  )
+  if (doomed.size === 0) return
+  for (const eid of doomed) repo.deleteElement(eid)
+  entry.eids = entry.eids.filter(eid => !doomed.has(eid))
+  if (entry.eids.length === 0) repo.deleteAncestral(key)
+  repo.prunePendingUuids()
+}
+
 // ─── Plane/point helpers ───
 
 interface PlaneLike {

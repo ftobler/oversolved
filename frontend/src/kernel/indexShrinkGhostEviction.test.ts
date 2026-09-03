@@ -9,17 +9,19 @@ import {
   Repository,
   canonical,
   makeAncestryQuery,
+  constructionUuidToken,
   clearBodyAncestry,
   evictAncestryAndRegister,
   ref,
 } from './query'
-import { registerBodyBrepFromMeta } from './builder'
+import { registerBodyBrepFromMeta, build, type BuildDeps } from './builder'
 import { faceGeometryHash, edgeGeometryHash } from './geomHash'
 import { solveDeleteBody } from './features/deleteBody'
 import { assertRepoIndicesConsistent, assertNoDeadUuidBuckets } from './repoIndexTestUtil'
 import { HandleTable } from './occ/handleTable'
 import type { OccModule } from './occ/occTypes'
 import type { Body } from './types3d'
+import type { OccHandle } from './occ/handleTable'
 
 const oc = null as unknown as OccModule
 const scope = null as never
@@ -200,6 +202,69 @@ describe('delete_body repo cleanup', () => {
     expect(repo.query(faceQuery('body_b', 'ex2', 0))).not.toBeNull()
     expect(repo.query(makeAncestryQuery(['@ex2'], 'solid'))).not.toBeNull()
     expect(repo.byUuid.has('u_body_b_f0')).toBe(true)
+    assertNoDeadUuidBuckets(repo)
+    assertRepoIndicesConsistent(repo)
+  })
+})
+
+describe('consumed body repo cleanup', () => {
+  // A boolean tool (or a fused array source) leaves the body store mid-build
+  // without any solver clearing the repo. Its faces used to stay live carrying
+  // the very construction UUIDs the surviving body inherits from them, and the
+  // resolver's UUID tier then refused every pick of such a face with
+  // "collision by construction". The build loop evicts the vanished body.
+  function consumingBuild(): { repo: Repository; features: Array<Record<string, unknown>> } {
+    const repo = new Repository()
+    const features = [
+      { id: 'ex1', kind: 'extrude' },
+      { id: 'ex2', kind: 'extrude' },
+      { id: 'bool', kind: 'boolean' },
+    ]
+    return { repo, features }
+  }
+
+  function depsFor(repo: Repository): BuildDeps {
+    return {
+      // ex1 makes the target, ex2 the tool, bool consumes the tool and inherits
+      // its face UUIDs onto the target (what `transferBooleanNames` does).
+      trySolveFeature: (feature, _repo, bodyStore) => {
+        const fid = String(feature.id)
+        if (fid === 'ex1') bodyStore.body_a = { ...makeBody('body_a', 1, 'ex1', 2), shape: 1 as OccHandle }
+        if (fid === 'ex2') bodyStore.body_b = { ...makeBody('body_b', 2, 'ex2', 2), shape: 2 as OccHandle }
+        if (fid === 'bool') {
+          const target = bodyStore.body_a
+          target.modified_by.push('bool')
+          target.face_names = {
+            ...target.face_names,
+            [faceGeometryHash([1, 0, 0], [0, 0, 1])]: 'u_body_b_f0',
+          }
+          delete bodyStore.body_b
+        }
+        return { status: 'ok' }
+      },
+      postRegister: () => {},
+      initGlobalRepo: () => repo,
+      tessellateBodies: (bodyStore) =>
+        Object.fromEntries(
+          Object.keys(bodyStore).map((bid) => [bid, metaOf(bid === 'body_a' ? 1 : 2, 2)]),
+        ),
+    }
+  }
+
+  it('evicts the consumed body so its inherited uuid resolves the survivor', () => {
+    const { repo, features } = consumingBuild()
+    build({ features }, { prevState: null }, depsFor(repo))
+
+    // The tool's own face entries are gone, and the uuid it handed to the
+    // target resolves to exactly one live element: the target's face.
+    expect(repo.query(faceQuery('body_b', 'ex2', 0))).toBeNull()
+    expect(repo.byUuid.get('u_body_b_f0')?.filter((e) => repo.elements.has(e))).toHaveLength(1)
+    const hit = repo.query(makeAncestryQuery([constructionUuidToken('u_body_b_f0')], 'flatface'))
+    expect((hit as { body_id?: string }).body_id).toBe('body_a')
+
+    // The consumed body's solid entry dies with it; the survivor keeps its own.
+    expect(repo.query(makeAncestryQuery(['@ex2'], 'solid'))).toBeNull()
+    expect(repo.query(makeAncestryQuery(['@ex1'], 'solid'))).not.toBeNull()
     assertNoDeadUuidBuckets(repo)
     assertRepoIndicesConsistent(repo)
   })
