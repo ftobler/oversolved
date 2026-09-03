@@ -251,6 +251,9 @@ function applyArray(
       targetFaceAncestry: fusedNames.faceAncestry,
       toolFaceNames: instanceNames[i].faceNames,
       toolFaceAncestry: instanceNames[i].faceAncestry,
+      // Each instance was already remapped to its own UUIDs by
+      // `rebuildNamesForTransformedCopy`, so nothing collides.
+      keptToolFeatureId: null,
     })
     fusedNames = {
       faceNames: names.face_names,

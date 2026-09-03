@@ -7,7 +7,13 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import { faceGh } from '../occ/lineageHash'
-import { mintFaceUuid, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
+import {
+  mintFaceUuid,
+  splitFacePath,
+  keptToolFacePath,
+  orderSplitChildren,
+  type SplitChild,
+} from '../constructionName'
 import { deriveEdgeNames, faceSplitKey, nameFacesFromNeighbours } from '../occ/constructionLineage'
 import type { FaceOrigin } from '../occ/booleans'
 
@@ -24,6 +30,10 @@ interface TransferNamesInput {
   // Tool body's face names + ancestry (or null for ops without a named tool).
   toolFaceNames: Record<string, string> | null
   toolFaceAncestry: Record<string, string[]> | null
+  // The boolean's feature id when it KEEPS its tool, else null. A kept tool
+  // stays in the body store still carrying its own face UUIDs, so the target's
+  // inherited copies must be re-minted under this id or the two collide.
+  keptToolFeatureId: string | null
 }
 
 /**
@@ -33,6 +43,10 @@ interface TransferNamesInput {
  * children are ordered by their relative position in the parent frame and get
  * `:split:i` UUIDs; a near-tie refuses (fail-safe, ancestral fallback). Edge
  * names are then derived from the output face adjacency.
+ *
+ * A KEPT tool is the exception to the verbatim carry: it survives as its own
+ * body still holding those UUIDs, so `keptToolFeatureId` re-mints the target's
+ * copies instead of letting one UUID name two live faces.
  */
 export function transferBooleanNames(
   oc: OccModule,
@@ -44,7 +58,10 @@ export function transferBooleanNames(
   face_ancestry: Record<string, string[]>
   edge_ancestry: Record<string, string[]>
 } {
-  const { bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry, toolFaceNames, toolFaceAncestry } = input
+  const {
+    bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry,
+    toolFaceNames, toolFaceAncestry, keptToolFeatureId,
+  } = input
 
   // faceOrigin handles are generic TopoDS_Shape; downcast to Face for the
   // surface-adaptor geometry reads faceGh/faceSplitKey need.
@@ -60,14 +77,19 @@ export function transferBooleanNames(
     const ancestry = o.fromTool ? toolFaceAncestry : targetFaceAncestry
     if (!names) continue
     const source = asFace(o.source)
-    const uuid = names[faceGh(oc, scope, source)]
-    if (!uuid) continue
+    const sourceUuid = names[faceGh(oc, scope, source)]
+    if (!sourceUuid) continue
+    // A kept tool keeps `sourceUuid` on its own surviving face, so the target's
+    // copy takes a boolean-scoped one instead of a second claim on the same id.
+    const uuid = o.fromTool && keptToolFeatureId !== null
+      ? mintFaceUuid(keptToolFacePath(sourceUuid, keptToolFeatureId))
+      : sourceUuid
     const output = asFace(o.output)
     const outGh = faceGh(oc, scope, output)
     if (seenOutput.has(outGh)) continue
     seenOutput.add(outGh)
     ;(bySource[uuid] ??= []).push({ output, source })
-    if (!(uuid in ancestryOf)) ancestryOf[uuid] = [...((ancestry ?? {})[uuid] ?? [])]
+    if (!(uuid in ancestryOf)) ancestryOf[uuid] = [...((ancestry ?? {})[sourceUuid] ?? [])]
   }
 
   const faceNames: Record<string, string> = {}

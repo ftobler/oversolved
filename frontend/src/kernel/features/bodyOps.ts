@@ -140,6 +140,8 @@ export function applyBodyOperation(
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
+        // The tool is a transient shape, not a body that survives with these names.
+        keptToolFeatureId: null,
       })
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
@@ -220,6 +222,8 @@ export function applyBodyOperation(
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
+        // The tool is a transient shape, not a body that survives with these names.
+        keptToolFeatureId: null,
       })
       existingBody.face_names = names.face_names
       existingBody.edge_names = names.edge_names

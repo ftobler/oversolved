@@ -20,7 +20,13 @@ import type { PlaneLike } from '../features/shared'
 import type { LoopEdge } from '../profileLoops'
 import type { OccModule, OccShape } from './occTypes'
 import type { Vec3 } from './primitives'
-import { mintFaceUuid, sideFacePath, capFacePath, filletFacePath } from '../constructionName'
+import {
+  mintFaceUuid,
+  sideFacePath,
+  capFacePath,
+  filletFacePath,
+  keptToolFacePath,
+} from '../constructionName'
 
 const oc = await loadOcc()
 
@@ -68,6 +74,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         targetFaceAncestry: base.faceAncestry,
         toolFaceNames: bump.faceNames,
         toolFaceAncestry: bump.faceAncestry,
+        keptToolFeatureId: null,
       })
       const carried = new Set(Object.values(names.face_names))
 
@@ -80,6 +87,65 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       // The bump's own side walls (from e2) are carried too.
       for (let i = 0; i < 4; i++) {
         expect(carried.has(mintFaceUuid(sideFacePath('e2', `sk2/l${i}`)))).toBe(true)
+      }
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('re-mints a KEPT tool\'s UUIDs onto the target so the two never collide', () => {
+    // `keep_tools` leaves the tool body in the store still carrying its own face
+    // UUIDs. Handing them to the target verbatim put one UUID on two live faces,
+    // and the resolver's UUID tier then refused every pick of either with
+    // "collision by construction" (bugreports/20260902_2256_face_not_extruding).
+    const scope = new DisposeScope()
+    try {
+      const base = extrudeProfileWithLineage(occ, scope, square(0, 0, 10), planeAt(0), [0, 0, 1] as Vec3, 10, 'sk1', 'e1')
+      const bump = extrudeProfileWithLineage(occ, scope, square(2, 2, 6), planeAt(10), [0, 0, 1] as Vec3, 5, 'sk2', 'e2')
+      const { shape: fused, faceOrigin } = booleanWithDiff(occ, scope, base.solid, bump.solid, 'fuse')
+
+      const kept = transferBooleanNames(occ, scope, {
+        bodyShape: fused,
+        faceOrigin,
+        targetFaceNames: base.faceNames,
+        targetFaceAncestry: base.faceAncestry,
+        toolFaceNames: bump.faceNames,
+        toolFaceAncestry: bump.faceAncestry,
+        keptToolFeatureId: 'bool1',
+      })
+      const carried = new Set(Object.values(kept.face_names))
+
+      // Not one of the surviving tool's own UUIDs appears on the target.
+      for (const toolUuid of Object.values(bump.faceNames)) {
+        expect(carried.has(toolUuid)).toBe(false)
+      }
+      // They are re-minted, not dropped: each tool face still has a stable
+      // identity on the target, derived from the tool's UUID and this boolean.
+      for (let i = 0; i < 4; i++) {
+        const toolUuid = mintFaceUuid(sideFacePath('e2', `sk2/l${i}`))
+        expect(carried.has(mintFaceUuid(keptToolFacePath(toolUuid, 'bool1')))).toBe(true)
+      }
+      // The target's own faces are untouched by the re-mint.
+      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start')))).toBe(true)
+
+      // A consuming boolean keeps the verbatim carry-over: its tool is gone, so
+      // the inherited UUID is unique and re-minting would only churn it.
+      const consumed = transferBooleanNames(occ, scope, {
+        bodyShape: fused,
+        faceOrigin,
+        targetFaceNames: base.faceNames,
+        targetFaceAncestry: base.faceAncestry,
+        toolFaceNames: bump.faceNames,
+        toolFaceAncestry: bump.faceAncestry,
+        keptToolFeatureId: null,
+      })
+      const consumedCarried = new Set(Object.values(consumed.face_names))
+      expect(consumedCarried.has(mintFaceUuid(sideFacePath('e2', 'sk2/l0')))).toBe(true)
+
+      // Ancestry follows the re-minted UUID, so the ancestral fallback tier
+      // still has the tool face's tokens to work with.
+      for (const uuid of carried) {
+        expect(kept.face_ancestry[uuid]).toBeDefined()
       }
     } finally {
       scope.dispose()

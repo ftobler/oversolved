@@ -93,6 +93,20 @@ export function importedInstanceFacePath(createdBy: string, stepEntityId: number
 }
 
 /**
+ * A target face a boolean inherited from a tool the operation KEPT
+ * (`keep_tools`). The tool body survives carrying its own face UUIDs, so
+ * handing them to the target verbatim puts one UUID on two live faces and the
+ * resolver's UUID tier refuses both with "collision by construction". Scoping
+ * the copy to the boolean that made it gives the target's face its own stable
+ * identity while the tool keeps the original -- the same move
+ * `arrayInstancePath` makes for array copies. A consuming boolean does not need
+ * this: its tool is gone, so the inherited UUID stays unique.
+ */
+export function keptToolFacePath(toolFaceUuid: string, featureId: string): string {
+  return `${toolFaceUuid}|kepttool|${featureId}`
+}
+
+/**
  * An instance of a source face produced by an array/transform copy operation.
  * The source face's UUID is the parent; the copy feature id and instance index
  * make the construction path unique across identical transformed copies, so
