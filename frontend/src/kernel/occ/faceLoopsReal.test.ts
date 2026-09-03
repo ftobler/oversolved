@@ -11,7 +11,10 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
-import { makeBox, makeBoxAt, makeCylinder, faceArea, faceSurfaceType, type Vec3 } from './primitives'
+import {
+  makeBox, makeBoxAt, makeCylinder, makeEllipseEdge, makeWire, makeFaceFromWire, makePrism,
+  faceArea, faceSurfaceType, type Vec3,
+} from './primitives'
 import { extractFaceLoops, extractOccFace } from './faceLoops'
 import { booleanWithDiff, countSubShapes } from './booleans'
 import { sketchLoopsToFace } from './prismLineage'
@@ -185,6 +188,34 @@ describe.skipIf(!oc)('partial-arc winding (real OCC)', () => {
         expect(Math.abs(emittedSweepDeg(arc as Record<string, unknown>))).toBeCloseTo(minor, 4)
       }
       expectAreaSet(rebuiltAreas, [expectedFloorArea(minor), 400 - expectedFloorArea(minor)])
+    } finally {
+      scope.dispose()
+    }
+  })
+})
+
+describe.skipIf(!oc)('elliptical face boundary (H23 fix)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  it('tessellates an elliptical pcurve into a multi-segment loop', () => {
+    const scope = new DisposeScope()
+    try {
+      const center: Vec3 = [0, 0, 0]
+      const normal: Vec3 = [0, 0, 1]
+      const xAxis: Vec3 = [1, 0, 0]
+      const a = 5  // major
+      const b = 3  // minor
+      const ellipse = makeEllipseEdge(occ, scope, center, normal, xAxis, a, b)
+      const wire = makeWire(occ, scope, [ellipse])
+      const face = makeFaceFromWire(occ, scope, wire)
+      const solid = makePrism(occ, scope, face, [0, 0, 1], 1)
+      const { loops } = extractFaceLoops(occ, scope, solid, 0)
+      expect(loops.length).toBe(1)
+      expect(loops[0].length).toBeGreaterThan(1)
     } finally {
       scope.dispose()
     }

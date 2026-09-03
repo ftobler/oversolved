@@ -72,6 +72,33 @@ export function computeFacePlane(oc: OccModule, scope: DisposeScope, face: OccSh
   }
 }
 
+/**
+ * Frame3D suitable for a datum plane on a face: outward normal + centroid origin.
+ * Unlike computeFacePlane (which returns the raw surface frame for pcurve loops),
+ * this flips the normal when the face is REVERSED and uses the face centroid as
+ * the origin so a sketch on this datum plane faces away from the solid.
+ */
+export function computeFaceDatumFrame(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+): Frame3D {
+  const raw = computeFacePlane(oc, scope, face)
+  const reversed =
+    (face as OccOrientedShape).Orientation_1().value ===
+    oc.TopAbs_Orientation.TopAbs_REVERSED.value
+  const centroid = faceCentroid(oc, scope, face)
+  if (!reversed) {
+    return { origin: centroid, x_axis: raw.x_axis, y_axis: raw.y_axis, normal: raw.normal }
+  }
+  return {
+    origin: centroid,
+    x_axis: raw.y_axis,
+    y_axis: raw.x_axis,
+    normal: raw.normal.map((n) => -n) as [number, number, number],
+  }
+}
+
 /** (outer wire, hole wires) of a face (mirrors `_collect_face_wires`). */
 function collectFaceWires(
   oc: OccModule,
@@ -104,6 +131,7 @@ function buildLoopFromWire(
   const loop: EdgeDict[] = []
   const reversed = oc.TopAbs_Orientation.TopAbs_REVERSED.value
   const circleType = oc.GeomAbs_CurveType.GeomAbs_Circle.value
+  const lineType = oc.GeomAbs_CurveType.GeomAbs_Line.value
   const we = scope.track(new oc.BRepTools_WireExplorer_3(wire, face))
   for (; we.More(); we.Next()) {
     // Current() hands back a fresh edge proxy per step; the reads below end
@@ -153,12 +181,48 @@ function buildLoopFromWire(
             ccw: span >= 0,
           })
         }
-      } else {
-        // Non-circular pcurves reduce to their chord here; a true ellipse_arc
-        // dict would need the parameter-frame work shared.ts documents.
+      } else if (c2d.GetType().value === lineType) {
+        // Linear pcurves: single chord is exact.
         const ps = scope.track(c2d.Value(first))
         const pe = scope.track(c2d.Value(last))
         loop.push({ kind: 'line', start: [ps.X(), ps.Y()], end: [pe.X(), pe.Y()] })
+      } else {
+        // Non-circular, non-linear pcurves: tessellate into a polyline.
+        // For a closed pcurve (full ellipse, etc.) Value(first) == Value(last),
+        // so a chord alone collapses. Sample N interior points.
+        const polySpan = last - first
+        const isClosed = Math.abs(Math.abs(polySpan) - TWO_PI) < 1e-6
+        const N_SAMPLES = 32
+        const pts: ReturnType<typeof c2d.Value>[] = []
+        if (isClosed) {
+          for (let i = 0; i < N_SAMPLES; i++) {
+            const u = first + (polySpan * i) / N_SAMPLES
+            pts.push(scope.track(c2d.Value(u)))
+          }
+        } else {
+          for (let i = 0; i <= N_SAMPLES; i++) {
+            const u = first + (polySpan * i) / N_SAMPLES
+            pts.push(scope.track(c2d.Value(u)))
+          }
+        }
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i]
+          const b = pts[i + 1]
+          loop.push({
+            kind: 'line',
+            start: [a.X(), a.Y()],
+            end: [b.X(), b.Y()],
+          })
+        }
+        if (isClosed && pts.length > 0) {
+          const lastPt = pts[pts.length - 1]
+          const firstPt = pts[0]
+          loop.push({
+            kind: 'line',
+            start: [lastPt.X(), lastPt.Y()],
+            end: [firstPt.X(), firstPt.Y()],
+          })
+        }
       }
     } catch {
       // Per-edge failure: drop it (matches Python's per-edge try/except).

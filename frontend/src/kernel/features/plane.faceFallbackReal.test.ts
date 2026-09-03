@@ -14,9 +14,10 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, makeBoxAt } from '../occ/primitives'
+import { makeBox, makeBoxAt, faceCentroid, faceNormal } from '../occ/primitives'
 import { Repository } from '../query'
 import { solvePlane } from './plane'
+import { extractOccFace } from '../occ/faceLoops'
 import type { Body } from '../types3d'
 import type { OccModule } from '../occ/occTypes'
 import faceLoopsFixture from '../occ/__fixtures__/faceLoops.json'
@@ -47,10 +48,8 @@ function expectClose(actual: unknown, expected: unknown, path = ''): void {
 
 type FaceLoopsFx = {
   box: [number, number, number]
-  cases: { shape: string; face_index: number; loops: unknown; plane: Record<string, number[]> }[]
 }
 const flx = faceLoopsFixture as unknown as FaceLoopsFx
-const box0 = flx.cases.find((c) => c.shape === 'box' && c.face_index === 0)!
 
 describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
   let occ: OccModule
@@ -64,6 +63,9 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
     const table = new HandleTable({ finalizerGuard: false })
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
+      // Compute expected centroid + normal before detaching the shape.
+      const expectedNormal = faceNormal(occ, scope, extractOccFace(occ, scope, box, 0))
+      const expectedCentroid = faceCentroid(occ, scope, extractOccFace(occ, scope, box, 0))
       const bodyStore: Record<string, Body> = {
         body_feat: {
           id: 'body_feat',
@@ -84,7 +86,10 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
       )
 
       expect(res.status).toBe('ok')
-      expectClose(res.plane, box0.plane, 'plane')
+      // The on_face plane must use the outward normal and face centroid,
+      // not the raw surface frame (H22 fix).
+      expectClose(res.plane.origin, expectedCentroid, 'plane.origin')
+      expectClose(res.plane.normal, expectedNormal, 'plane.normal')
     } finally {
       scope.dispose()
     }

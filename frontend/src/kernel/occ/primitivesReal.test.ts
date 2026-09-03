@@ -436,6 +436,25 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
     }
   })
 
+  it('readSolidEdges handles a sphere with degenerate pole edges', () => {
+    const scope = new DisposeScope()
+    try {
+      const center = scope.track(new occ.gp_Pnt_3(0, 0, 0))
+      const MakeSphere = (occ as unknown as {
+        BRepPrimAPI_MakeSphere_7: new (
+          p: typeof center, r: number, a1: number, a2: number,
+        ) => { Shape(): OccShape } & OccDisposable
+      }).BRepPrimAPI_MakeSphere_7
+      const sphere = scope.track(new MakeSphere(center, 5, 0, Math.PI)).Shape()
+      const edges = readSolidEdges(occ, scope, sphere)
+      expect(edges.length).toBeGreaterThanOrEqual(1)
+      const pts = readEdgeSamplePoints(occ, scope, sphere, 8)
+      expect(pts.length).toBeGreaterThan(0)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('stays leak-free across a 50-iteration build/evict loop', () => {
     const table = new HandleTable({ finalizerGuard: false })
     for (let i = 0; i < 50; i++) {

@@ -418,6 +418,7 @@ export interface OccModule extends OccBaseModule {
   BRep_Tool: {
     Triangulation(face: OccShape, loc: OccLocation): OccTriangulationHandle
     Pnt(vertex: OccShape): OccXYZ
+    Degenerated(edge: OccShape): boolean
   }
   TopAbs_ShapeEnum: {
     TopAbs_FACE: OccShapeEnumValue

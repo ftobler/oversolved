@@ -887,7 +887,9 @@ export function readSolidEdges(
   const uniq: OccSubShape[] = []
   for (; exp.More(); exp.Next()) {
     const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
-    if (dedup.add(edge)) uniq.push(edge)
+    if (!dedup.add(edge)) continue
+    if (oc.BRep_Tool.Degenerated?.(edge)) continue
+    uniq.push(edge)
   }
   return uniq.map((edge) => edgeToGeom(oc, scope, edge))
 }
@@ -929,6 +931,7 @@ export function readEdgeSamplePoints(
   for (; exp.More(); exp.Next()) {
     const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
     if (!dedup.add(edge)) continue
+    if (oc.BRep_Tool.Degenerated?.(edge)) continue
     const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
     const isLine = ad.GetType().value === oc.GeomAbs_CurveType.GeomAbs_Line.value
     const u0 = ad.FirstParameter()

@@ -14,7 +14,7 @@ import type { Body, Frame3D } from '../types3d'
 import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
-import { extractOccFace, extractFaceLoops } from '../occ/faceLoops'
+import { extractOccFace, extractFaceLoops, computeFaceDatumFrame } from '../occ/faceLoops'
 import { extractProfileLoops, parseSketchEntityRef, registerTopFace, sketchIdFromQuery, surfaceEntityIds, type PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
@@ -202,7 +202,8 @@ export function resolveFaceSlashFrame(
   const shape = bodyShape(table, body)
   const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore)
   if (resolved !== null) faceIndex = resolved
-  return extractFaceLoops(oc, scope, shape, faceIndex).plane
+  const face = extractOccFace(oc, scope, shape, faceIndex)
+  return computeFaceDatumFrame(oc, scope, face)
 }
 
 interface ExtrudeLoops {
