@@ -190,8 +190,8 @@ describe('buildArrayTransforms (rectangular)', () => {
       { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: true, direction_x_query: 'qx', direction_y_query: 'qy' },
       xyRepo,
     )
-    // numX = 1 (source included), countY = 2 -> j=0 then j=1
-    expect(translations(t)).toEqual([[10, 0, 0], [10, 20, 0]])
+    // Full 2x2 lattice minus (0,0): (1,0), (0,1), (1,1)
+    expect(translations(t)).toEqual([[10, 0, 0], [0, 20, 0], [10, 20, 0]])
   })
 
   it('emits count_x * count_y instances when the source is excluded', () => {
@@ -202,6 +202,22 @@ describe('buildArrayTransforms (rectangular)', () => {
       xyRepo,
     )
     expect(t).toHaveLength(4)
+  })
+
+  it('emits count_x * count_y - 1 instances for a 3x2 grid with include_source', () => {
+    const t = buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 3, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: true, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
+    )
+    // 3x2 = 6 cells, minus (0,0) = 5 instances
+    expect(t).toHaveLength(5)
+    // j=0: (1,0)=10,0,0 (2,0)=20,0,0; j=1: (0,1)=0,20,0 (1,1)=10,20,0 (2,1)=20,20,0
+    expect(translations(t)).toEqual([
+      [10, 0, 0], [20, 0, 0],
+      [0, 20, 0], [10, 20, 0], [20, 20, 0],
+    ])
   })
 
   it('throws when the Y direction picker is empty', () => {

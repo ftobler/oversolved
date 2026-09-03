@@ -24122,37 +24122,29 @@
     "bodies": {
       "body_ex1": {
         "created_by": "ex1",
-        "edge_count": 18,
+        "edge_count": 12,
         "edge_hashes": [
           "gedge_1665280fe300e87d",
           "gedge_189dcc19624b7f03",
-          "gedge_1e3a75e1a5b0ad39",
-          "gedge_3d7ee7b8c9fcbda7",
           "gedge_4214b7032dbf9c81",
-          "gedge_5335515f3076da2a",
-          "gedge_5edd39417c9345f4",
-          "gedge_68b092e98c97884d",
+          "gedge_5a36dd8e8c629086",
           "gedge_6f6ed081baa98312",
           "gedge_91730ab53d37c82e",
-          "gedge_957f4f10abd87a5f",
-          "gedge_9600a8112fd990e2",
+          "gedge_9787e5608c7272fd",
           "gedge_af44778ff9b6c33c",
-          "gedge_c5fda47dfa6b6546",
-          "gedge_ca57bcd282b4d4de",
-          "gedge_e1f185faf8c117d4",
-          "gedge_fc85fc21ea444965",
-          "gedge_fd8b810369d7a9cb"
+          "gedge_be932546bf075564",
+          "gedge_d8a49adaa6333214",
+          "gedge_e88d80bdcfcda27e",
+          "gedge_fc85fc21ea444965"
         ],
-        "face_count": 8,
+        "face_count": 6,
         "face_hashes": [
-          "gface_2332834b52e0a7d8",
-          "gface_710814565472d762",
-          "gface_80fb1d5d9b6603d2",
-          "gface_8b24d4db1fa8835d",
+          "gface_78fdc8668a389551",
           "gface_900fdc89c25443be",
-          "gface_a349ca4d94f8bd96",
-          "gface_a7712d48256dad4c",
-          "gface_c36d4051b34fba63"
+          "gface_c36d4051b34fba63",
+          "gface_d3d9f93fb93124eb",
+          "gface_ead00c614165348c",
+          "gface_ef956bf26add36a0"
         ],
         "id": "body_ex1",
         "mesh": {
@@ -24168,14 +24160,19 @@
               1
             ],
             [
+              4,
               7,
-              5,
-              4
+              6
             ],
             [
-              7,
-              6,
-              5
+              4,
+              5,
+              7
+            ],
+            [
+              8,
+              10,
+              9
             ],
             [
               8,
@@ -24183,120 +24180,55 @@
               10
             ],
             [
-              8,
-              9,
-              11
-            ],
-            [
+              12,
               14,
-              16,
               15
             ],
             [
-              17,
-              16,
-              14
-            ],
-            [
               12,
-              14,
+              15,
               13
             ],
             [
-              12,
+              19,
               17,
-              14
-            ],
-            [
-              21,
-              22,
-              23
+              16
             ],
             [
               19,
+              18,
+              17
+            ],
+            [
+              20,
+              23,
+              22
+            ],
+            [
+              20,
               21,
               23
-            ],
-            [
-              18,
-              20,
-              21
-            ],
-            [
-              18,
-              21,
-              19
-            ],
-            [
-              24,
-              26,
-              25
-            ],
-            [
-              24,
-              27,
-              26
-            ],
-            [
-              31,
-              29,
-              28
-            ],
-            [
-              31,
-              30,
-              29
-            ],
-            [
-              32,
-              35,
-              34
-            ],
-            [
-              32,
-              33,
-              35
             ]
           ],
           "vertices": [
             [
               0,
-              5,
-              0
-            ],
-            [
-              0,
-              5,
-              5
-            ],
-            [
-              0,
-              0,
-              5
-            ],
-            [
-              0,
-              0,
-              0
-            ],
-            [
-              5,
               10,
               0
             ],
             [
-              5,
+              0,
               10,
               5
             ],
             [
-              5,
-              5,
+              0,
+              0,
               5
             ],
             [
-              5,
-              5,
+              0,
+              0,
               0
             ],
             [
@@ -24325,18 +24257,8 @@
               0
             ],
             [
-              5,
-              10,
-              0
-            ],
-            [
-              5,
-              5,
-              0
-            ],
-            [
               0,
-              5,
+              10,
               0
             ],
             [
@@ -24360,43 +24282,13 @@
               5
             ],
             [
-              5,
+              0,
               10,
               5
             ],
             [
-              5,
-              5,
-              5
-            ],
-            [
-              0,
-              5,
-              5
-            ],
-            [
               0,
               0,
-              5
-            ],
-            [
-              0,
-              5,
-              0
-            ],
-            [
-              5,
-              5,
-              0
-            ],
-            [
-              5,
-              5,
-              5
-            ],
-            [
-              0,
-              5,
               5
             ],
             [
@@ -24410,12 +24302,12 @@
               5
             ],
             [
-              5,
+              0,
               10,
               5
             ],
             [
-              5,
+              0,
               10,
               0
             ],
@@ -24457,7 +24349,7 @@
           "body_ex1"
         ],
         "operation": "add",
-        "solve_ms": 537.1946229999994,
+        "solve_ms": 271.7665069999998,
         "status": "ok"
       },
       "builtin_plane_front": {
@@ -24558,7 +24450,7 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 15.194590999999491,
+        "solve_ms": 7.792631999999912,
         "status": "ok"
       },
       "sk1": {
@@ -24624,7 +24516,7 @@
             1
           ]
         },
-        "solve_ms": 0.8834980000010546,
+        "solve_ms": 0.7193560000000616,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -24746,6 +24638,7 @@
                   "start_vertex": "_v3"
                 }
               ],
+              "buildable": true,
               "query": "?b,9,a,8,9,4;@sk1/bottom@sk1/left@sk1/right@sk1/topsurface:0@sk1:flatface"
             }
           ],
@@ -24814,7 +24707,7 @@
             1
           ]
         },
-        "solve_ms": 0.4323359999998502,
+        "solve_ms": 0.22582599999986996,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -75370,7 +75263,7 @@
           "body_ex1_2"
         ],
         "operation": "add",
-        "solve_ms": 311.1751720000011,
+        "solve_ms": 112.91529700000001,
         "status": "ok"
       },
       "builtin_plane_front": {
@@ -75471,7 +75364,7 @@
           "value": 2
         },
         "operation": "add",
-        "solve_ms": 32.445770000000266,
+        "solve_ms": 7.336581999999908,
         "status": "ok"
       },
       "sk1": {
@@ -75537,7 +75430,7 @@
             1
           ]
         },
-        "solve_ms": 0.7227009999987786,
+        "solve_ms": 0.5069750000002387,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -75659,6 +75552,7 @@
                   "start_vertex": "_v3"
                 }
               ],
+              "buildable": true,
               "query": "?b,9,a,8,9,4;@sk1/bottom@sk1/left@sk1/right@sk1/topsurface:0@sk1:flatface"
             }
           ],
@@ -75717,7 +75611,7 @@
             1
           ]
         },
-        "solve_ms": 0.3782069999997475,
+        "solve_ms": 0.2950540000001638,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -75770,6 +75664,7 @@
                   "start_vertex": null
                 }
               ],
+              "buildable": true,
               "query": "?b,9,8;@sk_axis/c1surface:0@sk_axis:flatface"
             }
           ],
@@ -774337,7 +774232,7 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 116.50094399999944,
+        "solve_ms": 12.488648000000012,
         "status": "ok"
       },
       "sk1": {
@@ -774403,7 +774298,7 @@
             1
           ]
         },
-        "solve_ms": 1.016222000000198,
+        "solve_ms": 0.8996680000000197,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -774525,6 +774420,7 @@
                   "start_vertex": "_v3"
                 }
               ],
+              "buildable": true,
               "query": "?b,9,a,8,9,4;@sk1/bottom@sk1/left@sk1/right@sk1/topsurface:0@sk1:flatface"
             }
           ],
@@ -774584,7 +774480,7 @@
             1
           ]
         },
-        "solve_ms": 0.5547720000004119,
+        "solve_ms": 1.1450600000000577,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -775113,7 +775009,7 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 20.122049999999945,
+        "solve_ms": 10.591229999999996,
         "status": "ok"
       },
       "sk1": {
@@ -775179,7 +775075,7 @@
             1
           ]
         },
-        "solve_ms": 0.9490379999997458,
+        "solve_ms": 1.0323330000001079,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -775301,6 +775197,7 @@
                   "start_vertex": "_v3"
                 }
               ],
+              "buildable": true,
               "query": "?b,9,a,8,9,4;@sk1/bottom@sk1/left@sk1/right@sk1/topsurface:0@sk1:flatface"
             }
           ],
@@ -775387,7 +775284,7 @@
             1
           ]
         },
-        "solve_ms": 0.7288240000007136,
+        "solve_ms": 0.5622160000000349,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -775509,6 +775406,7 @@
                   "start_vertex": "_v3"
                 }
               ],
+              "buildable": true,
               "query": "?a,a,a,a,9,4;@sk2/proj0@sk2/proj1@sk2/proj2@sk2/proj3surface:0@sk2:flatface"
             }
           ],
@@ -780881,7 +780779,7 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 9.367081000000326,
+        "solve_ms": 3.5012120000001232,
         "status": "ok"
       },
       "sk1": {
@@ -780919,7 +780817,7 @@
             1
           ]
         },
-        "solve_ms": 0.3735179999994216,
+        "solve_ms": 0.31656299999986004,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -780972,6 +780870,7 @@
                   "start_vertex": null
                 }
               ],
+              "buildable": true,
               "query": "?7,9,4;@sk1/c1surface:0@sk1:flatface"
             }
           ],
@@ -781013,7 +780912,7 @@
             1
           ]
         },
-        "solve_ms": 0.43542299999990064,
+        "solve_ms": 0.406097999999929,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -781066,6 +780965,7 @@
                   "start_vertex": null
                 }
               ],
+              "buildable": true,
               "query": "?a,9,4;@sk2/proj0surface:0@sk2:flatface"
             }
           ],
@@ -782758,7 +782658,7 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 19.70448099999976,
+        "solve_ms": 8.55284400000005,
         "status": "ok"
       },
       "fillet1": {
@@ -782783,7 +782683,7 @@
           "unit_scale": 1,
           "value": 1.5
         },
-        "solve_ms": 69.45886600000085,
+        "solve_ms": 60.780580999999984,
         "status": "ok"
       },
       "sk1": {
@@ -782849,7 +782749,7 @@
             1
           ]
         },
-        "solve_ms": 0.9171200000000681,
+        "solve_ms": 0.6433560000000398,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -782971,6 +782871,7 @@
                   "start_vertex": "_v3"
                 }
               ],
+              "buildable": true,
               "query": "?b,9,a,8,9,4;@sk1/bottom@sk1/left@sk1/right@sk1/topsurface:0@sk1:flatface"
             }
           ],
@@ -783030,7 +782931,7 @@
             1
           ]
         },
-        "solve_ms": 0.723202000001038,
+        "solve_ms": 0.32019000000013875,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -788405,7 +788306,7 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 21.16612400000122,
+        "solve_ms": 3.655516999999918,
         "status": "ok"
       },
       "pl_tilt": {
@@ -788431,7 +788332,7 @@
             0.8660254037844387
           ]
         },
-        "solve_ms": 0.4809259999983624,
+        "solve_ms": 0.04890999999997803,
         "status": "ok"
       },
       "sk1": {
@@ -788469,7 +788370,7 @@
             -0.49999999999999994
           ]
         },
-        "solve_ms": 0.3518289999992703,
+        "solve_ms": 0.18872799999985546,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -788522,6 +788423,7 @@
                   "start_vertex": null
                 }
               ],
+              "buildable": true,
               "query": "?7,9,4;@sk1/c1surface:0@sk1:flatface"
             }
           ],
@@ -788568,7 +788470,7 @@
         "resolved_kinds": {
           "proj0": "ellipse"
         },
-        "solve_ms": 0.5494620000008581,
+        "solve_ms": 0.7619240000001355,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -788590,6 +788492,7 @@
                   "theta": 0
                 }
               ],
+              "buildable": true,
               "query": "?a,9,4;@sk2/proj0surface:0@sk2:flatface"
             }
           ],
@@ -788641,7 +788544,7 @@
             1
           ]
         },
-        "solve_ms": 0.4119989999999234,
+        "solve_ms": 0.21562700000004043,
         "status": "underconstrained",
         "topology": {
           "edges": [

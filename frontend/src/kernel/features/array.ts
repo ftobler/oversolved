@@ -92,9 +92,9 @@ export function buildArrayTransforms(
     if (!Number.isFinite(pitchY)) throw new Error(`array: pitch_y must be a finite number, got ${feature.pitch_y}`)
     const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
     const dirY = resolveArrayDirection(feature, 'y', globalRepo, bodyStore)
-    const numX = includeSource ? countX - 1 : countX
     for (let j = 0; j < countY; j++) {
-      for (let i = 1; i <= numX; i++) {
+      for (let i = 0; i < countX; i++) {
+        if (includeSource && i === 0 && j === 0) continue
         trsfs.push(
           makeTranslationTrsf(
             oc,

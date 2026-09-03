@@ -414,6 +414,37 @@
           "modified_by": []
         }
       }
+    },
+    {
+      "name": "transform_rotate_translate_replace",
+      "kind": "transform",
+      "feature_id": "tr4",
+      "source_spec": [
+        [0.0, 0.0, 0.0],
+        [2.0, 2.0, 2.0]
+      ],
+      "sub": {
+        "bodies": ["body_s"],
+        "rotation_angle": 90.0,
+        "rotation_axis_origin": [0, 0, 0],
+        "rotation_axis_direction": [0, 0, 1],
+        "translation": [10.0, 0.0, 0.0],
+        "operation": "replace"
+      },
+      "register_plane": false,
+      "result": {
+        "status": "ok",
+        "body_id": "body_s",
+        "body_ids": ["body_s"],
+        "operation": "replace"
+      },
+      "store": {
+        "body_s": {
+          "volume": 7.999999999999999,
+          "created_by": "ex_s",
+          "modified_by": ["tr4"]
+        }
+      }
     }
   ]
 }

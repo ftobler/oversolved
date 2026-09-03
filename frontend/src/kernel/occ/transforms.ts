@@ -104,7 +104,7 @@ interface TransformParams {
 }
 
 /**
- * Compose scale -> rotation -> translation into one gp_Trsf and apply it (mirrors
+ * Compose translation -> rotation -> scale into one gp_Trsf and apply it (mirrors
  * `apply_transform_shape`). Each component is skipped when it would be identity.
  * Rotation defaults to the Z axis when an angle is set but no direction is given.
  */
@@ -125,8 +125,8 @@ export function applyTransformShape(
 
   const combined = scope.track(new oc.gp_Trsf_1())
 
-  if (scale !== 1.0) {
-    combined.Multiply(makeScaleTrsf(oc, scope, scaleCenter ?? [0, 0, 0], scale))
+  if (translation) {
+    combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
   }
   if (rotationAngleDeg) {
     const dir = rotationAxisDirection ?? [0, 0, 1]
@@ -134,8 +134,8 @@ export function applyTransformShape(
       makeRotationTrsf(oc, scope, rotationAxisOrigin ?? [0, 0, 0], dir, (rotationAngleDeg * Math.PI) / 180),
     )
   }
-  if (translation) {
-    combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
+  if (scale !== 1.0) {
+    combined.Multiply(makeScaleTrsf(oc, scope, scaleCenter ?? [0, 0, 0], scale))
   }
 
   return transformCopy(oc, scope, shape, combined)

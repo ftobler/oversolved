@@ -143,15 +143,15 @@ export function solveTransform(
   // means, and it also keeps a query-driven axis or scale centre from being
   // re-resolved per body.
   const combined = scope.track(new oc.gp_Trsf_1())
-  if (scale !== 1.0) {
-    combined.Multiply(makeScaleTrsf(oc, scope, scaleCenter ?? [0, 0, 0], scale))
+  if (translation) {
+    combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
   }
   if (rotationAngle) {
     const dir = rotationAxisDirection ?? [0, 0, 1]
     combined.Multiply(makeRotationTrsf(oc, scope, rotationAxisOrigin ?? [0, 0, 0], dir, (rotationAngle * Math.PI) / 180))
   }
-  if (translation) {
-    combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
+  if (scale !== 1.0) {
+    combined.Multiply(makeScaleTrsf(oc, scope, scaleCenter ?? [0, 0, 0], scale))
   }
 
   const operation = (cfg.operation as string) ?? 'new'

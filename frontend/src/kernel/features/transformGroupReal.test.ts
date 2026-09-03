@@ -371,13 +371,45 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         }, repo, bodyStore)
         expect(result.status).toBe('ok')
         expect(result.body_id).toBe('body_s')
-        // 3 instances: source + copies at (15,0) and (15,15), each its own part.
-        expect(result.body_ids).toEqual(['body_s', 'body_s_1', 'body_s_2'])
-        expect(Object.keys(bodyStore).sort()).toEqual(['body_s', 'body_s_1', 'body_s_2'])
-        for (const bid of ['body_s', 'body_s_1', 'body_s_2']) {
+        // 4 instances: source + copies at (15,0), (0,15), and (15,15), each its own part.
+        expect(result.body_ids).toEqual(['body_s', 'body_s_1', 'body_s_2', 'body_s_3'])
+        expect(Object.keys(bodyStore).sort()).toEqual(['body_s', 'body_s_1', 'body_s_2', 'body_s_3'])
+        for (const bid of ['body_s', 'body_s_1', 'body_s_2', 'body_s_3']) {
           expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore[bid].shape!))).toBeCloseTo(srcVol, 2)
         }
         expect(bodyStore.body_s.modified_by).toContain('arr1')
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    // ─── Transform: combined rotation + translation ───
+
+    it('transform_rotate_translate_replace applies rotation then translation', () => {
+      // H18: the composed transform must apply rotation first, then translation,
+      // matching makeRigidTrsf. A 2x2x2 box at origin rotated 90deg about Z then
+      // translated [10,0,0] should have centre at [9,1,1], not [-1,11,1].
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
+        const bodyStore: Record<string, Body> = {
+          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 2, 2, 2, 'body_s', 'ex_s'),
+        }
+        const result = solveTransform(occ, scope, table, {
+          id: 'tr4',
+          transform: {
+            bodies: ['body_s'],
+            rotation_angle: 90,
+            rotation_axis_origin: [0, 0, 0],
+            rotation_axis_direction: [0, 0, 1],
+            translation: [10, 0, 0],
+            operation: 'replace',
+          },
+        }, repo, bodyStore)
+        expect(result.status).toBe('ok')
+        expectCentreClose(centreOf(scope, table, bodyStore.body_s), [9, 1, 1])
       } finally {
         scope.dispose()
       }
