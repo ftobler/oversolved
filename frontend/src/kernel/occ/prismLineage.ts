@@ -480,7 +480,9 @@ function capGeneratedFaces(
     } catch {
       return
     }
-    const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    const trackedShape = scope.track(shape)
+    if ((trackedShape as unknown as { IsNull(): boolean }).IsNull()) return
+    const exp = scope.track(new oc.TopExp_Explorer_2(trackedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
     for (; exp.More(); exp.Next()) {
       out.push({ face: scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape, which })
     }
@@ -601,7 +603,7 @@ export function buildPrismLineageMap(
   sketchId = '',
 ): LineageMaps {
   const E = oc.TopAbs_ShapeEnum
-  const solid = prismBuilder.Shape()
+  const solid = scope.track(prismBuilder.Shape())
 
   // Profile edges in explorer order, with their entity ids.
   const profEdges: OccShape[] = []
@@ -783,6 +785,7 @@ export function buildPrismLineageMap(
     }
   }
 
+  scope.release(solid)
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 

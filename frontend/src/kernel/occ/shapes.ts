@@ -117,7 +117,7 @@ export function buildExtrudedProfile(
   const scope = new DisposeScope()
   try {
     const edges = spec.loop.map((p, i) =>
-      makeLineEdge(oc, scope, p, spec.loop[(i + 1) % spec.loop.length]),
+      scope.track(makeLineEdge(oc, scope, p, spec.loop[(i + 1) % spec.loop.length])),
     )
     // No requireClosed here, deliberately: this builder and buildProfileExtrude
     // below have no production callers (they are the Real suites' shape
@@ -126,7 +126,9 @@ export function buildExtrudedProfile(
     // edgeProfile.edgesToProfileFace -- do opt in.
     const wire = makeWire(oc, scope, edges)
     const face = makeFaceFromWire(oc, scope, wire)
+    scope.release(wire)
     const solid = makePrism(oc, scope, face, spec.direction, spec.distance)
+    scope.release(face)
     return table.register(solid, spec.owner)
   } finally {
     scope.dispose()
@@ -168,13 +170,15 @@ export function buildProfileExtrude(
   const scope = new DisposeScope()
   try {
     const edges = spec.edges.map((e) => {
-      if (e.kind === 'line') return makeLineEdge(oc, scope, e.start, e.end)
-      if (e.kind === 'circle') return makeCircleEdge(oc, scope, e.center, e.normal, e.xAxis, e.radius)
-      return makeArcEdge(oc, scope, e.center, e.normal, e.xAxis, e.radius, e.angleStart, e.angleEnd)
+      if (e.kind === 'line') return scope.track(makeLineEdge(oc, scope, e.start, e.end))
+      if (e.kind === 'circle') return scope.track(makeCircleEdge(oc, scope, e.center, e.normal, e.xAxis, e.radius))
+      return scope.track(makeArcEdge(oc, scope, e.center, e.normal, e.xAxis, e.radius, e.angleStart, e.angleEnd))
     })
     const wire = makeWire(oc, scope, edges)
     const face = makeFaceFromWire(oc, scope, wire)
+    scope.release(wire)
     const solid = makePrism(oc, scope, face, spec.direction, spec.distance)
+    scope.release(face)
     return table.register(solid, spec.owner)
   } finally {
     scope.dispose()

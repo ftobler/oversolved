@@ -333,11 +333,12 @@ export function collectPathEdges(
   const endOf = (i: number): number[] =>
     arcShape[i] ? aEnd[i] : i < n - 1 && arcShape[i + 1] ? aStart[i + 1] : T[i]
 
-  const spineEdges: OccShape[] = ordered.map(({ edge: e }, i) =>
-    e.kind === 'arc' && '_arc' in e
-      ? (arcShape[i] as OccShape)
-      : makeLineEdge(oc, scope, startOf(i) as Vec3, endOf(i) as Vec3),
-  )
+  const spineEdges: OccShape[] = ordered.map(({ edge: e }, i) => {
+    if (e.kind === 'arc' && '_arc' in e) {
+      return scope.track(arcShape[i] as OccShape)
+    }
+    return scope.track(makeLineEdge(oc, scope, startOf(i) as Vec3, endOf(i) as Vec3))
+  })
   return [spineEdges, firstSketchId]
 }
 
@@ -465,13 +466,15 @@ export function solveSweep(
   const operation = ((merged.operation as string) ?? 'add') as BodyOperation
 
   const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId)
+  const swept = scope.track(lineage.solid)
+  for (const e of spineEdges) scope.release(e)
   Object.assign(faceNames, lineage.faceNames)
   Object.assign(edgeNames, lineage.edgeNames)
   Object.assign(faceAncestry, lineage.faceAncestry)
   Object.assign(edgeAncestry, lineage.edgeAncestry)
 
   const opResult = applyBodyOperation(oc, scope, table, {
-    toolShape: lineage.solid,
+    toolShape: swept,
     bodyStore,
     operation,
     mergeTarget,

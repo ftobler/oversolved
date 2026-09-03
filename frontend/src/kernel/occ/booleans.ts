@@ -397,8 +397,10 @@ export function booleanWithDiff(
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
   const { shape: raw, diff: rawDiff, faceOrigin: rawOrigin } = booleanWithHistory(oc, scope, target, tool, op)
+  scope.track(raw)
   const canonical = canonicalizeCylinderFaces(oc, scope, raw)
   const preClean = canonical.shape
+  if (canonical.changed) scope.track(preClean)
   const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.swaps) : rawDiff
   const preOrigin = canonical.changed ? mapOriginThroughCanonical(rawOrigin, canonical.swaps) : rawOrigin
   let cleaned: OccShape

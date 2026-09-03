@@ -243,7 +243,8 @@ export function solveMirror(
     edgeAncestry: sourceBody.edge_ancestry ?? {},
   }
   const trsf = makeMirrorTrsf(oc, scope, [origin[0], origin[1], origin[2]], [normal[0], normal[1], normal[2]])
-  const { shape: mirrored, builder } = transformCopyWithMapping(oc, scope, sourceShape, trsf)
+  const { shape: mirroredRaw, builder } = transformCopyWithMapping(oc, scope, sourceShape, trsf)
+  const mirrored = scope.track(mirroredRaw)
   const mirroredNames = rebuildNamesForTransformedCopy(oc, scope, mirrored, sourceShape, sourceNames, featureId, 0, builder)
 
   if (!keepOriginal) {

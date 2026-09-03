@@ -153,7 +153,7 @@ export function solveExtrude(
   // All picked edges together bound one coplanar profile loop -> one face.
   if (edgeRefs.length > 0) {
     try {
-      cqFaces.push(resolveEdgeProfileFace(oc, scope, table, edgeRefs, bodyStore))
+      cqFaces.push(scope.track(resolveEdgeProfileFace(oc, scope, table, edgeRefs, bodyStore)))
     } catch (exc) {
       profileErrors.push(extractErrorMessage(exc))
     }

@@ -182,7 +182,8 @@ function applyArray(
     const instances: { shape: OccShape; names: NameMaps }[] = []
     if (includeSource) {
       const identity = scope.track(new oc.gp_Trsf_1())
-      const { shape, builder } = transformCopyWithMapping(oc, scope, sourceShape, identity)
+      const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, identity)
+      const shape = scope.track(instShape)
       instances.push({
         shape,
         names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, 0, builder),
@@ -190,7 +191,8 @@ function applyArray(
     }
     for (let i = 0; i < transforms.length; i++) {
       const idx = includeSource ? i + 1 : i
-      const { shape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+      const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+      const shape = scope.track(instShape)
       instances.push({
         shape,
         names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder),
@@ -227,7 +229,8 @@ function applyArray(
   }
   for (let i = 0; i < transforms.length; i++) {
     const idx = includeSource ? i + 1 : i
-    const { shape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+    const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+    const shape = scope.track(instShape)
     instances.push(shape)
     instanceNames.push(rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder))
   }

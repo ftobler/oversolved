@@ -222,8 +222,9 @@ export function solveHole(
       h = depth
     }
 
-    const cyl = makeCylinder(oc, scope, start3d, axis, site.radius, h)
+    const cyl = scope.track(makeCylinder(oc, scope, start3d, axis, site.radius, h))
     const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', { unifyFaces: !targetBody.imported })
+    scope.release(cyl)
     currentShape = scope.track(res.shape)
     lastDiff = res.diff
     cutAny = true
