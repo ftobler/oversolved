@@ -156,10 +156,13 @@ export function solveBoolean(
     }
   }
 
-  const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
-
   // Drop consumed tool bodies (release their handles first). Dedup so a tool
-  // listed twice is not double-released.
+  // listed twice is not double-released. This has to happen BEFORE the resplit:
+  // the target already carries the tools' face UUIDs (committed above), and the
+  // build loop evicts a consumed tool's registrations by watching it leave the
+  // store. If `resplitBody` throws -- `orderSolids` refuses a near-tie loudly --
+  // a tool still in the store would leave that UUID naming two live faces with
+  // nothing left to notice. Nothing between here and the resplit reads a tool.
   for (const key of new Set(consumedKeys)) {
     const tool = bodyStore[key]
     if (tool !== undefined) {
@@ -167,6 +170,8 @@ export function solveBoolean(
       delete bodyStore[key]
     }
   }
+
+  const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
 
   result.body_ids = bodyIds
   return result
