@@ -160,6 +160,72 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
+    // ─── Viewport picks in the sketch field ───
+
+    // A 20x20x10 box to drill, registered as `body_t`.
+    function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+      const box = makeBox(occ, scope, 20, 20, 10)
+      return {
+        body_t: {
+          id: 'body_t', created_by: 'ex_t', modified_by: [],
+          shape: table.register(scope.detach(box), 'ex_t'),
+          sketch_id: 'sk_t', brep_diff: null,
+          profile_queries: [],
+        },
+      }
+    }
+
+    it('a picked circle drills its OWN diameter, not the field\'s', () => {
+      // The circle names both the position and the size of the hole the user
+      // drew, and the size wins: the same pick through an extrude cut removes
+      // exactly that cylinder, and a hole that came out at the field's 10 would
+      // disagree with the r=3 circle still sitting in the sketch.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/ci', { external_params: [10, 10, 3], kind: 'circle', sketch_id: 'sk' })
+        repo.register('sk/p1/xy', { external_xy: [3, 3] })
+        const bodyStore = boxTarget(occ, scope, table)
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: 'entity:sk:ci', diameter: 10, depth: 5, target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'ci', kind: 'circle' }, { id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        // One hole: the point beside the circle is not part of this pick.
+        expect(result.hole_count).toBe(1)
+        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 3 * 3 * 5, 2)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('a picked point drills that point alone', () => {
+      // Drilling every point in the sketch because the user clicked one of them
+      // is a silent extra hole; the vertex form names the same entity.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/p1/xy', { external_xy: [5, 5] })
+        repo.register('sk/p2/xy', { external_xy: [15, 15] })
+        const bodyStore = boxTarget(occ, scope, table)
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: 'vertex:sk:p1:xy', diameter: 4, depth: 5, target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(1)
+        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 2 * 2 * 5, 2)
+      } finally {
+        scope.dispose()
+      }
+    })
+
     it('radial through-all hole fully pierces a cylinder', () => {
       // A cylinder's B-rep vertices sit only on its seam, so a vertex-only AABB
       // collapses radially: the span reads the height instead of the diameter

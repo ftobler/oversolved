@@ -551,6 +551,41 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     }
   })
 
+  it('a picked circle cuts the same disc it would have added', () => {
+    // A hole IS an extrude with a negative sign, so the cut path has to answer
+    // a curve pick the way the add path does: the profile is resolved by the
+    // same collectExtrudeLoops call before the boolean ever runs. The plate
+    // keeps its bbox, so the evidence the disc was really removed is the wall
+    // the cut leaves behind: mesh vertices sitting r=2 from the circle centre.
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10),
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 3, direction: 'normal' } },
+        {
+          id: 'sk2', kind: 'sketch', label: 'Circle', plane: '@builtin_plane_front',
+          entities: [{ id: 'ci', kind: 'circle' as const }],
+          initial: { ci: [5, 5, 2] },
+          constraints: [{ id: 'cd', kind: 'diameter' as const, target: '$ci', value: 4 }],
+        },
+        {
+          id: 'ex2', kind: 'extrude',
+          extrude: { sketch: ['entity:sk2:ci'], distance: 3, direction: 'normal', operation: 'cut' },
+        },
+      ],
+    })
+    expect(res(result, 'ex2').status).toBe('ok')
+    expect(result.bodies).not.toHaveProperty('body_ex2')
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      assertMeshValid(mesh)
+      assertMeshBbox(mesh, [0, 10], [0, 10], [0, 3])
+      const verts = mesh.vertices as number[][]
+      const onWall = verts.filter((v) => Math.abs(Math.hypot(v[0] - 5, v[1] - 5) - 2) < 0.05)
+      expect(onWall.length).toBeGreaterThan(0)
+    }
+  })
+
   it('a picked open curve is refused instead of widened to its sketch', () => {
     const result = run(rectWithCircleSpec('entity:sk1:bottom'))
     expect(res(result, 'ex1').status).toBe('exception')

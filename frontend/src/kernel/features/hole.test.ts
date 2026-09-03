@@ -2,7 +2,7 @@
 // drilling paths are gated in holeReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
-import { Repository } from '../query'
+import { Repository, makeAncestryQuery } from '../query'
 import { solveHole } from './hole'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
@@ -88,5 +88,72 @@ describe('solveHole guard paths', () => {
         body_ex1: nullBody('body_ex1'),
       }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
     ).toThrow(/body not found/)
+  })
+})
+
+// ─── Viewport picks in the sketch field ───
+//
+// The hole's Sketch chip holds whatever the viewport toggled, so every one of
+// these ref forms is a click a user can make: a curve or a vertex in the 3D
+// view (`entity:`/`vertex:`), or an area fill (a `?` ancestry query). All of
+// them used to reach `_pt_<raw ref>` and red the feature out with "has no plane
+// transform registered", which named nothing the user could act on.
+describe('solveHole sketch picks', () => {
+  const TWO_POINTS = { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } }
+
+  function repoWithPlane(): Repository {
+    const repo = new Repository()
+    repo.register('_pt_sk', PLANE)
+    return repo
+  }
+
+  function drill(sketch: string, features: Record<string, unknown> = TWO_POINTS, repo = repoWithPlane()) {
+    // The drill loop reads the target's shape before it ever places a cylinder,
+    // so the guard paths need a table that answers; none of these cases gets as
+    // far as an OCC call.
+    const stub = { get: () => null } as unknown as HandleTable
+    return solveHole(oc, scope, stub, { id: 'h', hole: { sketch, target: 'body_t' } }, repo, {
+      body_t: { ...nullBody('body_t'), shape: 1 as never },
+    }, features as Record<string, never>)
+  }
+
+  it('reads a curve pick as its own sketch, not as a missing one', () => {
+    // Names the line and what to pick instead: the old answer was
+    // "sketch 'entity:sk:ln' has no plane transform registered".
+    expect(() => drill('entity:sk:ln', { sk: { entities: [{ id: 'ln', kind: 'line' }] } }))
+      .toThrow(/'ln' of sketch sk is a line, which names no drill site/)
+  })
+
+  it('drills only the point a vertex pick names', () => {
+    // Both points lack XY data, so the count in the message is the whole drill
+    // set: 1 means p2 was never in it. Drilling every point of the sketch when
+    // the user clicked one of them would be a silent extra hole.
+    expect(() => drill('vertex:sk:p1:xy')).toThrow(/all 1 drill site\(s\)/)
+    expect(() => drill('@sk')).toThrow(/all 2 drill site\(s\)/)
+  })
+
+  it('narrows an area pick bounded by one entity to that entity', () => {
+    // Clicking the fill inside a lone circle and clicking the circle itself are
+    // the same gesture; the area form has to answer the same way.
+    const q = makeAncestryQuery(['@sk/ci', 'surface:0', '@sk'], 'flatface')
+    expect(() => drill(q, { sk: { entities: [{ id: 'ci', kind: 'circle' }, { id: 'p1', kind: 'point' }] } }))
+      .toThrow(/all 1 drill site\(s\)/)
+  })
+
+  it('keeps the whole sketch for an area several entities bound', () => {
+    // A rectangle's region names four lines and no single drill site, so the
+    // pick keeps meaning what `@sk` means: every point in the sketch.
+    const q = makeAncestryQuery(['@sk/ln_a', '@sk/ln_b', 'surface:0', '@sk'], 'flatface')
+    expect(() => drill(q)).toThrow(/all 2 drill site\(s\)/)
+  })
+
+  it('refuses a query that names no sketch, by name', () => {
+    // A body face in the sketch field: nothing to narrow, and nothing to guess.
+    const q = makeAncestryQuery(['@body_ex1', '@ex1'], 'flatface')
+    expect(() => drill(q)).toThrow(/has no plane transform registered/)
+  })
+
+  it('refuses an entity the sketch does not have', () => {
+    expect(() => drill('entity:sk:nope')).toThrow(/sketch 'sk' has no entity 'nope'/)
   })
 })
