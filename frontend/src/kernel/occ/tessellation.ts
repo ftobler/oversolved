@@ -32,6 +32,7 @@ import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constr
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
+import type { BrepDiff } from '../types3d'
 import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
@@ -383,6 +384,8 @@ interface SolidEdgesOptions {
   profileQueries?: string[] | null
   edgeAncestry?: Record<string, string[]> | null
   edgeNames?: Record<string, string> | null
+  brepDiff?: BrepDiff | null
+  modifiedBy?: string[]
 }
 
 interface SolidEdgesResult {
@@ -526,6 +529,28 @@ export function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
   return [ed.center[0], ed.center[1], ed.center[2]]
 }
 
+/** Compute geom hashes of a BrepDiff's new_edges for the pick-side creator rewrite. */
+function _solidToEdgesNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: BrepDiff): Set<string> {
+  const out = new Set<string>()
+  if (!diff.new_edges || diff.new_edges.length === 0) return out
+  for (const raw of diff.new_edges) {
+    try {
+      const { ed } = edgeToGeom(oc, scope, raw as OccShape)
+      if (ed.kind === 'line') {
+        const s = (ed as { start: number[] }).start
+        const e = (ed as { end: number[] }).end
+        out.add(edgeGeometryHash({ kind: 'line', start: s, end: e }))
+        out.add(edgeGeometryHash({ kind: 'line', start: e, end: s }))
+      } else if (ed.kind === 'circle' || ed.kind === 'arc') {
+        out.add(edgeGeometryHash(ed as unknown as Record<string, unknown>))
+      }
+    } catch {
+      // skip un-hashable edges (splines, freed handles)
+    }
+  }
+  return out
+}
+
 /**
  * Unique edge geometry of a solid, sorted into deterministic indices, plus the
  * per-edge ancestry `edge_queries`. Queries are
@@ -548,11 +573,18 @@ export function solidToEdges(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)
+      // Compute new-edge hashes so the pick side matches the builder's
+      // modified_by[last] rewrite for edges created by a fillet/chamfer.
+      const hasModifier = opts.brepDiff !== null && opts.brepDiff !== undefined
+        && opts.modifiedBy !== undefined && opts.modifiedBy.length > 0
+        && opts.modifiedBy[opts.modifiedBy.length - 1] !== createdBy
+      const newEdgeHashes = hasModifier ? _solidToEdgesNewEdgeHashes(oc, scope, opts.brepDiff!) : new Set<string>()
       for (const ed of edges) {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
+        const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
         const uuid = opts.edgeNames
-          ? (opts.edgeNames[edgeGeometryHash(ed as unknown as Record<string, unknown>)] ?? null)
+          ? (opts.edgeNames[geomHash] ?? null)
           : null
         // An EMPTY edge ancestry token list is "no ancestry": read `[]` as
         // absent so the profile-token fallback fires, matching the builder's
@@ -563,16 +595,22 @@ export function solidToEdges(
             : null
         const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
+        // Apply the same creator rewrite as buildEdgeIndex: new edges from a
+        // modifier are attributed to the modifier, not the body's original creator.
+        let edgeCreatedBy = createdBy
+        if (newEdgeHashes.has(geomHash) && opts.modifiedBy !== undefined) {
+          edgeCreatedBy = opts.modifiedBy[opts.modifiedBy.length - 1]
+        }
         if (bodyId) {
           const ids: string[] = []
           if (uuid) ids.push(constructionUuidToken(uuid))
-          ids.push(ref(createdBy), ref(bodyId))
+          ids.push(ref(edgeCreatedBy), ref(bodyId))
           if (ancestorTokens && ancestorTokens.length) ids.push(...ancestorTokens)
           else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         } else {
-          const ids = [ref(createdBy)]
+          const ids = [ref(edgeCreatedBy)]
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         }

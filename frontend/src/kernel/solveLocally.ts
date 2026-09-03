@@ -126,6 +126,8 @@ export function tessellateBodies(
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeNames: body.edge_names ?? null,
+        brepDiff: body.brep_diff ?? null,
+        modifiedBy: body.modified_by,
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {
         createdBy: body.created_by || '',
@@ -199,6 +201,8 @@ export function extractBrepMetadata(
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeNames: body.edge_names ?? null,
+        brepDiff: body.brep_diff ?? null,
+        modifiedBy: body.modified_by,
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {
         createdBy: body.created_by || '',

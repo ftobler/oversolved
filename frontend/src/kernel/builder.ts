@@ -1147,6 +1147,14 @@ export function build(
           deps.copyBodyShape ? (shape) => deps.copyBodyShape!(shape, RESTORE_OWNER) : undefined,
         ),
       )
+      // Null out brep_diff on restored bodies: the diff's sub-shape handles
+      // are dead OCC proxies from the previous build scope. The builder-side
+      // callers (ancestry registration) fall back to body.created_by when
+      // brep_diff is null, and the pick-side guard in buildEdgeIndex already
+      // handles the null case.
+      for (const body of Object.values(bodyStore)) {
+        body.brep_diff = null
+      }
       for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
         result[fid] = options.prevState.checkpoints[fid].result
         newCheckpoints[fid] = options.prevState.checkpoints[fid]

@@ -25,6 +25,8 @@ import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
+import { faceGh } from '../occ/lineageHash'
+import { nameFacesFromNeighbours, deriveEdgeNames } from '../occ/constructionLineage'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -261,6 +263,22 @@ export function solveExtrude(
         cqFaces.slice(1).map((f) => makePrism(oc, scope, f, faceNormalVec, distance)),
       )
     }
+    // Seed face names from the source body so nameFacesFromNeighbours can
+    // propagate to the rest of the tool solid's faces.
+    const seedGh = faceGh(oc, scope, cqFaces[0])
+    for (const body of Object.values(bodyStore)) {
+      const fn = body.face_names
+      if (fn && seedGh in fn) {
+        faceNames[seedGh] = fn[seedGh]
+        const fa = body.face_ancestry
+        if (fa) faceAncestry[fn[seedGh]] = fa[fn[seedGh]] ?? []
+        break
+      }
+    }
+    nameFacesFromNeighbours(oc, scope, toolShape, faceNames, faceAncestry)
+    const edgeResult = deriveEdgeNames(oc, scope, toolShape, faceNames, faceAncestry)
+    Object.assign(edgeNames, edgeResult.edgeNames)
+    Object.assign(edgeAncestry, edgeResult.edgeAncestry)
   } else {
     const normal = (firstPt?.normal as number[]) ?? [0, 0, 1]
     const [directionVec, effectiveDistance, effectivePlane] = resolveDirection(

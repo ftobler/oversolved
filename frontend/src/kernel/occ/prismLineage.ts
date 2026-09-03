@@ -601,6 +601,7 @@ export function buildPrismLineageMap(
   plane: PlaneLike,
   createdBy = '',
   sketchId = '',
+  groupIndex = 0,
 ): LineageMaps {
   const E = oc.TopAbs_ShapeEnum
   const solid = scope.track(prismBuilder.Shape())
@@ -673,7 +674,7 @@ export function buildPrismLineageMap(
         uuid = mintFaceUuid(sideFacePath(createdBy, slot))
       } else {
         const cap = capCandidates.find((c) => (sf as OccSubShape).IsSame(c.face))
-        if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which))
+        if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which, groupIndex))
       }
       if (uuid !== null) {
         faceNames[gh] = uuid
@@ -1111,7 +1112,8 @@ function perGroupPrismWithLineage(
   let solid: OccShape | null = null
   const merged = emptyLineageMaps()
 
-  for (const [outer, holes] of groups) {
+  for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
+    const [outer, holes] = groups[groupIdx]
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const builder = scope.track(
       new oc.BRepPrimAPI_MakePrism_1(
@@ -1132,7 +1134,7 @@ function perGroupPrismWithLineage(
     // except the survivor returned at the end; scope-own them all here and
     // detach only that survivor, which the caller takes over.
     scope.track(part)
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId, groupIdx)
     prefixLineageMaps(lineage, tokenPrefix)
     // The profile face is dead once the lineage has been read off it.
     scope.release(face)
@@ -1295,7 +1297,8 @@ export function revolveProfileWithLineage(
   // faces, and a clean that rejects the compound keeps the raw fused solid.
   let solid: OccShape | null = null
   const merged = emptyLineageMaps()
-  for (const [outer, holes] of groups) {
+  for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
+    const [outer, holes] = groups[groupIdx]
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
     const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
@@ -1304,7 +1307,7 @@ export function revolveProfileWithLineage(
     // except the survivor returned at the end; scope-own them all here and
     // detach only that survivor, which the caller takes over.
     scope.track(part)
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId, groupIdx)
     prefixLineageMaps(lineage, tokenPrefix)
     // The profile face is dead once the lineage has been read off it.
     scope.release(face)

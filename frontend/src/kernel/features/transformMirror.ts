@@ -245,7 +245,11 @@ export function solveMirror(
   const trsf = makeMirrorTrsf(oc, scope, [origin[0], origin[1], origin[2]], [normal[0], normal[1], normal[2]])
   const { shape: mirroredRaw, builder } = transformCopyWithMapping(oc, scope, sourceShape, trsf)
   const mirrored = scope.track(mirroredRaw)
-  const mirroredNames = rebuildNamesForTransformedCopy(oc, scope, mirrored, sourceShape, sourceNames, featureId, 0, builder)
+  // When replacing (keep_original: false), preserve the original body's face
+  // UUIDs so existing picks survive. When spawning a new body, mint fresh UUIDs.
+  const mirroredNames = !keepOriginal
+    ? rekeyNamesForTransformedBody(oc, scope, mirrored, sourceShape, sourceNames, builder)
+    : rebuildNamesForTransformedCopy(oc, scope, mirrored, sourceShape, sourceNames, featureId, 0, builder)
 
   if (!keepOriginal) {
     sourceBody.face_names = mirroredNames.faceNames

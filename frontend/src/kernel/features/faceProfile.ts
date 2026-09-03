@@ -44,6 +44,7 @@ export function resolveFaceIndexViaHash(
   oldIndex: number,
   globalRepo: Repository,
   bodyStore: Record<string, unknown> | null = null,
+  faceNames?: Record<string, string>,
 ): number | null {
   let targetFace: OccShape
   try {
@@ -54,6 +55,24 @@ export function resolveFaceIndexViaHash(
   const centroid = faceCentroid(oc, scope, targetFace)
   const normal = faceNormal(oc, scope, targetFace)
   const geomHash = faceGeometryHash(centroid, normal)
+
+  // Try UUID-based resolution first: look up the construction UUID from the
+  // body's face_names via the geometry hash, then query the repo by UUID
+  // (identity tier, exact match). This avoids the geometry-hash tier which can
+  // match an unrelated face with the same centroid+normal.
+  if (faceNames && geomHash in faceNames) {
+    const uuid = faceNames[geomHash]
+    try {
+      const uuidQuery = makeAncestryQuery([uuid], 'face')
+      const faceEntry = globalRepo.query(uuidQuery, null, bodyStore) as Dict | null
+      if (faceEntry && 'face_index' in faceEntry) {
+        return faceEntry.face_index as number
+      }
+    } catch {
+      // UUID query failure -> fall through to geometry hash fallback
+    }
+  }
+
   try {
     const queryStr = makeAncestryQuery([ref(geomHash)], 'face')
     const faceEntry = globalRepo.query(queryStr, null, bodyStore) as Dict | null
@@ -119,7 +138,7 @@ export function resolveFaceProfile(
     const body = findBodyForRef(bodyStore, refId)
     if (body === null) throw new Error(`No body found for '${refId}'`)
     const shape = bodyShape(table, body)
-    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore)
+    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names)
     if (resolved !== null) faceIndex = resolved
     return extractLoopsFromOccFace(oc, scope, shape, faceIndex)
   }
@@ -200,7 +219,7 @@ export function resolveFaceSlashFrame(
   const body = findBodyForRef(bodyStore, refId)
   if (body === null) throw new Error(`No body found for '${refId}'`)
   const shape = bodyShape(table, body)
-  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore)
+  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names)
   if (resolved !== null) faceIndex = resolved
   const face = extractOccFace(oc, scope, shape, faceIndex)
   return computeFaceDatumFrame(oc, scope, face)

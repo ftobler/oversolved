@@ -44,8 +44,8 @@ export function sideFacePath(createdBy: string, sketchEntityId: string): string 
 }
 
 /** A sweep cap (start = sketch side, end = swept-to side). */
-export function capFacePath(createdBy: string, which: 'start' | 'end'): string {
-  return `${createdBy}|cap|${which}`
+export function capFacePath(createdBy: string, which: 'start' | 'end', groupIndex = 0): string {
+  return groupIndex > 0 ? `${createdBy}|cap|${which}|g${groupIndex}` : `${createdBy}|cap|${which}`
 }
 
 /** A fillet/chamfer face generated on one edge: `<createdBy>|fillet|<edgeUuid>`. */

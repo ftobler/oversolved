@@ -317,17 +317,20 @@ export function solveRevolve(
     }
   } else {
     if (direction === 'symmetric') {
-      // The two halves are minted with no createdBy: their side faces come from
-      // the same profile entities, so a shared UUID would collide; the fused
-      // solid falls back to ancestral naming (documented limitation).
+      // Each half gets a distinct createdBy so their side faces carry different
+      // UUIDs, avoiding collisions at the shared seam.
       const half = angle / 2.0
-      const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId)
-      const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId)
+      const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId, featureId + '|sym|pos')
+      const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId, featureId + '|sym|neg')
       const posT = scope.track(pos.solid)
       const negT = scope.track(neg.solid)
       toolShape = scope.track(fuse(oc, scope, posT, negT))
       scope.release(posT)
       scope.release(negT)
+      Object.assign(faceNames, pos.faceNames, neg.faceNames)
+      Object.assign(edgeNames, pos.edgeNames, neg.edgeNames)
+      Object.assign(faceAncestry, pos.faceAncestry, neg.faceAncestry)
+      Object.assign(edgeAncestry, pos.edgeAncestry, neg.edgeAncestry)
     } else {
       const eff = direction === 'reverse' ? -angle : angle
       const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId)
