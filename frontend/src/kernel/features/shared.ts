@@ -71,6 +71,48 @@ export function parseSketchEntityRef(ref: string): { sketchId: string; eid: stri
   return { sketchId, eid }
 }
 
+/**
+ * Sketch a `?...` ancestry query is drawn on: the first ancestor token that
+ * names a registered sketch plane (`_pt_<id>`). An area pick carries its sketch
+ * as a bare `@<sketchId>` token beside the `@<sketchId>/<eid>` tokens that name
+ * the curves bounding it, so the plane registry is what tells the two apart.
+ * Returns null when no token names a sketch (a body-face query, say).
+ */
+export function sketchIdFromQuery(query: string, globalRepo: Repository): string | null {
+  if (!query.startsWith('?')) return null
+  let ids: string[]
+  try {
+    ;[ids] = parseAncestry(query)
+  } catch {
+    return null
+  }
+  for (const id of ids) {
+    if (!id.startsWith('@') || id.includes('/')) continue
+    const candidate = id.slice(1)
+    if (globalRepo.elements.get('_pt_' + candidate) !== undefined) return candidate
+  }
+  return null
+}
+
+/**
+ * The one entity of `sketchId` a sketch-area query is bounded by, or null when
+ * it names none or several. A click on the fill inside a lone circle and a click
+ * on the circle itself are the same gesture as far as a feature is concerned, so
+ * this is what lets the area form answer like the `entity:` form; a region
+ * bounded by four lines names four entities and gets no single answer.
+ */
+export function soleEntityInQuery(query: string, sketchId: string): string | null {
+  let ids: string[]
+  try {
+    ;[ids] = parseAncestry(query)
+  } catch {
+    return null
+  }
+  const prefix = '@' + sketchId + '/'
+  const named = [...new Set(ids.filter((i) => i.startsWith(prefix)))]
+  return named.length === 1 ? named[0].slice(prefix.length) : null
+}
+
 // ─── Profile loops ───
 
 /**

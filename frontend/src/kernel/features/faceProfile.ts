@@ -15,7 +15,7 @@ import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops } from '../occ/faceLoops'
-import { extractProfileLoops, parseSketchEntityRef, registerTopFace, surfaceEntityIds, type PlaneLike } from './shared'
+import { extractProfileLoops, parseSketchEntityRef, registerTopFace, sketchIdFromQuery, surfaceEntityIds, type PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -154,16 +154,7 @@ export function resolveFaceProfile(
 
   if (sketchRef.startsWith('?')) {
     const [targetIds] = parseAncestry(sketchRef)
-    let sketchId: string | null = null
-    for (const aid of targetIds) {
-      if (aid.startsWith('@')) {
-        const candidate = aid.slice(1)
-        if (globalRepo.elements.get('_pt_' + candidate) !== undefined) {
-          sketchId = candidate
-          break
-        }
-      }
-    }
+    const sketchId = sketchIdFromQuery(sketchRef, globalRepo)
     if (sketchId === null) {
       throw new Error(`Cannot find parent sketch for surface query: ${sketchRef}`)
     }
@@ -304,16 +295,7 @@ export function collectExtrudeLoops(
   if (sketchRef.startsWith('?') || sketchRef.startsWith('@')) {
     let sketchId = ''
     if (sketchRef.startsWith('?')) {
-      const [targetIds] = parseAncestry(sketchRef)
-      for (const aid of targetIds) {
-        if (aid.startsWith('@') && !aid.includes('/')) {
-          const candidate = aid.slice(1)
-          if (globalRepo.elements.get('_pt_' + candidate) !== undefined) {
-            sketchId = candidate
-            break
-          }
-        }
-      }
+      sketchId = sketchIdFromQuery(sketchRef, globalRepo) ?? ''
     } else {
       sketchId = sketchRef.slice(1).split('/')[0]
     }
