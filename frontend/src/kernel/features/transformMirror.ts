@@ -266,7 +266,7 @@ export function solveMirror(
       toolFaceNames: mirroredNames.faceNames,
       toolFaceAncestry: mirroredNames.faceAncestry,
       // The mirrored copy already carries per-instance UUIDs, so nothing collides.
-      keptToolFeatureId: null,
+      toolUuidScope: null,
     })
     sourceBody.face_names = names.face_names
     sourceBody.face_ancestry = names.face_ancestry

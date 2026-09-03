@@ -25,7 +25,7 @@ import {
   sideFacePath,
   capFacePath,
   filletFacePath,
-  keptToolFacePath,
+  toolCopyFacePath,
 } from '../constructionName'
 
 const oc = await loadOcc()
@@ -74,7 +74,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         targetFaceAncestry: base.faceAncestry,
         toolFaceNames: bump.faceNames,
         toolFaceAncestry: bump.faceAncestry,
-        keptToolFeatureId: null,
+        toolUuidScope: null,
       })
       const carried = new Set(Object.values(names.face_names))
 
@@ -111,7 +111,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         targetFaceAncestry: base.faceAncestry,
         toolFaceNames: bump.faceNames,
         toolFaceAncestry: bump.faceAncestry,
-        keptToolFeatureId: 'bool1',
+        toolUuidScope: 'bool1',
       })
       const carried = new Set(Object.values(kept.face_names))
 
@@ -123,7 +123,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       // identity on the target, derived from the tool's UUID and this boolean.
       for (let i = 0; i < 4; i++) {
         const toolUuid = mintFaceUuid(sideFacePath('e2', `sk2/l${i}`))
-        expect(carried.has(mintFaceUuid(keptToolFacePath(toolUuid, 'bool1')))).toBe(true)
+        expect(carried.has(mintFaceUuid(toolCopyFacePath(toolUuid, 'bool1')))).toBe(true)
       }
       // The target's own faces are untouched by the re-mint.
       expect(carried.has(mintFaceUuid(capFacePath('e1', 'start')))).toBe(true)
@@ -137,7 +137,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         targetFaceAncestry: base.faceAncestry,
         toolFaceNames: bump.faceNames,
         toolFaceAncestry: bump.faceAncestry,
-        keptToolFeatureId: null,
+        toolUuidScope: null,
       })
       const consumedCarried = new Set(Object.values(consumed.face_names))
       expect(consumedCarried.has(mintFaceUuid(sideFacePath('e2', 'sk2/l0')))).toBe(true)

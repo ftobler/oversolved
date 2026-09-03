@@ -140,8 +140,12 @@ export function applyBodyOperation(
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
-        // The tool is a transient shape, not a body that survives with these names.
-        keptToolFeatureId: null,
+        // The tool shape itself is transient, but with no `merge_target` a cut
+        // reaches EVERY body, and each one it hits inherits the same tool face
+        // names. The first body cut keeps them verbatim -- so a single-target
+        // cut, which is nearly all of them, names its walls as it always has --
+        // and every further body scopes its copy to itself.
+        toolUuidScope: cutAnything ? bid : null,
       })
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
@@ -222,8 +226,9 @@ export function applyBodyOperation(
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
-        // The tool is a transient shape, not a body that survives with these names.
-        keptToolFeatureId: null,
+        // A fuse lands on exactly one target (the loop breaks below), and the
+        // tool shape is transient, so nothing else claims these names.
+        toolUuidScope: null,
       })
       existingBody.face_names = names.face_names
       existingBody.edge_names = names.edge_names

@@ -16,6 +16,7 @@ import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
 import { makeBox, makeBoxAt } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
+import { faceGh } from '../occ/lineageHash'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import type { Body } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -223,6 +224,77 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         // Target body volume should be less than original 1000 (material was removed).
         const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         expect(targetVol).toBeLessThan(1000)
+      } finally {
+        scope.dispose()
+      }
+    })
+    it('a cut reaching two bodies gives each its own copy of the tool face uuids', () => {
+      /**
+       * With no merge_target a cut reaches EVERY body, and each one it hits
+       * inherits the same tool face names. Handing them out verbatim puts one
+       * construction UUID on two live faces, and picking either wall then fails
+       * the resolver with "collision by construction" -- the same failure the
+       * consumed-tool and kept-tool fixes removed, arriving by a third route.
+       */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      const bodyStore: Record<string, Body> = {}
+      try {
+        // Two disjoint boxes, x 0-10 and x 20-30, both crossed by one slab.
+        for (const [bid, x] of [['body_a', 0], ['body_b', 20]] as [string, number][]) {
+          const box = makeBoxAt(occ, scope, [x, 0, 0], 10, 10, 10)
+          bodyStore[bid] = {
+            id: bid, created_by: `feat_${bid}`, modified_by: [], shape: table.register(scope.detach(box), `feat_${bid}`),
+            sketch_id: 'skT', brep_diff: null, profile_queries: [],
+          }
+        }
+        const tool = scope.track(makeBoxAt(occ, scope, [-1, 3, 3], 40, 4, 4))
+
+        // Name the tool's faces the way a real extrude tool arrives named.
+        const faceNames: Record<string, string> = {}
+        const faceAncestry: Record<string, string[]> = {}
+        const exp = scope.track(new occ.TopExp_Explorer_2(tool, occ.TopAbs_ShapeEnum.TopAbs_FACE, occ.TopAbs_ShapeEnum.TopAbs_SHAPE))
+        for (let i = 0; exp.More(); exp.Next(), i++) {
+          const gh = faceGh(occ, scope, scope.track(occ.TopoDS.Face_1(exp.Current())))
+          faceNames[gh] = `u_tool_${i}`
+          faceAncestry[`u_tool_${i}`] = [`@skT/side${i}`]
+        }
+
+        const result = applyBodyOperation(occ, scope, table, {
+          toolShape: tool,
+          bodyStore,
+          operation: 'cut',
+          mergeTarget: null,
+          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+          profileQueries: [],
+          faceNames, faceAncestry,
+        })
+        expect(result.status).toBe('ok')
+
+        // Every live face uuid in the store is claimed by exactly one face.
+        const seen = new Map<string, string>()
+        const dupes: string[] = []
+        for (const body of Object.values(bodyStore)) {
+          for (const uuid of Object.values(body.face_names ?? {})) {
+            const owner = seen.get(uuid)
+            if (owner !== undefined && owner !== body.id) dupes.push(uuid)
+            seen.set(uuid, body.id)
+          }
+        }
+        expect(dupes).toEqual([])
+
+        // Scoped, not dropped: the second body still names its cut walls, and
+        // its ancestry keeps the tool's own tokens for the fallback tier.
+        const b = bodyStore.body_b
+        const scoped = Object.values(b.face_names ?? {}).filter(u => !Object.values(faceNames).includes(u))
+        expect(scoped.length).toBeGreaterThan(0)
+        for (const uuid of scoped) {
+          expect((b.face_ancestry ?? {})[uuid]).toBeDefined()
+        }
+        // The FIRST body cut keeps the tool uuids verbatim, so an ordinary
+        // single-target cut names its walls exactly as it did before.
+        const aNames = Object.values(bodyStore.body_a.face_names ?? {})
+        expect(aNames.some(u => u.startsWith('u_tool_'))).toBe(true)
       } finally {
         scope.dispose()
       }

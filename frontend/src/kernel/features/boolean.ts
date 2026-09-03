@@ -116,7 +116,7 @@ export function solveBoolean(
       targetFaceAncestry: faceAncestry,
       toolFaceNames: toolBody.face_names ?? null,
       toolFaceAncestry: toolBody.face_ancestry ?? null,
-      keptToolFeatureId: keepTools ? featureId : null,
+      toolUuidScope: keepTools ? featureId : null,
     })
     faceNames = names.face_names
     faceAncestry = names.face_ancestry

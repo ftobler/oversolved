@@ -93,17 +93,20 @@ export function importedInstanceFacePath(createdBy: string, stepEntityId: number
 }
 
 /**
- * A target face a boolean inherited from a tool the operation KEPT
- * (`keep_tools`). The tool body survives carrying its own face UUIDs, so
- * handing them to the target verbatim puts one UUID on two live faces and the
- * resolver's UUID tier refuses both with "collision by construction". Scoping
- * the copy to the boolean that made it gives the target's face its own stable
- * identity while the tool keeps the original -- the same move
- * `arrayInstancePath` makes for array copies. A consuming boolean does not need
- * this: its tool is gone, so the inherited UUID stays unique.
+ * A face that inherited a tool face's UUID where that UUID is claimed by more
+ * than one live face, so the copy needs an identity of its own. Two ways that
+ * happens: the boolean KEPT its tool (`keep_tools`), which survives as a body
+ * still holding the original, and a cut that reaches several target bodies,
+ * which hands one tool's names to each of them. Either way the resolver's UUID
+ * tier would refuse every such face with "collision by construction"; scoping
+ * the copy under whatever makes it distinct -- the boolean, or the body it
+ * landed on -- gives it a stable identity instead, the same move
+ * `arrayInstancePath` makes for array copies. The uncontested copy keeps the
+ * UUID verbatim, so an ordinary single-target cut names its walls exactly as
+ * it always has.
  */
-export function keptToolFacePath(toolFaceUuid: string, featureId: string): string {
-  return `${toolFaceUuid}|kepttool|${featureId}`
+export function toolCopyFacePath(toolFaceUuid: string, scope: string): string {
+  return `${toolFaceUuid}|toolcopy|${scope}`
 }
 
 /**
