@@ -242,7 +242,7 @@ function applyArray(
   let fusedNames = instanceNames[0]
   let lastDiff: BrepDiff | null = null
   for (let i = 1; i < instances.length; i++) {
-    const r = booleanWithDiff(oc, scope, fused, instances[i], 'fuse')
+    const r = booleanWithDiff(oc, scope, fused, instances[i], 'fuse', { unifyFaces: !body.imported })
     fused = scope.track(r.shape)
     const names = transferBooleanNames(oc, scope, {
       bodyShape: fused,

@@ -82,6 +82,7 @@ export function solveBoolean(
     const toolBody = resolveBody(toolRef, bodyStore)
     if (toolBody.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
     const toolShape = table.get<OccShape>(toolBody.shape)
+    const unifyFaces = !(targetBody.imported || toolBody.imported)
 
     // Mirror the implicit cut/add guards (bodyOps.applyBodyOperation): probe the
     // overlap before folding so a disjoint tool is neither consumed nor left
@@ -92,7 +93,7 @@ export function solveBoolean(
       const probe = new DisposeScope()
       let intersects = true
       try {
-        const { shape: inter } = booleanWithDiff(oc, probe, resultShape, toolShape, 'common')
+        const { shape: inter } = booleanWithDiff(oc, probe, resultShape, toolShape, 'common', { unifyFaces })
         if (volumeOf(oc, probe, inter) < 1e-10) intersects = false
       } catch {
         // A failed probe is not evidence of disjointness: let the real boolean
@@ -107,7 +108,7 @@ export function solveBoolean(
       }
     }
 
-    const res = booleanWithDiff(oc, scope, resultShape, toolShape, op)
+    const res = booleanWithDiff(oc, scope, resultShape, toolShape, op, { unifyFaces })
     resultShape = scope.track(res.shape)
     const names = transferBooleanNames(oc, scope, {
       bodyShape: resultShape,

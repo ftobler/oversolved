@@ -257,7 +257,7 @@ export function solveMirror(
   }
 
   if (merge) {
-    const res = booleanWithDiff(oc, scope, sourceShape, mirrored, 'fuse')
+    const res = booleanWithDiff(oc, scope, sourceShape, mirrored, 'fuse', { unifyFaces: !sourceBody.imported })
     const names = transferBooleanNames(oc, scope, {
       bodyShape: res.shape,
       faceOrigin: res.faceOrigin,
